@@ -29,16 +29,16 @@
  *      contract.
  *   3. Validation — at least one body / param failure returns 400.
  *
- * Skip behavior mirrors `agent-token-flow.test.ts`:
- *   - If `/api/health` is unreachable, every test skips silently.
- *   - If `TEST_API_KEY` was not bootstrapped (e.g. SKIP_DB_DEPENDENT=1 or
- *     no Postgres), tests that require a key skip; auth-gate assertions
- *     still run because they only need the server to answer.
- *   - External-provider routes assert deterministic configured/unconfigured
- *     behavior instead of skipping when provider secrets are absent.
+ * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
+ * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
+ * named `skip` — never a silent pass. Session-only tests additionally skip
+ * loudly when the test-session exchange is unavailable. External-provider
+ * routes assert deterministic configured/unconfigured behavior keyed on the
+ * provider secret's presence in this env (shared with wrangler dev in the
+ * local lane).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -50,25 +50,50 @@ import {
   isServerReachable,
 } from "./_helpers/api";
 
-let serverReachable = false;
-let hasTestApiKey = false;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-b-account-billing] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
+}
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-b-account-billing] TEST_API_KEY is not set; the preload could " +
+      "not bootstrap a test API key. Tests will SKIP.",
+  );
+}
+
 let sessionCookie: string | null = null;
+if (serverReachable && hasTestApiKey) {
+  try {
+    sessionCookie = await exchangeApiKeyForSession();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[group-b-account-billing] session exchange failed (session tests will SKIP): ${msg}`,
+    );
+  }
+}
+
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+// Session-only routes; loud skip when the test-session exchange is unavailable.
+const testSession = test.skipIf(
+  !serverReachable || !hasTestApiKey || sessionCookie === null,
+);
+// Live Steward provisioning is an explicit opt-in integration check.
+const liveStewardWallet = process.env.RUN_STEWARD_WALLET_E2E === "1";
+// Stripe checkout: deterministic keyless 503 vs live 200, keyed on the secret
+// the Worker itself reads (shared env in the local lane).
+const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
+
 const createdApiKeyIds: string[] = [];
 const TEST_WALLET_ACCOUNT = privateKeyToAccount(
   "0x1111111111111111111111111111111111111111111111111111111111111111",
 );
-
-function shouldRunAuthed(): boolean {
-  return serverReachable && hasTestApiKey;
-}
-
-function shouldRunLiveStewardWalletE2E(): boolean {
-  return process.env.RUN_STEWARD_WALLET_E2E === "1";
-}
-
-function shouldRunSession(): boolean {
-  return shouldRunAuthed() && sessionCookie !== null;
-}
 
 async function signedWalletHeaders(
   path: string,
@@ -103,32 +128,6 @@ async function signedProvisionProof(
   return { signature, timestamp, nonce };
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-b-account-billing] ${getBaseUrl()} did not respond to /api/health. ` +
-        "Tests will skip. Start the Worker (bun run dev → wrangler dev) " +
-        "or set TEST_API_BASE_URL to a reachable host.",
-    );
-    return;
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-b-account-billing] TEST_API_KEY is not set; the preload could not " +
-        "bootstrap a test API key. Tests requiring auth will skip.",
-    );
-    return;
-  }
-  try {
-    sessionCookie = await exchangeApiKeyForSession();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[group-b-account-billing] session exchange failed: ${msg}`);
-  }
-});
-
 afterAll(async () => {
   if (!serverReachable || !sessionCookie) return;
   for (const id of createdApiKeyIds) {
@@ -140,52 +139,50 @@ afterAll(async () => {
 
 // -------- /api/v1/api-keys/explorer ----------------------------------------
 
-describe("GET /api/v1/api-keys/explorer", () => {
+describeE2E("GET /api/v1/api-keys/explorer", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/api-keys/explorer");
     expect(res.status).toBe(401);
   });
 
   test("happy path: returns or creates the explorer key with Bearer auth", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get("/api/v1/api-keys/explorer", {
       headers: bearerHeaders(),
     });
-    expect([200, 201]).toContain(res.status);
+    // get-or-create: 201 exactly when the key was created (isNew), 200 when
+    // it already existed — the pair must agree, anything else is a defect.
     const body = (await res.json()) as {
       apiKey?: { id?: string; key?: string; name?: string };
       isNew?: boolean;
     };
+    expect(typeof body.isNew).toBe("boolean");
+    expect(res.status).toBe(body.isNew ? 201 : 200);
     expect(body.apiKey?.id).toBeTruthy();
     expect(body.apiKey?.name).toBe("API Explorer Key");
-    expect(typeof body.isNew).toBe("boolean");
   });
 
   test("validation: rejects POST (only GET is mounted)", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/api-keys/explorer",
       {},
       { headers: bearerHeaders() },
     );
-    expect([404, 405]).toContain(res.status);
+    // Hono answers 404 for methods that are not mounted on the sub-app.
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- /api/v1/api-keys/:id/regenerate ----------------------------------
 
-describe("POST /api/v1/api-keys/:id/regenerate", () => {
+describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.post(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000/regenerate",
     );
     expect(res.status).toBe(401);
   });
 
-  test("happy path: regenerates a freshly created key", async () => {
-    if (!shouldRunSession()) return;
+  testSession("happy path: regenerates a freshly created key", async () => {
     if (!sessionCookie) throw new Error("session cookie missing");
 
     const createRes = await api.post(
@@ -197,7 +194,7 @@ describe("POST /api/v1/api-keys/:id/regenerate", () => {
       },
       { headers: { Cookie: sessionCookie } },
     );
-    expect([200, 201]).toContain(createRes.status);
+    expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
       apiKey?: { id?: string };
       plainKey?: string;
@@ -221,21 +218,20 @@ describe("POST /api/v1/api-keys/:id/regenerate", () => {
   });
 
   test("validation: 404 for an unknown id", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000/regenerate",
       undefined,
       { headers: bearerHeaders() },
     );
-    expect([400, 404]).toContain(res.status);
+    // Well-formed UUID that misses the lookup → 404.
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- PATCH /api/v1/api-keys/:id (update) ------------------------------
 
-describe("PATCH /api/v1/api-keys/:id", () => {
+describeE2E("PATCH /api/v1/api-keys/:id", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.patch(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000",
       { is_active: false },
@@ -243,66 +239,65 @@ describe("PATCH /api/v1/api-keys/:id", () => {
     expect(res.status).toBe(401);
   });
 
-  test("happy path: renames and disables a freshly created key", async () => {
-    if (!shouldRunSession()) return;
-    if (!sessionCookie) throw new Error("session cookie missing");
+  testSession(
+    "happy path: renames and disables a freshly created key",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
 
-    const createRes = await api.post(
-      "/api/v1/api-keys",
-      {
-        name: `group-b-patch-${Date.now()}`,
-        description: "Group B patch test — revoked in afterAll.",
-        rate_limit: 60,
-      },
-      { headers: { Cookie: sessionCookie } },
-    );
-    expect([200, 201]).toContain(createRes.status);
-    const created = (await createRes.json()) as { apiKey?: { id?: string } };
-    expect(created.apiKey?.id).toBeTruthy();
-    if (created.apiKey?.id) createdApiKeyIds.push(created.apiKey.id);
+      const createRes = await api.post(
+        "/api/v1/api-keys",
+        {
+          name: `group-b-patch-${Date.now()}`,
+          description: "Group B patch test — revoked in afterAll.",
+          rate_limit: 60,
+        },
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(createRes.status).toBe(201);
+      const created = (await createRes.json()) as { apiKey?: { id?: string } };
+      expect(created.apiKey?.id).toBeTruthy();
+      if (created.apiKey?.id) createdApiKeyIds.push(created.apiKey.id);
 
-    const patchRes = await api.patch(
-      `/api/v1/api-keys/${created.apiKey?.id}`,
-      { name: "group-b-patched", is_active: false, rate_limit: 30 },
-      { headers: { Cookie: sessionCookie } },
-    );
-    expect(patchRes.status).toBe(200);
-    const patched = (await patchRes.json()) as {
-      apiKey?: {
-        id?: string;
-        name?: string;
-        is_active?: boolean;
-        rate_limit?: number;
+      const patchRes = await api.patch(
+        `/api/v1/api-keys/${created.apiKey?.id}`,
+        { name: "group-b-patched", is_active: false, rate_limit: 30 },
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(patchRes.status).toBe(200);
+      const patched = (await patchRes.json()) as {
+        apiKey?: {
+          id?: string;
+          name?: string;
+          is_active?: boolean;
+          rate_limit?: number;
+        };
       };
-    };
-    expect(patched.apiKey?.id).toBe(created.apiKey?.id ?? "");
-    expect(patched.apiKey?.name).toBe("group-b-patched");
-    expect(patched.apiKey?.is_active).toBe(false);
-    expect(patched.apiKey?.rate_limit).toBe(30);
-  });
+      expect(patched.apiKey?.id).toBe(created.apiKey?.id ?? "");
+      expect(patched.apiKey?.name).toBe("group-b-patched");
+      expect(patched.apiKey?.is_active).toBe(false);
+      expect(patched.apiKey?.rate_limit).toBe(30);
+    },
+  );
 
   test("validation: 404 for an unknown id", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.patch(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000",
       { is_active: false },
       { headers: bearerHeaders() },
     );
-    expect([400, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- /api/v1/user/avatar (R2 multipart upload) ------------------------
 
-describe("/api/v1/user/avatar", () => {
+describeE2E("/api/v1/user/avatar", () => {
   test("auth gate: without credentials expect 401 from /api/", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/user/avatar");
     expect(res.status).toBe(401);
   });
 
   test("validation: JSON body returns 400 (multipart required)", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/user/avatar",
       { dummy: 1 },
@@ -312,7 +307,6 @@ describe("/api/v1/user/avatar", () => {
   });
 
   test("validation: GET returns 405", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get("/api/v1/user/avatar", {
       headers: bearerHeaders(),
     });
@@ -322,29 +316,26 @@ describe("/api/v1/user/avatar", () => {
 
 // -------- /api/v1/user/email -----------------------------------------------
 
-describe("PATCH /api/v1/user/email", () => {
+describeE2E("PATCH /api/v1/user/email", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.patch("/api/v1/user/email", { email: "x@y.com" });
     expect(res.status).toBe(401);
   });
 
   test("happy path: the bootstrapped user already has an email → 400 with success=false", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.patch(
       "/api/v1/user/email",
       { email: `group-b+${Date.now()}@example.com` },
       { headers: bearerHeaders() },
     );
-    // The local test fixture user has an email; the handler refuses to overwrite.
-    // 200 is acceptable too if the bootstrap left email blank.
-    expect([200, 400]).toContain(res.status);
+    // The preload's fixture user always carries an email; the handler
+    // refuses to overwrite it → 400 with success=false.
+    expect(res.status).toBe(400);
     const body = (await res.json()) as { success?: boolean; error?: string };
-    expect(typeof body.success).toBe("boolean");
+    expect(body.success).toBe(false);
   });
 
   test("validation: 400 on invalid email format", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.patch(
       "/api/v1/user/email",
       { email: "not-an-email" },
@@ -359,45 +350,39 @@ describe("PATCH /api/v1/user/email", () => {
 
 // -------- /api/v1/user/wallets ---------------------------------------------
 
-describe("GET /api/v1/user/wallets", () => {
+describeE2E("GET /api/v1/user/wallets", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/user/wallets");
     expect(res.status).toBe(401);
   });
 
   test("happy path: returns a wallets array for the authed org", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get("/api/v1/user/wallets", {
       headers: bearerHeaders(),
     });
-    expect([200, 403]).toContain(res.status);
-    if (res.status === 200) {
-      const body = (await res.json()) as {
-        success?: boolean;
-        data?: unknown[];
-      };
-      expect(body.success).toBe(true);
-      expect(Array.isArray(body.data)).toBe(true);
-    }
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: unknown[];
+    };
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.data)).toBe(true);
   });
 
   test("validation: POST is not mounted on this collection (only GET)", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/user/wallets",
       {},
       { headers: bearerHeaders() },
     );
-    expect([404, 405]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- /api/v1/user/wallets/provision -----------------------------------
 
-describe("POST /api/v1/user/wallets/provision", () => {
+describeE2E("POST /api/v1/user/wallets/provision", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/user/wallets/provision", {
       chainType: "evm",
       clientAddress: "0x0000000000000000000000000000000000000000",
@@ -405,29 +390,30 @@ describe("POST /api/v1/user/wallets/provision", () => {
     expect(res.status).toBe(401);
   });
 
-  test("happy path: provisions when external signer is configured, otherwise fails after auth", async () => {
-    if (!shouldRunAuthed()) return;
-    // Live Steward provisioning is an integration check, not a release smoke.
-    // Keep the default deploy gate deterministic; opt in when explicitly
-    // validating Steward wallet provisioning.
-    if (!shouldRunLiveStewardWalletE2E()) return;
-
-    const clientAddress = TEST_WALLET_ACCOUNT.address;
-    const res = await api.post(
-      "/api/v1/user/wallets/provision",
-      {
-        chainType: "evm",
-        clientAddress,
-        controlProof: await signedProvisionProof(clientAddress, "evm"),
-      },
-      { headers: bearerHeaders() },
-    );
-    // Proof verified → reaches Steward (200) or its downstream failure modes.
-    expect([200, 403, 500, 503]).toContain(res.status);
-  });
+  // Live Steward provisioning is an integration check, not a release smoke.
+  // Loud, counted opt-in via RUN_STEWARD_WALLET_E2E=1.
+  test.skipIf(!liveStewardWallet)(
+    "happy path: provisions when external signer is configured, otherwise fails after auth",
+    async () => {
+      const clientAddress = TEST_WALLET_ACCOUNT.address;
+      const res = await api.post(
+        "/api/v1/user/wallets/provision",
+        {
+          chainType: "evm",
+          clientAddress,
+          controlProof: await signedProvisionProof(clientAddress, "evm"),
+        },
+        { headers: bearerHeaders() },
+      );
+      // Live-only (RUN_STEWARD_WALLET_E2E=1): the proof must be ACCEPTED — any
+      // 400/401 means the signed challenge broke. Beyond that the status is
+      // Steward's (200 provisioned; 403/500/503 downstream), named here because
+      // the external service's failure modes are not this Worker's contract.
+      expect([200, 403, 500, 503]).toContain(res.status);
+    },
+  );
 
   test("proof required: 400 when controlProof is absent", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/user/wallets/provision",
       { chainType: "evm", clientAddress: TEST_WALLET_ACCOUNT.address },
@@ -440,7 +426,6 @@ describe("POST /api/v1/user/wallets/provision", () => {
   });
 
   test("proof rejected: 401 when the proof is not signed by clientAddress", async () => {
-    if (!shouldRunAuthed()) return;
     // clientAddress the caller does NOT control; proof signed by TEST_WALLET.
     const squattedAddress = "0x000000000000000000000000000000000000dEaD";
     const res = await api.post(
@@ -457,7 +442,6 @@ describe("POST /api/v1/user/wallets/provision", () => {
   });
 
   test("validation: 400 on invalid clientAddress for chainType=evm", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/user/wallets/provision",
       {
@@ -479,9 +463,8 @@ describe("POST /api/v1/user/wallets/provision", () => {
 
 // -------- /api/v1/user/wallets/rpc -----------------------------------------
 
-describe("POST /api/v1/user/wallets/rpc", () => {
+describeE2E("POST /api/v1/user/wallets/rpc", () => {
   test("auth gate: 401 without wallet signature headers", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/user/wallets/rpc", {
       clientAddress: "0x0000000000000000000000000000000000000000",
       payload: { method: "eth_blockNumber", params: [] },
@@ -489,12 +472,12 @@ describe("POST /api/v1/user/wallets/rpc", () => {
       timestamp: Date.now(),
       nonce: "n-0",
     });
-    // Wallet auth rejects: 401 (or 400 if validation fires before auth).
-    expect([400, 401]).toContain(res.status);
+    // Wallet auth runs before ownership/RPC handling and rejects the bogus
+    // signature with 401 (the body itself is schema-valid).
+    expect(res.status).toBe(401);
   });
 
   test("validation: 400 on missing required fields", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/user/wallets/rpc", {
       clientAddress: "0xabc",
     });
@@ -504,7 +487,6 @@ describe("POST /api/v1/user/wallets/rpc", () => {
   });
 
   test("happy path: signed wallet auth reaches ownership or RPC checks", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/user/wallets/rpc",
       {
@@ -516,14 +498,16 @@ describe("POST /api/v1/user/wallets/rpc", () => {
       },
       { headers: await signedWalletHeaders("/api/v1/user/wallets/rpc") },
     );
-    expect([401, 403]).toContain(res.status);
+    // The signature verifies, but TEST_WALLET is not a provisioned wallet for
+    // any org → ownership check rejects with 401.
+    expect(res.status).toBe(401);
   });
 });
 
 // -------- /api/v1/topup/{10,50,100} (x402 wallet topup) --------------------
 
 for (const amount of [10, 50, 100] as const) {
-  describe(`POST /api/v1/topup/${amount}`, () => {
+  describeE2E(`POST /api/v1/topup/${amount}`, () => {
     test("auth gate: public path, request without auth still hits the live handler", async () => {
       if (!serverReachable) return;
       const res = await api.post(`/api/v1/topup/${amount}`);
@@ -539,6 +523,8 @@ for (const amount of [10, 50, 100] as const) {
         { walletAddress: TEST_WALLET_ACCOUNT.address },
         { headers: bearerHeaders() },
       );
+      // Env-keyed pair: 402 payment-required when x402 is configured on the
+      // Worker, 503 x402_not_configured otherwise — the body discriminates.
       expect([402, 503]).toContain(res.status);
       const body = (await res.json()) as {
         error?: string;
@@ -556,16 +542,15 @@ for (const amount of [10, 50, 100] as const) {
     test("validation: GET is not mounted (only POST)", async () => {
       if (!serverReachable) return;
       const res = await api.get(`/api/v1/topup/${amount}`);
-      expect([404, 405]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
   });
 }
 
 // -------- /api/v1/pricing/summary ------------------------------------------
 
-describe("GET /api/v1/pricing/summary", () => {
+describeE2E("GET /api/v1/pricing/summary", () => {
   test("public route: returns pricing snapshot without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/pricing/summary");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -577,7 +562,6 @@ describe("GET /api/v1/pricing/summary", () => {
   });
 
   test("happy path: returns pricing snapshot with asOf timestamp", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get("/api/v1/pricing/summary", {
       headers: bearerHeaders(),
     });
@@ -591,27 +575,24 @@ describe("GET /api/v1/pricing/summary", () => {
   });
 
   test("validation: POST is not mounted", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/pricing/summary",
       {},
       { headers: bearerHeaders() },
     );
-    expect([404, 405]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- /api/quotas/usage ------------------------------------------------
 
-describe("GET /api/quotas/usage", () => {
+describeE2E("GET /api/quotas/usage", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/quotas/usage");
     expect(res.status).toBe(401);
   });
 
   test("happy path: returns quota usage data for the authed org", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get("/api/quotas/usage", {
       headers: bearerHeaders(),
     });
@@ -622,27 +603,24 @@ describe("GET /api/quotas/usage", () => {
   });
 
   test("validation: POST is not mounted", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/quotas/usage",
       {},
       { headers: bearerHeaders() },
     );
-    expect([404, 405]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- /api/stats/account -----------------------------------------------
 
-describe("GET /api/stats/account", () => {
+describeE2E("GET /api/stats/account", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/stats/account");
     expect(res.status).toBe(401);
   });
 
   test("happy path: returns the account-stats payload", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get("/api/stats/account", {
       headers: bearerHeaders(),
     });
@@ -660,120 +638,126 @@ describe("GET /api/stats/account", () => {
   });
 
   test("validation: POST is not mounted", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/stats/account",
       {},
       { headers: bearerHeaders() },
     );
-    expect([404, 405]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- /api/stripe/credit-packs (public) --------------------------------
 
-describe("GET /api/stripe/credit-packs", () => {
+describeE2E("GET /api/stripe/credit-packs", () => {
   test("auth gate: public path, unauthenticated request reaches the handler", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/stripe/credit-packs");
-    // Public path: 200 if Stripe DB rows exist, 500 on db failure. Never 401.
-    expect(res.status).not.toBe(401);
-    expect([200, 500]).toContain(res.status);
+    // Public path (never 401) serving DB-backed packs — a 500 is a defect,
+    // not a tolerable state.
+    expect(res.status).toBe(200);
   });
 
   test("happy path: returns a creditPacks array", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/stripe/credit-packs");
-    if (res.status === 200) {
-      const body = (await res.json()) as { creditPacks?: unknown[] };
-      expect(Array.isArray(body.creditPacks)).toBe(true);
-    }
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { creditPacks?: unknown[] };
+    expect(Array.isArray(body.creditPacks)).toBe(true);
   });
 
   test("validation: POST is not mounted (only GET)", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/stripe/credit-packs");
-    expect([404, 405]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------- /api/stripe/create-checkout-session ------------------------------
 
-describe("POST /api/stripe/create-checkout-session", () => {
+describeE2E("POST /api/stripe/create-checkout-session", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/stripe/create-checkout-session", {
       amount: 5,
     });
     expect(res.status).toBe(401);
   });
 
-  test("happy path: creates Checkout when Stripe is configured, otherwise fails after auth", async () => {
-    if (!shouldRunSession()) return;
+  // Keyless-deterministic variant: without STRIPE_SECRET_KEY the handler
+  // answers 503 service-unavailable after auth.
+  test.skipIf(
+    !serverReachable ||
+      !hasTestApiKey ||
+      sessionCookie === null ||
+      stripeConfigured,
+  )("keyless: checkout answers 503 when Stripe is not configured", async () => {
     if (!sessionCookie) throw new Error("session cookie missing");
     const res = await api.post(
       "/api/stripe/create-checkout-session",
       { amount: 5 },
       { headers: { Cookie: sessionCookie } },
     );
-    expect([200, 201, 500, 503]).toContain(res.status);
-    if (res.ok) {
-      const body = (await res.json()) as { sessionId?: string; url?: string };
-      expect(body.sessionId).toBeTruthy();
-      expect(body.url).toMatch(/^https:\/\//);
-    }
+    expect(res.status).toBe(503);
   });
 
-  test("validation: 400 when neither creditPackId nor amount is provided", async () => {
-    if (!shouldRunSession()) return;
+  // Live variant: with Stripe configured the checkout must fully succeed.
+  test.skipIf(
+    !serverReachable ||
+      !hasTestApiKey ||
+      sessionCookie === null ||
+      !stripeConfigured,
+  )("live: creates a Checkout session with id + https url", async () => {
     if (!sessionCookie) throw new Error("session cookie missing");
     const res = await api.post(
       "/api/stripe/create-checkout-session",
-      {},
+      { amount: 5 },
       { headers: { Cookie: sessionCookie } },
     );
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error?: string };
-    expect(typeof body.error).toBe("string");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { sessionId?: string; url?: string };
+    expect(body.sessionId).toBeTruthy();
+    expect(body.url).toMatch(/^https:\/\//);
   });
+
+  testSession(
+    "validation: 400 when neither creditPackId nor amount is provided",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
+      const res = await api.post(
+        "/api/stripe/create-checkout-session",
+        {},
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error?: string };
+      expect(typeof body.error).toBe("string");
+    },
+  );
 });
 
 // -------- /api/signup-code/redeem ------------------------------------------
 
-describe("POST /api/signup-code/redeem", () => {
+describeE2E("POST /api/signup-code/redeem", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/signup-code/redeem", { code: "any" });
     expect(res.status).toBe(401);
   });
 
-  test("happy path: invalid code path returns a structured error (no real code in fixtures)", async () => {
-    if (!shouldRunSession()) return;
-    if (!sessionCookie) throw new Error("session cookie missing");
-    // No fixture provisions a redeemable code, so we expect the negative
-    // path (400 INVALID_CODE / 409 ALREADY_USED). Any happy-path "200"
-    // would also be valid if a code is seeded.
-    const res = await api.post(
-      "/api/signup-code/redeem",
-      { code: `group-b-${Date.now()}` },
-      { headers: { Cookie: sessionCookie } },
-    );
-    expect([200, 400, 409]).toContain(res.status);
-    const body = (await res.json()) as {
-      success?: boolean;
-      error?: string;
-      bonus?: number;
-    };
-    if (res.status === 200) {
-      expect(body.success).toBe(true);
-      expect(typeof body.bonus).toBe("number");
-    } else {
+  testSession(
+    "happy path: invalid code path returns a structured error (no real code in fixtures)",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
+      // No fixture seeds a redeemable code and the random code cannot exist,
+      // so the contract is exactly the 400 INVALID_CODE negative path.
+      const res = await api.post(
+        "/api/signup-code/redeem",
+        { code: `group-b-${Date.now()}` },
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { success?: boolean; error?: string };
       expect(typeof body.error).toBe("string");
-    }
-  });
+    },
+  );
 
-  test("validation: 400 on missing code field", async () => {
-    if (!shouldRunSession()) return;
+  testSession("validation: 400 on missing code field", async () => {
     if (!sessionCookie) throw new Error("session cookie missing");
     const res = await api.post(
       "/api/signup-code/redeem",

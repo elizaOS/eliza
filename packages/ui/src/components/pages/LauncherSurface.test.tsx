@@ -122,16 +122,23 @@ describe("LauncherSurface", () => {
     expect(screen.getByTestId("launcher-tile-phone")).toBeTruthy();
   });
 
-  it("puts developer tools on a second page", () => {
+  it("shows developer tools on the single page when Developer Mode is on", () => {
+    // beforeEach enables developer mode. One page — no second launcher page.
     render(<LauncherSurface />);
-    const devPage = screen.getByTestId("launcher-page-1");
-    expect(
-      devPage.querySelector('[data-testid="launcher-tile-trajectories"]'),
-    ).toBeTruthy();
-    const appsPage = screen.getByTestId("launcher-page-0");
-    expect(
-      appsPage.querySelector('[data-testid="launcher-tile-trajectories"]'),
-    ).toBeNull();
+    expect(screen.queryByTestId("launcher-page-1")).toBeNull();
+    const appsPage = within(screen.getByTestId("launcher-page-0"));
+    expect(appsPage.getByTestId("launcher-tile-trajectories")).toBeTruthy();
+  });
+
+  it("hides developer tools when Developer Mode is off (default)", () => {
+    useEnabledViewKindsMock.mockReturnValue({
+      developer: false,
+      preview: false,
+    });
+    render(<LauncherSurface />);
+    expect(screen.queryByTestId("launcher-tile-trajectories")).toBeNull();
+    // Everyday apps still tile on the single page.
+    expect(screen.getByTestId("launcher-tile-wallet")).toBeTruthy();
   });
 
   it("navigates loaded views through the browser route", () => {

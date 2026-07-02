@@ -603,8 +603,79 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("delivers bare-code and structured Stage 1 replies verbatim", async () => {
+		// #11504: the old junk heuristic flagged ANY character repeated 5+ times
+		// anywhere in the reply, so the 8+ consecutive spaces of two-level code
+		// indentation (a gemma-4-31b HumanEval-style bare function body), markdown
+		// "-----" dividers, and pretty-printed JSON all dead-ended into "I'm not
+		// sure how to answer that." — depressing eliza-harness HumanEval to 0.40
+		// vs 1.00 for the same model on raw harnesses.
+		const bareCodeBody = [
+			"def has_close_elements(numbers: List[float], threshold: float) -> bool:",
+			"    for idx, elem in enumerate(numbers):",
+			"        for idx2, elem2 in enumerate(numbers):",
+			"            if idx != idx2:",
+			"                distance = abs(elem - elem2)",
+			"                if distance < threshold:",
+			"                    return True",
+			"    return False",
+		].join("\n");
+		const fencedCode = `\`\`\`python\n${bareCodeBody}\n\`\`\``;
+		const proseThenFencedCode = `Here's the implementation:\n\n${fencedCode}`;
+		const prettyPrintedJson = [
+			"{",
+			'    "name": "config",',
+			'    "nested": {',
+			'        "deep": {',
+			'            "value": 1',
+			"        }",
+			"    }",
+			"}",
+		].join("\n");
+		const markdownWithDivider = "Results\n-------\nAll checks passed.";
+		for (const reply of [
+			bareCodeBody,
+			fencedCode,
+			proseThenFencedCode,
+			prettyPrintedJson,
+			markdownWithDivider,
+		]) {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: reply,
+				}),
+			]);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Write a Python function that checks whether any two numbers in a list are closer than a threshold.",
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+			expect(useModelCalls(runtime).length).toBe(1);
+		}
+	});
+
 	it("does not keep known-junk Stage 1 fragments when regeneration returns empty", async () => {
-		for (const badReply of ["RPPY", "{}", "aaaaa", "::::"]) {
+		for (const badReply of [
+			"RPPY",
+			"{}",
+			"aaaaa",
+			"::::",
+			// whitespace-only reply trims to empty
+			"   ",
+			// degenerate single-character spam, including across whitespace
+			"!!!!!!!!",
+			"aaaaa aaaaa",
+		]) {
 			const runtime = makeRuntime([
 				stage1Response({
 					contexts: ["simple"],
@@ -625,6 +696,32 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(result.result.responseContent?.text).toBe(
 					"I'm not sure how to answer that.",
 				);
+			}
+		}
+	});
+
+	it("keeps a real answer that merely CONTAINS a repeated-character run", async () => {
+		// The junk check flags a reply that IS a glitch run ("aaaaa"), anchored.
+		// A real answer containing a run — aligned `df -h` columns, a "-----"
+		// divider, an "XXXXXXXX" placeholder — must not be blanked to the
+		// generic deferral.
+		for (const goodReply of [
+			"Filesystem      Size  Used Avail Use%\n/dev/sda1       387G  381G  5.8G  99%",
+			"Results\n--------\nAll checks passed.",
+			"Use the placeholder XXXXXXXX until the key arrives.",
+		]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: goodReply }),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "how full is the disk?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(goodReply);
 			}
 		}
 	});
@@ -2398,6 +2495,17 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(sourceText).toContain(
 			"there is no separate chat-history search tool",
+		);
+		// Live regression (2026-06-30, ruby-trivia build): when asked "what
+		// happened with the build" / "did it actually work", the bot parroted the
+		// "no chat-history search tool" disclaimer and claimed it could not verify
+		// a run it COULD look up via the task tools. The carve-out distinguishes
+		// chat-recall (unavailable) from task/build/deploy run status (checkable).
+		expect(sourceText).toContain(
+			'This "no chat-history search" limit is about CHAT recall ONLY',
+		);
+		expect(sourceText).toContain(
+			"that run status IS verifiable with the task/sub-agent tools",
 		);
 	});
 

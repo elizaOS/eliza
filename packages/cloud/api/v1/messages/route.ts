@@ -15,11 +15,13 @@ import {
   type JSONValue,
   jsonSchema,
   type ModelMessage,
+  type StepResult,
   streamText,
   type TextPart,
   type ToolCallPart,
   type ToolContent,
   type ToolResultPart,
+  type ToolSet,
   type UserModelMessage,
 } from "ai";
 import { Hono } from "hono";
@@ -30,6 +32,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   calculateCost,
+  estimateTokens,
   getProviderFromModel,
   getSafeModelParams,
   normalizeModelName,
@@ -45,6 +48,7 @@ import {
 } from "@/lib/providers/language-model";
 import { getRequestIdempotencyKey } from "@/lib/runtime/request-context";
 import {
+  type AIUsage,
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
@@ -894,6 +898,187 @@ async function handleNonStream(
   }
 }
 
+/**
+ * The abort-settlement helpers only read `usage` off the SDK's finished steps.
+ * `StepResult` is invariant in its tools generic, so this structural view lets
+ * the streamText callback's concrete `StepResult<convertedTools>[]` flow in
+ * without a cast (`usage` itself does not depend on the tools generic).
+ */
+type FinishedStepUsageSource = {
+  readonly usage: StepResult<ToolSet>["usage"];
+};
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function summarizeFinishedStepUsage(
+  steps: readonly FinishedStepUsageSource[],
+): AIUsage | null {
+  let sawUsage = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let cacheReadInputTokens = 0;
+  let cacheWriteInputTokens = 0;
+
+  for (const step of steps) {
+    const usage = step.usage;
+    const stepInputTokens = firstNumber(usage.inputTokens) ?? 0;
+    const stepOutputTokens = firstNumber(usage.outputTokens) ?? 0;
+    const stepTotalTokens =
+      firstNumber(usage.totalTokens) ?? stepInputTokens + stepOutputTokens;
+    const stepCacheReadTokens =
+      firstNumber(
+        usage.inputTokenDetails?.cacheReadTokens,
+        usage.cachedInputTokens,
+      ) ?? 0;
+    const stepCacheWriteTokens =
+      firstNumber(usage.inputTokenDetails?.cacheWriteTokens) ?? 0;
+
+    if (
+      stepInputTokens > 0 ||
+      stepOutputTokens > 0 ||
+      stepTotalTokens > 0 ||
+      stepCacheReadTokens > 0 ||
+      stepCacheWriteTokens > 0
+    ) {
+      sawUsage = true;
+    }
+
+    inputTokens += stepInputTokens;
+    outputTokens += stepOutputTokens;
+    totalTokens += stepTotalTokens;
+    cacheReadInputTokens += stepCacheReadTokens;
+    cacheWriteInputTokens += stepCacheWriteTokens;
+  }
+
+  if (!sawUsage) return null;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheReadInputTokens,
+    cacheWriteInputTokens,
+  };
+}
+
+/**
+ * Settles a streaming reservation after a client abort to the cost of what was
+ * actually delivered (prompt + streamed output) instead of refunding the whole
+ * hold. Port of the /v1/chat/completions abort partial settlement
+ * (#11455/#11472): the platform already paid the upstream provider for the
+ * delivered tokens, so a `settleReservation(0)` full refund leaks that cost as
+ * uncollected revenue.
+ *
+ * The SDK reports no exact usage on abort (no `finish` part arrives), so the
+ * delivered output is billed from the accumulated text-delta text via
+ * `estimateTokens`, floored by any finished-step usage the SDK did report —
+ * the same best-available measure the chat completions route uses. Falls back
+ * to a full refund only when the partial billing itself fails (the settler is
+ * first-call-wins idempotent, so that fallback can never double-refund).
+ */
+async function settleStreamingAbortReservation(params: {
+  model: string;
+  provider: string;
+  user: { id: string; organization_id: string };
+  apiKey: { id: string } | null;
+  affiliateCode: string | null;
+  billingSource: PricingBillingSource;
+  estimatedInputTokens: number;
+  deliveredText: string;
+  steps: readonly FinishedStepUsageSource[];
+  settleReservation: (
+    actualCost: number,
+  ) => Promise<CreditReconciliationResult | null>;
+}): Promise<CreditReconciliationResult | null> {
+  const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
+  const deliveredOutputTokens = estimateTokens(params.deliveredText);
+  const inputTokens = Math.max(
+    params.estimatedInputTokens,
+    finishedStepUsage?.inputTokens ?? 0,
+  );
+  const outputTokens = Math.max(
+    deliveredOutputTokens,
+    finishedStepUsage?.outputTokens ?? 0,
+  );
+  const totalTokens = Math.max(
+    inputTokens + outputTokens,
+    finishedStepUsage?.totalTokens ?? 0,
+  );
+
+  try {
+    const billing = await billUsage(
+      {
+        organizationId: params.user.organization_id,
+        userId: params.user.id,
+        apiKeyId: params.apiKey?.id,
+        model: params.model,
+        provider: params.provider,
+        billingSource: params.billingSource,
+        affiliateCode: params.affiliateCode,
+      },
+      {
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
+        cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
+      },
+    );
+    const reconciliation = await params.settleReservation(billing.totalCost);
+
+    await recordUsageAnalytics(
+      {
+        organizationId: params.user.organization_id,
+        userId: params.user.id,
+        apiKeyId: params.apiKey?.id,
+        model: params.model,
+        provider: params.provider,
+        billingSource: params.billingSource,
+      },
+      billing,
+      {
+        type: "chat",
+        isSuccessful: false,
+        errorMessage: "client_aborted_stream",
+        content: params.deliveredText,
+      },
+    );
+
+    logger.info(
+      "[Messages API] Stream aborted; reservation partially settled",
+      {
+        model: params.model,
+        inputTokens: billing.inputTokens,
+        outputTokens: billing.outputTokens,
+        totalCost: billing.totalCost,
+        deliveredChars: params.deliveredText.length,
+        finishedSteps: params.steps.length,
+      },
+    );
+
+    return reconciliation;
+  } catch (error) {
+    logger.error(
+      "[Messages API] Stream abort partial settlement failed; refunding reservation",
+      {
+        model: params.model,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return await params.settleReservation(0);
+  }
+}
+
 async function handleStream(
   model: string,
   systemPrompt: string | undefined,
@@ -921,6 +1106,48 @@ async function handleStream(
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+  let deliveredText = "";
+  let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
+    null;
+
+  // Single-flights the terminal settlement across onFinish/onAbort/onError and
+  // the stream-catch backstop. The settler itself is first-call-wins
+  // idempotent, but the abort path bills usage + records analytics BEFORE
+  // settling, so racing paths must share one settlement promise or an abort
+  // could be billed/recorded twice. Mirrors /v1/chat/completions (#11472).
+  const settleStreamingOnce = (
+    factory: () => Promise<CreditReconciliationResult | null>,
+  ): Promise<CreditReconciliationResult | null> => {
+    if (!streamingSettlementPromise) {
+      streamingSettlementPromise = factory().catch((error) => {
+        streamingSettlementPromise = null;
+        throw error;
+      });
+    }
+    return streamingSettlementPromise;
+  };
+
+  const refundStreamingReservationOnce = () =>
+    settleStreamingOnce(async () => await settleReservation(0));
+
+  const settleStreamingAbortOnce = (
+    steps: readonly FinishedStepUsageSource[],
+  ) =>
+    settleStreamingOnce(
+      async () =>
+        await settleStreamingAbortReservation({
+          model,
+          provider,
+          user,
+          apiKey,
+          affiliateCode,
+          billingSource,
+          estimatedInputTokens,
+          deliveredText,
+          steps,
+          settleReservation,
+        }),
+    );
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
@@ -948,60 +1175,70 @@ async function handleStream(
     ...(toolChoice ? { toolChoice } : {}),
     ...cotOptions,
     onFinish: async ({ text, totalUsage }) => {
-      try {
-        const billing = await billUsage(
-          {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId: apiKey?.id,
-            model,
-            provider,
-            billingSource,
-            affiliateCode,
-          },
-          totalUsage,
-        );
-        await settleReservation(billing.totalCost);
+      await settleStreamingOnce(async () => {
+        try {
+          const billing = await billUsage(
+            {
+              organizationId: user.organization_id,
+              userId: user.id,
+              apiKeyId: apiKey?.id,
+              model,
+              provider,
+              billingSource,
+              affiliateCode,
+            },
+            totalUsage,
+          );
+          const reconciliation = await settleReservation(billing.totalCost);
 
-        await recordUsageAnalytics(
-          {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId: apiKey?.id,
-            model,
-            provider,
-            billingSource,
-          },
-          billing,
-          { type: "chat", content: text },
-        );
+          await recordUsageAnalytics(
+            {
+              organizationId: user.organization_id,
+              userId: user.id,
+              apiKeyId: apiKey?.id,
+              model,
+              provider,
+              billingSource,
+            },
+            billing,
+            { type: "chat", content: text },
+          );
 
-        logger.info("[Messages API] Streaming complete", {
-          durationMs: Date.now() - startTime,
-          inputTokens: billing.inputTokens,
-          outputTokens: billing.outputTokens,
-        });
-      } catch (error) {
-        await settleReservation(0);
-        logger.error("[Messages API] onFinish billing error", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+          logger.info("[Messages API] Streaming complete", {
+            durationMs: Date.now() - startTime,
+            inputTokens: billing.inputTokens,
+            outputTokens: billing.outputTokens,
+          });
+
+          return reconciliation;
+        } catch (error) {
+          const reconciliation = await settleReservation(0);
+          logger.error("[Messages API] onFinish billing error", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return reconciliation;
+        }
+      });
     },
-    onAbort: async () => {
-      await settleReservation(0);
+    // A client abort mid-stream must NOT release the whole hold: the upstream
+    // provider was already paid for the prompt + every token delivered before
+    // the disconnect. Settle to that partial cost instead (#11513); provider
+    // errors below still refund in full.
+    onAbort: async ({ steps }) => {
+      await settleStreamingAbortOnce(steps);
       logger.info("[Messages API] Stream aborted before completion", {
         model,
         estimatedInputTokens,
+        deliveredOutputTokens: estimateTokens(deliveredText),
       });
     },
     // A provider error during streaming (e.g. cerebras 429/5xx) fires onError —
     // NOT onFinish or onAbort. Without this the upfront credit reservation is
     // never reconciled and the user is billed for zero output. Mirrors the
-    // non-streaming error path's settleReservation(0); the settler is
-    // idempotent (first-call-wins) so this cannot double-refund.
+    // non-streaming error path's settleReservation(0); the settlement is
+    // single-flighted (and the settler idempotent) so this cannot double-refund.
     onError: async ({ error }: { error: unknown }) => {
-      await settleReservation(0);
+      await refundStreamingReservationOnce();
       logger.error(
         "[Messages API] Stream provider error — reservation refunded",
         {
@@ -1135,6 +1372,7 @@ async function handleStream(
                   delta: { type: "text_delta", text: part.text },
                 }),
               );
+              deliveredText += part.text;
               break;
             }
 
@@ -1241,10 +1479,19 @@ async function handleStream(
         // doesn't await) onError — e.g. a fullStream `error` part re-thrown here,
         // or a controller.enqueue throw on client disconnect racing ahead of
         // onAbort. Settle the reservation here too so the upfront hold is never
-        // leaked (a permanent overcharge). The settler is first-call-wins
-        // idempotent, so this cannot double-refund if onError already won the
-        // race. Mirrors the /v1/chat/completions backstop.
-        await settleReservation(0);
+        // leaked (a permanent overcharge). When the request signal is aborted
+        // this is the client-abort path, so settle to the delivered partial
+        // cost (#11513) instead of refunding the full hold; otherwise it is a
+        // provider failure and the hold is released to 0. Settlement is
+        // single-flighted, so this cannot double-bill or double-refund if
+        // onAbort/onError already won the race. Mirrors the
+        // /v1/chat/completions backstop.
+        const streamAborted = abortSignal?.aborted === true;
+        if (streamAborted) {
+          await settleStreamingAbortOnce([]);
+        } else {
+          await refundStreamingReservationOnce();
+        }
         const message = error instanceof Error ? error.message : String(error);
         logger.error("[Messages API] Stream error", { error: message });
         controller.enqueue(
@@ -1268,5 +1515,18 @@ async function handleStream(
     },
   });
 }
+
+/**
+ * Test-only seam for the streaming credit-settlement behavior (the abort
+ * money-leak repro in `__tests__/messages-abort-partial-settle.test.ts`).
+ * Exposes the internal streaming handler so a test can drive it with a mocked
+ * `streamText` and a REAL credit-reservation settler, then assert an aborted
+ * stream settles to the delivered partial cost instead of a full refund.
+ * The `__` prefix + `TestHooks` suffix mark it as non-public. Mirrors
+ * `__streamingCreditTestHooks` in ../chat/completions/route.ts.
+ */
+export const __messagesStreamingCreditTestHooks = {
+  handleStream,
+} as const;
 
 export default app;

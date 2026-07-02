@@ -1,7 +1,7 @@
 // app/api/v1/models/[...model]/route.ts
 
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKey } from "@/lib/auth";
 import { getGroqCatalogModel, isGroqNativeModel } from "@/lib/models";
@@ -106,6 +106,12 @@ async function __next_GET(
     const data = await response.json();
     return Response.json(data);
   } catch (error) {
+    // Auth (and other typed API) failures must keep their status — e.g. an
+    // unauthenticated request is a 401, not a 500 (see AuthenticationError
+    // thrown by requireAuthOrApiKey).
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Error fetching model:", error);
     return Response.json(
       {

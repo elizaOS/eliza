@@ -7,8 +7,6 @@ import {
 } from "./launcher-curation";
 
 const ENABLED = { developer: true, preview: true } as const;
-/** Out-of-the-box toggle state on EVERY build (dev included). */
-const DEFAULTS = { developer: false, preview: false } as const;
 
 function entry(id: string, over: Partial<ViewEntry> = {}): ViewEntry {
   return {
@@ -29,8 +27,10 @@ function ids(pages: ViewEntry[][]): string[][] {
   return pages.map((page) => page.map((e) => e.id));
 }
 
+const APPS_ONLY = { developer: false, preview: false } as const;
+
 describe("curateLauncherPages", () => {
-  it("splits everyday apps (page 1) from developer tools (page 2)", () => {
+  it("puts apps then developer tools on ONE page when Developer Mode is on", () => {
     const pages = curateLauncherPages(
       [
         entry("wallet"),
@@ -46,10 +46,39 @@ describe("curateLauncherPages", () => {
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
 
+    // Single page: curated apps first, then the developer tools in their order.
     expect(ids(pages)).toEqual([
-      ["settings", "wallet", "browser"],
-      ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
+      [
+        "settings",
+        "wallet",
+        "browser",
+        "trajectories",
+        "database",
+        "runtime",
+        "logs",
+        "skills",
+        "plugins",
+      ],
     ]);
+  });
+
+  it("hides ALL developer tools when Developer Mode is off (default)", () => {
+    // runtime/skills/plugins carry no viewKind here, but DEVELOPER_INDEX
+    // membership makes them developer-kind, so the whole set hides together.
+    const pages = curateLauncherPages(
+      [
+        entry("wallet"),
+        entry("settings"),
+        entry("trajectories", { viewKind: "developer" }),
+        entry("database", { viewKind: "developer" }),
+        entry("runtime"),
+        entry("logs", { viewKind: "developer" }),
+        entry("skills"),
+        entry("plugins"),
+      ],
+      { isAosp: false, enabledKinds: APPS_ONLY, cloudActive: true },
+    );
+    expect(ids(pages)).toEqual([["settings", "wallet"]]);
   });
 
   it("drops removed apps and non-launcher shell surfaces", () => {
@@ -177,7 +206,29 @@ describe("curateLauncherPages", () => {
     expect(tile.path).toBe("/wallet");
   });
 
-  it("appends other loaded apps after the curated order on page 1", () => {
+  it("hides preview views by default and shows them when Preview Mode is on", () => {
+    const views = [entry("wallet"), entry("labs", { viewKind: "preview" })];
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: APPS_ONLY,
+          cloudActive: true,
+        }),
+      ),
+    ).toEqual([["wallet"]]);
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: { developer: false, preview: true },
+          cloudActive: true,
+        }),
+      ),
+    ).toEqual([["wallet", "labs"]]);
+  });
+
+  it("appends other loaded apps after the curated order on the page", () => {
     const pages = curateLauncherPages(
       [
         entry("browser"),
@@ -192,67 +243,18 @@ describe("curateLauncherPages", () => {
     ]);
   });
 
-  it("hides the ENTIRE Developer page — curated tiles included — with default toggles", () => {
-    // The content policy: developer tooling is off by default on every build,
-    // dev builds included. Curated membership (DEVELOPER_ORDER) must not
-    // bypass the toggle.
-    const views = [
-      entry("chat"),
-      entry("settings"),
-      entry("trajectories", { viewKind: "developer" }),
-      entry("database", { viewKind: "developer" }),
-      entry("runtime", { builtin: true }),
-      entry("logs", { viewKind: "developer" }),
-      entry("skills", { builtin: true }),
-      entry("plugins", { viewKind: "system" }),
-      // A plugin registration using the LEGACY `developerOnly` flag (the
-      // registerAppShellPage path) must respect the toggle too.
-      entry("trajectory-logger", { developerOnly: true }),
-    ];
-    expect(
-      ids(
-        curateLauncherPages(views, {
-          isAosp: false,
-          enabledKinds: DEFAULTS,
-          cloudActive: false,
-        }),
-      ),
-    ).toEqual([["chat", "settings"]]);
-    // Flipping the Settings toggle restores the full Developer page.
-    expect(
-      ids(
-        curateLauncherPages(views, {
-          isAosp: false,
-          enabledKinds: { developer: true, preview: false },
-          cloudActive: false,
-        }),
-      ),
-    ).toEqual([
-      ["chat", "settings"],
-      ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
-    ]);
-  });
-
-  it("collapses the dead rolodex tab onto the working relationships tile", () => {
-    const pages = curateLauncherPages(
-      [entry("relationships"), entry("rolodex", { builtin: true })],
-      { isAosp: false, enabledKinds: DEFAULTS, cloudActive: false },
-    );
-    expect(ids(pages)).toEqual([["relationships"]]);
-  });
-
-  it("hides uncurated preview/developer views unless their kind is enabled", () => {
+  it("hides uncurated developer views unless Developer Mode is enabled", () => {
     const views = [entry("wallet"), entry("secret", { viewKind: "developer" })];
     expect(
       ids(
         curateLauncherPages(views, {
           isAosp: false,
-          enabledKinds: { developer: false, preview: false },
+          enabledKinds: APPS_ONLY,
           cloudActive: true,
         }),
       ),
     ).toEqual([["wallet"]]);
-    // vector-browser-style dev views join the developer page when enabled.
+    // vector-browser-style dev views join the single page (after apps) when on.
     expect(
       ids(
         curateLauncherPages(views, {
@@ -261,7 +263,7 @@ describe("curateLauncherPages", () => {
           cloudActive: true,
         }),
       ),
-    ).toEqual([["wallet"], ["secret"]]);
+    ).toEqual([["wallet", "secret"]]);
   });
 });
 
@@ -303,7 +305,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("documents", { viewKind: "system" }),
     entry("transcripts", { viewKind: "system" }),
     entry("relationships", { viewKind: "system" }),
-    entry("rolodex", { builtin: true }),
     entry("memories", { viewKind: "system" }),
     entry("feed", { viewKind: "system" }),
     entry("stream"),
@@ -325,7 +326,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("plugins-page", { viewKind: "system" }),
   ];
 
-  it("produces the exact off-fork two-page layout", () => {
+  it("produces the exact off-fork ONE-page layout (developer on → tools after apps)", () => {
     expect(
       ids(
         curateLauncherPages(REAL_VIEWS, {
@@ -348,17 +349,22 @@ describe("curateLauncherPages — full realistic view set", () => {
         "memories",
         "feed",
         "stream",
+        "trajectories",
+        "database",
+        "runtime",
+        "logs",
+        "skills",
+        "plugins",
       ],
-      ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
     ]);
   });
 
-  it("renders ONLY the apps page with out-of-the-box toggles (what users AND devs see)", () => {
+  it("hides the developer tools in the default (production) profile — apps only", () => {
     expect(
       ids(
         curateLauncherPages(REAL_VIEWS, {
           isAosp: false,
-          enabledKinds: DEFAULTS,
+          enabledKinds: { developer: false, preview: false },
           cloudActive: true,
         }),
       ),
@@ -380,7 +386,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     ]);
   });
 
-  it("appends the native-OS tiles to page 1 on the AOSP fork", () => {
+  it("appends the native-OS tiles to the single page on the AOSP fork", () => {
     const [appsPage] = ids(
       curateLauncherPages(REAL_VIEWS, {
         isAosp: true,
@@ -421,7 +427,6 @@ describe("canonicalLauncherId", () => {
     expect(canonicalLauncherId("todos")).toBe("automations");
     expect(canonicalLauncherId("plugins-page")).toBe("plugins");
     expect(canonicalLauncherId("trajectory-logger")).toBe("trajectories");
-    expect(canonicalLauncherId("rolodex")).toBe("relationships");
     expect(canonicalLauncherId("browser")).toBe("browser");
   });
 });

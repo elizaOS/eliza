@@ -194,16 +194,6 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function requestsDeferredUserReply(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:reply|respond)\s+only\s+after\b/.test(normalized) ||
-    /\b(?:reply|respond)\s+only\s+when\b/.test(normalized) ||
-    /\bdo\s+not\s+(?:reply|respond)\s+until\b/.test(normalized) ||
-    /\bdon't\s+(?:reply|respond)\s+until\b/.test(normalized)
-  );
-}
-
 function readOp(params: Record<string, unknown>): TaskOp | null {
   const raw = [
     params.action,
@@ -743,6 +733,8 @@ async function runCreate(
       // itself; the helper is gated + idempotent so non-app tasks pass through.
       const taskWithRouteHints = augmentTaskWithDeployGuidance(
         taskWithResolvedRoute(task, route, sessionWorkdir, swarmRoomMetadata),
+        undefined,
+        { monetized: pickBoolean(params, content, "appMonetized") === true },
       );
       const session = await service.spawnSession({
         agentType,
@@ -1095,9 +1087,10 @@ async function runSpawnAgent(
       "keepAliveAfterComplete",
     );
     const extraMetadata = additionalSessionMetadata(params, content);
+    // Structural only: the planner emits deferUserReply when the user asked for
+    // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
-      pickBoolean(params, content, "deferUserReply") === true ||
-      requestsDeferredUserReply(task);
+      pickBoolean(params, content, "deferUserReply") === true;
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
@@ -1182,9 +1175,14 @@ async function runSpawnAgent(
       const cap = maxSpawnsPerOrigin(runtime);
       if (spawnCapRouter.spawnCountForOrigin(spawnOriginKey) >= cap) {
         const best = spawnCapRouter.bestResultFor(spawnOriginKey);
+        // Relay the captured deliverable when we have one (the router records
+        // it before its early returns too). Only when there is genuinely no
+        // result do we fall back — and then be HONEST that we hit the attempt
+        // cap rather than implying it's still in progress ("still working"),
+        // which conflates capped-and-failed with in-flight.
         const replyText =
           (best?.deliverable ?? best?.text ?? "").trim() ||
-          "I'm still working on that — the coding sub-agent took longer than expected.";
+          `I attempted this task ${cap} times but couldn't complete it. Try giving me more specific instructions, or breaking it into smaller steps.`;
         logger(runtime).warn(
           `[TASKS:spawn_agent] per-origin spawn cap (${cap}) reached for ${spawnOriginKey}; relaying best result instead of re-spawning`,
         );
@@ -1208,6 +1206,7 @@ async function runSpawnAgent(
       workdir: effectiveWorkdir,
       isolateWorkdir,
       initialTask: taskWithRouteHints,
+      monetized: pickBoolean(params, content, "appMonetized") === true,
       memoryContent,
       approvalPreset,
       metadata: {
@@ -2072,10 +2071,11 @@ async function runHistory(
 
 // ── action: control (TASK_CONTROL) ──────────────────────────────────────────
 
-function inferControlAction(
-  text: string,
-  value?: string,
-): ControlAction | null {
+// Structural only: the planner emits `controlAction` (or the legacy top-level
+// action value) when the user asks to pause/stop/resume — the model judges
+// intent. No regex over message text: hardcoded phrasings ("make it so",
+// "hold on") misfire on ordinary prose (#11028).
+function normalizeControlAction(value?: string): ControlAction | null {
   const normalized = value?.trim().toLowerCase();
   if (
     normalized === "pause" ||
@@ -2087,14 +2087,6 @@ function inferControlAction(
   ) {
     return normalized;
   }
-  if (/\barchive\b/i.test(text)) return "archive";
-  if (/\breopen\b/i.test(text)) return "reopen";
-  if (/\bpause\b|\bhold on\b|\bthat's not right\b/i.test(text)) return "pause";
-  if (/\bstop\b|\bcancel\b|\bkill\b/i.test(text)) return "stop";
-  if (/\bresume\b|\bmake it so\b|\bdo it\b|\byea(h)? i'm down\b/i.test(text)) {
-    return "resume";
-  }
-  if (/\bcontinue\b|\bgo ahead\b/i.test(text)) return "continue";
   return null;
 }
 
@@ -2135,8 +2127,7 @@ async function runControl(
     topLevelAction && normalizedTopLevelAction !== "control"
       ? topLevelAction
       : undefined;
-  const action = inferControlAction(
-    text,
+  const action = normalizeControlAction(
     textValue(params.controlAction) ??
       textValue(content.controlAction) ??
       legacyControlAction,
@@ -3256,6 +3247,13 @@ export const tasksAction: Action & {
         "Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "appMonetized",
+      description:
+        "Set true when the user wants the app to EARN MONEY / charge for access — e.g. 'people pay $1 to chat with X', 'charge per message', 'a paid app', 'monetized', a paywall, or per-use pricing. Judge the user's INTENT, not specific keywords. When true the sub-agent gets the monetized Eliza Cloud contract (register for an appId, inference markup, OAuth + affiliate billing) instead of a free static page. Leave unset for a normal free app or non-app task.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
     {
       name: "agents",

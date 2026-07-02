@@ -289,5 +289,8 @@ async function updateUsersWithMetrics(calculatedMetrics: UserMetrics[]) {
 
 // Run if executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  calculateSuccessMetrics().catch(console.error);
+  calculateSuccessMetrics().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

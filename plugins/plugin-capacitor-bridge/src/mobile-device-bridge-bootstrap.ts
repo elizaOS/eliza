@@ -13,11 +13,13 @@ import { randomUUID } from "node:crypto";
 import {
 	createWriteStream,
 	existsSync,
+	linkSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	renameSync,
 	statSync,
+	symlinkSync,
 	unlinkSync,
 } from "node:fs";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
@@ -44,6 +46,13 @@ const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
+/**
+ * The trigger that actually bound the capacitor-llama handlers, or null while
+ * nothing registered them. "bionic-host" is the true in-process serving signal
+ * the readiness surfaces key on (#11498): it is set ONLY by
+ * registerMobileDeviceBridgeModels, never by mere plugin presence.
+ */
+let registeredModelTrigger: "bionic-host" | "device-bridge" | null = null;
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-embedding": 1024,
 	// 2B reuses the text backbone for embeddings (--pooling last), so its dim is the
@@ -1223,11 +1232,55 @@ function bionicSocketName(): string | null {
 	return sock ? sock : null;
 }
 
+// A flat on-device model (…/models/eliza-1-2b-128k.gguf) is not the bundle
+// layout `libelizainference`'s eliza_pick_text_file() globs (<bundle>/text/
+// *.gguf), so a delegated generate fails with "bundle_dir does not exist". We
+// stage a hardlinked text/ view under `.bionic-bundles/<name>/` — matching the
+// BionicHostLoader path (bionic-host-loader.ts, #11335) so both delegated
+// entrypoints resolve the same bundle. This path (mobile-device-bridge) is the
+// one the WebView chat "(via bionic-host)" delegation actually uses.
+const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
+const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
+
 /** Bundle root the host's eliza_inference_create expects (…/text/<model>.gguf → …). */
-function deriveBionicBundleDir(modelPath: string): string {
+export function deriveBionicBundleDir(modelPath: string): string {
 	if (!modelPath) return "";
 	const dir = path.dirname(modelPath);
 	if (path.basename(dir) === "text") return path.dirname(dir);
+	if (!FLAT_ELIZA_1_GGUF_RE.test(path.basename(modelPath))) return "";
+	if (!existsSync(modelPath)) return "";
+
+	const modelName = path.basename(modelPath);
+	const bundleRoot = path.join(
+		dir,
+		BIONIC_FLAT_BUNDLE_DIR,
+		path.basename(modelName, path.extname(modelName)),
+	);
+	const textDir = path.join(bundleRoot, "text");
+	const stagedPath = path.join(textDir, modelName);
+	try {
+		mkdirSync(textDir, { recursive: true });
+		if (existsSync(stagedPath)) {
+			try {
+				if (statSync(modelPath).size === statSync(stagedPath).size) {
+					return bundleRoot;
+				}
+			} catch {
+				// Recreate a stale or broken alias below.
+			}
+			unlinkSync(stagedPath);
+		}
+		try {
+			linkSync(modelPath, stagedPath);
+		} catch {
+			symlinkSync(modelPath, stagedPath);
+		}
+		return bundleRoot;
+	} catch (err) {
+		logger.warn(
+			`[mobile-device-bridge] could not stage bionic bundle view for flat model "${modelPath}": ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 	return "";
 }
 
@@ -1674,6 +1727,53 @@ export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
 	return mobileDeviceBridge.status();
 }
 
+export interface MobileDeviceBridgeServingStatus {
+	/** Which path bound the capacitor-llama handlers (null = not registered). */
+	registeredTrigger: "bionic-host" | "device-bridge" | null;
+	/**
+	 * True ONLY when the handlers were bound via the in-process bionic host
+	 * AND its abstract UDS accepts a connection right now — i.e. the host can
+	 * actually serve a generate/embed call (#11498). Never true from mere
+	 * plugin presence or env configuration alone.
+	 */
+	bionicHostServing: boolean;
+}
+
+const BIONIC_PROBE_TIMEOUT_MS = readTimeoutMs(
+	"ELIZA_BIONIC_PROBE_TIMEOUT_MS",
+	2_000,
+);
+
+/** True when the bionic host's abstract UDS accepts a connection right now. */
+function probeBionicHostSocket(socketName: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		const sock = net.connect({ path: `\0${socketName}` });
+		const finish = (ok: boolean) => {
+			clearTimeout(timer);
+			sock.destroy();
+			resolve(ok);
+		};
+		const timer = setTimeout(() => finish(false), BIONIC_PROBE_TIMEOUT_MS);
+		sock.on("connect", () => finish(true));
+		sock.on("error", () => finish(false));
+	});
+}
+
+/**
+ * The true "in-process bionic host can serve" signal for readiness surfaces
+ * (GET /api/local-inference/providers → capacitor-llama.servingVia). The
+ * mobile-local-chat-smoke readiness gate accepts this as its third branch
+ * alongside hub.active.status==="ready" and device.connected (#11498).
+ */
+export async function getMobileDeviceBridgeServingStatus(): Promise<MobileDeviceBridgeServingStatus> {
+	const socketName = bionicSocketName();
+	const bionicHostServing =
+		registeredModelTrigger === "bionic-host" &&
+		socketName !== null &&
+		(await probeBionicHostSocket(socketName));
+	return { registeredTrigger: registeredModelTrigger, bionicHostServing };
+}
+
 export async function loadMobileDeviceBridgeModel(
 	modelPath: string,
 	modelId?: string,
@@ -1900,6 +2000,7 @@ function registerMobileDeviceBridgeModels(
 		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
 	);
 	registeredRuntimes.add(runtime);
+	registeredModelTrigger = trigger;
 	return true;
 }
 

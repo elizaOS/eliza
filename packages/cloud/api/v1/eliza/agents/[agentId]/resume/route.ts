@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
@@ -95,22 +95,13 @@ async function __hono_POST(
     // ── Credit gate: require minimum deposit before resuming ──────────
     const creditCheck = await checkAgentCreditGate(user.organization_id);
     if (!creditCheck.allowed) {
-      logger.warn("[agent-api] Resume blocked: insufficient credits", {
-        agentId,
-        orgId: user.organization_id,
-        balance: creditCheck.balance,
-        required: AGENT_PRICING.MINIMUM_DEPOSIT,
-      });
+      const body = insufficientCredits402(
+        creditCheck,
+        "[agent-api] Resume blocked: insufficient credits",
+        { agentId, orgId: user.organization_id },
+      );
       return applyCorsHeaders(
-        Response.json(
-          {
-            success: false,
-            error: creditCheck.error,
-            requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-            currentBalance: creditCheck.balance,
-          },
-          { status: 402 },
-        ),
+        Response.json(body, { status: 402 }),
         CORS_METHODS,
       );
     }

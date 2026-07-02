@@ -1,0 +1,13 @@
+run 4 (post-reboot): xcodebuild test-without-building exit 70 — MoonCycles absent from eligible destinations (BFU: CoreDevice tunnel down until first unlock). Excerpt of the ineligible-destination dump (note Shaw's iPhone IS listed, MoonCycles is NOT):
+		{ platform:macOS, arch:arm64, id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:x86_64, id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:arm64e, variant:Mac Catalyst, id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:arm64e, variant:DriverKit, id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:arm64, variant:DriverKit, id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:arm64e, variant:Designed for [iPad,iPhone], id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00006041-000C61223A07001C, name:My Mac }
+		{ platform:iOS, arch:arm64e, id:00008130-001955E91EF8001C, name:Shaw’s iPhone }
+		{ platform:iOS, arch:arm64, id:00008130-001955E91EF8001C, name:Shaw’s iPhone }
+		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }

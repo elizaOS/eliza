@@ -78,6 +78,12 @@ interface ElizaCodeState {
   isLoading: boolean;
   inputValue: string;
   isAgentTyping: boolean;
+  /**
+   * Submissions typed while a turn is in flight (queue-and-send). Drained
+   * FIFO when the turn completes; discarded when the turn is aborted.
+   * Ephemeral — never persisted to the session file.
+   */
+  pendingSubmissions: string[];
 
   // Session initialized flag
   sessionLoaded: boolean;
@@ -124,6 +130,12 @@ interface ElizaCodeState {
   setLoading: (loading: boolean) => void;
   setInputValue: (value: string) => void;
   setAgentTyping: (typing: boolean) => void;
+  /** Buffer a submission typed during a running turn. Returns the queue length. */
+  enqueuePendingSubmission: (text: string) => number;
+  /** Pop the oldest queued submission (FIFO), if any. */
+  takeNextPendingSubmission: () => string | undefined;
+  /** Drop all queued submissions. Returns how many were discarded. */
+  clearPendingSubmissions: () => number;
 
   // Session Actions
   loadSessionState: () => Promise<void>;
@@ -194,6 +206,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
   isLoading: false,
   inputValue: "",
   isAgentTyping: false,
+  pendingSubmissions: [],
   sessionLoaded: false,
 
   // Room Actions
@@ -434,6 +447,27 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
 
   setAgentTyping: (typing: boolean) => {
     set({ isAgentTyping: typing });
+  },
+
+  enqueuePendingSubmission: (text: string) => {
+    const next = [...get().pendingSubmissions, text];
+    set({ pendingSubmissions: next });
+    return next.length;
+  },
+
+  takeNextPendingSubmission: () => {
+    const [head, ...rest] = get().pendingSubmissions;
+    if (head === undefined) return undefined;
+    set({ pendingSubmissions: rest });
+    return head;
+  },
+
+  clearPendingSubmissions: () => {
+    const count = get().pendingSubmissions.length;
+    if (count > 0) {
+      set({ pendingSubmissions: [] });
+    }
+    return count;
   },
 
   // Session Actions

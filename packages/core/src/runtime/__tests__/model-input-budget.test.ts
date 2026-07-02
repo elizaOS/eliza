@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ToolDefinition } from "../../types/model";
 import {
 	buildModelInputBudget,
@@ -125,13 +125,36 @@ describe("buildModelInputBudget", () => {
 			expect(budget.compactionThresholdTokens).toBe(32_000 - 10_000);
 		});
 
-		it("scales reserve to 40k for Claude (200k * 0.20)", () => {
+		it("scales reserve to 40k for Claude Haiku (200k * 0.20)", () => {
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],
-				modelName: "claude-opus-4-7",
+				modelName: "claude-haiku-4-5",
 			});
 			expect(budget.reserveTokens).toBe(40_000);
 			expect(budget.compactionThresholdTokens).toBe(200_000 - 40_000);
+		});
+
+		it("resolves the current 1M-window Claude families (opus / sonnet)", () => {
+			for (const modelName of ["claude-opus-4-8", "claude-sonnet-5"]) {
+				const budget = buildModelInputBudget({
+					messages: [userMessageOfChars(100)],
+					modelName,
+				});
+				expect(budget.contextWindowTokens).toBe(1_000_000);
+				expect(budget.resolvedModelKey).toBe(modelName);
+				expect(budget.reserveTokens).toBe(200_000); // 1M * 0.20
+				expect(budget.compactionThresholdTokens).toBe(800_000);
+			}
+		});
+
+		it("falls back to the 128k default for an unknown id without throwing", () => {
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(100)],
+				modelName: "claude-unknown-test-9",
+			});
+			expect(budget.contextWindowTokens).toBe(DEFAULT_CONTEXT_WINDOW_TOKENS);
+			expect(budget.resolvedModelKey).toBeNull();
+			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
 		});
 
 		it("respects an explicit reserveTokens override even when modelName resolves", () => {
@@ -218,6 +241,36 @@ describe("buildModelInputBudget", () => {
 				modelName: "some-unknown-model-99",
 			});
 			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
+		});
+	});
+
+	describe("env-override context windows (MODEL_CONTEXT_WINDOWS_JSON)", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
+		it("resolves an id absent from the static table via the env override", () => {
+			vi.stubEnv(
+				"MODEL_CONTEXT_WINDOWS_JSON",
+				JSON.stringify({ "acme-frontier-9000": 500_000 }),
+			);
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(100)],
+				modelName: "acme-frontier-9000",
+			});
+			expect(budget.contextWindowTokens).toBe(500_000);
+			expect(budget.resolvedModelKey).toBe("acme-frontier-9000");
+			expect(budget.reserveTokens).toBe(100_000); // 500k * 0.20
+		});
+
+		it("malformed env JSON degrades to the default window without throwing", () => {
+			vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", "{oops");
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(100)],
+				modelName: "claude-unknown-test-9",
+			});
+			expect(budget.contextWindowTokens).toBe(DEFAULT_CONTEXT_WINDOW_TOKENS);
+			expect(budget.resolvedModelKey).toBeNull();
 		});
 	});
 

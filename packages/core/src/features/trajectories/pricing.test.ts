@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	computeCallCostUsd,
 	isLocalProvider,
@@ -18,8 +18,14 @@ describe("PRICE_TABLE_ID", () => {
 
 describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
 	it("covers all required hosted providers", () => {
-		// Anthropic — the three ship models from CLAUDE.md
+		// Anthropic — the current public families plus the prior Opus
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-opus-4-8"]?.provider).toBe(
+			"anthropic",
+		);
 		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-opus-4-7"]?.provider).toBe(
+			"anthropic",
+		);
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-sonnet-5"]?.provider).toBe(
 			"anthropic",
 		);
 		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-sonnet-4-6"]?.provider).toBe(
@@ -59,19 +65,31 @@ describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
 	});
 
 	it("preserves the documented Anthropic rate card", () => {
-		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-opus-4-7"]).toEqual({
+		// Opus-tier is $5/$25 per MTok (platform.claude.com pricing,
+		// captured 2026-07-02); cacheRead = 0.1x input, cacheWrite = 1.25x.
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-opus-4-8"]).toEqual({
 			provider: "anthropic",
-			input: 15.0,
-			output: 75.0,
-			cacheRead: 1.5,
-			cacheWrite: 18.75,
+			input: 5.0,
+			output: 25.0,
+			cacheRead: 0.5,
+			cacheWrite: 6.25,
+		});
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-opus-4-7"]).toEqual(
+			MODEL_PRICES_USD_PER_M_TOKENS["claude-opus-4-8"],
+		);
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-sonnet-5"]).toEqual({
+			provider: "anthropic",
+			input: 3.0,
+			output: 15.0,
+			cacheRead: 0.3,
+			cacheWrite: 3.75,
 		});
 		expect(MODEL_PRICES_USD_PER_M_TOKENS["claude-haiku-4-5"]).toEqual({
 			provider: "anthropic",
-			input: 0.8,
-			output: 4.0,
-			cacheRead: 0.08,
-			cacheWrite: 1.0,
+			input: 1.0,
+			output: 5.0,
+			cacheRead: 0.1,
+			cacheWrite: 1.25,
 		});
 	});
 });
@@ -102,6 +120,28 @@ describe("lookupModelPrice", () => {
 });
 
 describe("lookupModelContextWindow", () => {
+	it("resolves the current Anthropic families to their documented windows", () => {
+		expect(
+			lookupModelContextWindow("claude-opus-4-8")?.contextWindowTokens,
+		).toBe(1_000_000);
+		expect(
+			lookupModelContextWindow("claude-sonnet-5")?.contextWindowTokens,
+		).toBe(1_000_000);
+		expect(
+			lookupModelContextWindow("claude-haiku-4-5")?.contextWindowTokens,
+		).toBe(200_000);
+	});
+
+	it("resolves versioned Anthropic ids through the substring fallback", () => {
+		const result = lookupModelContextWindow("claude-sonnet-5-20260203");
+		expect(result?.matchedKey).toBe("claude-sonnet-5");
+		expect(result?.contextWindowTokens).toBe(1_000_000);
+	});
+
+	it("returns null for a truly unknown id (default-window fallback stays with the caller)", () => {
+		expect(lookupModelContextWindow("claude-unknown-test-9")).toBeNull();
+	});
+
 	it("returns the live-verified Cerebras Gemma 4 31B context window", () => {
 		// 131072 is the hard paid-tier ceiling (live probe 2026-07-02:
 		// >131072 -> context_length_exceeded; context_length param rejected).
@@ -188,27 +228,37 @@ describe("computeCallCostUsd", () => {
 	});
 
 	it("computes input+output for an Anthropic Opus call", () => {
-		// 1k input + 1k output on claude-opus-4-7.
-		// input  = 1000   * $15.00/M = $0.015
-		// output = 1000   * $75.00/M = $0.075
-		// total  = $0.09
-		const cost = computeCallCostUsd("claude-opus-4-7", {
+		// 1k input + 1k output on claude-opus-4-8.
+		// input  = 1000   * $5.00/M  = $0.005
+		// output = 1000   * $25.00/M = $0.025
+		// total  = $0.03
+		const cost = computeCallCostUsd("claude-opus-4-8", {
 			promptTokens: 1000,
 			completionTokens: 1000,
 			totalTokens: 2000,
 		});
-		expect(cost).toBeCloseTo(0.09, 6);
+		expect(cost).toBeCloseTo(0.03, 6);
+	});
+
+	it("computes input+output for an Anthropic Sonnet 5 call", () => {
+		// 1M input * $3/M + 1M output * $15/M = $18
+		const cost = computeCallCostUsd("claude-sonnet-5", {
+			promptTokens: 1_000_000,
+			completionTokens: 1_000_000,
+			totalTokens: 2_000_000,
+		});
+		expect(cost).toBeCloseTo(18.0, 6);
 	});
 
 	it("applies cache-read discount and cache-write surcharge for Anthropic", () => {
-		// claude-haiku-4-5: input $0.80, output $4.00, cacheRead $0.08,
-		//                   cacheWrite $1.00 (per 1M).
+		// claude-haiku-4-5: input $1.00, output $5.00, cacheRead $0.10,
+		//                   cacheWrite $1.25 (per 1M).
 		// 1000 prompt = 200 fresh + 700 cacheRead + 100 cacheWrite
-		//   fresh:      200  * $0.80 / 1M  = $0.00016
-		//   cacheRead:  700  * $0.08 / 1M  = $0.000056
-		//   cacheWrite: 100  * $1.00 / 1M  = $0.0001
-		//   completion:  50  * $4.00 / 1M  = $0.0002
-		// total = $0.000516
+		//   fresh:      200  * $1.00 / 1M  = $0.0002
+		//   cacheRead:  700  * $0.10 / 1M  = $0.00007
+		//   cacheWrite: 100  * $1.25 / 1M  = $0.000125
+		//   completion:  50  * $5.00 / 1M  = $0.00025
+		// total = $0.000645
 		const cost = computeCallCostUsd("claude-haiku-4-5", {
 			promptTokens: 1000,
 			completionTokens: 50,
@@ -216,7 +266,7 @@ describe("computeCallCostUsd", () => {
 			cacheCreationInputTokens: 100,
 			totalTokens: 1050,
 		});
-		expect(cost).toBeCloseTo(0.000516, 9);
+		expect(cost).toBeCloseTo(0.000645, 9);
 	});
 
 	it("falls back to the input rate when cacheRead is 0 (Cerebras gpt-oss)", () => {
@@ -287,9 +337,119 @@ describe("computeCallCostUsd", () => {
 			cacheCreationInputTokens: 0,
 			totalTokens: 200,
 		});
-		// non-cached = 0, cacheRead = 200 * $0.08/M = $0.000016, completion = 0.
-		expect(cost).toBeCloseTo(0.000016, 9);
+		// non-cached = 0, cacheRead = 200 * $0.10/M = $0.00002, completion = 0.
+		expect(cost).toBeCloseTo(0.00002, 9);
 		expect(cost).toBeGreaterThanOrEqual(0);
+	});
+});
+
+describe("env overrides (MODEL_PRICES_JSON / MODEL_CONTEXT_WINDOWS_JSON)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("prices an id absent from the static table via MODEL_PRICES_JSON", () => {
+		vi.stubEnv(
+			"MODEL_PRICES_JSON",
+			JSON.stringify({
+				"acme-frontier-9000": { input: 4.0, output: 20.0 },
+			}),
+		);
+		const warn = vi.fn();
+		const cost = computeCallCostUsd(
+			"acme-frontier-9000",
+			{
+				promptTokens: 1_000_000,
+				completionTokens: 1_000_000,
+				totalTokens: 2_000_000,
+			},
+			{ provider: "unknown", logger: { warn } },
+		);
+		expect(cost).toBeCloseTo(24.0, 6);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it("env price entry wins over a static entry with the same key", () => {
+		vi.stubEnv(
+			"MODEL_PRICES_JSON",
+			JSON.stringify({
+				"claude-haiku-4-5": { input: 2.0, output: 8.0 },
+			}),
+		);
+		const cost = computeCallCostUsd("claude-haiku-4-5", {
+			promptTokens: 1_000_000,
+			completionTokens: 1_000_000,
+			totalTokens: 2_000_000,
+		});
+		expect(cost).toBeCloseTo(10.0, 6);
+	});
+
+	it("env price keys participate in the substring fallback (versioned ids)", () => {
+		vi.stubEnv(
+			"MODEL_PRICES_JSON",
+			JSON.stringify({ "acme-frontier-9000": { input: 1.0, output: 2.0 } }),
+		);
+		const result = lookupModelPrice("acme-frontier-9000-20260101");
+		expect(result?.matchedKey).toBe("acme-frontier-9000");
+	});
+
+	it("resolves an arbitrary id's context window via MODEL_CONTEXT_WINDOWS_JSON", () => {
+		vi.stubEnv(
+			"MODEL_CONTEXT_WINDOWS_JSON",
+			JSON.stringify({ "acme-frontier-9000": 500_000 }),
+		);
+		expect(lookupModelContextWindow("acme-frontier-9000")).toEqual({
+			matchedKey: "acme-frontier-9000",
+			contextWindowTokens: 500_000,
+		});
+	});
+
+	it("env context window wins over a static entry with the same key", () => {
+		vi.stubEnv(
+			"MODEL_CONTEXT_WINDOWS_JSON",
+			JSON.stringify({ "claude-haiku-4-5": 400_000 }),
+		);
+		expect(
+			lookupModelContextWindow("claude-haiku-4-5")?.contextWindowTokens,
+		).toBe(400_000);
+	});
+
+	it("malformed override JSON degrades safely (static table still serves, no throw)", () => {
+		vi.stubEnv("MODEL_PRICES_JSON", "{not json");
+		vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", "[1,2,3]");
+		expect(() => lookupModelPrice("claude-opus-4-8")).not.toThrow();
+		expect(lookupModelPrice("claude-opus-4-8")?.price.input).toBe(5.0);
+		expect(
+			lookupModelContextWindow("claude-opus-4-8")?.contextWindowTokens,
+		).toBe(1_000_000);
+	});
+
+	it("invalid entries are skipped while valid siblings apply", () => {
+		vi.stubEnv(
+			"MODEL_PRICES_JSON",
+			JSON.stringify({
+				"bad-entry": { input: "five" },
+				"good-entry": { input: 1.0, output: 2.0 },
+			}),
+		);
+		expect(lookupModelPrice("bad-entry")).toBeNull();
+		expect(lookupModelPrice("good-entry")?.price.output).toBe(2.0);
+	});
+
+	it("a truly unknown id still degrades to cost 0 + warn and no window", () => {
+		vi.stubEnv(
+			"MODEL_PRICES_JSON",
+			JSON.stringify({ "some-other-model": { input: 1.0, output: 2.0 } }),
+		);
+		const warn = vi.fn();
+		const cost = computeCallCostUsd(
+			"claude-unknown-test-9",
+			{ promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
+			{ provider: "anthropic", logger: { warn } },
+		);
+		expect(cost).toBe(0);
+		expect(warn).toHaveBeenCalledTimes(1);
+		expect(lookupModelContextWindow("claude-unknown-test-9")).toBeNull();
 	});
 });
 

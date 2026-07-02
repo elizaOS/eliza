@@ -46,10 +46,7 @@ import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { reservationOutputTokens } from "./chat-reservation";
-import {
-  reconcileNonStreamingSettleError,
-  reconcileStreamProcessingError,
-} from "./stream-refund";
+import { reconcileChatSettleError } from "./stream-refund";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -622,10 +619,16 @@ async function handlePOST(
           // Refund the reserved charge ONLY when the stream failed before the
           // client got the full answer. If it already completed and only the
           // post-stream accounting threw, keeping the charge avoids handing out
-          // free inference. (See reconcileStreamProcessingError.)
-          const { refunded } = await reconcileStreamProcessingError(
+          // free inference. (See reconcileChatSettleError.)
+          const { refunded } = await reconcileChatSettleError(
             {
-              streamCompleted,
+              skipRefund: streamCompleted,
+              skipRefundLog:
+                "[App Chat] Post-stream accounting failed AFTER full delivery; keeping reserved charge (NOT refunding)",
+              refundLog:
+                "[App Chat] Stream processing failed before delivery, refunding reserved",
+              refundDescription: "Refund due to stream error",
+              refundMetadata: { error: true, streaming: true },
               appId,
               userId: user.id,
               reservedBaseCost,
@@ -665,7 +668,7 @@ async function handlePOST(
     // Non-streaming response. Everything below runs AFTER the upfront hold was
     // debited, so a throw here — a truncated body failing providerResponse.json(),
     // or calculateCost erroring — would strand the reserved hold (the streaming
-    // branch is covered by reconcileStreamProcessingError; this one was not,
+    // branch is covered by the same settle-error refund; this one was not,
     // #11169). Full-refund on any failure BEFORE the settle completes; once
     // reconcileCredits has settled, a later throw must NOT refund (the charge is
     // real), mirroring the streaming branch's streamCompleted gating.
@@ -752,15 +755,25 @@ async function handlePOST(
       // not transactional), so re-refunding would mint credits — the
       // stranded-reservation sweep recovers that rare window instead. `.catch`
       // so a refund failure can't mask the original error. (#11218)
-      await reconcileNonStreamingSettleError(
+      await reconcileChatSettleError(
         {
-          settleStarted: nonStreamingSettleStarted,
+          skipRefund: nonStreamingSettleStarted,
+          skipRefundLog:
+            "[App Chat] Non-streaming throw at/after the settle reconcile; NOT refunding (movement may have committed — sweep recovers a stranded hold)",
+          refundLog:
+            "[App Chat] Non-streaming settle never started after debit; refunding reserved hold (#11169)",
+          refundDescription: `Chat refund (non-streaming settle failed): ${model}`,
+          refundMetadata: {
+            error: true,
+            streaming: false,
+            model,
+            provider,
+            billingSource,
+            refundReason: "non_streaming_settle_error",
+          },
           appId,
           userId: user.id,
           reservedBaseCost,
-          model,
-          provider,
-          billingSource,
           errorMessage,
         },
         appCreditsService,

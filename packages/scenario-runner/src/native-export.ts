@@ -24,7 +24,7 @@ import type {
   RecordedStage,
   RecordedTrajectory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { toRecord } from "./utils.js";
 
 const NATIVE_FORMAT = "eliza_native_v1" as const;

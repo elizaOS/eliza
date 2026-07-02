@@ -29,23 +29,37 @@ const discordMessage = {
   content: { source: "discord" },
 } as unknown as Memory;
 
-describe("requireTaskAgentAccess — policy merge", () => {
-  it("keeps the built-in Discord ADMIN gate when only another connector is overridden", async () => {
-    const result = await requireTaskAgentAccess(
-      runtimeWith({ connectors: { slack: "ADMIN" } }),
-      discordMessage,
-      "create",
-    );
-    // Discord still requires ADMIN despite the slack-only override.
-    expect(result.requiredRole).toBe("ADMIN");
-  });
+// resolveSenderRole dynamically imports @elizaos/core on first use; that cold
+// import transforms the whole core package under vitest and can exceed the 5s
+// default timeout (it crossed it when core gained the generated pricing/context
+// tables). The timeout covers the one-time import, not the logic under test.
+const COLD_CORE_IMPORT_TIMEOUT_MS = 30_000;
 
-  it("still requires Discord ADMIN under the default policy (no override)", async () => {
-    const result = await requireTaskAgentAccess(
-      runtimeWith(undefined),
-      discordMessage,
-      "interact",
-    );
-    expect(result.requiredRole).toBe("ADMIN");
-  });
+describe("requireTaskAgentAccess — policy merge", () => {
+  it(
+    "keeps the built-in Discord ADMIN gate when only another connector is overridden",
+    async () => {
+      const result = await requireTaskAgentAccess(
+        runtimeWith({ connectors: { slack: "ADMIN" } }),
+        discordMessage,
+        "create",
+      );
+      // Discord still requires ADMIN despite the slack-only override.
+      expect(result.requiredRole).toBe("ADMIN");
+    },
+    COLD_CORE_IMPORT_TIMEOUT_MS,
+  );
+
+  it(
+    "still requires Discord ADMIN under the default policy (no override)",
+    async () => {
+      const result = await requireTaskAgentAccess(
+        runtimeWith(undefined),
+        discordMessage,
+        "interact",
+      );
+      expect(result.requiredRole).toBe("ADMIN");
+    },
+    COLD_CORE_IMPORT_TIMEOUT_MS,
+  );
 });

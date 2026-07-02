@@ -8,14 +8,14 @@ import {
 import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
 
+import { dispatchOpenNotificationCenter } from "../../events";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
-import { NotificationCenter } from "./NotificationCenter";
-import { PULL_GESTURE_TAP_SLOP, usePullGesture } from "./use-pull-gesture";
+import { usePullGesture } from "./use-pull-gesture";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -181,17 +181,15 @@ export function HomeScreen({
   // The strip is a real button: click/tap and Enter/Space open the center too,
   // so desktop fine-pointer and keyboard/AT users aren't locked out of the
   // only notification entry point.
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  // The notification center has ONE owner: the always-mounted headless
+  // NotificationCenter in the app shell (App.tsx), which listens for
+  // OPEN_NOTIFICATION_CENTER_EVENT and renders the surface-appropriate shell.
+  // The home pull-down + the pull-zone button just DISPATCH that event, so the
+  // home path and the desktop tray/menu/deep-link path converge on one open
+  // state — two shells can never stack.
   const notificationPull = usePullGesture({
-    onPullDown: () => setNotificationsOpen(true),
+    onPullDown: () => dispatchOpenNotificationCenter(),
   });
-  // Where the current press started, so the button's `onClick` can tell a
-  // genuine TAP apart from the compat click the browser synthesizes after a
-  // DRAG on the same button. Without this, an upward or sub-threshold drag —
-  // which the direction-gated gesture correctly ignores — still opened the
-  // center via that trailing click, defeating the gate in real browsers
-  // (jsdom never synthesizes it, which is why unit tests missed it).
-  const pullPressStart = useRef<{ x: number; y: number } | null>(null);
 
   return (
     <>
@@ -211,28 +209,8 @@ export function HomeScreen({
         aria-label="Open notifications"
         className="absolute inset-x-0 top-0 z-[2] flex h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default items-end justify-center rounded-none border-0 bg-transparent p-0 pb-1 outline-none"
         style={{ touchAction: "none" }}
-        onClick={(event) => {
-          const press = pullPressStart.current;
-          pullPressStart.current = null;
-          // A pointer-derived click only opens when the press stayed within
-          // the gesture engine's tap slop — a drag's outcome is decided by the
-          // gesture (pull-down opens, anything else does not), never by its
-          // synthesized click. Keyboard activation (Enter/Space) arrives with
-          // no preceding pointer press and always opens.
-          if (
-            press &&
-            Math.hypot(event.clientX - press.x, event.clientY - press.y) >
-              PULL_GESTURE_TAP_SLOP
-          ) {
-            return;
-          }
-          setNotificationsOpen(true);
-        }}
+        onClick={() => dispatchOpenNotificationCenter()}
         {...notificationPull}
-        onPointerDown={(event) => {
-          pullPressStart.current = { x: event.clientX, y: event.clientY };
-          notificationPull.onPointerDown(event);
-        }}
       >
         <div
           className="h-1 w-9 rounded-full bg-white/25"
@@ -240,15 +218,6 @@ export function HomeScreen({
           data-testid="home-notification-grabber"
         />
       </button>
-      {/* `auto`: the home notification affordance renders the surface-appropriate
-          shell — the top-right panel on desktop/web (mouse-driven wide surfaces),
-          the full-width pull-down sheet on touch/narrow — instead of forcing the
-          mobile sheet everywhere. */}
-      <NotificationCenter
-        variant="auto"
-        open={notificationsOpen}
-        onOpenChange={setNotificationsOpen}
-      />
       <div
         data-testid="home-screen"
         className={cn(
@@ -265,8 +234,12 @@ export function HomeScreen({
           // the content and left a large empty band above the dashboard. Just a
           // small gutter — the notch is already cleared by the root.
           "px-4",
+          // Reserve the notification pull-strip band at the very top so resting
+          // content isn't tap-shadowed by the invisible pull-zone button (same
+          // height math as the strip in the pull zone below).
+          "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)]",
           // Clear the floating chat composer at the bottom.
-          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
+          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
         )}
       >
         <style>{HOME_ENTER_CSS}</style>

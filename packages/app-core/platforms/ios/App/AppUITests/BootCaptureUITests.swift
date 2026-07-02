@@ -77,6 +77,72 @@ final class BootCaptureUITests: XCTestCase {
         )
     }
 
+    /// One watchable interaction beyond boot: tap the chat composer, type
+    /// "hello", screenshot each step. WKWebView AX exposure of web content
+    /// varies by OS build, so every precondition that fails skips (XCTSkip)
+    /// instead of failing — boot coverage stays in
+    /// testBootReachesHomeOrErrorCard. The one hard assertion: once the
+    /// keyboard is up, typing must not leave the composer empty.
+    func testComposerAcceptsTypedText() throws {
+        let env = ProcessInfo.processInfo.environment
+        let timeoutSeconds = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
+
+        let app = XCUIApplication()
+        launchWithRetry(app)
+
+        // Reach home first, reusing the boot classifier.
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        var reachedHome = false
+        while Date() < deadline {
+            if app.state == .notRunning { break }
+            if let terminal = classifyBootState(of: app) {
+                reachedHome = terminal == .home
+                break
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        attachScreenshot(named: "interaction-000-home")
+        guard reachedHome else {
+            throw XCTSkip("boot did not reach home — composer interaction not attempted")
+        }
+
+        // The composer is a web <textarea> — surfaces as a textView (or
+        // textField) inside the WKWebView's AX tree.
+        let webView = app.webViews.firstMatch
+        let candidates: [XCUIElement] = [
+            webView.textViews.firstMatch,
+            webView.textFields.firstMatch,
+            app.textViews.firstMatch,
+            app.textFields.firstMatch,
+        ]
+        guard
+            let composer = candidates.first(where: {
+                $0.waitForExistence(timeout: 10) && $0.isHittable
+            })
+        else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("no hittable composer text element in the AX tree — see ax-hierarchy attachment")
+        }
+
+        composer.tap()
+        attachScreenshot(named: "interaction-010-composer-tapped")
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 10) else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("keyboard never appeared after tapping the composer")
+        }
+
+        composer.typeText("hello")
+        attachScreenshot(named: "interaction-020-typed-hello")
+        attachAccessibilitySnapshot(of: app)
+
+        let value = (composer.value as? String) ?? ""
+        XCTAssertTrue(
+            value.localizedCaseInsensitiveContains("hello"),
+            "typed 'hello' but the composer's AX value is '\(value)' — " +
+            "see interaction-020-typed-hello.png for the real pixels."
+        )
+    }
+
     /// `XCUIApplication.launch()` can race an in-flight app (re)install —
     /// FrontBoard force-quits the fresh pid (exit code 0xfbfbfbfb) and the
     /// session is left driving a dead app. Wait for foreground and relaunch a

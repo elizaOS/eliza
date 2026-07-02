@@ -257,6 +257,10 @@ routes = [
   { pattern = "staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "app-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  # Public R2 objects for staging. Without this explicit route the host falls
+  # into [env.production]'s *.elizacloud.ai wildcard and the PROD worker serves
+  # the PROD bucket for staging-minted URLs.
+  { pattern = "blob-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
 [env.staging.define]
@@ -335,7 +339,7 @@ SAFE_BALANCE_THRESHOLD = ""
 # backstop (current). Off until soaked; cutover is an ops flip (#9899).
 INFERENCE_BILLING_LEDGER = ""
 FORCE_REDIS_EVENTS = "false"
-R2_PUBLIC_HOST = "blob.elizacloud.ai"
+R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"

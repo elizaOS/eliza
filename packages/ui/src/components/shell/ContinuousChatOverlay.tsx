@@ -1852,6 +1852,37 @@ export function ContinuousChatOverlay({
       overlayRef.current?.removeAttribute(LAYOUT_SHIFT_INTENT_ATTR);
     }, 180);
   }, []);
+  // Publish the RESTING composer footprint to --eliza-continuous-chat-clearance
+  // so content below (home widgets, launcher tiles) always reserves exactly the
+  // space the collapsed composer occupies. Without this the var was never set —
+  // every surface rode the 5.25rem fallback, which a multi-line draft or pending
+  // attachments overgrow, letting the composer cover content. Only measured
+  // while collapsed: an expanded/full sheet covers the screen, so its height
+  // must NOT become the reserved clearance.
+  React.useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const panel = panelRef.current;
+    const root = document.documentElement;
+    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
+    if (!panel) return;
+    const publish = () => {
+      const h = panel.getBoundingClientRect().height;
+      if (h > 0)
+        root.style.setProperty(
+          "--eliza-continuous-chat-clearance",
+          `${Math.ceil(h)}px`,
+        );
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, [sheetOpen]);
   // The composer content (textarea + thread). Held so we can imperatively clear
   // its `inert` (set while pilled) the instant the pill is tapped open, before
   // React re-renders — iOS only raises the keyboard for a focus() that lands on
@@ -3373,8 +3404,9 @@ export function ContinuousChatOverlay({
       return undefined;
     }
 
-    // Surfaces painted ABOVE the chat glass (notification sheet at z-9501,
-    // tutorial at Z_TUTORIAL, any open Radix dialog) must win the tap — the
+    // Surfaces painted ABOVE the chat glass (notification sheet/panel at
+    // Z_NOTIFICATION_OVERLAY, tutorial at Z_TUTORIAL, any open Radix dialog) must
+    // win the tap — the
     // swallower otherwise eats their first tap AND collapses the chat under
     // them. "Tap outside collapses" is only for the background view.
     const isAboveShellOverlay = (target: EventTarget | null): boolean =>
@@ -3502,6 +3534,17 @@ export function ContinuousChatOverlay({
       const detail = (event as CustomEvent<BackIntentEventDetail>).detail;
       if (!detail || detail.handled) return;
       if (!sheetOpen || firstRunOpen) return;
+      // A notification sheet/panel painted ABOVE the chat is the topmost layer —
+      // let it consume back first (independent of window-listener order), so
+      // Android back never collapses the chat UNDERNEATH an open notification
+      // shell. Mirrors the Escape deferral guard above.
+      if (
+        document.querySelector(
+          '[data-testid="notification-sheet"], [data-testid="notification-panel"]',
+        )
+      ) {
+        return;
+      }
       detail.handled = true;
       collapse();
     };
@@ -3925,7 +3968,7 @@ export function ContinuousChatOverlay({
               FLOAT_SHADOW,
             )}
           >
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#FF5800]" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
             {modelStatus.kind === "downloading" ? (
               <span>
                 Downloading {modelStatus.modelName ?? "local model"}
@@ -4219,7 +4262,7 @@ export function ContinuousChatOverlay({
                 {transcriptionMode ? (
                   <div
                     data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[var(--brand-orange,#ff6a00)]/15 px-2.5 py-0.5 text-[11px] font-medium text-[var(--brand-orange,#ff6a00)]"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-medium text-accent"
                   >
                     Transcribing — say “exit transcription mode” to stop
                   </div>
@@ -4298,7 +4341,7 @@ export function ContinuousChatOverlay({
                       data-testid="chat-thread-loading"
                       className="pointer-events-none absolute inset-0 grid place-items-center"
                     >
-                      <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
+                      <Loader2 className="h-6 w-6 animate-spin text-accent" />
                     </div>
                   ) : null}
                   {/* Topic chips bar (#8928): the channel's current topics,
@@ -4630,7 +4673,9 @@ export function ContinuousChatOverlay({
                 // 45% to 70% — a directive hint the user can actually read,
                 // rather than a greyed-out box that reads as dead.
                 className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
-                  firstRunOpen ? "placeholder:text-white/70" : "placeholder:text-white/45"
+                  firstRunOpen
+                    ? "placeholder:text-white/70"
+                    : "placeholder:text-white/45"
                 }`}
               />
               <span id="cc-booting-hint" className="sr-only">

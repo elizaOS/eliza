@@ -106,5 +106,11 @@ export default scenario({
       actionName: ["PERSONAL_ASSISTANT", "PERSONAL_ASSISTANT_SCHEDULING"],
       includesAll: [/\bPERSONAL_ASSISTANT_SCHEDULING\b|"action":"scheduling"/],
     },
+    {
+      type: "modelCallOccurred",
+      name: "schedule_plan optimized-prompt model call fired",
+      purpose: "schedule_plan",
+      minCount: 1,
+    },
   ],
 });

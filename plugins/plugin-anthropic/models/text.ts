@@ -31,6 +31,7 @@ import {
   getCoTBudget,
   getExperimentalTelemetry,
   getLargeModel,
+  getMaxOutputTokensOverride,
   getMediumModel,
   getMegaModel,
   getNanoModel,
@@ -38,6 +39,7 @@ import {
   getReasoningSmallModel,
   getResponseHandlerModel,
   getSmallModel,
+  isTemperatureLockedModel,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { executeWithRetry, formatModelError } from "../utils/retry";
@@ -739,6 +741,7 @@ function mergeProviderModelName(
 }
 
 function resolveTextParams(
+  runtime: IAgentRuntime,
   params: GenerateTextParamsWithProviderOptions,
   modelName: ModelName,
   cotBudget: number
@@ -769,9 +772,14 @@ function resolveTextParams(
     topP = undefined;
   }
 
-  // Opus 4.x only accepts temperature=1 (extended-thinking-capable models).
-  // Anthropic returns 400 "Invalid request data" otherwise.
-  if (isOpus4Model(modelName) && temperature !== undefined && temperature !== 1) {
+  // Temperature-locked models only accept temperature=1; Anthropic returns 400
+  // "Invalid request data" otherwise. ANTHROPIC_TEMPERATURE_LOCKED_MODELS lets
+  // an operator declare the constraint for any model id (new releases the
+  // substring heuristic can't know about); the opus-4 name check remains the
+  // built-in default.
+  const temperatureLocked =
+    isTemperatureLockedModel(runtime, modelName) || isOpus4Model(modelName);
+  if (temperatureLocked && temperature !== undefined && temperature !== 1) {
     temperature = 1;
   }
 
@@ -779,7 +787,11 @@ function resolveTextParams(
   // Cap output tokens at the model's hard limit. Opus 4.x = 32k, Sonnet 4.x = 64k.
   // Callers (eliza runtime) sometimes pass the prompt context window (128k+) as
   // maxTokens, which the API rejects with "Invalid request data".
-  const modelHardCap = isOpus4Model(modelName) ? 32_000 : 64_000;
+  // ANTHROPIC_MAX_OUTPUT_TOKENS overrides the heuristic (bare number or
+  // per-model `id:tokens` pairs) so unknown ids get the right ceiling.
+  const modelHardCap =
+    getMaxOutputTokensOverride(runtime, modelName) ??
+    (isOpus4Model(modelName) ? 32_000 : 64_000);
   // Anthropic's Messages API REQUIRES max_tokens — an opt-out caller (direct-
   // channel Stage-1) can't drop it, so send the model's hard cap. The reply is
   // then bounded only by the model's real max (never an arbitrary 8192), and the
@@ -838,7 +850,7 @@ async function generateTextWithModel(
     fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
   });
   const cotBudget = getCoTBudget(runtime, modelSize);
-  const resolved = resolveTextParams(paramsWithAttachments, modelName, cotBudget);
+  const resolved = resolveTextParams(runtime, paramsWithAttachments, modelName, cotBudget);
 
   if (getAuthMode(runtime) === "cli") {
     if (shouldReturnNativeResult) {

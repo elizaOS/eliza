@@ -15,6 +15,7 @@ import { MainScreen } from "./components/MainScreen.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { TaskPane } from "./components/TaskPane.js";
 import { getAgentClient } from "./lib/agent-client.js";
+import { osc52 } from "./lib/clipboard.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { FilteringTerminal } from "./lib/filtering-terminal.js";
 import { getCodeTaskService } from "./lib/get-code-task-service.js";
@@ -307,6 +308,11 @@ function formatTaskDetails(task: CodeTask): string {
 
 // Slash command autocomplete items
 const SLASH_COMMANDS: AutocompleteItem[] = [
+  {
+    label: "/copy",
+    description: "Copy the last response to the clipboard",
+    value: "/copy",
+  },
   { label: "/new", description: "Start new conversation", value: "/new " },
   {
     label: "/reset",
@@ -728,9 +734,13 @@ export class App {
   private abortCurrentTurn(): boolean {
     const controller = this.activeTurnAbortController;
     if (!controller) return false;
-    if (!controller.signal.aborted) {
-      controller.abort();
+    if (controller.signal.aborted) {
+      // Abort was already requested but the turn hasn't unwound yet (e.g. a
+      // provider that ignores the signal). Let the keystroke fall through so
+      // a second Ctrl+C reaches the quit handler instead of being eaten here.
+      return false;
     }
+    controller.abort();
     this.tui.requestRender();
     return true;
   }
@@ -1043,6 +1053,29 @@ export class App {
         return true;
       }
 
+      case "copy": {
+        // Copy the last assistant reply to the system clipboard via OSC 52
+        // (works over SSH / inside the cockpit PTY, where there's no direct
+        // clipboard access).
+        const room = rooms.find((r) => r.id === currentRoomId);
+        const lastAssistant = [...(room?.messages ?? [])]
+          .reverse()
+          .find((m) => m.role === "assistant" && m.content.trim().length > 0);
+        if (!lastAssistant) {
+          addMessage(currentRoomId, "system", "Nothing to copy yet.");
+          this.tui.requestRender();
+          return true;
+        }
+        this.terminal.write(osc52(lastAssistant.content));
+        addMessage(
+          currentRoomId,
+          "system",
+          "Copied the last response to the clipboard.",
+        );
+        this.tui.requestRender();
+        return true;
+      }
+
       case "help": {
         addMessage(
           currentRoomId,
@@ -1052,10 +1085,11 @@ Conversations: /new [name], /conversations, /switch <n|name>, /rename <name>, /d
 Agent: /agent <type>
 Tasks: /task, /tasks
 Dir: /cd [path], /pwd
-UI: /clear
+UI: /clear, /copy
 Help: /help, ?
 
-Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
+Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit
+During a turn: Enter queues the message, Esc/Ctrl+C aborts (queued messages are discarded), second Ctrl+C quits`,
         );
         this.tui.requestRender();
         return true;
@@ -1147,11 +1181,17 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       }
     }
 
+    // Queue-and-send (opencode behavior): a submission made while a turn is
+    // running is buffered and fired when the turn completes, instead of
+    // spawning a second concurrent turn.
     if (this.activeTurnAbortController) {
+      const queueLength = state.enqueuePendingSubmission(text);
       state.addMessage(
         state.currentRoomId,
         "system",
-        "A turn is already running. Press Esc or Ctrl+C to abort it.",
+        `Queued (${queueLength}): ${submissionPreview(text)} — sends when the current turn finishes. Esc/Ctrl+C aborts and discards the queue.`,
+        state.currentTaskId ?? undefined,
+        "tool",
       );
       this.tui.requestRender();
       return;
@@ -1246,9 +1286,38 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       }
       state.setLoading(false);
       state.setAgentTyping(false);
+      // Drain the queue-and-send buffer. Abort means "stop everything", so an
+      // aborted turn discards whatever was queued behind it; any other
+      // completion (success or error) sends the next queued submission.
+      if (turnAbortController.signal.aborted) {
+        const discarded = state.clearPendingSubmissions();
+        if (discarded > 0) {
+          state.addMessage(
+            roomId,
+            "system",
+            `Discarded ${discarded} queued message${discarded === 1 ? "" : "s"}.`,
+          );
+        }
+      } else {
+        const next = state.takeNextPendingSubmission();
+        if (next !== undefined) {
+          // New microtask: don't run the next turn inside this finally block.
+          // handleSendMessage never rejects (it catches everything), so void
+          // is safe here.
+          queueMicrotask(() => {
+            void this.handleSendMessage(next);
+          });
+        }
+      }
       this.tui.requestRender();
     }
   }
+}
+
+/** One-line, length-capped echo of a queued submission for the system notice. */
+function submissionPreview(text: string, maxLength = 48): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= maxLength ? flat : `${flat.slice(0, maxLength - 1)}…`;
 }
 
 function isAbortError(err: unknown): boolean {

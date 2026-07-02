@@ -516,8 +516,8 @@ describe("JsonFileTrajectoryRecorder", () => {
 		const model = trajectory?.stages[0]?.model;
 		expect(typeof model?.priceTableId).toBe("string");
 		expect((model?.priceTableId ?? "").length).toBeGreaterThan(0);
-		// Anthropic Opus: 1000 input * $15/M + 500 output * $75/M = $0.0525
-		expect(model?.costUsd).toBeCloseTo(0.0525, 6);
+		// Anthropic Opus: 1000 input * $5/M + 500 output * $25/M = $0.0175
+		expect(model?.costUsd).toBeCloseTo(0.0175, 6);
 	});
 
 	it("annotates cost=0 with no warning for local-provider steps", async () => {

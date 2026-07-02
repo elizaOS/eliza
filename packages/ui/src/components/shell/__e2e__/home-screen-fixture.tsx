@@ -17,6 +17,7 @@ import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
 import { LauncherSurface } from "../../pages/LauncherSurface";
 import { HomeLauncherSurface } from "../HomeLauncherSurface";
 import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
+import { NotificationCenter } from "../NotificationCenter";
 
 // Inject the home-widget data BEFORE the React tree renders so every widget's
 // mount-time fetch + the WidgetHost's plugin resolution see populated data.
@@ -48,6 +49,10 @@ function Harness(): React.JSX.Element {
         }
         launcher={<LauncherSurface />}
       />
+      {/* The single always-mounted notification owner (mirrors App.tsx). The
+          home pull-down + pull-zone button dispatch OPEN_NOTIFICATION_CENTER_EVENT;
+          this headless instance is the sole renderer of the sheet/panel. */}
+      <NotificationCenter headless />
     </div>
   );
 }

@@ -111,4 +111,12 @@ export default scenario({
       assertResponse: assertApiBody({ includesAll: ["delivered", "in_app"] }),
     },
   ],
+  finalChecks: [
+    {
+      type: "modelCallOccurred",
+      name: "reminder_dispatch optimized-prompt model call fired",
+      purpose: "reminder_dispatch",
+      minCount: 1,
+    },
+  ],
 });

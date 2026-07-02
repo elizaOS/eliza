@@ -67,7 +67,11 @@ function Harness({
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
           onClickCapture={pager.handlers.onClickCapture}
           onClick={onRailClick}
-        />
+        >
+          {/* A child (mirrors the home notification pull-strip) whose bubbled
+              lostpointercapture must NOT cancel a rail drag. */}
+          <div data-testid="rail-child" />
+        </div>
       </div>
       <button
         type="button"
@@ -602,6 +606,34 @@ describe("useHorizontalPager — mouse-button guards + committed-swipe click sup
       fireEvent.pointerUp(rail, { ...mouse, clientX: 300, clientY: 300 });
     });
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("ignores a child's bubbled lostpointercapture mid-drag (does not self-cancel)", () => {
+    runAnimationFramesImmediately();
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    const child = getByTestId("rail-child");
+    const touch = {
+      pointerId: 20,
+      pointerType: "touch",
+      isPrimary: true,
+      clientY: 300,
+    } as const;
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...touch, clientX: 900 });
+      fireEvent.pointerMove(rail, { ...touch, clientX: 880 });
+      fireEvent.pointerMove(rail, { ...touch, clientX: 700 });
+      // A CHILD (the pull strip) releasing its implicit capture bubbles a
+      // lostpointercapture whose target is the child, not the rail — it must not
+      // abort the in-flight rail drag.
+      fireEvent.lostPointerCapture(child, { ...touch });
+      // The drag survives and still commits on release.
+      clock = 1030;
+      fireEvent.pointerUp(rail, { ...touch, clientX: 100 });
+    });
+    expect(onChange).toHaveBeenCalledWith(1);
   });
 
   it("swallows the click a committed swipe synthesizes, but not an ordinary click", () => {

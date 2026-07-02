@@ -4,7 +4,32 @@ Reference measurements captured on `develop`. Re-run the KPIs (`run-all.mjs`) to
 refresh; ratchet `budgets.json` down as these improve. All sizes are
 **brotli**-compressed bytes.
 
-Captured: 2026-05-31; **corrected 2026-06-02** (see CORRECTIONS below).
+Captured: 2026-05-31; **corrected 2026-06-02** (see CORRECTIONS below);
+**re-baselined 2026-07-02** for the #11350 CI gate.
+
+## CURRENT CI GATE BASELINE (2026-07-02) — clean `build:web`
+
+Measured on `origin/develop` `858548c0d6` after a clean
+`bun run --cwd packages/app build:web`, then
+`node packages/benchmarks/loadperf/bundle-kpi.mjs`. Rebased after #11471
+(`34e839184b`), which measured the same build path at 3107.1 KB eager brotli;
+the CI budget was ratcheted from 3550.0 KB to 3400.0 KB to keep that win
+without using #11471's stale 1374.5 KB pre-regression budget.
+
+| Metric | Value | Gate budget | Status |
+| --- | --- | --- | --- |
+| total brotli | 4.96 MB | 6.00 MB | PASS |
+| eager (first-paint) brotli | 3242.5 KB across 34 chunks; #11471 after: 3107.1 KB | 3400.0 KB | PASS |
+| initial entry brotli | 3079.9 KB (`index-*`, `vendor-crypto-*`, `vendor-three-*`, `vendor-react-*`, `vendor-lucide-*`) | 3350.0 KB | PASS |
+| largest chunk brotli | 1359.2 KB (`index-*.js`) | 1600.0 KB | PASS |
+| duplicate-lib waste | 251.3 KB total, 219.8 KB max logical duplicate | 350.0 KB max | PASS |
+
+The 2026-07-02 app is heavier on the eager path than the 2026-06-02 corrected
+baseline because `vendor-crypto-*` and `vendor-three-*` are currently loaded as
+initial entries. #11350 establishes a green CI gate at the current reality so
+future regressions are blocked; #11471 moved 122.6 KB off the eager path and
+the gate preserves that ratchet. Follow-up optimization should split/lazy-load
+remaining eager vendors and ratchet `budgets.json` back down.
 
 ## CORRECTIONS (2026-06-02) — the original numbers below were wrong
 

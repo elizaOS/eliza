@@ -3,50 +3,6 @@ import type { ViewEntry } from "../../hooks/view-catalog";
 import { assert } from "../../storybook/home-widget-decorator";
 import { Launcher } from "./Launcher";
 
-/**
- * Drive a real long-press on a tile — the only way into edit mode now that the
- * Edit button is gone. The story-gate keeps real timers, so this presses for
- * real (pointerdown → 520ms hold → pointerup).
- */
-async function longPressTile(root: HTMLElement, testId: string): Promise<void> {
-  const target = root.querySelector(`[data-testid="${testId}"] button`);
-  if (!(target instanceof HTMLButtonElement)) {
-    throw new Error(`${testId} tile button not found`);
-  }
-  const rect = target.getBoundingClientRect();
-  const clientX = rect.left + rect.width / 2;
-  const clientY = rect.top + rect.height / 2;
-  target.dispatchEvent(
-    new PointerEvent("pointerdown", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      pointerId: 1,
-      pointerType: "mouse",
-      isPrimary: true,
-      button: 0,
-      buttons: 1,
-      clientX,
-      clientY,
-    }),
-  );
-  await new Promise((resolve) => setTimeout(resolve, 520));
-  target.dispatchEvent(
-    new PointerEvent("pointerup", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      pointerId: 1,
-      pointerType: "mouse",
-      isPrimary: true,
-      button: 0,
-      buttons: 0,
-      clientX,
-      clientY,
-    }),
-  );
-}
-
 function entry(id: string, label: string, icon: string): ViewEntry {
   return {
     key: `view:${id}`,
@@ -95,29 +51,39 @@ export default meta;
 type Story = StoryObj<typeof Launcher>;
 
 export const Default: Story = {
-  args: { entries: VIEWS },
+  args: {
+    entries: VIEWS,
+    pageGroups: [VIEWS.map((v) => v.id)],
+  },
 };
 
+/** Multiple curated pages — each group renders as its own launcher page. */
 export const ManyPages: Story = {
-  args: {
-    entries: Array.from({ length: 28 }, (_, i) =>
+  args: (() => {
+    const entries = Array.from({ length: 28 }, (_, i) =>
       entry(`view-${i}`, `View ${i + 1}`, "LayoutGrid"),
-    ),
-  },
+    );
+    const ids = entries.map((v) => v.id);
+    return {
+      entries,
+      pageGroups: [ids.slice(0, 14), ids.slice(14)],
+    };
+  })(),
 };
 
 /** Loading skeleton — the placeholder grid shown while the catalog resolves. */
 export const Loading: Story = {
-  args: { entries: [], loading: true },
+  args: { entries: [], pageGroups: [], loading: true },
 };
 
 /**
- * Tap-to-launch: outside edit mode, clicking a tile fires `onLaunch` with that
- * entry. Driven for real so a regression that swallows the tap fails the story.
+ * Tap-to-launch: clicking a tile fires `onLaunch` with that entry. Driven for
+ * real so a regression that swallows the tap fails the story.
  */
 export const TileLaunch: Story = {
   args: {
     entries: VIEWS,
+    pageGroups: [VIEWS.map((v) => v.id)],
     onLaunch: (e) => {
       launchedId = e.id;
     },
@@ -132,69 +98,6 @@ export const TileLaunch: Story = {
     assert(
       launchedId === "wallet",
       `onLaunch fired for wallet (got ${launchedId})`,
-    );
-  },
-};
-
-/** A tile button is pulsing exactly while edit mode is active. */
-function tilePulsing(root: HTMLElement, testId: string): boolean {
-  const button = root.querySelector(`[data-testid="${testId}"] button`);
-  return Boolean(button?.classList.contains("animate-pulse"));
-}
-
-/** Poll until the tile is pulsing (edit mode on) or not (edit mode off). */
-async function waitForPulse(
-  root: HTMLElement,
-  testId: string,
-  want: boolean,
-  tries = 30,
-): Promise<void> {
-  for (let i = 0; i < tries; i += 1) {
-    if (tilePulsing(root, testId) === want) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(
-    `[story] timed out waiting for [data-testid="${testId}"] pulse=${want}`,
-  );
-}
-
-/**
- * Edit mode is a long-press toggle (there is no Edit button): one long-press on
- * a tile enters jiggle mode (tiles pulse); a second long-press exits it.
- */
-export const EditModeToggle: Story = {
-  args: { entries: VIEWS },
-  play: async ({ canvasElement }) => {
-    await longPressTile(canvasElement, "launcher-tile-wallet");
-    await waitForPulse(canvasElement, "launcher-tile-wallet", true);
-    assert(
-      tilePulsing(canvasElement, "launcher-tile-wallet"),
-      "first long-press enters edit mode (tile pulses)",
-    );
-    await longPressTile(canvasElement, "launcher-tile-wallet");
-    await waitForPulse(canvasElement, "launcher-tile-wallet", false);
-    assert(
-      !tilePulsing(canvasElement, "launcher-tile-wallet"),
-      "a second long-press exits edit mode (pulse gone)",
-    );
-  },
-};
-
-/**
- * Hold-to-edit: a 450ms press on a tile (not a tap) enters edit mode — the iOS
- * gesture and the sole entry point. The story-gate keeps real timers, so the
- * press is driven for real (pointerdown → 520ms → pointerup) rather than faked.
- * (The full pointer/touch gesture incl. swipe-paging is covered end-to-end by
- * `test:launcher-e2e`.)
- */
-export const LongPressToEdit: Story = {
-  args: { entries: VIEWS },
-  play: async ({ canvasElement }) => {
-    await longPressTile(canvasElement, "launcher-tile-wallet");
-    await waitForPulse(canvasElement, "launcher-tile-wallet", true);
-    assert(
-      tilePulsing(canvasElement, "launcher-tile-wallet"),
-      "a 520ms long-press entered edit mode (tile pulses)",
     );
   },
 };

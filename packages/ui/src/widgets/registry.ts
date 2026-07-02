@@ -666,6 +666,20 @@ function isWidgetEnabled(
   plugins: readonly WidgetPluginState[],
   source: WidgetDeclarationSource,
 ): boolean {
+  // Some always-visible ids (calendar / relationships / workflow) ARE backed by
+  // real loadable plugins, so an explicit "present + disabled" snapshot entry
+  // must still hide them — the always-visible short-circuit is for core surfaces
+  // with NO plugin package (welcome/notifications/needs-attention/feed/wallet/
+  // …), which never appear in the snapshot and so pass this check untouched.
+  const snapshotPlugin = plugins.find((p) => p.id === declaration.pluginId);
+  if (
+    snapshotPlugin &&
+    snapshotPlugin.enabled === false &&
+    snapshotPlugin.isActive !== true
+  ) {
+    return false;
+  }
+
   if (
     source === "builtin" &&
     declaration.defaultEnabled !== false &&

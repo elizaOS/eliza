@@ -1,12 +1,11 @@
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ScenarioContext,
   ScenarioFinalCheck,
 } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
-import { runFinalCheck } from "./index";
+import { type FinalCheckRuntime, runFinalCheck } from "./index";
 
-const runtime = {} as IAgentRuntime;
+const runtime: FinalCheckRuntime = {};
 
 function createContext(
   overrides: Partial<ScenarioContext> = {},
@@ -17,6 +16,131 @@ function createContext(
     ...overrides,
   };
 }
+
+function runtimeWithTrajectoryService(
+  details: Record<
+    string,
+    {
+      scenarioId?: string;
+      steps?: Array<{
+        llmCalls?: Array<{
+          purpose?: string;
+          userPrompt?: string;
+          response?: string;
+        }>;
+      }>;
+    }
+  >,
+): FinalCheckRuntime {
+  const service = {
+    async listTrajectories(options?: { scenarioId?: string }) {
+      return {
+        trajectories: Object.entries(details)
+          .filter(
+            ([, detail]) =>
+              !options?.scenarioId || detail.scenarioId === options.scenarioId,
+          )
+          .map(([id, detail]) => ({
+            id,
+            scenarioId: detail.scenarioId,
+          })),
+      };
+    },
+    async getTrajectoryDetail(id: string) {
+      return details[id]
+        ? {
+            trajectoryId: id,
+            ...details[id],
+          }
+        : null;
+    },
+  };
+
+  return {
+    getService(name: string) {
+      return name === "trajectories" ? service : null;
+    },
+  };
+}
+
+describe("modelCallOccurred finalCheck", () => {
+  it("passes when a matching scenario trajectory contains the requested purpose", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "modelCallOccurred",
+        purpose: "schedule_plan",
+      } as ScenarioFinalCheck,
+      {
+        runtime: runtimeWithTrajectoryService({
+          "traj-1": {
+            scenarioId: "schedule-plan-capability",
+            steps: [
+              {
+                llmCalls: [
+                  {
+                    purpose: "schedule_plan",
+                    userPrompt: "Plan the scheduling negotiation.",
+                    response: '{"subaction":"start"}',
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        ctx: createContext({ scenarioId: "schedule-plan-capability" }),
+      },
+    );
+
+    expect(result).toMatchObject({
+      type: "modelCallOccurred",
+      status: "passed",
+    });
+    expect(result.detail).toContain("schedule_plan");
+  });
+
+  it("fails when the scenario trajectory has no matching model-call purpose", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "modelCallOccurred",
+        purpose: "inbox_triage",
+      } as ScenarioFinalCheck,
+      {
+        runtime: runtimeWithTrajectoryService({
+          "traj-1": {
+            scenarioId: "inbox-triage-capability",
+            steps: [{ llmCalls: [{ purpose: "action" }] }],
+          },
+        }),
+        ctx: createContext({ scenarioId: "inbox-triage-capability" }),
+      },
+    );
+
+    expect(result).toMatchObject({
+      type: "modelCallOccurred",
+      status: "failed",
+    });
+    expect(result.detail).toContain("Observed purposes: action");
+  });
+
+  it("fails loudly when no trajectory service is registered", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "modelCallOccurred",
+        purpose: "calendar_extract",
+      } as ScenarioFinalCheck,
+      {
+        runtime,
+        ctx: createContext({ scenarioId: "calendar-extract-capability" }),
+      },
+    );
+
+    expect(result).toMatchObject({
+      type: "modelCallOccurred",
+      status: "failed",
+    });
+    expect(result.detail).toContain("trajectory service unavailable");
+  });
+});
 
 describe("memoryExists finalCheck", () => {
   it("passes when a captured memory write matches the requested content", async () => {

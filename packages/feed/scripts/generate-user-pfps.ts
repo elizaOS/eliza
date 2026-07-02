@@ -370,5 +370,8 @@ async function main() {
 }
 
 if (import.meta.main) {
-  main().catch(console.error);
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

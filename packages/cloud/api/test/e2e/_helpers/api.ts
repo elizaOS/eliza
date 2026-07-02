@@ -148,7 +148,21 @@ async function request(
     init.body =
       typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
   }
-  return fetch(url(path), init);
+  const res = await fetch(url(path), init);
+  recordStatus(method, path, res.status);
+  return res;
+}
+
+/**
+ * Optional per-request status recorder for contract audits: set
+ * E2E_STATUS_LOG=<file> to append one `METHOD path -> status` line per
+ * request. No-op when unset.
+ */
+function recordStatus(method: string, path: string, status: number): void {
+  const logPath = process.env.E2E_STATUS_LOG;
+  if (!logPath) return;
+  const { appendFileSync } = require("node:fs") as typeof import("node:fs");
+  appendFileSync(logPath, `${method} ${path} -> ${status}\n`);
 }
 
 export const api = {

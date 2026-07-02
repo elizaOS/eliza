@@ -9,6 +9,23 @@ A first-party elizaOS runnable example — an interactive coding-agent TUI. See 
 - **`scripts/write-dist-tsconfig.mjs` runs as the last `build` step** and emits a paths-free `dist/tsconfig.json`. Bun applies the nearest tsconfig's `compilerOptions.paths` **at runtime**; this package's tsconfig maps externalized `@elizaos/plugin-*` to types-only `.d.ts`, so without the shadow tsconfig `bun dist/index.js` loads a `.d.ts` and throws `ReferenceError: <plugin> is not defined` on first import. Removing the step silently re-breaks every cockpit terminal spawn (#11043).
 - **The TUI must survive narrow terminals.** `components/ChatPane.ts` renders the editor at `innerWidth - 3` and `components/MainScreen.ts` clips every assembled line via `truncateToWidth`, because the cockpit xterm can be ~40 columns on a phone and the TUI's overflow guard aborts the whole render otherwise (#11043). A regression here is covered by `components/narrow-terminal.test.ts`.
 
+## TUI architecture & capabilities
+
+The interactive TUI is built on `@elizaos/tui` (differential renderer, `Editor`, `Markdown`, themes) — **almost every table-stake already exists in `@elizaos/tui` or `@elizaos/core`; the work is wiring it, not reinventing it.** Layout: `App` owns input + slash commands; `MainScreen` composes the columns and clips every line; `ChatPane` (transcript + composer), `TaskPane` (task detail), `StatusBar` (room/cwd/tasks + active model). Shipped feature set (#11294, keep this list honest as it changes):
+
+- **Input routing** — stdin flows `FilteringTerminal` → `App.consumeGlobalInput` (global shortcuts fire *before* the focused component). Gotcha: shortcuts must not eat characters the user is typing — `?` opens help only when the chat composer is empty / unfocused; bare `,`/`.` resize the task pane **only when it's focused** (`#11290`). Ctrl+←/→ always resizes.
+- **Markdown transcript** — assistant replies render through tui's `Markdown` component with a chalk theme (`lib/markdown-theme.ts`); **below ~40 cols it falls back to plain `wrapText`** so the #11043 narrow guarantee holds. Markdown output is pre-styled (`RenderLine.raw`) — don't re-chalk it.
+- **Streaming + turn control** — `lib/agent-client.ts` streams via `onDelta`/core `onStreamChunk`; an `AbortController` (`App.activeTurnAbortController`) makes Esc / Ctrl+C cancel an in-flight turn, and a re-entrancy guard blocks a second concurrent turn. Turn errors are **caught** and shown as a system message — an unhandled rejection escapes to `index.ts` → `process.exit` and leaves the terminal in raw mode (`#11290`); `index.ts` fatal handlers best-effort restore the terminal.
+- **Composer + history** — the `Editor` handles multiline (windowed around the cursor, capped) and ↑/↓ prompt history; ChatPane must call `editor.addToHistory` on submit for recall to work.
+- **Scrollback** — Ctrl+↑/↓ one line, PgUp/PgDn a page, Home/End to oldest/newest — but Home/End route to scroll **only** when the composer is empty or you're already scrolled (`shouldRouteHomeEndToScroll`), otherwise they reach the editor's line nav. Key matching goes through `@elizaos/tui`'s `matchesKey(char, "pageUp"|"home"|…)` (terminal-portable), not raw escape sequences. All offsets clamped.
+- **Slash commands** (`App.handleSlashCommand`) — `/copy` (last reply → clipboard via **OSC 52**, works over SSH/PTY), `/new`, `/task`, `/cd`, `/clear`, etc. An unknown `/cmd` is reported, **not** sent to the LLM (`//literal` escapes). Register new ones in `SLASH_COMMANDS` (autocomplete) + `/help`.
+- **ANSI-safe borders** — pad styled (chalk) strings with `lib/text-width.ts` `padEndVisible` (pads to *visible* width), never `String.padEnd` (which counts invisible SGR bytes and collapses the right border).
+
+**Reusable test patterns** (all node-vitest / `bun test`, no device):
+- Drive private handlers by constructing `new App(stubRuntime)` (sync ctor; `{ agentId, character, getService: () => null }`) and casting to call `consumeGlobalInput` / `handleSlashCommand`.
+- Render assertions: `VirtualTerminal` + `TUI` + `MainScreen.render(width)` (see `narrow-terminal.test.ts`). **chalk color is OFF off a TTY** — assert marker-stripping / visible width, not raw SGR; force `chalk.level = 3` only when a test specifically needs color (then restore it).
+- The zustand `useStore` is a **cross-file singleton** — a `beforeEach` must seed its own room (`createRoom` + `switchRoom`) and pin `chalk.level`, or a sibling test file's leftover state (`rooms: []`, a leaked color level) breaks your assertions.
+
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 

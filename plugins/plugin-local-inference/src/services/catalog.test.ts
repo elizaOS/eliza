@@ -125,22 +125,26 @@ describe("local inference catalog", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("does not declare native MTP until Gemma drafter GGUFs are hosted", () => {
+	it("declares native MTP exactly for the tiers with hosted Gemma drafter GGUFs", () => {
 		const hostedMtpTiers: ReadonlySet<string> = new Set(
 			ELIZA_1_HOSTED_MTP_TIER_IDS,
 		);
 		expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
-		expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual([]);
+		// 2b hosts the gemma4-assistant drafter at bundles/2b/mtp/drafter-2b.gguf
+		// (converted from google/gemma-4-E2B-it-assistant, 2026-07-02).
+		expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual(["eliza-1-2b"]);
 		for (const id of ELIZA_1_MTP_TIER_IDS) {
 			const model = findCatalogModel(id);
-			expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
-		}
-		for (const id of ELIZA_1_TIER_IDS.filter(
-			(tier) => !hostedMtpTiers.has(tier),
-		)) {
-			const model = findCatalogModel(id);
-			expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
+			if (hostedMtpTiers.has(id)) {
+				const slug = id.slice("eliza-1-".length);
+				expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+				expect(model?.runtime?.mtp?.drafterFile, `${id} drafter`).toBe(
+					`mtp/drafter-${slug}.gguf`,
+				);
+			} else {
+				expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
+			}
 		}
 	});
 

@@ -1,0 +1,140 @@
+Attributes: Application, 0x112b0ed90, pid: 87538, label: 'Eliza'
+Element subtree:
+ →Application, 0x112b0ed90, pid: 87538, label: 'Eliza'
+    Window (Main), 0x103e1c7c0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x103e1d970, {{0.0, 0.0}, {393.0, 852.0}}
+        Other, 0x103e1da90, {{0.0, 0.0}, {393.0, 852.0}}
+          WebView, 0x103e1d6d0, {{0.0, 0.0}, {393.0, 852.0}}
+            WebView, 0x103e1d7f0, {{0.0, 0.0}, {393.0, 852.0}}
+              WebView, 0x103e1dbb0, {{0.0, 0.0}, {393.0, 852.0}}
+                Other, 0x103e1dcd0, {{0.0, 0.0}, {393.0, 852.0}}
+                  Other, 0x103e1ddf0, {{0.0, 0.0}, {393.0, 852.0}}
+                    Other, 0x103e1df10, {{0.0, 0.0}, {393.0, 852.0}}
+                      Other, 0x103e1e030, {{0.0, 0.0}, {393.0, 852.0}}, label: 'Eliza'
+                        Other, 0x103e1e150, {{0.0, 98.0}, {393.0, 813.0}}
+                          Other, 0x103e1e270, {{0.0, 98.0}, {393.0, 813.0}}
+                            Other, 0x103e1e390, {{0.0, 98.0}, {393.0, 813.0}}
+                              Button, 0x103e1e4b0, {{0.0, 98.0}, {393.0, 50.0}}, label: 'Open notifications'
+                              Other, 0x103e1e5d0, {{39.0, 124.0}, {130.0, 75.0}}
+                                StaticText, 0x103e1e6f0, {{39.0, 124.0}, {103.0, 75.0}}, label: '3:29', value: 3:29
+                                StaticText, 0x103e1e810, {{147.0, 135.0}, {22.0, 24.0}}, label: 'PM', value: PM
+                              Other, 0x103e1e930, {{47.0, 195.0}, {114.0, 21.0}}
+                                StaticText, 0x112c0ed80, {{47.0, 195.0}, {114.0, 21.0}}, label: 'Thursday, July 2', value: Thursday, July 2
+                              Other, 0x112c0f0c0, {{56.0, 218.0}, {96.0, 19.0}}
+                                StaticText, 0x112c114a0, {{56.0, 218.0}, {96.0, 19.0}}, label: 'Good afternoon', value: Good afternoon
+                              Other, 0x112c115c0, {{259.0, 177.0}, {61.0, 21.0}}
+                                StaticText, 0x112c116e0, {{259.0, 177.0}, {61.0, 21.0}}, label: 'Weather', value: Weather
+                              Other, 0x112c11800, {{225.0, 200.0}, {129.0, 35.0}}
+                                StaticText, 0x112c11920, {{235.0, 200.0}, {109.0, 35.0}}, label: 'Enable location to see conditions', value: Enable location to...
+                              Other, 0x112c11a40, {{16.0, 289.0}, {361.0, 75.0}}, label: 'Welcome — getting started, region'
+                                Other, 0x112c11ba0, {{16.0, 289.0}, {361.0, 21.0}}
+                                  StaticText, 0x112c11cc0, {{16.0, 289.0}, {309.0, 21.0}}, label: 'Welcome — ask me anything to get started.', value: Welcome — ask me a...
+                                Button, 0x112c11de0, {{16.0, 317.0}, {125.0, 21.0}}, label: 'What's left today?'
+                                Button, 0x112c11f00, {{160.0, 317.0}, {128.0, 21.0}}, label: 'What can you do?'
+                                Button, 0x112c12020, {{16.0, 343.0}, {136.0, 21.0}}, label: 'Summarize my day'
+                                Button, 0x112c12140, {{171.0, 343.0}, {54.0, 21.0}}, label: 'Dismiss welcome'
+                              Button, 0x112c12260, {{16.0, 373.0}, {176.0, 53.0}}, label: 'Loading Eliza-1 2B into the local runtime. Tap to manage local models.'
+                              Button, 0x112c12380, {{201.0, 373.0}, {177.0, 53.0}}, label: 'Connect a Google calendar. Open connector settings.'
+                        Other, 0x112d076c0, {{12.0, 619.0}, {369.0, 34.0}}, label: 'application status'
+                          StaticText, 0x112b09fc0, {{140.0, 626.0}, {61.0, 20.0}}, label: 'Loading', value: Loading 
+                          StaticText, 0x112b0c120, {{200.0, 626.0}, {66.0, 20.0}}, label: 'Eliza-1 2B', value: Eliza-1 2B
+                          StaticText, 0x112c124a0, {{265.0, 626.0}, {10.0, 20.0}}, label: '…', value: …
+                        Button, 0x112b0bd00, {{0.0, 647.0}, {305.0, 42.0}}, label: 'drag up to open chat'
+                        Other, 0x112d08e70, {{12.0, 661.0}, {369.0, 60.0}}, label: 'Chat composer'
+                          Button, 0x112b0a800, {{20.0, 669.0}, {44.0, 44.0}}, label: 'attach image'
+                          TextField, 0x112c125c0, {{70.0, 675.0}, {253.0, 32.0}}, label: 'message', placeholderValue: 'Ask Eliza', value: hello, Keyboard Focused, Focused
+                            Other, 0x112c126e0, {{76.0, 679.0}, {241.0, 22.0}}, Focused
+                              StaticText, 0x112a09160, {{76.0, 680.0}, {34.0, 20.0}}, label: 'hello', value: hello, Focused
+                            StaticText, 0x112b0c540, {{76.0, 680.0}, {34.0, 20.0}}, label: 'hello', value: hello, Focused
+                          StaticText, 0x112b0a3e0, {{19.0, 690.0}, {35.0, 24.0}}, label: 'Eliza', value: Eliza
+                          StaticText, 0x112c12800, {{53.0, 690.0}, {723.0, 24.0}}, label: 'is waking up — you can type now; your message sends and the reply arrives in a moment.', value:  is waking up — yo...
+                          Switch, 0x112c12920, {{329.0, 669.0}, {44.0, 44.0}}, label: 'send', value: 0
+              Other, 0x112c12a40, {{360.0, 49.0}, {30.0, 753.7}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                Other, 0x112d087c0, {{387.0, 792.7}, {3.0, 7.0}}
+              Other, 0x112d0af30, {{49.3, 819.0}, {294.3, 30.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                Other, 0x112d07c60, {{333.7, 846.0}, {7.0, 3.0}}
+              Other, 0x112d084a0, {{360.0, 49.0}, {30.0, 753.7}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                Other, 0x112d0b350, {{387.0, 792.7}, {3.0, 7.0}}
+              Other, 0x112d08080, {{49.3, 819.0}, {294.3, 30.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                Other, 0x112d095d0, {{333.7, 846.0}, {7.0, 3.0}}
+    Window, 0x112d096f0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x112d09810, {{0.0, 0.0}, {393.0, 852.0}}
+        Other, 0x112d09930, {{0.0, 0.0}, {393.0, 852.0}}
+        Other, 0x112d09a50, {{0.0, 808.0}, {393.0, 119.0}}
+          Other, 0x112d09b70, {{0.0, 808.0}, {393.0, 44.0}}
+            Other, 0x112d09c90, {{0.0, 808.0}, {393.0, 44.0}}
+              Other, 0x112d09db0, {{0.0, 808.0}, {393.0, 44.0}}
+          Other, 0x112d09ed0, {{0.0, 808.0}, {393.0, 44.0}}
+            Other, 0x112d09ff0, {{0.0, 808.0}, {393.0, 44.0}}
+              Toolbar, 0x112d0a110, {{0.0, 808.0}, {393.0, 44.0}}, identifier: 'Toolbar', label: 'Toolbar'
+                Other, 0x112d0a230, {{0.0, 808.0}, {393.0, 44.0}}
+                  Other, 0x112d0a350, {{0.0, 808.0}, {393.0, 44.0}}
+                    Button, 0x112d0a470, {{0.0, 808.0}, {47.7, 44.0}}, label: 'Previous', Disabled
+                    Button, 0x112d0a590, {{50.7, 808.0}, {33.7, 44.0}}, label: 'Next', Disabled
+                    Button, 0x112d0db50, {{327.3, 808.0}, {65.7, 44.0}}, label: 'Done'
+          Other, 0x103e1ea50, {{0.0, 852.0}, {393.0, 75.0}}
+    Window, 0x112a08ae0, {{0.0, 0.0}, {393.0, 852.0}}
+      Other, 0x112915110, {{0.0, 0.0}, {393.0, 852.0}}
+        Other, 0x1129154b0, {{0.0, 808.0}, {393.0, 349.0}}
+          Other, 0x112915820, {{0.0, 808.0}, {393.0, 44.0}}
+          Other, 0x112915b80, {{0.0, 852.0}, {393.0, 72.0}}
+            Other, 0x112915ee0, {{0.0, 852.0}, {393.0, 72.0}}
+              Other, 0x112916250, {{0.0, 852.0}, {393.0, 72.0}}
+          Other, 0x112916590, {{0.0, 852.0}, {393.0, 72.0}}, identifier: 'SystemInputAssistantView'
+            Other, 0x1129168f0, {{0.0, 852.0}, {393.0, 72.0}}
+              Other, 0x112916c50, {{0.0, 852.0}, {393.0, 38.0}}, identifier: 'CenterPageView'
+                Other, 0x112916fd0, {{0.0, 252.0}, {393.0, 1238.0}}
+                  ScrollView, 0x112917350, {{0.0, 852.0}, {393.0, 38.0}}
+                Other, 0x1129176e0, {{0.0, 852.0}, {393.0, 38.0}}
+                  Other, 0x112917a30, {{0.0, 852.0}, {393.0, 38.0}}, label: 'Typing Predictions'
+                    Other, 0x112917dd0, {{0.0, 852.0}, {393.0, 38.0}}
+                      Other, 0x112918150, {{0.0, 852.0}, {393.0, 38.0}}
+                        Other, 0x1129184e0, {{0.0, 852.0}, {131.0, 38.0}}, label: 'I'
+                        Other, 0x112918840, {{131.0, 852.0}, {131.0, 38.0}}, label: 'The'
+                        Other, 0x112918bb0, {{262.0, 852.0}, {131.0, 38.0}}, label: 'I’m'
+          Other, 0x112918f20, {{0.0, 924.0}, {393.0, 233.0}}
+            Other, 0x1129192a0, {{0.0, 924.0}, {393.0, 233.0}}
+              Other, 0x112919610, {{0.0, 924.0}, {393.0, 233.0}}
+                Other, 0x112919970, {{0.0, 924.0}, {393.0, 233.0}}
+          Other, 0x112919cc0, {{0.0, 924.0}, {393.0, 233.0}}
+            Keyboard, 0x11291a040, {{0.0, 924.0}, {393.0, 233.0}}
+              Other, 0x11291a3c0, {{0.0, 924.0}, {393.0, 233.0}}
+                Other, 0x11291a710, {{0.0, 924.0}, {393.0, 233.0}}, identifier: 'UIKeyboardLayoutStar Preview'
+                  Key, 0x11291aa80, {{0.0, 931.0}, {39.3, 46.0}}, label: 'Q'
+                  Key, 0x11291adf0, {{39.3, 931.0}, {39.3, 46.0}}, label: 'W'
+                  Key, 0x11291b150, {{78.7, 931.0}, {39.3, 46.0}}, label: 'E'
+                  Key, 0x11291b4b0, {{118.0, 931.0}, {39.3, 46.0}}, label: 'R'
+                  Key, 0x11291b820, {{157.3, 931.0}, {39.3, 46.0}}, label: 'T'
+                  Key, 0x11291bb70, {{196.7, 931.0}, {39.0, 46.0}}, label: 'Y'
+                  Key, 0x11291bee0, {{235.7, 931.0}, {39.3, 46.0}}, label: 'U'
+                  Key, 0x11291c280, {{275.0, 931.0}, {39.3, 46.0}}, label: 'I'
+                  Key, 0x11291c5e0, {{314.3, 931.0}, {39.3, 46.0}}, label: 'O'
+                  Key, 0x11291c960, {{353.7, 931.0}, {39.3, 46.0}}, label: 'P'
+                  Key, 0x11291ccf0, {{19.3, 985.0}, {39.3, 46.0}}, label: 'A'
+                  Key, 0x11291d090, {{58.7, 985.0}, {39.3, 46.0}}, label: 'S'
+                  Key, 0x11291d410, {{98.0, 985.0}, {39.3, 46.0}}, label: 'D'
+                  Key, 0x11291d7b0, {{137.3, 985.0}, {39.3, 46.0}}, label: 'F'
+                  Key, 0x11291db10, {{177.2, 985.0}, {39.3, 46.0}}, label: 'G'
+                  Key, 0x11291de90, {{216.5, 985.0}, {39.3, 46.0}}, label: 'H'
+                  Key, 0x11291e210, {{255.9, 985.0}, {39.3, 46.0}}, label: 'J'
+                  Key, 0x11291e580, {{295.2, 985.0}, {39.3, 46.0}}, label: 'K'
+                  Key, 0x11291e920, {{334.5, 985.0}, {39.3, 46.0}}, label: 'L'
+                  Button, 0x11291eca0, {{0.0, 1039.0}, {50.3, 46.0}}, identifier: 'shift', label: 'shift', Selected
+                  Key, 0x11291f000, {{58.7, 1039.0}, {39.3, 46.0}}, label: 'Z'
+                  Key, 0x11291f350, {{98.0, 1039.0}, {39.3, 46.0}}, label: 'X'
+                  Key, 0x11291fe60, {{137.3, 1039.0}, {39.3, 46.0}}, label: 'C'
+                  Key, 0x1129201b0, {{177.2, 1039.0}, {39.3, 46.0}}, label: 'V'
+                  Key, 0x112920520, {{216.5, 1039.0}, {39.3, 46.0}}, label: 'B'
+                  Key, 0x112920860, {{255.9, 1039.0}, {39.3, 46.0}}, label: 'N'
+                  Key, 0x112920bb0, {{295.2, 1039.0}, {39.3, 46.0}}, label: 'M'
+                  Key, 0x112921290, {{342.7, 1039.0}, {50.3, 46.0}}, identifier: 'delete', label: 'delete'
+                  Key, 0x1129215e0, {{0.0, 1093.0}, {98.7, 46.0}}, identifier: 'more', label: 'numbers'
+                  Key, 0x112921940, {{97.3, 1093.0}, {197.7, 46.0}}, label: 'space'
+                  Button, 0x112921ca0, {{295.0, 1093.0}, {98.0, 46.0}}, identifier: 'Return', label: 'return'
+Path to element:
+ →Application, 0x112b0ed90, pid: 87538, label: 'Eliza'
+Query chain:
+ →Find: Target Application 'ai.elizaos.app'
+  Output: {
+    Application, 0x112d0de90, pid: 87538, label: 'Eliza'
+  }

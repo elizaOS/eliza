@@ -129,12 +129,19 @@
   --radius-3xl: var(--radius-3xl);
   --radius-4xl: var(--radius-xs);
 
-  --font-size-3xs: var(--text-3xs);
-  --font-size-3xs--line-height: 0.75rem;
-  --font-size-2xs: var(--text-2xs);
-  --font-size-2xs--line-height: 1rem;
-  --font-size-xs-tight: var(--text-xs-tight);
-  --font-size-xs-tight--line-height: 1rem;
+  /* Tailwind v4's font-size utility namespace is `--text-*`, NOT `--font-size-*`
+     — registering these under `--font-size-*` emitted no `.text-2xs` / `.text-3xs`
+     / `.text-xs-tight` utilities at all (413 usages across packages/ui rendered
+     at the inherited size, which is why call sites had drifted to arbitrary
+     `text-[9px]`/`text-[11px]`). The `var(--text-*)` values are inlined by
+     `@theme inline` and resolve against base.css's unlayered `:root` / `body.native`
+     definitions, preserving the mobile up-sizing. */
+  --text-3xs: var(--text-3xs);
+  --text-3xs--line-height: 0.75rem;
+  --text-2xs: var(--text-2xs);
+  --text-2xs--line-height: 1rem;
+  --text-xs-tight: var(--text-xs-tight);
+  --text-xs-tight--line-height: 1rem;
 
   --spacing-touch: var(--min-touch-target);
 }

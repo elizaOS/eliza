@@ -14,6 +14,15 @@ export default defineConfig({
 			"@elizaos/agent": fileURLToPath(
 				new URL("../../packages/agent/src/index.ts", import.meta.url),
 			),
+			// Deep subpath must precede the bare alias — the bare entry
+			// prefix-matches and would rewrite this to `src/index.ts/<subpath>`.
+			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap":
+				fileURLToPath(
+					new URL(
+						"../plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts",
+						import.meta.url,
+					),
+				),
 			"@elizaos/plugin-capacitor-bridge": fileURLToPath(
 				new URL("../plugin-capacitor-bridge/src/index.ts", import.meta.url),
 			),
@@ -53,6 +62,12 @@ export default defineConfig({
 			"@elizaos/shared/voice/owner-inference": fileURLToPath(
 				new URL(
 					"../../packages/shared/src/voice/owner-inference.ts",
+					import.meta.url,
+				),
+			),
+			"@elizaos/shared/voice/aec": fileURLToPath(
+				new URL(
+					"../../packages/shared/src/voice/aec/index.ts",
 					import.meta.url,
 				),
 			),
