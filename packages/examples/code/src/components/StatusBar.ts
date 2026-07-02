@@ -1,7 +1,11 @@
 import type { Component } from "@elizaos/tui";
 import chalk from "chalk";
 import { getCwd } from "../lib/cwd.js";
+import { describeActiveModel } from "../lib/model-provider.js";
 import { useStore } from "../lib/store.js";
+
+/** Longest model label shown in the status bar before eliding. */
+const MODEL_LABEL_MAX = 22;
 
 export class StatusBar implements Component {
   private cwd = getCwd();
@@ -36,8 +40,19 @@ export class StatusBar implements Component {
     const showFullRight = width >= 80;
     const showMediumRight = width >= 60;
 
+    // Active model/provider — the "which model am I talking to" indicator every
+    // comparable coding TUI shows. Only at full width (the bar is already busy
+    // below 80), elided to a sane length, and omitted entirely when no provider
+    // is configured (describeActiveModel returns null rather than throwing).
+    const modelLabelRaw = showFullRight ? describeActiveModel() : null;
+    const modelLabel =
+      modelLabelRaw && modelLabelRaw.length > MODEL_LABEL_MAX
+        ? `${modelLabelRaw.slice(0, MODEL_LABEL_MAX - 1)}…`
+        : modelLabelRaw;
+    const modelPrefix = modelLabel ? `${modelLabel} | ` : "";
+
     const rightTextPlain = showFullRight
-      ? `Tasks r${taskCounts.running} c${taskCounts.completed} f${taskCounts.failed} x${taskCounts.cancelled}${isLoading ? " …" : ""} | ?`
+      ? `${modelPrefix}Tasks r${taskCounts.running} c${taskCounts.completed} f${taskCounts.failed} x${taskCounts.cancelled}${isLoading ? " …" : ""} | ?`
       : showMediumRight
         ? `Tasks r${taskCounts.running} f${taskCounts.failed}${isLoading ? " …" : ""} | ?`
         : `Tasks r${taskCounts.running}${isLoading ? " …" : ""} | ?`;
