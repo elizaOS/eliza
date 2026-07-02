@@ -230,7 +230,7 @@ vi.mock("./components/pages/LauncherSurface", () => ({
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({
-  SecretsManagerModalRoot: () => null,
+  VaultModal: () => null,
 }));
 
 vi.mock("./components/custom-actions/CustomActionEditor", () => ({

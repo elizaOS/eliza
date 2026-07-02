@@ -4,7 +4,48 @@ Reference measurements captured on `develop`. Re-run the KPIs (`run-all.mjs`) to
 refresh; ratchet `budgets.json` down as these improve. All sizes are
 **brotli**-compressed bytes.
 
-Captured: 2026-05-31; **corrected 2026-06-02** (see CORRECTIONS below).
+Captured: 2026-05-31; **corrected 2026-06-02** (see CORRECTIONS below);
+**bundle re-baselined 2026-07-02** (see the current bundle section).
+
+## Bundle (`bundle-kpi.mjs`) — CURRENT, clean `build:web`, measured 2026-07-02
+
+Re-measured for #11351 (eager-boot lazy-load wins). The app grew substantially
+between 2026-06-02 and 2026-07-02 (the 1202 KB eager / 1104 KB entry numbers
+below are a month stale); the budgets in `budgets.json` were never re-ratcheted
+because the bundle gate is not wired into CI yet (#11467), so two of them had
+drifted **below the real measurement** and could only ever fail. This section is
+the corrected baseline the budgets are now set against.
+
+#11351 change measured here: DetachedShellRoot's statically-imported detached
+window views (ProviderSwitcher, PermissionsSection, ReleaseCenterView,
+ConfigPageView, VoiceConfigView, CloudDashboard, HeartbeatsView, ChatView,
+ConversationsSidebar) moved onto lazy chunks, and the vault modal
+(`SecretsManagerSection`) now loads on first open instead of riding the App.tsx
+eager graph — the two residual eager paths found in the #11471 review.
+
+| Metric | Before (develop 2a856dde86b) | After (#11351 residuals) | Budget | Status |
+| --- | --- | --- | --- | --- |
+| eager (first-paint) brotli | 3,211,887 B (3136.6 KB / 39 chunks) | **3,144,115 B** (3070.4 KB / 57 chunks) | 3,200,000 | PASS |
+| initial entry brotli | 3,025,994 B (2955.1 KB) | **2,938,909 B** (2870.0 KB) | 3,000,000 | PASS |
+| total brotli | 5,230,367 B | 5,266,611 B (+36 KB: chunk-split overhead) | 15.6 MB | PASS |
+| largest chunk brotli | 1333.7 KB (`index-*.js`) | 1248.2 KB | 2.25 MB | PASS |
+| duplicate-lib waste | 357.7 KB | 351.7 KB | 1.20 MB | PASS |
+
+- Delta: **eager −67,772 B brotli (−66.2 KB), entry −87,085 B (−85.0 KB)**;
+  29 new on-demand chunks (379 → 408 assets).
+- Budget notes (2026-07-02):
+  - `eagerGraphBrotliBytes` 1,374,505 → **3,200,000**. The old value (set by
+    #11471 as "1.5 MB ratcheted down by the saving") was below the *actual*
+    measurement (~3.2 MB before, ~3.14 MB after) — a gate that can only fail is
+    not a ratchet. 3,200,000 sits below the pre-change 3,211,887, so reverting
+    the lazy-loads fails the gate, with ~1.8% headroom over the measured after
+    (cross-platform variance: a Windows build of the same change measured
+    3,160,337).
+  - `initialEntryBrotliBytes` 2,300,000 → **3,000,000**. Same stale-baseline
+    problem: the 2.3 MB value dates from the 1104 KB-entry era and the real
+    entry is now ~2.9 MB, so the gate was permanently red. This is a baseline
+    correction, not a regression allowance — ratchet it down as the entry
+    shrinks.
 
 ## CORRECTIONS (2026-06-02) — the original numbers below were wrong
 
@@ -21,7 +62,7 @@ Two of the original baseline numbers were measurement artifacts, not real:
    Fixing the readiness gate (loadperf W5.0) is a prerequisite for trusting boot
    deltas. (research/03-agent-boot-plugins.md)
 
-## Bundle (`bundle-kpi.mjs`) — CORRECTED, clean `build:web`, measured 2026-06-02
+## Bundle (`bundle-kpi.mjs`) — SUPERSEDED 2026-07-02 (kept for the record), measured 2026-06-02
 
 | Metric | Value | Budget | Status |
 | --- | --- | --- | --- |

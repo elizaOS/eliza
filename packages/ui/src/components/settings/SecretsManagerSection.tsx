@@ -43,9 +43,10 @@ import type {
  *
  *  - `SecretsManagerSection` — the inline launcher row in Settings;
  *    clicking dispatches the global open event for the modal.
- *  - `SecretsManagerModalRoot` — the modal's top-level mount, rendered
- *    once at app root. Subscribes to global open/close state so any
- *    trigger (launcher, ⌘⌥⌃V chord, menu accelerator) shows it.
+ *  - `VaultModal` — the modal itself. App root mounts it lazily on the
+ *    first global open dispatch (launcher, ⌘⌥⌃V chord, menu accelerator)
+ *    via `SecretsManagerModalMount` in `App.tsx`, keeping this module off
+ *    the eager boot graph (#11351).
  *
  * The modal is a tabbed Vault interface (Overview / Secrets / Logins /
  * Routing). Data is fetched once per open and shared across tabs.
@@ -150,23 +151,6 @@ export function SecretsManagerSection() {
         />
       </SettingsGroup>
     </SettingsStack>
-  );
-}
-
-export function SecretsManagerModalRoot() {
-  // Forward the modal-state hook's initial-tab / focus payload directly to
-  // `VaultModal` as props so only one listener is subscribed.
-  const { isOpen, initialTab, focusKey, focusProfileId, setOpen, clearFocus } =
-    useSecretsManagerModalState();
-  return (
-    <VaultModal
-      open={isOpen}
-      onOpenChange={setOpen}
-      initialTab={initialTab}
-      initialFocusKey={focusKey}
-      initialFocusProfileId={focusProfileId}
-      onConsumeInitial={clearFocus}
-    />
   );
 }
 
