@@ -22,6 +22,13 @@ def test_pattern_c_tasks_action_uses_operation_params() -> None:
     assert extract_lifecycle_events(
         ["TASKS"], {"action": "control", "operation": "pause"}
     ) == ["pause"]
+    # The real runtime control param is `controlAction` (action=control).
+    assert extract_lifecycle_events(
+        ["TASKS"], {"action": "control", "controlAction": "pause"}
+    ) == ["pause"]
+    assert extract_lifecycle_events(
+        ["TASKS"], {"action": "control", "controlAction": "resume"}
+    ) == ["resume"]
     # Nested per-action param dicts (BENCHMARK_ACTIONS style) are scanned too.
     assert extract_lifecycle_events(
         [], {"BENCHMARK_ACTIONS": [{"action": "resume"}, {"action": "send"}]}

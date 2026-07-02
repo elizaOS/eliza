@@ -129,8 +129,12 @@ OPERATION_EVENTS: dict[str, str] = {
     "share": "share",
 }
 
-# Param keys whose values identify a TASKS sub-operation.
-_OPERATION_KEYS = frozenset({"action", "op", "subaction", "operation"})
+# Param keys whose values identify a TASKS sub-operation. `controlAction`
+# is the real runtime param for TASKS control ops (action=control,
+# controlAction=pause|resume|stop|continue|reopen — see core action docs).
+_OPERATION_KEYS = frozenset(
+    {"action", "op", "subaction", "operation", "controlaction"}
+)
 
 # Bridge params that carry response plumbing, not planner-selected operations.
 # The trajectory snapshot in particular contains full prior steps and would
@@ -151,7 +155,7 @@ def _collect_operation_values(value: object, found: list[str]) -> None:
             key_str = str(key)
             if key_str in _IGNORED_PARAM_KEYS:
                 continue
-            if key_str in _OPERATION_KEYS and isinstance(child, str):
+            if key_str.lower() in _OPERATION_KEYS and isinstance(child, str):
                 found.append(child.strip().lower())
             _collect_operation_values(child, found)
         return
