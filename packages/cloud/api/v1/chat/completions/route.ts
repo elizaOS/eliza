@@ -796,7 +796,16 @@ export async function handleChatCompletionsPOST(
   options: ChatCompletionsHandlerOptions = {},
 ) {
   const startTime = Date.now();
-  const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
+  // #11588: the billing requestId feeds the affiliate-earnings dedupe sourceId
+  // (getAffiliateEarningsSourceId → `ai_billing:<op>:<requestId>`, deduped on
+  // addEarnings) while the org charge is unconditional. It MUST NOT be
+  // client-controllable, or a caller pinning `x-request-id` across two billed
+  // requests could suppress the second affiliate credit while still being
+  // charged the markup. Server-generate it (stable for this request, so the
+  // #11460/#11472 abort-vs-finish single-flight dedupe is preserved). The
+  // client's retry-idempotency mechanism stays the explicit `idempotency-key`
+  // header.
+  const requestId = crypto.randomUUID();
   const idempotencyKey = req.headers.get("idempotency-key") || requestId;
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
   let settleReservation:
