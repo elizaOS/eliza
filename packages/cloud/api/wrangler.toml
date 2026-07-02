@@ -61,7 +61,7 @@ crons = [
   "0 0 * * *",      # container-billing + release-pending-earnings
   "0 1 * * *",      # compute-metrics
   "0 2 * * *",      # cleanup-webhook-events
-  "0 3 * * *",      # domain-renewals
+  "0 3 * * *",      # domain-renewals + reclaim-stale-domains
 ]
 
 # -----------------------------------------------------------------------------
