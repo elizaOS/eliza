@@ -19,6 +19,13 @@ export type WalletRecentTransaction = {
   status: "success" | "failed" | "unknown";
 };
 
+export type WalletActivitySummary = {
+  recentTransactionCount: number;
+  failedTransactionCount: number;
+  lastActiveAt?: number | null;
+  activityLevel: "none" | "low" | "medium" | "high";
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -26,6 +33,7 @@ export type WalletInvestigationResult = {
   balance?: WalletBalance;
 recentTransactions?: WalletRecentTransaction[];
 transactionCountSample?: number;
-summary: string;
+activity?: WalletActivitySummary;
+  summary: string;
 warnings: string[];
 };
