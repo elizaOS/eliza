@@ -84,7 +84,7 @@ describe("LifeOps scheduled-task simulation harness", () => {
     ]);
   });
 
-  it("preserves typed DispatchResult failures as domain artifacts", async () => {
+  it("fails the task on a permanent DispatchResult failure and preserves it as a domain artifact", async () => {
     const h = createLifeOpsScheduledTaskSimulationHarness();
     h.setDispatchResult({
       ok: false,
@@ -102,19 +102,85 @@ describe("LifeOps scheduled-task simulation harness", () => {
     });
     const fired = await h.firePrimitive(triage);
 
-    // #11041 (#10721 H2): a typed {ok:false} dispatch is now recorded as
-    // "failed", NOT "fired" — recording a failed connector send as "fired" was
-    // silent message loss that the retry/backoff policy could never see. The
-    // typed DispatchResult is still preserved on metadata as the domain artifact.
+    // #11041: a returned `{ ok: false }` with no retry backoff is a permanent
+    // failure — the row must NOT be recorded as a successful `fired`.
     expect(fired.state.status).toBe("failed");
+    expect(fired.state.lastDecisionLog).toBe(
+      "dispatch_failed: auth_expired: owner grant expired",
+    );
     expect(fired.metadata?.lastDispatchResult).toEqual({
       ok: false,
       reason: "auth_expired",
       message: "owner grant expired",
       userActionable: true,
     });
+    expect(fired.metadata?.lastDispatchError).toEqual({
+      name: "Error",
+      message: "auth_expired: owner grant expired",
+    });
     expect(h.dispatches).toHaveLength(1);
     expect(h.dispatches[0]?.result).toEqual(fired.metadata?.lastDispatchResult);
+
+    const log = await h.logStore.list({
+      agentId: "pa-simulation-agent",
+      taskId: triage.taskId,
+    });
+    // The claim-time "fired" transition stays in the trail; the appended
+    // "failed" entry records the dispatch outcome (matches runner.test.ts).
+    expect(log.map((row) => row.transition)).toEqual([
+      "scheduled",
+      "fire_attempt",
+      "fired",
+      "failed",
+    ]);
+  });
+
+  it("reschedules the same step on a transient DispatchResult failure", async () => {
+    const h = createLifeOpsScheduledTaskSimulationHarness();
+    h.setDispatchResult({
+      ok: false,
+      reason: "rate_limited",
+      message: "429 from connector",
+      retryAfterMinutes: 7,
+      userActionable: false,
+    });
+
+    const triage = await h.schedulePrimitive("message_triage", {
+      output: {
+        destination: "channel",
+        target: "slack:owner",
+        persistAs: "task_metadata",
+      },
+    });
+    const retried = await h.firePrimitive(triage);
+
+    // #11041: `retryAfterMinutes > 0` is a transient failure — the row goes
+    // back to `scheduled` with `firedAt` pushed past the backoff, and the
+    // escalation ladder is not advanced.
+    expect(retried.state.status).toBe("scheduled");
+    expect(retried.state.firedAt).toBe(
+      new Date(new Date(h.nowIso()).getTime() + 7 * 60_000).toISOString(),
+    );
+    expect(retried.state.lastDecisionLog).toBe(
+      "dispatch retry (rate_limited) in 7m",
+    );
+    expect(retried.metadata?.lastDispatchResult).toMatchObject({
+      ok: false,
+      reason: "rate_limited",
+      retryAfterMinutes: 7,
+    });
+    expect(h.dispatches).toHaveLength(1);
+
+    const log = await h.logStore.list({
+      agentId: "pa-simulation-agent",
+      taskId: triage.taskId,
+    });
+    expect(log.map((row) => row.transition)).toEqual([
+      "scheduled",
+      "fire_attempt",
+      "fired",
+      "snoozed",
+    ]);
   });
 
   it("drives the PA production dispatcher into a simulated real connector", async () => {
