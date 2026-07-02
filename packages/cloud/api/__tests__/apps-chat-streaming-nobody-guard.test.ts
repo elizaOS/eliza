@@ -2,22 +2,21 @@
  * Route-level double-credit guard for POST /api/v1/apps/:id/chat
  * STREAMING no-body refund (sibling of the non-streaming #11218 hardening).
  *
- * When the provider returns no response body, the streaming branch refunds the
- * full hold via `appCreditsService.reconcileCredits`. The route flips
- * `streamCompleted` IMMEDIATELY BEFORE invoking that refund — not after it
- * returns. That ordering is the whole fix: `reconcileCredits` is not
- * transactional; its refund branch commits `creditsService.refundCredits`
- * (app-credits.ts) and can then throw from `reverseCreatorEarnings` / the
- * apps-aggregate update. With the flag still false at that point, the throw
- * reaches the streaming catch as "stream failed before delivery" and
- * `reconcileStreamProcessingError` refunds the FULL hold a SECOND time —
+ * When the provider returns no response body, the streaming branch settles the
+ * app-credit reservation to actual cost 0. The route flips `streamCompleted`
+ * IMMEDIATELY BEFORE invoking that settlement — not after it returns. That
+ * ordering is the route-level guard: app-credit settlement can commit the
+ * refund movement and then throw from creator-earnings / aggregate writes. With
+ * the flag still false at that point, the throw reaches the streaming catch as
+ * "stream failed before delivery" and issues a SECOND full-hold refund —
  * double-credit / mint.
  *
  * The helper tests (apps-chat-stream-refund.test.ts) drive
  * `reconcileStreamProcessingError` with a pre-computed boolean, so they stay
  * green even if the route's flag ordering regresses. This suite drives the REAL
- * route with a credits seam that models the real non-transactional internals
- * (refund committed, then throw), asserting the refund COUNT end to end.
+ * route with a reservation seam that models the real non-transactional
+ * internals (refund committed, then throw), asserting the refund COUNT end to
+ * end.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -91,66 +90,80 @@ mock.module("@/lib/providers", () => ({
   withProviderFallback: async (primary: () => Promise<Response>) => primary(),
 }));
 
-// Credits seam modeling the REAL app-credits reconcileCredits internals: the
-// refund branch commits the org-balance movement (creditsService.refundCredits)
-// FIRST, then reverseCreatorEarnings / the apps-aggregate update can throw.
-// `refundCommits` counts committed org-balance refunds — the double-credit
-// assertion target. The streaming guard's own refund (description "Refund due
-// to stream error") never throws, exactly like a plain full refund.
+class TestInsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+    public readonly reason?: string,
+  ) {
+    super(`Insufficient credits. Required: ${required}, available: ${available}`);
+  }
+}
+
+mock.module("@/lib/services/credits", () => ({
+  InsufficientCreditsError: TestInsufficientCreditsError,
+}));
+
+mock.module("@/lib/runtime/request-context", () => ({
+  getRequestIdempotencyKey: () => "apps-chat-streaming-nobody-guard",
+}));
+
+// Credits seam modeling the REAL app-credits reservation settlement internals:
+// the refund branch commits the org-balance movement FIRST, then
+// reverseCreatorEarnings / the apps-aggregate update can throw. `refundCommits`
+// counts committed org-balance refunds — the double-credit assertion target.
 const refundCommits: Array<{ amount: number; description: string }> = [];
-const reconcileCalls: Array<{
+const reservationCalls: Array<{
   estimatedBaseCost: number;
-  actualBaseCost: number;
-  description: string;
+  idempotencyKey?: string;
   metadata?: Record<string, unknown>;
+}> = [];
+const settleCalls: Array<{
+  actualBaseCost: number;
 }> = [];
 let noBodyReverseEarningsThrows = false;
 
-const reconcileCredits = mock(
+const reserveInferenceCredits = mock(
   async (args: {
     estimatedBaseCost: number;
-    actualBaseCost: number;
-    description: string;
+    idempotencyKey?: string;
     metadata?: Record<string, unknown>;
   }) => {
-    reconcileCalls.push({
+    reservationCalls.push({
       estimatedBaseCost: args.estimatedBaseCost,
-      actualBaseCost: args.actualBaseCost,
-      description: args.description,
+      idempotencyKey: args.idempotencyKey,
       metadata: args.metadata,
     });
-    if (args.actualBaseCost < args.estimatedBaseCost) {
-      // app-credits.ts refund branch: this movement COMMITS before the
-      // earnings/counter writes below can throw.
-      refundCommits.push({
-        amount: args.estimatedBaseCost - args.actualBaseCost,
-        description: args.description,
-      });
-    }
-    if (args.metadata?.noBody && noBodyReverseEarningsThrows) {
-      throw new Error("reverseCreatorEarnings failed: deadlock detected");
-    }
     return {
-      reconciled: true,
-      difference: args.actualBaseCost - args.estimatedBaseCost,
-      action: "refund",
-      adjustedAmount: args.estimatedBaseCost - args.actualBaseCost,
-      newBalance: 99,
+      reservedAmount: args.estimatedBaseCost,
+      reservationTransactionId: "reservation-1",
+      reconcile: async (actualBaseCost: number) => {
+        settleCalls.push({ actualBaseCost });
+        if (actualBaseCost < args.estimatedBaseCost) {
+          refundCommits.push({
+            amount: args.estimatedBaseCost - actualBaseCost,
+            description: "reservation reconcile",
+          });
+        }
+        if (actualBaseCost === 0 && noBodyReverseEarningsThrows) {
+          throw new Error("reverseCreatorEarnings failed: deadlock detected");
+        }
+        return {
+          reservedAmount: args.estimatedBaseCost,
+          actualCost: actualBaseCost,
+          reservationTransactionId: "reservation-1",
+          settlementTransactionIds: [],
+          adjustmentType:
+            actualBaseCost < args.estimatedBaseCost ? "refund" : "none",
+        };
+      },
     };
   },
 );
 
 mock.module("@/lib/services/app-credits", () => ({
   appCreditsService: {
-    deductCredits: mock(async (args: { baseCost: number }) => ({
-      success: true,
-      baseCost: args.baseCost,
-      creatorMarkup: 0,
-      totalCost: args.baseCost,
-      creatorEarnings: 0,
-      newBalance: 99,
-    })),
-    reconcileCredits,
+    reserveInferenceCredits,
   },
 }));
 
@@ -173,12 +186,12 @@ async function postChat(): Promise<Response> {
 
 // The route hands the SSE readable back while the money work continues in a
 // detached task (and the fixed ordering closes the writer BEFORE the refund
-// reconcile runs). Drain the body, then wait for the reconcile to land plus a
+// settlement runs). Drain the body, then wait for the settlement to land plus a
 // grace window so an erroneous SECOND refund would be observed.
 async function drainAndSettle(response: Response): Promise<string> {
   const text = await response.text();
   const deadline = Date.now() + 2000;
-  while (reconcileCredits.mock.calls.length === 0 && Date.now() < deadline) {
+  while (settleCalls.length === 0 && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -205,8 +218,9 @@ function sseProviderBody(): Response {
 
 beforeEach(() => {
   refundCommits.length = 0;
-  reconcileCalls.length = 0;
-  reconcileCredits.mockClear();
+  reservationCalls.length = 0;
+  settleCalls.length = 0;
+  reserveInferenceCredits.mockClear();
   calculateCostCalls = 0;
   noBodyReverseEarningsThrows = false;
   providerResponseImpl = () => new Response(null);
@@ -220,20 +234,15 @@ describe("streaming no-body refund double-credit guard", () => {
     expect(response.status).toBe(200);
     const text = await drainAndSettle(response);
 
-    // The no-body refund reconcile ran once, its internal refund committed
-    // once, and the streaming catch did NOT issue a second full-hold refund
-    // ("Refund due to stream error") on top of it.
-    expect(reconcileCredits).toHaveBeenCalledTimes(1);
+    // The no-body settlement ran once, its internal refund committed once, and
+    // the streaming catch did NOT issue a second full-hold refund on top of it.
+    expect(reserveInferenceCredits).toHaveBeenCalledTimes(1);
+    expect(settleCalls).toHaveLength(1);
     expect(refundCommits).toHaveLength(1);
-    expect(reconcileCalls[0].metadata).toMatchObject({
-      error: true,
-      noBody: true,
-    });
-    expect(
-      reconcileCalls.some(
-        (c) => c.description === "Refund due to stream error",
-      ),
-    ).toBe(false);
+    expect(settleCalls[0].actualBaseCost).toBe(0);
+    expect(reservationCalls[0].idempotencyKey).toBe(
+      "apps-chat-streaming-nobody-guard",
+    );
 
     // The client got the no-body error event and a closed stream, not a hang.
     expect(text).toContain("empty_response");
@@ -245,13 +254,10 @@ describe("streaming no-body refund double-credit guard", () => {
     expect(response.status).toBe(200);
     const text = await drainAndSettle(response);
 
-    expect(reconcileCredits).toHaveBeenCalledTimes(1);
+    expect(reserveInferenceCredits).toHaveBeenCalledTimes(1);
+    expect(settleCalls).toHaveLength(1);
     expect(refundCommits).toHaveLength(1);
-    expect(reconcileCalls[0].actualBaseCost).toBe(0);
-    expect(reconcileCalls[0].metadata).toMatchObject({
-      error: true,
-      noBody: true,
-    });
+    expect(settleCalls[0].actualBaseCost).toBe(0);
     expect(text).toContain("empty_response");
     expect(text).toContain("[DONE]");
   });
@@ -264,14 +270,9 @@ describe("streaming no-body refund double-credit guard", () => {
     const text = await drainAndSettle(response);
 
     expect(text).toContain("hi there");
-    expect(reconcileCredits).toHaveBeenCalledTimes(1);
-    expect(reconcileCalls[0].metadata).toMatchObject({ streaming: true });
-    expect(reconcileCalls[0].metadata?.noBody).toBeUndefined();
-    expect(reconcileCalls[0].actualBaseCost).toBe(0.001);
-    expect(
-      reconcileCalls.some(
-        (c) => c.description === "Refund due to stream error",
-      ),
-    ).toBe(false);
+    expect(reserveInferenceCredits).toHaveBeenCalledTimes(1);
+    expect(settleCalls).toHaveLength(1);
+    expect(reservationCalls[0].metadata).toMatchObject({ streaming: true });
+    expect(settleCalls[0].actualBaseCost).toBe(0.001);
   });
 });
