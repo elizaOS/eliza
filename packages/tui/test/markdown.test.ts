@@ -1190,4 +1190,55 @@ bar`,
       );
     });
   });
+
+  describe("Nested lists with color codes disabled (NO_COLOR)", () => {
+    // Nested-list detection must not depend on the bullet's ANSI color:
+    // with colors disabled (NO_COLOR, piped output) or a non-cyan theme,
+    // nested list lines must still keep their own indentation and must not
+    // receive an extra parent bullet or continuation indent.
+    const identity = (text: string) => text;
+    const plainTheme = {
+      heading: identity,
+      link: identity,
+      linkUrl: identity,
+      code: identity,
+      codeBlock: identity,
+      codeBlockBorder: identity,
+      quote: identity,
+      quoteBorder: identity,
+      hr: identity,
+      listBullet: identity,
+      bold: identity,
+      italic: identity,
+      strikethrough: identity,
+      underline: identity,
+    };
+
+    it("should indent a nested list by exactly one level", () => {
+      const markdown = new Markdown("- a\n  - b", 0, 0, plainTheme);
+      const lines = markdown.render(80).map((line) => line.trimEnd());
+
+      assert.deepStrictEqual(lines, ["- a", "  - b"]);
+    });
+
+    it("should not add a parent bullet when the item starts with a nested list", () => {
+      const markdown = new Markdown("- - b", 0, 0, plainTheme);
+      const lines = markdown.render(80).map((line) => line.trimEnd());
+
+      assert.deepStrictEqual(lines, ["  - b"]);
+    });
+
+    it("should keep continuation content indented under its item", () => {
+      const markdown = new Markdown(
+        "- a\n\n  second paragraph",
+        0,
+        0,
+        plainTheme,
+      );
+      const lines = markdown.render(80).map((line) => line.trimEnd());
+
+      assert.ok(lines.includes("- a"));
+      assert.ok(lines.includes("  second paragraph"));
+    });
+  });
 });

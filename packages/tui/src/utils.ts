@@ -24,7 +24,7 @@ function couldBeEmoji(segment: string): boolean {
     (cp >= 0x2600 && cp <= 0x27bf) || // Misc symbols, dingbats
     (cp >= 0x2b50 && cp <= 0x2b55) || // Specific stars/circles
     segment.includes("\uFE0F") || // Contains VS16 (emoji presentation selector)
-    segment.length > 2 // Multi-codepoint sequences (ZWJ, skin tones, etc.)
+    segment.includes("\u200D") // ZWJ sequences (family, profession emoji, etc.)
   );
 }
 

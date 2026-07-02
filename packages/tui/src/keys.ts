@@ -719,8 +719,15 @@ function rawCtrlChar(key: string): string | null {
 function parseKeyId(
   keyId: string,
 ): { key: string; ctrl: boolean; shift: boolean; alt: boolean } | null {
-  const parts = keyId.toLowerCase().split("+");
-  const key = parts[parts.length - 1];
+  const lower = keyId.toLowerCase();
+  const parts = lower.split("+");
+  // "+" is both the modifier separator and a valid base key: "+", "ctrl++",
+  // "shift+alt++" etc. split() then yields a trailing empty part, so a keyId
+  // that ends with "+" means the base key is the literal "+" symbol.
+  let key = parts[parts.length - 1];
+  if (!key && lower.endsWith("+")) {
+    key = "+";
+  }
   if (!key) return null;
   return {
     key,

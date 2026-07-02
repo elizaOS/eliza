@@ -358,4 +358,33 @@ describe("parseKey", () => {
       assert.strictEqual(parseKey("\x1b[[5~"), "pageUp");
     });
   });
+
+  describe("plus symbol key", () => {
+    // "+" is both the modifier separator and a valid base key, so keyIds
+    // like "+" and "ctrl++" end with a "+" separator producing an empty
+    // trailing split part. They must still resolve to the "+" key.
+    it('should match a typed plus sign against the "+" keyId', () => {
+      assert.strictEqual(matchesKey("+", "+"), true);
+    });
+
+    it('should match Kitty ctrl+plus against "ctrl++"', () => {
+      // '+' = codepoint 43, ctrl = modifier 4 (+1 = 5)
+      assert.strictEqual(matchesKey("\x1b[43;5u", "ctrl++"), true);
+    });
+
+    it('should match Kitty ctrl+shift+plus against "ctrl+shift++"', () => {
+      // shift(1) + ctrl(4) = 5 (+1 = 6)
+      assert.strictEqual(matchesKey("\x1b[43;6u", "ctrl+shift++"), true);
+    });
+
+    it("should not match other input against plus keyIds", () => {
+      assert.strictEqual(matchesKey("-", "+"), false);
+      assert.strictEqual(matchesKey("+", "ctrl++"), false);
+      assert.strictEqual(matchesKey("\x1b[43;3u", "ctrl++"), false); // alt, not ctrl
+    });
+
+    it('should keep matching "ctrl+-" (hyphen key) correctly', () => {
+      assert.strictEqual(matchesKey("\x1f", "ctrl+-"), true);
+    });
+  });
 });
