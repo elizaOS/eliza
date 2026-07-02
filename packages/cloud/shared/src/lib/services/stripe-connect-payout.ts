@@ -155,6 +155,14 @@ export interface ConnectWebhookOutcome {
   payoutStatus?: ConnectPayoutStatus;
   /** Account capability refresh, for `account.updated`. */
   status?: StripeConnectStatus;
+  /**
+   * Raw Stripe capability flags for `account.updated`, persisted alongside
+   * `status` so the payout gate (which checks `payouts_enabled` directly) sees
+   * the real Stripe state. Without persisting these the column stays at its
+   * migration default `false` and every payout is rejected (elizaOS/eliza#11172).
+   */
+  charges_enabled?: boolean;
+  payouts_enabled?: boolean;
   /** True when the event type isn't one we act on. */
   ignored: boolean;
 }
@@ -175,12 +183,16 @@ export function mapConnectWebhookEvent(event: {
       return { accountId: event.account, payoutStatus: "paid", ignored: false };
     case "account.updated": {
       const obj = event.data?.object ?? {};
+      const charges_enabled = obj.charges_enabled === true;
+      const payouts_enabled = obj.payouts_enabled === true;
       return {
         accountId: event.account,
         status: connectStatusFromCapabilities({
-          charges_enabled: obj.charges_enabled === true,
-          payouts_enabled: obj.payouts_enabled === true,
+          charges_enabled,
+          payouts_enabled,
         }),
+        charges_enabled,
+        payouts_enabled,
         ignored: false,
       };
     }

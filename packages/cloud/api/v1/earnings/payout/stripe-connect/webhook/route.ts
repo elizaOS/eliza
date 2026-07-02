@@ -108,6 +108,15 @@ async function handlePOST(c: AppContext): Promise<Response> {
 
   await stripeConnectAccountsRepository.updateByAccountId(outcome.accountId, {
     ...(outcome.status ? { status: outcome.status } : {}),
+    // Persist the capability flags too — the payout transfer gate checks
+    // `payouts_enabled` directly, so without this the column stays false and
+    // every payout is rejected even for a fully-onboarded account (#11172).
+    ...(outcome.charges_enabled !== undefined
+      ? { charges_enabled: outcome.charges_enabled }
+      : {}),
+    ...(outcome.payouts_enabled !== undefined
+      ? { payouts_enabled: outcome.payouts_enabled }
+      : {}),
   });
   logger.info("[StripeConnect] webhook applied", {
     type: event.type,
