@@ -2,11 +2,18 @@
  * Launcher — iOS-like app/view launcher.
  *
  * Renders every available view as a names-only icon on swipeable pages. Tap
- * launches; long-press enters edit mode where icons can be reordered (drag)
- * and — for manageable (dynamic developer) views — edited or deleted. Page
- * order is persisted via the pure `launcher-layout` model. Fully token-themed
- * (light/dark + overrides) and renders no background of its own — the shared
- * root `AppBackground` shows through, matching the home screen.
+ * launches; in the free-form (non-curated) mode a long-press enters edit mode
+ * where icons can be reordered (drag) and — for manageable (dynamic developer)
+ * views — edited or deleted, with the order persisted via the pure
+ * `launcher-layout` model. (The production mount via LauncherSurface always
+ * passes `pageGroups`, so it renders read-only curated pages; edit mode is
+ * exercised by the standalone stories / launcher-e2e.)
+ *
+ * The springboard renders no background of its own — the shared root
+ * `AppBackground` shows through, matching the home screen. Tiles, labels, the
+ * skeleton, and the pager chevrons deliberately use a FIXED white-on-wallpaper
+ * treatment (theme-independent, kept legible by a text-shadow/scrim over the
+ * ambient field) rather than light/dark theme tokens.
  */
 
 import { Pencil, Trash2 } from "lucide-react";
@@ -288,15 +295,6 @@ export function Launcher({
     setLayout((prev) => reconcileLayout(prev, availableIds));
   }, [availableIds]);
 
-  // Keep the LOCAL active page index in range when pages shrink (views removed).
-  // When controlled, the store clamps the page, so this only guards the
-  // standalone path.
-  useEffect(() => {
-    if (pageControlled) return;
-    const pageCount = layout.pages.length > 0 ? layout.pages.length : 1;
-    setLocalPage((p) => (p > pageCount - 1 ? pageCount - 1 : p));
-  }, [layout.pages.length, pageControlled]);
-
   const commit = useCallback((next: LauncherLayout) => {
     setLayout(next);
     writeLauncherLayout(next);
@@ -344,6 +342,16 @@ export function Launcher({
     const filtered = sourcePages.filter((page) => page.length > 0);
     return filtered.length > 0 ? filtered : [[]];
   }, [curatedPages, layout.pages]);
+
+  // Keep the LOCAL active page index in range when the RENDERED page count
+  // shrinks. Must clamp against `pages` (the actually-rendered list — curated in
+  // grouped mode, free-form otherwise), not `layout.pages`, which in grouped
+  // mode is a different, unrendered list. `pages` is always non-empty. When
+  // controlled, the store owns the clamp, so this only guards the standalone path.
+  useEffect(() => {
+    if (pageControlled) return;
+    setLocalPage((p) => Math.min(p, pages.length - 1));
+  }, [pages.length, pageControlled]);
 
   // Report the page count up so an outer surface (the rail) can size the single
   // unified page indicator. Fires only on an actual count change.

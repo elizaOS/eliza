@@ -187,15 +187,15 @@ function CategoryFilterBar({
   onSelect: (next: CategoryFilter) => void;
 }): ReactNode {
   return (
-    /* Flat — no divider line; rows separate by whitespace. These are filter
-       TOGGLES (they narrow the list below), not WAI-ARIA tabs — role="group" +
-       aria-pressed buttons, matching the adjacent sort toggle. A tablist would
-       promise roving-tabindex + arrow-key navigation this bar doesn't implement. */
+    // Flat — no divider line; rows separate by whitespace. These are filter
+    // TOGGLES (they narrow the list below), not WAI-ARIA tabs — role="group" +
+    // aria-pressed buttons, matching the adjacent sort toggle. A tablist would
+    // promise roving-tabindex + arrow-key nav this bar doesn't implement.
+    // `shrink-0`: this is a horizontal scroll container (overflow-x-auto → auto
+    // min-height 0), so inside the flex-column shell it would otherwise be
+    // crushed vertically when the list overflows; the list `ul` is the scroller.
+    // biome-ignore lint/a11y/useSemanticElements: role="group" is correct for a labelled toolbar of filter toggles; <fieldset> is for grouped form fields, not a chip bar.
     <div
-      // `shrink-0`: this is a horizontal scroll container (overflow-x-auto → auto
-      // min-height 0), so inside the flex-column shell it would otherwise be
-      // crushed vertically when the notification list overflows. The list `ul` is
-      // the intended flex scroller; the chip bar keeps its intrinsic height.
       className="flex shrink-0 items-center gap-1 overflow-x-auto px-2 py-1.5"
       role="group"
       aria-label="Filter notifications by category"
@@ -656,9 +656,19 @@ export function NotificationCenter({
           )}
         >
           {panelBody}
-          <div className="flex shrink-0 justify-center py-1.5">
-            <div className="h-1 w-9 rounded-full bg-muted/40" aria-hidden />
-          </div>
+          {/* The bottom grabber is a real dismiss control, not a fake drag
+              affordance: tapping it (or the pill) closes the sheet. Binding a
+              pull-up gesture to the whole sheet would fight the notification
+              list's own vertical scroll, so this is a plain click target. */}
+          <button
+            type="button"
+            aria-label="Dismiss notifications"
+            data-testid="notification-sheet-grabber"
+            onClick={() => onOpenChange?.(false)}
+            className="flex shrink-0 justify-center py-2"
+          >
+            <span className="h-1 w-9 rounded-full bg-muted/40" aria-hidden />
+          </button>
         </div>
       </>,
     );
