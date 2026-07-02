@@ -57,6 +57,10 @@ import {
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import {
+  clearChatDraft,
+  useChatComposerDraftPersistence,
+} from "../../state/ChatComposerContext.hooks";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -935,6 +939,7 @@ const ThreadLine = React.memo(function ThreadLine({
   onCopy,
   onSpeak,
   onEdit,
+  onRetry,
   speaking,
   onOpenSettings,
   turnStatus,
@@ -951,6 +956,10 @@ const ThreadLine = React.memo(function ThreadLine({
   onSpeak?: (id: string, text: string) => void;
   /** Save an edited user message and resend it (reveal-row Edit). Stable id. */
   onEdit?: (text: string) => void;
+  /** Retry a failed/interrupted assistant turn — re-sends the preceding user
+   *  turn. Receives the assistant turn's id so the parent can walk back to the
+   *  user turn that produced it. Stable identity. */
+  onRetry?: (assistantId: string) => void;
   /** True while assistant voice output is playing — drives Play↔Stop. */
   speaking?: boolean;
   /** Jump to Settings from the no_provider gate. Stable identity. */
@@ -1046,6 +1055,17 @@ const ThreadLine = React.memo(function ThreadLine({
   const canEdit =
     isUser && !!onEdit && trimmed.length > 0 && !message.id.startsWith("temp-");
   const hasActions = canRowCopy || canSpeak || canEdit;
+
+  // A recoverable assistant failure (the agent was rate-limited or the provider
+  // stalled / the stream was interrupted) gets a one-tap Retry that re-sends the
+  // preceding user turn — mirroring ChatView's MessageContent gate. `no_provider`
+  // (its own Settings gate above) and `insufficient_credits` are excluded: a
+  // retry can't fix those.
+  const canRetry =
+    isAssistant &&
+    !!onRetry &&
+    (message.failureKind === "rate_limited" ||
+      message.failureKind === "provider_issue");
 
   const toggleRevealed = React.useCallback(() => {
     if (!hasActions || editing) return;
@@ -1351,6 +1371,24 @@ const ThreadLine = React.memo(function ThreadLine({
             ) : null}
           </div>
         ) : null}
+        {/* Retry a recoverable failure by re-sending the preceding user turn.
+            Always visible on the failed turn (not gated behind the reveal row)
+            so a stalled turn isn't a dead end the user has to retype. */}
+        {canRetry ? (
+          <button
+            type="button"
+            data-testid="thread-line-retry"
+            aria-label="Retry"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRetry?.(message.id);
+            }}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            Retry
+          </button>
+        ) : null}
       </div>
     </motion.div>
   );
@@ -1525,6 +1563,32 @@ export function ContinuousChatOverlay({
     [send],
   );
 
+  // Retry a failed/interrupted assistant turn by re-sending its preceding user
+  // turn — the SAME send() path the edit-resend action uses. (The ShellController
+  // exposes no handleChatRetry, so the overlay owns the walk-back locally; a
+  // truncating in-place retry would require a controller method we don't have.)
+  // Reads the live message list through a ref so the callback keeps a stable
+  // identity and the memoized ThreadLine isn't re-rendered on every tick.
+  const messagesRef = React.useRef(messages);
+  messagesRef.current = messages;
+  const handleRetry = React.useCallback(
+    (assistantId: string) => {
+      const list = messagesRef.current;
+      const assistantIdx = list.findIndex(
+        (m) => m.id === assistantId && m.role === "assistant",
+      );
+      if (assistantIdx < 0) return;
+      for (let i = assistantIdx - 1; i >= 0; i -= 1) {
+        if (list[i].role === "user") {
+          const retryText = list[i].content.trim();
+          if (retryText) send(retryText);
+          return;
+        }
+      }
+    },
+    [send],
+  );
+
   const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
 
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
@@ -1532,6 +1596,27 @@ export function ContinuousChatOverlay({
   const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
+  // Per-conversation composer draft persistence — the SAME localStorage-backed
+  // store the desktop ChatView surface uses (readChatDraft/writeChatDraft via
+  // useChatComposerDraftPersistence), keyed by the active conversation id. This
+  // closes the platform gap where only ChatView restored a draft: on the ambient
+  // overlay (mobile/web/default-desktop) a draft typed here now survives a reload
+  // / navigation and follows the conversation across surfaces. Restore fires on
+  // mount and on a conversation-id change; the persist is debounced. It coexists
+  // with the prefill (CHAT_PREFILL / assistant-launch) and dictation paths: those
+  // setDraft() edits are persisted like any keystroke, and restore only fires on a
+  // conversation-id change — so a just-prefilled composer is never clobbered. The
+  // successful-send path clears it (below).
+  const activeConversationId = conversationNav.activeId;
+  useChatComposerDraftPersistence({
+    activeConversationId,
+    chatInput: draft,
+    setChatInput: setDraft,
+  });
+  // Live handle to the active conversation id for the send path's draft clear,
+  // so submitText / pickSuggestion keep their stable identities.
+  const activeConversationIdRef = React.useRef(activeConversationId);
+  activeConversationIdRef.current = activeConversationId;
   // The active view can take over the composer: override the placeholder and
   // receive the live draft (e.g. Help uses the chat as its search box).
   const viewChatBinding = useViewChatBinding();
@@ -1817,6 +1902,7 @@ export function ContinuousChatOverlay({
           onCopy={handleCopyMessage}
           onSpeak={handleSpeakMessage}
           onEdit={handleEditResend}
+          onRetry={handleRetry}
           speaking={speaking && playingMessageId === m.id}
           onOpenSettings={openSettings}
           turnStatus={isInFlight ? turnStatus : undefined}
@@ -1830,6 +1916,7 @@ export function ContinuousChatOverlay({
       handleCopyMessage,
       handleSpeakMessage,
       handleEditResend,
+      handleRetry,
       speaking,
       playingMessageId,
       openSettings,
@@ -1966,6 +2053,10 @@ export function ContinuousChatOverlay({
       // reaches the server. The composer controls are disabled too — this
       // guards the event-driven entry points (prefill, dictation, slash).
       if (firstRunOpen) return;
+      // Successful submit: drop the persisted draft for this conversation NOW
+      // (not just via the debounced persist of the now-empty draft) so a reload
+      // in the debounce window can't restore an already-sent draft.
+      clearChatDraft(activeConversationIdRef.current);
       // A bound view (e.g. the coding cockpit when a session is focused) can
       // claim the send to drive its OWN target instead of the host agent. If it
       // consumes the text, clear the composer and stop — do not fall through to
@@ -2017,6 +2108,7 @@ export function ContinuousChatOverlay({
     (text: string) => {
       if (!canSend) return;
       setDraft("");
+      clearChatDraft(activeConversationIdRef.current);
       send(text);
       // Open to HALF (conversation above the keyboard), not a full-screen jump.
       setFreeH(null);
