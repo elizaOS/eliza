@@ -769,7 +769,16 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 function makeFusedEmbeddingHandler(): EmbeddingHandler {
 	return async (_runtime, params) => {
 		const text = extractEmbeddingText(params);
-		const hardware = await probeHardware().catch(() => undefined);
+		// A failed probe degrades to the conservative embedding preset. Log WHY
+		// so a broken probe on an accelerated box is visible, not silent (#10727).
+		const hardware = await probeHardware().catch((error) => {
+			logger.warn(
+				`[ensureLocalInferenceHandler] hardware probe failed; embedding preset falls back to the conservative default: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			return undefined;
+		});
 		const cfg = resolveDesktopEmbeddingConfig(hardware);
 		const fused = await getFusedEmbeddingHandle(cfg);
 		if (!fused) {

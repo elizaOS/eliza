@@ -40,6 +40,7 @@ export {
 	type ImageGenBackendChoice,
 	type ImageGenBackendId,
 	type ImageGenRuntimeProfile,
+	imageGenGpuVendorFromProbeBackend,
 	resolveDefaultImageGenModel,
 	selectImageGenBackends,
 	TIER_TO_DEFAULT_IMAGE_MODEL,

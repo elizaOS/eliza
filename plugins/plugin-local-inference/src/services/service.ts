@@ -29,7 +29,9 @@ import { probeHardware } from "./hardware";
 import {
 	createImageGenCapabilityRegistration,
 	type ImageGenBackend,
+	imageGenGpuVendorFromProbeBackend,
 	type ImageGenLoadArgs,
+	type ImageGenRuntimeProfile,
 	loadAospImageGenBackend,
 	loadCoreMlImageGenBackend,
 	loadMfluxImageGenBackend,
@@ -588,6 +590,28 @@ export class LocalInferenceService {
 		this.imageGenCapabilityRegistered = true;
 	}
 
+	/**
+	 * Resolve the image-gen GPU vendor from the hardware probe. Returns
+	 * `undefined` (keep the platform default) when the probe fails or reports no
+	 * accelerated GPU — never guesses, and never crashes image-gen on a probe
+	 * error (the failure reason is logged, not swallowed silently — #10727).
+	 */
+	private async detectImageGenGpuVendor(): Promise<
+		ImageGenRuntimeProfile["gpu"]
+	> {
+		try {
+			const probe = await probeHardware();
+			return imageGenGpuVendorFromProbeBackend(probe.gpu?.backend);
+		} catch (error) {
+			logger.warn(
+				`[LocalInferenceService] image-gen GPU probe failed; using platform default accelerator order: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			return undefined;
+		}
+	}
+
 	private async loadImageGenBackend(
 		modelKey: string,
 	): Promise<ImageGenBackend> {
@@ -595,7 +619,11 @@ export class LocalInferenceService {
 		const profile = {
 			platform: process.platform,
 			arch: process.arch,
-			gpu: undefined,
+			// Thread the real host GPU vendor the probe knows (NVIDIA via
+			// nvidia-smi, Apple Silicon via metal) so an NVIDIA Linux/Windows box
+			// reaches the CUDA/TensorRT image-gen path instead of silently
+			// running sd-cpp on CPU. This field was hardcoded `undefined` (#10727).
+			gpu: await this.detectImageGenGpuVendor(),
 			requiredAccelerator: parseImageGenRequiredAccelerator(
 				process.env.ELIZA_IMAGEGEN_ACCELERATOR,
 			),
@@ -603,7 +631,7 @@ export class LocalInferenceService {
 			isAndroid:
 				process.env.ELIZA_PLATFORM === "android" ||
 				process.env.ELIZA_LOCAL_LLAMA === "1",
-		} as const;
+		} satisfies ImageGenRuntimeProfile;
 		const errors: string[] = [];
 		for (const choice of selectImageGenBackends(profile)) {
 			const args = { ...loadArgs, accelerator: choice.accelerator };

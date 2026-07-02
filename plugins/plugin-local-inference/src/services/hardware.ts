@@ -1,13 +1,13 @@
 /**
  * Hardware probe for local inference sizing.
  *
- * Uses `capacitor-llama` when available to read GPU backend + VRAM. Falls back
- * to Node's `os` module when the binding isn't installed — we don't require
- * the plugin to be loaded for the probe endpoint to return useful data.
- *
- * Dynamic import is intentional: the binding pulls a native prebuilt that we
- * don't want eagerly required at module-load time (breaks CI environments
- * without the trusted-dependency flag).
+ * GPU backend + VRAM come from cheap, pre-load host queries: `nvidia-smi` for
+ * NVIDIA (`backend: "cuda"`) and Apple-Silicon detection (`backend: "metal"`,
+ * unified memory). AMD/Intel are deliberately left `null` at probe time — no
+ * cheap pre-load VRAM query exists for them, and guessing `vulkan` here risks a
+ * hard GPU-open throw on a box whose Vulkan driver is unusable; the fused ABI
+ * surfaces real VRAM after model load instead. RAM/CPU come from Node's `os`
+ * module, so the probe endpoint returns useful data even without any GPU tool.
  */
 
 import { execFileSync } from "node:child_process";
@@ -382,12 +382,13 @@ export async function probeHardware(): Promise<HardwareProbe> {
  * Map a hardware probe onto the Eliza-1 device-capability snapshot used by
  * the manifest validator and the bundle downloader.
  *
- * Backends: `cpu` is always present (the floor). A detected GPU backend is
- * added when `capacitor-llama` reports one (`metal` on Apple Silicon, `cuda`
- * on NVIDIA, `vulkan` on cross-vendor Linux/Android). We do not synthesize
- * `rocm` from the probe — `capacitor-llama` reports AMD as `vulkan` on the
- * builds we ship, and a bundle that only verified ROCm but not Vulkan is
- * legitimately not installable here.
+ * Backends: `cpu` is always present (the floor). The GPU backend the probe
+ * reports is prepended — `metal` on Apple Silicon, `cuda` on NVIDIA. `vulkan`
+ * is handled here too, but `probeHardware` does not yet emit it for AMD/Intel
+ * (left `null` at probe time — see the module header), so an AMD/Intel box
+ * currently advertises `cpu`-only caps until Vulkan detection lands (#10727).
+ * We do not synthesize `rocm` from the probe: a bundle that verified ROCm but
+ * not Vulkan is legitimately not installable on the builds we ship.
  *
  * `ramMb` is total system RAM. On Apple Silicon that is also the GPU's
  * working memory; on discrete-GPU boxes the recommendation engine layers

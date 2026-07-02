@@ -107,6 +107,36 @@ export interface ImageGenBackendChoice {
 		| "tensorrt";
 }
 
+/**
+ * Map a hardware-probe GPU backend onto the image-gen profile's GPU vendor.
+ *
+ * The probe (`probeHardware` in ../hardware.ts) reliably detects NVIDIA
+ * (`nvidia-smi` → `"cuda"`) and Apple Silicon (`"metal"`); AMD/Intel are left
+ * `null` at probe time (no cheap pre-load VRAM query — the fused ABI surfaces
+ * real VRAM only after model load). Threading the vendor the probe DOES know
+ * lets an NVIDIA Linux/Windows box reach the CUDA/TensorRT image-gen path
+ * instead of silently running sd-cpp on CPU (#10727 — the profile used to
+ * hardcode `gpu: undefined`). A `null`/unknown backend maps to `undefined`, so
+ * the selector keeps its platform default (macOS still gets mflux/Metal; an
+ * AMD/Intel box stays on CPU until the probe can report Vulkan for it).
+ */
+export function imageGenGpuVendorFromProbeBackend(
+	backend: "cuda" | "metal" | "vulkan" | null | undefined,
+): ImageGenRuntimeProfile["gpu"] {
+	switch (backend) {
+		case "cuda":
+			return "nvidia";
+		case "vulkan":
+			// The selector routes "amd" and "intel" identically to the Vulkan
+			// path; "amd" is the representative Vulkan vendor here.
+			return "amd";
+		case "metal":
+			return "apple";
+		default:
+			return undefined;
+	}
+}
+
 export function selectImageGenBackends(
 	profile: ImageGenRuntimeProfile,
 ): readonly ImageGenBackendChoice[] {

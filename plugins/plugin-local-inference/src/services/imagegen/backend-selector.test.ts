@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	imageGenGpuVendorFromProbeBackend,
 	type ImageGenRuntimeProfile,
 	resolveDefaultImageGenModel,
 	selectImageGenBackends,
@@ -184,5 +185,44 @@ describe("resolveDefaultImageGenModel", () => {
 
 	it("returns null for an unknown key", () => {
 		expect(resolveDefaultImageGenModel("does-not-exist")).toBeNull();
+	});
+});
+
+describe("imageGenGpuVendorFromProbeBackend (#10727 silent-CPU-fallback fix)", () => {
+	it("maps the probe's GPU backend to the image-gen vendor", () => {
+		expect(imageGenGpuVendorFromProbeBackend("cuda")).toBe("nvidia");
+		expect(imageGenGpuVendorFromProbeBackend("metal")).toBe("apple");
+		expect(imageGenGpuVendorFromProbeBackend("vulkan")).toBe("amd");
+	});
+
+	it("returns undefined (platform default) for null / unknown backends", () => {
+		expect(imageGenGpuVendorFromProbeBackend(null)).toBeUndefined();
+		expect(imageGenGpuVendorFromProbeBackend(undefined)).toBeUndefined();
+	});
+
+	it("threading the probe's NVIDIA signal reaches CUDA instead of silent CPU (the real caller path)", () => {
+		// Regression guard for the bug: service.ts hardcoded `gpu: undefined`, so
+		// selectImageGenBackends fell through to CPU on every Linux/Windows box —
+		// even NVIDIA, whose backend the probe detects via nvidia-smi. Drive the
+		// SAME mapper the real caller now uses, not a synthetic `gpu:"nvidia"`.
+		const gpu = imageGenGpuVendorFromProbeBackend("cuda");
+		const linux = selectImageGenBackends(
+			profile({ platform: "linux", gpu, sdCpp: { cudaCapable: true } }),
+		);
+		expect(linux[0]).toEqual({ backendId: "sd-cpp", accelerator: "cuda" });
+		expect(linux.some((c) => c.accelerator === "cuda")).toBe(true);
+
+		const win = selectImageGenBackends(profile({ platform: "win32", gpu }));
+		expect(win[0]).toEqual({ backendId: "tensorrt", accelerator: "tensorrt" });
+	});
+
+	it("keeps AMD/Intel (probe reports null today) on the platform default", () => {
+		// The probe can't yet report Vulkan for AMD/Intel, so the vendor stays
+		// undefined and the selector keeps CPU — no false GPU claim that would
+		// hard-throw at open time.
+		const gpu = imageGenGpuVendorFromProbeBackend(null);
+		expect(selectImageGenBackends(profile({ platform: "linux", gpu }))).toEqual(
+			[{ backendId: "sd-cpp", accelerator: "cpu" }],
+		);
 	});
 });
