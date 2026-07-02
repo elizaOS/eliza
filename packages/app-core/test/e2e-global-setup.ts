@@ -1,9 +1,9 @@
 /**
  * Vitest globalSetup for E2E tests.
  *
- * Runs `tsdown` before any E2E test file is loaded so that `dist/` is
- * always present — even when the test suite is invoked without a prior
- * manual build (e.g. `bun run test` in CI).
+ * Builds `@elizaos/app-core` before any E2E test file is loaded so that
+ * `dist/` is always present — even when the test suite is invoked without a
+ * prior manual build (e.g. `bun run test` in CI).
  */
 import { execSync } from "node:child_process";
 import fs from "node:fs";
@@ -14,8 +14,6 @@ const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-// tsdown.config.ts lives at the repo root, not in app-core
-const repoRoot = path.resolve(packageRoot, "..", "..", "..");
 
 export function setup(): void {
   const distIndex = path.join(packageRoot, "dist", "index.js");
@@ -26,6 +24,8 @@ export function setup(): void {
   }
 
   // eslint-disable-next-line no-console
-  console.log("[e2e-global-setup] dist/ not found — running tsdown…");
-  execSync("bunx tsdown", { cwd: repoRoot, stdio: "inherit" });
+  console.log(
+    "[e2e-global-setup] dist/ not found — building @elizaos/app-core…",
+  );
+  execSync("bun run build", { cwd: packageRoot, stdio: "inherit" });
 }
