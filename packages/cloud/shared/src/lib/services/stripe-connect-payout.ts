@@ -155,6 +155,15 @@ export interface ConnectWebhookOutcome {
   payoutStatus?: ConnectPayoutStatus;
   /** Account capability refresh, for `account.updated`. */
   status?: StripeConnectStatus;
+  /**
+   * Raw capability booleans from `account.updated`. Persisted alongside `status`
+   * so the DB column reflects reality: the payout transfer gate reads
+   * `payouts_enabled` directly, and it defaults false — deriving only `status`
+   * from these and dropping the booleans left `payouts_enabled` false forever,
+   * rejecting every fiat payout (#11172).
+   */
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
   /** True when the event type isn't one we act on. */
   ignored: boolean;
 }
@@ -175,12 +184,16 @@ export function mapConnectWebhookEvent(event: {
       return { accountId: event.account, payoutStatus: "paid", ignored: false };
     case "account.updated": {
       const obj = event.data?.object ?? {};
+      const chargesEnabled = obj.charges_enabled === true;
+      const payoutsEnabled = obj.payouts_enabled === true;
       return {
         accountId: event.account,
         status: connectStatusFromCapabilities({
-          charges_enabled: obj.charges_enabled === true,
-          payouts_enabled: obj.payouts_enabled === true,
+          charges_enabled: chargesEnabled,
+          payouts_enabled: payoutsEnabled,
         }),
+        chargesEnabled,
+        payoutsEnabled,
         ignored: false,
       };
     }

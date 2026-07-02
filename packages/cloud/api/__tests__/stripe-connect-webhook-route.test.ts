@@ -180,9 +180,14 @@ describe("Stripe Connect payout webhook route", () => {
     );
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ success: true });
-    // account.updated with charges+payouts enabled => "active"
+    // account.updated with charges+payouts enabled => "active", AND the raw
+    // capability booleans are persisted (#11172): the payout transfer gate reads
+    // payouts_enabled directly (defaults false), so storing status alone left
+    // every account non-payout-ready forever. The column must be written true.
     expect(updateByAccountId).toHaveBeenCalledWith("acct_creator_1", {
       status: "active",
+      charges_enabled: true,
+      payouts_enabled: true,
     });
     expect(emitAudit).not.toHaveBeenCalled();
   });
