@@ -1,36 +1,33 @@
 /**
  * Authenticated-query gate for the API-keys cloud domain.
  *
- * The cloud-frontend version read auth from its own `useSessionAuth` +
- * `useAuthenticatedQueryGate`. In the app the canonical auth context is the
- * Steward runtime context exposed by the cloud shell
- * ({@link LocalStewardAuthContext}); this gate adapts it to the same
- * `{ enabled, userId }` shape the ported react-query hooks expect, so the keys
- * list only fetches once a Steward session is present and the query key is
- * partitioned per user.
+ * Resolves the session through the console-wide `useSessionAuth` (Steward SDK
+ * context OR the persisted localStorage JWT) — NOT the raw Steward SDK context:
+ * that context lives in MemoryStorage and reads empty on every full page load,
+ * so gating on it left the keys list permanently `enabled: false` for a
+ * genuinely signed-in user (same class as the admin-gate / MCPs / analytics
+ * fixes). The query key stays partitioned per user so a sign-out / account
+ * switch can't surface the previous user's cached keys.
  */
 
-import { useContext } from "react";
-import { LocalStewardAuthContext } from "../shell/StewardProvider";
+import { useSessionAuth } from "../public-pages/lib/use-session-auth";
 
 export interface AuthenticatedQueryGate {
-  /** Whether the gated query may run (a Steward session has resolved). */
+  /** Whether the gated query may run (a session has resolved). */
   enabled: boolean;
   /** The authenticated user id, used to partition cached query data. */
   userId: string | null;
 }
 
 /**
- * Read the current Steward auth session and derive the query gate. Returns
+ * Read the current session and derive the query gate. Returns
  * `{ enabled: false }` until the session resolves to an authenticated user.
  */
 export function useAuthenticatedQueryGate(): AuthenticatedQueryGate {
-  const auth = useContext(LocalStewardAuthContext);
-  const ready = auth ? !auth.isLoading : false;
-  const authenticated = auth?.isAuthenticated ?? false;
+  const session = useSessionAuth();
   return {
-    enabled: ready && authenticated,
-    userId: auth?.user?.id ?? null,
+    enabled: session.ready && session.authenticated,
+    userId: session.user?.id ?? null,
   };
 }
 
