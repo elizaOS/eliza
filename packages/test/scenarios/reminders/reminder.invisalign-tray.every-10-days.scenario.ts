@@ -22,13 +22,24 @@ export default scenario({
       kind: "message",
       name: "invisalign tray preview",
       text: "Remind me to swap Invisalign trays every 10 days.",
-      responseIncludesAny: ["invisalign", "tray", "10"],
+      // Two-phase commit (#9310): the old keywords ("invisalign"/"tray"/"10")
+      // were echoes of this turn's own text. The preview must not claim
+      // persistence before the owner confirms; definitionCountDelta stays
+      // load-bearing.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose a recurring every-10-day tray-swap reminder and ask the owner to confirm before saving. Claiming it is already saved, or a bare acknowledgement with no concrete cadence, fails.",
+      },
     },
     {
       kind: "message",
       name: "invisalign tray confirm",
       text: "Yes, save that recurring reminder.",
-      responseIncludesAny: ["saved", "invisalign", "tray"],
+      // Save-confirmation semantics in words the prompt never used; the real
+      // outcome is the persisted definition asserted in finalChecks.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [
