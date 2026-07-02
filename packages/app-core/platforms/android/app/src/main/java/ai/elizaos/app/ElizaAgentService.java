@@ -997,6 +997,24 @@ public class ElizaAgentService extends Service {
         return extractedFile;
     }
 
+    /**
+     * Resolve a bundled native lib across BOTH packaging channels (#11277).
+     * The legacy assets contract stages libs under assets/agent/{abi}/ (the
+     * {@code abiDir} passed in, populated only when the build set
+     * ELIZA_AOSP_LLAMA_ASSET_DIR*); current builds ship them as jniLibs, which
+     * the installer extracts into {@link #nativeLibraryDir()}. Prefer the
+     * extracted assets copy when present, else fall back to the jniLibs copy —
+     * so a jniLibs-only APK still resolves the fused inference lib instead of
+     * booting with no inference mode at all.
+     */
+    private File resolveBundledNativeLib(File abiDir, String soname) {
+        File assetsCopy = new File(abiDir, soname);
+        if (assetsCopy.isFile() && assetsCopy.length() > 0) {
+            return assetsCopy;
+        }
+        return new File(nativeLibraryDir(), soname);
+    }
+
     private boolean linkPackagedRuntimeLibrary(
         File abiDir,
         String soname,
@@ -1465,10 +1483,25 @@ public class ElizaAgentService extends Service {
             // activates on any APK that predates the fused-lib cutover (where
             // only libllama.so + shim were staged). Once libllama.so stops
             // being built the fused lib alone trips the gate.
-            File abiFusedInference = new File(abiDir, "libelizainference.so");
-            File abiLibllama = new File(abiDir, "libllama.so");
-            File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
-            File abiGgmlVulkan = new File(abiDir, "libggml-vulkan.so");
+            //
+            // The libs ship through TWO packaging channels and the gate must
+            // accept either (#11277): the legacy assets contract stages them
+            // under assets/agent/{abi}/ (extracted into abiDir above, only
+            // populated when the build host set ELIZA_AOSP_LLAMA_ASSET_DIR*),
+            // while current builds ship them as jniLibs, extracted by the
+            // installer into nativeLibraryDir() — the same dir LD_LIBRARY_PATH
+            // and the voice host (ensureBionicVoiceHost) already use. Gating
+            // on abiDir alone left jniLibs-only APKs with NO inference mode at
+            // all: no bionic delegation, no ELIZA_LOCAL_LLAMA — the agent booted
+            // with only the (unattachable) device bridge and every chat turn
+            // failed with DEVICE_DISCONNECTED.
+            File abiFusedInference =
+                resolveBundledNativeLib(abiDir, "libelizainference.so");
+            File abiLibllama = resolveBundledNativeLib(abiDir, "libllama.so");
+            File abiLlamaShim =
+                resolveBundledNativeLib(abiDir, "libeliza-llama-shim.so");
+            File abiGgmlVulkan =
+                resolveBundledNativeLib(abiDir, "libggml-vulkan.so");
             boolean fusedInferenceBundled = abiFusedInference.isFile();
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;

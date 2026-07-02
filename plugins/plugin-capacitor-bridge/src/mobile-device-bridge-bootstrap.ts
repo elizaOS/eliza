@@ -336,6 +336,7 @@ export interface MobileDeviceBridgeStatus {
 class MobileDeviceBridge {
 	private wss: WssInstance | null = null;
 	private readonly devices = new Map<string, ConnectedDevice>();
+	private readonly attachListeners = new Set<() => void>();
 	private readonly pendingLoads = new Map<string, Pending<void>>();
 	private readonly pendingUnloads = new Map<string, Pending<void>>();
 	private readonly pendingGenerates = new Map<string, Pending<string>>();
@@ -468,6 +469,7 @@ class MobileDeviceBridge {
 				logger.info(
 					`[mobile-device-bridge] Device connected: ${registeredDeviceId} (${msg.payload.capabilities.platform})`,
 				);
+				this.notifyDeviceAttached();
 				return;
 			}
 
@@ -571,6 +573,22 @@ class MobileDeviceBridge {
 			} else {
 				pending.reject(new Error(msg.error));
 			}
+		}
+	}
+
+	/**
+	 * Subscribe to real device-bridge attachment. Model handlers are only
+	 * registered once a bridge that can actually serve them exists, so the
+	 * bootstrap defers registration through this hook when neither the bionic
+	 * host nor a connected device is available at boot.
+	 */
+	onDeviceAttached(listener: () => void): void {
+		this.attachListeners.add(listener);
+	}
+
+	private notifyDeviceAttached(): void {
+		for (const listener of this.attachListeners) {
+			listener();
 		}
 	}
 
@@ -1782,14 +1800,18 @@ function makeBionicImageDescriptionHandler() {
 	};
 }
 
-export async function ensureMobileDeviceBridgeInferenceHandlers(
+/**
+ * Register the capacitor-llama TEXT/embedding handlers on the runtime.
+ *
+ * Callers must ensure a serving path actually exists first (bionic host
+ * delegation, or an attached device bridge): registering these handlers
+ * while nothing can serve them makes the dead provider win `useModel`
+ * routing and every chat turn fails with DEVICE_DISCONNECTED (#11277).
+ */
+function registerMobileDeviceBridgeModels(
 	runtime: AgentRuntime,
-): Promise<boolean> {
-	logger.debug("[mobile-device-bridge] Bootstrap entered");
-	if (!SERVICE_ENABLED || process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
-		logger.debug("[mobile-device-bridge] Disabled or AOSP local llama active");
-		return false;
-	}
+	trigger: "bionic-host" | "device-bridge",
+): boolean {
 	if (registeredRuntimes.has(runtime)) {
 		logger.debug("[mobile-device-bridge] Handlers already registered");
 		return true;
@@ -1875,8 +1897,52 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 	}
 
 	logger.info(
-		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY}`,
+		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
 	);
 	registeredRuntimes.add(runtime);
 	return true;
+}
+
+export async function ensureMobileDeviceBridgeInferenceHandlers(
+	runtime: AgentRuntime,
+): Promise<boolean> {
+	logger.debug("[mobile-device-bridge] Bootstrap entered");
+	if (!SERVICE_ENABLED || process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
+		logger.debug("[mobile-device-bridge] Disabled or AOSP local llama active");
+		return false;
+	}
+	if (registeredRuntimes.has(runtime)) {
+		logger.debug("[mobile-device-bridge] Handlers already registered");
+		return true;
+	}
+
+	// Bionic-host delegation: the in-process GPU host serves TEXT/embed over
+	// the abstract UDS, so the handlers are live from boot.
+	if (bionicSocketName()) {
+		return registerMobileDeviceBridgeModels(runtime, "bionic-host");
+	}
+
+	// A device bridge is already attached (agent restart while the WebView
+	// stayed connected): the handlers can serve immediately.
+	if (mobileDeviceBridge.status().connected) {
+		return registerMobileDeviceBridgeModels(runtime, "device-bridge");
+	}
+
+	// Neither the bionic host nor a device bridge can serve a call right now.
+	// Do NOT register the handlers: a registered-but-dead capacitor-llama
+	// provider owns the TEXT slots, wins `useModel` routing, and turns every
+	// chat turn into "DEVICE_DISCONNECTED: no Capacitor llama device bridge
+	// attached" (#11277 — on Android the WebView-side llama-cpp-capacitor
+	// plugin is retired, so the WS bridge can never attach). Instead, defer
+	// registration until a device genuinely attaches; until then `useModel`
+	// fails loud with NoModelProviderConfiguredError, which the chat UI
+	// renders as an actionable "no provider configured" hint.
+	logger.warn(
+		"[mobile-device-bridge] No bionic host delegation and no device bridge attached — " +
+			`${PROVIDER} TEXT handlers stay unregistered until a device bridge connects`,
+	);
+	mobileDeviceBridge.onDeviceAttached(() => {
+		registerMobileDeviceBridgeModels(runtime, "device-bridge");
+	});
+	return false;
 }
