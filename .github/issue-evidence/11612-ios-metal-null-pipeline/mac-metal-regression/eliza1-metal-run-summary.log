@@ -1,5 +1,5 @@
 # system_info (MTL backend compiled in)
-0.00.675.048 I system_info: n_threads = 12 (n_threads_batch = 12) / 16 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | 
+0.00.675.048 I system_info: n_threads = 12 (n_threads_batch = 12) / 16 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 |
 
 # perf
 0.00.772.693 I common_perf_print:    sampling time =       3.27 ms

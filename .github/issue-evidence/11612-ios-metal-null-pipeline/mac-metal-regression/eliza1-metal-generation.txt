@@ -7,5 +7,3 @@ assistant
 
 The capital of France is **Paris**.
 > EOF by user
-
-

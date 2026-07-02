@@ -1,7 +1,7 @@
 -- Looking for dgemm_ - found
 -- Found BLAS: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework
 -- BLAS found, Libraries: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework
--- BLAS found, Includes: 
+-- BLAS found, Includes:
 -- Including BLAS backend
 -- Metal framework found
 -- Including METAL backend
