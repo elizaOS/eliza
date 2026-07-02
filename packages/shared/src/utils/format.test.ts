@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatByteSize, formatUptime, formatUsd } from "./format";
+import {
+  formatByteSize,
+  formatDurationMs,
+  formatUptime,
+  formatUsd,
+} from "./format";
 
 /**
  * Shared display formatters (uptime / byte size / USD). These render values in
@@ -34,6 +39,39 @@ describe("formatByteSize", () => {
     expect(formatByteSize(1024 ** 3)).toBe("1.0 GB");
     expect(formatByteSize(1024 ** 4)).toBe("1.0 TB");
     expect(formatByteSize(1536, { precision: 2 })).toBe("1.50 KB");
+  });
+});
+
+describe("formatDurationMs", () => {
+  it("renders compact units and handles invalid input", () => {
+    expect(formatDurationMs(undefined)).toBe("—");
+    expect(formatDurationMs(-1)).toBe("—");
+    expect(formatDurationMs(Number.NaN)).toBe("—");
+    expect(formatDurationMs(0)).toBe("0s");
+    expect(formatDurationMs(30_000)).toBe("30s");
+    expect(formatDurationMs(90_000)).toBe("2m");
+    expect(formatDurationMs(7_200_000)).toBe("2h");
+    expect(formatDurationMs(5_400_000)).toBe("1.5h");
+    expect(formatDurationMs(172_800_000)).toBe("2d");
+  });
+
+  it("rolls values that round up to a unit boundary into the next unit", () => {
+    // 59.5s rounds to 60 → must display as minutes, never "60s".
+    expect(formatDurationMs(59_500)).toBe("1m");
+    expect(formatDurationMs(59_400)).toBe("59s");
+    // 59.983m rounds to 60 → must display as hours, never "60m".
+    expect(formatDurationMs(3_599_000)).toBe("1h");
+    expect(formatDurationMs(3_540_000)).toBe("59m");
+    // 23.99h renders as 24.0 after toFixed(1) → must display as days, never "24h".
+    expect(formatDurationMs(86_399_000)).toBe("1d");
+    expect(formatDurationMs(85_000_000)).toBe("23.6h");
+  });
+
+  it("passes the rolled-over value to the translator", () => {
+    const t = (key: string, vars?: Record<string, string | number>) =>
+      `${key}:${vars?.value}`;
+    expect(formatDurationMs(59_500, { t })).toBe("format.duration.minutes:1");
+    expect(formatDurationMs(30_000, { t })).toBe("format.duration.seconds:30");
   });
 });
 

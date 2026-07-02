@@ -188,19 +188,25 @@ export function formatDurationMs(
 ): string {
   const { fallback = "—", t } = options;
   if (ms == null || !Number.isFinite(ms) || ms < 0) return fallback;
-  if (ms < 60_000) {
-    const value = Math.round(ms / 1000);
-    return t ? t("format.duration.seconds", { value }) : `${value}s`;
+  // Round within each unit FIRST, and only keep the unit when the rounded
+  // value stays below the next unit's threshold — otherwise values just
+  // under a boundary render as nonsense like "60s" / "60m" / "24h"
+  // (e.g. 59_500 ms must be "1m", not "60s").
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) {
+    return t ? t("format.duration.seconds", { value: seconds }) : `${seconds}s`;
   }
-  if (ms < 3_600_000) {
-    const value = Math.round(ms / 60_000);
-    return t ? t("format.duration.minutes", { value }) : `${value}m`;
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) {
+    return t ? t("format.duration.minutes", { value: minutes }) : `${minutes}m`;
   }
-  if (ms < 86_400_000) {
-    const hours = ms / 3_600_000;
-    const value =
-      hours === Math.floor(hours) ? hours : Number(hours.toFixed(1));
-    return t ? t("format.duration.hours", { value }) : `${value}h`;
+  const hours = ms / 3_600_000;
+  const hoursValue =
+    hours === Math.floor(hours) ? hours : Number(hours.toFixed(1));
+  if (hoursValue < 24) {
+    return t
+      ? t("format.duration.hours", { value: hoursValue })
+      : `${hoursValue}h`;
   }
   const days = ms / 86_400_000;
   const value = days === Math.floor(days) ? days : Number(days.toFixed(1));

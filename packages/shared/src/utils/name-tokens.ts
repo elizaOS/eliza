@@ -3,9 +3,12 @@
  * actual character name. Handles legacy persisted templates from first-run setup.
  */
 export function replaceNameTokens(text: string, name: string): string {
+  // Use a replacer function so `$`-sequences in the name (e.g. "Cash$$",
+  // "$&") are inserted literally instead of being interpreted as
+  // String.replace substitution patterns.
   return text
-    .replace(/\{\{name\}\}/g, name)
-    .replace(/\{\{agentName\}\}/g, name);
+    .replace(/\{\{name\}\}/g, () => name)
+    .replace(/\{\{agentName\}\}/g, () => name);
 }
 
 /**
@@ -30,6 +33,12 @@ export function tokenizeNameOccurrences(text: string, name: string): string {
   const trimmed = name.trim();
   if (trimmed.length < 2) return text;
   const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`\\b${escaped}\\b`, "g");
+  // `\b` only understands ASCII `[A-Za-z0-9_]`, so non-ASCII names
+  // (e.g. "小美", "Émile") would never match — use Unicode-aware
+  // letter/number lookarounds as the whole-word boundary instead.
+  const pattern = new RegExp(
+    `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
+    "gu",
+  );
   return text.replace(pattern, "{{name}}");
 }
