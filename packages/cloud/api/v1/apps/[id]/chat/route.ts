@@ -46,6 +46,7 @@ import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { reservationOutputTokens } from "./chat-reservation";
+import { reconcileNonStreamProcessingError } from "./non-stream-refund";
 import { reconcileStreamProcessingError } from "./stream-refund";
 
 const ROUTE_MAX_DURATION = 800;
@@ -659,73 +660,99 @@ async function handlePOST(
       );
     }
 
-    // Non-streaming response
-    const responseData = (await providerResponse.json()) as {
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
-      choices?: Array<{ message?: { content?: string } }>;
-    };
+    // Non-streaming response. Everything below runs AFTER the upfront hold was
+    // debited, so a throw here — a truncated body failing providerResponse.json(),
+    // or calculateCost erroring — would strand the reserved hold (the streaming
+    // branch is covered by reconcileStreamProcessingError; this one was not,
+    // #11169). Full-refund on any failure BEFORE the settle completes; once
+    // reconcileCredits has settled, a later throw must NOT refund (the charge is
+    // real), mirroring the streaming branch's streamCompleted gating.
+    let reconciled = false;
+    try {
+      const responseData = (await providerResponse.json()) as {
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        choices?: Array<{ message?: { content?: string } }>;
+      };
 
-    // Calculate actual cost - use fallback estimation if provider doesn't return usage
-    let actualInputTokens = responseData.usage?.prompt_tokens || 0;
-    let actualOutputTokens = responseData.usage?.completion_tokens || 0;
+      // Calculate actual cost - use fallback estimation if provider doesn't return usage
+      let actualInputTokens = responseData.usage?.prompt_tokens || 0;
+      let actualOutputTokens = responseData.usage?.completion_tokens || 0;
 
-    // Fallback: estimate tokens if usage not provided (matching streaming behavior)
-    if (actualInputTokens === 0 && actualOutputTokens === 0) {
-      const outputContent = responseData.choices?.[0]?.message?.content || "";
-      actualInputTokens = estimatedInputTokens; // Use pre-calculated estimate
-      actualOutputTokens = estimateTokens(outputContent);
+      // Fallback: estimate tokens if usage not provided (matching streaming behavior)
+      if (actualInputTokens === 0 && actualOutputTokens === 0) {
+        const outputContent = responseData.choices?.[0]?.message?.content || "";
+        actualInputTokens = estimatedInputTokens; // Use pre-calculated estimate
+        actualOutputTokens = estimateTokens(outputContent);
 
-      logger.warn("[App Chat] No usage data in response, using estimates", {
-        appId,
+        logger.warn("[App Chat] No usage data in response, using estimates", {
+          appId,
+          actualInputTokens,
+          actualOutputTokens,
+        });
+      }
+
+      const { totalCost: actualBaseCost } = await calculateCost(
+        normalizedModel,
+        provider,
         actualInputTokens,
         actualOutputTokens,
-      });
-    }
-
-    const { totalCost: actualBaseCost } = await calculateCost(
-      normalizedModel,
-      provider,
-      actualInputTokens,
-      actualOutputTokens,
-      billingSource,
-    );
-
-    // Reconcile the difference between reserved and actual costs
-    // Pass app to avoid N+1 query (app already fetched above)
-    const reconciliation = await appCreditsService.reconcileCredits({
-      appId,
-      userId: user.id,
-      estimatedBaseCost: reservedBaseCost,
-      actualBaseCost,
-      description: `Chat reconciliation: ${model}`,
-      metadata: {
-        model,
-        provider,
         billingSource,
+      );
+
+      // Reconcile the difference between reserved and actual costs
+      // Pass app to avoid N+1 query (app already fetched above)
+      const reconciliation = await appCreditsService.reconcileCredits({
+        appId,
+        userId: user.id,
+        estimatedBaseCost: reservedBaseCost,
+        actualBaseCost,
+        description: `Chat reconciliation: ${model}`,
+        metadata: {
+          model,
+          provider,
+          billingSource,
+          inputTokens: actualInputTokens,
+          outputTokens: actualOutputTokens,
+          streaming: false,
+        },
+        app,
+      });
+      reconciled = true;
+
+      const duration = Date.now() - startTime;
+      logger.info("[App Chat] Request completed", {
+        appId,
+        userId: user.id,
+        model,
+        duration,
         inputTokens: actualInputTokens,
         outputTokens: actualOutputTokens,
-        streaming: false,
-      },
-      app,
-    });
+        reservedBaseCost,
+        actualBaseCost,
+        reconciliation: {
+          action: reconciliation.action,
+          amount: reconciliation.adjustedAmount,
+        },
+      });
 
-    const duration = Date.now() - startTime;
-    logger.info("[App Chat] Request completed", {
-      appId,
-      userId: user.id,
-      model,
-      duration,
-      inputTokens: actualInputTokens,
-      outputTokens: actualOutputTokens,
-      reservedBaseCost,
-      actualBaseCost,
-      reconciliation: {
-        action: reconciliation.action,
-        amount: reconciliation.adjustedAmount,
-      },
-    });
-
-    return withCors(Response.json(responseData));
+      return withCors(Response.json(responseData));
+    } catch (postProviderError) {
+      // Refund the outstanding hold iff the settle had not yet run (#11169).
+      await reconcileNonStreamProcessingError(
+        {
+          reconciled,
+          appId,
+          userId: user.id,
+          reservedBaseCost,
+          errorMessage:
+            postProviderError instanceof Error
+              ? postProviderError.message
+              : String(postProviderError),
+        },
+        appCreditsService,
+      );
+      throw postProviderError;
+    }
   } catch (error) {
     logger.error("[App Chat] Error:", error);
 
