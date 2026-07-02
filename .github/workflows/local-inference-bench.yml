@@ -152,6 +152,16 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Preflight — published eliza-1 manifest shape
+        # The harness downloads the PUBLISHED HuggingFace bundle manifest and
+        # validates it against the Eliza-1 manifest schema before fetching any
+        # weight. A malformed published manifest (e.g. `files.vision` as an
+        # object instead of an array — the 2026-06→07 Gemma-4 cutover defect)
+        # otherwise fails the run ~5 minutes in, AFTER a full bun install +
+        # agent boot, with an opaque "expected array, received object" trace.
+        # Fail fast here with an operator-actionable message instead.
+        run: node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-2b
+
       - name: Install dependencies
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
