@@ -699,8 +699,12 @@ describe("orchestrator-task-store audit follow-ups (#11028)", () => {
     const path = await tempFile();
     const a = new FileTaskStore(path);
     const b = new FileTaskStore(path);
-    // Both instances load the empty file; each inserts a distinct task. Before
-    // the read-merge-write fix, b's whole-document write clobbered a's task.
+    // Hydrate BOTH instances from the empty file BEFORE either writes, so b
+    // cannot pick up a's task at lazy-load time — only the read-merge-write in
+    // afterWrite can preserve it. (Without the explicit hydration this test
+    // also passed on the pre-merge clobbering code, i.e. it proved nothing.)
+    await a.listTasks();
+    await b.listTasks();
     const ta = await a.createTask(createInput({ title: "from A" }));
     const tb = await b.createTask(createInput({ title: "from B" }));
     const reader = new FileTaskStore(path);
@@ -724,5 +728,58 @@ describe("orchestrator-task-store audit follow-ups (#11028)", () => {
     const ids = (await reader.listTasks()).map((t) => t.id);
     expect(ids).not.toContain(seed.task.id);
     expect(ids).toContain(x.task.id);
+  });
+
+  it("FileTaskStore delete that races an in-flight write in the same process stays deleted", async () => {
+    const path = await tempFile();
+    const a = new FileTaskStore(path);
+    const x = await a.createTask(createInput({ title: "X" }));
+    // Enqueue a write and a delete back-to-back without awaiting in between.
+    // With the tombstone recorded outside the queued op, the earlier write's
+    // afterWrite consumed and cleared it while X was still in memory, and the
+    // delete's own persist then re-seeded X from disk — deleteTask returned
+    // true but X survived on disk AND in memory.
+    const [, deleted] = await Promise.all([
+      a.createTask(createInput({ title: "Y" })),
+      a.deleteTask(x.task.id),
+    ]);
+    expect(deleted).toBe(true);
+    expect(await a.getTask(x.task.id)).toBeNull();
+    const reader = new FileTaskStore(path);
+    const ids = (await reader.listTasks()).map((t) => t.id);
+    expect(ids).not.toContain(x.task.id);
+    expect(ids).toHaveLength(1);
+  });
+
+  it("FileTaskStore failed delete does not phantom-delete another process's task later", async () => {
+    const path = await tempFile();
+    const a = new FileTaskStore(path);
+    await a.listTasks(); // hydrate `a` from the empty file
+    const b = new FileTaskStore(path);
+    const x = await b.createTask(createInput({ title: "X" }));
+    // `a` never saw X, so its delete is a no-op and must say so.
+    expect(await a.deleteTask(x.task.id)).toBe(false);
+    // The failed delete must not leave a lingering tombstone that a later
+    // unrelated write applies, silently destroying the other process's task.
+    await a.createTask(createInput({ title: "Y" }));
+    const reader = new FileTaskStore(path);
+    const ids = (await reader.listTasks()).map((t) => t.id);
+    expect(ids).toContain(x.task.id);
+  });
+
+  it("FileTaskStore write does not revert another process's update to a task it did not touch", async () => {
+    const path = await tempFile();
+    const a = new FileTaskStore(path);
+    const t = await a.createTask(createInput({ title: "shared" }));
+    const b = new FileTaskStore(path);
+    await b.listTasks(); // b hydrates {t} at its pre-update version
+    await a.updateTask(t.task.id, { status: "done" });
+    // b, still holding the stale copy of t, persists an unrelated insert. The
+    // merge must overlay only b's dirty docs, keeping the newer on-disk t
+    // instead of reverting it to b's stale in-memory copy.
+    await b.createTask(createInput({ title: "unrelated" }));
+    const reader = new FileTaskStore(path);
+    const after = await reader.getTask(t.task.id);
+    expect(after?.task.status).toBe("done");
   });
 });
