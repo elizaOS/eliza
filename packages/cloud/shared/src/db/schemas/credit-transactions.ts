@@ -1,4 +1,4 @@
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   index,
   jsonb,
@@ -33,12 +33,18 @@ export const creditTransactions = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
     stripe_payment_intent_id: text("stripe_payment_intent_id"),
     created_at: timestamp("created_at").notNull().defaultNow(),
+    settled_at: timestamp("settled_at"),
   },
   (table) => ({
     organization_idx: index("credit_transactions_organization_idx").on(table.organization_id),
     user_idx: index("credit_transactions_user_idx").on(table.user_id),
     type_idx: index("credit_transactions_type_idx").on(table.type),
     created_at_idx: index("credit_transactions_created_at_idx").on(table.created_at),
+    unsettled_reservations_idx: index("credit_transactions_unsettled_reservations_idx")
+      .on(table.created_at)
+      .where(
+        sql`${table.type} = 'debit' AND ${table.metadata}->>'type' = 'reservation' AND ${table.metadata}->>'settlement_marker' = 'credit_reservation_v1' AND ${table.settled_at} IS NULL`,
+      ),
     stripe_payment_intent_idx: uniqueIndex("credit_transactions_stripe_payment_intent_idx").on(
       table.stripe_payment_intent_id,
     ),
