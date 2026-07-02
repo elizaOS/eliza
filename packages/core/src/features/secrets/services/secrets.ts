@@ -12,7 +12,7 @@ import {
 	Service,
 	type ServiceTypeName,
 } from "../../../types/index.ts";
-import { KeyManager } from "../crypto/index.ts";
+import { KeyManager } from "../crypto/encryption.ts";
 import {
 	CharacterSettingsStorage,
 	ComponentSecretStorage,

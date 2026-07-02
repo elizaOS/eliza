@@ -14,12 +14,17 @@
 
 import { logger } from "../../logger.ts";
 import type { Plugin } from "../../types/index.ts";
-import {
-	activatePluginIfReadyAction,
-	deliverPluginConfigFormAction,
-	pollPluginConfigStatusAction,
-	probePluginConfigRequirementsAction,
-} from "./actions/index.ts";
+// Import each action from its defining file, NOT through a re-export-only
+// barrel. When the mobile agent bundle lowers @elizaos/core into lazy
+// CJS-interop module inits (the core barrel graph is cyclic via
+// features/basic-capabilities -> ../index.ts), Bun's tree-shaker drops
+// modules that are reachable only through a pure re-export barrel — this
+// entire feature was silently absent from the shipped mobile bundle
+// (same incident class as sub-agent-credentials/plugin.ts).
+import { activatePluginIfReadyAction } from "./actions/activate-plugin-if-ready.ts";
+import { deliverPluginConfigFormAction } from "./actions/deliver-plugin-config-form.ts";
+import { pollPluginConfigStatusAction } from "./actions/poll-plugin-config-status.ts";
+import { probePluginConfigRequirementsAction } from "./actions/probe-plugin-config-requirements.ts";
 
 export const pluginConfigPlugin: Plugin = {
 	name: "plugin-config",

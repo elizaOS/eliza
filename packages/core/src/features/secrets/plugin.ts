@@ -12,22 +12,29 @@
 import { logger } from "../../logger.ts";
 import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { secretsAction } from "./actions/manage-secret.ts";
+// Import providers/setup bindings from their defining files, NOT through
+// re-export-only barrels. When the mobile agent bundle lowers @elizaos/core
+// into lazy CJS-interop module inits (the core barrel graph is cyclic via
+// features/basic-capabilities -> ../index.ts), Bun's tree-shaker drops
+// modules that are reachable only through a pure re-export barrel — the
+// payments / oauth / plugin-config features were silently absent from the
+// shipped mobile bundle this way (same incident class as
+// sub-agent-credentials/plugin.ts).
 import {
 	secretsInfoProvider,
 	secretsStatusProvider,
-} from "./providers/index.ts";
+} from "./providers/secrets-status.ts";
 import {
 	PLUGIN_ACTIVATOR_SERVICE_TYPE,
 	PluginActivatorService,
 } from "./services/plugin-activator.ts";
 import { SECRETS_SERVICE_TYPE, SecretsService } from "./services/secrets.ts";
+import { updateSettingsAction } from "./setup/action.ts";
 import {
 	missingSecretsProvider,
-	SETUP_SERVICE_TYPE,
-	SetupService,
 	setupSettingsProvider,
-	updateSettingsAction,
-} from "./setup/index.ts";
+} from "./setup/provider.ts";
+import { SETUP_SERVICE_TYPE, SetupService } from "./setup/service.ts";
 
 /**
  * Plugin configuration
@@ -127,9 +134,12 @@ export const secretsManagerPlugin: Plugin = {
 // Default export
 export default secretsManagerPlugin;
 
-export * from "./crypto/index.ts";
+export * from "./crypto/encryption.ts";
 export * from "./services/index.ts";
-export * from "./setup/index.ts";
+export * from "./setup/action.ts";
+export * from "./setup/config.ts";
+export * from "./setup/provider.ts";
+export * from "./setup/service.ts";
 export * from "./storage/index.ts";
 // Re-export types and utilities
 export * from "./types.ts";

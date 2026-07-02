@@ -22,13 +22,18 @@ import type {
 	Route,
 	Service,
 } from "../../types/index.ts";
-import {
-	awaitOAuthCallbackAction,
-	bindOAuthCredentialAction,
-	createOAuthIntentAction,
-	deliverOAuthLinkAction,
-	revokeOAuthCredentialAction,
-} from "./actions/index.ts";
+// Import each action from its defining file, NOT through a re-export-only
+// barrel. When the mobile agent bundle lowers @elizaos/core into lazy
+// CJS-interop module inits (the core barrel graph is cyclic via
+// features/basic-capabilities -> ../index.ts), Bun's tree-shaker drops
+// modules that are reachable only through a pure re-export barrel — this
+// entire feature was silently absent from the shipped mobile bundle
+// (same incident class as sub-agent-credentials/plugin.ts).
+import { awaitOAuthCallbackAction } from "./actions/await-oauth-callback.ts";
+import { bindOAuthCredentialAction } from "./actions/bind-oauth-credential.ts";
+import { createOAuthIntentAction } from "./actions/create-oauth-intent.ts";
+import { deliverOAuthLinkAction } from "./actions/deliver-oauth-link.ts";
+import { revokeOAuthCredentialAction } from "./actions/revoke-oauth-credential.ts";
 import { LocalOAuthCallbackBus } from "./local-callback-bus.ts";
 import {
 	OAUTH_CALLBACK_BUS_CLIENT_SERVICE,
