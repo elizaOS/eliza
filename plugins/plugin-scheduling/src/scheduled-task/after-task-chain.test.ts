@@ -178,9 +178,7 @@ describe("ScheduledTaskRunner — after_task children fire on the parent's termi
 
       await forceParentTerminal(runner, parent.taskId, outcome);
 
-      expect((await getTask(runner, parent.taskId)).state.status).toBe(
-        outcome,
-      );
+      expect((await getTask(runner, parent.taskId)).state.status).toBe(outcome);
       const reloadedChild = await getTask(runner, child.taskId);
       expect(reloadedChild.state.status).toBe("fired");
       expect(reloadedChild.state.firedAt).toBe("2026-05-09T12:00:00.000Z");
@@ -293,7 +291,9 @@ describe("ScheduledTaskRunner — after_task children fire on the parent's termi
 
   it("global-pause skip does NOT chain: pause suppresses proactive behavior", async () => {
     const { runner } = makeRunner({ pauseActive: true });
-    const parent = await runner.schedule(baseInput({ respectsGlobalPause: true }));
+    const parent = await runner.schedule(
+      baseInput({ respectsGlobalPause: true }),
+    );
     const child = await runner.schedule(
       baseInput({
         trigger: {
@@ -306,9 +306,7 @@ describe("ScheduledTaskRunner — after_task children fire on the parent's termi
 
     const result = await runner.fireWithResult(parent.taskId);
     expect(result.kind).toBe("skipped");
-    expect((await getTask(runner, parent.taskId)).state.status).toBe(
-      "skipped",
-    );
+    expect((await getTask(runner, parent.taskId)).state.status).toBe("skipped");
     expect((await getTask(runner, child.taskId)).state.status).toBe(
       "scheduled",
     );
