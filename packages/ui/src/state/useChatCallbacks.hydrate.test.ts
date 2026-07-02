@@ -46,12 +46,16 @@ function makeDeps(client: ReturnType<typeof makeFakeClient>) {
   };
   const activeConversationIdRef: { current: string | null } = { current: null };
   const greetingFiredRef = { current: false };
+  const loadedConversationIdRef: { current: string | null } = {
+    current: null,
+  };
   const deps: HydrateInitialConversationDeps = {
     client,
     conversationHydrationEpochRef: { current: 0 },
     activeConversationIdRef,
     greetingFiredRef,
     conversationMessagesRef,
+    loadedConversationIdRef,
     setConversations,
     setActiveConversationId,
     setConversationMessages,
@@ -64,6 +68,7 @@ function makeDeps(client: ReturnType<typeof makeFakeClient>) {
     setConversationMessages,
     greetingFiredRef,
     activeConversationIdRef,
+    loadedConversationIdRef,
   };
 }
 
@@ -112,15 +117,42 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
         messages: [{ id: "m1", role: "user", text: "hello", timestamp: 1 }],
       })),
     });
-    const { deps, setActiveConversationId, setConversationMessages } =
-      makeDeps(client);
+    const {
+      deps,
+      setActiveConversationId,
+      setConversationMessages,
+      loadedConversationIdRef,
+    } = makeDeps(client);
 
     const result = await hydrateInitialConversation(deps);
 
     expect(client.createConversation).not.toHaveBeenCalled();
     expect(setActiveConversationId).toHaveBeenCalledWith("c1");
     expect(setConversationMessages.mock.calls.at(-1)?.[0]).toHaveLength(1);
+    // The thread holder is bound to the restored conversation so the
+    // empty-draft cleanup may legitimately judge it by these messages.
+    expect(loadedConversationIdRef.current).toBe("c1");
     expect(result).toBeNull(); // already has messages
+  });
+
+  it("leaves the thread holder UNKNOWN when the restore fetch fails (placeholder [] must never feed draft cleanup)", async () => {
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({
+        conversations: [{ ...CONVERSATION }],
+      })),
+      getConversationMessages: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    });
+    const { deps, loadedConversationIdRef } = makeDeps(client);
+
+    const result = await hydrateInitialConversation(deps);
+
+    // Restored, but its messages were NEVER loaded — the [] in the thread is a
+    // placeholder. Binding it to "c1" would let the select/new-chat cleanup
+    // judge a possibly-real conversation as an empty draft and delete it.
+    expect(result).toBe("c1");
+    expect(loadedConversationIdRef.current).toBeNull();
   });
 
   it("skips a saved greeting-only draft when a real conversation exists", async () => {

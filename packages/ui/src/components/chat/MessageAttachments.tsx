@@ -39,6 +39,29 @@ export function resolveAttachmentUrl(url: string): string {
   return trimmed;
 }
 
+/**
+ * A `data:` URL for a benign, non-executable inline text payload — the
+ * `text/markdown` a large clipboard paste becomes (`pastedTextToAttachment`) or
+ * a pasted/attached `.csv`. These are the user's OWN just-composed bytes,
+ * echoed optimistically on their bubble until the server round-trip swaps in
+ * the served URL.
+ *
+ * The scheme-allowlist guard {@link isSafeAttachmentUrl} exists to neutralise
+ * hostile AGENT-provided URLs, and among `data:text/*` it allowlists only
+ * `text/plain` — so a markdown/csv paste echo would otherwise fall through to
+ * the "unsupported attachment" card, mis-rendering the user's own paste as
+ * unsupported. A `data:text/markdown` / `data:text/csv` URL cannot execute
+ * script: it is rendered as escaped text via CodeBlock, or handed to the
+ * browser only as a download link, so it is safe to preview like any other text
+ * attachment (this stays narrower than {@link isSafeAttachmentUrl} — notably it
+ * never covers the script-capable `data:text/html`).
+ */
+const BENIGN_INLINE_TEXT_DATA_URL = /^data:text\/(?:markdown|csv)(?:[;,])/i;
+
+function isBenignInlineTextDataUrl(url: string): boolean {
+  return BENIGN_INLINE_TEXT_DATA_URL.test(url.trim());
+}
+
 const IMAGE_EXT = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)(?:[?#]|$)/i;
 const VIDEO_EXT = /\.(?:mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i;
 const AUDIO_EXT = /\.(?:mp3|wav|ogg|oga|m4a|aac|flac|opus)(?:[?#]|$)/i;
@@ -941,8 +964,14 @@ export function MessageAttachments({
         }
         // Scheme allowlist: never hand an agent-provided URL with a dangerous
         // scheme (javascript:/vbscript:/file:/data:text/html/...) to the
-        // browser as an href/src. Guard the RAW url before it is resolved.
-        if (!isSafeAttachmentUrl(att.url)) {
+        // browser as an href/src. Guard the RAW url before it is resolved. A
+        // benign inline text paste echo (data:text/markdown|csv — the user's
+        // own just-composed content, not an agent URL) is not on the strict
+        // scheme allowlist but is safe to preview, so it is not neutralized.
+        if (
+          !isSafeAttachmentUrl(att.url) &&
+          !isBenignInlineTextDataUrl(att.url)
+        ) {
           return <UnsafeAttachmentTile key={att.id} att={att} />;
         }
         const src = resolveAttachmentUrl(att.url);
