@@ -4,6 +4,8 @@
 // * Enter during a running turn buffers the submission (no second concurrent
 //   turn) and fires it when the turn completes — opencode behavior.
 // * Aborting a turn discards the queue ("stop everything").
+// * A second Ctrl+C while an aborted turn is still unwinding quits the app
+//   instead of being eaten; Ctrl+C when idle quits on the first press.
 //
 // Pattern follows global-input.test.ts: construct a real App around a minimal
 // runtime stub and drive the real private handlers.
@@ -88,6 +90,56 @@ function makeQueueApp() {
     consume: (data: string): boolean => app["consumeGlobalInput"](data),
     sentTexts: () => sentTexts,
     turns,
+  };
+}
+
+/**
+ * App wired to a runtime that wedges: handleMessage never settles and ignores
+ * the abort signal entirely — the worst case a slow/broken provider produces.
+ */
+function makeWedgedApp() {
+  let turnStarted = false;
+  const runtime = Object.assign(Object.create(null) as AgentRuntime, {
+    agentId: "test",
+    character: { name: "Eliza" },
+    getService: () => null,
+    ensureConnection: async () => {},
+    messageService: {
+      handleMessage: async () => {
+        turnStarted = true;
+        await new Promise(() => {});
+      },
+    },
+  });
+
+  getAgentClient().setRuntime(runtime);
+  const app = new App(runtime);
+  return {
+    app,
+    // biome-ignore lint/complexity/useLiteralKeys: private test hook
+    send: (text: string): Promise<void> => app["handleSendMessage"](text),
+    // biome-ignore lint/complexity/useLiteralKeys: private test hook
+    consume: (data: string): boolean => app["consumeGlobalInput"](data),
+    turnStarted: () => turnStarted,
+  };
+}
+
+/** Stub out session persistence and App.stop; returns spies + restore. */
+function instrumentQuit(app: App): {
+  stopped: () => boolean;
+  restore: () => void;
+} {
+  let stopped = false;
+  const originalSave = useStore.getState().saveSessionState;
+  useStore.setState({ saveSessionState: async () => {} });
+  (app as { stop: () => void }).stop = () => {
+    stopped = true;
+  };
+  return {
+    stopped: () => stopped,
+    restore: () => {
+      useStore.setState({ saveSessionState: originalSave });
+    },
   };
 }
 
@@ -213,5 +265,43 @@ describe("eliza-code queue-and-send (#11294)", () => {
 
     turns[0]?.resolve();
     await turnA;
+  });
+});
+
+describe("eliza-code abort-key fallthrough (#11294)", () => {
+  it("quits on the second Ctrl+C while an aborted turn is still unwinding", async () => {
+    const { app, send, consume, turnStarted } = makeWedgedApp();
+    const quit = instrumentQuit(app);
+    try {
+      useStore.getState().createRoom("Wedge test");
+      void send("hang forever");
+      await waitFor(turnStarted, "wedged turn to start");
+
+      // First Ctrl+C: consumed, requests the abort — must NOT quit.
+      expect(consume("\x03")).toBe(true);
+      expect(quit.stopped()).toBe(false);
+
+      // Esc after the abort request falls through without quitting.
+      expect(consume("\x1b")).toBe(false);
+      expect(quit.stopped()).toBe(false);
+
+      // Second Ctrl+C: the turn never unwound (provider ignores the signal),
+      // so the keystroke falls through to the quit handler.
+      expect(consume("\x03")).toBe(true);
+      expect(quit.stopped()).toBe(true);
+    } finally {
+      quit.restore();
+    }
+  });
+
+  it("quits on the first Ctrl+C when no turn is running", () => {
+    const { app, consume } = makeQueueApp();
+    const quit = instrumentQuit(app);
+    try {
+      expect(consume("\x03")).toBe(true);
+      expect(quit.stopped()).toBe(true);
+    } finally {
+      quit.restore();
+    }
   });
 });

@@ -734,9 +734,13 @@ export class App {
   private abortCurrentTurn(): boolean {
     const controller = this.activeTurnAbortController;
     if (!controller) return false;
-    if (!controller.signal.aborted) {
-      controller.abort();
+    if (controller.signal.aborted) {
+      // Abort was already requested but the turn hasn't unwound yet (e.g. a
+      // provider that ignores the signal). Let the keystroke fall through so
+      // a second Ctrl+C reaches the quit handler instead of being eaten here.
+      return false;
     }
+    controller.abort();
     this.tui.requestRender();
     return true;
   }
