@@ -5,13 +5,13 @@
  * monetizable user-MCP registry: list (own + public catalog), create, get one,
  * update, publish (enable -> live), unpublish (disable -> draft), and delete.
  *
- * Skip behavior mirrors the other DB-dependent groups (group-l, group-c): if
- * the Worker isn't reachable on TEST_API_BASE_URL the whole suite
- * short-circuits; auth-required tests additionally skip when TEST_API_KEY is
- * unset. Every created MCP is cleaned up in afterAll so reruns stay idempotent.
+ * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
+ * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
+ * named `skip` — never a silent pass. Every created MCP is cleaned up in
+ * afterAll so reruns stay idempotent.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 
 import {
   api,
@@ -20,13 +20,26 @@ import {
   isServerReachable,
 } from "./_helpers/api";
 
-let serverReachable = false;
-let hasTestApiKey = false;
-const createdMcpIds: string[] = [];
-
-function shouldRunAuthed(): boolean {
-  return serverReachable && hasTestApiKey;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-g2-mcp-registry] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
 }
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-g2-mcp-registry] TEST_API_KEY is not set; the preload could not " +
+      "bootstrap a test API key. Tests will SKIP.",
+  );
+}
+
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+
+const createdMcpIds: string[] = [];
 
 function uniqueSlug(): string {
   return `e2e-mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -76,24 +89,8 @@ async function createMcp(
   return body.mcp!;
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-g2-mcp-registry] ${getBaseUrl()} did not respond to /api/health. Tests will skip.`,
-    );
-    return;
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-g2-mcp-registry] TEST_API_KEY is not set; auth-required tests will skip.",
-    );
-  }
-});
-
 afterAll(async () => {
-  if (!shouldRunAuthed()) return;
+  if (!serverReachable || !hasTestApiKey) return;
   for (const id of createdMcpIds) {
     await api.delete(`/api/v1/mcps/${id}`, { headers: bearerHeaders() });
   }
@@ -119,25 +116,24 @@ afterAll(async () => {
 // affects the CRUD-write group below. Un-skipped (#9943) so the MCP-registry
 // auth/validation surface is actually exercised in CI instead of being entirely
 // skipped along with the broken writes.
-describe("Group G2 — MCP registry auth gates + validation", () => {
+describeE2E("Group G2 — MCP registry auth gates + validation", () => {
   test("auth gate: POST /api/v1/mcps without credentials is rejected", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/mcps", {
       name: "x",
       slug: uniqueSlug(),
       description: "x",
     });
-    expect([401, 403]).toContain(res.status);
+    // /api/v1/mcps is not in publicPathPrefixes → the global auth middleware
+    // rejects with 401.
+    expect(res.status).toBe(401);
   });
 
   test("auth gate: GET /api/v1/mcps without credentials is rejected", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/mcps");
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("create -> rejects an invalid body (400)", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/mcps",
       { name: "", slug: "Invalid Slug!", description: "" },
@@ -147,7 +143,6 @@ describe("Group G2 — MCP registry auth gates + validation", () => {
   });
 
   test("create -> rejects an external MCP missing its endpoint (400)", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/mcps",
       {
@@ -162,7 +157,6 @@ describe("Group G2 — MCP registry auth gates + validation", () => {
   });
 
   test("get one -> 404 for an unknown id", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get(
       "/api/v1/mcps/00000000-0000-4000-8000-000000000000",
       { headers: bearerHeaders() },
@@ -171,7 +165,6 @@ describe("Group G2 — MCP registry auth gates + validation", () => {
   });
 
   test("registry catalog -> /api/mcp/registry returns platform + community entries", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/mcp/registry");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -193,7 +186,6 @@ describe("Group G2 — MCP registry auth gates + validation", () => {
 // runs against a real Railway DB); see TODO(mcp) above.
 describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   test("create -> creates a draft MCP with computed revenue split", async () => {
-    if (!shouldRunAuthed()) return;
     const mcp = await createMcp({ creatorSharePercentage: 70 });
     expect(mcp.status).toBe("draft");
     expect(mcp.creator_share_percentage).toBe("70.00");
@@ -202,7 +194,6 @@ describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   });
 
   test("get one -> returns the MCP with owner stats", async () => {
-    if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const res = await api.get(`/api/v1/mcps/${created.id}`, {
       headers: bearerHeaders(),
@@ -219,7 +210,6 @@ describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   });
 
   test("list (own) -> includes a created MCP", async () => {
-    if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const res = await api.get("/api/v1/mcps?scope=own&limit=100", {
       headers: bearerHeaders(),
@@ -231,7 +221,6 @@ describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   });
 
   test("update -> patches fields and recomputes the split", async () => {
-    if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const res = await api.put(
       `/api/v1/mcps/${created.id}`,
@@ -246,7 +235,6 @@ describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   });
 
   test("publish -> moves the MCP to live and into the public catalog", async () => {
-    if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const pubRes = await api.post(
       `/api/v1/mcps/${created.id}/publish`,
@@ -266,7 +254,6 @@ describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   });
 
   test("publish -> rejects an MCP with no tools", async () => {
-    if (!shouldRunAuthed()) return;
     const created = await createMcp({ tools: [] });
     const res = await api.post(
       `/api/v1/mcps/${created.id}/publish`,
@@ -277,7 +264,6 @@ describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   });
 
   test("unpublish -> removes the MCP from the public catalog", async () => {
-    if (!shouldRunAuthed()) return;
     const created = await createMcp();
     await api.post(`/api/v1/mcps/${created.id}/publish`, undefined, {
       headers: bearerHeaders(),
@@ -291,7 +277,6 @@ describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   });
 
   test("delete -> removes the MCP and a subsequent get 404s", async () => {
-    if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const delRes = await api.delete(`/api/v1/mcps/${created.id}`, {
       headers: bearerHeaders(),

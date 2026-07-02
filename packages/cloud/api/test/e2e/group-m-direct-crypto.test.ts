@@ -4,9 +4,16 @@
  * These tests cover the API contract up to the wallet-signing boundary:
  * public config shape, auth gates, payment intent creation, and tx-hash
  * validation. They intentionally do not submit mainnet transactions.
+ *
+ * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
+ * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
+ * named `skip` — never a silent pass. The session-driven happy path also
+ * skips loudly when the test-session exchange is unavailable
+ * (PLAYWRIGHT_TEST_AUTH not enabled on the target) or when the target has
+ * the Base direct-wallet network disabled.
  */
 
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   api,
   bearerHeaders,
@@ -15,17 +22,58 @@ import {
   isServerReachable,
 } from "./_helpers/api";
 
-let serverReachable = false;
-let hasTestApiKey = false;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-m-direct-crypto] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
+}
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-m-direct-crypto] TEST_API_KEY is not set; the preload could not " +
+      "bootstrap a test API key. Tests will SKIP.",
+  );
+}
+
 let sessionCookie: string | null = null;
-
-function shouldRunAuthed(): boolean {
-  return serverReachable && hasTestApiKey;
+if (serverReachable && hasTestApiKey) {
+  try {
+    sessionCookie = await exchangeApiKeyForSession();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[group-m-direct-crypto] session exchange failed (session tests will SKIP): ${msg}`,
+    );
+  }
 }
 
-function shouldRunSession(): boolean {
-  return shouldRunAuthed() && sessionCookie !== null;
+// Whether the target has the Base direct-wallet network enabled decides the
+// create-payment happy path; resolve it up front so the skip is counted.
+let baseNetworkEnabled = false;
+if (serverReachable) {
+  const statusRes = await api.get("/api/crypto/status");
+  const status = (await statusRes.json()) as {
+    directWallet?: {
+      networks?: Array<{ network?: string; enabled?: boolean }>;
+    };
+  };
+  baseNetworkEnabled =
+    status.directWallet?.networks?.some(
+      (network) => network.network === "base" && network.enabled,
+    ) ?? false;
+  if (!baseNetworkEnabled) {
+    console.warn(
+      "[group-m-direct-crypto] Base direct-wallet network is disabled on " +
+        "this target; the create-payment happy path will SKIP.",
+    );
+  }
 }
+
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
 
 async function getCurrentUserWallet(): Promise<string> {
   if (!sessionCookie) throw new Error("session cookie missing");
@@ -39,32 +87,8 @@ async function getCurrentUserWallet(): Promise<string> {
   return body.wallet_address;
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-m-direct-crypto] ${getBaseUrl()} did not respond to /api/health. Tests will skip.`,
-    );
-    return;
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-m-direct-crypto] TEST_API_KEY is not set; authed tests will skip.",
-    );
-    return;
-  }
-  try {
-    sessionCookie = await exchangeApiKeyForSession();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[group-m-direct-crypto] session exchange failed: ${msg}`);
-  }
-});
-
-describe("GET /api/crypto/status", () => {
+describeE2E("GET /api/crypto/status", () => {
   test("public config is JSON and never leaks RPC URLs or secure wallets", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/crypto/status");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type") ?? "").toContain("application/json");
@@ -93,9 +117,8 @@ describe("GET /api/crypto/status", () => {
   });
 });
 
-describe("/api/crypto/direct-payments", () => {
+describeE2E("/api/crypto/direct-payments", () => {
   test("config subroute is public and sanitized", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/crypto/direct-payments/config");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -110,7 +133,6 @@ describe("/api/crypto/direct-payments", () => {
   });
 
   test("auth gate: create rejects anonymous callers", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/crypto/direct-payments", {
       amount: 10,
       network: "base",
@@ -120,7 +142,6 @@ describe("/api/crypto/direct-payments", () => {
   });
 
   test("validation: amount must be in the accepted range", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/crypto/direct-payments",
       {
@@ -133,83 +154,84 @@ describe("/api/crypto/direct-payments", () => {
     expect(res.status).toBe(400);
   });
 
-  test("happy path: creates a Base USDC payment for the account wallet", async () => {
-    if (!shouldRunSession()) return;
-    if (!sessionCookie) throw new Error("session cookie missing");
+  // Loud, counted skip when the test-session exchange is unavailable or the
+  // target has the Base network disabled.
+  test.skipIf(sessionCookie === null || !baseNetworkEnabled)(
+    "happy path: creates a Base USDC payment for the account wallet",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
 
-    const statusRes = await api.get("/api/crypto/status");
-    const status = (await statusRes.json()) as {
-      directWallet?: {
-        networks?: Array<{ network?: string; enabled?: boolean }>;
-      };
-    };
-    const baseEnabled = status.directWallet?.networks?.some(
-      (network) => network.network === "base" && network.enabled,
-    );
-    if (!baseEnabled) return;
-
-    const payerAddress = await getCurrentUserWallet();
-    const createRes = await api.post(
-      "/api/crypto/direct-payments",
-      { amount: 1, network: "base", payerAddress },
-      {
-        headers: { Cookie: sessionCookie, "Content-Type": "application/json" },
-      },
-    );
-    expect(createRes.status).toBe(200);
-    const created = (await createRes.json()) as {
-      paymentId?: string;
-      status?: string;
-      instructions?: {
-        network?: string;
-        tokenSymbol?: string;
-        amountToken?: string;
-        amountUnits?: string;
-        receiveAddress?: string;
-        creditsToAdd?: string;
-        bonusCredits?: number;
-        payerProofMessage?: string;
-        payerProofTypedData?: {
-          domain?: { name?: string; version?: string; chainId?: number };
-          primaryType?: string;
-          message?: Record<string, unknown>;
+      const payerAddress = await getCurrentUserWallet();
+      const createRes = await api.post(
+        "/api/crypto/direct-payments",
+        { amount: 1, network: "base", payerAddress },
+        {
+          headers: {
+            Cookie: sessionCookie,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      expect(createRes.status).toBe(200);
+      const created = (await createRes.json()) as {
+        paymentId?: string;
+        status?: string;
+        instructions?: {
+          network?: string;
+          tokenSymbol?: string;
+          amountToken?: string;
+          amountUnits?: string;
+          receiveAddress?: string;
+          creditsToAdd?: string;
+          bonusCredits?: number;
+          payerProofMessage?: string;
+          payerProofTypedData?: {
+            domain?: { name?: string; version?: string; chainId?: number };
+            primaryType?: string;
+            message?: Record<string, unknown>;
+          };
+          payerProofScheme?: string;
         };
-        payerProofScheme?: string;
       };
-    };
-    expect(created.paymentId).toBeTruthy();
-    expect(created.status).toBe("pending");
-    expect(created.instructions).toMatchObject({
-      network: "base",
-      tokenSymbol: "USDC",
-      amountToken: "1.000000",
-      amountUnits: "1000000",
-      creditsToAdd: "1.00",
-      bonusCredits: 0,
-    });
-    expect(created.instructions?.receiveAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
-    expect(created.instructions?.payerProofScheme).toBe("evm-eip712");
-    expect(created.instructions?.payerProofTypedData).toMatchObject({
-      domain: { name: "Eliza Cloud Direct Wallet", version: "1" },
-      primaryType: "DirectWalletPayment",
-    });
-    const proofMessage = created.instructions?.payerProofTypedData?.message;
-    expect(proofMessage).toMatchObject({
-      paymentId: created.paymentId,
-      amountUnits: "1000000",
-    });
-    expect(String(proofMessage?.payerAddress).toLowerCase()).toBe(
-      payerAddress.toLowerCase(),
-    );
-    expect(proofMessage?.nonce).toEqual(expect.any(String));
+      expect(created.paymentId).toBeTruthy();
+      expect(created.status).toBe("pending");
+      expect(created.instructions).toMatchObject({
+        network: "base",
+        tokenSymbol: "USDC",
+        amountToken: "1.000000",
+        amountUnits: "1000000",
+        creditsToAdd: "1.00",
+        bonusCredits: 0,
+      });
+      expect(created.instructions?.receiveAddress).toMatch(
+        /^0x[a-fA-F0-9]{40}$/,
+      );
+      expect(created.instructions?.payerProofScheme).toBe("evm-eip712");
+      expect(created.instructions?.payerProofTypedData).toMatchObject({
+        domain: { name: "Eliza Cloud Direct Wallet", version: "1" },
+        primaryType: "DirectWalletPayment",
+      });
+      const proofMessage = created.instructions?.payerProofTypedData?.message;
+      expect(proofMessage).toMatchObject({
+        paymentId: created.paymentId,
+        amountUnits: "1000000",
+      });
+      expect(String(proofMessage?.payerAddress).toLowerCase()).toBe(
+        payerAddress.toLowerCase(),
+      );
+      expect(proofMessage?.nonce).toEqual(expect.any(String));
 
-    const confirmRes = await api.post(
-      `/api/crypto/direct-payments/${created.paymentId}/confirm`,
-      { transactionHash: "not-a-tx", payerSignature: "0x00" },
-      {
-        headers: { Cookie: sessionCookie, "Content-Type": "application/json" },
-      },
-    );
-    expect(confirmRes.status).toBe(400);
-  });
+      const confirmRes = await api.post(
+        `/api/crypto/direct-payments/${created.paymentId}/confirm`,
+        { transactionHash: "not-a-tx", payerSignature: "0x00" },
+        {
+          headers: {
+            Cookie: sessionCookie,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      expect(confirmRes.status).toBe(400);
+    },
+  );
 });
