@@ -56,3 +56,37 @@ dismissed until onboarding completes. The contract, enforced in
 The desktop `?shellMode=chat-overlay` shell never mounts the overlay/conductor,
 so it is unaffected. Only the transcript's CHOICE widgets and any OAuth/secret
 blocks stay interactive during onboarding.
+
+## Confused-user guards (conductor + send funnel)
+
+Onboarding must survive a user who taps the wrong things, taps them twice, or
+taps them out of order. The contract, enforced in `use-first-run-conductor.ts`
+/ `first-run-action-channel.ts` / `first-run-finish.ts` and covered by
+`use-first-run-conductor.test.ts` + the seeded storms in
+`use-first-run-conductor.fuzz.test.ts`:
+
+- **One flow at a time.** While a finish/provision call is in flight
+  (`busyRef`), every other first-run pick — stale widgets, error re-seeds, the
+  cloud-agent picker — is consumed as a no-op. No concurrent local+cloud
+  provisioning is reachable.
+- **Provisioned latch.** After provisioning succeeds only the tutorial pick is
+  live; taps on leftover runtime/provider/cloud-agent widgets no-op instead of
+  re-provisioning. The tutorial pick itself latches (`completedRef`), so a
+  double-tap cannot re-fire `completeFirstRun` or launch a second tour.
+- **Strict values.** Group ids are validated per group; malformed values under
+  the reserved `__first_run__:` prefix are consumed, never acted on.
+- **The prefix is reserved forever.** `classifyActionMessage` (the send
+  funnel's routing contract in `AppContext.sendActionMessage`) drops
+  `__first_run__:` values unconditionally — even after onboarding completes, a
+  tap on a leftover onboarding widget never reaches the server as a literal
+  sentinel chat message.
+- **Exactly-once POST, even under races.** `persistFirstRun` memoizes its
+  in-flight promise: concurrently double-fired finishes share one
+  `POST /api/first-run`, and a failed POST releases the guard so a retry can
+  post again.
+- **No cloud dead end.** A failed/cancelled cloud login re-offers an UNLOCKED
+  runtime CHOICE in the retry turn (earlier widgets lock on first tap), and
+  arms a connect-and-resume continuation: if the user instead connects from
+  the OAuth block, the interrupted flow resumes automatically when the store
+  learns the connection landed. A fresh pick always supersedes the pending
+  resume.

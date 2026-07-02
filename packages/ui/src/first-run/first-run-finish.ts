@@ -104,17 +104,21 @@ export type FirstRunFinishOutcome =
 // ── Exactly-once POST funnel ─────────────────────────────────────────────────
 
 let firstRunPersisted = false;
+let firstRunPersistInFlight: Promise<void> | null = null;
 
 /** Reset the once-only guard (tests + a fresh re-entry into onboarding). */
 export function resetFirstRunPersistGuard(): void {
   firstRunPersisted = false;
+  firstRunPersistInFlight = null;
 }
 
 /**
  * The SOLE call site of `client.submitFirstRun` (= POST /api/first-run). Local
  * always persists once; cloud persists once iff the bound cloud agent host
  * owns the app-shell routes. The module-scoped guard plus the server-side
- * `meta.firstRunComplete` make a re-tapped first-run choice idempotent.
+ * `meta.firstRunComplete` make a re-tapped first-run choice idempotent, and
+ * concurrent callers (double-fired finishes) share one in-flight POST instead
+ * of racing past the completed flag.
  */
 async function persistFirstRun(
   plan: ReturnType<typeof buildFirstRunSubmitPlan>,
@@ -122,26 +126,33 @@ async function persistFirstRun(
   opts: { viaAppShellOrigin?: boolean } = {},
 ): Promise<void> {
   if (firstRunPersisted) return;
-  if (opts.viaAppShellOrigin) {
-    const currentBase =
-      typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
-    client.setBaseUrl(null);
-    try {
-      await client.submitFirstRun(plan.payload);
-    } finally {
-      client.setBaseUrl(currentBase || null);
-    }
-  } else {
-    await client.submitFirstRun(plan.payload);
-  }
-  firstRunPersisted = true;
-  if (plan.runtimeConfig.needsProviderSetup) {
-    ports.showActionBanner({
-      text: "Choose a model provider in Settings before sending the first message.",
-      actionLabel: "Open Settings",
-      onAction: () => ports.setTab("settings"),
+  if (!firstRunPersistInFlight) {
+    firstRunPersistInFlight = (async () => {
+      if (opts.viaAppShellOrigin) {
+        const currentBase =
+          typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+        client.setBaseUrl(null);
+        try {
+          await client.submitFirstRun(plan.payload);
+        } finally {
+          client.setBaseUrl(currentBase || null);
+        }
+      } else {
+        await client.submitFirstRun(plan.payload);
+      }
+      firstRunPersisted = true;
+      if (plan.runtimeConfig.needsProviderSetup) {
+        ports.showActionBanner({
+          text: "Choose a model provider in Settings before sending the first message.",
+          actionLabel: "Open Settings",
+          onAction: () => ports.setTab("settings"),
+        });
+      }
+    })().finally(() => {
+      firstRunPersistInFlight = null;
     });
   }
+  await firstRunPersistInFlight;
 }
 
 // ── Module helpers (moved from the controller) ───────────────────────────────
