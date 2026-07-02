@@ -585,6 +585,27 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
 const FULL_BUN_WRAPPER_IMPORT_TIMEOUT_MS = 3_000;
 
 async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  // Fast path: the native plugin proxy is already in Capacitor's runtime
+  // registry (the same object `window.Capacitor.Plugins.ElizaBunRuntime`
+  // that the native AgentWatchdog probes). Using it directly avoids the
+  // dynamic wrapper-chunk fetch altogether — the wrapper module is nothing
+  // but `registerPlugin("ElizaBunRuntime", …)`, and the chunk fetch is the
+  // part observed to hang (see FULL_BUN_WRAPPER_IMPORT_TIMEOUT_MS).
+  const registry = (
+    Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, FullBunRuntimePlugin | undefined>;
+    }
+  ).Plugins;
+  const registered = registry?.ElizaBunRuntime;
+  if (
+    registered &&
+    typeof registered.start === "function" &&
+    typeof registered.getStatus === "function" &&
+    typeof registered.call === "function"
+  ) {
+    return registered;
+  }
+
   let mod: Partial<FullBunRuntimeModule> | null = null;
   try {
     mod = await Promise.race([
