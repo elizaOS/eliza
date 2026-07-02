@@ -47,6 +47,13 @@ export function CockpitInteractiveTerminal({
   const [error, setError] = useState<string | null>(null);
   const spawnStartedRef = useRef(false);
   const activeSessionRef = useRef<string | null>(null);
+  // True once the terminal has been unmounted or closed. Spawn is async, so a
+  // close/unmount that happens WHILE spawnPtySession is in flight would run the
+  // cleanup (which reads activeSessionRef = still null) and stop nothing — then
+  // the spawn resolves and leaves an orphaned eliza-code REPL alive until the
+  // 15-min idle reaper. Checking this after the await kills that session
+  // immediately instead.
+  const disposedRef = useRef(false);
 
   const spawn = useCallback(async () => {
     setPhase("spawning");
@@ -57,6 +64,12 @@ export function CockpitInteractiveTerminal({
         tier,
         ...(cwd ? { cwd } : {}),
       });
+      if (disposedRef.current) {
+        // Unmounted/closed mid-spawn — the cleanup already ran and saw no
+        // session, so stop this one now and don't touch state on a dead component.
+        void ptyClient.stopPtySession(id);
+        return;
+      }
       activeSessionRef.current = id;
       setSessionId(id);
       setPhase("ready");
@@ -81,6 +94,7 @@ export function CockpitInteractiveTerminal({
   // won't exit on its own, so an unclosed session would leave an orphan process.
   useEffect(
     () => () => {
+      disposedRef.current = true;
       const id = activeSessionRef.current;
       activeSessionRef.current = null;
       if (id) void ptyClient.stopPtySession(id);
@@ -93,6 +107,7 @@ export function CockpitInteractiveTerminal({
   }, [spawn]);
 
   const close = useCallback(() => {
+    disposedRef.current = true;
     const id = activeSessionRef.current;
     activeSessionRef.current = null;
     if (id) void ptyClient.stopPtySession(id);
