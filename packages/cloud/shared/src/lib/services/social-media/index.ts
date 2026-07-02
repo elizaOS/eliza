@@ -342,19 +342,23 @@ class SocialMediaService {
             error: `Platform ${platform} is not supported`,
           };
 
-        const credentials = await this.getCredentialsForPlatform(
-          organizationId,
-          platform,
-          credentialIds?.[platform],
-        );
-        if (!credentials)
-          return {
-            platform,
-            success: false,
-            error: `No credentials found for ${platform}`,
-          };
-
+        // Everything after the deduction must stay inside this try: a thrown
+        // credential error (e.g. "Token expired." from a failed OAuth refresh)
+        // must resolve to {success:false} so the per-platform refund below
+        // runs, instead of rejecting the whole Promise.all and skipping it.
         try {
+          const credentials = await this.getCredentialsForPlatform(
+            organizationId,
+            platform,
+            credentialIds?.[platform],
+          );
+          if (!credentials)
+            return {
+              platform,
+              success: false,
+              error: `No credentials found for ${platform}`,
+            };
+
           return await provider.createPost(credentials, content, platformOptions);
         } catch (error) {
           const errorMessage = extractErrorMessage(error);
@@ -514,7 +518,19 @@ class SocialMediaService {
 
     if (!deduction.success) return { platform, success: false, error: "Insufficient credits" };
 
-    const result = await provider.replyToPost(credentials, postId, content, options);
+    // A provider that THROWS (vs returning {success:false}) must still hit the
+    // refund below — otherwise the user is charged for a reply that never posted.
+    let result: PostResult;
+    try {
+      result = await provider.replyToPost(credentials, postId, content, options);
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      logger.error("[SocialMedia] Reply failed", {
+        platform,
+        error: errorMessage,
+      });
+      result = { platform, success: false, error: errorMessage };
+    }
 
     if (!result.success) {
       await creditsService.refundCredits({
