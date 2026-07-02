@@ -117,6 +117,14 @@ type LifeParams = {
   target?: string;
   minutes?: number;
   preset?: string;
+  /**
+   * Planner-signalled owner confirmation of a previously previewed save.
+   * The preview -> confirm handshake has no structured cross-turn draft
+   * transport on the planner path, so the confirm turn ("yes, save that")
+   * must re-call create with `confirmed: true`; the handler then saves the
+   * re-extracted plan instead of previewing again.
+   */
+  confirmed?: boolean;
   details?: Record<string, unknown>;
   ownerSurface?: string;
 };
@@ -2219,10 +2227,18 @@ export const OWNER_OPERATION_TAGS: string[] = [
   "surface:internal",
 ];
 
+// "productivity" is deliberate: Stage-1 routinely tags habit/reminder-shaped
+// asks with the productivity context (a child of tasks). Retrieval uses
+// selected contexts as a +0.3 weight, and the tier narrow only keeps parents
+// that match a Stage-1 candidate name or score >= 0.97 — without this context
+// the owner-life umbrellas lost the boost to SCHEDULED_TASKS (which declares
+// productivity) and were never exposed for "brush my teeth at 8 am and 9 pm
+// every day" (#10722 brush-teeth-basic live trajectory).
 export const OWNER_OPERATION_CONTEXTS: AgentContext[] = [
   "general",
   "tasks",
   "todos",
+  "productivity",
   "calendar",
   "health",
 ];
@@ -2574,6 +2590,7 @@ export async function runLifeOperationHandler(
     routedParams?.title;
   const createConfirmed =
     deferredDraftReuseMode === "confirm" ||
+    params.confirmed === true ||
     detailBoolean(details, "confirmed") === true;
 
   try {

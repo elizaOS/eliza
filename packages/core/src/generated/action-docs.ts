@@ -7743,12 +7743,15 @@ export const allActionsSpec = {
 				"SET_REMINDER",
 				"REMIND_ME",
 				"REMIND_ME_TO",
+				"CREATE_REMINDER",
+				"DAILY_REMINDER",
+				"RECURRING_REMINDER",
 			],
 		},
 		{
 			name: "OWNER_ROUTINES",
 			description:
-				"Owner routines/habits: recurring routines; passive schedule inference.",
+				'Owner habits & routines: save a new recurring habit/routine from chat ("brush my teeth at 8 am and 9 pm every day", "meditate daily") — builds the habit definition + reminder plan; also update/delete/complete/skip/snooze/review; passive schedule inference.',
 			parameters: [
 				{
 					name: "action",
@@ -7763,12 +7766,20 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"owner routines create|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
+				"owner habits/routines: create new habit from chat (daily/weekly times + reminder plan)|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
 			similes: [
 				"HABIT",
 				"HABITS",
 				"ROUTINE",
 				"ROUTINES",
+				"SAVE_HABIT",
+				"CREATE_HABIT",
+				"NEW_HABIT",
+				"DAILY_HABIT",
+				"TRACK_HABIT",
+				"CREATE_ROUTINE",
+				"RECURRING_TASK",
+				"CREATE_RECURRING_TASK",
 				"DAILY_TASK",
 				"WEEKLY_TASK",
 			],
@@ -8236,7 +8247,7 @@ export const allActionsSpec = {
 		{
 			name: "SCHEDULED_TASKS",
 			description:
-				"Owner scheduled-item surface backed by LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+				"Low-level admin surface over LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history. create schedules a raw task and requires an explicit structural trigger — it is NOT the flow for saving a habit/routine/recurring personal reminder the owner asks for in chat; OWNER_ROUTINES / OWNER_REMINDERS action=create own that (definition + reminder plan).",
 			parameters: [
 				{
 					name: "action",
@@ -8553,7 +8564,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"LifeOps scheduled items list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
+				"low-level scheduled-item admin list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history; NOT new-habit/routine creation (-> OWNER_ROUTINES/OWNER_REMINDERS create)",
 			exampleCalls: [
 				{
 					user: "Use SCHEDULED_TASKS with the provided parameters.",

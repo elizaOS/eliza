@@ -52,7 +52,10 @@ Two corrections vs. the previously circulated recipe:
 | `app-control-live.report.json` | `views-voice-navigate` | app-control VIEWS (voice nav) | fail | 2 156 ms | `REPLY` (clarifying question) |
 | `live-inbound-attachment.report.json` | `live-inbound-attachment` | attachments (real-LLM lane) | **pass** | 1 953 ms | `ATTACHMENT {action:"read", attachmentId:"note-1"}` |
 | `health-status-and-trend.report.json` | `health-status-and-trend` | OWNER_HEALTH | **pass** | 6 296 ms | `OWNER_HEALTH_TODAY`, `OWNER_HEALTH_TREND {days:7}` |
-| `brush-teeth-basic.report.json` | `brush-teeth-basic` | LifeOps habit save | fail | 11 933 ms | `SCHEDULED_TASKS_CREATE` ×5 (wanted definition-save flow) |
+| `brush-teeth-basic.report.json` | `brush-teeth-basic` | LifeOps habit save | fail (before fix) | 11 933 ms | `SCHEDULED_TASKS_CREATE` ×5 (wanted definition-save flow) |
+| `brush-teeth-basic-after-fix.report.json` | `brush-teeth-basic` | LifeOps habit save (after fix) | **pass** | 8 335 ms | `OWNER_ROUTINES_CREATE` preview (`confirmed:false` → lifeDraft) then save (`confirmed:true` → definition + reminderPlan) |
+| `brush-teeth-basic-after-fix-rerun1.report.json` | `brush-teeth-basic` | stability re-run 1 | **pass** | 8 025 ms | same trajectory shape |
+| `brush-teeth-basic-after-fix-rerun2.report.json` | `brush-teeth-basic` | stability re-run 2 | **pass** | 7 599 ms | same trajectory shape |
 | `views-crud-lifecycle.report.json` | `views-crud-lifecycle` | app-control VIEWS CRUD (action-kind baseline) | **pass** | 381 ms | `VIEWS` create/edit/delete + stubbed `START_CODING_TASK` |
 | `app-control-oss120b-differential.report.json` | 3 failing app-control ids on `gpt-oss-120b` | differential triage | all fail | — | `REPLY` only (all three) |
 
@@ -117,7 +120,7 @@ Stage 1 picked the calendar context (Defect 3).
 voice-transcription contract (single word ⇒ navigate); no current live model
 honors it through this pipeline (Defect 3).
 
-### brush-teeth-basic — fail: wrong task surface + trajectory-limit crash
+### brush-teeth-basic — fail: wrong task surface + trajectory-limit crash (FIXED — see the 2026-07-02 brush-teeth delta at the bottom)
 Gemma genuinely attempted the save — turn 1 fired `SCHEDULED_TASKS_CREATE`
 three times with plausible params (`taskId:"brush-teeth-morning-…",
 kind:"reminder"`) — but that is the raw scheduled-task surface, not the LifeOps
@@ -303,3 +306,90 @@ recovered by the deterministic backstop + planner arbitration
 (`APP {action:"list"}` → honest "no apps installed" reply). The `app-list`
 scenario intentionally stays on `source: "telegram"` — an app list is a text
 answer and must work from a connector.
+
+---
+
+# 2026-07-02 delta — brush-teeth-basic (LifeOps habit save) is FIXED
+
+`brush-teeth-basic` now passes live on Cerebras `gemma-4-31b` (exact recipe
+above; Cerebras first-class mode, `CEREBRAS_MODEL`/`OPENAI_*_MODEL` pinned),
+3/3 consecutive runs: `brush-teeth-basic-after-fix.report.json` (8 335 ms) +
+`-rerun1` (8 025 ms) + `-rerun2` (7 599 ms). The passing trajectory, reviewed
+by hand:
+
+- Turn 1 "Help me brush my teeth at 8 am and 9 pm every day." →
+  `OWNER_ROUTINES_CREATE {action:"create", kind:"definition",
+  title:"Brush Teeth", confirmed:false, intent:"Help me brush my teeth at 8 am
+  and 9 pm every day."}` → preview result (`data: deferred, lifeDraft,
+  preview`), reply: `"I can save this as a habit named "Brush Teeth" for
+  8 am and 9 pm every day. Just let me know if that looks right…"`.
+- Turn 2 "Yes, save that brushing routine." → `OWNER_ROUTINES_CREATE
+  {action:"create", kind:"definition", title:"Brush Teeth", confirmed:true}` →
+  real save (`data: definition, reminderPlan, performance`), reply:
+  `"I've saved your brushing routine for 8 am and 9 pm every day."`.
+- Final check `definitionCountDelta` **passed**: `1 matching definition(s) for
+  "Brush teeth"` — `times_per_day` cadence, slots 480 + 1260, reminder plan
+  present (validated by the checker, not by the reply text).
+
+## Root causes (three stacked, found by walking the planner tool surface in
+## `--export-native` trajectories) + fixes
+
+1. **OWNER_ROUTINES was never exposed to the planner.** Stage-1 tags the ask
+   `contexts:["productivity"]` and invents candidate names
+   (`TASKS_CREATE_RECURRING_TASK`); the tier narrow
+   (`packages/core/src/runtime/action-tiering.ts`) only keeps parents matching
+   a Stage-1 candidate or scoring ≥ 0.97, and the +0.3 selected-context boost
+   went to `SCHEDULED_TASKS` (declares `productivity`) but not to the
+   owner-life umbrellas (`general|tasks|todos|calendar|health` only). The
+   Stage-2 surface was literally `SCHEDULED_TASKS* + CALENDAR_CREATE_EVENT +
+   terminals` — no description could route to an unexposed tool. Fix (PA):
+   `OWNER_OPERATION_CONTEXTS` now includes `productivity`
+   (`src/actions/life.ts`), OWNER_ROUTINES claims habit phrasing in
+   description/similes/examples (`CREATE_HABIT`, `RECURRING_TASK`, …,
+   `src/actions/owner-surfaces.ts`), and `SCHEDULED_TASKS` de-claims habit
+   creation in its description/routingHint + a per-virtual override on
+   `SCHEDULED_TASKS_CREATE` (`src/actions/scheduled-task.ts`,
+   `src/plugin.ts`); its create trigger failures now teach the redirect
+   ("call OWNER_ROUTINES action=create") so an in-turn misroute self-repairs
+   instead of burning every continuation (the original ×5 retry loop).
+2. **The planner-supplied `kind` union rerouted the save into the goals
+   store.** With OWNER_ROUTINES exposed, gemma sometimes set `kind:"goal"` and
+   the "habit" saved as a goal — `definitionCountDelta` saw nothing. The
+   backing store is structural per umbrella, so `kind` is now pinned (enum of
+   exactly the umbrella's kind, handler ignores overrides) on all
+   `makeOwnerLifeAction` umbrellas (`src/actions/owner-surfaces.ts`).
+3. **The preview→confirm handshake had no cross-turn transport on the planner
+   path.** Turn 2 re-ran create as a *fresh preview* while the reply text
+   claimed "saved" (result data was `deferred, lifeDraft, preview` — a false
+   success). The deferred `lifeDraft` rides on ActionResult.data, which is
+   never persisted into next-turn state on this path (`action_result`
+   memories are only written by POST/MESSAGE). The create flow already
+   honored `details.confirmed`; the umbrellas now expose a first-class
+   `confirmed` boolean ("set true ONLY when the owner is confirming a
+   previously previewed save") and `runLifeOperationHandler` folds
+   `params.confirmed` into `createConfirmed` (`src/actions/life.ts`). Live
+   gemma sets it correctly on the confirm turn (all 3 runs).
+
+Also fixed in passing: `SCHEDULED_TASKS_CREATE` retried with the same
+planner-invented `taskId` is now idempotent — the id is recorded as
+`metadata.plannerTaskId` and an ACTIVE task with the same requested id is
+returned (`deduplicated: true`) instead of stacking a sibling
+(`src/actions/scheduled-task.ts`; the observed turn-2 duplicate-taskId retry).
+The `definitionCountDelta` failure detail now lists stored definition titles
+(`packages/scenario-runner/src/final-checks/index.ts`) — that diagnostic is
+what exposed root causes 2 and 3.
+
+Scenario phrasing note: `responseIncludesAny` on the preview turn gained the
+alias `"brush your teeth"` (`brush-teeth-basic.scenario.ts` + `.json`,
+`brush-teeth-repeat-confirm.scenario.ts`) — every correctly-routed live reply
+says "brush your teeth at 8 am and 9 pm"; the check asserts engagement, not
+one canned wording. The `definitionCountDelta` contract is unchanged.
+
+Deterministic suites after the change: plugin-personal-assistant vitest
+974 tests → 968 passed / 2 skipped with the SAME 4 pre-existing failures as
+before the change (all in `src/lifeops/connectors/_helpers.test.ts` +
+`connector-dispatch` — unrelated concurrent work on this shared branch; see
+the delta note in the PR), plus 4 new tests green in
+`test/scheduled-task-trigger-boundary.test.ts`; scenario-runner 218/218;
+plugin typecheck clean. Generated action docs regenerated
+(`packages/prompts` build → `plugins.generated.json` + core `action-docs`).

@@ -776,7 +776,20 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(inboxAction),
     ...promoteSubactionsToActions(voiceCallAction),
     workThreadAction,
-    ...promoteSubactionsToActions(scheduledTaskAction),
+    // The create virtual carries an explicit de-claim: on live small models a
+    // habit-shaped ask ("brush my teeth at 8 am and 9 pm every day") otherwise
+    // routes to this raw scheduler surface instead of the OWNER_ROUTINES /
+    // OWNER_REMINDERS definition pipeline (#10722 brush-teeth-basic).
+    ...promoteSubactionsToActions(scheduledTaskAction, {
+      overrides: {
+        create: {
+          description:
+            "subaction = create — schedule a raw ScheduledTask (explicit structural trigger required). NOT for a new habit/routine/recurring personal reminder the owner asks for in chat — use OWNER_ROUTINES_CREATE / OWNER_REMINDERS_CREATE (definition + reminder plan).",
+          descriptionCompressed:
+            "raw ScheduledTask create (explicit trigger required); NEW habit/routine/daily reminder -> OWNER_ROUTINES_CREATE/OWNER_REMINDERS_CREATE",
+        },
+      },
+    }),
     ...promoteSubactionsToActions(connectorAction),
     ...messagingTriageActions,
   ],
