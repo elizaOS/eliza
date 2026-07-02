@@ -112,7 +112,7 @@ const CELLS = [
       "--cwd",
       "packages/app",
       "test:e2e",
-      "test/ui-smoke/voice-workbench-respond-no-respond.spec.ts",
+      "test/ui-smoke/voice-workbench-response-state-sse.spec.ts",
     ],
     env: UI_SMOKE_MATRIX_ENV,
     evidence: [
