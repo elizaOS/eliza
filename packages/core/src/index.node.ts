@@ -64,6 +64,7 @@ export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./env-utils";
+export * from "./model-gateway";
 export {
 	roleAction,
 	updateRoleAction,

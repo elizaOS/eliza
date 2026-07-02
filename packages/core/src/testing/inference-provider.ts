@@ -7,6 +7,7 @@
 
 import z from "zod";
 import { logger } from "../logger";
+import { resolveModelGateway } from "../model-gateway.ts";
 
 /** Default Ollama endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -92,10 +93,33 @@ function checkCloudProvider(
 	);
 
 	if (matchedEnvVar) {
-		const endpoint =
-			config.name === "openai" && matchedEnvVar === "CEREBRAS_API_KEY"
-				? process.env.OPENAI_BASE_URL?.trim() || CEREBRAS_OPENAI_BASE_URL
-				: config.endpoint;
+		// Vendor-neutral model-gateway (#11536 E1): when gateway mode is on, the
+		// OpenAI-compatible endpoint is the gateway URL, matching the resolution
+		// layer that config.ts applies to OPENAI_BASE_URL for the real runtime.
+		// This is a detector, not the runtime: authoritative fail-closed strict
+		// enforcement lives in features/documents/config.ts. Here we only want the
+		// gateway URL as the effective endpoint, so a strict-mode throw (raw key
+		// present) must not crash provider detection.
+		let gatewayBaseURL: string | undefined;
+		try {
+			gatewayBaseURL = resolveModelGateway((key) => process.env[key]).baseURL;
+		} catch {
+			// Strict-mode misconfig surfaces at the real runtime resolution layer;
+			// fall back to the gateway URL directly for detection purposes.
+			gatewayBaseURL = process.env.ELIZA_MODEL_GATEWAY_URL?.trim() || undefined;
+		}
+		let endpoint: string;
+		if (config.name === "openai" && gatewayBaseURL) {
+			endpoint = gatewayBaseURL;
+		} else if (
+			config.name === "openai" &&
+			matchedEnvVar === "CEREBRAS_API_KEY"
+		) {
+			endpoint =
+				process.env.OPENAI_BASE_URL?.trim() || CEREBRAS_OPENAI_BASE_URL;
+		} else {
+			endpoint = config.endpoint;
+		}
 		return {
 			name: config.name,
 			available: true,

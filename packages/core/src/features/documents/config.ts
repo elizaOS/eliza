@@ -1,4 +1,5 @@
 import z from "zod";
+import { applyModelGateway, resolveModelGateway } from "../../model-gateway.ts";
 import type { IAgentRuntime } from "../../types";
 import {
 	type ModelConfig,
@@ -67,7 +68,20 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 				: getSetting("OPENAI_EMBEDDING_DIMENSIONS")) ||
 			(resolvedEmbeddingProvider === "local" ? "384" : "1536");
 
-		const openaiApiKey = getSetting("OPENAI_API_KEY");
+		const rawOpenaiApiKey = getSetting("OPENAI_API_KEY");
+		const rawOpenaiBaseURL = getSetting("OPENAI_BASE_URL");
+
+		// Vendor-neutral model-gateway (#11536 E1): when ELIZA_MODEL_GATEWAY_URL is
+		// set it takes precedence at the same layer that consumes OPENAI_BASE_URL /
+		// OPENAI_API_KEY, so every OpenAI-compatible client (llm.ts embed + text)
+		// inherits gateway mode. Strict mode throws if a raw provider key is present
+		// while gateway mode is on. When gateway mode is on the raw OpenAI key is
+		// scrubbed so it never travels to the gateway.
+		const gateway = resolveModelGateway(getSetting);
+		const { baseURL: openaiBaseURL, apiKey: openaiApiKey } = applyModelGateway(
+			{ baseURL: rawOpenaiBaseURL, apiKey: rawOpenaiApiKey },
+			gateway,
+		);
 
 		const config = ModelConfigSchema.parse({
 			EMBEDDING_PROVIDER: resolvedEmbeddingProvider,
@@ -78,7 +92,7 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			OPENROUTER_API_KEY: getSetting("OPENROUTER_API_KEY"),
 			GOOGLE_API_KEY: getSetting("GOOGLE_API_KEY"),
 
-			OPENAI_BASE_URL: getSetting("OPENAI_BASE_URL"),
+			OPENAI_BASE_URL: openaiBaseURL,
 			ANTHROPIC_BASE_URL: getSetting("ANTHROPIC_BASE_URL"),
 			OPENROUTER_BASE_URL: getSetting("OPENROUTER_BASE_URL"),
 			GOOGLE_BASE_URL: getSetting("GOOGLE_BASE_URL"),
