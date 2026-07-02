@@ -1947,12 +1947,61 @@ async function runControl(
     textValue(params.instruction) ??
     textValue(content.instruction) ??
     (action === "continue" || action === "resume" ? text : undefined);
+
+  // Resume/continue must clear the durable paused flag before any ACP send:
+  // the pause branch above routes to pauseTask, which stops the task's
+  // sessions and sets paused:true — freezing advanceTaskStatus. A bare
+  // session send can never unpause the task (and after a pause there is
+  // usually no live session left to send to), so without this pause would be
+  // a one-way door from the action surface. Session-only calls (no
+  // taskId/threadId, or no task service) keep the plain ACP-send fallback.
+  const controlTaskId =
+    action === "resume" || action === "continue"
+      ? (pickString(params, content, "taskId") ??
+        pickString(params, content, "threadId"))
+      : undefined;
+  let resumedTask: Awaited<ReturnType<OrchestratorTaskService["resumeTask"]>> =
+    null;
+  if (controlTaskId) {
+    const taskService = runtime.getService?.(
+      OrchestratorTaskService.serviceType,
+    ) as OrchestratorTaskService | null | undefined;
+    if (taskService) {
+      try {
+        resumedTask = await taskService.resumeTask(controlTaskId);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        coreLogger.warn(`[TASKS:control] resume failed: ${errMsg}`);
+        const out = `Failed to resume coding task ${controlTaskId}: ${errMsg}`;
+        if (callback) await callback({ text: out });
+        return failureResult("TASKS:control", "LIFECYCLE_FAILED", out, {
+          reason: "lifecycle_failed",
+          taskId: controlTaskId,
+        });
+      }
+    }
+  }
+
   const target = await resolveSession(
     service,
     pickString(params, content, "sessionId"),
     state,
   );
   if (!target.session) {
+    if (resumedTask && controlTaskId) {
+      const out = `Resumed coding task ${controlTaskId}. No active ACP session to instruct — the task is unpaused.`;
+      if (callback) await callback({ text: out });
+      return {
+        success: true,
+        text: out,
+        data: {
+          actionName: "TASKS:control",
+          action,
+          taskId: controlTaskId,
+          task: resumedTask,
+        },
+      };
+    }
     const msg = target.missingId
       ? `Session ${target.missingId} not found.`
       : "No active ACP session found.";
@@ -1968,6 +2017,9 @@ async function runControl(
     sessionId: target.session.id,
     action,
   };
+  if (resumedTask && controlTaskId) {
+    data = { ...data, taskId: controlTaskId };
+  }
 
   let responseText = "";
   if (action === "stop") {
