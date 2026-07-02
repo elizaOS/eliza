@@ -69,6 +69,51 @@ Key environment variables (all optional unless noted):
 | `MFLUX_BIN` | Absolute path to mflux binary |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | Default Kokoro TTS voice |
 
+## Per-target local inference recommendations
+
+The runtime already computes the recommendation from the hardware probe; this
+table documents the current policy so device setup is reviewable without
+reading code. The source of truth is:
+
+- `src/services/device-tier.ts` for `MAX` / `GOOD` / `OKAY` / `POOR`
+  classification and the mobile context clamp.
+- `src/services/recommendation.ts` for text-model slot ladders.
+- `src/runtime/embedding-presets.ts` for local embedding defaults.
+- `scripts/local-inference-thresholds.json` for backend tok/s floors used by
+  ablation gates.
+
+| Target | Local mode | Text model policy | Context policy | Embeddings | Notes |
+|---|---|---|---|---|---|
+| Android / iOS phone, >= 6 GB RAM | `OKAY` at best; local LM and local voice are allowed, but models load/unload instead of staying parallel-resident. | `TEXT_SMALL` uses `eliza-1-2b`; `TEXT_LARGE` tries `eliza-1-4b` then `eliza-1-2b`. | Mobile is capped at 64k even if coarse RAM math says 128k fits. | `gte-small_fp16.gguf`, 384 dimensions, 512 context. Use CPU on <= 8 GB or no accelerator; otherwise `gpuLayers: "auto"`. | Phone OS background-task limits are the reason for the tier cap; do not force 9B/27B on mobile for default routing. |
+| 8 GB Apple Silicon | `OKAY`; local-capable with swapping discipline. | Prefer 2B/4B fits; avoid pinning larger tiers as defaults. | Use the fit selected by the dashboard; expect short or downscaled context under pressure. | CPU fallback if <= 8 GB; `gte-small` stays the embedding model. | `device-tier.ts` hard-caps 8 GB Apple Silicon at `OKAY`. |
+| Apple Silicon >= 16 GB | `GOOD`; all models can run serialized. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when the RAM/VRAM headroom gate passes. | `gte-small` with accelerator offload. | `MAX` requires >= 32 GB shared RAM plus the `MAX` free/effective memory gates. |
+| Linux / Windows with discrete GPU >= 8 GB VRAM | `GOOD`; serialized local LM is recommended. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when memory headroom passes. | `gte-small` with `gpuLayers: "auto"` on CUDA/Vulkan. | `MAX` requires >= 16 GB VRAM plus the free/effective memory gates. |
+| CPU-only desktop >= 32 GB RAM | `GOOD`; local LM is viable, but expect CPU tok/s floors rather than GPU floors. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 9B, 4B, 2B in fit order. | Prefer the dashboard fit; avoid forcing long context if free RAM is below the session gate. | CPU `gte-small` unless a supported accelerator is detected. | CPU-only effective model memory is `totalRamGb * 0.5`. |
+| CPU-only desktop around 16 GB RAM | `OKAY`; local is possible with load/unload behavior. | Use the largest fit selected by the dashboard, usually 2B/4B. | Keep context conservative; let `selectBestEliza1FitForDevice()` downscale. | CPU `gte-small`. | If free RAM is below 25% of total, the tier is demoted. |
+| Below the `OKAY` thresholds or unsupported CPU baseline | `POOR`; route to cloud. | Do not pin a local default. | N/A | Cloud or disabled local embeddings. | `recommendedMode` becomes cloud-first / cloud-only depending on modality. |
+
+Operational knobs:
+
+- Use `LOCAL_INFERENCE_ACTIVE_TIER` only to pin a curated Eliza-1 tier for a
+  known device; otherwise let the dashboard recommendation choose the largest
+  fit.
+- Use `ELIZA_LOCAL_IDLE_UNLOAD_MS` to free memory on shared or mobile hosts.
+- Use `ELIZA_LOCAL_SESSION_POOL_SIZE` and
+  `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1` only when the host has enough headroom
+  for concurrent conversations; the engine warns when the conversation high
+  water mark exceeds the running `--parallel` value.
+- Use `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` to trade streaming smoothness against
+  JS/FFI round trips. The default is `32`, clamped to `1`-`512`.
+- Embedding overrides (`LOCAL_EMBEDDING_MODEL`,
+  `LOCAL_EMBEDDING_GPU_LAYERS`, `LOCAL_EMBEDDING_CONTEXT_SIZE`,
+  `LOCAL_EMBEDDING_DIMENSIONS`) should keep the SQL vector dimension in sync.
+  The built-in `gte-small` preset is intentionally 384-dim because the default
+  storage schema is 384-dim.
+- Generic single-file GGUFs are advanced/developer-mode only and should not be
+  used as automatic defaults. The default recommender is Eliza-1-only because
+  fused bundles carry the manifest, tokenizer, KV/cache policy, and voice/vision
+  assets the runtime can verify.
+
 ## Architecture notes
 
 The plugin exposes these subpath exports (see `package.json` `exports`):
