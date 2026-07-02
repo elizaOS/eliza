@@ -320,7 +320,14 @@ export async function runTaskWithSmithers(
       assembled.turns += 1;
       assembled.agentsDone[ctx.agentIndex ?? 0] = out.done === true;
     } else if (kind === "approval") {
-      assembled.approved = out.approved !== false;
+      // Fail CLOSED: a present approval handler must EXPLICITLY approve. The
+      // prior `!== false` treated a malformed/ambiguous response (approved
+      // missing / null / undefined at this untyped subprocess boundary) as
+      // approval, so a broken approval handler silently let a task submit. Only
+      // an explicit `approved === true` clears the gate now. (The no-handler
+      // case is unaffected: it never reaches record(), so the permissive init
+      // default still stands for deployments that wire no requestApproval.)
+      assembled.approved = out.approved === true;
     } else if (kind === "submit") {
       assembled.submitOutput =
         (out.output as Record<string, unknown>) ?? assembled.submitOutput;
