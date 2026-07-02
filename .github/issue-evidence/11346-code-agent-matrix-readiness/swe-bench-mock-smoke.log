@@ -1,0 +1,17 @@
+2026-07-02 13:44:34,666 [INFO] __main__: [swe_bench] 1/1 mock__swe-bench-1
+2026-07-02 13:44:34,667 [INFO] benchmarks.swe_bench.repo_manager: Creating repository mirror cache: swe-bench-workspace/.repo-cache/mock__repo.git
+2026-07-02 13:44:35,004 [WARNING] benchmarks.swe_bench.repo_manager: Repository mirror cache unavailable: Command '['git', 'clone', '--mirror', 'https://github.com/mock/repo.git', 'swe-bench-workspace/.repo-cache/mock__repo.git']' returned non-zero exit status 128.
+2026-07-02 13:44:35,008 [INFO] benchmarks.swe_bench.repo_manager: Cloning https://github.com/mock/repo.git to swe-bench-workspace/mock__swe-bench-1...
+2026-07-02 13:44:35,345 [WARNING] benchmarks.swe_bench.repo_manager: Shallow clone failed, trying full clone...
+{
+  "variant": "lite",
+  "total_instances": 1,
+  "resolved": 1,
+  "unresolved": 0,
+  "resolve_rate": 1.0,
+  "apply_rate": 1.0,
+  "average_duration": 1.2956421375274658,
+  "average_tokens": 0.0
+}
+
+Result file: /tmp/claude-1000/eliza-bench-smoke/swe-output/swe-bench-20260702_204434.json
