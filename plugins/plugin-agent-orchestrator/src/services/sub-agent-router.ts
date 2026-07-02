@@ -32,6 +32,7 @@ import {
   deliverScreenshots,
 } from "./screenshot-delivery.js";
 import { SsrfBlockedError, safeFetch } from "./ssrf-guard.js";
+import { stripToolTranscript } from "./transcript-sanitizer.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
   captureChangeSet,
@@ -2421,18 +2422,13 @@ function normalizeFinishReason(
   }
 }
 
-function stripToolTranscript(text: string): string {
-  // Remove the orchestrator's OWN captured tool-output envelope blocks
-  // ("[tool output: <title>]\n<output>\n[/tool output]", emitted by
-  // captureTerminalToolOutput in acp-service). These are our structured
-  // markers, not model prose, so dropping them keeps raw tool results from
-  // leaking into the user-facing completion narration — distinct from
-  // matching semantic LLM output, which we do not do.
-  return text
-    .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+// The envelope-stripping logic moved to the shared transcript-sanitizer so the
+// swarm-synthesis relay path (issue elizaOS/eliza#11578) sanitizes with the
+// SAME implementation instead of its own missing copy. stripToolTranscript is
+// re-imported (see the top-of-file import) and behaves identically here for the
+// well-formed case the router already handled; it additionally hardens against
+// empty-title and unterminated blocks, which the router never emitted but which
+// leaked on the synthesis path.
 
 // Maximum size of a captured tool-output block we will relay verbatim. Above
 // this, the deliverable is a multi-KB transcript and stays on the

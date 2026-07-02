@@ -16,6 +16,12 @@ const MAX_DIFF_CHARS = 6_000;
 const MAX_CHANGED_FILES = 60;
 const MAX_FILE_DIFFS = 12;
 
+// The canonical git empty-tree object hash. On an unborn HEAD (a fresh repo
+// with zero commits), `git diff HEAD` throws because HEAD resolves to nothing;
+// diffing against the empty tree yields the whole working tree as "added"
+// instead (issue elizaOS/eliza#11578 FIX C).
+const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
 function outputToString(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (value instanceof Uint8Array) return Buffer.from(value).toString("utf8");
@@ -151,6 +157,30 @@ function parseNameStatus(out: string | undefined): string[] {
   return files;
 }
 
+/** Parse `git ls-files --others` output (one path per line) into a path list. */
+function parseLsFiles(out: string | undefined): string[] {
+  return (out ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/**
+ * Resolve the base ref for the completion diff. Prefers the captured baseline
+ * sha; otherwise HEAD — but when HEAD is unborn (a fresh repo with zero commits)
+ * `git rev-parse --verify HEAD` fails, so we fall back to the empty-tree hash so
+ * the diff still sees the entire working tree as added (issue #11578 FIX C).
+ */
+async function resolveDiffBase(
+  workdir: string,
+  baselineSha?: string,
+): Promise<string> {
+  const trimmed = baselineSha?.trim();
+  if (trimmed) return trimmed;
+  const head = await git(workdir, ["rev-parse", "--verify", "--quiet", "HEAD"]);
+  return head?.trim() ? "HEAD" : EMPTY_TREE_HASH;
+}
+
 /** Normalize a tool-call file path to workdir-relative POSIX form. */
 function toWorkdirRelative(workdir: string, file: string): string {
   const trimmed = file.trim();
@@ -210,7 +240,20 @@ export async function captureChangeSet(
   if (!(await isWorkTree(workdir))) {
     return captureToolPathOnlyChangeSet(workdir, toolPaths);
   }
-  const base = baselineSha?.trim() ? baselineSha.trim() : "HEAD";
+  // Resolve the diff base. When no explicit baseline sha was captured we use
+  // HEAD — but on an unborn HEAD (zero commits) `git diff HEAD` throws and the
+  // caller previously fell back to the weak narration path (issue #11578
+  // round-1/2). Substitute the empty-tree hash so a fresh repo still surfaces
+  // its whole working tree as a change set.
+  const base = await resolveDiffBase(workdir, baselineSha);
+  // `base === EMPTY_TREE_HASH` iff HEAD was unborn (a FRESH repo, no baseline).
+  // That is the only case where we merge `git ls-files --others`: a fresh repo
+  // has no accumulated prior-session clutter, so surfacing every untracked file
+  // is correct. In the normal born-HEAD case we deliberately DO NOT scoop up
+  // untracked files (that would regress the shared-workspace clutter invariant
+  // pinned by the workspace-diff tests) — tracked diff + tool paths stay scoped
+  // to this session.
+  const unbornHead = base === EMPTY_TREE_HASH;
 
   // Exclude files already dirty at spawn (pre-existing churn the agent didn't
   // touch) UNLESS the agent explicitly wrote them via a tool call this session.
@@ -227,10 +270,21 @@ export async function captureChangeSet(
   ).filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
 
-  const changedFiles = [...new Set([...tracked, ...agentWritten])].slice(
-    0,
-    MAX_CHANGED_FILES,
-  );
+  // On an unborn HEAD only: include untracked files so shell-driven creates
+  // (mkdir/cp/redirect) that never went through the edit/write tool path still
+  // surface. `git diff <empty-tree>` sees only files git already knows about,
+  // so a freshly scaffolded, never-added file would otherwise be invisible
+  // (issue #11578 FIX C). Scoped to unborn HEAD to preserve the born-HEAD
+  // clutter invariant above.
+  const untracked = unbornHead
+    ? parseLsFiles(
+        await git(workdir, ["ls-files", "--others", "--exclude-standard"]),
+      ).filter((file) => !dirtyAtSpawn.has(file))
+    : [];
+
+  const changedFiles = [
+    ...new Set([...tracked, ...untracked, ...agentWritten]),
+  ].slice(0, MAX_CHANGED_FILES);
   if (changedFiles.length === 0) return undefined;
 
   // Real stat from git for the same filtered file set rendered to the user.

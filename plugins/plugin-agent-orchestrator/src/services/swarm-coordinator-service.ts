@@ -56,6 +56,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
+import { sanitizeCompletionRelay } from "./transcript-sanitizer.js";
 import { TERMINAL_SESSION_STATUSES } from "./types.js";
 
 export const SWARM_COORDINATOR_SERVICE_TYPE = "SWARM_COORDINATOR";
@@ -708,11 +709,25 @@ export class SwarmCoordinatorService extends Service {
       readString(record, "originConnectorMessageId") ??
       readString(meta, "originConnectorMessageId") ??
       null;
-    const completionSummary =
+    // The raw `response` here is the ACP turn's finalText, which CONTAINS the
+    // orchestrator's own `[tool output: …]` envelope blocks appended by
+    // captureTerminalToolOutput. This synthesis path posts completionSummary
+    // VERBATIM to the connector (server-helpers-swarm.buildTaskResultLine →
+    // routeSynthesisToConnector → Discord) with NO downstream stripping — the
+    // round-3 raw-transcript leak in issue elizaOS/eliza#11578. Sanitize at the
+    // SOURCE with the same shared stripper the sub-agent router uses, so the
+    // envelopes never enter the callback payload. If nothing survives (the
+    // deliverable WAS the tool output), fall back to the existing default.
+    const rawSummary =
       readString(record, "response") ??
       readString(record, "summary") ??
       readString(record, "message") ??
-      readString(record, "text") ??
+      readString(record, "text");
+    const sanitizedSummary = rawSummary
+      ? sanitizeCompletionRelay(rawSummary)
+      : "";
+    const completionSummary =
+      sanitizedSummary ||
       (terminalStatus === "completed"
         ? "Task completed."
         : `${label} ${terminalStatus}.`);

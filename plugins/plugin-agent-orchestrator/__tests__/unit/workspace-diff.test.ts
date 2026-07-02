@@ -246,3 +246,61 @@ describe("workspace-diff — real git capture", () => {
     ).toContain("UNVERIFIED: missing missing.txt");
   });
 });
+
+// FIX C (issue elizaOS/eliza#11578): a fresh repo with zero commits has an
+// UNBORN HEAD, so `git diff HEAD` throws and the caller fell back to the weak
+// narration path (rounds 1/2 never produced a change set). Diffing against the
+// empty-tree hash surfaces the whole working tree; untracked files (shell
+// writes) are also merged so scaffolding shows up without tool-path tracking.
+describe("workspace-diff — unborn HEAD + untracked (#11578)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "wsdiff-unborn-"));
+    git(dir, ["init", "-q"]);
+    git(dir, ["config", "user.email", "t@t.t"]);
+    git(dir, ["config", "user.name", "t"]);
+    // NO initial commit — HEAD is unborn.
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns a change set on an unborn HEAD for a shell-written file", async () => {
+    writeFileSync(join(dir, "app.js"), "console.log('hi');\n");
+    const cs = await captureChangeSet(dir);
+    expect(cs).toBeDefined();
+    expect(cs?.changedFiles).toContain("app.js");
+  });
+
+  it("includes several untracked files scaffolded on an unborn HEAD", async () => {
+    writeFileSync(join(dir, "index.html"), "<h1>hi</h1>\n");
+    writeFileSync(join(dir, "style.css"), "body{}\n");
+    writeFileSync(join(dir, "app.js"), "console.log(1);\n");
+    const cs = await captureChangeSet(dir);
+    expect(cs).toBeDefined();
+    expect(cs?.changedFiles).toEqual(
+      expect.arrayContaining(["index.html", "style.css", "app.js"]),
+    );
+  });
+
+  it("does NOT auto-scoop untracked clutter once HEAD is born (invariant preserved)", async () => {
+    writeFileSync(join(dir, "seed.txt"), "seed\n");
+    git(dir, ["add", "."]);
+    git(dir, ["commit", "-q", "-m", "seed"]);
+    // HEAD is now born. A stray untracked file with NO tool path must NOT be
+    // scooped up — the born-HEAD path stays session-scoped (tracked + toolPaths).
+    writeFileSync(join(dir, "stray.txt"), "clutter\n");
+    const cs = await captureChangeSet(dir);
+    expect(cs).toBeUndefined();
+    // But a tool-path-tracked write on born HEAD still surfaces.
+    const cs2 = await captureChangeSet(dir, undefined, ["stray.txt"]);
+    expect(cs2?.changedFiles).toContain("stray.txt");
+  });
+
+  it("returns undefined on an unborn HEAD with no files", async () => {
+    const cs = await captureChangeSet(dir);
+    expect(cs).toBeUndefined();
+  });
+});
