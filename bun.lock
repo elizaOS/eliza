@@ -232,6 +232,7 @@
         "@elizaos/capacitor-gateway": "workspace:*",
         "@elizaos/capacitor-location": "workspace:*",
         "@elizaos/capacitor-messages": "workspace:*",
+        "@elizaos/capacitor-mlkit-text": "workspace:*",
         "@elizaos/capacitor-mobile-agent-bridge": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
         "@elizaos/capacitor-phone": "workspace:*",
@@ -370,6 +371,7 @@
         "@elizaos/capacitor-gateway": "workspace:*",
         "@elizaos/capacitor-location": "workspace:*",
         "@elizaos/capacitor-messages": "workspace:*",
+        "@elizaos/capacitor-mlkit-text": "workspace:*",
         "@elizaos/capacitor-mobile-agent-bridge": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
         "@elizaos/capacitor-phone": "workspace:*",
@@ -4208,6 +4210,19 @@
         "@capacitor/core": "^8.3.1",
       },
     },
+    "plugins/plugin-native-mlkit-text": {
+      "name": "@elizaos/capacitor-mlkit-text",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
     "plugins/plugin-native-mobile-agent-bridge": {
       "name": "@elizaos/capacitor-mobile-agent-bridge",
       "version": "2.0.3-beta.7",
@@ -6124,6 +6139,8 @@
     "@elizaos/capacitor-location": ["@elizaos/capacitor-location@workspace:plugins/plugin-native-location"],
 
     "@elizaos/capacitor-messages": ["@elizaos/capacitor-messages@workspace:plugins/plugin-native-messages"],
+
+    "@elizaos/capacitor-mlkit-text": ["@elizaos/capacitor-mlkit-text@workspace:plugins/plugin-native-mlkit-text"],
 
     "@elizaos/capacitor-mobile-agent-bridge": ["@elizaos/capacitor-mobile-agent-bridge@workspace:plugins/plugin-native-mobile-agent-bridge"],
 

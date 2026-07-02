@@ -7,6 +7,11 @@
 
 import type { Route } from "@elizaos/core";
 import {
+  OCR_BRIDGE_SERVICE_TYPE,
+  type OcrBridgeService,
+  type OcrBridgeWord,
+} from "./ocr-bridge";
+import {
   SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
@@ -102,4 +107,80 @@ export const screenFrameRoute: Route = {
   },
 };
 
-export const visionRoutes: Route[] = [captureRequestsRoute, screenFrameRoute];
+function isOcrWord(value: unknown): value is OcrBridgeWord {
+  if (typeof value !== "object" || value === null) return false;
+  const word = value as Record<string, unknown>;
+  return (
+    typeof word.text === "string" &&
+    typeof word.left === "number" &&
+    typeof word.top === "number" &&
+    typeof word.width === "number" &&
+    typeof word.height === "number" &&
+    typeof word.confidence === "number" &&
+    typeof word.block === "number" &&
+    typeof word.par === "number" &&
+    typeof word.line === "number"
+  );
+}
+
+export const ocrRequestsRoute: Route = {
+  type: "GET",
+  path: "/api/vision/ocr-requests",
+  rawPath: true,
+  routeHandler: async (ctx) => {
+    const bridge = ctx.runtime.getService<OcrBridgeService>(
+      OCR_BRIDGE_SERVICE_TYPE,
+    );
+    if (!bridge) return jsonResult(200, { requests: [] });
+    return jsonResult(200, { requests: bridge.takeRequests() });
+  },
+};
+
+export const ocrResultRoute: Route = {
+  type: "POST",
+  path: "/api/vision/ocr-result",
+  rawPath: true,
+  routeHandler: async (ctx) => {
+    const bridge = ctx.runtime.getService<OcrBridgeService>(
+      OCR_BRIDGE_SERVICE_TYPE,
+    );
+    if (!bridge)
+      return jsonResult(404, { ok: false, error: "bridge_unavailable" });
+
+    const body = ctx.body;
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      typeof (body as Record<string, unknown>).requestId !== "string"
+    ) {
+      return jsonResult(400, { ok: false, error: "invalid_body" });
+    }
+    const requestId = (body as Record<string, unknown>).requestId as string;
+
+    if ((body as Record<string, unknown>).error !== undefined) {
+      const failed = bridge.failRequest(
+        requestId,
+        String((body as Record<string, unknown>).error),
+      );
+      return failed
+        ? jsonResult(200, { ok: true })
+        : jsonResult(404, { ok: false, error: "unknown_request" });
+    }
+
+    const rawWords = (body as Record<string, unknown>).words;
+    if (!Array.isArray(rawWords)) {
+      return jsonResult(400, { ok: false, error: "invalid_body" });
+    }
+    const ok = bridge.submitResult(requestId, rawWords.filter(isOcrWord));
+    return ok
+      ? jsonResult(200, { ok: true })
+      : jsonResult(404, { ok: false, error: "unknown_request" });
+  },
+};
+
+export const visionRoutes: Route[] = [
+  captureRequestsRoute,
+  screenFrameRoute,
+  ocrRequestsRoute,
+  ocrResultRoute,
+];
