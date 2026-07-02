@@ -23,6 +23,7 @@ import {
   bearerHeaders,
   exchangeApiKeyForSession,
   getBaseUrl,
+  isLocalTarget,
   isServerReachable,
 } from "./_helpers/api";
 
@@ -44,16 +45,6 @@ function internalHeaders(): Record<string, string> {
     Authorization: `Bearer ${process.env.INTERNAL_SECRET || "test-internal-secret"}`,
     "Content-Type": "application/json",
   };
-}
-
-/**
- * True when the e2e target is a LOCAL dev Worker (which shares our `.env`, so
- * INTERNAL_SECRET / test-only routes line up). Against a DEPLOYED target
- * (staging/prod) the Worker's INTERNAL_SECRET is a server-side secret we can't
- * supply, so internal-bearer-authenticated tests must skip rather than fail.
- */
-function isLocalTarget(): boolean {
-  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/.test(getBaseUrl());
 }
 
 beforeAll(async () => {

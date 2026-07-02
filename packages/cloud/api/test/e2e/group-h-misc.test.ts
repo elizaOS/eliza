@@ -30,6 +30,7 @@ import {
   bearerHeaders,
   cronHeaders,
   getBaseUrl,
+  isLocalTarget,
   isServerReachable,
   url,
 } from "./_helpers/api";
@@ -55,17 +56,6 @@ function internalHeaders(): Record<string, string> {
     Authorization: `Bearer ${process.env.INTERNAL_SECRET || "test-internal-secret"}`,
     "Content-Type": "application/json",
   };
-}
-
-/**
- * True when the e2e target is a LOCAL dev Worker (shares our `.env`, so
- * INTERNAL_SECRET lines up). A DEPLOYED target's INTERNAL_SECRET is a
- * server-side secret we can't supply, so internal-bearer-authenticated
- * happy-path/validation tests must skip rather than 401-fail there. The
- * unauthenticated 401 auth-gate assertions still run everywhere.
- */
-function isLocalTarget(): boolean {
-  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/.test(getBaseUrl());
 }
 
 beforeAll(async () => {
