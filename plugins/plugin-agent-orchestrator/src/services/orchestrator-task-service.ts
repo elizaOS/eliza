@@ -523,8 +523,14 @@ function parseUsage(data: unknown): ParsedUsage | null {
     return null;
   }
   const stateRaw = str(data.state);
+  // Unknown/absent precision → "estimated" (the conservative label), not
+  // "measured": the UsageState union exists so an operator is never misled by a
+  // confident-looking number, so we must not stamp provider-inferred tokens as
+  // ground-truth measured just because the producer omitted `state`.
   const state: UsageState =
-    stateRaw === "measured" || stateRaw === "estimated" ? stateRaw : "measured";
+    stateRaw === "measured" || stateRaw === "estimated"
+      ? stateRaw
+      : "estimated";
   return {
     provider: str(data.provider) ?? "unknown",
     model: str(data.model),
