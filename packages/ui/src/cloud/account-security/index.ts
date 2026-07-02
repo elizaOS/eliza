@@ -31,22 +31,13 @@ import { registerCloudRoute } from "../shell/cloud-route-registry";
 
 // Surfaces (embeddable bodies) + standalone route components.
 export { AccountSurface, default as AccountRoute } from "./AccountRoute";
-// Zero-prop settings-section adapters (Wave-3 mount points).
-export { AccountSection } from "./AccountSection";
 // Data hook reused by the surfaces.
 export { type UserProfile, useUserProfile } from "./data/user";
 export {
   default as PermissionsRoute,
   PermissionsSurface,
 } from "./PermissionsRoute";
-export { PermissionsSection } from "./PermissionsSection";
 export { default as SecurityRoute, SecuritySurface } from "./SecurityRoute";
-export { SecuritySection } from "./SecuritySection";
-
-/** Stable settings-section ids + URL hashes for the surfaces. */
-export const ACCOUNT_SECTION_ID = "account";
-export const SECURITY_SECTION_ID = "security";
-export const PERMISSIONS_SECTION_ID = "plugin-permissions";
 
 /** Standalone cloud-route paths (no compat redirect; safe to self-register). */
 export const ACCOUNT_ROUTE_PATH = "dashboard/account";

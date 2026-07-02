@@ -93,11 +93,6 @@
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
     },
-    "./cloud": {
-      "types": "./dist/cloud/index.d.ts",
-      "import": "./dist/cloud/index.js",
-      "default": "./dist/cloud/index.js"
-    },
     "./cloud/*": {
       "types": "./dist/cloud/*.d.ts",
       "import": "./dist/cloud/*.js",

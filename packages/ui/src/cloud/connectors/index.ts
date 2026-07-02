@@ -1,19 +1,10 @@
 /**
- * Cloud connectors domain — public surface.
- *
- * These are the CLOUD-hosted connectors (OAuth-redirect + token-credential)
- * lifted from `@elizaos/cloud-frontend`. The domain:
- *
- * - registers a cloud route at `dashboard/settings/connections` via
- *   {@link registerCloudRoute} (import side-effect below), so the shell renders
- *   the connectors surface standalone;
- * - exports {@link CloudConnectorsSection} (the canonical port of the
- *   cloud-frontend `ConnectionsTab`) plus the individual connection components
- *   so Wave-3 settings wiring can mount the surface however it chooses;
- * - exports {@link registerCloudConnectorsSettingsSection} so the host can
- *   register the surface as a Settings section under the "agent" group WITHOUT
- *   this module deciding the settings IA at import time (that decision belongs
- *   to Wave-3, and the pinned `settings-section-meta` is owned elsewhere).
+ * Cloud connectors domain — the CLOUD-hosted connectors (OAuth-redirect +
+ * token-credential). Mounted as the `cloud-connectors` Settings section, which
+ * shows an upsell while Cloud is disconnected and the connectors surface when
+ * it is connected. Legacy `/dashboard/settings?tab=connections` deep links
+ * (the OAuth-callback return target) resolve here via the CloudRouterShell
+ * compat redirect.
  *
  * Backend endpoints consumed (all same-origin `/api/*`, auth via steward
  * cookie on web + Bearer on native):
@@ -29,42 +20,20 @@ import { Plug } from "lucide-react";
 import { createElement } from "react";
 import { registerSettingsSection } from "../../components/settings/settings-section-registry";
 import { CloudSettingsSectionShell } from "../settings/CloudSettingsSectionShell";
-import { registerCloudRoute } from "../shell/cloud-route-registry";
-import { CloudConnectorsSection } from "./CloudConnectorsSection";
 import { CloudConnectorsSettingsBody } from "./CloudConnectorsUpsell";
-
-export { BlooioConnection } from "./blooio-connection";
-export { CloudConnectorsSection } from "./CloudConnectorsSection";
-export { DiscordGatewayConnection } from "./discord-gateway-connection";
-export { GoogleConnection } from "./google-connection";
-export { MicrosoftConnection } from "./microsoft-connection";
-export {
-  type OAuthConnection,
-  type OAuthProviderConfig,
-  useOAuthConnections,
-} from "./oauth-connection";
-export { TelegramConnection } from "./telegram-connection";
-export { TwilioConnection } from "./twilio-connection";
-export { useConnectionStatus } from "./use-connection-status";
-export { WhatsAppConnection } from "./whatsapp-connection";
 
 /**
  * Stable id for the cloud connectors Settings section. Distinct from the
- * built-in local-process `connectors` section so the two coexist until the
- * planned active-server-kind branch unifies them.
+ * built-in local-process `connectors` section so the two coexist.
  */
 export const CLOUD_CONNECTORS_SECTION_ID = "cloud-connectors";
 
 /**
- * Settings-section adapter for the cloud connectors surface.
- *
- * The standalone cloud route is already rendered under CloudRouterShell, which
- * supplies query/i18n/auth providers. Settings sections render inside the
- * app-shell settings registry instead (under AppProvider), so this adapter
- * provides the cloud stack before mounting {@link CloudConnectorsSettingsBody},
- * which reads the app store to show the upsell when Cloud is not connected and
- * the canonical connectors surface when it is. The standalone route mounts
- * {@link CloudConnectorsSection} directly and never reaches the app-store read.
+ * Settings-section adapter for the cloud connectors surface. Settings sections
+ * render inside the app-shell settings registry (under AppProvider), so this
+ * adapter provides the cloud stack (query/i18n/auth) before mounting
+ * {@link CloudConnectorsSettingsBody}, which reads the app store to show the
+ * upsell when Cloud is not connected and the connectors surface when it is.
  */
 export function CloudConnectorsSettingsSection(): React.JSX.Element {
   return createElement(
@@ -94,12 +63,3 @@ export function registerCloudConnectorsSettingsSection(): void {
     Component: CloudConnectorsSettingsSection,
   });
 }
-
-// Register the standalone cloud route at import time. The cloud-frontend OAuth
-// initiate flow redirects back to `/dashboard/settings?tab=connections`; this
-// path keeps that deep link resolvable inside the app shell.
-registerCloudRoute({
-  path: "dashboard/settings/connections",
-  element: CloudConnectorsSection,
-  group: "dashboard",
-});
