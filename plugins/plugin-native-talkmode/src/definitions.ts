@@ -247,6 +247,29 @@ export interface TalkModePlaybackStartEvent {
 }
 
 /**
+ * One frame of native TTS playback PCM after it has been accepted by the
+ * platform audio sink. Android emits this from the AudioTrack write path so the
+ * JNI ambient voice pipeline can use the agent's actual rendered audio as its
+ * acoustic echo reference.
+ */
+export interface TalkModePlaybackFrameEvent {
+  /** Playback provider that produced the audio. */
+  provider: "elevenlabs" | "local-inference" | "system";
+  /** Base64-encoded little-endian signed 16-bit PCM. */
+  pcm16: string;
+  /** Sample rate of the rendered PCM in Hz. */
+  sampleRate: number;
+  /** Channel count of the rendered PCM. */
+  channels: number;
+  /** Number of PCM frames in this event (`pcm16` byte length / bytesPerFrame). */
+  samples: number;
+  /** Monotonic timestamp for the write, ms (SystemClock.elapsedRealtime). */
+  timestamp: number;
+  /** Running index for this playback stream since the utterance started. */
+  frameIndex: number;
+}
+
+/**
  * One frame of raw PCM captured by the native AudioRecord diarization path.
  *
  * Emitted continuously while {@link TalkModePlugin.startAudioFrames} is active.
@@ -460,6 +483,11 @@ export interface TalkModePlugin {
   addListener(
     eventName: "playbackStart",
     listenerFunc: (event: TalkModePlaybackStartEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "playbackFrame",
+    listenerFunc: (event: TalkModePlaybackFrameEvent) => void,
   ): Promise<PluginListenerHandle>;
 
   /**
