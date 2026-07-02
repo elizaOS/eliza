@@ -1,3 +1,12 @@
+/**
+ * De-echoed for #9310: the old turn assertions ("brush", "teeth", "wake",
+ * "bed" / "saved", "brush", "teeth") were satisfiable by parroting the
+ * prompt. The persisted twice-daily definition with canonical Morning/Night
+ * slots (`definitionCountDelta`) stays the load-bearing outcome; the turn
+ * checks now enforce the derived normalization ("when I wake up" -> a morning
+ * slot — a word the prompt never used) and the two-phase commit.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
@@ -22,13 +31,23 @@ export default scenario({
       kind: "message",
       name: "brush-teeth night-owl preview",
       text: "I'm usually up really late, but please help me brush my teeth when I wake up and before I finally go to bed.",
-      responseIncludesAny: ["brush", "teeth", "wake", "bed"],
+      // Derived normalization: "when I wake up" must resolve to a morning
+      // slot — "morning" appears in no user turn, so echo cannot pass.
+      responseIncludesAny: ["morning"],
+      // Two-phase commit: no completion claim before the owner confirms.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must resolve the night-owl phrasing into a concrete twice-daily schedule (a morning wake-up slot and a night slot) and ask the owner to confirm before saving. Claiming it is already saved, or proposing a middle-of-the-night alarm, fails.",
+      },
     },
     {
       kind: "message",
       name: "brush-teeth night-owl confirm",
       text: "Yes, save that brushing routine.",
-      responseIncludesAny: ["saved", "brush", "teeth"],
+      // Save-confirmation semantics in words the prompt never used.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [
