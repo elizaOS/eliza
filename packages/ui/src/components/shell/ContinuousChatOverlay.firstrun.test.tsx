@@ -112,6 +112,18 @@ function seedAppStoreWithActionSpy(): ReturnType<typeof vi.fn> {
 }
 
 describe("ContinuousChatOverlay first-run gating", () => {
+  it("pins the sheet OPEN during onboarding so the seeded choices are visible (not hidden behind a collapsed grabber)", () => {
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+
+    // firstRunOpen must force the sheet open structurally — the mount/effect
+    // openness was raceable and could settle collapsed, leaving the frozen
+    // composer's "tap an option above" hint pointing at nothing.
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(screen.getByTestId("chat-thread")).toBeTruthy();
+  });
+
   it("locks the composer during onboarding: disabled textarea with a choice placeholder, attach + mic inert", () => {
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);

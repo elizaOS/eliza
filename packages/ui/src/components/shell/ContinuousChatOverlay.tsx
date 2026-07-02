@@ -1683,9 +1683,19 @@ export function ContinuousChatOverlay({
   );
   // The pin-at-full + auto-collapse edge effect lives below `goToDetent` (it
   // needs the detent animator); the mount state above still opens FULL first.
-  const pilled = mode === "pill";
-  const sheetOpen = mode === "half" || mode === "full";
-  const expanded = mode === "full";
+  //
+  // During onboarding the sheet MUST stay open — the seeded greeting + choices
+  // are the only way forward and the composer is frozen behind them. Deriving
+  // openness from the effect alone proved raceable on a home-view boot (the
+  // sheet could settle collapsed with the options hidden behind the grabber and
+  // only a misleading "tap an option above" hint showing). Pin it STRUCTURALLY:
+  // while firstRunOpen, the derived openness is always FULL regardless of the
+  // underlying `mode` transition state. The effect still drives the real `mode`
+  // so the falling edge (onboarding done) collapses correctly.
+  const effectiveMode: ChatMode = firstRunOpen ? "full" : mode;
+  const pilled = effectiveMode === "pill";
+  const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
+  const expanded = effectiveMode === "full";
   // Free-drag rest height (px): when set, the sheet rests exactly where the user
   // released a deliberate drag instead of snapping to a detent. Cleared whenever
   // a detent is taken (tap/flick/focus/collapse) so the detents stay the
