@@ -11,7 +11,11 @@ export * from "@elizaos/plugin-scheduling";
 export {
   type ProcessDueScheduledTasksRequest,
   type ProcessDueScheduledTasksResult,
+  type ProcessScheduledTaskInboundMessageRequest,
+  type ProcessScheduledTaskInboundMessageResult,
   processDueScheduledTasks,
+  processScheduledTaskInboundMessage,
+  type ScheduledTaskCompletionResult,
   type ScheduledTaskProcessingError,
 } from "./scheduler.js";
 export {

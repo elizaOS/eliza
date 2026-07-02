@@ -38,6 +38,7 @@ vi.mock("../scheduled-task/service.js", async (importOriginal) => {
 const NOW = "2026-07-01T12:00:00.000Z";
 
 const emptyScheduledTaskResult: ProcessDueScheduledTasksResult = {
+  completions: [],
   fires: [],
   completionTimeouts: [],
   pendingPrompts: [],

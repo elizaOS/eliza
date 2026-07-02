@@ -18,6 +18,7 @@ vi.mock("../scheduled-task/scheduler.js", async (importOriginal) => {
 const NOW = "2026-07-01T12:00:00.000Z";
 
 const emptyScheduledTaskResult: ProcessDueScheduledTasksResult = {
+  completions: [],
   fires: [],
   completionTimeouts: [],
   pendingPrompts: [],
@@ -140,6 +141,7 @@ describe("RemindersDomain.processScheduledWork subsystem isolation", () => {
     const { domain, overrides } = makeDomain();
     overrides.syncWebsiteAccessState.mockRejectedValue(new Error("boom"));
     vi.mocked(processDueScheduledTasks).mockResolvedValue({
+      completions: [],
       fires: [
         {
           taskId: "st-1",

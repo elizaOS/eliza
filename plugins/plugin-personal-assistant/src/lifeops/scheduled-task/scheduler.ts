@@ -1,4 +1,10 @@
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { hasOwnerAccess } from "@elizaos/agent";
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type MessagePayload,
+} from "@elizaos/core";
 import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {
   expectedReplyKindForTask,
@@ -36,14 +42,34 @@ export interface ScheduledTaskFireResult {
 
 export interface ScheduledTaskProcessingError {
   taskId: string;
-  phase: "fire" | "completion_timeout" | "pending_prompt";
+  phase: "fire" | "completion_check" | "completion_timeout" | "pending_prompt";
   message: string;
 }
 
+export interface ScheduledTaskCompletionResult {
+  taskId: string;
+  status: ScheduledTask["state"]["status"];
+  reason: string;
+  completionCheckKind: string;
+}
+
 export interface ProcessDueScheduledTasksResult {
+  completions: ScheduledTaskCompletionResult[];
   fires: ScheduledTaskFireResult[];
   completionTimeouts: ScheduledTaskFireResult[];
   pendingPrompts: RecordedPendingPrompt[];
+  errors: ScheduledTaskProcessingError[];
+}
+
+export interface ProcessScheduledTaskInboundMessageRequest {
+  runtime: IAgentRuntime;
+  agentId: string;
+  message: Memory;
+  now?: Date;
+}
+
+export interface ProcessScheduledTaskInboundMessageResult {
+  completions: ScheduledTaskCompletionResult[];
   errors: ScheduledTaskProcessingError[];
 }
 
@@ -57,6 +83,39 @@ function shouldRecordPendingPrompt(task: ScheduledTask): boolean {
     task.completionCheck?.kind === "user_acknowledged" ||
     task.kind === "approval"
   );
+}
+
+function isTickDrivenCompletionCheck(task: ScheduledTask): boolean {
+  return (
+    task.completionCheck?.kind === "subject_updated" ||
+    task.completionCheck?.kind === "health_signal_observed"
+  );
+}
+
+function isTerminalStatus(status: ScheduledTask["state"]["status"]): boolean {
+  return (
+    status === "completed" ||
+    status === "skipped" ||
+    status === "expired" ||
+    status === "failed" ||
+    status === "dismissed"
+  );
+}
+
+function completionResult(task: ScheduledTask): ScheduledTaskCompletionResult {
+  return {
+    taskId: task.taskId,
+    status: task.state.status,
+    reason: task.state.lastDecisionLog ?? "completed",
+    completionCheckKind: task.completionCheck?.kind ?? "unknown",
+  };
+}
+
+function readMessageOccurredAt(message: Memory, fallback: Date): Date {
+  return typeof message.createdAt === "number" &&
+    Number.isFinite(message.createdAt)
+    ? new Date(message.createdAt)
+    : fallback;
 }
 
 async function recordPendingPromptIfNeeded(args: {
@@ -88,6 +147,7 @@ export async function processDueScheduledTasks(
   request: ProcessDueScheduledTasksRequest,
 ): Promise<ProcessDueScheduledTasksResult> {
   const result: ProcessDueScheduledTasksResult = {
+    completions: [],
     fires: [],
     completionTimeouts: [],
     pendingPrompts: [],
@@ -150,7 +210,32 @@ export async function processDueScheduledTasks(
   const timeoutCandidates = await repo.listScheduledTasks(request.agentId, {
     status: ["fired"],
   });
+  const completedTaskIds = new Set<string>();
   const timeoutTaskIds = new Set<string>();
+
+  for (const task of timeoutCandidates) {
+    if (result.completions.length >= limit) {
+      break;
+    }
+    if (!isTickDrivenCompletionCheck(task)) continue;
+    try {
+      const evaluated = await runner.evaluateCompletion(task.taskId, {});
+      if (evaluated.state.status === "completed") {
+        result.completions.push(completionResult(evaluated));
+        completedTaskIds.add(evaluated.taskId);
+      }
+    } catch (error) {
+      const message = errorMessage(error);
+      logger.warn(
+        `[lifeops-scheduled-task] completion check failed for ${task.taskId}: ${message}`,
+      );
+      result.errors.push({
+        taskId: task.taskId,
+        phase: "completion_check",
+        message,
+      });
+    }
+  }
 
   // Each pass gets its OWN budget of `limit`, not a shared one. A shared
   // budget lets a burst of completion-timeouts (this pass) consume the whole
@@ -159,6 +244,7 @@ export async function processDueScheduledTasks(
   // cheap indexed DB ops in a pathological burst and guarantee the due-fire
   // pass always gets its full `limit`.
   for (const task of timeoutCandidates) {
+    if (completedTaskIds.has(task.taskId)) continue;
     if (result.completionTimeouts.length >= limit) {
       break;
     }
@@ -190,6 +276,7 @@ export async function processDueScheduledTasks(
   }
 
   for (const task of dueCandidates) {
+    if (completedTaskIds.has(task.taskId)) continue;
     if (timeoutTaskIds.has(task.taskId)) continue;
     if (result.fires.length >= limit) {
       break;
@@ -219,6 +306,106 @@ export async function processDueScheduledTasks(
   }
 
   return result;
+}
+
+export async function processScheduledTaskInboundMessage(
+  request: ProcessScheduledTaskInboundMessageRequest,
+): Promise<ProcessScheduledTaskInboundMessageResult> {
+  const result: ProcessScheduledTaskInboundMessageResult = {
+    completions: [],
+    errors: [],
+  };
+  const roomId =
+    typeof request.message.roomId === "string" &&
+    request.message.roomId.length > 0
+      ? request.message.roomId
+      : null;
+  if (!roomId) return result;
+  if (request.message.entityId === request.agentId) return result;
+  if (!(await hasOwnerAccess(request.runtime, request.message))) return result;
+
+  const now = request.now ?? readMessageOccurredAt(request.message, new Date());
+  const repliedAtIso = now.toISOString();
+  const promptStore = resolvePendingPromptsStore(request.runtime);
+  const prompts = await promptStore.list(roomId, { now });
+  if (prompts.length === 0) return result;
+
+  const repo = new LifeOpsRepository(request.runtime);
+  const runner = getScheduledTaskRunner(request.runtime, {
+    agentId: request.agentId,
+    now: () => now,
+  });
+
+  for (const prompt of prompts) {
+    try {
+      const task = await repo.getScheduledTask(request.agentId, prompt.taskId);
+      if (!task) {
+        await promptStore.resolve(roomId, prompt.taskId);
+        continue;
+      }
+      if (
+        isTerminalStatus(task.state.status) ||
+        task.state.status !== "fired"
+      ) {
+        await promptStore.resolve(roomId, prompt.taskId);
+        continue;
+      }
+      if (task.completionCheck?.kind !== "user_replied_within") {
+        continue;
+      }
+      const evaluated = await runner.evaluateCompletion(task.taskId, {
+        repliedAtIso,
+      });
+      if (evaluated.state.status === "completed") {
+        result.completions.push(completionResult(evaluated));
+        await promptStore.resolve(roomId, prompt.taskId);
+      }
+    } catch (error) {
+      const message = errorMessage(error);
+      logger.warn(
+        `[lifeops-scheduled-task] inbound completion check failed for ${prompt.taskId}: ${message}`,
+      );
+      result.errors.push({
+        taskId: prompt.taskId,
+        phase: "completion_check",
+        message,
+      });
+    }
+  }
+
+  return result;
+}
+
+export async function handleScheduledTaskInboundMessage(
+  payload: MessagePayload,
+): Promise<void> {
+  try {
+    const runtime = payload.runtime;
+    if (!runtime || !payload.message) return;
+    const result = await processScheduledTaskInboundMessage({
+      runtime,
+      agentId: runtime.agentId,
+      message: payload.message,
+    });
+    if (result.completions.length > 0) {
+      logger.info(
+        {
+          src: "lifeops:scheduled-task",
+          agentId: runtime.agentId,
+          taskIds: result.completions.map((entry) => entry.taskId),
+        },
+        "[lifeops-scheduled-task] Completed fired scheduled task(s) from owner inbound reply",
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      {
+        src: "lifeops:scheduled-task",
+        error,
+      },
+      "[lifeops-scheduled-task] Inbound completion handler failed",
+    );
+  }
 }
 
 /**
