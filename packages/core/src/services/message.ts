@@ -1672,6 +1672,22 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	let cleaned = text.trim();
 	if (!cleaned) return cleaned;
 
+	// This sanitizer exists ONLY to tidy a reply after a media URL was
+	// delivered/stripped. A turn with no delivered media and no embedded media
+	// content URL is an ordinary reply — return it untouched. Running the
+	// whitespace tidy-up below on every planner reply flattened ALL multiline
+	// output (code bodies, lists, paragraphs) to one line, because
+	// `\s{2,}` matches `\n` + indentation (observed: every HumanEval
+	// completion through the eliza harness lost its newlines and failed with
+	// SyntaxError).
+	const hasEmbeddedMediaUrl = new RegExp(
+		MEDIA_CONTENT_URL_RE.source,
+		"i",
+	).test(cleaned);
+	if (deliveredUrls.length === 0 && !hasEmbeddedMediaUrl) {
+		return cleaned;
+	}
+
 	for (const url of deliveredUrls) {
 		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
@@ -1685,7 +1701,9 @@ export function sanitizeReplyTextAfterMediaDelivery(
 		.replace(/:\s*$/g, "")
 		.replace(/<\s*>/g, "")
 		.replace(/\(\s*\)/g, "")
-		.replace(/\s{2,}/g, " ")
+		// Collapse only same-line whitespace gaps left by URL removal —
+		// newlines are reply formatting and must survive.
+		.replace(/[^\S\n]{2,}/g, " ")
 		.trim();
 
 	if (
