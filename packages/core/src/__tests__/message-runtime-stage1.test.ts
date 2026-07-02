@@ -2399,6 +2399,17 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(sourceText).toContain(
 			"there is no separate chat-history search tool",
 		);
+		// Live regression (2026-06-30, ruby-trivia build): when asked "what
+		// happened with the build" / "did it actually work", the bot parroted the
+		// "no chat-history search tool" disclaimer and claimed it could not verify
+		// a run it COULD look up via the task tools. The carve-out distinguishes
+		// chat-recall (unavailable) from task/build/deploy run status (checkable).
+		expect(sourceText).toContain(
+			'This "no chat-history search" limit is about CHAT recall ONLY',
+		);
+		expect(sourceText).toContain(
+			"that run status IS verifiable with the task/sub-agent tools",
+		);
 	});
 
 	it("current_turn_boundary answers facts stated in the current message itself", async () => {
