@@ -35,9 +35,6 @@ export * from "./entities";
 // and exported from both barrels. @elizaos/shared re-exports it from the core
 // barrel so browser consumers resolve the same canonical truthy set.
 export * from "./env-utils";
-// Vendor-neutral model-gateway resolution (#11536 E1). Pure string logic, no
-// Node deps, so it is browser-safe and exported from both barrels.
-export * from "./model-gateway";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export {
@@ -87,6 +84,9 @@ export * from "./lifeops-passive-connectors";
 export * from "./logger";
 export * from "./memory";
 export * from "./messaging/interactions";
+// Vendor-neutral model-gateway resolution (#11536 E1). Pure string logic, no
+// Node deps, so it is browser-safe and exported from both barrels.
+export * from "./model-gateway";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
