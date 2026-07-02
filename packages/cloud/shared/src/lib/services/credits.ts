@@ -201,6 +201,41 @@ function metadataNumber(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Org-charge a stale hold settles to during the stranded-reservation sweep
+ * (#11592).
+ *
+ * Generic reservation rows (`credit_reservation_v1`) store `estimated_cost`
+ * in ORG-CHARGE units — the same unit as the row amount — so the sweep
+ * settles to it directly (missing estimate ⇒ exact-cost, no refund).
+ *
+ * App-chat holds (`app_chat_reservation_v1`) store BASE-cost numbers
+ * (`estimated_cost` = unbuffered base, `reserved_amount` = buffered base —
+ * see apps/[id]/chat/route.ts), while the row amount is the ORG charge:
+ * buffered base PLUS the creator markup (`computeInferenceCharge` via
+ * `appCreditsService.deductCredits`). Settling the org to the bare base
+ * estimate would hand the markup back to the org while the creator's
+ * earnings — recorded at deduct time — stay put, so the platform would eat
+ * the full creator markup on every swept monetized hold. Instead scale the
+ * org charge by estimated/reserved: the org nets exactly what a normal
+ * settle at the estimated cost would charge (base × (1 + markup)). Holds
+ * without a usable base pair settle exact-cost, and the result is clamped
+ * to the held amount so corrupt metadata can never turn the sweep into a
+ * surprise overage charge.
+ */
+function staleHoldSettleCost(reservedAmount: number, metadata: Record<string, unknown>): number {
+  const estimate =
+    metadataNumber(metadata.estimated_cost) ?? metadataNumber(metadata.estimatedCost);
+  if (metadata.type !== "app_chat_reservation") {
+    return estimate ?? reservedAmount;
+  }
+  const reservedBase = metadataNumber(metadata.reserved_amount);
+  if (estimate === null || reservedBase === null || reservedBase <= 0) {
+    return reservedAmount;
+  }
+  return Math.min(reservedAmount, Math.max(0, reservedAmount * (estimate / reservedBase)));
+}
+
 function toCreditTransaction(row: CreditMutationRow): CreditTransaction {
   if (!row.id || !row.organization_id || !row.amount || !row.type || !row.created_at) {
     throw new Error("[CreditsService] Credit mutation did not return a transaction row");
@@ -1715,10 +1750,7 @@ export class CreditsService {
       for (const row of rows) {
         const reservedAmount = Math.abs(parseNumeric(row.amount, "reservation_amount"));
         const reservationMetadata = parseMetadata(row.metadata);
-        const actualCost =
-          metadataNumber(reservationMetadata.estimated_cost) ??
-          metadataNumber(reservationMetadata.estimatedCost) ??
-          reservedAmount;
+        const actualCost = staleHoldSettleCost(reservedAmount, reservationMetadata);
         const description = (row.description ?? "Credit reservation").replace(
           /\s+\(reserved\)$/,
           "",

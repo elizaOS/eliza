@@ -95,7 +95,11 @@ async function insertReservation(
   return (res.rows[0] as { id: string }).id;
 }
 
-async function insertAppChatReservation(amount: number, ageMs = 0): Promise<string> {
+async function insertAppChatReservation(
+  amount: number,
+  ageMs = 0,
+  metadataOverrides: Record<string, unknown> = {},
+): Promise<string> {
   const createdAt = new Date(Date.now() - ageMs).toISOString();
   const metadata = {
     appId: "app-chat-test",
@@ -109,6 +113,7 @@ async function insertAppChatReservation(amount: number, ageMs = 0): Promise<stri
     estimated_cost: amount / 1.5,
     reserved_amount: amount,
     totalCost: amount,
+    ...metadataOverrides,
   };
   const res = await dbWrite.execute(
     `INSERT INTO credit_transactions (
@@ -951,6 +956,96 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       expect(late.adjustmentType).toBe("none");
       expect(await getBalance()).toBeCloseTo(9, 6);
       expect(await countByType("refund")).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep settles monetized app-chat holds markup-inclusively — exactly one refund, org nets the marked-up estimate",
+    async () => {
+      if (!pgliteReady) return;
+      // Production monetized shape (#11592): base estimate $1.00, 1.5x buffer
+      // -> reserved base $1.50, 20% creator markup -> $1.80 org hold
+      // (`computeInferenceCharge`), creator earnings recorded at deduct time.
+      // The sweep must settle the org to $1.20 (estimate + markup, what a
+      // normal settle at the estimate charges), i.e. refund $0.60 — NOT to
+      // the bare $1.00 base estimate: refunding $0.80 would hand the markup
+      // on the estimate back to the org while the creator keeps the earnings,
+      // so the platform would eat the whole markup.
+      await seedOrg("8.2"); // org had 10, paid the 1.8 hold
+      const reservationId = await insertAppChatReservation(1.8, 25 * 60 * 1000, {
+        estimated_cost: 1.0,
+        reserved_amount: 1.5,
+        totalCost: 1.8,
+        baseCost: 1.5,
+        creatorMarkup: 0.3,
+        markupPercentage: 20,
+      });
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(1);
+      expect(stats.refunds).toBe(1);
+      expect(await getBalance()).toBeCloseTo(8.8, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([
+        {
+          amount: "0.600000",
+          type: "refund",
+          stripe_payment_intent_id: `recon:${reservationId}:refund`,
+        },
+      ]);
+
+      // Idempotent: a re-sweep skips the settled hold entirely, and a late
+      // full-refund settle after the sweep is a no-op — exactly one refund.
+      const again = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+      expect(again.scanned).toBe(0);
+      expect(again.settled).toBe(0);
+
+      const late = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.8,
+        actualCost: 0,
+        description: "late app-chat refund after sweep",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+
+      expect(late.adjustmentType).toBe("none");
+      expect(await getBalance()).toBeCloseTo(8.8, 6);
+      expect(await countByType("refund")).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep settles an app-chat hold without a usable base pair exact-cost instead of guessing",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("8.2");
+      const reservationId = await insertAppChatReservation(1.8, 25 * 60 * 1000, {
+        estimated_cost: null,
+        reserved_amount: null,
+      });
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(1);
+      expect(stats.noops).toBe(1);
+      expect(stats.refunds).toBe(0);
+      expect(await getBalance()).toBeCloseTo(8.2, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
     },
     PGLITE_TIMEOUT,
   );
