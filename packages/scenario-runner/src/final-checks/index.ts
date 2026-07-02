@@ -4,6 +4,7 @@
  * cannot be misspelled or silently skipped.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
@@ -389,12 +390,12 @@ function isDefinitionListingService(
 async function createLifeOpsService(
   runtime: FinalCheckRuntime,
 ): Promise<unknown> {
-  const { LifeOpsService } = (await import(
+  const { LifeOpsService } = await import(
     "@elizaos/plugin-personal-assistant/lifeops/service"
-  )) as {
-    LifeOpsService: new (runtime: FinalCheckRuntime) => unknown;
-  };
-  return new LifeOpsService(runtime);
+  );
+  // Scenario final checks receive the live agent runtime; FinalCheckRuntime is
+  // the structural subset they need, but LifeOpsService requires the full one.
+  return new LifeOpsService(runtime as IAgentRuntime);
 }
 
 function definitionRecordFromValue(
