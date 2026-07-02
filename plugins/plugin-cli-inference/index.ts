@@ -157,6 +157,9 @@ function getSdkSession(
     router,
     claudeExecutablePath: getSetting(runtime, "ELIZA_CLI_CLAUDE_BIN"),
     restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
+    turnTimeoutMs:
+      parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
+      parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
   });
   sdkSessions.set(key, session);
   // Evict least-recently-used past the cap (each session is a live process).
@@ -367,6 +370,7 @@ export const cliInferencePlugin: Plugin = {
     ELIZA_CLI_CLAUDE_PLANNER_MODEL: readEnv("ELIZA_CLI_CLAUDE_PLANNER_MODEL") ?? null,
     ELIZA_CLI_CLAUDE_BIN: readEnv("ELIZA_CLI_CLAUDE_BIN") ?? null,
     ELIZA_CLI_SDK_RESTART_AFTER_TURNS: readEnv("ELIZA_CLI_SDK_RESTART_AFTER_TURNS") ?? null,
+    ELIZA_CLI_SDK_TURN_TIMEOUT_MS: readEnv("ELIZA_CLI_SDK_TURN_TIMEOUT_MS") ?? null,
     ELIZA_CLI_CODEX_MODEL: readEnv("ELIZA_CLI_CODEX_MODEL") ?? null,
     ELIZA_CLI_TIMEOUT_MS: readEnv("ELIZA_CLI_TIMEOUT_MS") ?? null,
   },

@@ -1403,6 +1403,19 @@ type FailureReplyAttempt =
 	| { kind: "rateLimited" }
 	| { kind: "authFailed" };
 
+export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
+	const content = memory.content as Record<string, unknown> | undefined;
+	const metadata = memory.metadata as Record<string, unknown> | undefined;
+	return (
+		content?.doNotPersist === true ||
+		content?.skipMemory === true ||
+		content?.transient === true ||
+		metadata?.doNotPersist === true ||
+		metadata?.skipMemory === true ||
+		metadata?.transient === true
+	);
+}
+
 export {
 	buildFailureReplyPrompt,
 	isAuthError,
@@ -9255,6 +9268,13 @@ export class DefaultMessageService implements IMessageService {
 					if (responseContent) {
 						responseMemory.content = responseContent;
 					}
+					if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+						runtime.logger.debug(
+							{ src: "service:message", memoryId: responseMemory.id },
+							"Skipping transient response memory persistence",
+						);
+						continue;
+					}
 					runtime.logger.debug(
 						{ src: "service:message", memoryId: responseMemory.id },
 						"Saving response to memory",
@@ -9307,6 +9327,13 @@ export class DefaultMessageService implements IMessageService {
 							}
 							if (responseContent) {
 								responseMemory.content = responseContent;
+							}
+							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+								runtime.logger.debug(
+									{ src: "service:message", memoryId: responseMemory.id },
+									"Skipping transient response memory persistence",
+								);
+								continue;
 							}
 							runtime.logger.debug(
 								{ src: "service:message", memoryId: responseMemory.id },
@@ -10157,6 +10184,10 @@ export class DefaultMessageService implements IMessageService {
 		const responseContent: Content = {
 			thought: `Handle a temporary reply failure during ${stage}.`,
 			actions: ["REPLY"],
+			failureKind: "transient_failure",
+			elizaSyntheticFailure: true,
+			transient: true,
+			doNotPersist: true,
 			providers: [],
 			text: replyText,
 			responseId,
