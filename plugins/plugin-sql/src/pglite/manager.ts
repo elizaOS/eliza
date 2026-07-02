@@ -41,6 +41,13 @@ type PglitePidFileStatus =
   | "cleared-malformed"
   | "check-failed";
 
+interface PgliteDataDirLockInfo {
+  pid: number | null;
+  createdAt: number | null;
+  bootId: string | null;
+  processStartTicks: string | null;
+}
+
 /**
  * Runtime sync status of the Electric Sync client wired into PGlite.
  * - syncing: the sync stream is connecting or catching up with the source.
@@ -106,6 +113,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   // 7 days comfortably exceeds any real unconfirmable window while still
   // bounding the false-positive blast radius. See isLockActive.
   private static readonly LOCK_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+  private static readonly PID_REUSE_GRACE_MS = 5_000;
 
   private client: PGlite;
   private options: PGliteOptions;
@@ -328,29 +336,121 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     return `${dataDir}/eliza-pglite.lock`;
   }
 
-  private getLockInfo(lockPath: string): { pid: number | null; createdAt: number | null } {
+  private getLockInfo(lockPath: string): PgliteDataDirLockInfo {
     try {
       const raw = readFileSync(lockPath, "utf-8");
-      const parsed = JSON.parse(raw) as { pid?: unknown; createdAt?: unknown };
+      const parsed = JSON.parse(raw) as {
+        pid?: unknown;
+        createdAt?: unknown;
+        bootId?: unknown;
+        processStartTicks?: unknown;
+      };
       const pid = typeof parsed.pid === "number" && parsed.pid > 0 ? parsed.pid : null;
       const createdAtMs = typeof parsed.createdAt === "string" ? Date.parse(parsed.createdAt) : NaN;
       const createdAt = Number.isNaN(createdAtMs) ? null : createdAtMs;
-      return { pid, createdAt };
+      const bootId =
+        typeof parsed.bootId === "string" && parsed.bootId.length > 0 ? parsed.bootId : null;
+      const processStartTicks =
+        typeof parsed.processStartTicks === "string" && /^\d+$/.test(parsed.processStartTicks)
+          ? parsed.processStartTicks
+          : null;
+      return { pid, createdAt, bootId, processStartTicks };
     } catch {
-      return { pid: null, createdAt: null };
+      return { pid: null, createdAt: null, bootId: null, processStartTicks: null };
     }
+  }
+
+  private readLinuxBootId(): string | null {
+    try {
+      const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim();
+      return bootId.length > 0 ? bootId : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private readLinuxUptimeSeconds(): number | null {
+    try {
+      const raw = readFileSync("/proc/uptime", "utf-8").trim().split(/\s+/)[0];
+      const uptimeSeconds = Number.parseFloat(raw ?? "");
+      return Number.isFinite(uptimeSeconds) && uptimeSeconds > 0 ? uptimeSeconds : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private readLinuxProcStartTicks(pid: number | "self"): string | null {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf-8");
+      const commEnd = stat.lastIndexOf(")");
+      if (commEnd === -1) {
+        return null;
+      }
+      const fieldsAfterComm = stat
+        .slice(commEnd + 2)
+        .trim()
+        .split(/\s+/);
+      const startTicks = fieldsAfterComm[19];
+      return startTicks && /^\d+$/.test(startTicks) ? startTicks : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private estimateLinuxClockTicksPerSecond(): number | null {
+    const selfStartTicks = this.readLinuxProcStartTicks("self");
+    const uptimeSeconds = this.readLinuxUptimeSeconds();
+    if (!selfStartTicks || uptimeSeconds === null) {
+      return null;
+    }
+
+    const selfStartSecondsAfterBoot = uptimeSeconds - process.uptime();
+    if (!Number.isFinite(selfStartSecondsAfterBoot) || selfStartSecondsAfterBoot <= 0) {
+      return null;
+    }
+
+    const ticksPerSecond = Number(selfStartTicks) / selfStartSecondsAfterBoot;
+    return Number.isFinite(ticksPerSecond) && ticksPerSecond > 0 ? ticksPerSecond : null;
+  }
+
+  private readLinuxProcessStartedAtMs(pid: number): number | null {
+    const processStartTicks = this.readLinuxProcStartTicks(pid);
+    const uptimeSeconds = this.readLinuxUptimeSeconds();
+    const ticksPerSecond = this.estimateLinuxClockTicksPerSecond();
+    if (!processStartTicks || uptimeSeconds === null || ticksPerSecond === null) {
+      return null;
+    }
+
+    const bootStartedAtMs = Date.now() - uptimeSeconds * 1000;
+    return bootStartedAtMs + (Number(processStartTicks) / ticksPerSecond) * 1000;
+  }
+
+  private isLockPidReuseProven(pid: number, createdAt: number | null): boolean {
+    if (createdAt === null) {
+      return false;
+    }
+
+    const processStartedAt = this.readLinuxProcessStartedAtMs(pid);
+    return (
+      processStartedAt !== null &&
+      processStartedAt - createdAt > PGliteClientManager.PID_REUSE_GRACE_MS
+    );
   }
 
   /**
    * Decide whether an existing lock should be honored as held by a live owner.
    *
-   * Single-writer safety comes first: a *confirmed-running* PID is always
-   * honored, regardless of how old its `createdAt` is. A long-running agent
-   * (days or weeks of uptime) must never have its live lock reclaimed by a
-   * second manager — that would open a dual-writer window, which is
-   * unrecoverable, whereas a falsely-bricked boot is recoverable by removing
-   * the lock file. This matches the sibling `reconcilePglitePidFile`, which
-   * also treats a live PID as "active".
+   * Single-writer safety comes first: a confirmed-running PID whose recorded
+   * process identity still matches is honored regardless of lock age. A
+   * long-running agent (days or weeks of uptime) must never have its live lock
+   * reclaimed by a second manager.
+   *
+   * Bare PID liveness alone is not enough in containers: after an unclean
+   * shutdown, the next container can reuse pid 1, making `kill(1, 0)` look
+   * live forever. New locks therefore record Linux boot id + `/proc` process
+   * start ticks. Legacy locks are also protected by comparing their createdAt
+   * timestamp against the currently-live PID's `/proc/<pid>/stat` start time:
+   * if the PID started after the lock was written, it cannot be the owner.
    *
    * The staleness window only rescues the *unconfirmable* case. A bare
    * `process.kill(pid, 0)` is vulnerable to PID reuse, and a recycled
@@ -361,10 +461,29 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
    * is treated as stale and reclaimed so an aliased PID cannot brick boot
    * forever. `ESRCH` is unambiguous — the process is gone and the lock is stale.
    */
-  private isLockActive(pid: number, createdAt: number | null): boolean {
+  private isLockActive(lockInfo: PgliteDataDirLockInfo): boolean {
+    const { pid, createdAt, bootId, processStartTicks } = lockInfo;
+    if (!pid) {
+      return false;
+    }
+
+    const currentBootId = this.readLinuxBootId();
+    if (bootId && currentBootId && bootId !== currentBootId) {
+      return false;
+    }
+
+    if (processStartTicks) {
+      const currentProcessStartTicks = this.readLinuxProcStartTicks(pid);
+      if (currentProcessStartTicks && currentProcessStartTicks !== processStartTicks) {
+        return false;
+      }
+    } else if (this.isLockPidReuseProven(pid, createdAt)) {
+      return false;
+    }
+
     try {
       process.kill(pid, 0);
-      // Confirmed alive -> honor unconditionally (preserve single-writer).
+      // Confirmed alive with matching identity -> preserve single-writer.
       return true;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
@@ -398,6 +517,8 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
             pid: process.pid,
             createdAt: new Date().toISOString(),
             dataDir,
+            bootId: this.readLinuxBootId() ?? undefined,
+            processStartTicks: this.readLinuxProcStartTicks("self") ?? undefined,
           })}\n`
         );
         this.lockFd = fd;
@@ -409,8 +530,9 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
           throw this.createActiveLockError(dataDir, err);
         }
 
-        const { pid, createdAt } = this.getLockInfo(lockPath);
-        if (pid && this.isLockActive(pid, createdAt)) {
+        const lockInfo = this.getLockInfo(lockPath);
+        const { pid } = lockInfo;
+        if (this.isLockActive(lockInfo)) {
           throw this.createActiveLockError(
             dataDir,
             new Error(`PGlite lock file is held by running process ${pid}`)
