@@ -409,6 +409,24 @@ export class SwarmCoordinatorService extends Service {
       return;
     }
 
+    // A non-terminal event means the session resumed: a follow-up prompt turn
+    // reuses the same session (task_complete fires at the end of every turn, then
+    // the session returns to a non-terminal status and accepts more input). Cancel
+    // any pending post-terminal eviction so the still-live task state and its
+    // enrichment cache are not deleted mid-turn — an eviction inside the grace
+    // window blinds Discord timeout suppression and task routing until the next
+    // ACP event happens to recreate the entry.
+    // A non-terminal event means the session resumed: a follow-up prompt turn
+    // reuses the same session (task_complete fires at the end of every turn, then
+    // the session returns to a non-terminal status and accepts more input). Cancel
+    // any pending post-terminal eviction so the still-live task state and its
+    // enrichment cache are not deleted mid-turn — an eviction inside the grace
+    // window blinds Discord timeout suppression and task routing until the next
+    // ACP event happens to recreate the entry.
+    if (!this.isTerminalEvent(event)) {
+      this.cancelLegacyTaskEviction(sessionId);
+    }
+
     const swarmEvent: SwarmEvent = {
       type: event,
       sessionId,
@@ -601,6 +619,13 @@ export class SwarmCoordinatorService extends Service {
       this.enrichmentMetadataCache.delete(sessionId);
     }, LEGACY_TASK_EVICTION_GRACE_MS);
     this.legacyTaskEvictionTimers.set(sessionId, timer);
+  }
+
+  private cancelLegacyTaskEviction(sessionId: string): void {
+    const existing = this.legacyTaskEvictionTimers.get(sessionId);
+    if (!existing) return;
+    clearTimeout(existing);
+    this.legacyTaskEvictionTimers.delete(sessionId);
   }
 
   private dispatchSwarmEvent(swarmEvent: SwarmEvent): void {
