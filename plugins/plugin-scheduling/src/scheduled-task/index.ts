@@ -49,6 +49,15 @@ export {
   resolveEffectiveLadder,
 } from "./escalation.js";
 export {
+  type EventBridgeRunner,
+  type EventTriggeredFireOutcome,
+  eventFilterMatches,
+  type FireEventTriggeredTasksArgs,
+  fireEventTriggeredTasks,
+  type InstallScheduledTaskEventBridgeArgs,
+  installScheduledTaskEventBridge,
+} from "./event-bridge.js";
+export {
   createTaskGateRegistry,
   registerBuiltInGates,
   type TaskGateRegistry,
@@ -100,6 +109,7 @@ export {
   type ScheduledTaskLogStore,
   STATE_LOG_DEFAULT_RETENTION_DAYS,
 } from "./state-log.js";
+export { OWNER_LOCAL_TZ, resolveTriggerTz } from "./trigger-tz.js";
 export type {
   ActivitySignalBusView,
   AnchorConsolidationMode,
