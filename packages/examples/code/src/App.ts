@@ -564,15 +564,36 @@ export class App {
    */
   private consumeGlobalInput(data: string): boolean {
     if (this.showingHelp) {
-      if (data === "?" || data === "\x1b" || data === "\x08") {
+      // Ctrl+C / Ctrl+Q must still quit even with help open (they were trapped
+      // before). Otherwise close on ?, Esc, Backspace (\x08 Ctrl+H and \x7f DEL,
+      // which is what most terminals send), or q.
+      if (data === "\x03" || data === "\x11") {
+        useStore.getState().saveSessionState();
+        this.stop();
+        return true;
+      }
+      if (
+        data === "?" ||
+        data === "\x1b" ||
+        data === "\x08" ||
+        data === "\x7f" ||
+        data === "q"
+      ) {
         this.closeHelp();
       }
       return true;
     }
 
+    // `?` opens help only when it can't be a character the user is typing:
+    // task pane focused, or the chat composer is empty. Otherwise it must reach
+    // the editor so prompts like "what does this do?" aren't corrupted.
     if (data === "?") {
-      this.openHelp();
-      return true;
+      const state = useStore.getState();
+      if (state.focusedPane !== "chat" || state.inputValue.trim() === "") {
+        this.openHelp();
+        return true;
+      }
+      return false;
     }
 
     if (data === "\x03" || data === "\x11") {
@@ -602,12 +623,16 @@ export class App {
       return false;
     }
 
-    if (data === "\x1b[1;5D" || data === ",") {
+    // Ctrl+←/→ always resizes the task pane. Bare ","/"." resize ONLY when the
+    // task pane is focused — otherwise they are literal characters the chat
+    // composer must receive (you couldn't type "Fix App.ts, please." before).
+    const paneFocused = useStore.getState().focusedPane === "tasks";
+    if (data === "\x1b[1;5D" || (data === "," && paneFocused)) {
       useStore.getState().adjustTaskPaneWidth(-0.05);
       this.tui.requestRender();
       return true;
     }
-    if (data === "\x1b[1;5C" || data === ".") {
+    if (data === "\x1b[1;5C" || (data === "." && paneFocused)) {
       useStore.getState().adjustTaskPaneWidth(0.05);
       this.tui.requestRender();
       return true;
@@ -1020,8 +1045,9 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
     state.setAgentTyping(true);
     this.tui.requestRender();
 
+    const roomId = state.currentRoomId;
+    let placeholderId: string | null = null;
     try {
-      const roomId = state.currentRoomId;
       const room = state.rooms.find((r) => r.id === roomId);
       if (!room) {
         throw new Error("Current conversation not found");
@@ -1032,6 +1058,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
 
       const agentClient = getAgentClient();
       const placeholder = state.addMessage(roomId, "assistant", "", undefined);
+      placeholderId = placeholder.id;
       await agentClient.sendMessage({
         room,
         text,
@@ -1060,6 +1087,18 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
           ),
         }));
       }
+    } catch (err) {
+      // A provider error (network blip, 429, revoked key) or a missing-room
+      // throw must NOT crash the app — before this, the rejection bubbled to
+      // index.ts's unhandledRejection handler → process.exit(1), which left the
+      // terminal in raw mode (raw-mode/bracketed-paste/cursor restore only runs
+      // via app.stop()). Surface it as a system message and drop the empty
+      // assistant placeholder so no blank bubble lingers.
+      const messageText = err instanceof Error ? err.message : String(err);
+      if (placeholderId) {
+        state.removeMessage(roomId, placeholderId);
+      }
+      state.addMessage(roomId, "system", `Error: ${messageText}`);
     } finally {
       state.setLoading(false);
       state.setAgentTyping(false);

@@ -64,6 +64,32 @@ function shouldRunCodingOnly(): boolean {
 
 let isShuttingDown = false;
 
+// Module-scoped handle to the live TUI app so the fatal handlers below can
+// restore the terminal (raw mode / bracketed paste / cursor) before exiting —
+// that teardown only runs via app.stop(), so a bare process.exit(1) on an
+// unhandled error used to leave the user's shell wedged.
+let activeApp: { stop: () => void } | undefined;
+
+/** Best-effort terminal restore before a fatal exit. Never throws. */
+function restoreTerminalBestEffort(): void {
+  try {
+    activeApp?.stop();
+  } catch {
+    // Nothing we can do; still try the raw escape-sequence restore below.
+  }
+  try {
+    if (process.stdout.isTTY) {
+      // Disable bracketed paste + Kitty keyboard protocol, show the cursor.
+      process.stdout.write("\x1b[?2004l\x1b[<u\x1b[?25h");
+    }
+    if (process.stdin.isTTY && process.stdin.setRawMode) {
+      process.stdin.setRawMode(false);
+    }
+  } catch {
+    // Give up quietly — we're already on the fatal path.
+  }
+}
+
 async function cleanup(runtime: AgentRuntime): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
@@ -129,7 +155,9 @@ async function runInteractive(): Promise<void> {
 
   // Create and run the app
   app = new App(runtime);
+  activeApp = app;
   await app.run();
+  activeApp = undefined;
 
   // App exited normally (e.g., Ctrl+Q)
   await cleanup(runtime);
@@ -156,17 +184,20 @@ async function main(): Promise<void> {
 
 // Handle uncaught errors
 process.on("uncaughtException", (error) => {
+  restoreTerminalBestEffort();
   console.error("Uncaught exception:", error);
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason) => {
+  restoreTerminalBestEffort();
   console.error("Unhandled rejection:", reason);
   process.exit(1);
 });
 
 // Run the app
 main().catch((error) => {
+  restoreTerminalBestEffort();
   console.error("Fatal error:", error);
   process.exit(1);
 });
