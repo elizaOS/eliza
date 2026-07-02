@@ -183,7 +183,16 @@ test("chat overlay: transcript text is selectable and the old transcribe toggle 
 
   const selectable = page.locator('[data-chat-selectable="true"]').first();
   await expect(selectable).toBeVisible();
-  await expect(selectable).toHaveCSS("user-select", "text");
+  // WebKit's getComputedStyle reports only the prefixed `-webkit-user-select`
+  // and returns "" for the unprefixed `user-select`, so probe both (the app's
+  // `select-text` / base.css emits both). Same cross-engine fix #11103 applied
+  // to the sibling selectable assertion; this one was missed. The behavioral
+  // range-selection assert below is the real proof either way.
+  const userSelect = await selectable.evaluate((node) => {
+    const s = getComputedStyle(node);
+    return s.getPropertyValue("-webkit-user-select") || s.userSelect;
+  });
+  expect(userSelect).toBe("text");
 
   const selectedText = await selectable.evaluate((node) => {
     const range = document.createRange();
