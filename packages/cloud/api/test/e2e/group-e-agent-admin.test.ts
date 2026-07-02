@@ -15,104 +15,101 @@
  *   /api/training/vertex/tune
  * Three assertions per route family:
  *
- *  1. Auth gate — unauthenticated request returns 401/403 (per the global auth
- *     middleware in `apps/api/src/middleware/auth.ts`; these are not public
- *     paths).
+ *  1. Auth gate — unauthenticated request returns exactly 401 (the global
+ *     auth middleware in `src/middleware/auth.ts` runs before any handler;
+ *     these are not public paths).
  *  2. Happy path / behavior — for routes with a real handler we assert the
- *     bearer-authenticated response shape; for the many 501 stubs ("Not
- *     implemented on Workers" — DockerSSHClient/node:fs blockers) we accept
- *     200/202/501 as documented in FANOUT.md.
+ *     bearer-authenticated response shape; Worker-boundary stubs
+ *     (DockerSSHClient/node:fs blockers) answer exactly 501 not_yet_migrated.
  *  3. Validation — for routes that take a body, send a known-bad payload and
  *     assert 400.
  *
  * Admin routes additionally require a wallet-bound admin user. The e2e preload
- * seeds the local test user as admin, then exchanges the bootstrapped API key
- * for a session cookie.
+ * seeds the local test user as admin (AGENT_TEST_BOOTSTRAP_ADMIN=true), then
+ * this file exchanges the bootstrapped API key for a session cookie.
+ *
+ * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
+ * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
+ * named `skip` — never a silent pass.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   api,
   bearerHeaders,
   exchangeApiKeyForSession,
+  getBaseUrl,
   isServerReachable,
   memberBearerHeaders,
 } from "./_helpers/api";
 
-let serverReachable = false;
-let hasTestApiKey = false;
-let sessionCookie: string | null = null;
-
-const adminSessionCookie = process.env.AGENT_TEST_ADMIN_SESSION?.trim() || null;
-
-function shouldRun(): boolean {
-  return serverReachable && hasTestApiKey;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-e-agent-admin] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
+}
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-e-agent-admin] TEST_API_KEY is not set; the preload could not " +
+      "bootstrap a test API key. Tests will SKIP.",
+  );
 }
 
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+
+const adminSessionCookie = process.env.AGENT_TEST_ADMIN_SESSION?.trim() || null;
+// The admin-session exchange requires PLAYWRIGHT_TEST_AUTH=true on the target
+// Worker (always true in the run-e2e-batches lane). Failing while the Worker
+// is up is a harness defect — fail loud, don't skip.
+const sessionCookie: string | null =
+  serverReachable && hasTestApiKey
+    ? adminSessionCookie || (await exchangeApiKeyForSession())
+    : null;
+
 function adminHeaders(): Record<string, string> {
-  const cookie = adminSessionCookie || sessionCookie;
-  if (!cookie) {
+  if (!sessionCookie) {
     throw new Error(
       "Admin session cookie missing; ensure the e2e preload exchanged the bootstrapped API key.",
     );
   }
-  return { Cookie: cookie, "Content-Type": "application/json" };
+  return { Cookie: sessionCookie, "Content-Type": "application/json" };
 }
-
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!hasTestApiKey) {
-    throw new Error(
-      "[group-e] TEST_API_KEY is not set; the e2e preload did not bootstrap auth.",
-    );
-  }
-
-  sessionCookie = adminSessionCookie || (await exchangeApiKeyForSession());
-});
-
-afterAll(async () => {
-  void sessionCookie;
-});
 
 const FAKE_UUID = "00000000-0000-4000-8000-000000000000";
-const NOT_IMPLEMENTED_OK_STATUSES = [200, 202, 501] as const;
 
 /**
- * Assert that an unauthenticated request to a protected /api/ path is rejected
- * by the global auth middleware. The middleware returns 401 for missing creds;
- * a route that returns its own 403 (e.g. for missing wallet/admin) is also
- * acceptable here. 404 is never acceptable — that would indicate the route is
- * not mounted at all.
+ * Assert the global auth middleware rejected an unauthenticated request with
+ * exactly 401. (403 would mean a handler ran; 404 would mean the route is not
+ * mounted at all — both are regressions.)
  */
 function expectAuthGate(status: number, path: string): void {
-  expect([401, 403]).toContain(status);
-  if (![401, 403].includes(status)) {
-    throw new Error(
-      `Expected 401/403 from unauthenticated ${path}, got ${status}`,
-    );
+  if (status !== 401) {
+    throw new Error(`Expected 401 from unauthenticated ${path}, got ${status}`);
   }
+  expect(status).toBe(401);
 }
 
-describe("Group E: admin / redemptions", () => {
+describeE2E("Group E: admin / redemptions", () => {
   test("GET /api/admin/redemptions rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/admin/redemptions");
     expectAuthGate(res.status, "GET /api/admin/redemptions");
   });
 
   test("GET /api/admin/redemptions rejects non-admin bearer with 403", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/admin/redemptions", {
       headers: memberBearerHeaders(),
     });
-    // Use the seeded member key here; the primary bootstrapped key is a super-admin
-    // when AGENT_TEST_BOOTSTRAP_ADMIN=true.
-    expect([401, 403]).toContain(res.status);
+    // The seeded member key authenticates fine (so not 401) but lacks the
+    // admin role → the route's own gate answers 403.
+    expect(res.status).toBe(403);
   });
 
   test("POST /api/admin/redemptions rejects invalid body with 400 (admin) or 401/403 (non-admin)", async () => {
-    if (!shouldRun()) return;
     const headers = adminHeaders();
     const res = await api.post(
       "/api/admin/redemptions",
@@ -123,7 +120,6 @@ describe("Group E: admin / redemptions", () => {
   });
 
   test("GET /api/admin/redemptions returns redemption list for admin", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/admin/redemptions?status=pending&limit=5", {
       headers: adminHeaders(),
     });
@@ -139,23 +135,20 @@ describe("Group E: admin / redemptions", () => {
   });
 });
 
-describe("Group E: admin / ai-pricing", () => {
+describeE2E("Group E: admin / ai-pricing", () => {
   test("GET /api/v1/admin/ai-pricing rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/admin/ai-pricing");
     expectAuthGate(res.status, "GET /api/v1/admin/ai-pricing");
   });
 
   test("GET /api/v1/admin/ai-pricing rejects non-admin bearer", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/v1/admin/ai-pricing", {
       headers: memberBearerHeaders(),
     });
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(403);
   });
 
   test("PUT /api/v1/admin/ai-pricing rejects invalid body", async () => {
-    if (!shouldRun()) return;
     const headers = adminHeaders();
     const res = await api.put(
       "/api/v1/admin/ai-pricing",
@@ -171,7 +164,6 @@ describe("Group E: admin / ai-pricing", () => {
   });
 
   test("GET /api/v1/admin/ai-pricing returns pricing entries for admin", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/v1/admin/ai-pricing", {
       headers: adminHeaders(),
     });
@@ -185,15 +177,13 @@ describe("Group E: admin / ai-pricing", () => {
   });
 });
 
-describe("Group E: admin / cloud-observability", () => {
+describeE2E("Group E: admin / cloud-observability", () => {
   test("GET /api/v1/admin/cloud-observability rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/admin/cloud-observability");
     expectAuthGate(res.status, "GET /api/v1/admin/cloud-observability");
   });
 
   test("GET /api/v1/admin/cloud-observability returns request telemetry for admin", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/v1/admin/cloud-observability?limit=25", {
       headers: adminHeaders(),
     });
@@ -217,36 +207,32 @@ describe("Group E: admin / cloud-observability", () => {
   });
 });
 
-describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
+describeE2E("Group E: admin / docker-containers (live + 501 stubs)", () => {
   test("GET /api/v1/admin/docker-containers rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/admin/docker-containers");
     expectAuthGate(res.status, "GET /api/v1/admin/docker-containers");
   });
 
   test("GET /api/v1/admin/docker-containers rejects non-super-admin bearer", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/v1/admin/docker-containers", {
       headers: memberBearerHeaders(),
     });
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(403);
   });
 
   test("GET /api/v1/admin/docker-containers rejects invalid status filter (admin)", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(
       "/api/v1/admin/docker-containers?status=garbage",
       {
         headers: adminHeaders(),
       },
     );
-    // ValidationError(400) when status is not in the allowed set; super_admin
-    // is required so 403 is also acceptable for non-super admins.
-    expect([400, 403]).toContain(res.status);
+    // ValidationError(400): status is not in the allowed set (the seeded
+    // session is super-admin, so the role gate never fires here).
+    expect(res.status).toBe(400);
   });
 
   test("GET /api/v1/admin/docker-containers/:id/logs is gated before route handling", async () => {
-    if (!shouldRun()) return;
     const unauthed = await api.get(
       `/api/v1/admin/docker-containers/${FAKE_UUID}/logs`,
     );
@@ -258,15 +244,12 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
         headers: bearerHeaders(),
       },
     );
-    expect([404, 501]).toContain(authed.status);
-    if (authed.status === 501) {
-      const body = (await authed.json()) as { error?: string };
-      expect(body.error).toBe("not_yet_migrated");
-    }
+    expect(authed.status).toBe(501);
+    const body = (await authed.json()) as { error?: string };
+    expect(body.error).toBe("not_yet_migrated");
   });
 
   test("GET /api/v1/admin/docker-containers/audit returns the Worker boundary fallback", async () => {
-    if (!shouldRun()) return;
     const unauthed = await api.get("/api/v1/admin/docker-containers/audit");
     expectAuthGate(unauthed.status, "GET docker-containers/audit (unauth)");
 
@@ -277,7 +260,6 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
   });
 
   test("POST /api/v1/admin/infrastructure/containers/actions rejects unauthenticated and returns the Worker boundary fallback", async () => {
-    if (!shouldRun()) return;
     const unauthed = await api.post(
       "/api/v1/admin/infrastructure/containers/actions",
       {
@@ -301,31 +283,27 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
   });
 });
 
-describe("Group E: advertising / accounts", () => {
+describeE2E("Group E: advertising / accounts", () => {
   test("GET /api/v1/advertising/accounts/:id rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/v1/advertising/accounts/${FAKE_UUID}`);
     expectAuthGate(res.status, "GET advertising/accounts/:id");
   });
 
   test("GET /api/v1/advertising/accounts/:id returns 404 for unknown id", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(`/api/v1/advertising/accounts/${FAKE_UUID}`, {
       headers: bearerHeaders(),
     });
-    // Unknown / not-owned account returns 404; service-layer validation may
-    // also surface a 400 if the id is not a valid uuid for some platforms.
-    expect([400, 404]).toContain(res.status);
+    // FAKE_UUID is well-formed, so validation passes and the ownership
+    // lookup misses → 404.
+    expect(res.status).toBe(404);
   });
 
   test("DELETE /api/v1/advertising/accounts/:id rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.delete(`/api/v1/advertising/accounts/${FAKE_UUID}`);
     expectAuthGate(res.status, "DELETE advertising/accounts/:id");
   });
 
   test("POST /api/v1/advertising/accounts/:id/media rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.post(
       `/api/v1/advertising/accounts/${FAKE_UUID}/media`,
       {
@@ -337,7 +315,6 @@ describe("Group E: advertising / accounts", () => {
   });
 
   test("POST /api/v1/advertising/accounts/:id/media rejects invalid body with 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/v1/advertising/accounts/${FAKE_UUID}/media`,
       { type: "audio", url: "not-a-url" },
@@ -347,7 +324,6 @@ describe("Group E: advertising / accounts", () => {
   });
 
   test("GET /api/v1/advertising/accounts/:id/media rejects missing status query", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(
       `/api/v1/advertising/accounts/${FAKE_UUID}/media`,
       {
@@ -358,41 +334,35 @@ describe("Group E: advertising / accounts", () => {
   });
 });
 
-describe("Group E: advertising / campaigns", () => {
+describeE2E("Group E: advertising / campaigns", () => {
   test("GET /api/v1/advertising/campaigns/:id rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/v1/advertising/campaigns/${FAKE_UUID}`);
     expectAuthGate(res.status, "GET advertising/campaigns/:id");
   });
 
   test("GET /api/v1/advertising/campaigns/:id returns 404 for unknown id", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(`/api/v1/advertising/campaigns/${FAKE_UUID}`, {
       headers: bearerHeaders(),
     });
-    expect([400, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("PATCH /api/v1/advertising/campaigns/:id rejects invalid body with 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.patch(
       `/api/v1/advertising/campaigns/${FAKE_UUID}`,
       { budgetAmount: "not-a-number", startDate: "definitely-not-an-iso-date" },
       { headers: bearerHeaders() },
     );
-    // Invalid body short-circuits before the service layer; either a 400 from
-    // the schema or a 404 if the route's lookup runs first.
-    expect([400, 404]).toContain(res.status);
+    // The schema rejects the body before any campaign lookup runs.
+    expect(res.status).toBe(400);
   });
 
   test("DELETE /api/v1/advertising/campaigns/:id rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.delete(`/api/v1/advertising/campaigns/${FAKE_UUID}`);
     expectAuthGate(res.status, "DELETE advertising/campaigns/:id");
   });
 
   test("GET /api/v1/advertising/campaigns/:id/analytics rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/analytics`,
     );
@@ -400,7 +370,6 @@ describe("Group E: advertising / campaigns", () => {
   });
 
   test("GET /api/v1/advertising/campaigns/:id/analytics rejects bad date range with 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/analytics?startDate=2024-12-31T00:00:00Z&endDate=2024-01-01T00:00:00Z`,
       { headers: bearerHeaders() },
@@ -411,7 +380,6 @@ describe("Group E: advertising / campaigns", () => {
   });
 
   test("GET /api/v1/advertising/campaigns/:id/creatives rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/creatives`,
     );
@@ -419,17 +387,16 @@ describe("Group E: advertising / campaigns", () => {
   });
 
   test("POST /api/v1/advertising/campaigns/:id/creatives rejects invalid body with 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/creatives`,
       { name: 0, type: "not-a-real-type" },
       { headers: bearerHeaders() },
     );
-    expect([400, 404]).toContain(res.status);
+    // The creative schema rejects the body before any campaign lookup runs.
+    expect(res.status).toBe(400);
   });
 
   test("POST /api/v1/advertising/campaigns/:id/pause rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.post(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/pause`,
     );
@@ -437,7 +404,6 @@ describe("Group E: advertising / campaigns", () => {
   });
 
   test("POST /api/v1/advertising/campaigns/:id/start rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.post(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/start`,
     );
@@ -445,7 +411,6 @@ describe("Group E: advertising / campaigns", () => {
   });
 
   test("POST /api/v1/advertising/campaigns/:id/start returns 404 for unknown campaign", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/start`,
       undefined,
@@ -453,19 +418,18 @@ describe("Group E: advertising / campaigns", () => {
         headers: bearerHeaders(),
       },
     );
-    expect([400, 404]).toContain(res.status);
+    // FAKE_UUID is well-formed; the campaign lookup misses → 404.
+    expect(res.status).toBe(404);
   });
 });
 
-describe("Group E: advertising / creatives", () => {
+describeE2E("Group E: advertising / creatives", () => {
   test("GET /api/v1/advertising/creatives/:id rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/v1/advertising/creatives/${FAKE_UUID}`);
     expectAuthGate(res.status, "GET advertising/creatives/:id");
   });
 
   test("PATCH /api/v1/advertising/creatives/:id rejects invalid body with 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.patch(
       `/api/v1/advertising/creatives/${FAKE_UUID}`,
       { media: [{ url: "not-a-url" }] },
@@ -475,15 +439,13 @@ describe("Group E: advertising / creatives", () => {
   });
 
   test("DELETE /api/v1/advertising/creatives/:id rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.delete(`/api/v1/advertising/creatives/${FAKE_UUID}`);
     expectAuthGate(res.status, "DELETE advertising/creatives/:id");
   });
 });
 
-describe("Group E: training / vertex tune Worker boundary", () => {
+describeE2E("Group E: training / vertex tune Worker boundary", () => {
   test("POST /api/training/vertex/tune rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/training/vertex/tune", {
       datasetUri: "gs://demo",
     });
@@ -491,39 +453,32 @@ describe("Group E: training / vertex tune Worker boundary", () => {
   });
 
   test("POST /api/training/vertex/tune returns 501 (node:fs blocker)", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       "/api/training/vertex/tune",
       { datasetUri: "gs://demo" },
       { headers: bearerHeaders() },
     );
-    expect(NOT_IMPLEMENTED_OK_STATUSES).toContain(
-      res.status as (typeof NOT_IMPLEMENTED_OK_STATUSES)[number],
-    );
-    if (res.status === 501) {
-      const body = (await res.json()) as { error?: string; reason?: string };
-      expect(body.error).toBe("not_yet_migrated");
-    }
+    // Worker boundary stub (node:fs blocker) — exactly 501 until migrated.
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error?: string; reason?: string };
+    expect(body.error).toBe("not_yet_migrated");
   });
 
   test("GET /api/training/vertex/tune rejects unauthenticated", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/training/vertex/tune");
     expectAuthGate(res.status, "GET training/vertex/tune");
   });
 });
 
-describe("Group E: session-cookie sanity check", () => {
+describeE2E("Group E: session-cookie sanity check", () => {
   test("can exchange API key for session cookie (sanity that base harness works)", async () => {
-    if (!shouldRun()) return;
-    sessionCookie = await exchangeApiKeyForSession();
-    expect(sessionCookie).toMatch(/^[^=]+=.+/);
+    const freshCookie = await exchangeApiKeyForSession();
+    expect(freshCookie).toMatch(/^[^=]+=.+/);
   });
 });
 
-describe("Group E: admin / docker control-plane forwarding", () => {
+describeE2E("Group E: admin / docker control-plane forwarding", () => {
   test("POST /api/v1/admin/docker-nodes/:nodeId/health-check forwards to the control plane", async () => {
-    if (!shouldRun()) return;
     const unauthed = await api.post(
       `/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`,
     );

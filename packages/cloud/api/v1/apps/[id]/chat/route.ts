@@ -426,10 +426,11 @@ async function handlePOST(
       let outputTokens = 0;
       let fullContent = "";
       let writerClosed = false;
-      // True once the FULL answer has been delivered to the client and the
-      // writer closed. Distinguishes "stream failed mid-delivery" (refund) from
-      // "stream succeeded, only post-stream accounting threw" (do NOT refund —
-      // the user already received the whole answer).
+      // True once the client has received everything it will get and the
+      // writer is closed — the full answer on success, or the refund error
+      // event on the no-body path. Distinguishes "stream failed mid-delivery"
+      // (refund) from "only post-delivery accounting threw" (do NOT refund —
+      // money may already have moved).
       let streamCompleted = false;
 
       // Process stream in background with error handling
@@ -449,17 +450,9 @@ async function handlePOST(
               },
             );
 
-            await appCreditsService.reconcileCredits({
-              appId,
-              userId: user.id,
-              estimatedBaseCost: reservedBaseCost,
-              actualBaseCost: 0, // Full refund
-              description: "Refund due to empty provider response",
-              metadata: { error: true, noBody: true },
-              app,
-            });
-
-            // Send error event to client before closing
+            // Notify the client and close BEFORE the refund reconcile
+            // (mirroring the settle path below: close writer, flip the flag,
+            // then reconcile) so a reconcile throw can't strand the stream.
             const encoder = new TextEncoder();
             const errorEvent = `data: ${JSON.stringify({
               error: {
@@ -469,7 +462,25 @@ async function handlePOST(
               },
             })}\n\ndata: [DONE]\n\n`;
             writer.write(encoder.encode(errorEvent));
+            writerClosed = true;
             writer.close();
+            // Fence BEFORE invoking the refund: reconcileCredits is not
+            // transactional — its refund branch commits the org-balance
+            // movement and can then throw from the earnings/counter writes.
+            // With the flag flipped first, that throw reaches the catch as
+            // "money may have moved" and reconcileStreamProcessingError does
+            // NOT refund the full hold a second time (double-credit / mint).
+            streamCompleted = true;
+
+            await appCreditsService.reconcileCredits({
+              appId,
+              userId: user.id,
+              estimatedBaseCost: reservedBaseCost,
+              actualBaseCost: 0, // Full refund
+              description: "Refund due to empty provider response",
+              metadata: { error: true, noBody: true },
+              app,
+            });
             return;
           }
 
