@@ -120,6 +120,19 @@ async function fetchAuthStatus(): Promise<void> {
   return authStatusFetch;
 }
 
+/**
+ * True once the app-level auth probe (App.tsx's `useAuthStatus`) has resolved
+ * to an authenticated session. Read-only: subscribes to the shared snapshot
+ * without starting its own fetch or poll, so gating on it adds zero network
+ * traffic. Background pollers and shell data loaders must not start until this
+ * is true — an unauthenticated shell otherwise streams 401s into the API rate
+ * limiter (#11084).
+ */
+export function useIsAuthenticated(): boolean {
+  const { state } = useAuthStatus({ observeOnly: true });
+  return state.phase === "authenticated";
+}
+
 export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   state: AuthStatusState;
   refetch: () => void;

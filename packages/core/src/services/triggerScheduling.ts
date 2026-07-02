@@ -8,6 +8,12 @@ const CRON_FIELDS = 5;
 const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
 const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
+const CRON_FALLBACK_LOOKBACKS_MS = [
+	30 * CRON_MINUTE_MS,
+	CRON_HOUR_MS,
+	2 * CRON_HOUR_MS,
+	3 * CRON_HOUR_MS,
+] as const;
 /** Max timestamp a JS Date can represent (±8.64e15 ms); beyond this a Date is Invalid. */
 const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 
@@ -174,15 +180,6 @@ function offsetMsFromFormatter(
 	return tzDate - atMs;
 }
 
-function getTimezoneOffsetMs(
-	timezone: string | undefined,
-	atMs: number,
-): number {
-	if (!timezone || timezone === "UTC") return 0;
-	const formatter = buildTzFormatter(timezone);
-	return formatter ? offsetMsFromFormatter(formatter, atMs) : 0;
-}
-
 function cronMatches(
 	schedule: CronSchedule,
 	candidateMs: number,
@@ -194,14 +191,25 @@ function cronMatches(
 	}
 	const wallMs = candidateMs + offsetMsFromFormatter(formatter, candidateMs);
 	if (!cronMatchesUTC(schedule, wallMs)) return false;
-	// DST fall-back: the ambiguous local hour repeats (e.g. NY 01:00–01:59 occurs
-	// twice on the transition day). Fire only the FIRST instant, matching common
-	// cron implementations — reject a candidate whose wall-clock equals the
-	// wall-clock one hour earlier. That earlier instant already matched and fired,
-	// so counting this one too double-fires the cron on the transition day.
-	const prevMs = candidateMs - CRON_HOUR_MS;
-	const prevWallMs = prevMs + offsetMsFromFormatter(formatter, prevMs);
-	return wallMs !== prevWallMs;
+	// DST fall-back: an ambiguous local time repeats. Fire only the FIRST
+	// instant, matching common cron implementations. The repeated span is not
+	// always one hour (Australia/Lord_Howe falls back by 30 minutes), so derive
+	// the actual offset delta and reject candidates whose wall-clock already
+	// existed at candidate-delta.
+	const candidateOffset = offsetMsFromFormatter(formatter, candidateMs);
+	for (const lookbackMs of CRON_FALLBACK_LOOKBACKS_MS) {
+		const priorOffset = offsetMsFromFormatter(
+			formatter,
+			candidateMs - lookbackMs,
+		);
+		if (priorOffset <= candidateOffset) continue;
+		const offsetDelta = priorOffset - candidateOffset;
+		const priorSameWallMs = candidateMs - offsetDelta;
+		const priorWallMs =
+			priorSameWallMs + offsetMsFromFormatter(formatter, priorSameWallMs);
+		if (wallMs === priorWallMs) return false;
+	}
+	return true;
 }
 
 export function computeNextCronRunAtMs(
