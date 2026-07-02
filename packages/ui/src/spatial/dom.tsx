@@ -106,6 +106,12 @@ export function SpatialSurface({
           minHeight: 0,
           minWidth: 0,
           boxSizing: "border-box",
+          // Clear the fixed shell back button (top-left, z-60) so it never
+          // occludes a spatial view's first row (e.g. filter chips). The shell
+          // wrappers that render ShellBackButton set --shell-backnav-clearance;
+          // everywhere else (chat overlay, XR, TUI, stories) it is unset → 0px.
+          // See #11144.
+          paddingTop: "var(--shell-backnav-clearance, 0px)",
         }}
       >
         {children}
