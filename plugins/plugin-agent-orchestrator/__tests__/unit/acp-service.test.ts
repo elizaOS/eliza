@@ -1834,7 +1834,10 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
         }),
     );
     const p1 = service.sendPrompt(spawned.sessionId, "first");
-    await new Promise((r) => setTimeout(r, 10));
+    // NO tick between the two sendPrompt calls: the race the fix closes is a
+    // same-tick check-then-claim, and inserting even a 10ms sleep here made the
+    // test pass on the PRE-fix code (the first prompt's claim landed during the
+    // sleep). Issuing both in the same microtask is what reproduces the TOCTOU.
     // Before the fix, the busy marker was only set deep inside sendNativePrompt,
     // so this concurrent prompt slipped through and ran on the same session.
     await expect(
