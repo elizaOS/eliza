@@ -795,8 +795,20 @@ export class AcpService extends Service {
       if (this.nativePromptSessionIds.has(sessionId)) {
         throw new Error(`ACP session is already busy: ${sessionId}`);
       }
-      await this.store.updateStatus(sessionId, "busy");
-      return this.sendNativePrompt(session, text, opts, startedAt);
+      // Claim the session SYNCHRONOUSLY, before the first await. Previously the
+      // busy marker was only added deep inside sendNativePrompt (after
+      // `updateStatus` + client setup await), so two concurrent sendPrompt calls
+      // could both pass the has() check before either added, driving two prompts
+      // onto the same native session. Cleanup on the pre-prompt error paths;
+      // sendNativePrompt's own finally clears it on the normal path.
+      this.nativePromptSessionIds.add(sessionId);
+      try {
+        await this.store.updateStatus(sessionId, "busy");
+        return await this.sendNativePrompt(session, text, opts, startedAt);
+      } catch (err) {
+        this.nativePromptSessionIds.delete(sessionId);
+        throw err;
+      }
     }
     await this.store.updateStatus(sessionId, "busy");
     const args = this.baseArgs({
