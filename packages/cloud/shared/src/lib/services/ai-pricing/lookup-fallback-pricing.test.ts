@@ -12,8 +12,9 @@
  *   3. A provider with no catalogued entries falls back to the env-configured
  *      defaults AI_PRICING_FALLBACK_INPUT_USD_PER_M /
  *      AI_PRICING_FALLBACK_OUTPUT_USD_PER_M.
- *   4. With no catalog and no env default, the request stays servable at $0
- *      (last resort; covered in lookup-missing-pricing.test.ts as well).
+ *   4. With no catalog and no env default, the request stays servable at a
+ *      non-zero hardcoded frontier-max last resort — never $0 (#11635; also
+ *      covered in lookup-missing-pricing.test.ts).
  *   5. Reserve (estimated tokens) and settle (actual tokens) resolve the same
  *      fallback rate, so billing stays consistent across the request.
  */
@@ -178,7 +179,7 @@ test("env-configured default applies when the provider has no catalogued entries
   expect(result.totalCost).toBe(12.5 * 1.2);
 });
 
-test("invalid env default is ignored (falls through to $0 last resort)", async () => {
+test("invalid env default is ignored (falls through to the non-zero last resort, #11635)", async () => {
   process.env.AI_PRICING_FALLBACK_INPUT_USD_PER_M = "not-a-number";
   process.env.AI_PRICING_FALLBACK_OUTPUT_USD_PER_M = "-4";
 
@@ -189,10 +190,13 @@ test("invalid env default is ignored (falls through to $0 last resort)", async (
     outputTokens: 1_000,
   });
 
-  expect(result.totalCost).toBe(0);
+  // Invalid env is still ignored, but the last resort is now the hardcoded
+  // frontier-max rate, never $0 (#11635).
+  expect(result.totalCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeLessThan(0.1);
 });
 
-test("no catalog and no env default keeps the request servable at $0", async () => {
+test("no catalog and no env default keeps the request servable at a non-zero last resort (#11635)", async () => {
   const result = await calculateTextCostFromCatalog({
     model: "mystery-model-1",
     provider: "someprovider",
@@ -200,7 +204,8 @@ test("no catalog and no env default keeps the request servable at $0", async () 
     outputTokens: 1_000,
   });
 
-  expect(result.inputCost).toBe(0);
-  expect(result.outputCost).toBe(0);
-  expect(result.totalCost).toBe(0);
+  expect(result.inputCost).toBeGreaterThan(0);
+  expect(result.outputCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeLessThan(0.1);
 });

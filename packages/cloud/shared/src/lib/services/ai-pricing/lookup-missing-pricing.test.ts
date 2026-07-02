@@ -1,21 +1,18 @@
 /**
- * Regression: a missing INPUT price must degrade to $0, not throw a 500.
+ * Regression: a missing price must (1) NOT throw a 500 and (2) NEVER bill $0.
  *
- * `calculateTextCostFromCatalog` previously left the input-price lookup
- * unguarded while the output lookup was `.catch(() => null)`. A catalog miss on
- * the input row therefore threw `Pricing unavailable for language:input <model>`
- * uncaught, which propagated through `calculateCost` → the chat-completions
- * credit reserve → a 500 / masked "bridge unreachable". This is especially easy
- * to hit with embedding models (input-only, and embedded on every turn) or any
- * model whose input row simply isn't catalogued yet.
+ * `calculateTextCostFromCatalog` once left the input-price lookup unguarded, so
+ * a catalog miss threw `Pricing unavailable for language:input <model>` → a 500
+ * / masked "bridge unreachable". That was fixed by degrading a miss to a
+ * fallback rate — but the last-resort tier was `?? 0`, so a servable model with
+ * no catalog row AND no `AI_PRICING_FALLBACK_*` env default billed **$0** = free
+ * inference / uncollected revenue (#11635).
  *
  * Both seams (persisted repo + live gateway) are mocked empty so EVERY lookup
- * misses — the worst case. With no provider catalog entries and no
- * AI_PRICING_FALLBACK_{INPUT,OUTPUT}_USD_PER_M env defaults, the last-resort
- * behavior bills the missing side at $0 instead of failing the request.
- * (When the provider HAS catalogued entries, or the env defaults are set, the
- * miss bills at a conservative fallback rate instead — covered in
- * lookup-fallback-pricing.test.ts.)
+ * misses — the worst case — and no env fallback is set, so the last-resort tier
+ * is exercised. Post-#11635 it bills a conservative non-zero frontier-max rate
+ * (`lastResortTokenUnitPrice`), keyed by product family, and still never throws.
+ * (Provider-max / env-default tiers are covered in lookup-fallback-pricing.test.ts.)
  */
 import { expect, mock, test } from "bun:test";
 
@@ -31,7 +28,7 @@ mock.module("./providers/gateway", () => ({
 
 const { calculateTextCostFromCatalog } = await import("./lookup");
 
-test("missing input pricing degrades to $0 instead of throwing a 500", async () => {
+test("missing language pricing bills a non-zero last-resort rate, never $0 (#11635)", async () => {
   const result = await calculateTextCostFromCatalog({
     model: "totally-uncatalogued-model",
     provider: "someprovider",
@@ -39,13 +36,15 @@ test("missing input pricing degrades to $0 instead of throwing a 500", async () 
     outputTokens: 500,
   });
 
-  // Before the fix this rejected with "Pricing unavailable for language:input …".
-  expect(result.inputCost).toBe(0);
-  expect(result.outputCost).toBe(0);
-  expect(result.totalCost).toBe(0);
+  // Never throws (the original 500-degradation) AND never $0 (the #11635 fix):
+  // 1000in@$5/M + 500out@$25/M ≈ $0.0175 base + markup — a small, sane amount.
+  expect(result.inputCost).toBeGreaterThan(0);
+  expect(result.outputCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeLessThan(0.1); // sane: not an absurd rate
 });
 
-test("missing input pricing for an input-only embedding model does not throw", async () => {
+test("missing embedding pricing bills the cheaper embedding last-resort rate, non-zero (#11635)", async () => {
   const result = await calculateTextCostFromCatalog({
     model: "uncatalogued-embedding-model",
     provider: "someprovider",
@@ -53,6 +52,10 @@ test("missing input pricing for an input-only embedding model does not throw", a
     outputTokens: 0,
   });
 
-  expect(result.inputCost).toBe(0);
-  expect(result.totalCost).toBe(0);
+  // Non-zero (never free) but keyed to the embedding family ($0.2/M), so 800
+  // tokens is a tiny amount — proving the family keying picked the cheap rate,
+  // not the $5/M language default.
+  expect(result.inputCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeLessThan(0.001);
 });

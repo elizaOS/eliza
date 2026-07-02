@@ -179,6 +179,30 @@ function envFallbackTokenUnitPrice(chargeType: "input" | "output"): number | nul
   return usdPerMillion / 1_000_000;
 }
 
+/**
+ * Fail-closed last-resort per-token rate (USD/token) for a servable but
+ * uncatalogued model with no provider-max catalog entry AND no env fallback
+ * (#11635). The request still serves — it just can never bill $0. Deliberately
+ * conservative (frontier-max) so an unpriced model over-bills rather than gives
+ * away free inference; a real catalog entry (cheaper) supersedes this on the
+ * next lookup, and the loud log points the catalog gap.
+ */
+const LAST_RESORT_USD_PER_MILLION: Partial<
+  Record<PricingProductFamily, { input: number; output: number }>
+> = {
+  language: { input: 5, output: 25 },
+  embedding: { input: 0.2, output: 0.2 },
+};
+const DEFAULT_LAST_RESORT_USD_PER_MILLION = { input: 5, output: 25 };
+
+function lastResortTokenUnitPrice(
+  productFamily: PricingProductFamily,
+  chargeType: "input" | "output",
+): number {
+  const family = LAST_RESORT_USD_PER_MILLION[productFamily] ?? DEFAULT_LAST_RESORT_USD_PER_MILLION;
+  return family[chargeType] / 1_000_000;
+}
+
 type FallbackTokenRate = {
   unitPrice: number;
   source: "provider_max_catalog" | "env_default";
@@ -345,9 +369,10 @@ export async function calculateTextCostFromCatalog(params: {
   // the catalog (notably embedding models, which are input-only and run every
   // turn). A servable request must never fail purely on a missing price — but
   // it must not be under-billed at $0 either. On a miss, bill the missing side
-  // at a conservative fallback rate (provider max → env default → $0 last
-  // resort; see resolveFallbackTokenRate) and log loudly so the catalog gap
-  // gets priced.
+  // at a conservative fallback rate (provider max → env default → a non-zero
+  // hardcoded frontier-max last resort, NEVER $0; see resolveFallbackTokenRate
+  // + lastResortTokenUnitPrice, #11635) and log loudly so the catalog gap gets
+  // priced.
   const inputEntry = await resolvePreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
@@ -398,10 +423,10 @@ export async function calculateTextCostFromCatalog(params: {
 
   const inputUnitPrice = inputEntry
     ? asDecimal(inputEntry.unitPrice)
-    : asDecimal(inputFallback?.unitPrice ?? 0);
+    : asDecimal(inputFallback?.unitPrice ?? lastResortTokenUnitPrice(productFamily, "input"));
   const outputUnitPrice = outputEntry
     ? asDecimal(outputEntry.unitPrice)
-    : asDecimal(outputFallback?.unitPrice ?? 0);
+    : asDecimal(outputFallback?.unitPrice ?? lastResortTokenUnitPrice(productFamily, "output"));
 
   const baseInputCost = inputUnitPrice.mul(params.inputTokens);
   const baseOutputCost = outputUnitPrice.mul(params.outputTokens);
