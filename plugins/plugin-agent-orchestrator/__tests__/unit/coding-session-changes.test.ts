@@ -26,7 +26,7 @@ function session(
     id: uuid(),
     name: "task",
     agentType: "opencode",
-    workdir: "/home/example/projects/agent-home",
+    workdir: "/home/example/projects/custom-apps",
     status: "ready",
     approvalPreset: "standard",
     createdAt: new Date(now - createdMsAgo),

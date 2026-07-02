@@ -41,9 +41,9 @@ describe("viewPluginGuidance (#8918)", () => {
 
   it("keeps non-cloud view-plugin tasks in the local sandbox", () => {
     const g = viewPluginGuidance({
-      target: "agent-home",
-      agentHomeAppsDir: "/data/apps",
-      agentHomeBaseUrl: "https://agent-home.test",
+      target: "custom",
+      customAppsDir: "/data/apps",
+      customBaseUrl: "https://custom-host.test",
     });
     expect(g).toContain("View Plugin Deployment (local sandbox)");
     expect(g).toContain("Plugin.views");
@@ -91,9 +91,9 @@ describe("augmentTaskWithDeployGuidance routing (#8918)", () => {
 
   it("appends local sandbox guidance for non-cloud view targets", () => {
     const out = augmentTaskWithDeployGuidance("build a new view", {
-      target: "agent-home",
-      agentHomeAppsDir: "/data/apps",
-      agentHomeBaseUrl: "https://agent-home.test",
+      target: "custom",
+      customAppsDir: "/data/apps",
+      customBaseUrl: "https://custom-host.test",
     });
     expect(out).toContain("View Plugin Deployment (local sandbox)");
     expect(out).not.toContain("apps.create");

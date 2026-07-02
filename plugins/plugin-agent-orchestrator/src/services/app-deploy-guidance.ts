@@ -9,8 +9,10 @@
  * so the result is actually hosted and a verified URL is reported.
  *
  * Default target is **Eliza Cloud** (the productized path for every user).
- * Operators can opt into a personal **agent-home** static host via env — that
- * is gated so other users never see it.
+ * An operator can point the agent at their own **custom static host** entirely
+ * through config (a per-user apps dir + public base URL); the framework carries
+ * NO knowledge of any specific host — the operator's private character/env
+ * config supplies the values, so a personal host is never baked into the repo.
  *
  * @module services/app-deploy-guidance
  */
@@ -39,9 +41,9 @@ export function isAppBuildTask(taskText: string | undefined | null): boolean {
  * Whether an app build is MONETIZED — it earns via per-call markup, so it needs
  * Eliza Cloud OAuth + billing (an `appId`) regardless of where the static files
  * are hosted. This is a general rule: a monetized app ALWAYS registers with
- * Cloud. Used so a non-Cloud static host (agent-home) does not tell the
- * sub-agent "don't use Eliza Cloud" for a monetized app — which contradicts the
- * `build-monetized-app` skill and leaves the app unregistered (no sign-in).
+ * Cloud. Used so a non-Cloud static host does not tell the sub-agent "don't use
+ * Eliza Cloud" for a monetized app — which contradicts the `build-monetized-app`
+ * skill and leaves the app unregistered (no sign-in).
  */
 const MONETIZED_APP_RE =
   /\b(?:moneti[sz]e[ds]?|monetization|markup|per[-\s]?(?:use|call|request|chat)\s+(?:billing|pricing|charge)|paid\s+(?:app|tiers?|version|plan|feature)|paywall|earn(?:s|ing|ings)?|pay[-\s]?to|subscription|premium\s+tiers?|charges?\s+\$?\d|x402)\b/i;
@@ -70,34 +72,48 @@ export function isViewPluginTask(taskText: string | undefined | null): boolean {
   return VIEW_PLUGIN_TASK_RE.test(taskText);
 }
 
-export type AppDeployTarget = "eliza-cloud" | "cloud" | "agent-home";
+export type AppDeployTarget = "eliza-cloud" | "cloud" | "custom";
 
 export interface AppDeployConfig {
   target: AppDeployTarget;
-  /** agent-home: absolute dir whose `<slug>/` subdirs are served as apps. */
-  agentHomeAppsDir?: string;
-  /** agent-home: public base URL; apps resolve at `<baseUrl>/apps/<slug>/`. */
-  agentHomeBaseUrl?: string;
+  /** custom host: absolute dir whose `<slug>/` subdirs are served as apps. */
+  customAppsDir?: string;
+  /** custom host: public base URL; apps resolve at `<baseUrl>/apps/<slug>/`. */
+  customBaseUrl?: string;
+  /**
+   * custom host: optional operator-supplied notes appended verbatim to the
+   * publish guidance (e.g. a host-specific build/deploy caveat). Lives ONLY in
+   * the operator's private config — never hardcoded here.
+   */
+  customPublishNotes?: string;
 }
 
 /**
- * Resolve the deploy target from env. agent-home requires BOTH an apps dir and
- * a base URL to be configured; otherwise we fall back to Eliza Cloud so a
- * half-configured operator override can never strand a normal user.
+ * Resolve the deploy target from config. The custom static host requires BOTH
+ * an apps dir and a base URL to be configured; otherwise we fall back to Eliza
+ * Cloud so a half-configured operator override can never strand a normal user.
  */
 export function resolveAppDeployConfig(): AppDeployConfig {
   const requested = readConfigEnvKey("ELIZA_APP_DEPLOY_TARGET")
     ?.trim()
     .toLowerCase();
-  const agentHomeAppsDir = readConfigEnvKey(
-    "ELIZA_AGENT_HOME_APPS_DIR",
+  const customAppsDir = readConfigEnvKey(
+    "ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR",
   )?.trim();
-  const agentHomeBaseUrl = readConfigEnvKey("ELIZA_AGENT_HOME_BASE_URL")
+  const customBaseUrl = readConfigEnvKey("ELIZA_APP_DEPLOY_CUSTOM_BASE_URL")
     ?.trim()
     .replace(/\/+$/, "");
+  const customPublishNotes = readConfigEnvKey(
+    "ELIZA_APP_DEPLOY_CUSTOM_NOTES",
+  )?.trim();
 
-  if (requested === "agent-home" && agentHomeAppsDir && agentHomeBaseUrl) {
-    return { target: "agent-home", agentHomeAppsDir, agentHomeBaseUrl };
+  if (requested === "custom" && customAppsDir && customBaseUrl) {
+    return {
+      target: "custom",
+      customAppsDir,
+      customBaseUrl,
+      ...(customPublishNotes ? { customPublishNotes } : {}),
+    };
   }
   if (requested === "cloud" || requested === "eliza-cloud") {
     return { target: "eliza-cloud" };
@@ -133,13 +149,13 @@ function elizaCloudGuidance(task?: string, monetized?: boolean): string {
   return lines.join("\n");
 }
 
-function agentHomeGuidance(
+function customHostGuidance(
   config: AppDeployConfig,
   _task?: string,
   monetized?: boolean,
 ): string {
-  const dir = config.agentHomeAppsDir ?? "";
-  const base = config.agentHomeBaseUrl ?? "";
+  const dir = config.customAppsDir ?? "";
+  const base = config.customBaseUrl ?? "";
   // The monetization line is a self-gating conditional by default ("if the app
   // must earn money …"), but when the planner has JUDGED this task as monetized
   // it becomes a firm directive — a normie "people pay $1 to chat" must not be
@@ -153,16 +169,22 @@ function agentHomeGuidance(
   // always available and the agent applies it by judgment. So it must stay
   // correct for a request to BUILD a new app, to EDIT an existing one, OR for a
   // non-web task (which ignores it). No keyword gate decides app-vs-not.
-  return [
-    "--- Publishing web apps (agent-home) ---",
-    "If (and only if) your task is to build OR edit a web app, page, or site for the operator — not a script, CLI, library, or backend service — publish it here:",
+  const lines = [
+    "--- Publishing web apps (custom host) ---",
+    "If (and only if) your task is to build OR edit a web app, page, or site for the operator — not a script, CLI, library, or backend service — publish it to the operator's configured static host:",
     `- Published apps are plain static files under \`${dir}/<slug>/\` (index.html plus any css/js — there is NO per-app build step), served live at \`${base}/apps/<slug>/\`.`,
     `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL.`,
     `- To EDIT an existing app: the \`<slug>\` is the app's existing folder name under \`${dir}/\` — read its files there, modify them in place, then re-open \`${base}/apps/<slug>/\` to confirm. Do not create a new slug for an edit.`,
     monetizeLine,
-    "- Do NOT run `deploy.sh` (operator-only; only for a new Next.js backend route). Static apps need no build/restart.",
-    "If your task is not a web app, ignore this section.",
-  ].join("\n");
+  ];
+  // Operator-supplied host caveats live only in private config, never in the
+  // framework — e.g. "do not run the host's build script" for a host that has
+  // one. Appended verbatim when configured.
+  if (config.customPublishNotes) {
+    lines.push(config.customPublishNotes);
+  }
+  lines.push("If your task is not a web app, ignore this section.");
+  return lines.join("\n");
 }
 
 /**
@@ -187,8 +209,8 @@ export function buildAppDeployGuidance(
   monetized?: boolean,
 ): string {
   const resolved = config ?? resolveAppDeployConfig();
-  return resolved.target === "agent-home"
-    ? agentHomeGuidance(resolved, task, monetized)
+  return resolved.target === "custom"
+    ? customHostGuidance(resolved, task, monetized)
     : elizaCloudGuidance(task, monetized);
 }
 
@@ -227,7 +249,7 @@ export function augmentTaskWithDeployGuidance(
   const monetized = opts?.monetized === true;
   // View/plugin tasks are a distinct surface (#8918) with their own cloud-vs-local
   // sandbox contract — they are NOT hosted web apps, so they must be routed before
-  // the agent-home app note (which would otherwise wrongly tell the agent to
+  // the custom-host app note (which would otherwise wrongly tell the agent to
   // publish a plugin as a static page). This check stays keyword-gated for now;
   // a separate follow-up tracks removing that gate too.
   if (isViewPluginTask(task) && !isAppBuildTask(task)) {
@@ -235,15 +257,15 @@ export function augmentTaskWithDeployGuidance(
       sourceDir: extractViewPluginSourceDir(task),
     })}`;
   }
-  // agent-home: the publish convention is a cheap, always-correct capability note
-  // (it self-gates on "if this is a web app … else ignore"), so attach it to
-  // EVERY remaining coding task instead of using a keyword regex to guess which
-  // tasks are app builds. The regex mis-fired on real phrasings — "add a dark mode
-  // toggle … and redeploy it" never matched the build-verb pattern, so the agent
-  // got no apps-dir context and could not find or edit the deployed app. Letting
-  // the model decide from an always-present note is both cleaner and general.
-  if (resolved.target === "agent-home") {
-    return `${task.trimEnd()}\n\n${agentHomeGuidance(resolved, task, monetized)}`;
+  // custom host: the publish convention is a cheap, always-correct capability
+  // note (it self-gates on "if this is a web app … else ignore"), so attach it
+  // to EVERY remaining coding task instead of using a keyword regex to guess
+  // which tasks are app builds. The regex mis-fired on real phrasings — "add a
+  // dark mode toggle … and redeploy it" never matched the build-verb pattern, so
+  // the agent got no apps-dir context and could not find or edit the deployed
+  // app. Letting the model decide from an always-present note is cleaner.
+  if (resolved.target === "custom") {
+    return `${task.trimEnd()}\n\n${customHostGuidance(resolved, task, monetized)}`;
   }
   // Force the deploy contract for a monetized task even when isAppBuildTask
   // misses it — a monetized request ("an app where people pay $1 to chat …") is

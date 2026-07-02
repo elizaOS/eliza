@@ -71,7 +71,7 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       // coinflip app" lands in an empty workspace, the app dir is sandbox-blocked,
       // and nothing happens. Roots are comma-separated; the agent picks the path
       // (its workspace for scripts, the apps dir for web apps) by the task.
-      const appsDir = process.env.ELIZA_AGENT_HOME_APPS_DIR?.trim();
+      const appsDir = process.env.ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR?.trim();
       const roots = appsDir && appsDir !== cwd ? `${cwd},${appsDir}` : cwd;
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= roots;
       process.env.SHELL_ALLOWED_DIRECTORY ??= roots;
