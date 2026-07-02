@@ -7,6 +7,8 @@ import {
   getElizaAgentDirectWebUiUrl,
   getElizaAgentPublicWebUiUrl,
 } from "@/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
@@ -172,6 +174,19 @@ async function __hono_POST(
             Response.json(provisioningWorkerFailureBody(workerHealth), {
               status: workerHealth.status,
             }),
+            CORS_METHODS,
+          );
+        }
+
+        const creditCheck = await checkAgentCreditGate(user.organization_id);
+        if (!creditCheck.allowed) {
+          const body = insufficientCredits402(
+            creditCheck,
+            "[pairing-token] auto-resume blocked: insufficient credits",
+            { agentId, orgId: user.organization_id },
+          );
+          return applyCorsHeaders(
+            Response.json(body, { status: 402 }),
             CORS_METHODS,
           );
         }

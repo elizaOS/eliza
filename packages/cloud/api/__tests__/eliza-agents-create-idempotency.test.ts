@@ -142,6 +142,7 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     enqueueAgentProvision.mockClear();
     triggerImmediate.mockClear();
     checkAgentCreditGate.mockClear();
+    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 100 });
     checkProvisioningWorkerHealth.mockClear();
     prepareManagedElizaEnvironment.mockClear();
     loggerInfo.mockClear();
@@ -191,6 +192,30 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(json.success).toBe(true);
     expect(json.data.jobId).toBe("job-1");
     expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
+  });
+
+  test("insufficient credits returns 402 with the canonical flat body", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits. Please add funds.",
+    });
+
+    const res = await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+    });
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      success: false,
+      code: "insufficient_credits",
+      error: "Insufficient credits. Please add funds.",
+      requiredBalance: 0.1,
+      currentBalance: 0,
+    });
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
   });
 
   test("forceCreate:true bypasses the reuse guard → createAgent called with reuseExistingNonTerminal:false (mints a SEPARATE agent)", async () => {

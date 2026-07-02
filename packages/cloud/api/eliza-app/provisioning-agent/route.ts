@@ -13,6 +13,8 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { containersEnv } from "@/lib/config/containers-env";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -91,6 +93,18 @@ app.post("/", async (c) => {
 
     if (existing) {
       return c.json({ success: true, data: sandboxPayload(existing) });
+    }
+
+    const creditCheck = await checkAgentCreditGate(session.organizationId);
+    if (!creditCheck.allowed) {
+      return c.json(
+        insufficientCredits402(
+          creditCheck,
+          "[eliza-app provisioning-agent] provision blocked: insufficient credits",
+          { orgId: session.organizationId },
+        ),
+        402,
+      );
     }
 
     // No sandbox yet — create one and enqueue provisioning.

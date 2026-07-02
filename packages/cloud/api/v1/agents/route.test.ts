@@ -725,6 +725,7 @@ describe("service agent provisioning route", () => {
     expect(response.status).toBe(402);
     await expect(response.json()).resolves.toMatchObject({
       success: false,
+      code: "insufficient_credits",
       error: "Insufficient credits",
       requiredBalance: 0.1,
       currentBalance: 0,

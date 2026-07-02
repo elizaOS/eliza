@@ -2,7 +2,8 @@
  * Agent billing gate — pre-provisioning credit check.
  *
  * Ensures an organization has more than the minimum running balance before
- * allowing agent creation, provisioning, or resume.
+ * allowing agent creation, provisioning, or resume. Routes serialize denials
+ * with the canonical 402 body from ./agent-billing-gate-402.ts.
  */
 
 import { organizationsRepository } from "../../db/repositories";
