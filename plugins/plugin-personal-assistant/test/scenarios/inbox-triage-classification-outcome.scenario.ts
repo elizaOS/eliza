@@ -247,6 +247,12 @@ export default scenario({
   ],
   finalChecks: [
     {
+      type: "modelCallOccurred",
+      name: "inbox_triage optimized-prompt model call fired",
+      purpose: "inbox_triage",
+      minCount: 1,
+    },
+    {
       type: "custom",
       name: "persisted triage decisions: outage=urgent, newsletter=noise, question=needs_reply",
       predicate: assertPersistedClassifications,
