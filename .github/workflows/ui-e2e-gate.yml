@@ -16,15 +16,9 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "packages/ui/src/components/shell/**"
-      - "packages/ui/src/components/pages/**"
-      - "packages/ui/src/components/chat/widgets/**"
-      - "packages/ui/src/components/views/**"
-      - "packages/ui/src/agent-surface/**"
-      - "packages/ui/src/state/**"
-      - "packages/ui/src/voice/**"
-      - "packages/ui/src/testing/**"
-      - "packages/ui/src/hooks/**"
+      # The fixture runners esbuild-bundle from the full packages/ui/src tree,
+      # so any source change there can reach a bundled runner.
+      - "packages/ui/src/**"
       - "packages/ui/package.json"
       # The proactive-suggestions e2e drives these server modules for real.
       - "packages/agent/src/services/proactive-interaction-*.ts"
@@ -35,15 +29,7 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - "packages/ui/src/components/shell/**"
-      - "packages/ui/src/components/pages/**"
-      - "packages/ui/src/components/chat/widgets/**"
-      - "packages/ui/src/components/views/**"
-      - "packages/ui/src/agent-surface/**"
-      - "packages/ui/src/state/**"
-      - "packages/ui/src/voice/**"
-      - "packages/ui/src/testing/**"
-      - "packages/ui/src/hooks/**"
+      - "packages/ui/src/**"
       - "packages/ui/package.json"
       - "packages/agent/src/services/proactive-interaction-*.ts"
       - "packages/agent/src/api/views-routes.ts"
