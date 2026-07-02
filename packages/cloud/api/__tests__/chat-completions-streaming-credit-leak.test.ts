@@ -33,6 +33,7 @@ const aiActual = require("ai") as Record<string, unknown>;
 import { estimateTokens } from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
+import * as aiBillingRecordsActual from "@/lib/services/ai-billing-records";
 
 // The REAL settler — explicitly NOT mocked. This is the component under test.
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
@@ -88,9 +89,20 @@ const billUsage = mock(async (_context: unknown, usage: unknown) => {
     markupApplied: true,
   };
 });
+const recordUsageAnalytics = mock(async () => ({ id: "usage-1" }));
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
+  recordUsageAnalytics,
+}));
+
+const aiBillingRecord = mock(async () => ({ id: "billing-record-1" }));
+mock.module("@/lib/services/ai-billing-records", () => ({
+  ...aiBillingRecordsActual,
+  aiBillingRecordsService: {
+    ...aiBillingRecordsActual.aiBillingRecordsService,
+    record: aiBillingRecord,
+  },
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
@@ -103,6 +115,10 @@ afterAll(() => {
   mock.module("ai", () => aiActual);
   mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/ai-billing-records",
+    () => aiBillingRecordsActual,
+  );
 });
 
 /**
@@ -186,6 +202,8 @@ function callStreaming(
 beforeEach(() => {
   streamText.mockClear();
   billUsage.mockClear();
+  recordUsageAnalytics.mockClear();
+  aiBillingRecord.mockClear();
   streamTextImpl = null;
 });
 
@@ -315,9 +333,10 @@ describe("streaming chat — client abort settles delivered usage", () => {
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - expectedCost, 10);
   });
 
-  test("abort-like stream failure after text deltas cannot win with settle(0)", async () => {
+  test("request-signal abort after text deltas settles partial usage", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
+    const controller = new AbortController();
     const estimatedInputTokens = 8;
     const deliveredText = "sent before disconnect";
     const expectedCost =
@@ -331,17 +350,95 @@ describe("streaming chat — client abort settles delivered usage", () => {
           id: "text-1",
           text: deliveredText,
         };
+        controller.abort();
         throw new DOMException("The operation was aborted.", "AbortError");
       })(),
     });
 
-    const res = await callStreaming(settle, { estimatedInputTokens });
+    const res = await callStreaming(settle, {
+      estimatedInputTokens,
+      signal: controller.signal,
+    });
     const body = await res.text();
 
     expect(body).toContain(deliveredText);
     expect(ledger.reconcileCalls).toBe(1);
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+    expect(aiBillingRecord).toHaveBeenCalledTimes(1);
     expect(ledger.actualCosts[0]).toBeCloseTo(expectedCost, 10);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - expectedCost, 10);
+  });
+
+  test("AbortError-shaped provider failure without request abort refunds and does not bill", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const deliveredText = "sent before provider failure";
+
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield {
+          type: "text-delta",
+          id: "text-1",
+          text: deliveredText,
+        };
+        throw new DOMException("upstream connection aborted", "AbortError");
+      })(),
+    });
+
+    const res = await callStreaming(settle);
+    const body = await res.text();
+
+    expect(body).toContain(deliveredText);
+    expect(body).toContain('"error"');
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([0]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(recordUsageAnalytics).not.toHaveBeenCalled();
+    expect(aiBillingRecord).not.toHaveBeenCalled();
+  });
+
+  test("onAbort plus cancelled-controller catch single-flights partial settlement", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const controller = new AbortController();
+    const estimatedInputTokens = 8;
+    const deliveredText = "sent before disconnect";
+    let onAbortPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onAbort = config.onAbort as
+        | ((event: { steps: [] }) => Promise<unknown> | unknown)
+        | undefined;
+
+      return {
+        fullStream: (async function* () {
+          yield {
+            type: "text-delta",
+            id: "text-1",
+            text: deliveredText,
+          };
+          controller.abort();
+          onAbortPromise = Promise.resolve(onAbort?.({ steps: [] }));
+          throw new DOMException("The operation was aborted.", "AbortError");
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      estimatedInputTokens,
+      signal: controller.signal,
+    });
+    await res.text();
+    expect(onAbortPromise).toBeDefined();
+    await onAbortPromise;
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+    expect(aiBillingRecord).toHaveBeenCalledTimes(1);
+    expect(ledger.actualCosts[0]).toBeGreaterThan(0);
   });
 });
 

@@ -57,6 +57,7 @@ import {
 } from "@/lib/providers/language-model";
 import {
   type AIUsage,
+  type BillingContext,
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
@@ -140,6 +141,42 @@ function buildProviderBillingFields(
       process.env.VAST_BASE_URL ??
       null,
   };
+}
+
+function buildChatBillingContext(params: {
+  user: { id: string; organization_id: string };
+  apiKey: { id: string } | null;
+  model: string;
+  provider: string;
+  billingSource: PricingBillingSource;
+  requestId: string;
+  appId: string | null;
+  affiliateCode: string | null;
+  streaming: boolean;
+}): BillingContext {
+  return {
+    organizationId: params.user.organization_id,
+    userId: params.user.id,
+    apiKeyId: params.apiKey?.id,
+    model: params.model,
+    provider: params.provider,
+    billingSource: params.billingSource,
+    requestId: params.requestId,
+    metadata: buildProviderReconciliationMetadata(
+      params.provider,
+      params.model,
+      params.streaming,
+      params.appId,
+    ),
+    affiliateCode: params.affiliateCode,
+    ...buildProviderBillingFields(params.provider, params.model),
+  };
+}
+
+function buildChatPromptForBilling(request: ChatRequest): string {
+  return request.messages
+    .map((m) => `[${m.role}] ${getMessageContent(m)}`)
+    .join("\n");
 }
 
 /**
@@ -1409,12 +1446,6 @@ function summarizeFinishedStepUsage(
   };
 }
 
-function isAbortLikeStreamError(error: unknown): boolean {
-  if (error instanceof Error && error.name === "AbortError") return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return message.toLowerCase().includes("aborted");
-}
-
 async function settleStreamingAbortReservation(params: {
   model: string;
   provider: string;
@@ -1423,6 +1454,10 @@ async function settleStreamingAbortReservation(params: {
   affiliateCode: string | null;
   appId: string | null;
   requestId: string;
+  idempotencyKey: string;
+  systemPrompt: string | undefined;
+  prompt: string;
+  startTime: number;
   billingSource: PricingBillingSource;
   estimatedInputTokens: number;
   deliveredText: string;
@@ -1447,33 +1482,56 @@ async function settleStreamingAbortReservation(params: {
   );
 
   try {
-    const billing = await billUsage(
-      {
-        organizationId: params.user.organization_id,
-        userId: params.user.id,
-        apiKeyId: params.apiKey?.id,
-        model: params.model,
-        provider: params.provider,
-        billingSource: params.billingSource,
-        requestId: params.requestId,
-        metadata: buildProviderReconciliationMetadata(
-          params.provider,
-          params.model,
-          true,
-          params.appId,
-        ),
-        affiliateCode: params.affiliateCode,
-        ...buildProviderBillingFields(params.provider, params.model),
-      },
-      {
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
-        cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
-      },
-    );
+    const billingContext = buildChatBillingContext({
+      user: params.user,
+      apiKey: params.apiKey,
+      model: params.model,
+      provider: params.provider,
+      billingSource: params.billingSource,
+      requestId: params.requestId,
+      appId: params.appId,
+      affiliateCode: params.affiliateCode,
+      streaming: true,
+    });
+    const billing = await billUsage(billingContext, {
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
+      cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
+    });
     const reconciliation = await params.settleReservation(billing.totalCost);
+    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+      type: "chat",
+      isSuccessful: false,
+      errorMessage: "client_aborted_stream",
+      content: params.deliveredText,
+      systemPrompt: params.systemPrompt,
+      prompt: params.prompt,
+      latencyMs: Date.now() - params.startTime,
+    });
+    if (usageRecord) {
+      try {
+        await aiBillingRecordsService.record({
+          context: billingContext,
+          billing,
+          usageRecord,
+          idempotencyKey: params.idempotencyKey,
+          reconciliation,
+        });
+      } catch (auditError) {
+        logger.error("[Chat Completions] audit record failed (non-fatal)", {
+          error:
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError),
+          cause:
+            auditError instanceof Error && auditError.cause
+              ? String((auditError.cause as Error).message ?? auditError.cause)
+              : undefined,
+        });
+      }
+    }
 
     logger.info(
       "[Chat Completions] Stream aborted; reservation partially settled",
@@ -1531,7 +1589,48 @@ async function handleStreamingRequest(
   const tools = convertTools(request.tools);
   const toolChoice = mapToolChoice(request.tool_choice);
   const experimentalOutput = mapResponseFormat(request.response_format);
+  const billingPrompt = buildChatPromptForBilling(request);
   let deliveredText = "";
+  let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
+    null;
+
+  const settleStreamingOnce = (
+    factory: () => Promise<CreditReconciliationResult | null>,
+  ): Promise<CreditReconciliationResult | null> => {
+    if (!streamingSettlementPromise) {
+      streamingSettlementPromise = factory().catch((error) => {
+        streamingSettlementPromise = null;
+        throw error;
+      });
+    }
+    return streamingSettlementPromise;
+  };
+
+  const refundStreamingReservationOnce = () =>
+    settleStreamingOnce(async () => await settleReservation(0));
+
+  const settleStreamingAbortOnce = (steps: readonly StepResult<ToolSet>[]) =>
+    settleStreamingOnce(
+      async () =>
+        await settleStreamingAbortReservation({
+          model,
+          provider,
+          user,
+          apiKey,
+          affiliateCode,
+          appId,
+          requestId,
+          idempotencyKey,
+          systemPrompt,
+          prompt: billingPrompt,
+          startTime,
+          billingSource,
+          estimatedInputTokens,
+          deliveredText,
+          steps,
+          settleReservation,
+        }),
+    );
 
   const safeParams = getSafeModelParams(model, {
     temperature: request.temperature,
@@ -1559,97 +1658,85 @@ async function handleStreamingRequest(
     ...(effectiveMaxTokens != null && { maxOutputTokens: effectiveMaxTokens }),
     ...cotOptions,
     onFinish: async ({ text, usage }) => {
-      try {
-        const billingContext = {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId: apiKey?.id,
-          model,
-          provider,
-          billingSource,
-          requestId,
-          metadata: buildProviderReconciliationMetadata(
-            provider,
+      await settleStreamingOnce(async () => {
+        try {
+          const billingContext = buildChatBillingContext({
+            user,
+            apiKey,
             model,
-            true,
+            provider,
+            billingSource,
+            requestId,
             appId,
-          ),
-          affiliateCode,
-          ...buildProviderBillingFields(provider, model),
-        };
-        const billing = await billUsage(billingContext, usage);
-        const reconciliation = await settleReservation(billing.totalCost);
+            affiliateCode,
+            streaming: true,
+          });
+          const billing = await billUsage(billingContext, usage);
+          const reconciliation = await settleReservation(billing.totalCost);
 
-        const usageRecord = await recordUsageAnalytics(
-          billingContext,
-          billing,
-          {
-            type: "chat",
-            content: text,
-            systemPrompt,
-            prompt: request.messages
-              .map((m) => `[${m.role}] ${getMessageContent(m)}`)
-              .join("\n"),
-            latencyMs: Date.now() - startTime,
-          },
-        );
-        if (usageRecord) {
-          try {
-            await aiBillingRecordsService.record({
-              context: billingContext,
-              billing,
-              usageRecord,
-              idempotencyKey,
-              reconciliation,
-            });
-          } catch (auditError) {
-            logger.error("[Chat Completions] audit record failed (non-fatal)", {
-              error:
-                auditError instanceof Error
-                  ? auditError.message
-                  : String(auditError),
-              cause:
-                auditError instanceof Error && auditError.cause
-                  ? String(
-                      (auditError.cause as Error).message ?? auditError.cause,
-                    )
-                  : undefined,
-            });
+          const usageRecord = await recordUsageAnalytics(
+            billingContext,
+            billing,
+            {
+              type: "chat",
+              content: text,
+              systemPrompt,
+              prompt: billingPrompt,
+              latencyMs: Date.now() - startTime,
+            },
+          );
+          if (usageRecord) {
+            try {
+              await aiBillingRecordsService.record({
+                context: billingContext,
+                billing,
+                usageRecord,
+                idempotencyKey,
+                reconciliation,
+              });
+            } catch (auditError) {
+              logger.error(
+                "[Chat Completions] audit record failed (non-fatal)",
+                {
+                  error:
+                    auditError instanceof Error
+                      ? auditError.message
+                      : String(auditError),
+                  cause:
+                    auditError instanceof Error && auditError.cause
+                      ? String(
+                          (auditError.cause as Error).message ??
+                            auditError.cause,
+                        )
+                      : undefined,
+                },
+              );
+            }
           }
-        }
 
-        logger.info("[Chat Completions] Streaming complete", {
-          durationMs: Date.now() - startTime,
-          inputTokens: billing.inputTokens,
-          outputTokens: billing.outputTokens,
-          totalCost: billing.totalCost,
-        });
-      } catch (error) {
-        await settleReservation(0);
-        logger.error("[Chat Completions] onFinish error", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+          logger.info("[Chat Completions] Streaming complete", {
+            durationMs: Date.now() - startTime,
+            inputTokens: billing.inputTokens,
+            outputTokens: billing.outputTokens,
+            totalCost: billing.totalCost,
+          });
+
+          return reconciliation;
+        } catch (error) {
+          const reconciliation = await settleReservation(0);
+          logger.error("[Chat Completions] onFinish error", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return reconciliation;
+        }
+      });
     },
     onAbort: async ({
       steps,
     }: {
       readonly steps: readonly StepResult<ToolSet>[];
     }) => {
-      await settleStreamingAbortReservation({
-        model,
-        provider,
-        user,
-        apiKey,
-        affiliateCode,
-        appId,
-        requestId,
-        billingSource,
-        estimatedInputTokens,
-        deliveredText,
-        steps,
-        settleReservation,
-      });
+      await settleStreamingAbortOnce(steps);
       logger.info("[Chat Completions] Stream aborted before completion", {
         model,
         estimatedInputTokens,
@@ -1663,7 +1750,7 @@ async function handleStreamingRequest(
     // settleReservation(0). The settler is idempotent (first-call-wins), so a
     // later onFinish/onAbort cannot double-refund.
     onError: async ({ error }: { error: unknown }) => {
-      await settleReservation(0);
+      await refundStreamingReservationOnce();
       logger.error(
         "[Chat Completions] Stream provider error — reservation refunded",
         {
@@ -1848,26 +1935,11 @@ async function handleStreamingRequest(
         // does not await) onError, so settle the reservation here too. The
         // settler is idempotent, so this cannot double-refund if onError already
         // won the race.
-        const streamAborted =
-          abortSignal?.aborted === true ||
-          (deliveredText.length > 0 && isAbortLikeStreamError(error));
+        const streamAborted = abortSignal?.aborted === true;
         if (streamAborted) {
-          await settleStreamingAbortReservation({
-            model,
-            provider,
-            user,
-            apiKey,
-            affiliateCode,
-            appId,
-            requestId,
-            billingSource,
-            estimatedInputTokens,
-            deliveredText,
-            steps: [],
-            settleReservation,
-          });
+          await settleStreamingAbortOnce([]);
         } else {
-          await settleReservation(0);
+          await refundStreamingReservationOnce();
         }
         const status =
           getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error);
@@ -2007,25 +2079,20 @@ async function handleNonStreamingRequest(
     // Bill using actual usage from SDK response. Deferred via waitUntil so the
     // ~0.7-1.1s of reconciliation/audit DB writes never block the response.
     // Same code, same amounts, same reservation — only the timing moves.
+    const billingPrompt = buildChatPromptForBilling(request);
     await settleOffResponsePath(executionCtx, async () => {
       try {
-        const billingContext = {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId: apiKey?.id,
+        const billingContext = buildChatBillingContext({
+          user,
+          apiKey,
           model,
           provider,
           billingSource,
           requestId,
-          metadata: buildProviderReconciliationMetadata(
-            provider,
-            model,
-            false,
-            appId,
-          ),
+          appId,
           affiliateCode,
-          ...buildProviderBillingFields(provider, model),
-        };
+          streaming: false,
+        });
         const billing = await billUsage(billingContext, result.usage);
         const reconciliation = await settleReservation(billing.totalCost);
 
@@ -2036,9 +2103,7 @@ async function handleNonStreamingRequest(
             type: "chat",
             content: result.text,
             systemPrompt,
-            prompt: request.messages
-              .map((m) => `[${m.role}] ${getMessageContent(m)}`)
-              .join("\n"),
+            prompt: billingPrompt,
             latencyMs: responseLatencyMs,
           },
         );
