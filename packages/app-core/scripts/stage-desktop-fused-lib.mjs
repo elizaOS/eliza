@@ -34,13 +34,16 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -101,13 +104,86 @@ function have(cmd, args = ["--version"]) {
   }
 }
 
+// ---- Staleness guard -------------------------------------------------------
+// The #1 way the staged fused lib goes stale in dev→device: a rebuild lands in
+// the build dir (e.g. building a CLI target rebuilds `elizainference` too) but
+// the STAGE step is not re-run, so `<stateDir>/local-inference/lib` keeps an
+// older copy; or a `git submodule update` restores fork sources with rewound
+// mtimes so an incremental cmake keeps stale objects. Both produce a lib that
+// silently mismatches the current source. We fingerprint the fork (commit +
+// uncommitted-tree hash) and the staged lib (sha256) into a build stamp so:
+//   - a normal run auto-CLEAN-rebuilds when the fork changed since the stamp;
+//   - `--check` fast-detects a stale staged lib (non-zero exit) without building.
+const STAMP_FILE = ".eliza-fused-build-stamp.json";
+const FUSED_LIB_NAME =
+  process.platform === "win32"
+    ? "elizainference.dll"
+    : process.platform === "darwin"
+      ? "libelizainference.dylib"
+      : "libelizainference.so";
+function forkCommit() {
+  try {
+    return execFileSync("git", ["-C", forkSrc, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+function forkDirtyHash() {
+  try {
+    const s = execFileSync(
+      "git",
+      [
+        "-C",
+        forkSrc,
+        "status",
+        "--porcelain",
+        "--untracked-files=no",
+        "--",
+        "tools",
+        "src",
+        "ggml",
+        "common",
+        "CMakeLists.txt",
+      ],
+      { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+    ).trim();
+    return s ? createHash("sha256").update(s).digest("hex").slice(0, 16) : "";
+  } catch {
+    return "";
+  }
+}
+function sha256File(p) {
+  try {
+    return createHash("sha256").update(readFileSync(p)).digest("hex");
+  } catch {
+    return null;
+  }
+}
+function readStamp(dir) {
+  try {
+    return JSON.parse(readFileSync(path.join(dir, STAMP_FILE), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 function parseArgs(argv) {
-  const out = { variant: "auto", outDir: null, jobs: null, force: false };
+  const out = {
+    variant: "auto",
+    outDir: null,
+    jobs: null,
+    force: false,
+    check: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--variant") out.variant = argv[++i];
     else if (argv[i] === "--out") out.outDir = argv[++i];
     else if (argv[i] === "--jobs") out.jobs = parseInt(argv[++i], 10);
     else if (argv[i] === "--force") out.force = true;
+    else if (argv[i] === "--check") out.check = true;
+    else if (argv[i] === "--ensure") out.ensure = true;
     else die(`unknown arg: ${argv[i]}`);
   }
   const ok = ["auto", "cpu", "cuda", "vulkan", "metal", "hip"];
@@ -266,7 +342,67 @@ const {
   outDir: outOverride,
   jobs: jobsArg,
   force,
+  check,
+  ensure,
 } = parseArgs(process.argv.slice(2));
+
+const stagedOutDir =
+  outOverride || path.join(resolveStateDir(), "local-inference", "lib");
+const currentFork = forkCommit();
+const currentDirty = forkDirtyHash();
+
+// Shared staleness verdict for --check / --ensure. Returns the reasons the
+// staged fused lib is stale ([] = fresh).
+function stagedStalenessReasons() {
+  const stamp = readStamp(stagedOutDir);
+  const stagedSha = sha256File(path.join(stagedOutDir, FUSED_LIB_NAME));
+  const reasons = [];
+  if (!stagedSha) reasons.push(`staged ${FUSED_LIB_NAME} is missing`);
+  if (!stamp) reasons.push("no build stamp (built by an older/raw cmake path)");
+  if (stamp && stamp.forkCommit !== currentFork)
+    reasons.push(
+      `fork commit changed (${String(stamp.forkCommit).slice(0, 10)} → ${currentFork.slice(0, 10)})`,
+    );
+  if (stamp && (stamp.forkDirty || "") !== currentDirty)
+    reasons.push("fork working tree changed (uncommitted source edits)");
+  if (stamp && stagedSha && stamp.fusedSha256 !== stagedSha)
+    reasons.push("staged lib hash != stamp (partial copy / tampered)");
+  return reasons;
+}
+
+// `--check`: fast staleness probe — no build. Exit 0 = the staged fused lib
+// matches the current fork; exit 2 = stale. Build/deploy flows call this to
+// fail-fast (or trigger a rebuild) before shipping to a device.
+if (check) {
+  const reasons = stagedStalenessReasons();
+  if (reasons.length) {
+    console.error(
+      `[stage-desktop-fused-lib] STALE: ${reasons.join("; ")}.\n` +
+        "  Rebuild: bun run --cwd packages/app-core build:fused-desktop",
+    );
+    process.exit(2);
+  }
+  log(
+    `FRESH: staged libelizainference matches fork ${currentFork.slice(0, 10)}${currentDirty ? " (+local edits)" : ""}.`,
+  );
+  process.exit(0);
+}
+
+// `--ensure`: the build/deploy entry point — fast when the staged lib already
+// matches the current fork (skip the build), rebuild + re-stage when stale.
+// This is what guarantees "no stale native lib reaches a device": every build
+// that runs this either confirms freshness or produces a matching lib.
+if (ensure) {
+  const reasons = stagedStalenessReasons();
+  if (!reasons.length) {
+    log(
+      `up to date — staged libelizainference matches fork ${currentFork.slice(0, 10)}; skipping rebuild.`,
+    );
+    process.exit(0);
+  }
+  log(`rebuilding — staged lib is stale: ${reasons.join("; ")}`);
+  // fall through to the full build below.
+}
 
 if (!existsSync(path.join(forkSrc, "CMakeLists.txt"))) {
   die(
@@ -282,10 +418,24 @@ log(
 );
 
 const buildDir = path.join(forkSrc, `build-desktop-${backend}`);
-const outDir =
-  outOverride || path.join(resolveStateDir(), "local-inference", "lib");
+const outDir = stagedOutDir;
 
-if (force && existsSync(buildDir)) {
+// Self-healing clean rebuild: if the existing build dir was produced from a
+// DIFFERENT fork commit / working tree than we have now, an incremental cmake
+// can silently keep stale objects (git can restore fork sources with rewound
+// mtimes on a submodule update). Wipe it so the produced lib always matches the
+// current source — the guarantee "no stale native lib reaches a device".
+const priorBuildStamp = readStamp(buildDir);
+const forkChanged =
+  priorBuildStamp &&
+  (priorBuildStamp.forkCommit !== currentFork ||
+    (priorBuildStamp.forkDirty || "") !== currentDirty);
+if ((force || forkChanged) && existsSync(buildDir)) {
+  if (forkChanged && !force) {
+    log(
+      `fork changed since last build (${String(priorBuildStamp.forkCommit).slice(0, 10)} → ${currentFork.slice(0, 10)}) — clean rebuild to avoid stale objects`,
+    );
+  }
   removePathRecursive(buildDir);
 }
 mkdirSync(buildDir, { recursive: true });
@@ -415,6 +565,25 @@ for (const s of staged) log(`  ${s}`);
 // NOT re-exported by the fused lib — so llama_* is checked across the whole
 // staged set, not the fused lib alone. A half-fused link drops eliza/ov.
 verifyFusedSymbols(outDir);
+
+// Stamp the staged set with the fork fingerprint + the staged fused-lib sha256.
+// `--check` reads this to fast-detect a stale staged lib, and the next build
+// reads the buildDir copy to self-heal an incremental build from another commit.
+const buildStamp = JSON.stringify(
+  {
+    forkCommit: currentFork,
+    forkDirty: currentDirty,
+    backend,
+    fusedLib: fusedName,
+    fusedSha256: sha256File(path.join(outDir, fusedName)),
+    builtAt: new Date().toISOString(),
+  },
+  null,
+  2,
+);
+writeFileSync(path.join(outDir, STAMP_FILE), buildStamp);
+writeFileSync(path.join(buildDir, STAMP_FILE), buildStamp);
+log(`stamped build → fork ${currentFork.slice(0, 10)}${currentDirty ? " (+local edits)" : ""}`);
 
 function definedSymbols(libPath) {
   const tool =
