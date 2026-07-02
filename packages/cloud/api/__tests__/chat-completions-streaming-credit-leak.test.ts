@@ -141,8 +141,18 @@ beforeEach(() => {
   streamTextImpl = null;
 });
 
+// Per-status OpenAI-compatible error.type the terminal chunk must carry —
+// mirrors openAiErrorTypeForStatus in the route (429 is the ONLY status that
+// may say rate_limit_error; a 400/503 mislabeled as rate limiting steers
+// clients into pointless back-off retries).
+const EXPECTED_ERROR_TYPE: Record<number, string> = {
+  400: "invalid_request_error",
+  429: "rate_limit_error",
+  503: "service_unavailable",
+};
+
 describe("streaming chat — provider error releases the credit reservation", () => {
-  for (const statusCode of [429, 503]) {
+  for (const statusCode of [400, 429, 503]) {
     test(`provider ${statusCode}: reservation released to 0, balance restored, terminal error chunk emitted`, async () => {
       const ledger = makeLedgerReservation(100, 0.015);
       const settle = createCreditReservationSettler(ledger.reservation);
@@ -172,9 +182,10 @@ describe("streaming chat — provider error releases the credit reservation", ()
       expect(ledger.reconcileCalls).toBe(1);
       expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
 
-      // Finding #11: a terminal OpenAI-shaped error chunk + [DONE] was emitted.
+      // Finding #11: a terminal OpenAI-shaped error chunk + [DONE] was emitted,
+      // with the status-correct error.type (not a blanket rate_limit_error).
       expect(body).toContain('"error"');
-      expect(body).toContain('"type":"rate_limit_error"');
+      expect(body).toContain(`"type":"${EXPECTED_ERROR_TYPE[statusCode]}"`);
       expect(body).toContain(`"code":${statusCode}`);
       expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
 
@@ -185,7 +196,7 @@ describe("streaming chat — provider error releases the credit reservation", ()
         .map((l) => JSON.parse(l.slice("data: ".length)));
       const errorChunk = dataLines.find((c) => "error" in c);
       expect(errorChunk).toBeDefined();
-      expect(errorChunk.error.type).toBe("rate_limit_error");
+      expect(errorChunk.error.type).toBe(EXPECTED_ERROR_TYPE[statusCode]);
       expect(errorChunk.error.code).toBe(statusCode);
     });
   }
@@ -208,7 +219,7 @@ describe("streaming chat — provider error releases the credit reservation", ()
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
     expect(body).toContain('"error"');
-    expect(body).toContain('"type":"rate_limit_error"');
+    expect(body).toContain('"type":"service_unavailable"');
     expect(body).toContain('"code":503');
     expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
   });
