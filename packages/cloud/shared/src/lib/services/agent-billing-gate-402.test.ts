@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
-import {
-  insufficientCredits402,
-  insufficientCreditsBody,
-} from "./agent-billing-gate-402";
+import { insufficientCredits402, insufficientCreditsBody } from "./agent-billing-gate-402";
 
 describe("insufficientCreditsBody", () => {
   test("builds the canonical 402 wire shape — exact fields, nothing else", () => {
@@ -49,14 +46,11 @@ describe("insufficientCredits402", () => {
 
     expect(body).toStrictEqual(insufficientCreditsBody(creditCheck));
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith(
-      "[agent-api] Resume blocked: insufficient credits",
-      {
-        agentId: "agent-1",
-        orgId: "org-1",
-        balance: 0.05,
-        required: AGENT_PRICING.MINIMUM_DEPOSIT,
-      },
-    );
+    expect(warnSpy).toHaveBeenCalledWith("[agent-api] Resume blocked: insufficient credits", {
+      agentId: "agent-1",
+      orgId: "org-1",
+      balance: 0.05,
+      required: AGENT_PRICING.MINIMUM_DEPOSIT,
+    });
   });
 });
