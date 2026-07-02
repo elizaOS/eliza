@@ -161,6 +161,23 @@ describe("runPool", () => {
   });
 });
 
+describe("process supervision boundary", () => {
+  test("documents why dev supervisors and the test pool stay split", () => {
+    const doc = readFileSync(
+      new URL("../process-supervision.md", import.meta.url),
+      "utf8",
+    );
+
+    expect(doc).toContain("keep the seams separate");
+    expect(doc).toContain("api-supervisor.mjs");
+    expect(doc).toContain("dev-all.mjs");
+    expect(doc).toContain("run-all-tests.mjs");
+    expect(doc).toContain("long-lived single-child supervisor");
+    expect(doc).toContain("bounded batch runner");
+    expect(doc).toContain("digest.readUInt32BE(0)");
+  });
+});
+
 describe("normalizeConcurrency", () => {
   test("defaults to 1 (fully serial) for empty/invalid input", () => {
     for (const value of [undefined, null, "", "abc", "0", "-3", 0, -1]) {
