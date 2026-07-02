@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { logger } from "../../../logger.ts";
 import type {
 	EvaluatorProcessorContext,
 	IAgentRuntime,
 	Memory,
 	UUID,
 } from "../../../types/index.ts";
+import { parseExtractorOutputTolerant } from "./factExtractor.schema.ts";
 import { factMemoryEvaluator } from "./reflection-items.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -204,54 +206,69 @@ describe("reflection evaluator schemas are strict-structured-output safe", () =>
 });
 
 describe("factExtractor tolerant parsing (#11235)", () => {
-	it("accepts an add op that omits structured_fields (wire-optional, prompt-unnamed)", async () => {
-		const { parseExtractorOutputTolerant } = await import(
-			"./factExtractor.schema.ts"
-		);
+	it("accepts an add op that omits structured_fields (wire-optional, prompt-unnamed)", () => {
 		const parsed = parseExtractorOutputTolerant({
 			ops: [
 				{ op: "add_durable", claim: "lives in Berlin", category: "identity" },
 			],
 		});
 		expect(parsed).not.toBeNull();
-		expect(parsed?.dropped).toBe(0);
-		expect(parsed?.value.ops).toHaveLength(1);
+		expect(parsed?.ops).toHaveLength(1);
 		// The default keeps structured_fields a concrete record for downstream use.
-		expect(parsed?.value.ops[0]).toMatchObject({
+		expect(parsed?.ops[0]).toMatchObject({
 			op: "add_durable",
 			structured_fields: {},
 		});
 	});
 
-	it("keeps valid ops when one op in the array is malformed (no whole-turn discard)", async () => {
-		const { parseExtractorOutputTolerant } = await import(
-			"./factExtractor.schema.ts"
-		);
-		const parsed = parseExtractorOutputTolerant({
-			ops: [
-				{ op: "add_durable", claim: "likes tea", category: "preference" },
-				{ op: "contradict" }, // invalid: missing required factId + reason
-				{ op: "strengthen", factId: "fact-123" },
-			],
-		});
-		expect(parsed).not.toBeNull();
-		expect(parsed?.dropped).toBe(1);
-		expect(parsed?.value.ops.map((o) => o.op)).toEqual([
-			"add_durable",
-			"strengthen",
-		]);
+	it("keeps valid ops when one op is malformed, and warns about the drop", () => {
+		// The evaluator parse contract (`parse?(output): TOutput | null`) has no
+		// runtime/logger, so the drop MUST be logged where it is computed —
+		// otherwise per-op loss is silent in prod (the regression #11241 killed).
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const parsed = parseExtractorOutputTolerant({
+				ops: [
+					{ op: "add_durable", claim: "likes tea", category: "preference" },
+					{ op: "contradict" }, // invalid: missing required factId + reason
+					{ op: "strengthen", factId: "fact-123" },
+				],
+			});
+			expect(parsed).not.toBeNull();
+			expect(parsed?.ops.map((o) => o.op)).toEqual([
+				"add_durable",
+				"strengthen",
+			]);
+			expect(warnSpy).toHaveBeenCalledTimes(1);
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "factMemory",
+					count: 1,
+					issues: [expect.stringContaining("factId")],
+				}),
+				"dropped malformed extractor op(s)",
+			);
+		} finally {
+			warnSpy.mockRestore();
+		}
 	});
 
-	it("returns null only when the envelope itself is not { ops: array }", async () => {
-		const { parseExtractorOutputTolerant } = await import(
-			"./factExtractor.schema.ts"
-		);
+	it("does not warn when every op parses", () => {
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			parseExtractorOutputTolerant({
+				ops: [{ op: "strengthen", factId: "fact-123" }],
+			});
+			expect(warnSpy).not.toHaveBeenCalled();
+		} finally {
+			warnSpy.mockRestore();
+		}
+	});
+
+	it("returns null only when the envelope itself is not { ops: array }", () => {
 		expect(parseExtractorOutputTolerant({ nope: true })).toBeNull();
 		expect(parseExtractorOutputTolerant(null)).toBeNull();
 		// An empty ops array is a VALID (zero-op) turn, not a parse failure.
-		expect(parseExtractorOutputTolerant({ ops: [] })).toMatchObject({
-			dropped: 0,
-			value: { ops: [] },
-		});
+		expect(parseExtractorOutputTolerant({ ops: [] })).toEqual({ ops: [] });
 	});
 });
