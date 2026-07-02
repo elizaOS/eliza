@@ -1,0 +1,85 @@
+{
+  "runId": "409f71b9-cec1-4de1-8fbf-21a7c5115912",
+  "startedAtIso": "2026-07-02T23:01:23.711Z",
+  "completedAtIso": "2026-07-02T23:01:29.995Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "cloud-apps-read-core",
+      "title": "Eliza Cloud Apps read-core: what apps do I have?",
+      "domain": "cloud-apps",
+      "tags": [],
+      "status": "failed",
+      "durationMs": 1103,
+      "turns": [
+        {
+          "name": "user asks for their cloud apps",
+          "kind": "message",
+          "text": "what apps do I have?",
+          "responseText": "I'm not sure how to answer that.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "I'm not sure how to answer that.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 995,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "LIST_CLOUD_APPS routed and executed",
+          "type": "actionCalled",
+          "status": "failed",
+          "detail": "expected 1 call(s) to LIST_CLOUD_APPS, saw 0. Called: REPLY"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I'm not sure how to answer that.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        }
+      ],
+      "failedAssertions": [
+        {
+          "label": "LIST_CLOUD_APPS routed and executed",
+          "detail": "expected 1 call(s) to LIST_CLOUD_APPS, saw 0. Called: REPLY"
+        }
+      ],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 0,
+  "failedCount": 1,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/run/viewer/data.js",
+    "nativeJsonl": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/native.jsonl",
+    "nativeManifest": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/native.manifest.json"
+  }
+}

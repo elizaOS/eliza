@@ -1,0 +1,344 @@
+ Info       [eliza-scenarios] discovered 1 scenario(s) under /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/plugins/plugin-app-control/test/scenarios
+ Info       [eliza-scenarios] run-dir: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s1-provider/run-app-list (trajectories → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s1-provider/run-app-list/trajectories, runId=e5370fbf-cc68-4f6b-a3c0-8ae37f67a529)
+◇ injected env (31) from ../../../../../.env // tip: ⌘ override existing { override: true }
+ Info       [scenario-runner] Registered zero-vector TEXT_EMBEDDING fallback (dim=1024); set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.
+ Info       [cli-inference] enabled via ELIZA_CHAT_VIA_CLI=codex — large-tier handlers spawn the codex CLI
+ Info       [cli-inference] text-planner mode (ELIZA_PLANNER_NATIVE_TOOLS=0) — ACTION_PLANNER also served via this route (standalone SAFE stack)
+ Info       [scenario-runner] Registered TEXT_SMALL→TEXT_LARGE bridge (cli provider registers large-tier handlers only)
+ Info       Initializing Google Workspace plugin
+ Info         - OAuth client configured: No
+ Info         - Available capabilities: Gmail, Calendar, Drive, Meet
+ Info         - Requested OAuth scopes are derived from selected capabilities
+ Info       [PLUGIN:HEALTH] Initializing plugin-health (connectors=["apple_health","google_fit","strava","fitbit","withings","oura"], anchors=["wake.observed","wake.confirmed","bedtime.target","nap.start"], busFamilies=["health.sleep.detected","health.sleep.ended","health.wake.observed","health.wake.confirmed","health.nap.detected","health.bedtime.imminent","health.regularity.changed","health.workout.completed"], defaultPacks=["bedtime","wake-up","sleep-recap"])
+ Info       [PLUGIN:HEALTH] Registered plugin-health connectors (registered=6, kinds=["apple_health","google_fit","strava","fitbit","withings","oura"])
+ Info       [PLUGIN:HEALTH] Registered plugin-health anchors (registered=4, anchors=["wake.observed","wake.confirmed","bedtime.target","nap.start"])
+ Info       [PLUGIN:HEALTH] Registered plugin-health bus families (registered=8, families=["health.sleep.detected","health.sleep.ended","health.wake.observed","health.wake.confirmed","health.nap.detected","health.bedtime.imminent","health.regularity.changed","health.workout.completed"])
+ Info       [PLUGIN:HEALTH] Skipping plugin-health default-pack registration (registry unavailable)
+ Info       [PLUGIN:HEALTH] Registered plugin-health connectors (registered=6, kinds=["apple_health","google_fit","strava","fitbit","withings","oura"])
+ Info       [PLUGIN:HEALTH] Registered plugin-health anchors (registered=4, anchors=["wake.observed","wake.confirmed","bedtime.target","nap.start"])
+ Info       [PLUGIN:HEALTH] Registered plugin-health bus families (registered=8, families=["health.sleep.detected","health.sleep.ended","health.wake.observed","health.wake.confirmed","health.nap.detected","health.bedtime.imminent","health.regularity.changed","health.workout.completed"])
+ Info       [PLUGIN:HEALTH] Skipping plugin-health default-pack registration (registry unavailable)
+ Warn       #agent:ScenarioAgent  [AGENT] Plugin already registered, skipping (plugin=basic-capabilities)
+ Info       [Migration] Starting pre-1.6.5 → 1.6.5+ schema migration...
+ Info       [Migration] ✓ Migration complete - pre-1.6.5 → 1.6.5+ schema migration finished
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] DatabaseMigrationService initialized
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=8, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-sql, statementCount=167)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-sql, tag=0000_@elizaos/plugin-sql_mr43wtza)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=scenario-runner-knowledge-graph, statementCount=14)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=scenario-runner-knowledge-graph, tag=0000_scenario-runner-knowledge-graph_mr43wu08)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-personal-assistant, statementCount=97)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-personal-assistant, tag=0000_@elizaos/plugin-personal-assistant_mr43wu3n)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=calendar)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=calendar, statementCount=3)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=calendar, tag=0000_calendar_mr43wu49)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=calendar)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=calendar)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-finances, statementCount=6)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-finances, tag=0000_@elizaos/plugin-finances_mr43wu4m)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-reminders, statementCount=8)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-reminders, tag=0000_@elizaos/plugin-reminders_mr43wu52)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-goals, statementCount=7)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-goals, tag=0000_@elizaos/plugin-goals_mr43wu5e)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-inbox, statementCount=4)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-inbox, tag=0000_@elizaos/plugin-inbox_mr43wu5q)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=8)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Warn       [CORE:SETTINGS] SECRET_SALT is not set or using default value (event=core.settings.default_secret_salt)
+ Info       Starting Google Workspace plugin
+ Info       [plugin-goals] starting GoalsCheckinService
+ Info       [activity-tracker] Collector disabled by configuration; reports will use seeded data only.
+ Info       Starting Documents service for agent: 546ac3ab-0468-01a2-9d5b-52dfa34bf9cc
+ Warn       #agent:ScenarioAgent  [AGENT] Send handler already registered, overwriting (handlerSource=discord)
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=10, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [plugin-goals] [GoalsCheckinService] boot reconcile complete for 0 goal(s)
+ Info       [ExperienceService] Loaded 0 experiences from memory
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [RelationshipsService] Loaded 0 contacts from components
+ Info       [RelationshipsService] Initialized successfully
+ Info       [FollowUpService] Successfully acquired RelationshipsService via service promise
+ Info       [FollowUpService] Initialized successfully
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-sql, hash=88b92b9dd7489e37c22da981c3c537b9)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [Calendar] copied 2 calendar table(s) from app_lifeops to app_calendar (tables=["life_calendar_events","life_calendar_sync_states"])
+ Info       [Goals] copied 2 goal table(s) from app_lifeops to app_goals (tables=["life_goal_definitions","life_goal_links"])
+ Info       [Reminders] copied 3 reminder table(s) from app_lifeops to app_reminders (tables=["life_reminder_plans","life_reminder_attempts","life_escalation_states"])
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [Inbox] copied 3 inbox table(s) from app_lifeops to app_inbox (tables=["life_inbox_triage_entries","life_inbox_triage_examples","life_email_unsubscribes"])
+ Info       [trajectories] Trajectories service initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=scenario-runner-knowledge-graph, hash=cef4135176ab6f7be83b37cdab193435)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-personal-assistant, hash=d8c5a54c22c13e66aa1c075010d1a468)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=calendar)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=calendar, hash=322943b2f460efd822662a2ec6e31416)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=calendar)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-finances, hash=c163ecc249c656a88d8c80de1cbdbe26)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-reminders, hash=3562d357c14edfbd509373cb4223cdf3)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-goals, hash=cee2a5fdf34d56174b17cde1d2d83719)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-browser, statementCount=8)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-browser, tag=0000_@elizaos/plugin-browser_mr43wu9n)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=eliza)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=eliza, statementCount=14)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=eliza, tag=0000_eliza_mr43wu9v)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=eliza)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=eliza)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=10)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=10, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-sql, hash=88b92b9dd7489e37c22da981c3c537b9)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=scenario-runner-knowledge-graph, hash=cef4135176ab6f7be83b37cdab193435)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-personal-assistant, hash=d8c5a54c22c13e66aa1c075010d1a468)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=calendar)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=calendar, hash=322943b2f460efd822662a2ec6e31416)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=calendar)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-finances, hash=c163ecc249c656a88d8c80de1cbdbe26)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-reminders, hash=3562d357c14edfbd509373cb4223cdf3)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-goals, hash=cee2a5fdf34d56174b17cde1d2d83719)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-browser, hash=0ebf1adb11920131b0a16647e6a7a9ff)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=eliza)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=eliza, hash=cef4135176ab6f7be83b37cdab193435)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=eliza)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=10)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=10, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-sql, hash=88b92b9dd7489e37c22da981c3c537b9)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=scenario-runner-knowledge-graph, hash=cef4135176ab6f7be83b37cdab193435)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-personal-assistant, hash=d8c5a54c22c13e66aa1c075010d1a468)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=calendar)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=calendar, hash=322943b2f460efd822662a2ec6e31416)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=calendar)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-finances, hash=c163ecc249c656a88d8c80de1cbdbe26)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-reminders, hash=3562d357c14edfbd509373cb4223cdf3)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-goals, hash=cee2a5fdf34d56174b17cde1d2d83719)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-browser, hash=0ebf1adb11920131b0a16647e6a7a9ff)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=eliza)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=eliza, hash=cef4135176ab6f7be83b37cdab193435)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=eliza)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=10)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=10, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-sql, hash=88b92b9dd7489e37c22da981c3c537b9)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=scenario-runner-knowledge-graph, hash=cef4135176ab6f7be83b37cdab193435)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=scenario-runner-knowledge-graph)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-personal-assistant, hash=d8c5a54c22c13e66aa1c075010d1a468)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-personal-assistant)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=calendar)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=calendar, hash=322943b2f460efd822662a2ec6e31416)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=calendar)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-finances, hash=c163ecc249c656a88d8c80de1cbdbe26)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-finances)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-reminders, hash=3562d357c14edfbd509373cb4223cdf3)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-reminders)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-goals, hash=cee2a5fdf34d56174b17cde1d2d83719)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-goals)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-browser, hash=0ebf1adb11920131b0a16647e6a7a9ff)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-browser)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=eliza)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=eliza, hash=cef4135176ab6f7be83b37cdab193435)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=eliza)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=10)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Info       [eliza-scenarios] provider: cli
+ Info       [eliza-scenarios] ▶ app-list
+ Info       [FollowupTracker] Wrote overdue digest memory 363b3056-1477-0015-bc15-2867bbba5659 with 0 entries
+ Info       [plugin-app-control] APP mode=list
+ Info       [eliza-scenarios] ✓ app-list passed (77324ms)
+ Info       Stopping Google Workspace plugin
+ Info       [plugin-goals] stopping GoalsCheckinService
+ Info       [ExperienceService] Stopping...
+ Info       [ExperienceService] Saved 0 experiences
+ Info       Documents service stopping for agent: ScenarioAgent
+ Info       [RelationshipsService] Stopped successfully
+ Info       [FollowUpService] Stopped successfully
+ Warn       #agent:ScenarioAgent  [AGENT] Service instance is missing stop(); skipping (serviceType=connector_credential_store, reason=shutdown)
+ Info       CharacterFileManager stopped
+ Info       [scenario-runner] preserved scenario PGLite trajectory DB at /tmp/scenario-runner-pglite-GKcPbv
+ Info       [scenario-runner] wrote 5 eliza_native_v1 row(s) from 1 trajectory file(s) → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s1-provider/native-app-list.jsonl (passed=5 failed=0 skipped=0 unknown=0) (manifest → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s1-provider/native-app-list.manifest.json)
+ Info       [scenario-runner] wrote run viewer → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s1-provider/run-app-list/viewer/index.html
+ Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s1-provider/report-app-list.json
+ Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s1-provider/run-app-list/matrix.json
+
+Scenario run e5370fbf-cc68-4f6b-a3c0-8ae37f67a529 | provider=cli | 2026-07-02T22:59:22.752Z → 2026-07-02T23:00:47.045Z
+| id | status | duration | failures |
+| --- | --- | --- | --- |
+| app-list | passed | 77324ms |  |
+
+Totals: 1 passed, 0 failed, 0 skipped of 1

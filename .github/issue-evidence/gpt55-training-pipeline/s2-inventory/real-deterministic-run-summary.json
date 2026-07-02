@@ -1,0 +1,36 @@
+{
+  "startedAt": "2026-07-02T23:01:07.856Z",
+  "manifest": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/scripts/training-harvest/manifest.json",
+  "harvestRoot": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest",
+  "family": "scenario",
+  "providerSource": "deterministic-proxy",
+  "providerEnvKeys": [
+    "SCENARIO_USE_LLM_PROXY"
+  ],
+  "dryRun": false,
+  "limit": 2,
+  "items": [
+    {
+      "item": "background-live",
+      "dir": "packages/scenario-runner/test/scenarios",
+      "exitCode": 1,
+      "status": "failed",
+      "rows": 4,
+      "judgeScore": null,
+      "reportPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/report.json",
+      "nativePath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/native.jsonl"
+    },
+    {
+      "item": "cloud-apps-read-core",
+      "dir": "packages/scenario-runner/test/scenarios",
+      "exitCode": 1,
+      "status": "failed",
+      "rows": 1,
+      "judgeScore": null,
+      "reportPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/report.json",
+      "nativePath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/native.jsonl"
+    }
+  ],
+  "finishedAt": "2026-07-02T23:01:30.027Z",
+  "count": 2
+}

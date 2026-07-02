@@ -11,6 +11,11 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./index.node.ts",
+        "import": "./index.node.ts",
+        "default": "./index.node.ts"
+      },
       "browser": {
         "types": "./dist/browser/index.d.ts",
         "import": "./dist/browser/index.browser.js",
