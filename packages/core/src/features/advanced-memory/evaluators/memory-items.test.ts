@@ -119,3 +119,109 @@ describe("summaryEvaluator storeSummary processor — first-store offset (regres
 		expect(stored[0].messageCount).toBe(2);
 	});
 });
+
+describe("summaryEvaluator.shouldRun — dialogue count matches canonical MESSAGE memories (#11250)", () => {
+	function messageMemory(
+		id: string,
+		metadataType: string,
+		contentType = "text",
+	): Memory {
+		return {
+			id,
+			entityId: "user-1",
+			roomId: "room-1",
+			content: { text: `line ${id}`, type: contentType },
+			metadata: { type: metadataType },
+			createdAt: 1,
+		} as unknown as Memory;
+	}
+
+	function runtimeWithMessages(
+		metadataType: string,
+		count: number,
+		extraMemories: Memory[] = [],
+	) {
+		const memories = [
+			...Array.from({ length: count }, (_v, i) =>
+				messageMemory(`m-${i}`, metadataType),
+			),
+			...extraMemories,
+		];
+		const memoryService = {
+			getConfig: () => ({
+				shortTermSummarizationThreshold: 16,
+				shortTermSummarizationInterval: 8,
+			}),
+			getCurrentSessionSummary: async () => null,
+		};
+		return createMockRuntime({
+			agentId: "agent-1",
+			character: { name: "Agent" },
+			getService: (name: string) =>
+				name === "memory" ? (memoryService as never) : null,
+			getMemories: async () => memories,
+		} as never);
+	}
+
+	const trigger = {
+		id: "trigger",
+		roomId: "room-1",
+		content: { text: "hello", type: "text" },
+		metadata: { type: "message" },
+		createdAt: 2,
+	} as unknown as Memory;
+
+	it("fires at threshold for canonical MemoryType.MESSAGE ('message') memories", async () => {
+		const rt = runtimeWithMessages("message", 16);
+		const run = await summaryEvaluator.shouldRun?.({
+			runtime: rt,
+			message: trigger,
+			state: {} as State,
+			options: {} as EvaluatorRunOptions,
+		});
+		expect(run).toBe(true);
+	});
+
+	it("still counts the legacy metadata types (back-compat)", async () => {
+		const rt = runtimeWithMessages("user_message", 16);
+		const run = await summaryEvaluator.shouldRun?.({
+			runtime: rt,
+			message: trigger,
+			state: {} as State,
+			options: {} as EvaluatorRunOptions,
+		});
+		expect(run).toBe(true);
+	});
+
+	it("does not fire below threshold", async () => {
+		const rt = runtimeWithMessages("message", 4);
+		const run = await summaryEvaluator.shouldRun?.({
+			runtime: rt,
+			message: trigger,
+			state: {} as State,
+			options: {} as EvaluatorRunOptions,
+		});
+		expect(run).toBe(false);
+	});
+
+	it("does not count action_result rows stamped metadata.type 'message' as dialogue", async () => {
+		// The real action_result writers (advanced-capabilities message/post
+		// actions) stamp content.type "action_result" with metadata.type
+		// "message". Those rows must be excluded on content.type alone — the
+		// old predicate also required metadata.type === "action_result", so
+		// they inflated the dialogue count past the threshold.
+		const actionResults = Array.from({ length: 8 }, (_v, i) =>
+			messageMemory(`ar-${i}`, "message", "action_result"),
+		);
+		const rt = runtimeWithMessages("message", 12, actionResults);
+		const run = await summaryEvaluator.shouldRun?.({
+			runtime: rt,
+			message: trigger,
+			state: {} as State,
+			options: {} as EvaluatorRunOptions,
+		});
+		// 12 real dialogue rows < 16 threshold; the 8 action_result rows must
+		// not push the count over.
+		expect(run).toBe(false);
+	});
+});

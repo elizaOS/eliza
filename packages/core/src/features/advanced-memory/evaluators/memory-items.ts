@@ -8,6 +8,7 @@ import type {
 	RegisteredEvaluator,
 	UUID,
 } from "../../../types/index.ts";
+import { MemoryType } from "../../../types/memory.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import type { MemoryService } from "../services/memory-service.ts";
@@ -86,14 +87,22 @@ function toStringArray(value: unknown): string[] {
 }
 
 function isDialogueMessage(msg: Memory): boolean {
+	const metadataType = msg.metadata?.type as string | undefined;
 	return (
 		!isSyntheticConversationArtifactMemory(msg) &&
-		!(
-			msg.content.type === "action_result" &&
-			(msg.metadata?.type as string) === "action_result"
-		) &&
-		((msg.metadata?.type as string) === "agent_response_message" ||
-			(msg.metadata?.type as string) === "user_message")
+		// Exclude action results on content.type alone (matching the dialogue
+		// filter in recentMessages): the action_result writers stamp
+		// content.type "action_result" with metadata.type "message", so
+		// requiring both would count them as dialogue.
+		msg.content.type !== "action_result" &&
+		// The canonical current format: createMessageMemory stamps
+		// MemoryType.MESSAGE ("message") — matching this is what actually makes
+		// summarization fire. The two legacy strings are kept for back-compat but
+		// nothing in the repo writes them anymore, so without MESSAGE the dialogue
+		// count was permanently 0 and short-term summarization never ran (silently).
+		(metadataType === MemoryType.MESSAGE ||
+			metadataType === "agent_response_message" ||
+			metadataType === "user_message")
 	);
 }
 
