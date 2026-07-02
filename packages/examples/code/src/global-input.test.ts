@@ -95,6 +95,40 @@ function makeAbortableApp(): {
   };
 }
 
+function makeSendCapturingApp(): {
+  send: (text: string) => Promise<void>;
+  sentTexts: () => string[];
+} {
+  const sentTexts: string[] = [];
+  const runtime = Object.assign(Object.create(null) as AgentRuntime, {
+    agentId: "test",
+    character: { name: "Eliza" },
+    getService: () => null,
+    ensureConnection: async () => {},
+    messageService: {
+      handleMessage: async (
+        _runtime: unknown,
+        message: { content?: { text?: string } },
+        callback: (content: { text: string }) => Promise<unknown>,
+      ) => {
+        if (typeof message.content?.text === "string") {
+          sentTexts.push(message.content.text);
+        }
+        await callback({ text: "ok" });
+        return { didRespond: true, responseMessages: [] };
+      },
+    },
+  });
+
+  getAgentClient().setRuntime(runtime);
+  const app = new App(runtime);
+  return {
+    // biome-ignore lint/complexity/useLiteralKeys: private test hook
+    send: (text: string): Promise<void> => app["handleSendMessage"](text),
+    sentTexts: () => sentTexts,
+  };
+}
+
 describe("eliza-code global-input routing (#11266)", () => {
   beforeEach(() => {
     // Fresh, chat-focused, empty composer — the normal typing state.
@@ -163,4 +197,41 @@ describe("eliza-code global-input routing (#11266)", () => {
       expect(useStore.getState().isAgentTyping).toBe(false);
     });
   }
+});
+
+describe("eliza-code slash command routing (#11294)", () => {
+  beforeEach(() => {
+    useStore.setState({ focusedPane: "chat", inputValue: "", rooms: [] });
+    resetAgentClient();
+  });
+
+  it("reports an unknown slash command without sending it to the LLM", async () => {
+    const { send, sentTexts } = makeSendCapturingApp();
+    const state = useStore.getState();
+    const room = state.createRoom("Slash test");
+
+    await send("/comand");
+
+    expect(sentTexts()).toEqual([]);
+    const after = useStore
+      .getState()
+      .rooms.find((candidate) => candidate.id === room.id);
+    expect(after?.messages.map((message) => message.role)).toEqual(["system"]);
+    expect(after?.messages[0]?.content).toBe(
+      "Unknown command: /comand — type /help for the list.",
+    );
+  });
+
+  it("preserves the double-slash escape hatch for literal slash-prefixed text", async () => {
+    const { send, sentTexts } = makeSendCapturingApp();
+    useStore.getState().createRoom("Slash escape test");
+
+    await send("//literal");
+
+    expect(sentTexts()).toEqual(["//literal"]);
+    const messages = useStore.getState().rooms[0]?.messages ?? [];
+    expect(
+      messages.some((message) => message.content.includes("Unknown command")),
+    ).toBe(false);
+  });
 });

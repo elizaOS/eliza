@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AgentRuntime } from "@elizaos/core";
-import { TUI, visibleWidth } from "@elizaos/tui";
+import { TUI } from "@elizaos/tui";
 import { VirtualTerminal } from "@elizaos/tui/testing";
 import chalk from "chalk";
 import { useStore } from "../lib/store.js";
