@@ -256,6 +256,88 @@ assert(
   "long-press (500ms) enters edit mode (tiles pulse)",
 );
 
+// 2b. Real drag-to-reorder (#10722): a GENUINE pointer drag on a Reorder.Item
+//     must reorder the active page, PERSIST it to LAUNCHER_STORAGE_KEY, and emit
+//     `reorder` telemetry — the mock-based Launcher.gestures.test only drives the
+//     onReorder BRIDGE, never the drag physics. Here we drive Framer's real drag
+//     via the browser's own mouse pointer pipeline.
+const LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
+const activePageTileOrder = (p) =>
+  p
+    .getByTestId("launcher-page-0")
+    .locator('[data-testid^="launcher-tile-"]')
+    .evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute("data-testid") ?? ""),
+    );
+const persistedPages = (p) =>
+  p.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed?.pages) ? parsed.pages : null;
+    } catch {
+      return null;
+    }
+  }, LAUNCHER_STORAGE_KEY);
+
+const orderBefore = await activePageTileOrder(page);
+assert(
+  orderBefore.length >= 4,
+  `reorder: active page has enough tiles to drag (${orderBefore.length})`,
+);
+const reorderCountBefore = (await readTelemetry(page)).filter(
+  (e) => e.action === "reorder",
+).length;
+
+// Drag the FIRST tile down past a lower-row tile's midpoint. axis="y", so a
+// vertical drag past a neighbour's centre commits the reorder.
+{
+  const firstId = orderBefore[0];
+  const targetId = orderBefore[Math.min(orderBefore.length - 1, 5)];
+  const from = await page.getByTestId(firstId).boundingBox();
+  const to = await page.getByTestId(targetId).boundingBox();
+  const fx = from.x + from.width / 2;
+  const fy = from.y + from.height / 2;
+  const tx = to.x + to.width / 2;
+  const ty = to.y + to.height / 2;
+  await page.mouse.move(fx, fy);
+  await page.mouse.down();
+  // A small initial nudge to engage Framer's drag, then travel to the target.
+  await page.mouse.move(fx, fy + 8, { steps: 3 });
+  await page.mouse.move(tx, ty, { steps: 18 });
+  await page.mouse.move(tx, ty + 4, { steps: 3 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+}
+
+const orderAfter = await activePageTileOrder(page);
+const reorderCountAfter = (await readTelemetry(page)).filter(
+  (e) => e.action === "reorder",
+).length;
+assert(
+  reorderCountAfter > reorderCountBefore,
+  `reorder: a real drag fires reorder telemetry (${reorderCountBefore}→${reorderCountAfter})`,
+);
+assert(
+  JSON.stringify(orderAfter) !== JSON.stringify(orderBefore),
+  `reorder: the drag actually changed the tile order (before[0]=${orderBefore[0]}, after[0]=${orderAfter[0]})`,
+);
+// Persistence + integrity: the new order is written to LAUNCHER_STORAGE_KEY, and
+// no tile id was dropped or duplicated by the reorder.
+const pagesAfter = await persistedPages(page);
+assert(
+  Array.isArray(pagesAfter) && pagesAfter.length > 0,
+  "reorder: the new layout persisted to LAUNCHER_STORAGE_KEY",
+);
+{
+  const flat = pagesAfter.flat();
+  assert(
+    new Set(flat).size === flat.length,
+    `reorder: persisted layout has no duplicate ids (${flat.length} ids, ${new Set(flat).size} unique)`,
+  );
+}
+
 // 3. Page navigation — click the "Page 2" dot. Exit edit first (a second
 //    long-press toggles it off) so the walkthrough ends on a clean grid.
 await longPress(page, `launcher-tile-wallet`, 500);

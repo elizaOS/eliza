@@ -1,4 +1,13 @@
 // @vitest-environment jsdom
+//
+// SCOPE (honest labelling, #10722): this is a LOGIC-ONLY unit suite, not
+// gesture-pipeline coverage. `resolvePull`/`resolveSwipe` are pure decision
+// functions (distance/velocity → direction), tested as pure math. The
+// `usePullGesture` block drives the hook with SYNTHETIC pointer events to verify
+// one internal contract — rAF coalescing of move deltas (#9141) — NOT the real
+// browser pointer/capture/hit-test pipeline. That real pipeline (touch-action,
+// implicit capture, pointercancel, hit-testing) is covered end-to-end by the
+// REAL CDP-touch runners: run-chatux-gesture-e2e.mjs and run-home-screen-e2e.mjs.
 import { renderHook } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
