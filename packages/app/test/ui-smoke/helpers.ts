@@ -709,6 +709,15 @@ function smokePolymarketStatus() {
       gammaApiBase: "https://gamma-api.polymarket.com",
       dataApiBase: "https://data-api.polymarket.com",
     },
+    // Required by PolymarketStatusResponse — usePolymarketState reads
+    // `status.account.ready` before fetching positions; omitting the block
+    // made the view render a caught TypeError as its error banner.
+    account: {
+      ready: false,
+      reason:
+        "No Polymarket wallet address configured. Set POLYMARKET_WALLET_ADDRESS (or a managed EVM address) to read positions.",
+      address: null,
+    },
     trading: {
       ready: false,
       reason: "Signed CLOB trading is disabled in UI smoke.",
