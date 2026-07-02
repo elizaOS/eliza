@@ -1,0 +1,40 @@
+[build-mobile] target: android
+[build-mobile] agent root: /home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent
+[build-mobile] output dir: /home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile
+[build-mobile] pglite dist: /home/shaw/eliza-worktrees/fix-agent-bundle-tdz/plugins/plugin-sql/node_modules/@electric-sql/pglite/dist
+[build-mobile] starting Bun.build...
+[build-mobile] stripped embedded shebang (ESM-incompatible)
+[build-mobile] init_eliza initializer: sync
+[build-mobile] polyfill: 5908 default*, 2 apply*, 11 *Service* identifiers covered
+[build-mobile] bundle size: 62.49 MB (with polyfill prefix)
+[build-mobile] copied pglite.wasm (9.42 MB)
+[build-mobile] copied initdb.wasm (0.38 MB)
+[build-mobile] copied pglite.data (5.94 MB)
+[build-mobile] copied vector.tar.gz (43.8 KB)
+[build-mobile] copied fuzzystrmatch.tar.gz (11.1 KB)
+[build-mobile] wrote plugins-manifest.json
+[build-mobile] load smoke: evaluating bundle module graph...
+
+165366 |   init_actions7();
+165367 |   subAgentCredentialsPlugin = {
+165368 |     name: "sub-agent-credentials",
+165369 |     description: "Sub-agent credential bridge: declare a scope, tunnel a credential to a child session, await its decision, retrieve its results.",
+165370 |     actions: [
+165371 |       declareSubAgentCredentialScopeAction,
+               ^
+ReferenceError: declareSubAgentCredentialScopeAction is not defined
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:165371:7)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:5993:46)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:165388:3)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:5993:46)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:216667:3)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:5993:46)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:220252:3)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:5993:46)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:221277:3)
+      at <anonymous> (/home/shaw/eliza-worktrees/fix-agent-bundle-tdz/packages/agent/dist-mobile/agent-bundle.js:5993:46)
+
+Bun v1.4.0-canary.1+64ae83c2f (Linux x64)
+
+[build-mobile] FATAL: agent-bundle.js failed the module-load smoke (exit 1). A load-time eval error in the bundle bricks the on-device agent before /api/health can bind.
+error: script "build:mobile" exited with code 1
