@@ -54,6 +54,11 @@ export type AgentConfig = {
    * Unset = auto-on when the workspace has a `.git` directory.
    */
   gitpathologist?: boolean;
+  /**
+   * Enable @elizaos/plugin-birdclaw (birdclaw.sh local-first Twitter/X archive) for this agent.
+   * Unset = auto-on when the birdclaw CLI or a `~/.birdclaw` data root is present.
+   */
+  birdclaw?: boolean;
 
   // ── Personality fields (set during first-run setup from style presets) ──────
   /** Agent bio lines. Set during first-run setup from the chosen style preset. */

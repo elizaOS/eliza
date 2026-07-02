@@ -274,6 +274,11 @@ export type AgentDefaultsConfig = {
    * Unset = auto-on when the workspace has a `.git` directory.
    */
   gitpathologist?: boolean;
+  /**
+   * Enable @elizaos/plugin-birdclaw (birdclaw.sh local-first Twitter/X archive) by default.
+   * Unset = auto-on when the birdclaw CLI or a `~/.birdclaw` data root is present.
+   */
+  birdclaw?: boolean;
   /** Default thinking level when no /think directive is present. */
   thinkingDefault?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   /** Default verbose level when no /verbose directive is present. */

@@ -1,0 +1,115 @@
+{
+  "name": "@elizaos/plugin-birdclaw",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Birdclaw (birdclaw.sh) local-first Twitter/X memory for elizaOS — browse and search your archived timeline, mentions, likes, and bookmarks, trigger live syncs, and let the agent answer from your local Twitter archive.",
+  "main": "./dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src/",
+    "lint:check": "bun run lint",
+    "format": "bunx @biomejs/biome format --write src/",
+    "format:check": "bunx @biomejs/biome format src/",
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "test:real": "BIRDCLAW_REAL_TESTS=1 bunx vitest run --config ./vitest.config.ts src/birdclaw/birdclaw.real.test.ts",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "eliza-source": {
+        "types": "./src/plugin.ts",
+        "import": "./src/plugin.ts",
+        "default": "./src/plugin.ts"
+      },
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.2",
+    "@types/node": "^25.0.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.17"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Birdclaw",
+      "category": "social"
+    }
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "BIRDCLAW_BIN": {
+        "type": "string",
+        "description": "Absolute path to the birdclaw CLI. Defaults to resolving `birdclaw` on PATH.",
+        "required": false,
+        "sensitive": false
+      },
+      "BIRDCLAW_HOME": {
+        "type": "string",
+        "description": "Birdclaw data root passed to the CLI (config, SQLite DB, media cache). Defaults to the CLI's own ~/.birdclaw.",
+        "required": false,
+        "sensitive": false
+      },
+      "BIRDCLAW_OPENAI_API_KEY": {
+        "type": "string",
+        "description": "OpenAI API key forwarded to birdclaw for its AI features (digest, inbox scoring). Optional — everything else works without it.",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "assets",
+    "dist"
+  ]
+}
