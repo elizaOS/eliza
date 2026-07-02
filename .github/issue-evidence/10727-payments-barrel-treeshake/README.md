@@ -55,9 +55,33 @@ $ cd packages/agent/dist-mobile && bun -e 'await import("./agent-bundle.js"); co
 BUNDLE_MODULE_INIT_OK
 ```
 
+## #11271 clobber restoration (second commit)
+
+While this branch was in flight, develop commit `5b714c74e6` (#11271, a cloud
+refund refactor) shipped a stale tree that reverted the entire merged #11248
+fix (sub-agent-credentials barrel + the fail-closed bundle load smoke),
+re-introducing the P0 on-device load crash. This branch restores those paths
+byte-identical to `5b714c74e6^`. Final bundle (rebased tree, both commits):
+
+```
+paymentAction                                 5
+name: "PAYMENT"                               3
+eligibleDeliveryTargetsFor                    3
+[PaymentsPlugin] Initialized                  1
+init_payments = () =>                         0
+DECLARE_SUB_AGENT_CREDENTIAL_SCOPE            6     <- #11248 state restored
+declareSubAgentCredentialScopeAction          4
+__bundle_safety_FEATURES_PAYMENTS_INDEX__     3
+
+[build-mobile] load smoke: evaluating bundle module graph...
+[build-mobile] load smoke passed: module init OK
+$ bun -e 'await import("./agent-bundle.js"); ...'
+BUNDLE_MODULE_INIT_OK
+```
+
 ## Tests / checks
 
-- `bunx vitest run src/features/payments src/features/oauth src/features/plugin-config src/features/secrets` (packages/core): **90/90 passed** (22 files)
+- `bunx vitest run src/features/{payments,oauth,plugin-config,secrets,sub-agent-credentials}` (packages/core): **105/105 passed**
 - `bun run typecheck` (packages/core, tsgo): clean
 - `bunx biome check` on all touched feature dirs: clean
 - `bun run --cwd packages/core build`: clean
