@@ -12,9 +12,8 @@
  *   3. A provider with no catalogued entries falls back to the env-configured
  *      defaults AI_PRICING_FALLBACK_INPUT_USD_PER_M /
  *      AI_PRICING_FALLBACK_OUTPUT_USD_PER_M.
- *   4. With no catalog and no env default, the request stays servable at a
- *      non-zero hardcoded frontier-max last resort — never $0 (#11635; also
- *      covered in lookup-missing-pricing.test.ts).
+ *   4. With no catalog and no env default, a non-zero token side rejects
+ *      instead of guessing a price. A `..._USD_PER_M=0` env is treated as unset.
  *   5. Reserve (estimated tokens) and settle (actual tokens) resolve the same
  *      fallback rate, so billing stays consistent across the request.
  */
@@ -179,33 +178,56 @@ test("env-configured default applies when the provider has no catalogued entries
   expect(result.totalCost).toBe(12.5 * 1.2);
 });
 
-test("invalid env default is ignored (falls through to the non-zero last resort, #11635)", async () => {
+test("invalid env default is ignored, then missing pricing fails closed (#11635)", async () => {
   process.env.AI_PRICING_FALLBACK_INPUT_USD_PER_M = "not-a-number";
   process.env.AI_PRICING_FALLBACK_OUTPUT_USD_PER_M = "-4";
 
-  const result = await calculateTextCostFromCatalog({
-    model: "mystery-model-1",
-    provider: "someprovider",
-    inputTokens: 1_000,
-    outputTokens: 1_000,
-  });
-
-  // Invalid env is still ignored, but the last resort is now the hardcoded
-  // frontier-max rate, never $0 (#11635).
-  expect(result.totalCost).toBeGreaterThan(0);
-  expect(result.totalCost).toBeLessThan(0.1);
+  await expect(
+    calculateTextCostFromCatalog({
+      model: "mystery-model-1",
+      provider: "someprovider",
+      inputTokens: 1_000,
+      outputTokens: 1_000,
+    }),
+  ).rejects.toThrow("refusing to bill unknown-priced inference");
 });
 
-test("no catalog and no env default keeps the request servable at a non-zero last resort (#11635)", async () => {
+test("AI_PRICING_FALLBACK_*=0 is treated as unset, not as a $0 price (#11635)", async () => {
+  process.env.AI_PRICING_FALLBACK_INPUT_USD_PER_M = "0";
+  process.env.AI_PRICING_FALLBACK_OUTPUT_USD_PER_M = "0";
+
+  await expect(
+    calculateTextCostFromCatalog({
+      model: "mystery-model-1",
+      provider: "someprovider",
+      inputTokens: 1_000,
+      outputTokens: 1_000,
+    }),
+  ).rejects.toThrow("refusing to bill unknown-priced inference");
+});
+
+test("no catalog and no env default rejects instead of selling unknown-priced inference (#11635)", async () => {
+  await expect(
+    calculateTextCostFromCatalog({
+      model: "mystery-model-1",
+      provider: "someprovider",
+      inputTokens: 1_000,
+      outputTokens: 1_000,
+    }),
+  ).rejects.toThrow("refusing to bill unknown-priced inference");
+});
+
+test("a side with zero tokens does not require pricing (#11635)", async () => {
+  process.env.AI_PRICING_FALLBACK_INPUT_USD_PER_M = "2.5";
+
   const result = await calculateTextCostFromCatalog({
     model: "mystery-model-1",
     provider: "someprovider",
     inputTokens: 1_000,
-    outputTokens: 1_000,
+    outputTokens: 0,
   });
 
-  expect(result.inputCost).toBeGreaterThan(0);
-  expect(result.outputCost).toBeGreaterThan(0);
-  expect(result.totalCost).toBeGreaterThan(0);
-  expect(result.totalCost).toBeLessThan(0.1);
+  expect(result.baseOutputCost).toBe(0);
+  expect(result.baseInputCost).toBeCloseTo(0.0025, 9);
+  expect(result.totalCost).toBeCloseTo(0.003, 9);
 });

@@ -1,5 +1,5 @@
 /**
- * Regression: a missing price must (1) NOT throw a 500 and (2) NEVER bill $0.
+ * Regression: a missing price must never bill $0 or a guessed hardcoded floor.
  *
  * `calculateTextCostFromCatalog` once left the input-price lookup unguarded, so
  * a catalog miss threw `Pricing unavailable for language:input <model>` → a 500
@@ -9,14 +9,15 @@
  * inference / uncollected revenue (#11635).
  *
  * Both seams (persisted repo + live gateway) are mocked empty so EVERY lookup
- * misses — the worst case — and no env fallback is set, so the last-resort tier
- * is exercised. Post-#11635 it bills a conservative non-zero frontier-max rate
- * (`lastResortTokenUnitPrice`), keyed by product family, and still never throws.
- * (Provider-max / env-default tiers are covered in lookup-fallback-pricing.test.ts.)
+ * misses — the worst case — and no env fallback is set. Post-#11635, a non-zero
+ * token side rejects so we do not sell inference we do not know how to price.
+ * Provider-max and env-default fallback tiers are covered in
+ * lookup-fallback-pricing.test.ts.
  */
 import { beforeEach, expect, mock, test } from "bun:test";
 
 const warnSpy = mock(() => {});
+const errorSpy = mock(() => {});
 
 mock.module("../../../db/repositories/ai-pricing", () => ({
   aiPricingRepository: {
@@ -27,6 +28,7 @@ mock.module("../../../db/repositories/ai-pricing", () => ({
 mock.module("../../utils/logger", () => ({
   logger: {
     warn: warnSpy,
+    error: errorSpy,
   },
 }));
 mock.module("./providers/gateway", () => ({
@@ -37,56 +39,53 @@ const { calculateTextCostFromCatalog } = await import("./lookup");
 
 beforeEach(() => {
   warnSpy.mockClear();
+  errorSpy.mockClear();
 });
 
-test("missing language pricing bills a non-zero last-resort rate, never $0 (#11635)", async () => {
-  const result = await calculateTextCostFromCatalog({
-    model: "totally-uncatalogued-model",
-    provider: "someprovider",
-    inputTokens: 1000,
-    outputTokens: 500,
-  });
+test("missing language pricing rejects instead of billing an unknown price (#11635)", async () => {
+  await expect(
+    calculateTextCostFromCatalog({
+      model: "totally-uncatalogued-model",
+      provider: "someprovider",
+      inputTokens: 1000,
+      outputTokens: 500,
+    }),
+  ).rejects.toThrow("refusing to bill unknown-priced inference");
 
-  // Never throws (the original 500-degradation) AND never $0 (the #11635 fix):
-  // 1000in@$5/M + 500out@$25/M ≈ $0.0175 base + markup — a small, sane amount.
-  expect(result.inputCost).toBeGreaterThan(0);
-  expect(result.outputCost).toBeGreaterThan(0);
-  expect(result.totalCost).toBeGreaterThan(0);
-  expect(result.totalCost).toBeLessThan(0.1); // sane: not an absurd rate
-  expect(warnSpy.mock.calls).toContainEqual([
-    "ai-pricing: input pricing unavailable; billing at fallback rate",
+  expect(errorSpy.mock.calls).toContainEqual([
+    "ai-pricing: missing token price with no fallback; refusing request",
     {
       canonicalModel: "someprovider/totally-uncatalogued-model",
       provider: "someprovider",
       billingSource: undefined,
-      fallbackSource: "last_resort",
-      fallbackUnitPrice: 0.000005,
+      productFamily: "language",
+      chargeType: "input",
+      tokens: 1000,
     },
   ]);
-  expect(warnSpy.mock.calls).toContainEqual([
-    "ai-pricing: output pricing unavailable; billing at fallback rate",
-    {
-      canonicalModel: "someprovider/totally-uncatalogued-model",
-      provider: "someprovider",
-      billingSource: undefined,
-      fallbackSource: "last_resort",
-      fallbackUnitPrice: 0.000025,
-    },
-  ]);
+  expect(warnSpy.mock.calls).toHaveLength(0);
 });
 
-test("missing embedding pricing bills the cheaper embedding last-resort rate, non-zero (#11635)", async () => {
-  const result = await calculateTextCostFromCatalog({
-    model: "uncatalogued-embedding-model",
-    provider: "someprovider",
-    inputTokens: 800,
-    outputTokens: 0,
-  });
+test("missing input-only embedding pricing rejects instead of billing an unknown price (#11635)", async () => {
+  await expect(
+    calculateTextCostFromCatalog({
+      model: "uncatalogued-embedding-model",
+      provider: "someprovider",
+      inputTokens: 800,
+      outputTokens: 0,
+    }),
+  ).rejects.toThrow("refusing to bill unknown-priced inference");
 
-  // Non-zero (never free) but keyed to the embedding family ($0.2/M), so 800
-  // tokens is a tiny amount — proving the family keying picked the cheap rate,
-  // not the $5/M language default.
-  expect(result.inputCost).toBeGreaterThan(0);
-  expect(result.totalCost).toBeGreaterThan(0);
-  expect(result.totalCost).toBeLessThan(0.001);
+  expect(errorSpy.mock.calls).toContainEqual([
+    "ai-pricing: missing token price with no fallback; refusing request",
+    {
+      canonicalModel: "someprovider/uncatalogued-embedding-model",
+      provider: "someprovider",
+      billingSource: undefined,
+      productFamily: "embedding",
+      chargeType: "input",
+      tokens: 800,
+    },
+  ]);
+  expect(warnSpy.mock.calls).toHaveLength(0);
 });

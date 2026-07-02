@@ -169,7 +169,10 @@ function envFallbackTokenUnitPrice(chargeType: "input" | "output"): number | nul
     return null;
   }
   const usdPerMillion = Number(raw);
-  if (!Number.isFinite(usdPerMillion) || usdPerMillion < 0) {
+  // #11635: reject 0 too (not just negative/non-finite) — a `..._USD_PER_M=0`
+  // env value would otherwise masquerade as a configured floor while still
+  // billing $0. Treat it as unset so the missing-price path fails closed.
+  if (!Number.isFinite(usdPerMillion) || usdPerMillion <= 0) {
     logger.warn("ai-pricing: ignoring invalid fallback-rate env value", {
       envName,
       value: raw,
@@ -179,33 +182,9 @@ function envFallbackTokenUnitPrice(chargeType: "input" | "output"): number | nul
   return usdPerMillion / 1_000_000;
 }
 
-/**
- * Fail-closed last-resort per-token rate (USD/token) for a servable but
- * uncatalogued model with no provider-max catalog entry AND no env fallback
- * (#11635). The request still serves — it just can never bill $0. Deliberately
- * conservative (frontier-max) so an unpriced model over-bills rather than gives
- * away free inference; a real catalog entry (cheaper) supersedes this on the
- * next lookup, and the loud log points the catalog gap.
- */
-const LAST_RESORT_USD_PER_MILLION: Partial<
-  Record<PricingProductFamily, { input: number; output: number }>
-> = {
-  language: { input: 5, output: 25 },
-  embedding: { input: 0.2, output: 0.2 },
-};
-const DEFAULT_LAST_RESORT_USD_PER_MILLION = { input: 5, output: 25 };
-
-function lastResortTokenUnitPrice(
-  productFamily: PricingProductFamily,
-  chargeType: "input" | "output",
-): number {
-  const family = LAST_RESORT_USD_PER_MILLION[productFamily] ?? DEFAULT_LAST_RESORT_USD_PER_MILLION;
-  return family[chargeType] / 1_000_000;
-}
-
 type FallbackTokenRate = {
   unitPrice: number;
-  source: "provider_max_catalog" | "env_default" | "last_resort";
+  source: "provider_max_catalog" | "env_default";
   referenceModel?: string;
 };
 
@@ -219,10 +198,8 @@ type FallbackTokenRate = {
  * catalogued token rate for the same product family/charge type (an upper
  * bound over any plausible real price from that provider), or an
  * env-configured default (AI_PRICING_FALLBACK_{INPUT,OUTPUT}_USD_PER_M) when
- * the provider has no catalogued entries at all, or a hardcoded last-resort
- * rate when neither source exists. Both reserve (pre-flight estimate) and
- * settle (actual usage) resolve through this same path, so both sides of a
- * request bill at the same rate.
+ * the provider has no catalogued entries at all. If neither source exists, the
+ * caller must fail closed rather than inventing a price.
  */
 async function resolveFallbackTokenRate(params: {
   billingSource?: PricingBillingSource;
@@ -294,10 +271,7 @@ async function resolveFallbackTokenRate(params: {
     return { unitPrice: envUnitPrice, source: "env_default" };
   }
 
-  return {
-    unitPrice: lastResortTokenUnitPrice(params.productFamily, params.chargeType),
-    source: "last_resort",
-  };
+  return null;
 }
 
 function computeCostFromEntry(entry: PreparedPricingEntry, quantity: number): FlatOperationCost {
@@ -373,10 +347,9 @@ export async function calculateTextCostFromCatalog(params: {
   // the catalog (notably embedding models, which are input-only and run every
   // turn). A servable request must never fail purely on a missing price — but
   // it must not be under-billed at $0 either. On a miss, bill the missing side
-  // at a conservative fallback rate (provider max → env default → a non-zero
-  // hardcoded frontier-max last resort, NEVER $0; see resolveFallbackTokenRate
-  // + lastResortTokenUnitPrice, #11635) and log loudly so the catalog gap gets
-  // priced.
+  // only when a real fallback exists (provider max → env default). If neither
+  // source exists, fail closed because we should not sell inference we do not
+  // know how to price (#11635).
   const inputEntry = await resolvePreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
@@ -409,13 +382,25 @@ export async function calculateTextCostFromCatalog(params: {
       productFamily,
       chargeType,
     });
+    if (!fallback) {
+      const message = `Pricing unavailable for ${productFamily}:${chargeType} ${canonicalModel}; refusing to bill unknown-priced inference`;
+      logger.error("ai-pricing: missing token price with no fallback; refusing request", {
+        canonicalModel,
+        provider: params.provider,
+        billingSource: params.billingSource,
+        productFamily,
+        chargeType,
+        tokens,
+      });
+      throw new Error(message);
+    }
     logger.warn(`ai-pricing: ${chargeType} pricing unavailable; billing at fallback rate`, {
       canonicalModel,
       provider: params.provider,
       billingSource: params.billingSource,
-      fallbackSource: fallback?.source ?? "none",
-      fallbackUnitPrice: fallback?.unitPrice ?? 0,
-      ...(fallback?.referenceModel ? { fallbackReferenceModel: fallback.referenceModel } : {}),
+      fallbackSource: fallback.source,
+      fallbackUnitPrice: fallback.unitPrice,
+      ...(fallback.referenceModel ? { fallbackReferenceModel: fallback.referenceModel } : {}),
     });
     return fallback;
   };
@@ -427,10 +412,10 @@ export async function calculateTextCostFromCatalog(params: {
 
   const inputUnitPrice = inputEntry
     ? asDecimal(inputEntry.unitPrice)
-    : asDecimal(inputFallback?.unitPrice ?? lastResortTokenUnitPrice(productFamily, "input"));
+    : asDecimal(inputFallback?.unitPrice ?? 0);
   const outputUnitPrice = outputEntry
     ? asDecimal(outputEntry.unitPrice)
-    : asDecimal(outputFallback?.unitPrice ?? lastResortTokenUnitPrice(productFamily, "output"));
+    : asDecimal(outputFallback?.unitPrice ?? 0);
 
   const baseInputCost = inputUnitPrice.mul(params.inputTokens);
   const baseOutputCost = outputUnitPrice.mul(params.outputTokens);
