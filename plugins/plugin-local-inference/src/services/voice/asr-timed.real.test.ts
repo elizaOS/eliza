@@ -64,10 +64,7 @@ const BUNDLE =
 const HAVE_BUNDLE = existsSync(BUNDLE);
 
 const FREEMAN_WAV = fileURLToPath(
-	new URL(
-		"../../../native/audio-fixtures/freeman.wav",
-		import.meta.url,
-	),
+	new URL("../../../native/audio-fixtures/freeman.wav", import.meta.url),
 );
 const HAVE_FREEMAN = existsSync(FREEMAN_WAV);
 
