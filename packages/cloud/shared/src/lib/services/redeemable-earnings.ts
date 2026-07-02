@@ -965,7 +965,6 @@ class RedeemableEarningsService {
       ledgerEntryId: result.ledgerEntryId,
     };
   }
-
 }
 
 // Export singleton
