@@ -83,6 +83,19 @@ export function isClaudeSubscriptionLimitMessage(text: string): boolean {
   );
 }
 
+/**
+ * The Claude Code / Agent SDK surfaces API failures by STREAMING its error
+ * string as assistant text and terminating the turn cleanly — e.g.
+ * "API Error: 400 messages: text content blocks must be non-empty" (observed
+ * live 18x when empty relay lines produced an empty text content block).
+ * That format is the SDK's own error envelope, never a genuine completion:
+ * real answers don't open with "API Error: <status>". Detect it so callers
+ * throw to failover instead of relaying the raw error to the user.
+ */
+export function isClaudeSdkApiErrorMessage(text: string): boolean {
+  return /^API Error:\s*\d{3}\b/.test(text.trim());
+}
+
 /** The model's captured routing decision (ROUTE mode). */
 export interface RouteDecision {
   action: string;
@@ -441,6 +454,22 @@ export class ClaudeSdkSession {
     if (sawResult && limitEnvelope !== undefined) {
       throw new Error(
         `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`
+      );
+    }
+
+    // Same leak shape, different envelope: an upstream API failure ("API
+    // Error: 400 messages: text content blocks must be non-empty", 429s, 5xx)
+    // is streamed as assistant text and the turn terminates cleanly — without
+    // this guard it is returned as the completion and relayed verbatim to the
+    // user (observed live 18x). Throw per the failover contract; the message
+    // keeps the SDK's status text so isRateLimitError/isAuthError classify
+    // 429/401 correctly downstream.
+    const apiErrorEnvelope = [text, resultText ?? ""].find((candidate) =>
+      isClaudeSdkApiErrorMessage(candidate)
+    );
+    if (apiErrorEnvelope !== undefined) {
+      throw new Error(
+        `[cli-inference:sdk] upstream ${apiErrorEnvelope.trim().slice(0, 160)}`
       );
     }
 

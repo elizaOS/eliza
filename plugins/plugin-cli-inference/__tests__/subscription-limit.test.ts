@@ -45,3 +45,34 @@ describe("isClaudeSubscriptionLimitMessage", () => {
     }
   });
 });
+
+// Second leak class (2026-07-02): the SDK streams upstream API failures as
+// assistant text — "API Error: 400 messages: text content blocks must be
+// non-empty" was relayed verbatim to Discord users 18x when empty relay lines
+// produced an empty content block.
+import { isClaudeSdkApiErrorMessage } from "../src/claude-sdk-session.ts";
+
+describe("isClaudeSdkApiErrorMessage", () => {
+  it("matches the SDK's API-error envelope", () => {
+    for (const s of [
+      "API Error: 400 messages: text content blocks must be non-empty",
+      "API Error: 429 rate limited",
+      "API Error: 529 overloaded",
+      "  API Error: 500 internal server error",
+    ]) {
+      expect(isClaudeSdkApiErrorMessage(s)).toBe(true);
+    }
+  });
+
+  it("does not match genuine answers that mention API errors", () => {
+    for (const s of [
+      "An API Error: 400 usually means your request body is malformed.",
+      "You're seeing 'API Error: 400' because the content block was empty.",
+      "The API returned an error: 400.",
+      "Error handling matters — retry on API Error status codes like 429.",
+      "42",
+    ]) {
+      expect(isClaudeSdkApiErrorMessage(s)).toBe(false);
+    }
+  });
+});
