@@ -49,7 +49,7 @@ export class HelpOverlay implements Component {
       ` ${borderColor("│")} ${chalk.bold("Chat")}${" ".repeat(innerWidth - 5)}${borderColor("│")}`,
     );
     output.push(
-      ` ${borderColor("│")} ${chalk.dim("Enter: send | Esc: clear | Ctrl+↑↓: scroll")}${" ".repeat(Math.max(0, innerWidth - 43))}${borderColor("│")}`,
+      ` ${borderColor("│")} ${chalk.dim("Enter: send | PgUp/PgDn/Home/End: scroll | Esc: clear")}${" ".repeat(Math.max(0, innerWidth - 54))}${borderColor("│")}`,
     );
     output.push(
       ` ${borderColor("│")} ${chalk.dim("/help: show commands")}${" ".repeat(Math.max(0, innerWidth - 21))}${borderColor("│")}`,
