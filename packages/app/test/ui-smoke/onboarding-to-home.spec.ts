@@ -73,14 +73,30 @@ test.describe("in-chat onboarding → home → launcher", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    // Capture the chat-first onboarding landing before driving it.
+    // Capture the chat-first onboarding landing before driving it. The helper
+    // also asserts the onboarding lock: composer disabled ("Choose an option
+    // to continue") and Escape NOT collapsing the pinned-open sheet.
     await expectChatFirstOnboarding(page);
+    // NEGATIVE, restated at the spec level: mid-onboarding the sheet cannot be
+    // dismissed — the old Escape-collapse-to-reach-the-launcher step is gone.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+      "data-open",
+      "true",
+    );
     await screenshot(page, "onboarding-chat-first");
 
     const { surface } = await completeOnboardingToHome(page, desktopClick, {
       state,
       tutorial: "skip",
     });
+
+    // Completion auto-collapsed the sheet (the launcher swipe below needs no
+    // manual collapse) and unlocked the composer.
+    await expect(
+      page.getByTestId("continuous-chat-overlay"),
+    ).not.toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled();
 
     // Capture the populated home.
     await settleHomeEntrance(page);

@@ -47,6 +47,66 @@ describe("background config persistence", () => {
     });
   });
 
+  it("keeps a glsl config with a plausible fragment source and clamps its uniforms", () => {
+    const source =
+      "precision highp float; void main(){ gl_FragColor = vec4(1.0); }";
+    expect(
+      normalizeBackgroundConfig({
+        mode: "glsl",
+        color: "#123456",
+        shader: {
+          presetId: "lava",
+          source,
+          uniforms: { u_speed: 999, u_scale: 2, u_intensity: 1, u_seed: 5 },
+        },
+      }),
+    ).toEqual({
+      mode: "glsl",
+      color: "#123456",
+      shader: {
+        presetId: "lava",
+        source,
+        // u_speed clamped from 999 → 3 (schema max); others kept.
+        uniforms: { u_speed: 3, u_scale: 2, u_intensity: 1, u_seed: 5 },
+      },
+    });
+  });
+
+  it("collapses a glsl config with a missing/hostile source to the color field (safety)", () => {
+    // no shader payload
+    expect(
+      normalizeBackgroundConfig({ mode: "glsl", color: "#123456" }),
+    ).toEqual({
+      mode: "shader",
+      color: "#123456",
+    });
+    // unbounded-loop source is rejected by the static gate → color field
+    expect(
+      normalizeBackgroundConfig({
+        mode: "glsl",
+        color: "#123456",
+        shader: {
+          source: "void main(){ while(true){} gl_FragColor=vec4(1.0);}",
+        },
+      }),
+    ).toEqual({ mode: "shader", color: "#123456" });
+  });
+
+  it("round-trips a glsl config through localStorage", () => {
+    const config = {
+      mode: "glsl" as const,
+      color: "#0a0a0a",
+      shader: {
+        presetId: "aurora",
+        source:
+          "precision highp float; void main(){ gl_FragColor = vec4(1.0); }",
+        uniforms: { u_speed: 1, u_scale: 1, u_intensity: 1, u_seed: 0 },
+      },
+    };
+    saveBackgroundConfig(config);
+    expect(loadBackgroundConfig()).toEqual(config);
+  });
+
   it("round-trips an image config through localStorage", () => {
     const config = {
       mode: "image" as const,

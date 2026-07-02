@@ -10,7 +10,7 @@ import {
   normalizeBackgroundHistory,
   saveHomeTimeWidgetHidden,
 } from "./persistence";
-import { DEFAULT_BACKGROUND_COLOR } from "./ui-preferences";
+import { DEFAULT_BACKGROUND_COLOR, makeGlslConfig } from "./ui-preferences";
 import { useDisplayPreferences } from "./useDisplayPreferences";
 
 beforeEach(() => {
@@ -191,6 +191,72 @@ describe("useDisplayPreferences — background history + undo", () => {
     expect(normalizeBackgroundHistory(entries).length).toBe(
       MAX_BACKGROUND_HISTORY,
     );
+  });
+
+  it("survives an adversarial set/undo/redo storm across shader/image/glsl (#10694)", () => {
+    // A GLSL shader source that passes the static gate.
+    const SRC =
+      "precision highp float; void main(){ gl_FragColor = vec4(1.0); }";
+    // Deterministic PRNG (mulberry32) — no Math.random in a render path.
+    let a = 0x1234abcd >>> 0;
+    const rng = () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const palette = ["#059669", "#e11d48", "#2563eb", "#f59e0b", "#0a0a0a"];
+    const configs = [
+      () => ({ mode: "shader" as const, color: palette[(rng() * 5) | 0] }),
+      () => ({
+        mode: "image" as const,
+        color: palette[(rng() * 5) | 0],
+        imageUrl: `/api/media/h${(rng() * 1000) | 0}.jpg`,
+      }),
+      () =>
+        makeGlslConfig({
+          source: SRC,
+          presetId: ["aurora", "lava", "plasma"][(rng() * 3) | 0],
+          color: palette[(rng() * 5) | 0],
+          uniforms: { u_speed: rng() * 4, u_intensity: rng() * 3 },
+        }),
+    ];
+
+    const { result } = renderHook(() => useDisplayPreferences());
+    for (let step = 0; step < 400; step += 1) {
+      const roll = rng();
+      act(() => {
+        if (roll < 0.6) {
+          result.current.setBackgroundConfig(configs[(rng() * 3) | 0]());
+        } else if (roll < 0.8) {
+          result.current.undoBackgroundConfig();
+        } else {
+          result.current.redoBackgroundConfig();
+        }
+      });
+
+      const s = result.current.state;
+      // Invariant: the live config is always structurally valid.
+      expect(["shader", "image", "glsl"]).toContain(s.backgroundConfig.mode);
+      expect(typeof s.backgroundConfig.color).toBe("string");
+      // Invariant: a glsl config always carries clamped, finite uniforms.
+      if (s.backgroundConfig.mode === "glsl") {
+        const u = s.backgroundConfig.shader?.uniforms;
+        expect(u).toBeDefined();
+        for (const v of Object.values(u ?? {})) {
+          expect(Number.isFinite(v)).toBe(true);
+        }
+        expect(u?.u_speed).toBeLessThanOrEqual(3);
+        expect(u?.u_speed).toBeGreaterThanOrEqual(0);
+      }
+      // Invariant: the undo history never exceeds its cap.
+      expect(loadBackgroundHistory().length).toBeLessThanOrEqual(
+        MAX_BACKGROUND_HISTORY,
+      );
+      // Invariant: canUndo/canRedo are booleans (flags never desync into null).
+      expect(typeof s.canUndoBackground).toBe("boolean");
+      expect(typeof s.canRedoBackground).toBe("boolean");
+    }
   });
 });
 

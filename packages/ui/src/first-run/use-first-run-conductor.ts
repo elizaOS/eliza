@@ -31,13 +31,14 @@ import { getBootConfig } from "../config/boot-config";
 import { useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import { preOpenWindow } from "../utils";
-import { type FirstRunProfileDraft, normalizeFirstRunName } from "./first-run";
+import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
   setFirstRunActionHandler,
 } from "./first-run-action-channel";
 import {
   bindCloudAgent,
+  type FirstRunFinishDraft,
   type FirstRunFinishOutcome,
   type FirstRunFinishPorts,
   listOrAutoProvisionCloudAgent,
@@ -164,7 +165,6 @@ export function useFirstRunConductor(): void {
     handleCloudLogin,
     showActionBanner,
     setTab,
-    switchAgentProfile,
     setState,
     uiLanguage,
   } = useAppSelectorShallow((s) => ({
@@ -175,7 +175,6 @@ export function useFirstRunConductor(): void {
     handleCloudLogin: s.handleCloudLogin,
     showActionBanner: s.showActionBanner,
     setTab: s.setTab,
-    switchAgentProfile: s.switchAgentProfile,
     setState: s.setState,
     uiLanguage: s.uiLanguage,
   }));
@@ -183,7 +182,7 @@ export function useFirstRunConductor(): void {
 
   const active = firstRunComplete === false;
 
-  const draftRef = React.useRef<FirstRunProfileDraft>({
+  const draftRef = React.useRef<FirstRunFinishDraft>({
     agentName: normalizeFirstRunName(firstRunName) || "Eliza",
     runtime: "cloud",
     localInference: "all-local",
@@ -267,7 +266,6 @@ export function useFirstRunConductor(): void {
       },
       showActionBanner,
       setTab,
-      switchAgentProfile,
       completeFirstRun: () => {
         seedTutorial();
       },
@@ -284,7 +282,6 @@ export function useFirstRunConductor(): void {
       setState,
       showActionBanner,
       setTab,
-      switchAgentProfile,
       seedTutorial,
       seedTurn,
     ],

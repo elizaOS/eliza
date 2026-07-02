@@ -10,6 +10,9 @@
  *   4. agent emits background:apply   → recolors from chat (chat → background)
  *   5. agent emits {op:"undo"}        → reverts to the previous (image)
  *   6. click the Undo control         → reverts again to the Green swatch (UI undo)
+ *   7. agent emits {op:"redo"}        → steps forward to the image again (chat redo)
+ *   8. click the Redo control         → forward again to the chat teal — the full
+ *                                       set→set→undo→redo round-trip (#10694)
  *
  * Captures a screenshot per step + a video walkthrough.
  *
@@ -168,6 +171,30 @@ try {
     "the Undo control reverts to the prior shader color",
   );
   await snap(p, "ui-undo-to-green");
+
+  // 7. Agent chat path: emit {op:"redo"} → steps forward again, restoring the
+  // uploaded image that step 6's undo popped off.
+  await p.evaluate(() => window.__emitBgApply?.({ op: "redo" }));
+  await settle(p);
+  assert(
+    (await count(p, '[data-testid="app-background-image"]')) === 1,
+    'agent "redo" re-applies the undone (image) background',
+  );
+  await snap(p, "chat-redo-to-image");
+
+  // 8. Click the Redo control → forward once more to the chat-applied teal from
+  // step 4 — the full set→set→undo→redo round-trip. #0891b2 === rgb(8, 145, 178).
+  await p.getByLabel("Redo background change").click();
+  await settle(p);
+  assert(
+    (await shaderColor(p)) === "rgb(8, 145, 178)",
+    "the Redo control round-trips back to the chat-applied teal",
+  );
+  assert(
+    (await count(p, '[aria-label="Redo background change"]')) === 0,
+    "the Redo control hides once the redo stack is empty",
+  );
+  await snap(p, "ui-redo-to-teal");
 } finally {
   await context.close(); // flush the video
   await browser.close();

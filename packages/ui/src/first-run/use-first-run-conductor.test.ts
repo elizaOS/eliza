@@ -1,6 +1,389 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+// The in-chat first-run conductor, driven through its REAL public seams: the
+// hook is mounted (registering its handler on the first-run action channel),
+// picks arrive via `tryHandleFirstRunAction` exactly as the chat send funnel
+// delivers them, and the REAL finish use case (`first-run-finish.ts`) runs
+// underneath. Mocks sit only at the network boundary (the shared `client`
+// singleton + the background model download).
+
+import { renderHook, waitFor } from "@testing-library/react";
+import * as React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  client: {
+    listLocalAgentBackups: vi.fn(async () => []),
+    restoreLocalAgentBackup: vi.fn(async () => undefined),
+    getAuthStatus: vi.fn(async () => ({ required: false })),
+    getCloudStatus: vi.fn(async () => ({ connected: true })),
+    getCloudCompatAgents: vi.fn(async () => ({
+      success: true as const,
+      data: [] as unknown[],
+    })),
+    // Takes the provisioning options so `.mock.calls[0][0]` is inspectable.
+    selectOrProvisionCloudAgent: vi.fn(
+      async (_options: Record<string, unknown>) => ({
+        apiBase: "https://agent.example.test",
+        agentId: "agent-1",
+        created: false,
+      }),
+    ),
+    submitFirstRun: vi.fn(async () => undefined),
+    getFirstRunStatus: vi.fn(async () => ({ complete: false })),
+    getBaseUrl: vi.fn(() => ""),
+    setBaseUrl: vi.fn(),
+    setToken: vi.fn(),
+    getRestAuthToken: vi.fn(() => null),
+    fetch: vi.fn(async () => {
+      throw new Error("no network in test");
+    }),
+  },
+  autoDownloadRecommendedLocalModelInBackground: vi.fn(async () => undefined),
+}));
+
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return { ...actual, client: mocks.client };
+});
+
+vi.mock("./auto-download-recommended", () => ({
+  autoDownloadRecommendedLocalModelInBackground:
+    mocks.autoDownloadRecommendedLocalModelInBackground,
+}));
+
 import type { ConversationMessage } from "../api";
-import { surfaceCloudLoginRetryTurn } from "./use-first-run-conductor";
+import { __setAppValueForTests } from "../state/app-store";
+import {
+  ConversationMessagesCtx,
+  type ConversationMessagesValue,
+} from "../state/ConversationMessagesContext.hooks";
+import type { AppContextValue } from "../state/internal";
+import { tryHandleFirstRunAction } from "./first-run-action-channel";
+import {
+  surfaceCloudLoginRetryTurn,
+  useFirstRunConductor,
+} from "./use-first-run-conductor";
+
+// This jsdom env exposes `window.localStorage` as an object without methods;
+// install a real in-memory Storage (mirrors `first-run.test.ts`) so the finish
+// path's persisted-server/profile writes work.
+function ensureLocalStorage(): Storage {
+  if (typeof window.localStorage?.clear === "function") {
+    return window.localStorage;
+  }
+  const values = new Map<string, string>();
+  const storage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, String(value));
+    },
+  } satisfies Storage;
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  return storage;
+}
+
+function readTutorialState(): { active: boolean; stepIndex: number } {
+  const store = (globalThis as Record<PropertyKey, unknown>)[
+    Symbol.for("elizaos.ui.tutorial-controller")
+  ] as { state: { active: boolean; stepIndex: number } } | undefined;
+  return store?.state ?? { active: false, stepIndex: 0 };
+}
+
+function resetTutorialState(): void {
+  const store = (globalThis as Record<PropertyKey, unknown>)[
+    Symbol.for("elizaos.ui.tutorial-controller")
+  ] as { state: { active: boolean; stepIndex: number } } | undefined;
+  if (store) store.state = { active: false, stepIndex: 0 };
+}
+
+interface AppStoreSpies {
+  completeFirstRun: ReturnType<typeof vi.fn>;
+  handleCloudLogin: ReturnType<typeof vi.fn>;
+  showActionBanner: ReturnType<typeof vi.fn>;
+  setTab: ReturnType<typeof vi.fn>;
+  setState: ReturnType<typeof vi.fn>;
+}
+
+/** Seed the app-store slice the conductor selects; everything else is inert. */
+function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
+  const spies: AppStoreSpies = {
+    completeFirstRun: vi.fn(),
+    handleCloudLogin: vi.fn(async () => undefined),
+    showActionBanner: vi.fn(),
+    setTab: vi.fn(),
+    setState: vi.fn(),
+  };
+  const fields: Record<string, unknown> = {
+    firstRunComplete: false,
+    firstRunName: "Eliza",
+    elizaCloudConnected: true,
+    uiLanguage: "en",
+    ...spies,
+    ...overrides,
+  };
+  const noop = () => {};
+  const value = new Proxy({} as AppContextValue, {
+    get: (_target, prop) =>
+      typeof prop === "string" && prop in fields ? fields[prop] : noop,
+  });
+  __setAppValueForTests(value);
+  return spies;
+}
+
+/**
+ * Mount the conductor inside a REAL (ref-backed) transcript provider so the
+ * seeded onboarding turns are observable exactly as the overlay would render
+ * them. `setConversationMessages` applies functional updaters for real.
+ */
+function renderConductor() {
+  const transcript: { current: ConversationMessage[] } = { current: [] };
+  const value: ConversationMessagesValue = {
+    conversationMessages: [],
+    removeConversationMessage: () => {},
+    setConversationMessages: (updater) => {
+      transcript.current =
+        typeof updater === "function" ? updater(transcript.current) : updater;
+    },
+  };
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(ConversationMessagesCtx.Provider, { value }, children);
+  const utils = renderHook(() => useFirstRunConductor(), { wrapper });
+  const turn = (id: string): ConversationMessage | undefined =>
+    transcript.current.find((message) => message.id === id);
+  return { transcript, turn, ...utils };
+}
+
+async function waitForTurn(
+  turn: (id: string) => ConversationMessage | undefined,
+  id: string,
+): Promise<ConversationMessage> {
+  await waitFor(() => {
+    expect(turn(id)).toBeTruthy();
+  });
+  const found = turn(id);
+  if (!found) throw new Error(`turn ${id} not seeded`);
+  return found;
+}
+
+beforeEach(() => {
+  ensureLocalStorage().clear();
+  vi.clearAllMocks();
+  mocks.client.listLocalAgentBackups.mockResolvedValue([]);
+  mocks.client.getCloudCompatAgents.mockResolvedValue({
+    success: true,
+    data: [],
+  });
+  (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+    "cloud-token";
+});
+
+afterEach(() => {
+  __setAppValueForTests(null);
+  resetTutorialState();
+  ensureLocalStorage().clear();
+  delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
+});
+
+describe("useFirstRunConductor", () => {
+  it("drives the LOCAL path end to end: greeting → runtime → provider → tutorial → completeFirstRun, POSTing exactly once", async () => {
+    const spies = seedAppStore();
+    const { turn, unmount } = renderConductor();
+
+    // Mount seeds the greeting with the runtime CHOICE.
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+    expect(greeting.text).toContain("where should your agent run?");
+    expect(greeting.text).toContain("__first_run__:runtime:local=");
+    expect(greeting.source).toBe("first_run");
+
+    // Runtime pick → provider CHOICE with on-device pre-highlighted first.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    const provider = await waitForTurn(turn, "first-run:provider");
+    expect(provider.text).toContain("__first_run__:provider:on-device=");
+    expect(provider.text.indexOf("provider:on-device")).toBeLessThan(
+      provider.text.indexOf("provider:other"),
+    );
+
+    // Provider pick runs the REAL finish: local runtime boot (no-op off
+    // desktop/mobile), POST /api/first-run, background model download, then
+    // the deferred tutorial CHOICE.
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    const tutorial = await waitForTurn(turn, "first-run:tutorial");
+    expect(tutorial.text).toContain("__first_run__:tutorial:start=");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.autoDownloadRecommendedLocalModelInBackground,
+    ).toHaveBeenCalledTimes(1);
+    // The real store flip is DEFERRED to the tutorial pick.
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    // A re-tapped provider pick re-runs the finish but the persist guard keeps
+    // POST /api/first-run at exactly once.
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(mocks.client.getAuthStatus.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+
+    // Tutorial skip: the SINGLE real completion; no tour is launched.
+    expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    expect(readTutorialState().active).toBe(false);
+
+    unmount();
+  });
+
+  it("routes the 'bring your own keys' path to the Settings handoff banner without a model download", async () => {
+    const spies = seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:other")).toBe(true);
+    const provider = await waitForTurn(turn, "first-run:provider");
+    // "other" runtime pre-highlights the Other/configure-in-Settings provider.
+    expect(provider.text.indexOf("provider:other")).toBeLessThan(
+      provider.text.indexOf("provider:on-device"),
+    );
+
+    expect(tryHandleFirstRunAction("__first_run__:provider:other")).toBe(true);
+    await waitForTurn(turn, "first-run:tutorial");
+
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    // configure-later wires NO provider: the Settings banner surfaces and no
+    // on-device model download starts.
+    expect(spies.showActionBanner).toHaveBeenCalledTimes(1);
+    expect(spies.showActionBanner.mock.calls[0][0].text).toContain(
+      "model provider in Settings",
+    );
+    expect(
+      mocks.autoDownloadRecommendedLocalModelInBackground,
+    ).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("drives the CLOUD path: OAuth turn → agent CHOICE → bind → tutorial start launches the tour", async () => {
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "agent-1",
+          agent_name: "Prod",
+          status: "running",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+        {
+          agent_id: "agent-2",
+          agent_name: "Scratch",
+          status: "stopped",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ] as never[],
+    });
+    const spies = seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    // The OAuth secretRequest turn seeds immediately (pending), then flips to
+    // saved once the agent list resolves.
+    const oauthPending = await waitForTurn(turn, "first-run:cloud-oauth");
+    expect(oauthPending.secretRequest?.form?.kind).toBe("oauth");
+    await waitFor(() => {
+      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
+        "saved",
+      );
+    });
+
+    // ≥1 agents → a cloud-agent CHOICE (running agent first, plus create-new).
+    const agentChoice = await waitForTurn(turn, "first-run:cloud-agent");
+    expect(agentChoice.text).toContain(
+      "__first_run__:cloud-agent:agent-1=Prod",
+    );
+    expect(agentChoice.text).toContain(
+      "__first_run__:cloud-agent:new=Create a new agent",
+    );
+
+    expect(tryHandleFirstRunAction("__first_run__:cloud-agent:agent-1")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).toMatchObject({ preferAgentId: "agent-1", authToken: "cloud-token" });
+    // The bound base owns app-shell routes → first-run persisted exactly once.
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+
+    // "Take the tutorial" completes AND launches the interactive tour.
+    expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    expect(readTutorialState().active).toBe(true);
+    unmount();
+  });
+
+  it("surfaces a cloud listing failure as an error turn with the runtime CHOICE again, then a LOCAL retry succeeds", async () => {
+    mocks.client.getCloudCompatAgents.mockRejectedValue(
+      new Error("cloud is down"),
+    );
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some(
+          (message) =>
+            message.id.startsWith("first-run:error:") &&
+            message.text.includes("cloud is down"),
+        ),
+      ).toBe(true);
+    });
+    const errorTurn = transcript.current.find((message) =>
+      message.id.startsWith("first-run:error:"),
+    );
+    // The error turn re-offers the runtime CHOICE so the flow is recoverable.
+    expect(errorTurn?.text).toContain("__first_run__:runtime:local=");
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+
+    // Retry via LOCAL still reaches the tutorial (and the single POST).
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("unregisters the action handler on unmount so identical values no longer short-circuit", async () => {
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    unmount();
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(false);
+  });
+});
+
+// ── surfaceCloudLoginRetryTurn (pure transcript seam) ────────────────────────
 
 function applyRetry(existing: ConversationMessage[]): ConversationMessage[] {
   let messages = [...existing];

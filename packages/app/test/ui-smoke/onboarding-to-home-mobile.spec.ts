@@ -77,12 +77,22 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     ).toBe(true);
 
     // Tap (not click) the inline choice buttons — the touch path through the
-    // WebView, inside the same floating ContinuousChatOverlay.
+    // WebView, inside the same floating ContinuousChatOverlay. The shared flow
+    // also asserts the onboarding lock (disabled composer, Escape gated) and
+    // the auto-collapse on completion.
     const { surface } = await completeOnboardingToHome(
       page,
       (locator: Locator) => locator.tap(),
       { state, tutorial: "skip" },
     );
+
+    // Restated at the spec level: completion auto-collapsed the sheet, so the
+    // touch flick below lands on the home rail with no manual collapse step,
+    // and the composer unlocked for normal chat.
+    await expect(
+      page.getByTestId("continuous-chat-overlay"),
+    ).not.toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled();
 
     // Capture the populated mobile home landing.
     await settleHomeEntrance(page);

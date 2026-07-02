@@ -1,11 +1,23 @@
 /**
- * Functional streaming parity for #10712.
+ * Functional SSE framing contract for the conversation stream route (#10712).
  *
- * Drives the real conversation stream route while keeping generation
- * deterministic with a mock `runtime.useModel`. The same model fixture is used
- * for a local-inference profile and a cloud-resolved profile, proving both
- * provider paths emit ordered token SSE frames followed by a terminal `thought`
- * on the canonical `/api/conversations/:id/messages/stream` transport.
+ * Drives the real `/api/conversations/:id/messages/stream` handler
+ * (`handleConversationRoutes` → `generateChatResponse`) with a deterministic
+ * mock `runtime.useModel`, and asserts the frame contract the dashboard client
+ * consumes: `status` frames in thinking → streaming order, ordered `token`
+ * frames with cumulative `fullText`, and a terminal `done` frame carrying the
+ * full text plus the model `thought`.
+ *
+ * Scope note — this layer is provider-agnostic BY DESIGN. The route never
+ * branches on which model-provider plugin resolves `runtime.useModel`
+ * (local-inference vs cloud selection happens inside core's model registry),
+ * so ONE deterministic case covers the whole route contract. An earlier
+ * version of this file (`conversation-stream-provider-parity.test.ts`) ran the
+ * same fixture twice under "local-inference" / "cloud-resolved" labels; both
+ * cases executed byte-identical logic, so the matrix was collapsed. The real
+ * provider-resolution path (real plugin, real model, real HTTP SSE) is
+ * exercised live by
+ * `packages/app-core/test/app/streaming-visible-text.live.e2e.test.ts`.
  */
 
 import { EventEmitter } from "node:events";
@@ -50,14 +62,14 @@ vi.mock("../server-helpers.ts", async () => {
     ...actual,
     buildUserMessages: vi.fn(({ prompt, userId, agentId, roomId }) => ({
       userMessage: {
-        id: stringToUuid("provider-parity-user-msg"),
+        id: stringToUuid("stream-contract-user-msg"),
         entityId: userId,
         agentId,
         roomId,
         content: { text: prompt, source: "api", channelType: ChannelType.DM },
       },
       messageToStore: {
-        id: stringToUuid("provider-parity-user-msg-store"),
+        id: stringToUuid("stream-contract-user-msg-store"),
         entityId: userId,
         agentId,
         roomId,
@@ -75,32 +87,24 @@ import type {
 } from "../conversation-routes.ts";
 import { handleConversationRoutes } from "../conversation-routes.ts";
 
-const AGENT_ID = stringToUuid("provider-parity-agent") as UUID;
-const USER_ID = stringToUuid("provider-parity-user") as UUID;
-const ROOM_ID = stringToUuid("provider-parity-room") as UUID;
-const TOKENS = ["Local ", "and ", "cloud ", "stream."];
+const AGENT_ID = stringToUuid("stream-contract-agent") as UUID;
+const USER_ID = stringToUuid("stream-contract-user") as UUID;
+const ROOM_ID = stringToUuid("stream-contract-room") as UUID;
+const TOKENS = ["Ordered ", "token ", "frame ", "stream."];
 const FINAL_TEXT = TOKENS.join("");
 const THOUGHT =
   "Use the same deterministic token plan, then expose the compact reasoning.";
-
-type ProviderPath = "local-inference" | "cloud-resolved";
 
 interface StreamingModelParams {
   prompt?: string;
   stream?: boolean;
   signal?: AbortSignal;
   onStreamChunk?: (chunk: string) => Promise<void> | void;
-  providerOptions?: {
-    eliza?: {
-      providerPath?: ProviderPath;
-    };
-  };
 }
 
 interface StreamingModelResult {
   text: string;
   thought: string;
-  providerPath: ProviderPath;
 }
 
 interface MockResponseRecord {
@@ -180,7 +184,7 @@ function parseSsePayloads(writes: string[]): Array<Record<string, unknown>> {
     .map((frame) => JSON.parse(frame.replace(/^data: /, "")));
 }
 
-function createStreamingUseModelFixture(providerPath: ProviderPath) {
+function createStreamingUseModelFixture() {
   return vi.fn(
     async (
       _modelType: string,
@@ -188,7 +192,6 @@ function createStreamingUseModelFixture(providerPath: ProviderPath) {
     ): Promise<StreamingModelResult> => {
       expect(params.stream).toBe(true);
       expect(params.prompt).toContain("stream the deterministic thought");
-      expect(params.providerOptions?.eliza?.providerPath).toBe(providerPath);
       for (const token of TOKENS) {
         await Promise.resolve();
         await params.onStreamChunk?.(token);
@@ -196,13 +199,12 @@ function createStreamingUseModelFixture(providerPath: ProviderPath) {
       return {
         text: FINAL_TEXT,
         thought: THOUGHT,
-        providerPath,
       };
     },
   );
 }
 
-function createModelBackedMessageService(providerPath: ProviderPath) {
+function createModelBackedMessageService() {
   return {
     async handleMessage(
       runtime: AgentRuntime,
@@ -221,7 +223,6 @@ function createModelBackedMessageService(providerPath: ProviderPath) {
         prompt: String(message.content?.text ?? ""),
         stream: true,
         signal: options?.abortSignal,
-        providerOptions: { eliza: { providerPath } },
         onStreamChunk: options?.onStreamChunk,
       });
       return {
@@ -229,7 +230,6 @@ function createModelBackedMessageService(providerPath: ProviderPath) {
         responseContent: {
           text: modelResult.text,
           thought: modelResult.thought,
-          metadata: { providerPath: modelResult.providerPath },
         },
         responseMessages: [],
       };
@@ -237,65 +237,45 @@ function createModelBackedMessageService(providerPath: ProviderPath) {
     shouldRespond: () => ({
       shouldRespond: true,
       skipEvaluation: true,
-      reason: `${providerPath}-streaming-test`,
+      reason: "stream-contract-test",
     }),
     deleteMessage: async () => undefined,
     clearChannel: async () => undefined,
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
-function createState(providerPath: ProviderPath): {
+function createState(): {
   state: ConversationRouteState;
   useModel: ReturnType<typeof createStreamingUseModelFixture>;
 } {
   const conv = {
     id: "conv-1",
-    title: `${providerPath} test conv`,
+    title: "stream contract test conv",
     roomId: ROOM_ID,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  const useModel = createStreamingUseModelFixture(providerPath);
+  const useModel = createStreamingUseModelFixture();
   const runtime = {
     agentId: AGENT_ID,
     character: {
       name: "Streaming Agent",
       system: "System prompt",
-      settings: {
-        model:
-          providerPath === "local-inference"
-            ? "local-inference/eliza-1"
-            : "cloud/gpt-5-mini",
-      },
+      settings: {},
     },
     actions: [],
-    plugins:
-      providerPath === "local-inference"
-        ? [{ name: "@elizaos/plugin-local-inference" }]
-        : [{ name: "@elizaos/plugin-openai" }],
+    plugins: [],
     logger,
     emitEvent: vi.fn(async () => undefined),
     useModel: useModel as unknown as AgentRuntime["useModel"],
-    messageService: createModelBackedMessageService(providerPath),
+    messageService: createModelBackedMessageService(),
     ensureConnection: vi.fn(async () => undefined),
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
-    getSetting: vi.fn((key: string) => {
-      const values: Record<string, string> =
-        providerPath === "local-inference"
-          ? {
-              ELIZA_LOCAL_LLAMA: "1",
-              ELIZA_MODEL_PROVIDER: "local-inference",
-            }
-          : {
-              ELIZA_MODEL_PROVIDER: "openai",
-              OPENAI_API_KEY: "test-cloud-key",
-            };
-      return values[key] ?? null;
-    }),
+    getSetting: vi.fn(() => null),
     adapter: {},
   } as unknown as AgentRuntime;
 
@@ -317,7 +297,7 @@ function createState(providerPath: ProviderPath): {
   };
 }
 
-function createCtx(providerPath: ProviderPath): {
+function createCtx(): {
   ctx: ConversationRouteContext;
   record: MockResponseRecord;
   useModel: ReturnType<typeof createStreamingUseModelFixture>;
@@ -325,7 +305,7 @@ function createCtx(providerPath: ProviderPath): {
   const socket = createMockSocket();
   const req = createReq(socket);
   const { res, record } = createMockRes();
-  const { state, useModel } = createState(providerPath);
+  const { state, useModel } = createState();
   const ctx: ConversationRouteContext = {
     req,
     res,
@@ -342,16 +322,13 @@ function createCtx(providerPath: ProviderPath): {
   return { ctx, record, useModel };
 }
 
-describe("conversation stream provider parity (#10712)", () => {
+describe("conversation stream SSE contract (#10712)", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it.each([
-    ["local-inference" as const],
-    ["cloud-resolved" as const],
-  ])("streams ordered token frames and a terminal thought on the %s provider path", async (providerPath) => {
-    const { ctx, record, useModel } = createCtx(providerPath);
+  it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
+    const { ctx, record, useModel } = createCtx();
 
     await handleConversationRoutes(ctx);
 
@@ -363,23 +340,40 @@ describe("conversation stream provider parity (#10712)", () => {
     const tokens = payloads.filter((payload) => payload.type === "token");
     expect(tokens.map((payload) => payload.text)).toEqual(TOKENS);
     expect(tokens.map((payload) => payload.fullText)).toEqual([
-      "Local ",
-      "Local and ",
-      "Local and cloud ",
+      "Ordered ",
+      "Ordered token ",
+      "Ordered token frame ",
       FINAL_TEXT,
     ]);
 
-    const done = payloads.find((payload) => payload.type === "done");
-    expect(done).toMatchObject({
+    const doneIndex = payloads.findIndex((payload) => payload.type === "done");
+    expect(doneIndex).toBeGreaterThanOrEqual(0);
+    expect(payloads[doneIndex]).toMatchObject({
       type: "done",
       fullText: FINAL_TEXT,
       agentName: "Streaming Agent",
       thought: THOUGHT,
     });
+    // `done` is terminal — no token frames after it.
+    expect(
+      payloads.slice(doneIndex + 1).some((payload) => payload.type === "token"),
+    ).toBe(false);
+    // The thought channel never leaks into the visible token stream.
+    for (const token of tokens) {
+      expect(String(token.fullText)).not.toContain(THOUGHT);
+    }
 
     const statusKinds = payloads
       .filter((payload) => payload.type === "status")
       .map((payload) => payload.kind);
     expect(statusKinds).toEqual(["thinking", "streaming"]);
+    // Both status frames precede the first token frame.
+    const firstTokenIndex = payloads.findIndex(
+      (payload) => payload.type === "token",
+    );
+    const streamingStatusIndex = payloads.findIndex(
+      (payload) => payload.type === "status" && payload.kind === "streaming",
+    );
+    expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
   });
 });

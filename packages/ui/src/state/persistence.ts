@@ -1,6 +1,10 @@
 import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
+import {
+  isPlausibleFragmentSource,
+  normalizeUniforms,
+} from "../backgrounds/shader-schema";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
@@ -180,6 +184,29 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   // Image mode without a usable source is meaningless — fall back to the shader.
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
+  }
+  // GLSL mode requires a plausible fragment source; a malformed/oversized/absent
+  // source (or a hostile persisted value) falls back to the color field so a bad
+  // shader can never wedge the background on load.
+  if (record.mode === "glsl") {
+    const shaderRecord = asRecord(record.shader);
+    const source = shaderRecord?.source;
+    if (isPlausibleFragmentSource(source)) {
+      const presetId =
+        typeof shaderRecord?.presetId === "string"
+          ? shaderRecord.presetId
+          : undefined;
+      return {
+        mode: "glsl",
+        color,
+        shader: {
+          presetId,
+          source,
+          uniforms: normalizeUniforms(shaderRecord?.uniforms),
+        },
+      };
+    }
+    return { mode: "shader", color };
   }
   return { mode: "shader", color };
 }

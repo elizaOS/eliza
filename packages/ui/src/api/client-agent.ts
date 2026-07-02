@@ -603,10 +603,6 @@ declare module "./client-base" {
       providerId: LinkedAccountProviderId;
       strategy: AccountStrategy;
     }>;
-    uploadCustomVrm(file: File): Promise<void>;
-    hasCustomVrm(): Promise<boolean>;
-    uploadCustomBackground(file: File): Promise<void>;
-    hasCustomBackground(): Promise<boolean>;
     getConnectors(): Promise<{
       connectors: Record<string, ConnectorConfig>;
     }>;
@@ -1875,56 +1871,6 @@ ElizaClient.prototype.updateConfig = async function (this: ElizaClient, patch) {
     transport,
   });
   return out;
-};
-
-ElizaClient.prototype.uploadCustomVrm = async function (
-  this: ElizaClient,
-  file,
-) {
-  const buf = await file.arrayBuffer();
-  await this.fetch("/api/avatar/vrm", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: buf,
-  });
-};
-
-ElizaClient.prototype.hasCustomVrm = async function (this: ElizaClient) {
-  try {
-    const res = await this.rawRequest(
-      "/api/avatar/vrm",
-      { method: "HEAD" },
-      { allowNonOk: true },
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
-};
-
-ElizaClient.prototype.uploadCustomBackground = async function (
-  this: ElizaClient,
-  file,
-) {
-  const buf = await file.arrayBuffer();
-  await this.fetch("/api/avatar/background", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: buf,
-  });
-};
-
-ElizaClient.prototype.hasCustomBackground = async function (this: ElizaClient) {
-  try {
-    const res = await this.rawRequest(
-      "/api/avatar/background",
-      { method: "HEAD" },
-      { allowNonOk: true },
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
 };
 
 ElizaClient.prototype.getConnectors = async function (this: ElizaClient) {

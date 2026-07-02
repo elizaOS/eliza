@@ -1363,9 +1363,13 @@ export function ContinuousChatOverlay({
   /** Universal slash-command catalog + app-level nav effects. */
   slash?: SlashCommandController;
   /**
-   * During in-chat first-run onboarding the overlay opens to FULL on mount so the
-   * seeded greeting + onboarding choices are visible immediately (the chat is the
-   * first painted surface), instead of resting as a composer-only bar.
+   * True while in-chat first-run onboarding is active (`firstRunComplete ===
+   * false` upstream). The overlay opens to FULL and LOCKS there: every
+   * collapse path (Escape, outside tap, grabber pull-down/close, header
+   * launcher) is a no-op and the composer (text, attach, voice, send) is
+   * disabled, so the seeded choice/OAuth widgets are the only input. On the
+   * falling edge — onboarding just completed — the sheet auto-collapses to the
+   * input bar, revealing the home screen.
    */
   firstRunOpen?: boolean;
 }): React.JSX.Element {
@@ -1498,9 +1502,8 @@ export function ContinuousChatOverlay({
   const [mode, setMode] = React.useState<ChatMode>(
     firstRunOpen ? "full" : "input",
   );
-  React.useEffect(() => {
-    if (firstRunOpen) setMode("full");
-  }, [firstRunOpen]);
+  // The pin-at-full + auto-collapse edge effect lives below `goToDetent` (it
+  // needs the detent animator); the mount state above still opens FULL first.
   const pilled = mode === "pill";
   const sheetOpen = mode === "half" || mode === "full";
   const expanded = mode === "full";
@@ -1905,6 +1908,10 @@ export function ContinuousChatOverlay({
       const trimmed = text.trim();
       // An image-only turn is valid; only bail when there's nothing to send.
       if ((!trimmed && images.length === 0) || !canSend) return;
+      // During onboarding the transcript is choice-driven: free text never
+      // reaches the server. The composer controls are disabled too — this
+      // guards the event-driven entry points (prefill, dictation, slash).
+      if (firstRunOpen) return;
       // A bound view (e.g. the coding cockpit when a session is focused) can
       // claim the send to drive its OWN target instead of the host agent. If it
       // consumes the text, clear the composer and stop — do not fall through to
@@ -1947,7 +1954,7 @@ export function ContinuousChatOverlay({
       detentHaptic();
       inputRef.current?.focus();
     },
-    [canSend, send, viewChatBinding],
+    [canSend, firstRunOpen, send, viewChatBinding],
   );
 
   // Tapping a suggestion sends it immediately (same path as submit), so the
@@ -2613,6 +2620,24 @@ export function ContinuousChatOverlay({
     ],
   );
 
+  // First-run onboarding pin + release. While onboarding is active the sheet
+  // stays pinned FULL — the seeded greeting/choices must be visible and the
+  // chat undismissable (every collapse path below is also gated on
+  // `firstRunOpen`). On the FALLING edge — onboarding just completed — auto-
+  // collapse to the input bar so the home screen underneath is revealed.
+  // Edge-detected via a ref so an ordinary session (onboarding never active)
+  // never triggers the collapse.
+  const wasFirstRunOpenRef = React.useRef(firstRunOpen);
+  React.useEffect(() => {
+    const was = wasFirstRunOpenRef.current;
+    wasFirstRunOpenRef.current = firstRunOpen;
+    if (firstRunOpen) {
+      setMode("full");
+      return;
+    }
+    if (was) goToDetent("collapsed");
+  }, [firstRunOpen, goToDetent]);
+
   const openFromGrabber = React.useCallback(() => {
     if (hasRevealableThread) {
       preFocusCollapsedRef.current = false;
@@ -2628,6 +2653,10 @@ export function ContinuousChatOverlay({
   // no longer "focused". Blurring (rather than the old refocus dance) also means
   // there's no focus→expand bounce to guard against, so the model stays simple.
   const collapse = React.useCallback(() => {
+    // Undismissable during onboarding: Escape (document, thread, composer),
+    // outside taps, the grabber close, and the sheet-open grabber tap all
+    // funnel here — every one is a no-op until first-run completes.
+    if (firstRunOpen) return;
     // If focus is sitting inside the thread log, pull it out before the log
     // becomes aria-hidden / tabIndex=-1 — never park focus on a hidden element.
     if (
@@ -2640,7 +2669,7 @@ export function ContinuousChatOverlay({
     }
     closeSheet();
     inputRef.current?.blur();
-  }, [closeSheet]);
+  }, [closeSheet, firstRunOpen]);
 
   // Dismiss the keyboard and return to the resting state from BEFORE the composer
   // was focused — the single restore path shared by every "drop the keyboard"
@@ -2705,6 +2734,12 @@ export function ContinuousChatOverlay({
     const onControl = (event: Event) => {
       const detail = (event as CustomEvent<TutorialChatControlDetail>).detail;
       if (!detail) return;
+      // Defense-in-depth for the onboarding lock: while first-run pins the sheet
+      // at FULL, a stray/adversarial tutorial-control event (rest/reset →
+      // collapse, prefill → un-pill) must not move it. The tour only starts
+      // AFTER completeFirstRun, so this never fires in the real flow — it just
+      // closes the one collapse seam outside the gated funnel.
+      if (firstRunOpen) return;
       switch (detail.action) {
         case "pill":
           setMode("pill");
@@ -2737,7 +2772,7 @@ export function ContinuousChatOverlay({
     window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
     return () =>
       window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
-  }, [goToDetent]);
+  }, [goToDetent, firstRunOpen]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -3199,6 +3234,8 @@ export function ContinuousChatOverlay({
   // usePullGesture) to snap to a detent.
   const onDragOffset = React.useCallback(
     (offset: number) => {
+      // Onboarding pins the sheet at FULL: the live drag must not move it.
+      if (firstRunOpen) return;
       if (!draggingRef.current) {
         stopThreadAnimation();
         stopOpenProgressAnimation();
@@ -3243,6 +3280,7 @@ export function ContinuousChatOverlay({
       threadHeight.set(clampHeight(baseH + off));
     },
     [
+      firstRunOpen,
       pilled,
       hasRevealableThread,
       sheetOpen,
@@ -3313,6 +3351,8 @@ export function ContinuousChatOverlay({
     },
     onPullDown: () => {
       setDragPreviewMounted(false);
+      // Onboarding: a pull-down must not step the pinned-FULL sheet down.
+      if (firstRunOpen) return settleDrag();
       if (pilled) return settleDrag(); // already the lowest detent
       // Step down ONE detent based on the EFFECTIVE height (so a free-rest above
       // half steps to half first, never skipping it). A downward flick also
@@ -3358,6 +3398,8 @@ export function ContinuousChatOverlay({
     onSettleFree: (direction) => {
       draggingRef.current = false;
       setDragPreviewMounted(false);
+      // Onboarding: a released drag always springs back to the pinned FULL.
+      if (firstRunOpen) return settleDrag();
       if (pilled) {
         // From the pill: a slow drag under the halfway-open mark (openProgress
         // < 0.5) springs back to the capsule; past it we commit to LEAVING the
@@ -3795,6 +3837,9 @@ export function ContinuousChatOverlay({
                   <HeaderButton
                     icon={RotateCcw}
                     label="clear conversation"
+                    // Clearing mid-onboarding would wipe the seeded first-run
+                    // choices and strand the flow — inert until it completes.
+                    disabled={firstRunOpen}
                     onClick={() => clearConversation()}
                     testId="chat-full-clear"
                   />
@@ -3811,6 +3856,9 @@ export function ContinuousChatOverlay({
                   <HeaderButton
                     icon={LayoutGrid}
                     label="launcher"
+                    // A close-and-navigate control — locked while onboarding
+                    // pins the sheet (the chat must stay front and center).
+                    disabled={firstRunOpen}
                     onClick={() => navigateAndClose(() => navigateHome?.())}
                     testId="chat-full-launcher"
                   />
@@ -3862,7 +3910,9 @@ export function ContinuousChatOverlay({
                   }}
                   // Horizontal-swipe navigation between conversations, sheet-open
                   // only (#8929). Deferred capture keeps vertical scroll native.
-                  {...(sheetOpen ? conversationSwipe : {})}
+                  // Gated during onboarding so a swipe can't leave the seeded
+                  // first-run transcript.
+                  {...(sheetOpen && !firstRunOpen ? conversationSwipe : {})}
                   className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none]  [&::-webkit-scrollbar]:hidden"
                   style={{ opacity: threadContentOpacity }}
                 >
@@ -4078,7 +4128,9 @@ export function ContinuousChatOverlay({
               <SoftButton
                 glyph={PLUS_GLYPH}
                 label="attach image"
-                disabled={pendingImages.length >= MAX_CHAT_IMAGES}
+                disabled={
+                  firstRunOpen || pendingImages.length >= MAX_CHAT_IMAGES
+                }
                 onClick={() => fileInputRef.current?.click()}
                 testId="chat-composer-attach"
               />
@@ -4167,10 +4219,17 @@ export function ContinuousChatOverlay({
                     collapse();
                   }
                 }}
+                // During onboarding the transcript's choice widgets are the
+                // only input: typing is disabled until first-run completes.
+                // (This surface's strings are plain literals by design — see
+                // the imageError note above.)
+                disabled={firstRunOpen}
                 placeholder={
-                  booting
-                    ? `Ask ${agentName} — waking up…`
-                    : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
+                  firstRunOpen
+                    ? "Choose an option to continue"
+                    : booting
+                      ? `Ask ${agentName} — waking up…`
+                      : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
                 }
                 aria-label="message"
                 data-testid="chat-composer-textarea"
@@ -4226,7 +4285,7 @@ export function ContinuousChatOverlay({
                             ? "send another"
                             : "send"
                       }
-                      disabled={!canSend}
+                      disabled={!canSend || firstRunOpen}
                       // Keep focus in the textarea on tap: without this the
                       // button steals focus, the textarea blurs, the keyboard
                       // retracts and the composer relayouts between pointerdown
@@ -4262,6 +4321,9 @@ export function ContinuousChatOverlay({
                                 ? "stop listening"
                                 : "talk"
                       }
+                      // Voice input is free text too — locked with the rest of
+                      // the composer while onboarding is choice-driven.
+                      disabled={firstRunOpen}
                       active={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
                       onPointerDown={beginPushToTalkPress}

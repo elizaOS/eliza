@@ -76,8 +76,8 @@ export function BackgroundSettingsControls({
     backgroundConfig,
     setBackgroundConfig,
     undoBackgroundConfig,
-    canUndoBackground,
     redoBackgroundConfig,
+    canUndoBackground,
     canRedoBackground,
   } = useBackgroundConfig();
   const { cloudConnected, cloudAuthRejected } = useAppSelectorShallow((s) => ({
@@ -278,31 +278,33 @@ export function BackgroundSettingsControls({
             <Sparkles className="h-5 w-5" aria-hidden />
           </button>
         ) : null}
-        {canUndoBackground ? (
-          <button
-            ref={undoButton.ref}
-            type="button"
-            onClick={() => undoBackgroundConfig()}
-            title="Undo"
-            aria-label="Undo background change"
-            className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent"
-            {...undoButton.agentProps}
-          >
-            <Undo2 className="h-5 w-5" aria-hidden />
-          </button>
-        ) : null}
-        {canRedoBackground ? (
-          <button
-            ref={redoButton.ref}
-            type="button"
-            onClick={() => redoBackgroundConfig()}
-            title="Redo"
-            aria-label="Redo background change"
-            className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent"
-            {...redoButton.agentProps}
-          >
-            <Redo2 className="h-5 w-5" aria-hidden />
-          </button>
+        {canUndoBackground || canRedoBackground ? (
+          <>
+            <button
+              ref={undoButton.ref}
+              type="button"
+              onClick={() => undoBackgroundConfig()}
+              disabled={!canUndoBackground}
+              title="Undo"
+              aria-label="Undo background change"
+              className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
+              {...undoButton.agentProps}
+            >
+              <Undo2 className="h-5 w-5" aria-hidden />
+            </button>
+            <button
+              ref={redoButton.ref}
+              type="button"
+              onClick={() => redoBackgroundConfig()}
+              disabled={!canRedoBackground}
+              title="Redo"
+              aria-label="Redo background change"
+              className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
+              {...redoButton.agentProps}
+            >
+              <Redo2 className="h-5 w-5" aria-hidden />
+            </button>
+          </>
         ) : null}
       </div>
 

@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import { cn } from "../../lib/utils";
 import { usePullGesture } from "./use-pull-gesture";
 
@@ -56,10 +56,33 @@ function TitledTopicGroup({
   onCollapsedChange: (collapsed: boolean) => void;
   children: React.ReactNode;
 }): React.JSX.Element {
+  // A gesture-driven toggle must swallow the click the browser synthesizes from
+  // the same press. The toggle swaps header ↔ pill, so the synthesized click
+  // re-hit-tests onto the REPLACEMENT element and its onClick would toggle
+  // straight back — a real tap/click on the header was a visible no-op
+  // (collapse + instant re-expand). The buttons keep their onClick for keyboard
+  // activation (Enter/Space), which arrives without a preceding pointer gesture.
+  const suppressClickRef = React.useRef(false);
+  const toggleFromGesture = (next: boolean) => {
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+    onCollapsedChange(next);
+  };
+  const suppressGestureClick = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!suppressClickRef.current) return;
+      suppressClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [],
+  );
   const gesture = usePullGesture({
-    onTap: () => onCollapsedChange(!collapsed),
-    onPullUp: () => onCollapsedChange(true),
-    onPullDown: () => onCollapsedChange(false),
+    onTap: () => toggleFromGesture(!collapsed),
+    onPullUp: () => toggleFromGesture(true),
+    onPullDown: () => toggleFromGesture(false),
   });
 
   return (
@@ -67,6 +90,7 @@ function TitledTopicGroup({
       data-testid="topic-group"
       data-topic={topic}
       data-collapsed={collapsed}
+      onClickCapture={suppressGestureClick}
     >
       {collapsed ? (
         <button

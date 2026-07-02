@@ -9,12 +9,30 @@ export type UiThemeMode = "light" | "dark" | "system";
 
 export type UiShellMode = "native";
 
+import {
+  DEFAULT_SHADER_UNIFORMS,
+  normalizeUniforms,
+  type ShaderUniformValues,
+  uniformsEqual,
+} from "../backgrounds/shader-schema";
+
 /**
  * How the unified app background is rendered. `shader` paints the animated
  * warm-glow field in a user-chosen color; `image` paints a cover image the
- * user uploaded or generated.
+ * user uploaded or generated; `glsl` runs an arbitrary programmable GLSL
+ * fragment shader (#10694) with typed, clamped uniforms.
  */
-export type BackgroundMode = "shader" | "image";
+export type BackgroundMode = "shader" | "image" | "glsl";
+
+/** A programmable GLSL background: a fragment shader + its tunable uniforms. */
+export interface ShaderConfig {
+  /** Preset id when the source came from the library (for the picker/label). */
+  presetId?: string;
+  /** GLSL ES 1.00 fragment source. */
+  source: string;
+  /** Tunable uniform values (validated + clamped). */
+  uniforms: ShaderUniformValues;
+}
 
 /**
  * The user's chosen home/app background. It is read once at the shell root and
@@ -23,10 +41,12 @@ export type BackgroundMode = "shader" | "image";
  */
 export interface BackgroundConfig {
   mode: BackgroundMode;
-  /** Base color for the shader field (6-digit hex, e.g. "#ef5a1f"). */
+  /** Base color for the shader field / `u_color` (6-digit hex, e.g. "#ef5a1f"). */
   color: string;
   /** Cover-image source (data URL or `/api/media/…`) when `mode === "image"`. */
   imageUrl?: string;
+  /** Programmable shader + uniforms when `mode === "glsl"`. */
+  shader?: ShaderConfig;
 }
 
 /** The default shader color — preserves the prior warm-orange home look. */
@@ -74,6 +94,40 @@ export function backgroundConfigsEqual(
   return (
     a.mode === b.mode &&
     a.color === b.color &&
-    (a.imageUrl ?? "") === (b.imageUrl ?? "")
+    (a.imageUrl ?? "") === (b.imageUrl ?? "") &&
+    shaderConfigsEqual(a.shader, b.shader)
   );
+}
+
+function shaderConfigsEqual(a?: ShaderConfig, b?: ShaderConfig): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.source === b.source &&
+    (a.presetId ?? "") === (b.presetId ?? "") &&
+    uniformsEqual(a.uniforms, b.uniforms)
+  );
+}
+
+/** Build a normalized glsl `BackgroundConfig` from a shader source + partials.
+ * `uniforms` accepts unknown-valued partials (agent/persisted input);
+ * `normalizeUniforms` clamps + coerces them to finite numbers. */
+export function makeGlslConfig(args: {
+  source: string;
+  color?: string;
+  presetId?: string;
+  uniforms?: Partial<Record<keyof ShaderUniformValues, unknown>>;
+}): BackgroundConfig {
+  return {
+    mode: "glsl",
+    color: args.color ?? DEFAULT_BACKGROUND_COLOR,
+    shader: {
+      presetId: args.presetId,
+      source: args.source,
+      uniforms: normalizeUniforms({
+        ...DEFAULT_SHADER_UNIFORMS,
+        ...(args.uniforms ?? {}),
+      }),
+    },
+  };
 }

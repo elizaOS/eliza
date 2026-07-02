@@ -120,6 +120,14 @@ test.describe("real cloud login + provisioning + chat", () => {
       "provisioned cloud agent must expose a bridge URL",
     ).toBeTruthy();
 
+    // Completion is DEFERRED to the tutorial-or-skip pick, and the composer
+    // stays LOCKED to the onboarding choice widgets until it fires — skip the
+    // tour so the chat unlocks for the real turn below.
+    await clickIfVisible(
+      page.getByTestId("choice-__first_run__:tutorial:skip"),
+      60_000,
+    );
+
     // Real chat turn against the provisioned cloud agent.
     await openAppPath(page, "/chat");
     const composer = chatComposer(page);

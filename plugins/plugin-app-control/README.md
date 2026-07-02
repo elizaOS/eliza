@@ -15,7 +15,7 @@ Loading this plugin gives an Eliza agent three new actions:
 
 **VIEWS** — Full view management. The agent can navigate to any UI view contributed by any loaded plugin; report the currently-open view; search views by name; open the view manager; broadcast events to mounted views; interact with a view (click, get state, focus, etc.); pin a view as a desktop tab; open a view in a separate window; and create, edit, or delete view plugins through a coding-agent backed flow.
 
-**BACKGROUND** — Unified background control. The agent can set a named color or hex color, use an uploaded image, generate a background image from a prompt, undo the previous background, or reset to default. It broadcasts a `background:apply` view event that the always-mounted app background applies to the shared `BackgroundConfig` store.
+**BACKGROUND** — Unified background control. The agent can set a named color or hex color, use an uploaded image, generate a background image from a prompt, undo the previous background, redo an undone change, or reset to default. It broadcasts a `background:apply` view event that the always-mounted app background applies to the shared `BackgroundConfig` store.
 
 ## Capabilities added to the agent
 
