@@ -20,13 +20,30 @@
 // Side-effect: register the `dashboard/organization` cloud route.
 import "./routes";
 
+export { ContributeCredentialDialog } from "./contribute-credential-dialog";
+export { CredentialsList } from "./credentials-list";
+export { CredentialsTab } from "./credentials-tab";
 export type {
+  CreatedInviteDto,
   InviteRole,
   OrganizationDto,
   OrgInviteDto,
   OrgMemberDto,
+  PooledCredentialDto,
+  PooledProviderId,
   UserWithOrganizationDto,
 } from "./data/cloud-org-types";
+export {
+  POOLED_PROVIDER_LABELS,
+  POOLED_PROVIDERS,
+} from "./data/cloud-org-types";
+export {
+  credentialsQueryKey,
+  useContributeCredential,
+  useOrganizationCredentials,
+  useRemoveCredential,
+  useUpdateCredential,
+} from "./data/use-credentials";
 export {
   organizationErrorMessage,
   organizationQueryKeys,
@@ -38,7 +55,7 @@ export {
   useRevokeInvite,
   useUpdateMemberRole,
 } from "./data/use-organization";
-export { InviteMemberDialog } from "./invite-member-dialog";
+export { buildInviteLink, InviteMemberDialog } from "./invite-member-dialog";
 export { MembersList } from "./members-list";
 export { MembersTab } from "./members-tab";
 export { OrganizationPage } from "./OrganizationPage";

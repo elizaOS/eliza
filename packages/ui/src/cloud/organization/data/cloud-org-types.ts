@@ -68,3 +68,75 @@ export interface UserWithOrganizationDto {
 
 /** `member` | `admin` — the two roles an invite can target (owner is implicit). */
 export type InviteRole = "member" | "admin";
+
+/**
+ * POST /api/organizations/invites response payload. `token` is the raw invite
+ * token, returned exactly once at creation so the inviter can copy a shareable
+ * link (`/invite/accept?token=…`); only its hash is stored server-side.
+ */
+export interface CreatedInviteDto {
+  id: string;
+  email: string;
+  role: string;
+  expires_at: string;
+  status: string;
+  token: string;
+}
+
+/**
+ * Phase-1 direct-API providers a member can pool (#11332). Mirrors
+ * `POOLED_DIRECT_PROVIDERS` in
+ * `cloud/shared/src/lib/services/team-credential-pool/provider-map.ts`.
+ * Subscription providers (Claude Max / ChatGPT) are Phase 2 and never
+ * rendered here.
+ */
+export const POOLED_PROVIDERS = [
+  "anthropic-api",
+  "openai-api",
+  "deepseek-api",
+  "zai-api",
+  "moonshot-api",
+  "cerebras-api",
+] as const;
+
+export type PooledProviderId = (typeof POOLED_PROVIDERS)[number];
+
+export const POOLED_PROVIDER_LABELS: Record<PooledProviderId, string> = {
+  "anthropic-api": "Anthropic",
+  "openai-api": "OpenAI",
+  "deepseek-api": "DeepSeek",
+  "zai-api": "Z.AI",
+  "moonshot-api": "Moonshot",
+  "cerebras-api": "Cerebras",
+};
+
+/**
+ * Masked pooled-credential view — mirrors `PooledCredentialSummary` from
+ * `cloud/shared/src/lib/services/team-credential-pool/service.ts`. Never
+ * carries key material; `last4` is the only key-derived field.
+ */
+export interface PooledCredentialDto {
+  id: string;
+  provider: string;
+  label: string;
+  last4: string;
+  enabled: boolean;
+  priority: number;
+  health: string;
+  /** Mirrors `LinkedAccountHealthDetail` — `until`/`lastChecked` are epoch ms. */
+  healthDetail: {
+    until?: number;
+    lastError?: string;
+    lastChecked?: number;
+  } | null;
+  /** Mirrors `LinkedAccountUsage` — `resetsAt`/`refreshedAt` are epoch ms. */
+  usage: {
+    sessionPct?: number;
+    resetsAt?: number;
+    refreshedAt?: number;
+  } | null;
+  contributedBy: { id: string; name: string | null } | null;
+  callsToday: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+}

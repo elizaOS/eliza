@@ -64,7 +64,7 @@ export function MembersTab({ user }: MembersTabProps) {
   const invites = invitesQuery.data ?? [];
 
   const handleInviteSuccess = () => {
-    setIsInviteDialogOpen(false);
+    // The dialog stays open on its copyable-link step; it closes itself.
     toast.success(
       t("cloud.membersTab.inviteSent", {
         defaultValue: "Invitation sent successfully",

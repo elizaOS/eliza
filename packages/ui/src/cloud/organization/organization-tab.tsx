@@ -1,15 +1,23 @@
 /**
- * Organization settings tab — overview header + Members / General sub-tabs.
+ * Organization settings tab — overview header + Members / Credentials / General
+ * sub-tabs.
  *
  * Ported from `@elizaos/cloud-frontend`; imports retargeted to the app-hosted
  * cloud-ui bundle + local DTO contract. Pure presentational shell: it receives a
  * resolved `UserWithOrganizationDto` and renders the org overview + nested tabs.
  *
+ * Deep-link intent (connect-link UX, #11332 design §5): `?tab=credentials`
+ * selects the Credentials tab and `?contribute=1` opens the contribute modal —
+ * the landing an invite link with `connect=1` resolves to after acceptance.
+ * Read from `window.location` (not router hooks) so it works identically when
+ * mounted as a settings section or as the standalone `dashboard/organization`
+ * route.
+ *
  * @param props - Organization tab configuration
  * @param props.user - User data with organization information
  */
 
-import { Settings, Users } from "lucide-react";
+import { KeyRound, Settings, Users } from "lucide-react";
 import { useState } from "react";
 import {
   BrandCard,
@@ -19,6 +27,7 @@ import {
   BrandTabsTrigger,
   CornerBrackets,
 } from "../../cloud-ui";
+import { CredentialsTab } from "./credentials-tab";
 import type { UserWithOrganizationDto } from "./data/cloud-org-types";
 import { MembersTab } from "./members-tab";
 import { OrganizationGeneralTab } from "./organization-general-tab";
@@ -27,8 +36,25 @@ interface OrganizationTabProps {
   user: UserWithOrganizationDto;
 }
 
+const ORG_TABS = ["members", "credentials", "general"] as const;
+
+/** `?tab=` + `?contribute=1` deep-link intent (connect-link landing). */
+export function readOrganizationTabIntent(): {
+  tab: (typeof ORG_TABS)[number];
+  contribute: boolean;
+} {
+  if (typeof window === "undefined") {
+    return { tab: "members", contribute: false };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("tab");
+  const tab = ORG_TABS.find((value) => value === requested) ?? "members";
+  return { tab, contribute: params.get("contribute") === "1" };
+}
+
 export function OrganizationTab({ user }: OrganizationTabProps) {
-  const [activeTab, setActiveTab] = useState("members");
+  const [intent] = useState(readOrganizationTabIntent);
+  const [activeTab, setActiveTab] = useState<string>(intent.tab);
 
   if (!user.organization) {
     return (
@@ -78,13 +104,20 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
         onValueChange={setActiveTab}
         className="w-full"
       >
-        <BrandTabsList className="w-full max-w-md">
+        <BrandTabsList className="w-full max-w-xl">
           <BrandTabsTrigger
             value="members"
             className="flex items-center gap-2 flex-1"
           >
             <Users className="h-3 md:h-4 w-3 md:w-4" />
             <span className="text-xs md:text-sm">Members</span>
+          </BrandTabsTrigger>
+          <BrandTabsTrigger
+            value="credentials"
+            className="flex items-center gap-2 flex-1"
+          >
+            <KeyRound className="h-3 md:h-4 w-3 md:w-4" />
+            <span className="text-xs md:text-sm">Credentials</span>
           </BrandTabsTrigger>
           <BrandTabsTrigger
             value="general"
@@ -97,6 +130,13 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
 
         <BrandTabsContent value="members" className="mt-4 md:mt-6">
           <MembersTab user={user} />
+        </BrandTabsContent>
+
+        <BrandTabsContent value="credentials" className="mt-4 md:mt-6">
+          <CredentialsTab
+            user={user}
+            autoContribute={intent.tab === "credentials" && intent.contribute}
+          />
         </BrandTabsContent>
 
         <BrandTabsContent value="general" className="mt-4 md:mt-6">
