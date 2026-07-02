@@ -226,6 +226,17 @@ static int vc_gguf_load_state_cb(const char *key,
         free(str);
         return 1;
     }
+    if (vc_gguf_key_eq(key, s->want_prefix, "lstm_gate_order")) {
+        if (type != VC_GGUF_TYPE_STRING) return -1;
+        char *str = NULL;
+        const int rc = vc_gguf_read_string(f, &str);
+        if (rc != 0) return -1;
+        const size_t n = sizeof(s->out->lstm_gate_order) - 1;
+        strncpy(s->out->lstm_gate_order, str, n);
+        s->out->lstm_gate_order[n] = '\0';
+        free(str);
+        return 1;
+    }
     /* Wav2Small-specific uint32 keys: read into the matching field
      * and let the per-head opener validate against its expectation. */
     struct {
@@ -239,6 +250,13 @@ static int vc_gguf_load_state_cb(const char *key,
         { "ffn_dim",    &s->out->ffn_dim    },
         { "num_layers", &s->out->num_layers },
         { "num_heads",  &s->out->num_heads  },
+        { "converter_epoch",   &s->out->converter_epoch   },
+        { "window_samples",    &s->out->window_samples    },
+        { "frames_per_window", &s->out->frames_per_window },
+        { "lstm_layers",       &s->out->lstm_layers       },
+        { "lstm_hidden",       &s->out->lstm_hidden       },
+        { "linear0_out",       &s->out->linear0_out       },
+        { "linear1_out",       &s->out->linear1_out       },
     };
     for (size_t i = 0; i < sizeof(u32_extras) / sizeof(u32_extras[0]); ++i) {
         if (vc_gguf_key_eq(key, s->want_prefix, u32_extras[i].suffix)) {

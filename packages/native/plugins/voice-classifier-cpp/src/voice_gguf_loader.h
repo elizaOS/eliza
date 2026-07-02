@@ -57,6 +57,17 @@ typedef struct voice_gguf_metadata {
     int ffn_dim;
     int num_layers;
     int num_heads;
+    /* Diarizer-specific metadata. Older GGUFs that predate the #9460
+     * converter-side LSTM gate reorder leave these zero/empty so the diarizer
+     * opener can fail closed instead of silently scrambling gates. */
+    int converter_epoch;
+    int window_samples;
+    int frames_per_window;
+    int lstm_layers;
+    int lstm_hidden;
+    int linear0_out;
+    int linear1_out;
+    char lstm_gate_order[16];
 } voice_gguf_metadata_t;
 
 /* GGUF GGML tensor data types — we only support F32 in the per-head

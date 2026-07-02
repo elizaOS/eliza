@@ -98,6 +98,12 @@ target_link_libraries(voice_gguf_loader_test PRIVATE voice_classifier)
 target_compile_options(voice_gguf_loader_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME voice_gguf_loader_test COMMAND voice_gguf_loader_test)
 
+add_executable(voice_diarizer_metadata_test test/voice_diarizer_metadata_test.c)
+target_link_libraries(voice_diarizer_metadata_test PRIVATE voice_classifier)
+target_include_directories(voice_diarizer_metadata_test PRIVATE src)
+target_compile_options(voice_diarizer_metadata_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME voice_diarizer_metadata_test COMMAND voice_diarizer_metadata_test)
+
 # K3 — pyannote-3 forward parity gate. Loads the GGUF emitted by
 # scripts/voice_diarizer_to_gguf.py and asserts ≥ 99% per-frame label
 # agreement against the ONNX reference (labels precomputed into
