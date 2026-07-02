@@ -326,6 +326,47 @@ describe("ApprovalService", () => {
     expect(after?.state).toBe("expired");
   });
 
+  it("a lapsed pending request is refused and expired at the transition boundary (#11092)", async () => {
+    // No purge runs: the lazy guard alone must keep an expired approval from
+    // ever executing — nothing calls purgeExpired periodically in production.
+    const runtime = createApprovalTableRuntime("agent-1");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-lapsed",
+        expiresAt: new Date(Date.now() - 5 * 60 * 1000),
+      }),
+    );
+    expect(enqueued.state).toBe("pending");
+
+    await expect(
+      queue.approve(enqueued.id, {
+        resolvedBy: "owner-lapsed",
+        resolutionReason: "approving after expiry",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+
+    const after = await queue.byId(enqueued.id);
+    expect(after?.state).toBe("expired");
+    expect(after?.resolvedBy).toBeNull();
+  });
+
+  it("a fresh pending request still approves normally under the expiry guard (#11092)", async () => {
+    const runtime = createApprovalTableRuntime("agent-1");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-fresh",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      }),
+    );
+    const approved = await queue.approve(enqueued.id, {
+      resolvedBy: "owner-fresh",
+      resolutionReason: "in time",
+    });
+    expect(approved.state).toBe("approved");
+  });
+
   it("rejects invalid state transitions hard", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
@@ -378,7 +419,9 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
     const enqueued = await queue.enqueue(
       messageInput({
         subjectUserId: "owner-race",
-        expiresAt: new Date(Date.now() - 60 * 1000),
+        // Future expiresAt: the lazy expiry guard (#11092) must not preempt
+        // the interleave — this test exercises the CAS window itself.
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       }),
     );
 

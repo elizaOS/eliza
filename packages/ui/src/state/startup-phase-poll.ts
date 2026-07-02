@@ -20,6 +20,7 @@ import {
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../api/ios-local-agent-transport";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
+import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isIOS } from "../platform";
@@ -619,7 +620,9 @@ export async function runPollingBackend(
                 // Shared-runtime cloud bridge: no /api/first-run* shell
                 // endpoints exist (we provisioned it, so first-run IS done).
                 // Treat the 404 as complete and go to chat — the bridge serves
-                // /api/conversations via the REST chat adapter.
+                // /api/conversations via the REST chat adapter. A reload may
+                // have interrupted the shared→dedicated migration — resume it.
+                resumePendingCloudHandoff();
                 deps.setFirstRunComplete(true);
                 deps.setFirstRunLoading(false);
                 dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
@@ -772,6 +775,9 @@ export async function runPollingBackend(
           // exist (we provisioned it, so first-run IS done). Treat the 404 as
           // complete and go to chat — the bridge serves /api/conversations via
           // the REST chat adapter — instead of wedging on BACKEND_NOT_FOUND.
+          // A reload may have interrupted the shared→dedicated migration —
+          // resume it.
+          resumePendingCloudHandoff();
           deps.setFirstRunComplete(true);
           deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });

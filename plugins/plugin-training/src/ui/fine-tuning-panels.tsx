@@ -19,8 +19,6 @@ import { formatTime } from "@elizaos/ui/utils";
 import { memo, type ReactNode } from "react";
 import {
   FINE_TUNING_ACTION_CLASS,
-  FINE_TUNING_PANEL_CLASS,
-  FINE_TUNING_SECTION_CLASS,
   FINE_TUNING_SECTION_HEADER_CLASS,
   formatDate,
   formatProgress,
@@ -28,8 +26,12 @@ import {
   type TranslateFn,
 } from "./fine-tuning-panels.helpers";
 
-const FILTER_INPUT_CLASS =
-  "h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ";
+/* Flat — no card/border. The shell owns the page's horizontal padding;
+ * sections separate by whitespace + type scale, panels by grid gaps. */
+const FINE_TUNING_SECTION_CLASS = "";
+const FINE_TUNING_PANEL_CLASS = "";
+
+const FILTER_INPUT_CLASS = "h-10 text-sm text-txt";
 
 /* ── Agent-surface helpers ─────────────────────────────────────────── */
 
@@ -224,7 +226,7 @@ const DatasetRadioItem = memo(function DatasetRadioItem({
     onActivate: () => setSelectedDatasetId(dataset.id),
   });
   return (
-    <label className="flex min-h-touch cursor-pointer items-center gap-3 rounded-xl border border-border/35 bg-bg/20 px-3 py-3 text-sm transition-colors hover:border-border/55 hover:bg-bg/35">
+    <label className="flex min-h-touch cursor-pointer items-center gap-3 px-3 py-3 text-sm transition-colors hover:bg-bg/35">
       <input
         ref={ref}
         type="radio"
@@ -766,7 +768,7 @@ export const TrainingJobsSection = memo(function TrainingJobsSection({
           {t("finetuningview.RefreshJobs")}
         </AgentActionButton>
         {activeRunningJob && (
-          <div className="rounded-full border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+          <div className="px-3 py-2 text-xs text-warn">
             {t("finetuningview.ActiveJob")}{" "}
             <span className="ml-1 font-mono">{activeRunningJob.id}</span>
           </div>
@@ -917,6 +919,7 @@ export const LiveEventsPanel = memo(function LiveEventsPanel({
         ) : (
           events.slice(0, 80).map((event, index) => (
             <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: stream events lack stable ids; ts+kind can repeat, index disambiguates
               key={`${event.ts}-${event.kind}-${index}`}
               className="px-3 py-2 text-sm"
             >

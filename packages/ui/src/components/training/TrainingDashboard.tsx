@@ -41,7 +41,7 @@ function JobsTable({
 
   if (loading) {
     return (
-      <div className="border border-border rounded-sm p-4 flex items-center gap-2">
+      <div className="flex items-center gap-2 p-4">
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-sm">
           {t("trainingdashboard.jobs.loading", {
@@ -54,7 +54,7 @@ function JobsTable({
 
   if (!jobs || jobs.length === 0) {
     return (
-      <div className="border border-border rounded-sm p-4 text-center">
+      <div className="p-4 text-center">
         <div className="text-sm text-muted">
           {t("trainingdashboard.jobs.empty", {
             defaultValue: "No training jobs",
@@ -68,7 +68,7 @@ function JobsTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border">
+          <tr>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
               {t("trainingdashboard.jobs.col.job", { defaultValue: "Job" })}
             </th>
@@ -102,7 +102,7 @@ function JobsTable({
             <tr
               key={job.id}
               onClick={() => onRowClick(job.id)}
-              className="border-b border-border hover:bg-card/50 cursor-pointer transition-colors"
+              className="cursor-pointer transition-colors hover:bg-card/50"
             >
               <td className="px-3 py-2">
                 <div className="font-mono text-xs text-accent">{job.id}</div>
@@ -171,7 +171,7 @@ function ModelsTable({
 
   if (loading) {
     return (
-      <div className="border border-border rounded-sm p-4 flex items-center gap-2">
+      <div className="flex items-center gap-2 p-4">
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-sm">
           {t("trainingdashboard.models.loading", {
@@ -184,7 +184,7 @@ function ModelsTable({
 
   if (!models || models.length === 0) {
     return (
-      <div className="border border-border rounded-sm p-4 text-center">
+      <div className="p-4 text-center">
         <div className="text-sm text-muted">
           {t("trainingdashboard.models.empty", {
             defaultValue: "No models available",
@@ -198,7 +198,7 @@ function ModelsTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border">
+          <tr>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
               {t("trainingdashboard.models.col.model", {
                 defaultValue: "Model",
@@ -224,10 +224,7 @@ function ModelsTable({
         </thead>
         <tbody>
           {models.map((model: TrainingModel) => (
-            <tr
-              key={model.short_name}
-              className="border-b border-border hover:bg-card/50"
-            >
+            <tr key={model.short_name} className="hover:bg-card/50">
               <td className="px-3 py-2">
                 <div className="font-semibold text-txt-strong">
                   {model.short_name}
@@ -334,20 +331,11 @@ export function TrainingDashboard() {
     <div className="space-y-6 p-4">
       {/* Active Jobs Section */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-txt-strong">
-              {t("trainingdashboard.activeJobs.title", {
-                defaultValue: "Active Training Jobs",
-              })}
-            </h2>
-            <p className="text-xs text-muted">
-              {t("trainingdashboard.activeJobs.subtitle", {
-                defaultValue: "Updates every 10 seconds",
-              })}
-            </p>
-          </div>
-        </div>
+        <h2 className="text-base font-semibold text-txt-strong">
+          {t("trainingdashboard.activeJobs.title", {
+            defaultValue: "Active Training Jobs",
+          })}
+        </h2>
         <JobsTable
           jobs={jobs}
           loading={jobsLoading}
@@ -364,20 +352,11 @@ export function TrainingDashboard() {
 
       {/* Models Section */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-txt-strong">
-              {t("trainingdashboard.availableModels.title", {
-                defaultValue: "Available Models",
-              })}
-            </h2>
-            <p className="text-xs text-muted">
-              {t("trainingdashboard.availableModels.subtitle", {
-                defaultValue: "Click Train to create a job",
-              })}
-            </p>
-          </div>
-        </div>
+        <h2 className="text-base font-semibold text-txt-strong">
+          {t("trainingdashboard.availableModels.title", {
+            defaultValue: "Available Models",
+          })}
+        </h2>
         <ModelsTable
           models={models}
           loading={modelsLoading}
@@ -386,7 +365,8 @@ export function TrainingDashboard() {
         />
 
         {createModal.open && createModal.model && (
-          <div className="border border-border rounded-sm p-4 bg-card space-y-3">
+          /* Flat — no card/border. The shell owns the page's horizontal padding. */
+          <div className="space-y-3 p-4">
             <div className="text-sm font-semibold">
               {t("trainingdashboard.modal.trainModel", {
                 model: createModal.model.short_name,
@@ -485,20 +465,11 @@ export function TrainingDashboard() {
 
       {/* Inference Endpoints Section */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-txt-strong">
-              {t("trainingdashboard.endpoints.title", {
-                defaultValue: "Inference Endpoints",
-              })}
-            </h2>
-            <p className="text-xs text-muted">
-              {t("trainingdashboard.endpoints.subtitle", {
-                defaultValue: "Manage and monitor endpoints",
-              })}
-            </p>
-          </div>
-        </div>
+        <h2 className="text-base font-semibold text-txt-strong">
+          {t("trainingdashboard.endpoints.title", {
+            defaultValue: "Inference Endpoints",
+          })}
+        </h2>
         <InferenceEndpointPanel />
       </section>
     </div>

@@ -59,7 +59,7 @@ import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
+import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { ScheduledTaskEditor } from "./ScheduledTaskEditor";
 import { TaskEditor } from "./TaskEditor";
@@ -458,6 +458,7 @@ export function AutomationsFeed({
 
   const feedContent = (
     <ShellViewAgentSurface viewId="automations">
+      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
       <div
         data-testid="automations-shell"
         className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6"
@@ -465,12 +466,7 @@ export function AutomationsFeed({
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
-              aria-hidden
-            >
-              <Zap className="h-5 w-5" />
-            </span>
+            <Zap className="h-5 w-5 shrink-0 text-accent" aria-hidden />
             <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
               {t("automationsfeed.title", { defaultValue: "Automations" })}
             </h1>
@@ -521,8 +517,8 @@ export function AutomationsFeed({
           </div>
         )}
 
-        {/* Feed */}
-        <PagePanel variant="inset" className="overflow-hidden rounded-sm p-0">
+        {/* Feed — flat, no card/border; rows separate by whitespace. */}
+        <PagePanel variant="inset" className="p-0">
           {loading && !data ? (
             <ListSkeleton rows={6} className="p-3" />
           ) : rows.length === 0 ? (
@@ -548,7 +544,7 @@ export function AutomationsFeed({
               </Button>
             </div>
           ) : (
-            <ul className="divide-y divide-border/40">
+            <ul>
               {rows.map((row) => (
                 <FeedRowItem
                   key={row.key}
@@ -659,24 +655,22 @@ function FilterChipButton({
       type="button"
       onClick={() => onSelect(filter)}
       aria-current={isActive ? "true" : undefined}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+      // Borderless text tab (#10710): active reads as accent text on a faint
+      // wash; the count renders as plain text and hides at zero.
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
         isActive
-          ? "border-accent bg-accent/10 text-accent"
-          : "border-border/40 text-muted-strong hover:border-border hover:bg-bg-accent/40"
+          ? "bg-accent/10 text-accent"
+          : "text-muted-strong hover:bg-bg-accent/40"
       }`}
       {...agentProps}
     >
       <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
       <span>{label}</span>
-      <span
-        className={`min-w-4 rounded-full px-1 text-center text-[0.65rem] font-semibold tabular-nums ${
-          isActive
-            ? "bg-accent/20 text-accent"
-            : "bg-bg-accent text-muted-strong"
-        }`}
-      >
-        {count}
-      </span>
+      {count > 0 ? (
+        <span className="text-[0.65rem] font-semibold tabular-nums">
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -697,9 +691,7 @@ function FeedRowItem({
   const { t } = useTranslation();
   const isWorkflow = row.kind === "workflow";
   const Icon = isWorkflow ? Workflow : CheckCircle2;
-  const medallionClasses = isWorkflow
-    ? "border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
-    : "border-border/60 bg-bg-accent text-muted-strong";
+  const iconToneClass = isWorkflow ? "text-accent" : "text-muted-strong";
   const workflowId = row.source.workflowId ?? row.source.id;
   const openAction = useAgentElement<HTMLButtonElement>({
     id: `open-${row.kind}-${row.source.workflowId ?? row.source.taskId ?? row.key}`,
@@ -747,26 +739,22 @@ function FeedRowItem({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
         {...openAction.agentProps}
       >
-        <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${medallionClasses}`}
-          aria-hidden
-        >
-          <Icon className="h-4 w-4" />
-        </span>
+        <Icon className={`h-4 w-4 shrink-0 ${iconToneClass}`} aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-medium text-txt">
               {row.title}
             </span>
-            <StatusBadge
-              withDot
-              tone={row.active ? "success" : "muted"}
-              label={
-                row.active
-                  ? t("automationsfeed.active", { defaultValue: "Active" })
-                  : t("automationsfeed.inactive", { defaultValue: "Inactive" })
-              }
-            />
+            <span
+              className={`inline-flex items-center gap-1.5 text-xs ${
+                row.active ? "text-ok" : "text-muted-strong"
+              }`}
+            >
+              <StatusDot tone={row.active ? "success" : "muted"} />
+              {row.active
+                ? t("automationsfeed.active", { defaultValue: "Active" })
+                : t("automationsfeed.inactive", { defaultValue: "Inactive" })}
+            </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-strong">
             {row.schedule && (
@@ -812,7 +800,7 @@ function FeedRowItem({
             defaultValue: "Run {{name}} now",
           })}
           onClick={onRunNow}
-          className="rounded-sm border border-border/40 p-1.5 text-muted-strong transition-colors hover:border-border hover:bg-bg-accent "
+          className="rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
           {...runAction.agentProps}
         >
           <PlayCircle className="h-3.5 w-3.5" aria-hidden />
@@ -832,15 +820,13 @@ function RowChip({
   tone?: "muted" | "accent" | "success" | "danger";
 }) {
   const toneClasses = {
-    muted: "border-border/40 bg-bg-accent/40 text-muted-strong",
-    accent: "border-accent/25 bg-accent/10 text-accent",
-    success: "border-ok/30 bg-ok/10 text-ok",
-    danger: "border-destructive/30 bg-destructive/10 text-destructive",
+    muted: "text-muted-strong",
+    accent: "text-accent",
+    success: "text-ok",
+    danger: "text-destructive",
   }[tone];
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 ${toneClasses}`}
-    >
+    <span className={`inline-flex min-w-0 items-center gap-1 ${toneClasses}`}>
       <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
       <span className="truncate">{label}</span>
     </span>

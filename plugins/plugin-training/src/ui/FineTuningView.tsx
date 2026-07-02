@@ -59,10 +59,7 @@ import { interact } from "./FineTuningView.interact";
 import {
   asTrainingEvent,
   FINE_TUNING_ACTION_CLASS,
-  FINE_TUNING_PANEL_CLASS,
-  FINE_TUNING_SECTION_CLASS,
   FINE_TUNING_SECTION_HEADER_CLASS,
-  FINE_TUNING_STATUS_CARD_CLASS,
 } from "./fine-tuning-panels.helpers";
 import {
   DatasetSection,
@@ -73,6 +70,13 @@ import {
 } from "./fine-tuning-panels.js";
 
 const FINE_TUNING_DETAIL_PANEL_ID = "plugin-dash-fine-tuning";
+
+/* Flat — no card/border. The shell owns the page's horizontal padding;
+ * sections separate by whitespace + type scale, panels and status tiles
+ * by grid gaps. */
+const FINE_TUNING_SECTION_CLASS = "";
+const FINE_TUNING_PANEL_CLASS = "";
+const FINE_TUNING_STATUS_CARD_CLASS = "";
 
 const DEFAULT_ELIZA1_HF_DATASET_FILES = ELIZA_ONE_BENCHMARK_TIERS.flatMap(
   (tier) =>
@@ -460,8 +464,9 @@ function summarizeAnalysisCoverage(
   };
 }
 
+/* Bottom-line input — the house resting style for form fields. */
 const AGENT_FIELD_INPUT_CLASS =
-  "h-10 w-full rounded-xl border border-border/60 bg-bg/50 px-3 text-sm text-txt outline-none focus:border-accent";
+  "h-10 w-full border-b border-border/60 bg-transparent px-3 text-sm text-txt outline-none focus:border-accent";
 
 function AgentInlineButton({
   agentId,
@@ -3765,7 +3770,7 @@ export function FineTuningDashboard({
                     label="HuggingFace files"
                     group="hf-ingest"
                     description="Newline-separated dataset files to ingest"
-                    className="min-h-24 w-full border-border/60 bg-transparent px-3 py-2 font-mono text-xs text-txt outline-none focus:border-accent"
+                    className="min-h-24 w-full border-b border-border/60 bg-transparent px-3 py-2 font-mono text-xs text-txt outline-none focus:border-accent"
                     value={hfFiles}
                     onChange={setHfFiles}
                   />
@@ -5449,7 +5454,7 @@ function FineTuningDetailMetric({
   value: string;
 }) {
   return (
-    <div className="min-w-0 rounded-md border border-border/45 bg-card/35 p-3">
+    <div className="min-w-0 p-3">
       <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
         {label}
       </div>
@@ -5575,7 +5580,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
       </div>
 
       {latest ? (
-        <div className="flex flex-col gap-2 rounded-md border border-border/40 bg-bg/20 p-3 text-xs text-muted">
+        <div className="flex flex-col gap-2 p-3 text-xs text-muted">
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="min-w-0">
               <span className="text-muted">Generated </span>
@@ -5624,7 +5629,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
             </div>
           </div>
           {topGaps.length > 0 ? (
-            <div className="flex flex-col gap-1 rounded border border-border/35 bg-card/25 p-2">
+            <div className="flex flex-col gap-1 p-2">
               <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
                 Next gaps
               </div>

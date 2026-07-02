@@ -1599,11 +1599,39 @@ export class ElizaClient {
     // the idle timeout below aborts the read so the UI doesn't hang forever.
     const SSE_IDLE_TIMEOUT_MS = 60_000;
     while (true) {
+      // Client-side abort (user Stop / navigation away) must stop consuming the
+      // body IMMEDIATELY — not wait for the separate server-abort POST to close
+      // the stream, nor for the 60s idle timeout to fire. `rawRequestOnce`
+      // detaches its request-phase abort listener the moment response headers
+      // arrive, so the caller's `signal` is no longer wired to the fetch during
+      // the body read; honour it here by cancelling the reader (which closes the
+      // body and frees the connection) and returning whatever streamed so far as
+      // an interrupted (`completed: false`) turn.
+      if (signal?.aborted) {
+        void reader.cancel("elizaos-sse-client-abort").catch(() => {});
+        break;
+      }
       let done = false;
       let value: Uint8Array | undefined;
       let idleTimedOut = false;
       try {
         const readPromise = reader.read();
+        // Reject the in-flight read the instant the caller aborts, so a stream
+        // stalled between tokens tears down at once instead of blocking on the
+        // pending read until the idle timeout. The listener is removed when the
+        // read settles so it never leaks across loop iterations.
+        const abortPromise = new Promise<never>((_, reject) => {
+          if (!signal) return;
+          const onAbort = () => {
+            const abortErr = new Error("SSE read aborted by client");
+            abortErr.name = "AbortError";
+            reject(abortErr);
+          };
+          signal.addEventListener("abort", onAbort, { once: true });
+          void readPromise.finally(() =>
+            signal.removeEventListener("abort", onAbort),
+          );
+        });
         const timeoutPromise = new Promise<never>((_, reject) => {
           const id = setTimeout(() => {
             idleTimedOut = true;
@@ -1612,14 +1640,24 @@ export class ElizaClient {
           // Clear timeout if the read resolves first
           void readPromise.finally(() => clearTimeout(id));
         });
-        ({ done, value } = await Promise.race([readPromise, timeoutPromise]));
+        ({ done, value } = await Promise.race([
+          readPromise,
+          abortPromise,
+          timeoutPromise,
+        ]));
       } catch {
-        // Only the 60s idle timeout sets `idleTimedOut`; a user abort or a
-        // mid-stream network drop rejects the read without it. Stamp the stall
-        // as a transient provider issue so the consumer carries `failureKind`
-        // onto the turn and the renderer shows a Retry affordance instead of a
-        // bare, ambiguous "interrupted" badge that locks the partial text.
-        // User-stop / network-drop stay failureKind-less (genuine interrupt).
+        // A client abort wins over everything else: cancel the reader and stop —
+        // the partial streamed so far is returned as an interrupted turn.
+        if (signal?.aborted) {
+          void reader.cancel("elizaos-sse-client-abort").catch(() => {});
+          break;
+        }
+        // Only the 60s idle timeout sets `idleTimedOut`; a mid-stream network
+        // drop rejects the read without it. Stamp the stall as a transient
+        // provider issue so the consumer carries `failureKind` onto the turn and
+        // the renderer shows a Retry affordance instead of a bare, ambiguous
+        // "interrupted" badge that locks the partial text. Network-drop stays
+        // failureKind-less (genuine interrupt).
         if (idleTimedOut) {
           streamState.doneFailureKind =
             streamState.doneFailureKind ?? "provider_issue";

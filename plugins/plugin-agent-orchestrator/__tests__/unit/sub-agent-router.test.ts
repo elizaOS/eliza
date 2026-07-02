@@ -4,7 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Content, HandlerCallback, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setHostResolver } from "../../src/services/ssrf-guard.js";
+import {
+  setHostResolver,
+  setPinnedTransport,
+} from "../../src/services/ssrf-guard.js";
 import {
   extractShortToolDeliverable,
   extractSubResources,
@@ -48,10 +51,17 @@ function restoreStubbedGlobals(): void {
     });
   }
   stubbedGlobals.clear();
+  setPinnedTransport();
 }
 
 function stubFetch(fetchMock: typeof fetch): void {
   stubGlobalValue("fetch", fetchMock);
+  // The SSRF guard pins hostname connections through its own transport
+  // (#11028) instead of global fetch; route it through the same mock so the
+  // URL-verification tests keep serving their per-URL responses.
+  setPinnedTransport(async (url, init) =>
+    fetchMock(url, { ...init, redirect: "manual" }),
+  );
 }
 
 function makeAcpService(session: SessionInfo): {

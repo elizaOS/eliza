@@ -290,6 +290,91 @@ describe("useChatSend stop handling", () => {
     expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
     expect(deps.setActionNotice).not.toHaveBeenCalled();
   });
+
+  it("keeps a locally-committed partial reply after a STOP whose reload lacks it", async () => {
+    // STOP mid-stream resolves the stream with the partial + completed:false.
+    // The server never persisted the partial, so the post-turn history reload
+    // full-replaces local state with ONLY the persisted user turn. The partial
+    // the user was watching must survive that reload — re-attached as an
+    // interrupted assistant turn.
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("Here is the par", "Here is the par");
+        return { text: "Here is the par", completed: false };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // Server full-replace reload: only the persisted user turn survives (the
+    // stopped assistant reply was never written server-side).
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        { id: "server-user-1", role: "user", text: "hello", timestamp: 1 },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    const assistantMessages = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0].text).toBe("Here is the par");
+    expect(assistantMessages[0].interrupted).toBe(true);
+  });
+
+  it("does NOT duplicate the partial when the server persisted the stopped reply", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("Here is the par", "Here is the par");
+        return { text: "Here is the par", completed: false };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // Server DID persist the (truncated) reply — the reload carries it, so the
+    // partial must not be re-attached a second time.
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        { id: "server-user-1", role: "user", text: "hello", timestamp: 1 },
+        {
+          id: "server-asst-1",
+          role: "assistant",
+          text: "Here is the par",
+          timestamp: 2,
+          interrupted: true,
+        },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    const assistantMessages = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0].id).toBe("server-asst-1");
+  });
 });
 
 function http404(): Error {

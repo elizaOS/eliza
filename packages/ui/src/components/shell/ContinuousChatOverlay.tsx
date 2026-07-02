@@ -335,9 +335,9 @@ function SoftButton({
   );
 }
 
-/** A compact glass control for the full-state header (maximize / clear /
- *  settings). Smaller than SoftButton; same neutral resting → neutral-hover
- *  language (no blue), `active` gets the white fill. Renders a lucide icon. */
+/** A compact icon-only control for the full-state header (maximize / clear /
+ *  settings). Smaller than SoftButton; same borderless neutral resting →
+ *  neutral-hover language (no blue), `active` renders as the accent color. */
 function HeaderButton({
   icon: Icon,
   label,
@@ -363,14 +363,16 @@ function HeaderButton({
       aria-disabled={disabled || undefined}
       onClick={onClick}
       className={cn(
-        "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors",
-        "  ",
+        // Icon-only, same borderless language as SoftButton: no capsule, no
+        // background — the glyph alone carries the control. Neutral resting →
+        // neutral hover; active expresses as the accent color, never a fill.
+        "grid h-9 w-9 shrink-0 place-items-center bg-transparent transition-colors",
         disabled
           ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
-            "cursor-default border-white/10 bg-white/[0.05] text-white/35"
+            "cursor-default text-white/35"
           : active
-            ? "border-white/40 bg-white/85 text-black"
-            : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
+            ? "text-accent"
+            : "text-white/75 hover:text-white",
       )}
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
@@ -801,6 +803,21 @@ function isNestedInteractiveTarget(
 }
 
 /**
+ * True while there's a live (non-collapsed) text selection. The
+ * conversation-swipe binding lives on the transcript surface, which contains
+ * the selectable message bubbles — so a MOUSE drag to highlight bubble text
+ * travels horizontally and otherwise reads as a swipe, navigating away and
+ * destroying the selection on release. The swipe handlers consult this to skip
+ * navigation when the gesture was really a highlight, mirroring the ThreadLine
+ * tap-reveal guard (`window.getSelection()` non-collapsed). Touch drags don't
+ * create a selection, so a genuine finger swipe is unaffected.
+ */
+function hasLiveTextSelection(): boolean {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  return !!sel && sel.toString().trim().length > 0;
+}
+
+/**
  * One icon-only control in a message's click-to-reveal action row (#10713).
  * Overlay glass styling: no card fill, neutral resting → neutral-opacity hover;
  * an active (e.g. playing) control tints with the orange accent. `stopPropagation`
@@ -885,7 +902,7 @@ function ThreadLineEditor({
           }
         }}
         rows={Math.min(6, Math.max(1, value.split("\n").length))}
-        className="w-full resize-none rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
+        className="w-full resize-none rounded-lg bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
       />
       <div className="flex items-center justify-end gap-1.5">
         <button
@@ -1438,6 +1455,13 @@ export function ContinuousChatOverlay({
     },
     onSwipeLeft: () => {
       setSwipeDx(0);
+      // A mouse highlight drag inside a bubble finishes here too; never switch
+      // the conversation out from under a live text selection (destroying it).
+      // Mirrors the ThreadLine tap-reveal selection guard.
+      if (hasLiveTextSelection()) {
+        swipeJank.end();
+        return;
+      }
       // Tag the flushed window with the committed direction so the ring shows
       // which way a janky swipe went (left → "next", the older conversation).
       swipeJank.end("next");
@@ -1445,6 +1469,10 @@ export function ContinuousChatOverlay({
     },
     onSwipeRight: () => {
       setSwipeDx(0);
+      if (hasLiveTextSelection()) {
+        swipeJank.end();
+        return;
+      }
       swipeJank.end("prev");
       conversationNav.goPrev();
     },
@@ -4208,8 +4236,9 @@ export function ContinuousChatOverlay({
                 // Equal inset on all sides (px == py): a round button nested in
                 // the pill's round end-cap reads as concentric, with the same
                 // gap on the sides as top/bottom.
+                // No divider above the composer — spacing separates it from the
+                // thread; the sheet is one continuous glass surface (#10710).
                 "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
-                sheetOpen ? "border-t border-white/10" : "",
               )}
               // Full-bleed has no overlay bottom padding (the panel is
               // edge-to-edge), so the composer carries the home-gesture
@@ -4434,7 +4463,11 @@ export function ContinuousChatOverlay({
                       icon={Mic}
                       label={
                         pttHolding
-                          ? "release to send"
+                          ? // Press-and-hold dictates into the composer draft; a
+                            // release drops the transcript into the text box and
+                            // does NOT send (see beginPushToTalkPress /
+                            // setDictationSink). Label the real behavior.
+                            "release to insert"
                           : transcriptionMode
                             ? "stop transcription"
                             : handsFree

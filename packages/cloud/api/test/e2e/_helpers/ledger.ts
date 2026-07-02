@@ -13,12 +13,21 @@ import { sql } from "drizzle-orm";
 /**
  * Count org-ledger inference debits created at/after `since`. The
  * app-attributed path writes `Chat completion: <model>`; the plain org path
- * writes `AI request: <model>` — match both.
+ * writes `AI request: <model>` — match both. Scoped to the preload's test org
+ * (TEST_ORGANIZATION_ID) so unrelated traffic on shared staging can never
+ * satisfy the assertion.
  */
 export async function countAiRequestDebitsSince(since: Date): Promise<number> {
+  const orgId = process.env.TEST_ORGANIZATION_ID;
+  if (!orgId) {
+    throw new Error(
+      "countAiRequestDebitsSince: TEST_ORGANIZATION_ID is not set (preload seeds it)",
+    );
+  }
   const res = (await dbRead.execute(
     sql`SELECT count(*) AS n FROM credit_transactions
         WHERE type = 'debit'
+          AND organization_id = ${orgId}
           AND (description LIKE 'AI request:%' OR description LIKE 'Chat completion:%')
           AND created_at >= ${since.toISOString()}`,
   )) as { rows?: Array<{ n?: string | number }> };

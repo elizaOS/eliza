@@ -16,7 +16,11 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { saveVadAutoStop } from "../../state/persistence";
+import {
+  loadWakeWordEnabled,
+  saveVadAutoStop,
+  saveWakeWordEnabled,
+} from "../../state/persistence";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
@@ -86,6 +90,12 @@ export function VoiceSectionMount(): React.ReactElement {
     DEFAULT_VOICE_SECTION_PREFS,
   );
   const [persistError, setPersistError] = React.useState<string | null>(null);
+  // Wake-word listening is a device-local pref (localStorage mirror the shell
+  // reads synchronously — see useShellController's useWakeListenWindow), not part
+  // of the `messages.voice` config blob. Seed from the persisted value.
+  const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
+    loadWakeWordEnabled(),
+  );
   const [tier, setTier] = React.useState<DeviceTier | null>(null);
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
     undefined,
@@ -117,6 +127,13 @@ export function VoiceSectionMount(): React.ReactElement {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Persist the wake-word toggle and update local state so the control reflects
+  // it immediately; the shell picks the new value up on its next render.
+  const handleWakeWordToggle = React.useCallback((next: boolean) => {
+    setWakeWordEnabled(next);
+    saveWakeWordEnabled(next);
   }, []);
 
   const handlePrefsChange = React.useCallback(
@@ -160,6 +177,8 @@ export function VoiceSectionMount(): React.ReactElement {
         prefs={prefs}
         onPrefsChange={(next) => void handlePrefsChange(next)}
         profilesClient={profilesClient}
+        wakeWordEnabled={wakeWordEnabled}
+        onWakeWordToggle={handleWakeWordToggle}
       />
     </>
   );
