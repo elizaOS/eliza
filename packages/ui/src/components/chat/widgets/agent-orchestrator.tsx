@@ -361,6 +361,13 @@ function AppRunCard({
   );
 }
 
+// Stable fallbacks for mounts without a full AppContext (widget hosts in
+// fixtures/tests). Inline `?? (() => undefined)` fallbacks mint a NEW function
+// identity every render; setState sits in the poll effect's dep array, so an
+// unstable identity re-runs the effect on every render (the #11107 crash loop).
+const noopSetTab = () => undefined;
+const noopSetState = () => undefined;
+
 function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   const {
     appRuns,
@@ -373,8 +380,8 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
     setState: s.setState,
     t: s.t,
   }));
-  const setTab = appSetTab ?? (() => undefined);
-  const setState = appSetState ?? (() => undefined);
+  const setTab = appSetTab ?? noopSetTab;
+  const setState = appSetState ?? noopSetState;
   const t = appT ?? fallbackTranslate;
   const currentBaseUrl = useAppSelectorShallow(() => client.getBaseUrl());
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
@@ -436,8 +443,13 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
 
   useEffect(() => {
     if (!supportsFullAppShellRoutes(currentBaseUrl) || !authenticated) {
+      // Idempotent reset: keep the previous reference when already empty. A
+      // fresh `[]` here re-renders unconditionally, and because the update
+      // rides a transition lane it dodges React's synchronous nested-update
+      // guard — with any unstable dep this loops render→effect→render until
+      // the worker OOMs (the #11107 WidgetHost test crash).
       startTransition(() => {
-        setRuns([]);
+        setRuns((prev) => (prev.length === 0 ? prev : []));
         setState("appRuns", []);
       });
       setError(null);

@@ -80,6 +80,13 @@ const stubResolver = {
     b.onResolve({ filter: /platform-guards$/ }, () => ({
       path: join(here, "home-screen-fixture.platform-stub.ts"),
     }));
+    // Since #11084 (#11107/#11122) the widget pollers gate on
+    // useIsAuthenticated(); the fixture has no auth backend, so present an
+    // authenticated local session or every gated widget stays dormant and
+    // self-hides (see the auth-stub header).
+    b.onResolve({ filter: /\/hooks\/useAuthStatus$/ }, () => ({
+      path: join(here, "home-screen-fixture.auth-stub.ts"),
+    }));
     // The widget components reach the hooks barrel only for
     // `useIntervalWhenDocumentVisible` (verified: every bare `../../../hooks`
     // import in the widget files takes only that hook). The barrel itself drags
