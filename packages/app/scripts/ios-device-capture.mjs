@@ -186,10 +186,21 @@ async function main() {
         buildDestination,
         "-derivedDataPath",
         derivedData,
-        "CODE_SIGNING_ALLOWED=NO",
+        // Sim: signing is irrelevant, skip it. Device: the test RUNNER must be
+        // properly signed or installd rejects it (0xe8008018 "identity no
+        // longer valid" — the exact first-device-run failure). The project
+        // carries CODE_SIGN_STYLE=Automatic + the team id, so let xcodebuild
+        // sign and mint the ai.elizaos.app.xctrunner wildcard team profile
+        // (-allowProvisioningUpdates needs the Xcode account session that
+        // minted the app profile in the first place).
         ...(platform === "sim"
-          ? ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "EXCLUDED_ARCHS=x86_64"]
-          : []),
+          ? [
+              "CODE_SIGNING_ALLOWED=NO",
+              "ARCHS=arm64",
+              "ONLY_ACTIVE_ARCH=YES",
+              "EXCLUDED_ARCHS=x86_64",
+            ]
+          : ["-allowProvisioningUpdates"]),
         "build-for-testing",
       ],
       { cwd: iosProjectDir },
