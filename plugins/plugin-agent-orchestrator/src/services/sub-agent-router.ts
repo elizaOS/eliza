@@ -1401,14 +1401,15 @@ export class SubAgentRouter extends Service {
       const delivered = await sendToTarget(
         {
           source,
-          roomId: target.roomId,
+          roomId: origin.roomId,
         },
         threadedResponse,
       ).catch((err) => {
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
           source,
-          roomId: target.roomId,
+          roomId: origin.roomId,
+          targetRoomId: target.roomId,
           error: err instanceof Error ? err.message : String(err),
         });
         return undefined;
@@ -1861,7 +1862,9 @@ function publicPreferredUrls(urls: string[]): string[] {
 }
 
 interface OriginInfo {
+  /** Original user-facing room, e.g. the Discord channel-backed room. */
   roomId: UUID;
+  /** Internal task/swarm room minted for sub-agent coordination. */
   taskRoomId: UUID;
   worktreeRoomId?: UUID;
   swarmRooms: SwarmRoomTarget[];
@@ -1914,11 +1917,12 @@ export function spawnRootIdFromMeta(
   );
 }
 
-function readOrigin(session: SessionInfo): OriginInfo | null {
+export function readOrigin(session: SessionInfo): OriginInfo | null {
   const meta = session.metadata as Record<string, unknown> | undefined;
   if (!meta) return null;
   const taskRoomId = pickUuid(meta.taskRoomId) ?? pickUuid(meta.roomId);
-  const roomId = taskRoomId ?? pickUuid(meta.roomId);
+  const roomId =
+    pickUuid(meta.originRoomId) ?? pickUuid(meta.sourceRoomId) ?? taskRoomId;
   if (!roomId || !taskRoomId) return null;
   const worktreeRoomId = pickUuid(meta.worktreeRoomId);
   const swarmRooms = normalizeSwarmRooms(
