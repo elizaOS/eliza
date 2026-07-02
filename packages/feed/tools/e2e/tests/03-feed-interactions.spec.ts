@@ -50,25 +50,21 @@ test.describe("Feed Interactions", () => {
     expect(switched).toBe(true);
   });
 
+  // FeedToggle renders exactly these tabs: For You → Stories → Latest →
+  // Following. All four must be switchable; a missing tab is a regression.
   test("switch to Stories tab", async ({ page }) => {
     const switched = await clickTab(page, "Stories");
-    // Tab may not exist in all versions
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("switch to For You tab", async ({ page }) => {
     const switched = await clickTab(page, "For You");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("switch to Following tab", async ({ page }) => {
     const switched = await clickTab(page, "Following");
-    expect(typeof switched).toBe("boolean");
-  });
-
-  test("switch to Trades tab", async ({ page }) => {
-    const switched = await clickTab(page, "Trades");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("post composer opens", async ({ page }) => {
@@ -242,15 +238,11 @@ test.describe("Feed Interactions", () => {
     expect(navigated).toBe(true);
   });
 
-  test("daily topic banner visible", async ({ page }) => {
-    const hasBanner = await pageContainsText(
-      page,
-      "daily",
-      "topic",
-      "trending",
-      "hot",
-    );
-    expect(typeof hasBanner).toBe("boolean");
+  test("trending panel renders in the widget column", async ({ page }) => {
+    // WidgetSidebar (`hidden xl:flex`, xl = 1280px = the DESKTOP viewport)
+    // unconditionally renders TrendingPanel's <h2>Trending</h2> heading.
+    const hasTrending = await pageContainsText(page, "trending");
+    expect(hasTrending).toBe(true);
   });
 
   test("infinite scroll loads more posts", async ({ page }) => {
@@ -259,26 +251,21 @@ test.describe("Feed Interactions", () => {
     expect(result.after).toBeGreaterThanOrEqual(result.before);
   });
 
-  test("widget sidebar visible on desktop", async ({ page }) => {
+  // The app sidebar (<aside> in shared/Sidebar.tsx) is `hidden md:flex`:
+  // visible from the md breakpoint (>=768px) up, hidden on mobile widths.
+  test("sidebar visible on desktop", async ({ page }) => {
     const sidebar = page
       .locator('aside, [data-testid="sidebar"], .sidebar')
       .first();
-    const isVisible = await sidebar
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    await expect(sidebar).toBeVisible({ timeout: 5000 });
   });
 
-  test("widget sidebar hidden on tablet", async ({ page }) => {
-    await page.setViewportSize(VIEWPORTS.TABLET);
+  test("sidebar hidden on mobile viewport", async ({ page }) => {
+    await page.setViewportSize(VIEWPORTS.MOBILE);
     await page.waitForTimeout(500);
     const sidebar = page
       .locator('aside, [data-testid="sidebar"], .sidebar')
       .first();
-    const isVisible = await sidebar
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    // Sidebar may be hidden or collapsed on tablet
-    expect(typeof isVisible).toBe("boolean");
+    await expect(sidebar).toBeHidden({ timeout: 3000 });
   });
 });

@@ -85,25 +85,10 @@ test.describe("Mobile Responsive - Navigation", () => {
   test("bottom nav visible on mobile", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
+    // BottomNav (shared/BottomNav.tsx) is `fixed bottom-0 ... md:hidden`:
+    // it must be visible at the mobile viewport.
     const bottomNav = page.locator(SELECTORS.BOTTOM_NAV).first();
-    const isVisible = await bottomNav
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
-  });
-
-  test("hamburger menu visible", async ({ page }) => {
-    await navigateTo(page, ROUTES.FEED);
-    await waitForPageLoad(page);
-    const hamburger = page
-      .locator(
-        'button[aria-label*="menu" i], button:has(svg.lucide-menu), [data-testid="hamburger"]',
-      )
-      .first();
-    const isVisible = await hamburger
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    await expect(bottomNav).toBeVisible({ timeout: 5000 });
   });
 
   test("nav links are clickable on mobile", async ({ page }) => {
@@ -213,15 +198,11 @@ test.describe("Mobile Responsive - Wallet", () => {
     await cooldownBetweenTests(page);
   });
 
-  test("wallet tabs visible on mobile", async ({ page }) => {
-    const tabs = page.locator('[role="tab"]');
-    const count = await tabs.count().catch(() => 0);
-    expect(count).toBeGreaterThanOrEqual(0);
-  });
-
-  test("wallet tab switching on mobile", async ({ page }) => {
-    const switched = await clickTab(page, "Positions");
-    expect(typeof switched).toBe("boolean");
+  // The wallet page is a single view (P&L section + Positions sidebar) —
+  // it has no tab controls, on mobile or desktop.
+  test("wallet sections render on mobile", async ({ page }) => {
+    const hasSections = await pageContainsText(page, "p&l", "positions");
+    expect(hasSections).toBe(true);
   });
 });
 
@@ -242,8 +223,9 @@ test.describe("Mobile Responsive - Feed Tabs and Interactions", () => {
   });
 
   test("feed tabs accessible on mobile", async ({ page }) => {
+    // FeedToggle renders on all viewports; the Latest tab must be clickable.
     const switched = await clickTab(page, "Latest");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("feed interactions work on mobile", async ({ page }) => {
@@ -281,16 +263,18 @@ test.describe("Mobile Responsive - Settings", () => {
     await cooldownBetweenTests(page);
   });
 
+  // settings/page.tsx renders Profile / Notifications / Security tab
+  // buttons.
   test("settings tabs on mobile", async ({ page }) => {
-    const tabs = page.locator('[role="tab"]');
-    const count = await tabs.count().catch(() => 0);
-    expect(count).toBeGreaterThanOrEqual(0);
+    const switched = await clickTab(page, "Notifications");
+    expect(switched).toBe(true);
   });
 
   test("settings editing on mobile", async ({ page }) => {
-    await clickTab(page, "Profile");
+    const switched = await clickTab(page, "Profile");
+    expect(switched).toBe(true);
     const hasFields = await pageContainsText(page, "name", "username", "bio");
-    expect(typeof hasFields).toBe("boolean");
+    expect(hasFields).toBe(true);
   });
 });
 

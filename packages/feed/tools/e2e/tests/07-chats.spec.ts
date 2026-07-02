@@ -173,10 +173,10 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    test.skip(
-      modal === null,
-      "no group/chat creation button rendered on the chats page",
-    );
+    if (modal === null) {
+      test.skip(true, "no group/chat creation button rendered on the chats page");
+      return;
+    }
     await expect(modal).toBeVisible();
     await closeModal(page);
   });
@@ -186,10 +186,10 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    test.skip(
-      modal === null,
-      "no group/chat creation button rendered on the chats page",
-    );
+    if (modal === null) {
+      test.skip(true, "no group/chat creation button rendered on the chats page");
+      return;
+    }
     const nameInput = modal
       .locator('input[name="name"], input[placeholder*="name" i]')
       .first();
@@ -203,10 +203,10 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    test.skip(
-      modal === null,
-      "no group/chat creation button rendered on the chats page",
-    );
+    if (modal === null) {
+      test.skip(true, "no group/chat creation button rendered on the chats page");
+      return;
+    }
     await closeModal(page);
     const modalGone = page.locator(SELECTORS.MODAL).first();
     const stillVisible = await modalGone

@@ -336,10 +336,10 @@ test.describe("Settings - API Keys Tab", () => {
       page,
       'button:has-text("Create"), button:has-text("Generate"), button:has-text("New Key")',
     );
-    test.skip(
-      modal === null,
-      "no create-API-key button rendered on the settings page",
-    );
+    if (modal === null) {
+      test.skip(true, "no create-API-key button rendered on the settings page");
+      return;
+    }
     await expect(modal).toBeVisible();
     await closeModal(page);
   });

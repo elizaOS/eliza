@@ -52,43 +52,9 @@ test.describe("Profile - Own Profile", () => {
   });
 
   test("profile stats visible", async ({ page }) => {
-    const hasStats = await pageContainsText(
-      page,
-      "followers",
-      "following",
-      "posts",
-      "points",
-    );
-    expect(typeof hasStats).toBe("boolean");
-  });
-
-  test("edit button visible on own profile", async ({ page }) => {
-    const editBtn = page.locator(SELECTORS.EDIT_PROFILE_BUTTON).first();
-    const isVisible = await editBtn
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
-  });
-
-  test("edit button navigates to edit page", async ({ page }) => {
-    const editBtn = page.locator(SELECTORS.EDIT_PROFILE_BUTTON).first();
-    const isVisible = await editBtn
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    test.skip(!isVisible, "no edit button rendered on the profile page");
-    await editBtn.click({ force: true });
-    await page.waitForTimeout(2000);
-    const url = page.url();
-    const hasEditContent = await pageContainsText(
-      page,
-      "edit",
-      "save",
-      "name",
-      "bio",
-    );
-    expect(
-      url.includes("edit") || url.includes("settings") || hasEditContent,
-    ).toBe(true);
+    // ProfilePageClient always renders the Followers / Following stat rows.
+    const hasStats = await pageContainsText(page, "followers", "following");
+    expect(hasStats).toBe(true);
   });
 });
 
@@ -108,24 +74,21 @@ test.describe("Profile - Content Tabs", () => {
     await cooldownBetweenTests(page);
   });
 
+  // ProfilePageClient renders exactly three content tabs: Posts, Replies,
+  // Trades. Each must be clickable; a missing tab is a regression.
   test("Posts tab visible", async ({ page }) => {
     const switched = await clickTab(page, "Posts");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("Replies tab visible", async ({ page }) => {
     const switched = await clickTab(page, "Replies");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
-  test("Likes tab visible", async ({ page }) => {
-    const switched = await clickTab(page, "Likes");
-    expect(typeof switched).toBe("boolean");
-  });
-
-  test("Media tab visible", async ({ page }) => {
-    const switched = await clickTab(page, "Media");
-    expect(typeof switched).toBe("boolean");
+  test("Trades tab visible", async ({ page }) => {
+    const switched = await clickTab(page, "Trades");
+    expect(switched).toBe(true);
   });
 });
 
@@ -168,7 +131,11 @@ test.describe("Profile - Other User", () => {
     const isVisible = await followBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(
+      !isVisible,
+      "no follow button rendered (user 'test-user' may not exist in this seed)",
+    );
+    await expect(followBtn).toBeEnabled();
   });
 
   test("message button navigates to DM", async ({ page }) => {

@@ -33,20 +33,21 @@ test.describe("Markets Dashboard", () => {
     await cooldownBetweenTests(page);
   });
 
+  // MarketsDashboard renders two plain-button tabs: Perpetuals + Predictions.
   test("dashboard loads with tabs", async ({ page }) => {
-    const tabs = page.locator('[role="tab"]');
-    const tabCount = await tabs.count().catch(() => 0);
-    expect(tabCount).toBeGreaterThan(0);
+    await expect(
+      page.locator('button:has-text("Perpetuals")').first(),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.locator('button:has-text("Predictions")').first(),
+    ).toBeVisible();
   });
 
   test("tab navigation works", async ({ page }) => {
-    const switched = await clickTab(page, "Perps");
-    expect(typeof switched).toBe("boolean");
-  });
-
-  test("Favorites tab accessible", async ({ page }) => {
-    const switched = await clickTab(page, "Favorites");
-    expect(typeof switched).toBe("boolean");
+    const toPredictions = await clickTab(page, "Predictions");
+    expect(toPredictions).toBe(true);
+    const backToPerps = await clickTab(page, "Perpetuals");
+    expect(backToPerps).toBe(true);
   });
 
   test("tab persistence after navigation", async ({ page }) => {
@@ -207,7 +208,11 @@ test.describe("Markets - Perps", () => {
   test("order preview updates with input", async ({ page }) => {
     await navigateTo(page, ROUTES.MARKETS_PERPS_BY_TICKER("BTC"));
     await waitForPageLoad(page);
-    await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "100");
+    const filled = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "100");
+    test.skip(
+      filled === null,
+      "no quantity input rendered on the perp trading page",
+    );
     await page.waitForTimeout(500);
     const hasPreview = await pageContainsText(
       page,
@@ -216,7 +221,7 @@ test.describe("Markets - Perps", () => {
       "estimated",
       "payout",
     );
-    expect(typeof hasPreview).toBe("boolean");
+    expect(hasPreview).toBe(true);
   });
 
   test("watchlist star toggles", async ({ page }) => {
@@ -243,10 +248,10 @@ test.describe("Markets - Perps", () => {
     await navigateTo(page, ROUTES.MARKETS_PERPS_BY_TICKER("BTC"));
     await waitForPageLoad(page);
     const modal = await openModal(page, SELECTORS.BUY_POINTS_BUTTON);
-    test.skip(
-      modal === null,
-      "no Buy Points button rendered on the perp page",
-    );
+    if (modal === null) {
+      test.skip(true, "no Buy Points button rendered on the perp page");
+      return;
+    }
     await expect(modal).toBeVisible();
     await closeModal(page);
     await expect(modal).toBeHidden({ timeout: 5000 });
@@ -263,6 +268,9 @@ test.describe("Markets - Predictions", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.MARKETS_PREDICTIONS);
     await waitForPageLoad(page);
+    // MarketsDashboard ignores the ?tab= query (tab state defaults to perps),
+    // so the Predictions tab must be activated by clicking it.
+    await clickTab(page, "Predictions");
   });
 
   test.afterEach(async ({ page }) => {
@@ -321,14 +329,15 @@ test.describe("Markets - Predictions", () => {
     expect(afterUrl !== beforeUrl || modalVisible).toBe(true);
   });
 
-  test("predictions sorting options", async ({ page }) => {
-    const sortButton = page
-      .locator('button:has-text("Sort"), select, [data-testid*="sort"]')
-      .first();
-    const isVisible = await sortButton
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+  test("predictions sortable column headers render", async ({ page }) => {
+    // The predictions table header row has sortable Question / Volume /
+    // Time Left columns (MarketsDashboard.tsx).
+    await expect(page.locator('th:has-text("Volume")').first()).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(
+      page.locator('th:has-text("Time Left")').first(),
+    ).toBeVisible();
   });
 
   test("predictions search filters", async ({ page }) => {
@@ -353,6 +362,6 @@ test.describe("Markets - Predictions", () => {
       "open",
       "closed",
     );
-    expect(typeof hasStatus).toBe("boolean");
+    expect(hasStatus).toBe(true);
   });
 });
