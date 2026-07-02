@@ -1,0 +1,33 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-02T21:35:09.675Z",
+  "runDir": "/home/shaw/eliza-worktrees/11355-active-view-trajectory/.github/issue-evidence/11355-active-view-agent-surface/run",
+  "trajectoriesDir": "/home/shaw/eliza-worktrees/11355-active-view-trajectory/.github/issue-evidence/11355-active-view-agent-surface/run/trajectories",
+  "jsonlPath": "/home/shaw/eliza-worktrees/11355-active-view-trajectory/.github/issue-evidence/11355-active-view-agent-surface/native.jsonl",
+  "manifestPath": "/home/shaw/eliza-worktrees/11355-active-view-trajectory/.github/issue-evidence/11355-active-view-agent-surface/native.manifest.json",
+  "counts": {
+    "trajectoryFiles": 12,
+    "parsedTrajectories": 12,
+    "skippedFiles": 0,
+    "rows": 20,
+    "passedRows": 20,
+    "failedRows": 0,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 0
+  },
+  "runIds": [
+    "1ee751ba-e309-4a6d-8c2d-11813cba16c2",
+    "2300b69c-3c4f-40f4-bb74-ef1f52e93873",
+    "435c4945-73ce-4d28-82a6-1b38fd739c12",
+    "525f35f2-f0d4-4e0c-a11d-930f861c1565",
+    "782d38a9-aebe-447c-bdf8-1629aa906684",
+    "f6df94a0-8ca3-437c-addf-74f771c320de"
+  ],
+  "scenarioIds": [
+    "deterministic-active-view-agent-surface"
+  ],
+  "agentIds": [
+    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
+  ]
+}

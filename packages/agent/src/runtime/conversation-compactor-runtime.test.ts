@@ -17,6 +17,10 @@ import {
   installPromptOptimizations,
   maybeApplyConversationCompaction,
 } from "./prompt-optimization.ts";
+import {
+  clearActiveViewContext,
+  setActiveViewContext,
+} from "./view-action-affinity.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -953,6 +957,7 @@ describe("installPromptOptimizations telemetry", () => {
     delete (globalThis as Record<symbol, unknown>)[
       Symbol.for("elizaos.trajectoryContextManager")
     ];
+    clearActiveViewContext();
   });
 
   it("records the actual post-compaction prompt and promptOptimization metadata", async () => {
@@ -1042,6 +1047,133 @@ describe("installPromptOptimizations telemetry", () => {
     >;
     expect(conversationCompaction.strategy).toBe("naive-summary");
     expect(conversationCompaction.didCompact).toBe(true);
+  });
+
+  it("injects active-view awareness into ACTION_PLANNER prompts without an Available Actions header", async () => {
+    const payloads: Array<Record<string, unknown>> = [];
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      getService: () => null,
+      useModel: async (_modelType: string, payload: unknown) => {
+        payloads.push(payload as Record<string, unknown>);
+        return "planner response";
+      },
+    };
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      elements: [
+        {
+          id: "ledger-title",
+          role: "textbox",
+          label: "Ledger title",
+          focused: true,
+        },
+        {
+          id: "save-ledger",
+          role: "button",
+          label: "Save ledger",
+        },
+      ],
+    });
+
+    installPromptOptimizations(runtime as never, {} as never);
+
+    const result = await runtime.useModel("ACTION_PLANNER", {
+      prompt: [
+        "message:user:",
+        "Fill the focused ledger title with Close Issue 11355",
+        "",
+        "# Routing hints",
+        "- Use VIEWS for view interaction.",
+      ].join("\n"),
+      tools: [{ name: "VIEWS" }],
+    });
+
+    expect(result).toBe("planner response");
+    expect(payloads).toHaveLength(1);
+    const prompt = String(payloads[0]?.prompt ?? "");
+    expect(prompt).toContain("# Active View");
+    expect(prompt).toContain("Scenario Active Ledger");
+    expect(prompt).toContain("scenario-active-ledger");
+    expect(prompt).toContain("ledger-title [textbox]");
+    expect(prompt).toContain("save-ledger [button]");
+    expect(prompt.indexOf("# Active View")).toBeLessThan(
+      prompt.indexOf("# Routing hints"),
+    );
+  });
+
+  it("injects active-view awareness into ACTION_PLANNER message payloads", async () => {
+    const payloads: Array<Record<string, unknown>> = [];
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      getService: () => null,
+      useModel: async (_modelType: string, payload: unknown) => {
+        payloads.push(payload as Record<string, unknown>);
+        return "planner response";
+      },
+    };
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      elements: [
+        {
+          id: "ledger-title",
+          role: "textbox",
+          label: "Ledger title",
+          focused: true,
+        },
+        {
+          id: "save-ledger",
+          role: "button",
+          label: "Save ledger",
+        },
+      ],
+    });
+
+    installPromptOptimizations(runtime as never, {} as never);
+
+    const result = await runtime.useModel("ACTION_PLANNER", {
+      messages: [
+        {
+          role: "user",
+          content: [
+            "message:user:",
+            "Fill the focused ledger title with Close Issue 11355",
+            "",
+            "# Routing hints",
+            "- Use VIEWS for view interaction.",
+          ].join("\n"),
+        },
+      ],
+      tools: [{ name: "VIEWS" }],
+    });
+
+    expect(result).toBe("planner response");
+    expect(payloads).toHaveLength(1);
+    const messages = payloads[0]?.messages as Array<{
+      content?: unknown;
+      role?: unknown;
+    }>;
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.role).toBe("user");
+    const content = String(messages[0]?.content ?? "");
+    expect(content).toContain("# Active View");
+    expect(content).toContain("Scenario Active Ledger");
+    expect(content).toContain("scenario-active-ledger");
+    expect(content).toContain("ledger-title [textbox]");
+    expect(content).toContain("save-ledger [button]");
+    expect(content.indexOf("# Active View")).toBeLessThan(
+      content.indexOf("# Routing hints"),
+    );
   });
 
   it("carries cache-token usage from MODEL_USED events into trajectory fallback calls", async () => {

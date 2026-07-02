@@ -688,6 +688,24 @@ function compactorMessagesToPayloadMessages(
   });
 }
 
+function applyActiveViewAwarenessToMessages(
+  messages: CompactorMessage[],
+  view: Parameters<typeof applyActiveViewAwareness>[1],
+): CompactorMessage[] {
+  const userMessageIndex = messages.findIndex(
+    (message) => message.role === "user",
+  );
+  if (userMessageIndex === -1) return messages;
+
+  const message = messages[userMessageIndex];
+  const awareContent = applyActiveViewAwareness(message.content, view);
+  if (awareContent === message.content) return messages;
+
+  const rewritten = [...messages];
+  rewritten[userMessageIndex] = { ...message, content: awareContent };
+  return rewritten;
+}
+
 function providerOptionsWithPromptOptimization(
   payloadRecord: Record<string, unknown>,
   telemetry: PromptOptimizationTelemetry,
@@ -1486,13 +1504,31 @@ export function installPromptOptimizations(
     // every element through the view-interact capabilities. Applies regardless
     // of prompt size (small planner prompts skip compaction above), and only to
     // prompts that carry an action catalogue so non-planner calls are untouched.
-    if (activeView && nextPrompt.includes("# Available Actions")) {
-      const awarePrompt = applyActiveViewAwareness(nextPrompt, activeView);
-      if (awarePrompt !== nextPrompt) {
-        promptOptimizationTelemetry.transformations.push(
-          `active-view-awareness:${activeView.viewId}`,
+    if (
+      activeView &&
+      (nextPrompt.includes("# Available Actions") ||
+        modelType === "ACTION_PLANNER")
+    ) {
+      if (promptKey) {
+        const awarePrompt = applyActiveViewAwareness(nextPrompt, activeView);
+        if (awarePrompt !== nextPrompt) {
+          promptOptimizationTelemetry.transformations.push(
+            `active-view-awareness:${activeView.viewId}`,
+          );
+          nextPrompt = awarePrompt;
+        }
+      } else if (nextMessages) {
+        const awareMessages = applyActiveViewAwarenessToMessages(
+          nextMessages,
+          activeView,
         );
-        nextPrompt = awarePrompt;
+        if (awareMessages !== nextMessages) {
+          nextMessages = awareMessages;
+          nextPrompt = renderMessagesForTelemetry(nextMessages);
+          promptOptimizationTelemetry.transformations.push(
+            `active-view-awareness:${activeView.viewId}`,
+          );
+        }
       }
     }
 

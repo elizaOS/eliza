@@ -1,0 +1,303 @@
+{
+  "id": "deterministic-active-view-agent-surface",
+  "title": "Deterministic active-view agent-surface trajectory",
+  "domain": "scenario-runner",
+  "tags": [
+    "pr",
+    "deterministic",
+    "zero-cost",
+    "app-control",
+    "views",
+    "active-view"
+  ],
+  "status": "passed",
+  "durationMs": 2736,
+  "turns": [
+    {
+      "name": "shell navigates to active ledger",
+      "kind": "api",
+      "responseText": "{\"ok\":true,\"viewId\":\"scenario-active-ledger\",\"viewPath\":null,\"viewType\":\"gui\"}",
+      "actionsCalled": [],
+      "durationMs": 11,
+      "failedAssertions": []
+    },
+    {
+      "name": "shell reports active ledger elements",
+      "kind": "api",
+      "responseText": "{\"ok\":true,\"viewId\":\"scenario-active-ledger\",\"accepted\":true,\"count\":2}",
+      "actionsCalled": [],
+      "durationMs": 12,
+      "failedAssertions": []
+    },
+    {
+      "name": "planner fills active-view element by id",
+      "kind": "message",
+      "text": "Fill the focused ledger title with Close Issue 11355",
+      "responseText": "Filled the active ledger title.",
+      "actionsCalled": [
+        {
+          "actionName": "VIEWS",
+          "parameters": {
+            "parameters": {
+              "action": "interact",
+              "view": "scenario-active-ledger",
+              "viewType": "gui",
+              "capability": "agent-fill",
+              "params": {
+                "id": "ledger-title",
+                "value": "Close Issue 11355"
+              }
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "viewId": "scenario-active-ledger",
+              "viewType": "gui",
+              "capability": "agent-fill",
+              "params": {
+                "id": "ledger-title",
+                "value": "Close Issue 11355"
+              }
+            },
+            "values": {
+              "mode": "interact",
+              "viewId": "scenario-active-ledger",
+              "viewType": "gui",
+              "capability": "agent-fill"
+            },
+            "text": "Filled the active ledger title.",
+            "raw": {
+              "success": true,
+              "text": "Filled the active ledger title.",
+              "values": {
+                "mode": "interact",
+                "viewId": "scenario-active-ledger",
+                "viewType": "gui",
+                "capability": "agent-fill"
+              },
+              "data": {
+                "viewId": "scenario-active-ledger",
+                "viewType": "gui",
+                "capability": "agent-fill",
+                "params": {
+                  "id": "ledger-title",
+                  "value": "Close Issue 11355"
+                }
+              },
+              "userFacingText": "Filled the active ledger title.",
+              "verifiedUserFacing": true
+            }
+          }
+        }
+      ],
+      "durationMs": 1524,
+      "failedAssertions": []
+    },
+    {
+      "name": "planner clicks active-view element by id",
+      "kind": "message",
+      "text": "Click the save button in the active ledger view",
+      "responseText": "Saved the active ledger.",
+      "actionsCalled": [
+        {
+          "actionName": "VIEWS",
+          "parameters": {
+            "parameters": {
+              "action": "interact",
+              "view": "scenario-active-ledger",
+              "viewType": "gui",
+              "capability": "agent-click",
+              "params": {
+                "id": "save-ledger"
+              }
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "viewId": "scenario-active-ledger",
+              "viewType": "gui",
+              "capability": "agent-click",
+              "params": {
+                "id": "save-ledger"
+              }
+            },
+            "values": {
+              "mode": "interact",
+              "viewId": "scenario-active-ledger",
+              "viewType": "gui",
+              "capability": "agent-click"
+            },
+            "text": "Saved the active ledger.",
+            "raw": {
+              "success": true,
+              "text": "Saved the active ledger.",
+              "values": {
+                "mode": "interact",
+                "viewId": "scenario-active-ledger",
+                "viewType": "gui",
+                "capability": "agent-click"
+              },
+              "data": {
+                "viewId": "scenario-active-ledger",
+                "viewType": "gui",
+                "capability": "agent-click",
+                "params": {
+                  "id": "save-ledger"
+                }
+              },
+              "userFacingText": "Saved the active ledger.",
+              "verifiedUserFacing": true
+            }
+          }
+        }
+      ],
+      "durationMs": 1097,
+      "failedAssertions": []
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "actionCalled",
+      "type": "actionCalled",
+      "status": "passed",
+      "detail": "VIEWS succeeded 2x (2 total call(s))"
+    },
+    {
+      "label": "selectedActionArguments",
+      "type": "selectedActionArguments",
+      "status": "passed",
+      "detail": "action arguments match"
+    },
+    {
+      "label": "serverInteract saw fill then click domain effects",
+      "type": "custom",
+      "status": "passed",
+      "detail": "predicate returned undefined"
+    }
+  ],
+  "actionsCalled": [
+    {
+      "actionName": "VIEWS",
+      "parameters": {
+        "parameters": {
+          "action": "interact",
+          "view": "scenario-active-ledger",
+          "viewType": "gui",
+          "capability": "agent-fill",
+          "params": {
+            "id": "ledger-title",
+            "value": "Close Issue 11355"
+          }
+        },
+        "actionContext": {
+          "previousResults": []
+        }
+      },
+      "result": {
+        "success": true,
+        "data": {
+          "viewId": "scenario-active-ledger",
+          "viewType": "gui",
+          "capability": "agent-fill",
+          "params": {
+            "id": "ledger-title",
+            "value": "Close Issue 11355"
+          }
+        },
+        "values": {
+          "mode": "interact",
+          "viewId": "scenario-active-ledger",
+          "viewType": "gui",
+          "capability": "agent-fill"
+        },
+        "text": "Filled the active ledger title.",
+        "raw": {
+          "success": true,
+          "text": "Filled the active ledger title.",
+          "values": {
+            "mode": "interact",
+            "viewId": "scenario-active-ledger",
+            "viewType": "gui",
+            "capability": "agent-fill"
+          },
+          "data": {
+            "viewId": "scenario-active-ledger",
+            "viewType": "gui",
+            "capability": "agent-fill",
+            "params": {
+              "id": "ledger-title",
+              "value": "Close Issue 11355"
+            }
+          },
+          "userFacingText": "Filled the active ledger title.",
+          "verifiedUserFacing": true
+        }
+      }
+    },
+    {
+      "actionName": "VIEWS",
+      "parameters": {
+        "parameters": {
+          "action": "interact",
+          "view": "scenario-active-ledger",
+          "viewType": "gui",
+          "capability": "agent-click",
+          "params": {
+            "id": "save-ledger"
+          }
+        },
+        "actionContext": {
+          "previousResults": []
+        }
+      },
+      "result": {
+        "success": true,
+        "data": {
+          "viewId": "scenario-active-ledger",
+          "viewType": "gui",
+          "capability": "agent-click",
+          "params": {
+            "id": "save-ledger"
+          }
+        },
+        "values": {
+          "mode": "interact",
+          "viewId": "scenario-active-ledger",
+          "viewType": "gui",
+          "capability": "agent-click"
+        },
+        "text": "Saved the active ledger.",
+        "raw": {
+          "success": true,
+          "text": "Saved the active ledger.",
+          "values": {
+            "mode": "interact",
+            "viewId": "scenario-active-ledger",
+            "viewType": "gui",
+            "capability": "agent-click"
+          },
+          "data": {
+            "viewId": "scenario-active-ledger",
+            "viewType": "gui",
+            "capability": "agent-click",
+            "params": {
+              "id": "save-ledger"
+            }
+          },
+          "userFacingText": "Saved the active ledger.",
+          "verifiedUserFacing": true
+        }
+      }
+    }
+  ],
+  "failedAssertions": [],
+  "providerName": "deterministic-llm-proxy"
+}
