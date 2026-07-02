@@ -1,0 +1,63 @@
+$ bun test packages/testing/unit/world-facts/contamination-prevention.test.ts packages/testing/integration/full-production-tick.test.ts packages/testing/integration/moderation-e2e-verification.integration.test.ts
+(no embedding provider configured -> [EMBEDDING] tests are loud counted skips, not green passes)
+
+
+Markets:
+  - Active markets: 0
+
+Questions:
+  - Active: 0
+  - Created: 0
+  - Resolved: 0
+
+NPCs:
+  - Total: 204
+  - With positions: 20
+
+Validation:
+  - No swaps: ✅
+  - Swap count: 0
+
+packages/testing/integration/moderation-e2e-verification.integration.test.ts:
+
+🎉 All moderation E2E verification tests defined!
+📊 Test coverage includes:
+  ✓ Feed filtering (blocked/muted users)
+  ✓ Notification filtering
+  ✓ Comment blocking
+  ✓ Message blocking
+  ✓ Share blocking
+  ✓ Search filtering
+  ✓ NPC handling (can block/mute, not report)
+🌱 Setting up moderation E2E test data...
+✅ Test users and NPC created
+✅ getBlockedUserIds works correctly
+✅ getMutedUserIds works correctly
+✅ getBlockedByUserIds works correctly
+✅ hasBlocked works correctly
+✅ hasMuted works correctly
+✅ NPCs can be blocked
+   This prevents NPC from adding user to group chats
+✅ NPCs can be muted
+   This hides their posts from feed
+✅ Muted NPCs are filtered from feed
+✅ Feed correctly filters both blocked users and users who blocked you
+✅ Can detect users who blocked you
+✅ Can detect muted users for feed filtering
+✅ Block detection works for comment prevention
+✅ Reverse block detection works for comment prevention
+✅ Block detection works for DM prevention
+✅ Search filtering excludes blocked/muted users
+✅ Notification created (will be filtered on retrieval)
+✅ Block detection works for notification filtering
+✅ Block detection works for share prevention
+🧹 Cleaning up moderation E2E test data...
+✅ Cleanup complete
+
+packages/testing/unit/world-facts/contamination-prevention.test.ts:
+
+ 60 pass
+ 7 skip
+ 0 fail
+ 98 expect() calls
+Ran 67 tests across 3 files. [3.15s]

@@ -1,0 +1,30 @@
+Larp-marker counts in packages/feed at three commits.
+Commands: git grep over 'packages/feed/**/*.ts' (spec-marker count over '**/*.spec.ts').
+
+=== 4373bef34f — issue-filed state (post-#11271-clobber, what #11380 describes) ===
+  expect(true).toBe(true) occurrences: 79
+  bare 'test.skip();' (no reason): 88
+  skip/fixme markers in *.spec.ts: 165
+  expect(...).toBeLessThan(500): 24
+
+=== d9d1a47ccd — PR #11567 base (develop after #11259 restore wave + #11531 zombie-file removal) ===
+  expect(true).toBe(true) occurrences: 4
+  bare 'test.skip();' (no reason): 6
+  skip/fixme markers in *.spec.ts: 283
+  expect(...).toBeLessThan(500): 27
+
+=== a2e4caa95a645506d614ce643fe819b7d30c6417 — PR #11567 head (this branch) ===
+  expect(true).toBe(true) occurrences: 0
+  bare 'test.skip();' (no reason): 0
+  skip/fixme markers in *.spec.ts: 283
+  expect(...).toBeLessThan(500): 2
+
+=== at PR head: shape audit of the 283 remaining skip markers ===
+All are test.skip(<condition-or-true>, "<reason>") — zero single-arg/bare markers:
+  markers matching 'test.skip(' total: 283
+  markers with no comma (bare/one-arg): 0
+
+=== at PR head: the 2 surviving toBeLessThan(500) are NOT HTTP-status assertions ===
+packages/feed/packages/testing/unit/prediction-amm.test.ts:195:      expect(result.newYesShares).toBeLessThan(500);
+packages/feed/packages/testing/integration/session-heartbeat-api.integration.test.ts:487:      expect(duration).toBeLessThan(500);
+  (newYesShares = AMM share count; duration = latency budget in ms)

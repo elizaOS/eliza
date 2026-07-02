@@ -1,0 +1,390 @@
+$ bun run scripts/testing-skip-inventory.mjs
+# Feed skip inventory
+skip markers: 372
+files: 67
+
+categories:
+- live-llm-gated: 30
+- database-gated: 3
+- server-gated: 95
+- documented-nearby: 3
+- conditional-undocumented: 4
+- documented-inline: 196
+- local-optional: 1
+- auth-or-session-gated: 5
+- undocumented-unconditional: 33
+- seed-or-external-state-gated: 2
+
+findings:
+- live-llm-gated packages/engine/src/__tests__/integration/engine-components-validation.test.ts:70 describe.skipIf(shouldSkipLiveLlmTests)("Engine Components Validation", () => {
+- live-llm-gated packages/engine/src/__tests__/integration/game-learnability.test.ts:164 describe.skipIf(!liveLlmConfig.enabled)(
+- live-llm-gated packages/engine/src/__tests__/integration/game-quality.test.ts:75 describe.skipIf(!liveLlmConfig.enabled)(
+- live-llm-gated packages/engine/src/__tests__/integration/game-validation.integration.test.ts:19 describe.skipIf(!liveLlmConfig.enabled)("Game Output Validation", () => {
+- database-gated packages/engine/src/__tests__/integration/narrative-state.integration.test.ts:23 describe.skipIf(SKIP)("Narrative State Service - Integration", () => {
+- live-llm-gated packages/engine/src/__tests__/integration/npc-post-voice.integration.test.ts:31 describe.skipIf(SKIP || !hasLLMKey)("NPC Post Voice Integration", () => {
+- live-llm-gated packages/engine/src/__tests__/integration/npc-voice-diversity.test.ts:30 describe.skipIf(!liveLlmConfig.enabled || !hasApiKey)(
+- live-llm-gated packages/engine/src/__tests__/integration/npc-voice-diversity.test.ts:134 it.skipIf(!hasApiKey)(
+- live-llm-gated packages/engine/src/__tests__/integration/npc-voice-diversity.test.ts:201 it.skipIf(!hasApiKey)(
+- live-llm-gated packages/engine/src/__tests__/integration/npc-voice-diversity.test.ts:267 it.skipIf(!hasApiKey)(
+- live-llm-gated packages/engine/src/__tests__/integration/real-engine-tick.integration.test.ts:101 describe.skipIf(shouldSkipLiveLlmTests)(
+- live-llm-gated packages/engine/src/__tests__/security/no-cheating.test.ts:111 describe.skipIf(!liveLlmConfig.enabled)("Security: Prevent Cheating", () => {
+- live-llm-gated packages/engine/src/__tests__/token-stats-integration.integration.test.ts:19 describe.skipIf(!hasApiKey)("Token Stats Integration - Real API Calls", () => {
+- server-gated packages/examples/feed-typescript-agent/tests/a2a-all-methods-e2e.test.ts:41 describe.skipIf(!serverAvailable)("A2A Client Coverage E2E Tests", () => {
+- server-gated packages/examples/feed-typescript-agent/tests/a2a-routes-verification.integration.test.ts:38 describe.skipIf(!serverAvailable)("A2A Routes Live Verification", () => {
+- server-gated packages/examples/feed-typescript-agent/tests/a2a-routes-verification.integration.test.ts:135 describe.skipIf(!serverAvailable)("A2A Moderation Operations", () => {
+- server-gated packages/examples/feed-typescript-agent/tests/actions-comprehensive.integration.test.ts:45 describe.skipIf(!serverAvailable)("A2A Comprehensive Actions Test", () => {
+- server-gated packages/examples/feed-typescript-agent/tests/autonomous-agent-complete-e2e.test.ts:57 describe.skipIf(!serverAvailable)(
+- server-gated packages/examples/feed-typescript-agent/tests/e2e.test.ts:51 describe.skipIf(!serverAvailable)("E2E - Autonomous Agent Live Tests", () => {
+- server-gated packages/examples/feed-typescript-agent/tests/local-e2e.test.ts:66 describe.skipIf(!serverAvailable)("Local A2A Server E2E Tests", () => {
+- server-gated packages/examples/harness/tests/harness.test.ts:188 test.skipIf(!serverAvailable)(
+- server-gated packages/examples/harness/tests/harness.test.ts:209 test.skipIf(!serverAvailable)(
+- server-gated packages/examples/harness/tests/harness.test.ts:230 test.skipIf(!serverAvailable)(
+- documented-nearby packages/testing/e2e/admin-registry-panel.spec.ts:22 test.skip(
+- conditional-undocumented packages/testing/e2e/admin-registry-panel.spec.ts:178 test.skip(
+- conditional-undocumented packages/testing/e2e/admin-registry-panel.spec.ts:213 test.skip(
+- documented-inline packages/testing/e2e/core-flow-bet-resolve-pnl.e2e.test.ts:659 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/core-flow-bet-resolve-pnl.e2e.test.ts:685 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/core-flow-bet-resolve-pnl.e2e.test.ts:722 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/core-flow-bet-resolve-pnl.e2e.test.ts:748 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:99 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:121 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:140 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:183 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:239 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:287 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:336 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:357 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/cron-endpoints.e2e.test.ts:387 test.skip(!serverAvailable, "Server not available");
+- live-llm-gated packages/testing/e2e/external-agent-flow.e2e.test.ts:95 test.skip(
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:111 test.skip(!registrationDone, "Initial registration did not succeed");
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:157 test.skip(!apiKey, "No API key available - registration did not succeed");
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:194 test.skip(!apiKey, "No API key available - registration did not succeed");
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:221 test.skip(!apiKey, "No API key available - registration did not succeed");
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:246 test.skip(!apiKey, "No API key available - registration did not succeed");
+- live-llm-gated packages/testing/e2e/external-agent-flow.e2e.test.ts:278 test.skip(
+- live-llm-gated packages/testing/e2e/external-agent-flow.e2e.test.ts:331 test.skip(
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:363 test.skip(!apiKey, "No API key available - registration did not succeed");
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:390 test.skip(!apiKey, "No API key available - registration did not succeed");
+- documented-inline packages/testing/e2e/external-agent-flow.e2e.test.ts:419 test.skip(!apiKey, "No API key available - registration did not succeed");
+- local-optional packages/testing/e2e/game-feedback-flow.spec.ts:37 test.skip(true, message);
+- conditional-undocumented packages/testing/e2e/perp-market-trading.e2e.test.ts:79 test.skip(true, reason);
+- documented-inline packages/testing/e2e/perp-market-trading.e2e.test.ts:201 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/perp-market-trading.e2e.test.ts:221 test.skip(!serverAvailable, "Server not available");
+- server-gated packages/testing/e2e/perp-market-trading.e2e.test.ts:222 test.skip(
+- auth-or-session-gated packages/testing/e2e/perp-market-trading.e2e.test.ts:245 test.skip(
+- documented-inline packages/testing/e2e/perp-market-trading.e2e.test.ts:265 test.skip(!serverAvailable, "Server not available");
+- server-gated packages/testing/e2e/perp-market-trading.e2e.test.ts:266 test.skip(
+- auth-or-session-gated packages/testing/e2e/perp-market-trading.e2e.test.ts:293 test.skip(
+- documented-inline packages/testing/e2e/perp-market-trading.e2e.test.ts:306 test.skip(!serverAvailable, "Server not available");
+- server-gated packages/testing/e2e/perp-market-trading.e2e.test.ts:307 test.skip(
+- auth-or-session-gated packages/testing/e2e/perp-market-trading.e2e.test.ts:330 test.skip(
+- documented-inline packages/testing/e2e/perp-market-trading.e2e.test.ts:361 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/perp-market-trading.e2e.test.ts:388 test.skip(!serverAvailable, "Server not available");
+- conditional-undocumented packages/testing/e2e/prediction-market-trading.e2e.test.ts:81 test.skip(true, reason);
+- documented-inline packages/testing/e2e/prediction-market-trading.e2e.test.ts:132 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/prediction-market-trading.e2e.test.ts:152 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/prediction-market-trading.e2e.test.ts:176 test.skip(!serverAvailable, "Server not available");
+- documented-inline packages/testing/e2e/prediction-market-trading.e2e.test.ts:196 test.skip(!serverAvailable || !authSession, "Server/auth not available");
+- live-llm-gated packages/testing/integration/agent-actions-persistence.integration.test.ts:50 const liveTest = test.skipIf(!liveLlmTestConfig.enabled);
+- database-gated packages/testing/integration/db-lazy-connection.integration.test.ts:15 const dbLazyDescribe = shouldSkipDatabaseTests() ? describe.skip : describe;
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:458 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:480 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:533 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:608 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:691 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:760 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:848 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:932 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:983 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/engine-generation-output.test.ts:1042 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/full-agent-tick.test.ts:493 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/full-production-tick.test.ts:427 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/full-production-tick.test.ts:474 test.skipIf(!liveLlmTestConfig.enabled)(
+- live-llm-gated packages/testing/integration/trading-and-questions.integration.test.ts:19 const liveTest = test.skipIf(!liveLlmTestConfig.enabled);
+- server-gated packages/testing/integration/waitlist-service.test.ts:36 const describeWaitlist = shouldSkip ? describe.skip : describe;
+- server-gated packages/testing/integration/world-facts/parody-headline-generator.test.ts:26 const describeTests = shouldSkip ? describe.skip : describe;
+- server-gated packages/testing/integration/world-facts/world-facts-service.test.ts:14 const describeTests = shouldSkip ? describe.skip : describe;
+- undocumented-unconditional packages/testing/unit/world-facts/contamination-prevention.test.ts:228 test.skipIf(!embeddingProviderConfigured)(
+- documented-nearby packages/testing/unit/world-facts/contamination-prevention.test.ts:247 test.skipIf(!embeddingProviderConfigured)(
+- documented-nearby packages/testing/unit/world-facts/contamination-prevention.test.ts:266 test.skipIf(!embeddingProviderConfigured)(
+- undocumented-unconditional packages/testing/unit/world-facts/contamination-prevention.test.ts:283 test.skipIf(!embeddingProviderConfigured)(
+- database-gated packages/testing/unit/world-facts/contamination-prevention.test.ts:552 test.skipIf(!embeddingProviderConfigured)(
+- server-gated tools/chroma/specs/03-feed-interactions.spec.ts:28 test.skip(
+- server-gated tools/chroma/specs/03-feed-interactions.spec.ts:59 test.skip(
+- server-gated tools/chroma/specs/03-feed-interactions.spec.ts:133 test.skip(
+- server-gated tools/chroma/specs/03-feed-interactions.spec.ts:317 test.skip(
+- server-gated tools/chroma/specs/03-feed-interactions.spec.ts:501 test.skip(
+- server-gated tools/chroma/specs/03-feed-interactions.spec.ts:533 test.skip(
+- server-gated tools/chroma/specs/03-feed-interactions.spec.ts:558 test.skip(
+- server-gated tools/chroma/specs/04-markets.spec.ts:30 test.skip(
+- server-gated tools/chroma/specs/04-markets.spec.ts:123 test.skip(
+- server-gated tools/chroma/specs/04-markets.spec.ts:185 test.skip(
+- server-gated tools/chroma/specs/04-markets.spec.ts:228 test.skip(
+- server-gated tools/chroma/specs/04-markets.spec.ts:417 test.skip(
+- server-gated tools/chroma/specs/05-profile.spec.ts:23 test.skip(
+- server-gated tools/chroma/specs/05-profile.spec.ts:121 test.skip(
+- server-gated tools/chroma/specs/05-profile.spec.ts:164 test.skip(
+- server-gated tools/chroma/specs/05-profile.spec.ts:291 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:28 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:72 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:215 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:313 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:369 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:418 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:464 test.skip(
+- server-gated tools/chroma/specs/06-settings.spec.ts:556 test.skip(
+- server-gated tools/chroma/specs/07-chats.spec.ts:27 test.skip(
+- server-gated tools/chroma/specs/07-chats.spec.ts:129 test.skip(
+- server-gated tools/chroma/specs/07-chats.spec.ts:201 test.skip(
+- server-gated tools/chroma/specs/07-chats.spec.ts:298 test.skip(
+- server-gated tools/chroma/specs/07-chats.spec.ts:357 test.skip(
+- server-gated tools/chroma/specs/07-chats.spec.ts:393 test.skip(
+- server-gated tools/chroma/specs/08-admin-panel.spec.ts:28 test.skip(
+- server-gated tools/chroma/specs/08-admin-panel.spec.ts:88 test.skip(
+- server-gated tools/chroma/specs/08-admin-panel.spec.ts:292 test.skip(
+- server-gated tools/chroma/specs/08-admin-panel.spec.ts:342 test.skip(
+- server-gated tools/chroma/specs/08-admin-panel.spec.ts:393 test.skip(
+- server-gated tools/chroma/specs/08-admin-panel.spec.ts:447 test.skip(
+- server-gated tools/chroma/specs/09-edge-cases.spec.ts:22 test.skip(
+- documented-inline tools/chroma/specs/09-edge-cases.spec.ts:45 test.skip(count === 0, "no text inputs rendered on the settings page");
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:76 test.skip(
+- server-gated tools/chroma/specs/09-edge-cases.spec.ts:103 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:127 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:163 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:186 test.skip(
+- server-gated tools/chroma/specs/09-edge-cases.spec.ts:205 test.skip(
+- server-gated tools/chroma/specs/09-edge-cases.spec.ts:249 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:276 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:292 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:308 test.skip(
+- server-gated tools/chroma/specs/09-edge-cases.spec.ts:325 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:350 test.skip(
+- undocumented-unconditional tools/chroma/specs/09-edge-cases.spec.ts:372 test.skip(
+- server-gated tools/chroma/specs/09-edge-cases.spec.ts:390 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:23 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:117 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:195 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:240 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:278 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:322 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:362 test.skip(
+- server-gated tools/chroma/specs/10-mobile-responsive.spec.ts:388 test.skip(
+- documented-inline tools/chroma/specs/11-nft-mint.spec.ts:40 test.skip(!isReady, "feed server is not healthy at /api/health");
+- documented-inline tools/chroma/specs/11-nft-mint.spec.ts:109 test.skip(true, "User not in nftSnapshot - seed test data first");
+- documented-inline tools/chroma/specs/11-nft-mint.spec.ts:154 test.skip(true, "User not in nftSnapshot - seed test data first");
+- documented-inline tools/chroma/specs/11-nft-mint.spec.ts:169 test.skip(true, "MetaMask transaction popup did not appear");
+- documented-inline tools/chroma/specs/11-nft-mint.spec.ts:206 test.skip(true, "User has not minted yet - run full mint flow first");
+- documented-inline tools/chroma/specs/11-nft-mint.spec.ts:301 test.skip(!healthCheck?.ok, "feed server is not healthy at /api/health");
+- auth-or-session-gated tools/chroma/specs/11-nft-mint.spec.ts:315 test.skip(
+- server-gated tools/chroma/specs/12-wallet.spec.ts:29 test.skip(
+- server-gated tools/chroma/specs/12-wallet.spec.ts:137 test.skip(
+- server-gated tools/chroma/specs/12-wallet.spec.ts:226 test.skip(
+- server-gated tools/chroma/specs/12-wallet.spec.ts:280 test.skip(
+- server-gated tools/chroma/specs/12-wallet.spec.ts:337 test.skip(
+- server-gated tools/chroma/specs/13-rewards.spec.ts:27 test.skip(
+- server-gated tools/chroma/specs/13-rewards.spec.ts:118 test.skip(
+- server-gated tools/chroma/specs/13-rewards.spec.ts:230 test.skip(
+- server-gated tools/chroma/specs/13-rewards.spec.ts:291 test.skip(
+- server-gated tools/chroma/specs/13-rewards.spec.ts:366 test.skip(
+- server-gated tools/chroma/specs/14-leaderboard-interactions.spec.ts:23 test.skip(
+- server-gated tools/chroma/specs/14-leaderboard-interactions.spec.ts:101 test.skip(
+- server-gated tools/chroma/specs/14-leaderboard-interactions.spec.ts:203 test.skip(
+- server-gated tools/chroma/specs/14-leaderboard-interactions.spec.ts:253 test.skip(
+- server-gated tools/chroma/specs/16-agents-deep.spec.ts:26 test.skip(
+- server-gated tools/chroma/specs/16-agents-deep.spec.ts:110 test.skip(
+- server-gated tools/chroma/specs/16-agents-deep.spec.ts:237 test.skip(
+- server-gated tools/chroma/specs/17-post-detail.spec.ts:23 test.skip(
+- server-gated tools/chroma/specs/17-post-detail.spec.ts:142 test.skip(
+- server-gated tools/chroma/specs/17-post-detail.spec.ts:227 test.skip(
+- server-gated tools/chroma/specs/18-research.spec.ts:23 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:24 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:59 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:86 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:112 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:164 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:180 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:233 test.skip(
+- server-gated tools/chroma/specs/19-uncovered-pages.spec.ts:305 test.skip(
+- documented-inline tools/e2e/tests/01-authentication.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/02-page-navigation.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/02-page-navigation.spec.ts:130 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/02-page-navigation.spec.ts:266 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/02-page-navigation.spec.ts:294 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/02-page-navigation.spec.ts:325 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:21 test.skip(!healthy, "Server is not healthy");
+- undocumented-unconditional tools/e2e/tests/03-feed-interactions.spec.ts:107 test.skip(
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:119 test.skip(!isVisible, "no inline composer rendered on the feed page");
+- undocumented-unconditional tools/e2e/tests/03-feed-interactions.spec.ts:128 test.skip(
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:140 test.skip(!isVisible, "no inline composer rendered on the feed page");
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:151 test.skip(!isVisible, "no inline composer rendered on the feed page");
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:165 test.skip(!isVisible, "no post with a like button rendered in the feed");
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:183 test.skip(!isVisible, "no post with a comment button rendered in the feed");
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:200 test.skip(!isVisible, "no post with a share button rendered in the feed");
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:216 test.skip(!isVisible, "no post cards rendered in the feed");
+- documented-inline tools/e2e/tests/03-feed-interactions.spec.ts:233 test.skip(!isVisible, "no author profile links rendered in the feed");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:23 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:69 test.skip(!isVisible, "no search input rendered on the markets dashboard");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:88 test.skip(!isVisible, "no search input rendered on the markets dashboard");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:109 test.skip(!isVisible, "no search input rendered on the markets dashboard");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:123 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:149 test.skip(!isVisible, "no perp market rows rendered on the perps tab");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:185 test.skip(!longVisible, "no Long/Short toggle rendered on the perp page");
+- undocumented-unconditional tools/e2e/tests/04-markets.spec.ts:201 test.skip(
+- undocumented-unconditional tools/e2e/tests/04-markets.spec.ts:212 test.skip(
+- documented-inline tools/e2e/tests/04-markets.spec.ts:234 test.skip(!isVisible, "no watchlist star rendered on the perp page");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:252 test.skip(true, "no Buy Points button rendered on the perp page");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:264 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:289 test.skip(!hasCards, "no prediction cards rendered on the predictions tab");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:299 test.skip(!isVisible, "no YES button rendered (no prediction cards)");
+- undocumented-unconditional tools/e2e/tests/04-markets.spec.ts:303 test.skip(
+- documented-inline tools/e2e/tests/04-markets.spec.ts:319 test.skip(!isVisible, "no prediction cards rendered on the predictions tab");
+- documented-inline tools/e2e/tests/04-markets.spec.ts:348 test.skip(!isVisible, "no search input rendered on the predictions tab");
+- documented-inline tools/e2e/tests/05-profile.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/05-profile.spec.ts:64 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/05-profile.spec.ts:98 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/05-profile.spec.ts:120 test.skip(!isVisible, "no author profile links rendered in the feed");
+- seed-or-external-state-gated tools/e2e/tests/05-profile.spec.ts:134 test.skip(
+- documented-inline tools/e2e/tests/05-profile.spec.ts:148 test.skip(!isVisible, "no message button rendered on the profile page");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:23 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:56 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:64 test.skip(!onTab, 'no "Profile" tab rendered on the settings page');
+- undocumented-unconditional tools/e2e/tests/06-settings.spec.ts:85 test.skip(
+- documented-inline tools/e2e/tests/06-settings.spec.ts:102 test.skip(result === null, "no name input rendered on the profile tab");
+- undocumented-unconditional tools/e2e/tests/06-settings.spec.ts:112 test.skip(
+- documented-inline tools/e2e/tests/06-settings.spec.ts:125 test.skip(result === null, "no bio textarea rendered on the profile tab");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:142 test.skip(!isVisible, "no name input rendered on the settings page");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:158 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:166 test.skip(!onTab, 'no "Theme" tab rendered on the settings page');
+- documented-inline tools/e2e/tests/06-settings.spec.ts:195 test.skip(!isVisible, "no dark-theme control rendered on the settings page");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:208 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:216 test.skip(!onTab, 'no "Notifications" tab rendered on the settings page');
+- documented-inline tools/e2e/tests/06-settings.spec.ts:234 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:242 test.skip(!onTab, 'no "Privacy" tab rendered on the settings page');
+- documented-inline tools/e2e/tests/06-settings.spec.ts:275 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:283 test.skip(!onTab, 'no "Security" tab rendered on the settings page');
+- documented-inline tools/e2e/tests/06-settings.spec.ts:309 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:317 test.skip(!onTab, 'no "API Keys" tab rendered on the settings page');
+- documented-inline tools/e2e/tests/06-settings.spec.ts:340 test.skip(true, "no create-API-key button rendered on the settings page");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:361 test.skip(!isVisible, "no freshly generated API key banner rendered");
+- documented-inline tools/e2e/tests/06-settings.spec.ts:388 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:23 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:55 test.skip(!switched, 'no "All" tab rendered on the chats page');
+- documented-inline tools/e2e/tests/07-chats.spec.ts:77 test.skip(!isVisible, "no search input rendered on the chats page");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:85 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:103 test.skip(!isVisible, "no chat input rendered (no chat open)");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:116 test.skip(!composerOpen, "no chat composer rendered (no chat open)");
+- undocumented-unconditional tools/e2e/tests/07-chats.spec.ts:133 test.skip(
+- undocumented-unconditional tools/e2e/tests/07-chats.spec.ts:147 test.skip(
+- documented-inline tools/e2e/tests/07-chats.spec.ts:158 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:177 test.skip(true, "no group/chat creation button rendered on the chats page");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:190 test.skip(true, "no group/chat creation button rendered on the chats page");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:207 test.skip(true, "no group/chat creation button rendered on the chats page");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:222 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:237 test.skip(result === null, "no search input rendered on the chats page");
+- documented-inline tools/e2e/tests/07-chats.spec.ts:254 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:21 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:50 test.skip(!healthy, "Server is not healthy");
+- undocumented-unconditional tools/e2e/tests/08-admin-panel.spec.ts:95 test.skip(
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:110 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:118 test.skip(!onTab, 'no "Users" tab rendered (requires admin permissions)');
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:133 test.skip(result === null, "no search input rendered on the Users tab");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:144 test.skip(!isVisible, "no users table rendered on the Users tab");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:156 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:164 test.skip(!onTab, 'no "Agents" tab rendered (requires admin permissions)');
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:186 test.skip(!isVisible, "no pause control rendered (no running agents)");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:199 test.skip(!isVisible, "no resume control rendered (no paused agents)");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:207 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:215 test.skip(!onTab, 'no "Reports" tab rendered (requires admin permissions)');
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:235 test.skip(!isVisible, "no approve control rendered (reports queue empty)");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:248 test.skip(!isVisible, "no reject control rendered (reports queue empty)");
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:256 test.skip(!healthy, "Server is not healthy");
+- auth-or-session-gated tools/e2e/tests/08-admin-panel.spec.ts:264 test.skip(
+- documented-inline tools/e2e/tests/08-admin-panel.spec.ts:294 test.skip(!isVisible, "no refresh control rendered on the Game Control tab");
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- undocumented-unconditional tools/e2e/tests/09-edge-cases.spec.ts:43 test.skip(
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:67 test.skip(!healthy, "Server is not healthy");
+- undocumented-unconditional tools/e2e/tests/09-edge-cases.spec.ts:87 test.skip(
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:101 test.skip(!isVisible, "no inline composer rendered on the feed page");
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:116 test.skip(!isVisible, "no inline composer rendered on the feed page");
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:131 test.skip(!isVisible, "no post with a like button rendered in the feed");
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:144 test.skip(!healthy, "Server is not healthy");
+- undocumented-unconditional tools/e2e/tests/09-edge-cases.spec.ts:159 test.skip(
+- undocumented-unconditional tools/e2e/tests/09-edge-cases.spec.ts:182 test.skip(
+- undocumented-unconditional tools/e2e/tests/09-edge-cases.spec.ts:196 test.skip(
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:209 test.skip(!healthy, "Server is not healthy");
+- undocumented-unconditional tools/e2e/tests/09-edge-cases.spec.ts:228 test.skip(
+- undocumented-unconditional tools/e2e/tests/09-edge-cases.spec.ts:243 test.skip(
+- documented-inline tools/e2e/tests/09-edge-cases.spec.ts:256 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:62 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:101 test.skip(!bottomVisible, "no bottom nav rendered on the mobile feed");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:118 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:134 test.skip(count === 0, "no visible buttons rendered on the mobile feed");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:147 test.skip(!isVisible, "no post with a like button rendered in the feed");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:158 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:188 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:212 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:236 test.skip(!isVisible, "no post with a like button rendered in the feed");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:253 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:284 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/10-mobile-responsive.spec.ts:307 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:22 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:86 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:120 test.skip(true, "no Buy Points button rendered on the wallet page");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:129 test.skip(true, "no Buy Points button rendered on the wallet page");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:145 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:172 test.skip(emptyState, "no open positions in this seed — empty state shown");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:188 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/12-wallet.spec.ts:227 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/13-rewards.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/13-rewards.spec.ts:81 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/13-rewards.spec.ts:126 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/13-rewards.spec.ts:172 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:68 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:94 test.skip(!isVisible, "no pagination controls rendered on the leaderboard");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:109 test.skip(!isVisible, "no pagination controls rendered on the leaderboard");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:128 test.skip(!isVisible, "no pagination controls rendered on the leaderboard");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:137 test.skip(!healthy, "Server is not healthy");
+- seed-or-external-state-gated tools/e2e/tests/14-leaderboard.spec.ts:157 test.skip(
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:172 test.skip(!isVisible, "no leaderboard rows rendered");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:185 test.skip(!hasRows, "no leaderboard rows rendered in this seed");
+- documented-inline tools/e2e/tests/14-leaderboard.spec.ts:195 test.skip(!hasRows, "no leaderboard rows rendered in this seed");
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:21 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:42 test.skip(!switched, 'no "All" filter rendered on the agents list');
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:49 test.skip(!switched, 'no "Active" filter rendered on the agents list');
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:56 test.skip(!switched, 'no "Idle" filter rendered on the agents list');
+- undocumented-unconditional tools/e2e/tests/16-agents-deep.spec.ts:66 test.skip(
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:77 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:97 test.skip(!isVisible, "no create-agent button rendered on the agents list");
+- undocumented-unconditional tools/e2e/tests/16-agents-deep.spec.ts:119 test.skip(
+- undocumented-unconditional tools/e2e/tests/16-agents-deep.spec.ts:135 test.skip(
+- undocumented-unconditional tools/e2e/tests/16-agents-deep.spec.ts:151 test.skip(
+- undocumented-unconditional tools/e2e/tests/16-agents-deep.spec.ts:166 test.skip(
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:177 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:197 test.skip(!isVisible, "no agent cards rendered on the agents list");
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:216 test.skip(notFound, 'agent "test-agent" does not exist in this environment');
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:225 test.skip(notFound, 'agent "test-agent" does not exist in this environment');
+- documented-inline tools/e2e/tests/16-agents-deep.spec.ts:233 test.skip(!hasTrades, "no trade history rendered (agent has no trades)");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:36 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:54 test.skip(!isVisible, "no post cards rendered in the feed");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:63 test.skip(!opened, "no post cards rendered in the feed");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:70 test.skip(!opened, "no post cards rendered in the feed");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:79 test.skip(!opened, "no post cards rendered in the feed");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:98 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:104 test.skip(!opened, "no post cards rendered in the feed");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:116 test.skip(!isVisible, "no like button rendered on the post detail page");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:143 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:149 test.skip(!opened, "no post cards rendered in the feed");
+- documented-inline tools/e2e/tests/17-post-detail.spec.ts:190 test.skip(!hasComments, "post has no comments in this seed");
+- documented-inline tools/e2e/tests/18-research.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/18-research.spec.ts:48 test.skip(result === null, "no provider input rendered on the pilot form");
+- documented-inline tools/e2e/tests/18-research.spec.ts:58 test.skip(result === null, "no email input rendered on the pilot form");
+- documented-inline tools/e2e/tests/18-research.spec.ts:77 test.skip(!isVisible, "no submit button rendered on the pilot form");
+- documented-inline tools/e2e/tests/19-uncovered-pages.spec.ts:17 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/19-uncovered-pages.spec.ts:61 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/19-uncovered-pages.spec.ts:94 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/19-uncovered-pages.spec.ts:141 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/19-uncovered-pages.spec.ts:179 test.skip(!isVisible, "no refresh button rendered on the game page");
+- documented-inline tools/e2e/tests/19-uncovered-pages.spec.ts:190 test.skip(!healthy, "Server is not healthy");
+- documented-inline tools/e2e/tests/19-uncovered-pages.spec.ts:214 test.skip(!isVisible, "no search input rendered on the NFT gallery");
