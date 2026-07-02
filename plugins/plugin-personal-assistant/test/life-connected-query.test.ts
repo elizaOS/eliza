@@ -14,9 +14,10 @@
  *   - backing service unavailable   → LifeOpsServiceError is translated, not
  *                                     thrown
  *
- * The LifeOpsService is stubbed per test; the agent-module stub makes
- * renderGroundedActionReply deterministic, so success-path assertions target
- * the returned `data` DTO and the service-call spies.
+ * The LifeOpsService is stubbed per test; the fake runtime has no `useModel`,
+ * so renderGroundedActionReply returns each handler's canonical fallback
+ * string verbatim and assertions can target exact refusal wording, the
+ * returned `data` DTO, and the service-call spies.
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
