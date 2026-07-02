@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
@@ -100,9 +100,10 @@ export interface CreateAgentParams {
    */
   reuseExistingNonTerminal?: boolean;
   /**
-   * Ceiling on an org's NON-TERMINAL (`pending`/`provisioning`/`running`,
+   * Ceiling on an org's resource-holding ({@link QUOTA_COUNTED_STATUSES},
    * non-pool) agent sandboxes, enforced ATOMICALLY under the org advisory lock
-   * before a fresh (non-reuse) insert. Prevents a user-facing caller from
+   * before ANY fresh insert — both the plain-insert branch and the reuse
+   * branch's no-live-agent-to-reuse insert. Prevents a user-facing caller from
    * minting unbounded dedicated containers on the shared fleet (#11023: a
    * `forceCreate`+`alwaysOn` loop on a ~$0.11 balance otherwise exhausts the
    * fleet — the credit gate is threshold-only, never a per-agent debit). The
@@ -112,6 +113,26 @@ export interface CreateAgentParams {
    */
   maxNonTerminalAgents?: number;
 }
+
+/**
+ * Statuses that COUNT toward `maxNonTerminalAgents`: the live states plus
+ * `stopped` (suspend keeps the container + node slot + per-tenant managed
+ * Postgres) and `sleeping` (cold storage keeps the managed Postgres). Both
+ * still hold the org's durable per-agent resources, so a
+ * create→suspend→create loop must not mint fresh agents past the ceiling
+ * (#11023 residual). Terminal/deletion states (`error`, `disconnected`,
+ * `deletion_pending`, `deletion_failed`) hold no reusable resources and stay
+ * excluded. Intentionally BROADER than the reuse-guard SELECTs, which must
+ * keep returning only a LIVE agent — handing back a stopped/sleeping row
+ * would silently turn an idempotent create into an implicit resume.
+ */
+const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
+  "pending",
+  "provisioning",
+  "running",
+  "stopped",
+  "sleeping",
+];
 
 /** Thrown by createAgent when a fresh create would exceed `maxNonTerminalAgents`. */
 export class AgentQuotaExceededError extends Error {
@@ -655,6 +676,34 @@ export class ElizaSandboxService {
     };
   }
 
+  /**
+   * Enforce `maxNonTerminalAgents` for an org: count its quota-holding
+   * ({@link QUOTA_COUNTED_STATUSES}), non-pool sandboxes and throw
+   * {@link AgentQuotaExceededError} at/past the cap. MUST run inside a
+   * transaction that already holds the org's agent-create advisory lock so
+   * the count→insert is atomic — two concurrent creates can't both read
+   * `count = max-1` and both insert.
+   */
+  private async assertOrgAgentQuota(
+    tx: LifecycleTx,
+    organizationId: string,
+    cap: number,
+  ): Promise<void> {
+    const [{ count } = { count: 0 }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.organization_id, organizationId),
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          inArray(agentSandboxes.status, QUOTA_COUNTED_STATUSES),
+        ),
+      );
+    if (count >= cap) {
+      throw new AgentQuotaExceededError(count, cap);
+    }
+  }
+
   async createAgent(params: CreateAgentParams): Promise<{
     agent: AgentSandbox;
     idempotent: boolean;
@@ -676,27 +725,12 @@ export class ElizaSandboxService {
 
       // Capped path (#11023): a user-facing forceCreate that bypasses the reuse
       // guard must still not mint unbounded dedicated containers. Count the org's
-      // non-terminal sandboxes UNDER the same org advisory lock the reuse guard
-      // uses — so the count→insert is atomic and two concurrent creates can't both
-      // read `count = max-1` and both insert — and refuse past the cap.
+      // quota-holding sandboxes UNDER the same org advisory lock the reuse guard
+      // uses and refuse past the cap.
       const cap = params.maxNonTerminalAgents;
       return dbWrite.transaction(async (tx) => {
         await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
-
-        const [{ count } = { count: 0 }] = await tx
-          .select({ count: sql<number>`count(*)::int` })
-          .from(agentSandboxes)
-          .where(
-            and(
-              eq(agentSandboxes.organization_id, params.organizationId),
-              sql`${agentSandboxes.pool_status} IS NULL`,
-              sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
-            ),
-          );
-
-        if (count >= cap) {
-          throw new AgentQuotaExceededError(count, cap);
-        }
+        await this.assertOrgAgentQuota(tx, params.organizationId, cap);
 
         const [created] = await tx
           .insert(agentSandboxes)
@@ -730,6 +764,17 @@ export class ElizaSandboxService {
 
       if (existing) {
         return { agent: existing, idempotent: true };
+      }
+
+      // The guard above only hands back a LIVE agent — a `stopped`/`sleeping`
+      // one must be resumed/woken, not reused — so after a suspend there is
+      // nothing to collapse onto and control falls through to a fresh insert.
+      // Without a cap that insert is unbounded: a create→suspend→create loop
+      // mints a new agent (each = a per-tenant managed DB) every iteration
+      // (#11023 residual). Enforce the same per-org ceiling, still under the
+      // org advisory lock.
+      if (params.maxNonTerminalAgents !== undefined) {
+        await this.assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
       }
 
       const [created] = await tx
@@ -798,19 +843,11 @@ export class ElizaSandboxService {
       // the org lock so the count→insert is atomic against concurrent creates.
       // Trusted internal callers pass no cap and stay uncapped.
       if (createParams.maxNonTerminalAgents !== undefined) {
-        const [{ count } = { count: 0 }] = await tx
-          .select({ count: sql<number>`count(*)::int` })
-          .from(agentSandboxes)
-          .where(
-            and(
-              eq(agentSandboxes.organization_id, createParams.organizationId),
-              sql`${agentSandboxes.pool_status} IS NULL`,
-              sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
-            ),
-          );
-        if (count >= createParams.maxNonTerminalAgents) {
-          throw new AgentQuotaExceededError(count, createParams.maxNonTerminalAgents);
-        }
+        await this.assertOrgAgentQuota(
+          tx,
+          createParams.organizationId,
+          createParams.maxNonTerminalAgents,
+        );
       }
 
       const [created] = await tx

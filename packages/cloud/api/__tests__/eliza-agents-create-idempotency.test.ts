@@ -245,7 +245,12 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(triggerImmediate).not.toHaveBeenCalled();
   });
 
-  test("#11023: default (no forceCreate) create passes NO cap (uncapped reuse path unchanged)", async () => {
+  test("#11023 F3: default (no forceCreate) create passes the SAME balance-tiered cap as forceCreate", async () => {
+    // Suspended (`stopped`) / slept (`sleeping`) agents keep their per-tenant
+    // managed DB but are not LIVE, so after a suspend the reuse guard has
+    // nothing to hand back — an uncapped normal path would mint a fresh row on
+    // every create (the create→suspend→create fleet-DoS loop, the residual of
+    // #11023). The route must bound the reuse path's fresh insert too.
     const agent = pendingAgent();
     createAgent.mockResolvedValue({ agent, idempotent: true });
 
@@ -255,9 +260,11 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     });
 
     const passed = createAgent.mock.calls[0]?.[0] as {
+      reuseExistingNonTerminal?: boolean;
       maxNonTerminalAgents?: number;
     };
-    expect(passed.maxNonTerminalAgents).toBeUndefined();
+    expect(passed.reuseExistingNonTerminal).toBe(true);
+    expect(passed.maxNonTerminalAgents).toBe(500);
   });
 
   test("forceCreate:true on a SHARED-tier create is rejected (400) — no unmetered shared mint past the reuse guard", async () => {
