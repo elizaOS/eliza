@@ -1475,15 +1475,22 @@ try {
     // per-message fill — text floats over the ONE shared panel glass. The
     // backdrop-blur gate only bans blur, not a fill, so a re-added
     // bg-black*/bg-white/10 would slip past it. Assert the COMPUTED background of
-    // every rendered bubble is transparent (implementation-agnostic — catches a
-    // fill re-added by any class). The bubble is the element wrapping the
-    // selectable content inside each thread-line.
+    // the WHOLE per-message wrapper chain — every ancestor from the selectable
+    // content up to (excluding) the thread-line container — so a fill re-added
+    // at any wrapper level is caught, not just on the immediate parent.
     const bubbleBackgrounds = await p
       .locator('[data-testid="thread-line"] [data-chat-selectable="true"]')
       .evaluateAll((nodes) =>
-        nodes.map((n) => {
-          const bubble = n.parentElement;
-          return bubble ? getComputedStyle(bubble).backgroundColor : "missing";
+        nodes.flatMap((n) => {
+          const chain = [];
+          for (
+            let el = n.parentElement;
+            el && el.getAttribute("data-testid") !== "thread-line";
+            el = el.parentElement
+          ) {
+            chain.push(getComputedStyle(el).backgroundColor);
+          }
+          return chain.length > 0 ? chain : ["missing"];
         }),
       );
     assert(

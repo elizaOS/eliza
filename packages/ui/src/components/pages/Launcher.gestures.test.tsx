@@ -8,8 +8,9 @@
 // cannot perform a real pointer drag, so this does NOT prove the drag/reorder
 // physics or long-press engagement. The REAL long-press-drag reorder (a genuine
 // CDP pointer drag → onReorder → persisted LAUNCHER_STORAGE_KEY order + reorder
-// telemetry + no duplicate ids) is covered by the isolated-browser runner
-// run-launcher-reorder-e2e.mjs. The real-motion render path (page dots,
+// telemetry + no duplicate ids) is section 2b of the isolated-browser runner
+// __e2e__/run-launcher-e2e.mjs (`bun run --cwd packages/ui test:launcher-e2e`,
+// gated in ui-e2e-gate.yml). The real-motion render path (page dots,
 // favorites, image tiles) is covered by the sibling Launcher.test.tsx.
 
 import {
