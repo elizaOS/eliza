@@ -480,6 +480,15 @@ export function ConversationsSidebar({
     (result: ConversationMessageSearchResult) => {
       const anchorId = getChatMessageAnchorId(result.messageId);
       void (async () => {
+        // Clear any active terminal/inbox surface and land on the chat tab
+        // BEFORE selecting — ChatView renders the terminal branch first and the
+        // inbox branch second, so without this a search-result jump switched
+        // the conversation invisibly underneath a terminal/connector chat, the
+        // anchor never mounted, and the user saw nothing (mirrors
+        // handleRowSelect / handleNewChat).
+        setState("activeInboxChat", null);
+        setState("activeTerminalSessionId", null);
+        setTab("chat");
         // Select the conversation and let its recent window load first, so the
         // in-window case (the common one) scrolls without a second fetch.
         await handleSelectConversation(result.conversationId);
@@ -506,6 +515,8 @@ export function ConversationsSidebar({
       loadConversationMessagesAround,
       waitForAnchor,
       scrollAndFlashAnchor,
+      setState,
+      setTab,
       mobile,
       onClose,
     ],

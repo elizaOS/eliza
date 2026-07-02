@@ -41,7 +41,7 @@ import type {
   Conversation,
   ConversationMessage,
 } from "../../api/client-types-chat";
-import { CHAT_PREFILL_EVENT } from "../../events";
+import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -729,6 +729,45 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.focus(input);
     expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.keyDown(input, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("closes the sheet and marks the intent handled on an Android back-intent while open", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message");
+    const sheet = screen.getByTestId("chat-sheet");
+    // Open the sheet (type-to-open → half detent).
+    fireEvent.focus(input);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // main.tsx dispatches this synchronously and reads back `detail.handled`.
+    const detail = { handled: false };
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }),
+      );
+    });
+
+    expect(detail.handled).toBe(true);
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("leaves the Android back-intent unhandled while the sheet is at rest (native falls through)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    // At rest: the sheet is closed (collapsed input bar), not opened.
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+
+    const detail = { handled: false };
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }),
+      );
+    });
+
+    // Nothing consumed it, so main.tsx would fall through to history.back() /
+    // minimizeApp(); the sheet stays closed.
+    expect(detail.handled).toBe(false);
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
