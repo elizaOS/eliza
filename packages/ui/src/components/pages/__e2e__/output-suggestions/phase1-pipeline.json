@@ -4,10 +4,10 @@
       "type": "proactive-message",
       "conversationId": "conv-1",
       "message": {
-        "id": "62342eda-5e69-48eb-a40f-4fbd5b7d4a2c",
+        "id": "26061354-6e47-426e-b653-c8cbe787e79e",
         "role": "assistant",
         "text": "Want me to pull your latest balances?",
-        "timestamp": 1782980473955,
+        "timestamp": 1783002182314,
         "source": "proactive-interaction"
       }
     },
@@ -15,10 +15,10 @@
       "type": "proactive-message",
       "conversationId": "conv-1",
       "message": {
-        "id": "9c7b2ea1-6e46-4c39-afcc-1087ea7897d1",
+        "id": "ae9ea7fd-b4e1-446b-8f76-8215cbd77c05",
         "role": "assistant",
         "text": "Want a hand finding something?",
-        "timestamp": 1782980479322,
+        "timestamp": 1783002187692,
         "source": "proactive-interaction"
       }
     }

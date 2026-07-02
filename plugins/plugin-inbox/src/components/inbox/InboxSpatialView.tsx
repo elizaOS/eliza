@@ -124,7 +124,7 @@ export function InboxSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={2} padding={1}>
       <InboxChannelFilters filters={snapshot.filters} dispatch={dispatch} />
       <InboxBody snapshot={snapshot} dispatch={dispatch} />
     </Card>
@@ -139,7 +139,7 @@ function InboxChannelFilters({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <HStack gap={1} wrap align="center">
+    <HStack gap={1} wrap align="center" shrink={0}>
       {filters.map((filter) => (
         <Button
           key={filter.channel}
@@ -228,7 +228,7 @@ function InboxReadyBody({
   return (
     <>
       {snapshot.nudge ? (
-        <Text tone="muted" style="caption">
+        <Text tone="muted" style="caption" shrink={0}>
           {snapshot.nudge}
         </Text>
       ) : null}
@@ -252,40 +252,38 @@ function InboxChannelGroupBody({
 }) {
   return (
     <>
-      <Divider label={`${group.label} (${group.items.length})`} />
-      <List gap={1}>
+      <Divider label={`${group.label} (${group.items.length})`} shrink={0} />
+      <List gap={1} shrink={0}>
         {group.items.slice(0, 12).map((item) => {
           const title = item.subject ?? item.sender;
           const meta = item.preview
             ? `${item.sender} - ${item.preview}`
             : item.sender;
           return (
-            // The title gets its own full-width line so a long subject is never
-            // truncated by a sibling control; the sender/preview meta and the
-            // Open action share the second line under the unread dot.
-            <VStack key={item.id} gap={0}>
-              <HStack gap={1} align="center">
-                <Text tone="primary" wrap={false}>
-                  {item.unread ? "●" : "○"}
-                </Text>
-                <Text bold grow={1}>
+            // The message text uses two lines in one row so short landscape
+            // viewports do not collapse title/meta lines into each other.
+            <HStack key={item.id} gap={1} align="center" shrink={0}>
+              <Text tone="primary" wrap={false} shrink={0}>
+                {item.unread ? "●" : "○"}
+              </Text>
+              <VStack gap={0} grow={1}>
+                <Text bold grow={1} wrap={false}>
                   {title}
                 </Text>
-              </HStack>
-              <HStack gap={1} align="center">
                 <Text style="caption" tone="muted" grow={1} wrap={false}>
                   {meta} • {formatTime(item.receivedAt)}
                 </Text>
-                <Button
-                  variant="outline"
-                  tone="default"
-                  agent={`open:${item.id}`}
-                  onPress={dispatch(`open:${item.id}`)}
-                >
-                  Open
-                </Button>
-              </HStack>
-            </VStack>
+              </VStack>
+              <Button
+                variant="outline"
+                tone="default"
+                agent={`open:${item.id}`}
+                onPress={dispatch(`open:${item.id}`)}
+                shrink={0}
+              >
+                Open
+              </Button>
+            </HStack>
           );
         })}
       </List>
