@@ -22,8 +22,13 @@ import {
 import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { stripReservedElizaConfigKeys } from "@/lib/services/eliza-agent-config";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import {
+  AgentQuotaExceededError,
+  elizaSandboxService,
+} from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -102,7 +107,7 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   try {
-    const { user } = await requireCompatAuth(c);
+    const { user, authMethod } = await requireCompatAuth(c);
     const body = await c.req.json();
 
     const parsed = createAgentSchema.safeParse(body);
@@ -122,6 +127,32 @@ app.post("/", async (c) => {
     const sanitizedConfig = stripReservedElizaConfigKeys(
       parsed.data.agentConfig,
     );
+    // Credit + quota gate for STANDARD (Steward / API-key) callers only —
+    // without it any $0-balance user could loop this endpoint and mint
+    // unbounded agent_sandboxes rows via the uncapped createAgent fast path
+    // (elizaOS/eliza#11678). Trusted S2S callers (service_key / service_jwt,
+    // e.g. the waifu bridge) legitimately create many agents per org and stay
+    // ungated + uncapped, matching the sandbox service's trusted fast path.
+    let maxNonTerminalAgents: number | undefined;
+    if (authMethod === "standard") {
+      const creditCheck = await checkAgentCreditGate(user.organization_id);
+      if (!creditCheck.allowed) {
+        logger.warn("[compat] Agent creation blocked: insufficient credits", {
+          orgId: user.organization_id,
+          balance: creditCheck.balance,
+        });
+        return c.json(
+          errorEnvelope(
+            creditCheck.error ?? "Insufficient credits to create an agent",
+          ),
+          402,
+        );
+      }
+      // Balance-tiered per-org ceiling (#11023), enforced atomically inside
+      // createAgent under the org advisory lock.
+      maxNonTerminalAgents = getMaxNonTerminalAgentsForOrg(creditCheck.balance);
+    }
+
     const autoProvision =
       (c.env as { WAIFU_AUTO_PROVISION?: string }).WAIFU_AUTO_PROVISION ===
       "true";
@@ -145,13 +176,30 @@ app.post("/", async (c) => {
 
     // Compat is a multi-agent-per-org flow (each call mints a distinct agent),
     // so the reuse guard stays off and createAgent always reports a fresh row.
-    const { agent } = await elizaSandboxService.createAgent({
-      organizationId: user.organization_id,
-      userId: user.id,
-      agentName: parsed.data.agentName,
-      agentConfig: sanitizedConfig,
-      environmentVars: parsed.data.environmentVars,
-    });
+    // Standard callers are still bounded by `maxNonTerminalAgents` (undefined
+    // for S2S keeps the trusted uncapped path).
+    let created: Awaited<ReturnType<typeof elizaSandboxService.createAgent>>;
+    try {
+      created = await elizaSandboxService.createAgent({
+        organizationId: user.organization_id,
+        userId: user.id,
+        agentName: parsed.data.agentName,
+        agentConfig: sanitizedConfig,
+        environmentVars: parsed.data.environmentVars,
+        maxNonTerminalAgents,
+      });
+    } catch (error) {
+      if (error instanceof AgentQuotaExceededError) {
+        logger.warn("[compat] Agent creation blocked: per-org quota exceeded", {
+          orgId: user.organization_id,
+          count: error.count,
+          max: error.max,
+        });
+        return c.json(errorEnvelope(error.message), 429);
+      }
+      throw error;
+    }
+    const { agent } = created;
 
     logger.info("[compat] Agent created", {
       agentId: agent.id,

@@ -21,6 +21,17 @@ const requireServiceKey = mock(() => ({
 }));
 const authenticateWaifuBridge = mock(async () => null);
 
+// create route (compat/agents/route.ts) does its own inline compat auth via
+// these seams instead of compat/_lib/auth.
+const validateServiceKey = mock(async () => ({
+  organizationId: "org-1",
+  userId: "svc-user-1",
+}));
+const requireUserOrApiKeyWithOrg = mock(async () => ({
+  id: "user-1",
+  organization_id: "org-1",
+}));
+
 const checkAgentCreditGate = mock(async () => ({
   allowed: false,
   balance: 0,
@@ -57,6 +68,31 @@ const provision = mock(async () => ({
 
 const snapshot = mock(async () => undefined);
 
+const createdSandboxRow = {
+  id: "agent-new",
+  agent_name: "Agent One",
+  status: "pending",
+  node_id: null,
+  database_status: "pending",
+  error_message: null,
+  last_heartbeat_at: null,
+  agent_config: {},
+  created_at: "2026-07-02T00:00:00.000Z",
+  updated_at: "2026-07-02T00:00:00.000Z",
+};
+
+const createAgent = mock(
+  async (_params: {
+    organizationId: string;
+    userId: string;
+    agentName: string;
+    maxNonTerminalAgents?: number;
+  }) => ({
+    agent: createdSandboxRow,
+    idempotent: false,
+  }),
+);
+
 // launch/route.ts calls launchManagedElizaAgent (which itself wraps provision),
 // not elizaSandboxService.provision directly — mock it at that seam.
 const launchManagedElizaAgent = mock(async () => ({
@@ -72,10 +108,48 @@ const prepareManagedElizaEnvironment = mock(async () => ({
   environmentVars: {},
 }));
 
-class AgentQuotaExceededError extends Error {}
+class AgentQuotaExceededError extends Error {
+  readonly count: number;
+  readonly max: number;
+  constructor(count = 20, max = 20) {
+    super(
+      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}).`,
+    );
+    this.name = "AgentQuotaExceededError";
+    this.count = count;
+    this.max = max;
+  }
+}
 
 mock.module("../compat/_lib/auth", () => ({
   requireCompatAuth,
+}));
+
+mock.module("@/lib/auth/service-key-hono-worker", () => ({
+  validateServiceKey,
+}));
+
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireUserOrApiKeyWithOrg,
+}));
+
+mock.module("@/lib/services/eliza-agent-config", () => ({
+  stripReservedElizaConfigKeys: (config: Record<string, unknown> | undefined) =>
+    config,
+}));
+
+mock.module("@/lib/services/provisioning-jobs", () => ({
+  provisioningJobService: {
+    enqueueAgentProvisionOnce: mock(async () => ({ job: { id: "job-1" } })),
+  },
+}));
+
+mock.module("@/lib/services/provisioning-worker-health", () => ({
+  checkProvisioningWorkerHealth: mock(async () => ({ ok: true })),
+  provisioningWorkerFailureBody: () => ({
+    success: false,
+    error: "provisioning worker unavailable",
+  }),
 }));
 
 mock.module("@/lib/auth", () => ({
@@ -102,6 +176,7 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
     getAgentForWrite,
     provision,
     snapshot,
+    createAgent,
   },
 }));
 
@@ -130,6 +205,7 @@ const { default: restartRoute } = await import(
 const { default: launchRoute } = await import(
   "../compat/agents/[id]/launch/route"
 );
+const { default: agentsRoute } = await import("../compat/agents/route");
 
 describe("compat agent resume/restart/launch credit gate", () => {
   const app = new Hono();
@@ -277,5 +353,124 @@ describe("compat agent resume/restart/launch credit gate", () => {
       organizationId: "org-1",
       userId: "user-1",
     });
+  });
+});
+
+describe("compat agent create credit + quota gate (elizaOS/eliza#11678)", () => {
+  const app = new Hono();
+  app.route("/api/compat/agents", agentsRoute);
+
+  const createRequest = (headers: Record<string, string> = {}) =>
+    new Request("https://api.example.test/api/compat/agents", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({ agentName: "Agent One" }),
+    });
+
+  beforeEach(() => {
+    authenticateWaifuBridge.mockClear();
+    authenticateWaifuBridge.mockResolvedValue(null);
+    validateServiceKey.mockClear();
+    validateServiceKey.mockResolvedValue({
+      organizationId: "org-1",
+      userId: "svc-user-1",
+    });
+    requireUserOrApiKeyWithOrg.mockClear();
+    requireUserOrApiKeyWithOrg.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    checkAgentCreditGate.mockClear();
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits",
+    });
+    createAgent.mockClear();
+    createAgent.mockResolvedValue({
+      agent: createdSandboxRow,
+      idempotent: false,
+    });
+  });
+
+  test("blocks a standard-auth compat create with 402 before any row is minted when the org has insufficient credits", async () => {
+    const response = await app.fetch(createRequest(), {});
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: "Insufficient credits",
+    });
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    expect(createAgent).not.toHaveBeenCalled();
+  });
+
+  test("caps a funded standard-auth compat create with the balance-tiered maxNonTerminalAgents", async () => {
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+
+    const response = await app.fetch(createRequest(), {});
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: { agentId: "agent-new" },
+    });
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    // $5 balance → the 20-agent tier (getMaxNonTerminalAgentsForOrg).
+    expect(createAgent.mock.calls[0]?.[0]).toMatchObject({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentName: "Agent One",
+      maxNonTerminalAgents: 20,
+    });
+    // Compat stays multi-agent-per-org: the reuse guard must remain OFF.
+    expect(
+      (createAgent.mock.calls[0]?.[0] as Record<string, unknown>)
+        .reuseExistingNonTerminal,
+    ).toBeUndefined();
+  });
+
+  test("maps AgentQuotaExceededError from a standard-auth create to 429", async () => {
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+    createAgent.mockImplementationOnce(async () => {
+      throw new AgentQuotaExceededError(20, 20);
+    });
+
+    const response = await app.fetch(createRequest(), {});
+
+    expect(response.status).toBe(429);
+    const body = (await response.json()) as { success: boolean; error: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("Agent quota exceeded");
+  });
+
+  test("does not gate or cap trusted service-key (S2S) creates", async () => {
+    const response = await app.fetch(
+      createRequest({ "X-Service-Key": "svc-key" }),
+      {},
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: { agentId: "agent-new" },
+    });
+    expect(validateServiceKey).toHaveBeenCalled();
+    expect(checkAgentCreditGate).not.toHaveBeenCalled();
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    expect(
+      (createAgent.mock.calls[0]?.[0] as Record<string, unknown>)
+        .maxNonTerminalAgents,
+    ).toBeUndefined();
+    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
   });
 });
