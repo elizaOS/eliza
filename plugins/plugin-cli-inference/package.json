@@ -42,6 +42,9 @@
       ]
     }
   },
+  "optionalDependencies": {
+    "@openai/codex-sdk": "0.80.0"
+  },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
     "@elizaos/core": "workspace:*",
