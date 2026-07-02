@@ -9,8 +9,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildCodesignPlan,
   buildPlistXml,
-  classifyConsoleExit,
   CONSOLE_SIGTRAP_SIGNATURE,
+  classifyConsoleExit,
   deriveSigningEntitlements,
   extractXctestrunAppPaths,
   findDeviceRecord,
