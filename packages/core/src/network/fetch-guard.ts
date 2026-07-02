@@ -5,6 +5,7 @@
  * SSRF attacks and DNS rebinding.
  */
 
+import { logger } from "../logger.js";
 import {
 	isBlockedHostname,
 	isPrivateIpAddress,
@@ -74,13 +75,31 @@ async function loadNodePinnedFetchDefaults(): Promise<NodePinnedFetchDefaults | 
 	if (!isNodeLikeRuntime()) {
 		return null;
 	}
-	nodePinnedFetchDefaults ??= import("./node-pinned-fetch.js")
-		.then(({ nodeLookupFn, nodePinnedFetch }) => ({
+	// On Node-like runtimes the pinned transport is the DNS-rebinding defense.
+	// If it fails to load, fail CLOSED: guarded fetches must error rather than
+	// silently fall back to the racy unpinned path.
+	nodePinnedFetchDefaults ??= import("./node-pinned-fetch.js").then(
+		({ nodeLookupFn, nodePinnedFetch }) => ({
 			lookupFn: nodeLookupFn,
 			pinnedFetchImpl: nodePinnedFetch,
-		}))
-		.catch(() => null);
-	return nodePinnedFetchDefaults;
+		}),
+	);
+	try {
+		return await nodePinnedFetchDefaults;
+	} catch (error) {
+		// Do not memoize the failure as a permanent null — allow a retry on the
+		// next guarded fetch in case the failure was transient.
+		nodePinnedFetchDefaults = undefined;
+		logger.error(
+			{ error },
+			"[FetchGuard] Failed to load the pinned DNS transport on a Node-like runtime; failing closed",
+		);
+		throw new Error(
+			"SSRF guard: pinned DNS transport (node-pinned-fetch) failed to load on a Node-like runtime. " +
+				"Refusing to fall back to unpinned fetch (DNS rebinding risk). " +
+				`Underlying error: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
 }
 
 function isRedirectStatus(status: number): boolean {
