@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { canonicalLauncherId, curateLauncherPages } from "./launcher-curation";
+import {
+  canonicalLauncherId,
+  curateLauncherPages,
+  LAUNCHER_HIDDEN_IDS,
+} from "./launcher-curation";
 
 const ENABLED = { developer: true, preview: true } as const;
+/** Out-of-the-box toggle state on EVERY build (dev included). */
+const DEFAULTS = { developer: false, preview: false } as const;
 
 function entry(id: string, over: Partial<ViewEntry> = {}): ViewEntry {
   return {
@@ -147,6 +153,30 @@ describe("curateLauncherPages", () => {
     expect(ids(pages)).toEqual([["wallet", "automations"]]);
   });
 
+  it("drops the alias path when an alias wins the tile, so launch/telemetry agree", () => {
+    // Only an aliased registration (todos → automations) is present, no canonical
+    // `automations`. The tile must carry the canonical id AND no alias path, so
+    // handleLaunch falls back to /apps/automations rather than /todos.
+    const pages = curateLauncherPages([entry("todos", { path: "/todos" })], {
+      isAosp: false,
+      enabledKinds: ENABLED,
+      cloudActive: true,
+    });
+    const tile = pages[0][0];
+    expect(tile.id).toBe("automations");
+    expect(tile.path).toBeUndefined();
+  });
+
+  it("keeps a non-aliased winner's real path intact", () => {
+    const pages = curateLauncherPages(
+      [entry("wallet", { path: "/wallet", kind: "view", state: "loaded" })],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    const tile = pages[0][0];
+    expect(tile.id).toBe("wallet");
+    expect(tile.path).toBe("/wallet");
+  });
+
   it("appends other loaded apps after the curated order on page 1", () => {
     const pages = curateLauncherPages(
       [
@@ -160,6 +190,55 @@ describe("curateLauncherPages", () => {
     expect(ids(pages)).toEqual([
       ["wallet", "browser", "alpha-app", "zebra-app"],
     ]);
+  });
+
+  it("hides the ENTIRE Developer page — curated tiles included — with default toggles", () => {
+    // The content policy: developer tooling is off by default on every build,
+    // dev builds included. Curated membership (DEVELOPER_ORDER) must not
+    // bypass the toggle.
+    const views = [
+      entry("chat"),
+      entry("settings"),
+      entry("trajectories", { viewKind: "developer" }),
+      entry("database", { viewKind: "developer" }),
+      entry("runtime", { builtin: true }),
+      entry("logs", { viewKind: "developer" }),
+      entry("skills", { builtin: true }),
+      entry("plugins", { viewKind: "system" }),
+      // A plugin registration using the LEGACY `developerOnly` flag (the
+      // registerAppShellPage path) must respect the toggle too.
+      entry("trajectory-logger", { developerOnly: true }),
+    ];
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: DEFAULTS,
+          cloudActive: false,
+        }),
+      ),
+    ).toEqual([["chat", "settings"]]);
+    // Flipping the Settings toggle restores the full Developer page.
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: { developer: true, preview: false },
+          cloudActive: false,
+        }),
+      ),
+    ).toEqual([
+      ["chat", "settings"],
+      ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
+    ]);
+  });
+
+  it("collapses the dead rolodex tab onto the working relationships tile", () => {
+    const pages = curateLauncherPages(
+      [entry("relationships"), entry("rolodex", { builtin: true })],
+      { isAosp: false, enabledKinds: DEFAULTS, cloudActive: false },
+    );
+    expect(ids(pages)).toEqual([["relationships"]]);
   });
 
   it("hides uncurated preview/developer views unless their kind is enabled", () => {
@@ -224,6 +303,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("documents", { viewKind: "system" }),
     entry("transcripts", { viewKind: "system" }),
     entry("relationships", { viewKind: "system" }),
+    entry("rolodex", { builtin: true }),
     entry("memories", { viewKind: "system" }),
     entry("feed", { viewKind: "system" }),
     entry("stream"),
@@ -273,6 +353,33 @@ describe("curateLauncherPages — full realistic view set", () => {
     ]);
   });
 
+  it("renders ONLY the apps page with out-of-the-box toggles (what users AND devs see)", () => {
+    expect(
+      ids(
+        curateLauncherPages(REAL_VIEWS, {
+          isAosp: false,
+          enabledKinds: DEFAULTS,
+          cloudActive: true,
+        }),
+      ),
+    ).toEqual([
+      [
+        "chat",
+        "settings",
+        "wallet",
+        "automations",
+        "browser",
+        "character",
+        "documents",
+        "transcripts",
+        "relationships",
+        "memories",
+        "feed",
+        "stream",
+      ],
+    ]);
+  });
+
   it("appends the native-OS tiles to page 1 on the AOSP fork", () => {
     const [appsPage] = ids(
       curateLauncherPages(REAL_VIEWS, {
@@ -291,6 +398,21 @@ describe("curateLauncherPages — full realistic view set", () => {
   });
 });
 
+describe("launcher dead-tile guard", () => {
+  it("hides the legacy 'rolodex' alias (no directViews branch → would land on the fallback)", () => {
+    // rolodex is a routable tab with a launcher tile but no renderStaticViewRouterTab
+    // branch, so tapping it bounced the user back to the launcher fallback. The
+    // real contact surface is `relationships`.
+    expect(LAUNCHER_HIDDEN_IDS.has("rolodex")).toBe(true);
+    const pages = curateLauncherPages(
+      [entry("chat"), entry("rolodex"), entry("relationships")],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    expect(pages.flat().map((e) => e.id)).not.toContain("rolodex");
+    expect(pages.flat().map((e) => e.id)).toContain("relationships");
+  });
+});
+
 describe("canonicalLauncherId", () => {
   it("maps duplicate/alias ids to their canonical launcher id", () => {
     expect(canonicalLauncherId("inventory")).toBe("wallet");
@@ -299,6 +421,7 @@ describe("canonicalLauncherId", () => {
     expect(canonicalLauncherId("todos")).toBe("automations");
     expect(canonicalLauncherId("plugins-page")).toBe("plugins");
     expect(canonicalLauncherId("trajectory-logger")).toBe("trajectories");
+    expect(canonicalLauncherId("rolodex")).toBe("relationships");
     expect(canonicalLauncherId("browser")).toBe("browser");
   });
 });

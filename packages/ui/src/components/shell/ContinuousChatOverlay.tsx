@@ -59,7 +59,9 @@ import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   clearChatDraft,
+  readChatDraft,
   useChatComposerDraftPersistence,
+  writeChatDraft,
 } from "../../state/ChatComposerContext.hooks";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
@@ -1608,8 +1610,47 @@ export function ContinuousChatOverlay({
   // conversation-id change — so a just-prefilled composer is never clobbered. The
   // successful-send path clears it (below).
   const activeConversationId = conversationNav.activeId;
+  // Draft HANDOFF on conversation switch (mirrors ChatView's
+  // handleSelectConversation fix in useChatCallbacks): swiping A→B must repaint
+  // the composer for the TARGET. Flush the LEAVING conversation's in-progress
+  // text under ITS OWN key first (the debounced persister's pending timer is
+  // cancelled by the id change, so a fast edit would otherwise be lost), then
+  // restore the target's own saved draft — or CLEAR the composer when it has
+  // none. The explicit `?? ""` clear is load-bearing: the persistence hook's
+  // restore only sets when a saved draft EXISTS, so without the clear a
+  // draftless target inherits the previous conversation's composer text, which
+  // the debounced persister then saves under the TARGET's key — the half-typed
+  // message silently re-homes to (and would send to) the wrong conversation.
+  //
+  // The persistence hook is keyed by `persistedConversationId`, which trails
+  // `activeConversationId` by exactly this handoff commit — so the hook never
+  // observes the (new id, old conversation's draft) combination and never even
+  // schedules a write of the old text under the new key. Exactly one
+  // steady-state persistence path (the hook) remains; this effect only adds
+  // the one-shot switch-time flush + repaint the hook cannot do.
+  //
+  // Both null transitions are deliberate no-repaints: on boot (null → id) the
+  // composer may already hold a prefill (CHAT_PREFILL / assistant-launch) that
+  // must NOT be clobbered, and on id → null there is no target to paint.
+  const [persistedConversationId, setPersistedConversationId] = React.useState<
+    string | null
+  >(activeConversationId);
+  // Live handle to the draft so the handoff effect keys off the id change
+  // alone (a keystroke never re-runs it), same pattern as messagesRef above.
+  const draftRef = React.useRef(draft);
+  draftRef.current = draft;
+  React.useLayoutEffect(() => {
+    if (persistedConversationId === activeConversationId) return;
+    if (persistedConversationId !== null) {
+      writeChatDraft(persistedConversationId, draftRef.current);
+      if (activeConversationId !== null) {
+        setDraft(readChatDraft(activeConversationId) ?? "");
+      }
+    }
+    setPersistedConversationId(activeConversationId);
+  }, [activeConversationId, persistedConversationId]);
   useChatComposerDraftPersistence({
-    activeConversationId,
+    activeConversationId: persistedConversationId,
     chatInput: draft,
     setChatInput: setDraft,
   });
@@ -1811,6 +1852,14 @@ export function ContinuousChatOverlay({
   // that the normal "tap the visible composer" path relies on (which would
   // fling a history thread open to half instead of resting on the input bar).
   const suppressExpandOnFocusRef = React.useRef(false);
+  // A focus→expand that found nothing revealable yet (the boot race: composer
+  // focused while the restored conversation's messages are still in flight)
+  // parks its intent here. The reveal-edge effect below honors it — but only
+  // while the composer is STILL focused — so focusing the composer opens the
+  // chat even when the focus wins the race against the thread load. Consumed
+  // on every reveal edge so a stale intent can never fling the sheet open long
+  // after the user has moved on.
+  const pendingExpandOnRevealRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
   // Recomputed only when the thread or phase changes — NOT on every drag/draft
   // re-render. Pure windowing (empty-turn filter + most-recent cap, with the
@@ -2228,18 +2277,22 @@ export function ContinuousChatOverlay({
       suppressNextClickRef.current = false;
       return;
     }
-    // Voice can't be turned ON while a reply is in flight (it's gated until the
-    // turn finishes), but an active hands-free session can always be turned OFF.
-    if (responding && !handsFree) return;
     // While transcribing, the mic is the master voice control: a tap turns the
     // mic OFF, which also ends transcription (mic = parent — turning off the mic
     // turns off transcript). This is distinct from the transcript button, which
     // turns transcript off but LEAVES THE MIC ON. The finished transcript still
-    // drops into the composer as an attachment.
+    // drops into the composer as an attachment. This OFF path is checked FIRST
+    // — never gated on `responding`: a wake-word inline reply (#9880) flips
+    // `responding` true while `handsFree` stays false mid-transcription, and
+    // gating it left a lit, dead "stop transcription" mic until the reply
+    // finished.
     if (transcriptionMode) {
       stopTranscriptionAndMic();
       return;
     }
+    // Voice can't be turned ON while a reply is in flight (it's gated until the
+    // turn finishes), but an active hands-free session can always be turned OFF.
+    if (responding && !handsFree) return;
     // Quick tap = hands-free conversation: the agent speaks its replies back and
     // the mic re-opens after each one. Tap again to end.
     toggleHandsFree();
@@ -2864,12 +2917,40 @@ export function ContinuousChatOverlay({
   // handle) can return to that prior resting state. Clears any free-rest so the
   // height matches the detent (no stale freeH pinning it below half).
   const expand = React.useCallback(() => {
-    if (!hasRevealableThread) return;
+    if (!hasRevealableThread) {
+      // Nothing to reveal YET — don't open an empty sheet, but remember the
+      // intent: on boot the composer can gain focus while the restored
+      // conversation's messages are still in flight, and dropping the expand
+      // here made focus-to-open silently do nothing (#11112). The reveal-edge
+      // effect below completes the open once the thread arrives, if the
+      // composer is still focused.
+      pendingExpandOnRevealRef.current = true;
+      return;
+    }
+    pendingExpandOnRevealRef.current = false;
     preFocusCollapsedRef.current = !sheetOpen;
     setFreeH(null);
     // Open to at least HALF; if already at half/full, keep the taller mode.
     setMode((m) => (m === "half" || m === "full" ? m : "half"));
   }, [hasRevealableThread, sheetOpen]);
+
+  // Reveal edge: the thread just became showable. If a focus→expand was parked
+  // while there was nothing to reveal (see expand above), honor it now — but
+  // only while the composer is STILL focused, so a long-abandoned focus can't
+  // pop the sheet open. The intent is consumed either way (one-shot). A
+  // pill-open keyboard-raise never parks an intent (its focus is suppressed
+  // before expand runs), so the suppressExpandOnFocusRef contract holds.
+  React.useEffect(() => {
+    if (!hasRevealableThread || !pendingExpandOnRevealRef.current) return;
+    pendingExpandOnRevealRef.current = false;
+    if (
+      typeof document === "undefined" ||
+      document.activeElement !== inputRef.current
+    ) {
+      return;
+    }
+    expand();
+  }, [hasRevealableThread, expand]);
 
   // Interactive tour control: the tutorial drives the chat into a clean, known
   // state at the start of each frame (so the spotlight always lands on the right
@@ -2889,6 +2970,10 @@ export function ContinuousChatOverlay({
       switch (detail.action) {
         case "pill":
           setMode("pill");
+          // Leaving FULL without goToDetent: drop full-bleed with it, or the
+          // stale `maximized` re-applies on the NEXT return to full (surprise
+          // edge-to-edge). Only the FULL detent may be maximized.
+          setMaximized(false);
           inputRef.current?.blur();
           break;
         case "rest":
@@ -3197,10 +3282,36 @@ export function ContinuousChatOverlay({
     [slashMenu, runExecution],
   );
 
-  // Tapping ANYWHERE outside the chat panel drops the keyboard: if the composer
-  // holds focus and the pointer lands outside the panel, blur it. This is the
-  // iOS-standard "tap the background to dismiss the keyboard" behaviour and works
-  // whether the chat is open (over the scrim) or collapsed (over the live view).
+  // Whether a document-level pointer landed on one of the overlay's OWN
+  // surfaces. CONTRACT: EVERY child of the overlay root counts as INSIDE the
+  // chat for the outside-tap detectors below — the glass panel, the grabber,
+  // AND the controls that render at the overlay root ABOVE the panel (the
+  // audio-unlock chip, the live-transcript strip, the model-status pill). A
+  // tap on any of them must never be swallowed as an outside tap nor collapse
+  // the sheet; checking only `panelRef` made the audio-unlock chip unreachable
+  // while the sheet was open. The single exception is the dimming backdrop:
+  // it is pointer-transparent (`pointerEvents: "none"`), so a real tap "on"
+  // it always lands on the view behind — an event that names it as target
+  // (synthetic/test dispatch) stands in for tapping the dimmed background and
+  // stays OUTSIDE.
+  const isOverlayControlTarget = React.useCallback(
+    (target: EventTarget | null): boolean => {
+      if (!(target instanceof Node) || !overlayRef.current?.contains(target)) {
+        return false;
+      }
+      return !(
+        target instanceof Element &&
+        target.closest('[data-testid="chat-sheet-backdrop"]')
+      );
+    },
+    [],
+  );
+
+  // Tapping ANYWHERE outside the chat overlay drops the keyboard: if the
+  // composer holds focus and the pointer lands outside the overlay, blur it.
+  // This is the iOS-standard "tap the background to dismiss the keyboard"
+  // behaviour and works whether the chat is open (over the scrim) or collapsed
+  // (over the live view).
   React.useEffect(() => {
     if (typeof document === "undefined") return undefined;
     const onPointerDown = (event: PointerEvent) => {
@@ -3213,17 +3324,12 @@ export function ContinuousChatOverlay({
       // Keyboard already down -> outside taps do nothing here; the grabber,
       // scrim, Escape key, and pull-down gesture own disclosure/collapse.
       if (!focused) return;
-      const target = event.target as Node | null;
-      if (target && panelRef.current?.contains(target)) return;
-      // Leave a tap on the GRABBER to the gesture onTap; blurring here would
-      // preempt the disclosure toggle and make press-time focus impossible to
+      // A tap on any overlay control (panel, grabber, audio-unlock chip, …)
+      // is INSIDE — it must not dismiss the keyboard. The grabber in
+      // particular is left to the gesture onTap; blurring here would preempt
+      // the disclosure toggle and make press-time focus impossible to
       // distinguish from click-time focus.
-      if (
-        target instanceof Element &&
-        target.closest('[data-testid="chat-sheet-grabber"]')
-      ) {
-        return;
-      }
+      if (isOverlayControlTarget(event.target)) return;
       // Any other outside tap (incl. the dimming scrim) drops the keyboard and
       // returns to the pre-focus resting state — never a surprise full close.
       dismissKeyboardToPriorState();
@@ -3231,7 +3337,7 @@ export function ContinuousChatOverlay({
     document.addEventListener("pointerdown", onPointerDown, true);
     return () =>
       document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [dismissKeyboardToPriorState]);
+  }, [dismissKeyboardToPriorState, isOverlayControlTarget]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -3257,11 +3363,6 @@ export function ContinuousChatOverlay({
       return undefined;
     }
 
-    const isInsidePanel = (target: EventTarget | null): boolean =>
-      target instanceof Node && !!panelRef.current?.contains(target);
-    const isGrabber = (target: EventTarget | null): boolean =>
-      target instanceof Element &&
-      !!target.closest('[data-testid="chat-sheet-grabber"]');
     // Surfaces painted ABOVE the chat glass (notification sheet at z-9501,
     // tutorial at Z_TUTORIAL, any open Radix dialog) must win the tap — the
     // swallower otherwise eats their first tap AND collapses the chat under
@@ -3272,9 +3373,10 @@ export function ContinuousChatOverlay({
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 && event.pointerType === "mouse") return;
+      // The whole overlay (panel, grabber, root-level controls like the
+      // audio-unlock chip) is INSIDE — see isOverlayControlTarget's contract.
       if (
-        isInsidePanel(event.target) ||
-        isGrabber(event.target) ||
+        isOverlayControlTarget(event.target) ||
         isAboveShellOverlay(event.target)
       ) {
         outsideSheetPointerRef.current = null;
@@ -3336,7 +3438,7 @@ export function ContinuousChatOverlay({
       document.removeEventListener("pointerup", onPointerEnd, true);
       document.removeEventListener("pointercancel", onPointerCancel, true);
     };
-  }, [sheetOpen, collapse]);
+  }, [sheetOpen, collapse, isOverlayControlTarget]);
 
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire
@@ -3346,7 +3448,9 @@ export function ContinuousChatOverlay({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // An open Radix dialog (data-state="open" — e.g. the command palette)
-        // or the notification pull-down sheet (mounts only while open) sits
+        // or a notification surface (the mobile pull-down sheet or the desktop
+        // anchored panel — both mount only while open; the panel carries
+        // role="dialog" with NO data-state="open") sits
         // above the chat: let ITS Escape handling win — collapsing here too
         // closed both at once (e.g. an invisible palette + the chat). Scoped
         // to exactly these; broad role="dialog" would match always-mounted
@@ -3359,7 +3463,7 @@ export function ContinuousChatOverlay({
         // NOT also collapse the whole sheet + discard the in-progress edit.
         if (
           document.querySelector(
-            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
+            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="notification-panel"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
           )
         ) {
           return;
@@ -3681,9 +3785,13 @@ export function ContinuousChatOverlay({
         goToDetent("half");
       } else {
         // In a gap between detents → rest exactly where released. `half` is the
-        // open base; `freeH` overrides the actual height to where the finger left.
+        // open base; `freeH` overrides the actual height to where the finger
+        // left. This leaves FULL without goToDetent, so drop full-bleed here
+        // too — only the FULL detent may stay maximized (a stale flag would
+        // re-maximize the next return to full).
         setFreeH(h);
         setMode("half");
+        setMaximized(false);
       }
     },
   });

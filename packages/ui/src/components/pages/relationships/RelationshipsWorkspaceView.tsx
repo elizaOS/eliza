@@ -324,11 +324,14 @@ export function RelationshipsWorkspaceView({
           <div
             className={
               embedded
-                ? "grid min-h-0 gap-3"
-                : "grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]"
+                ? "grid min-h-0 min-w-0 gap-3"
+                : "grid min-h-0 min-w-0 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]"
             }
           >
-            <PagePanel variant="surface" className="px-3 py-3 sm:px-4 sm:py-4">
+            <PagePanel
+              variant="surface"
+              className="min-w-0 px-3 py-3 sm:px-4 sm:py-4"
+            >
               <RelationshipsGraphPanel
                 snapshot={graph}
                 selectedGroupId={selectedGroupId}

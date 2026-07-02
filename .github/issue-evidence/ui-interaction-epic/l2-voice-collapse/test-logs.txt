@@ -1,0 +1,257 @@
+=== L2 voice/collapse — test evidence (2026-07-02) ===
+
+--- FINAL GREEN: shell suites (unit + fuzz + firstrun + slash + controller + voice-output + shell-state) ---
+ Test Files  8 passed (8)
+      Tests  345 passed (345)
+
+--- RED-ON-REVERT proof (each fix temporarily reverted; its new test failed, then restored green) ---
+F1 revert (mic responding-gate before transcription off-path): 1 failed — 'a mic tap ends transcription even while a reply is in flight'
+F2 revert (tutorial pill setMaximized(false) removed): 1 failed — 'leaving FULL via the tutorial pill action drops full-bleed for good'
+F3 revert (outside-tap predicate back to panel-only): 1 failed — 'the audio-unlock chip works while the sheet is open'
+F4 revert (composerHasDraft gate re-added to transcription loop): 1 failed — 'keeps recording through a composer draft'
+
+--- Voice-adjacent suites (packages/ui/src/voice + state voice tests): 28 files, 231 passed ---
+
+--- chat-sheet real-browser e2e (headless Chromium, real pointer gestures): FULL LOG ---
+✓ [mouse] starts COLLAPSED (closed)
+✓ [mouse] detent is collapsed at rest
+✓ [mouse] COLLAPSED thread height ≈ 0px
+  📸 01-desktop-collapsed.png
+✓ [mouse] flick-up snaps COLLAPSED→HALF
+✓ [mouse] HALF height ≈ 377px (got 377)
+  📸 02-desktop-half.png
+✓ [mouse] grabber bar paints (inner-span opacity "1" === "1", not opacity-0) (#9142)
+✓ [mouse] HALF detent shows the sheet header
+✓ [mouse] flick-up snaps HALF→FULL
+✓ [mouse] FULL is taller than HALF (full 638 > half 377)
+✓ [mouse] FULL rises to the top (panel top 72px ≈ 72px)
+  📸 03-desktop-full.png
+✓ [mouse] header shows maximize + clear + launcher
+✓ [mouse] maximize → data-maximized=true (full screen)
+✓ [mouse] maximized panel is edge-to-edge (x=0)
+✓ [mouse] restore → no longer maximized
+✓ [mouse] clear button calls clearConversation
+✓ [mouse] BEYOND full rubber-bands (got 638, full 638, raw would be ~898)
+  📸 04-desktop-beyond-full-rubberband.png
+✓ [mouse] settles back near FULL after overscroll
+✓ [mouse] mid-drag tracks the finger downward (got 594, below full 638)
+  📸 05-desktop-mid-drag-hold.png
+✓ [mouse] slow drag RESTS at a free height — rested 564, between half 377 and full 638 (not snapped)
+✓ [mouse] free-rested sheet stays open
+  📸 06-desktop-free-rest.png
+✓ [mouse] flick-down returns to COLLAPSED
+✓ [mouse] back COLLAPSED, thread ≈ 0px (got 0)
+  📸 07-desktop-back-to-collapsed.png
+✓ [mouse] re-opened for the click-out check
+✓ [mouse] clicking outside COLLAPSES the chat
+  📸 08-desktop-clicked-out-collapsed.png
+✓ [mouse] FLICK up opens despite <56px travel (velocity)
+  📸 09-desktop-flick-open.png
+✓ [mouse] sub-threshold nudge snaps back (no detent change)
+  📸 10-desktop-nudge-snapback.png
+✓ [touch] starts COLLAPSED (closed)
+✓ [touch] detent is collapsed at rest
+✓ [touch] COLLAPSED thread height ≈ 0px
+  📸 11-mobile-collapsed.png
+✓ [touch] flick-up snaps COLLAPSED→HALF
+✓ [touch] HALF height ≈ 980px (got 979)
+  📸 12-mobile-half.png
+✓ [touch] grabber bar paints (inner-span opacity "1" === "1", not opacity-0) (#9142)
+✓ [touch] HALF detent shows the sheet header
+✓ [touch] flick-up snaps HALF→FULL
+✓ [touch] FULL is taller than HALF (full 1941 > half 980)
+✓ [touch] FULL rises to the top (panel top 72px ≈ 72px)
+  📸 13-mobile-full.png
+✓ [touch] header shows maximize + clear + launcher
+✓ [touch] maximize → data-maximized=true (full screen)
+✓ [touch] maximized panel is edge-to-edge (x=0)
+✓ [touch] restore → no longer maximized
+✓ [touch] clear button calls clearConversation
+✓ [touch] BEYOND full rubber-bands (got 1941, full 1941, raw would be ~2201)
+  📸 14-mobile-beyond-full-rubberband.png
+✓ [touch] settles back near FULL after overscroll
+✓ [touch] mid-drag tracks the finger downward (got 1897, below full 1941)
+  📸 15-mobile-mid-drag-hold.png
+✓ [touch] slow drag rests open (rested 1867, start 1941)
+✓ [touch] free-rested sheet stays open
+  📸 16-mobile-free-rest.png
+✓ [touch] flick-down returns to COLLAPSED
+✓ [touch] back COLLAPSED, thread ≈ 0px (got 0)
+  📸 17-mobile-back-to-collapsed.png
+✓ [touch] re-opened for the click-out check
+✓ [touch] clicking outside COLLAPSES the chat
+  📸 18-mobile-clicked-out-collapsed.png
+✓ [touch] FLICK up opens despite <56px travel (velocity)
+  📸 19-mobile-flick-open.png
+✓ [touch] sub-threshold nudge snaps back (no detent change)
+  📸 20-mobile-nudge-snapback.png
+✓ [grabber-swipe] starts on the home surface
+✓ [grabber-swipe] REAL-touch left flick on the grabber commits goLauncher (#9943)
+  📸 21-grabber-real-touch-launcher.png
+✓ [grabber-swipe] real-touch flick still commits with the main thread janked / moves coalesced (#9943)
+✓ [grabber-swipe] synthetic PointerEvent flick still commits (parity)
+✓ EMPTY: no thread/history mounted (just the input panel)
+✓ EMPTY: suggestion strip NOT shown (flagged off)
+✓ EMPTY: attach (+) button shown
+✓ EMPTY: mic button shown (no draft)
+  📸 22-state-empty.png
+✓ BOOTING: composer placeholder says 'waking up'
+✓ BOOTING: attach (+) stays enabled (you can compose while it wakes)
+✓ BOOTING: mic stays ENABLED while warming (voice decoupled from agent-ready)
+  📸 23-state-booting.png
+✓ RECORDING: mic shows active (aria-pressed)
+✓ LISTENING: interim transcript line is rendered
+  📸 24-state-recording-listening.png
+✓ SPEAKING: mic hidden while a reply is in flight (voice gated)
+✓ SPEAKING: stop control shown to interrupt the spoken reply
+✓ SPEAKING: no stray voice-mute button shown while the agent speaks
+  📸 25-state-speaking.png
+✓ UNLOCK: sheet opens behind the audio-unlock chip
+  📸 26-state-audio-unlock-open.png
+✓ UNLOCK: chip tap fires unlockAudio (not swallowed as an outside tap)
+✓ UNLOCK: chip clears once audio is unlocked
+✓ UNLOCK: sheet STAYS OPEN — the chip tap is not an outside collapse
+  📸 27-state-audio-unlock-cleared.png
+✓ TRANSCRIBING+REPLY: mic reads 'stop transcription'
+  📸 28-state-transcribing-inline-reply.png
+✓ TRANSCRIBING+REPLY: mic tap ends transcription even mid-reply (not gated on responding)
+✓ TRANSCRIBING+REPLY: after the tap the trailing control is the stop (mic off)
+✓ RESPONDING: typing-dots shown in the open sheet
+  📸 29-state-responding.png
+✓ TYPING: trailing control morphs mic→send
+✓ TYPING: mic hidden while a draft exists
+✓ TYPING: composing pulls the sheet open
+  📸 30-state-typing-send.png
+✓ SEND-TAP: composer focused before send
+✓ SEND-TAP: composer keeps focus after tapping send (keyboard stays up)
+✓ SEND-TAP: composer clears after tapping send
+✓ ATTACH: pending image thumbnail rendered
+✓ ATTACH: send button shown for image-only turn
+✓ ATTACH: per-image remove button shown
+  📸 31-state-image-attached.png
+✓ REMOVE: thumbnail cleared after remove
+✓ MIC CLICK: toggles recording on
+  📸 32-state-mic-clicked-recording.png
+✓ MIC CLICK: toggles recording back off
+✓ DICTATION: final transcript fills the composer box (draft="buy oat milk")
+✓ DICTATION: send control morphs in once the box holds the dictated text
+  📸 33-state-dictation-in-box.png
+✓ DICTATION: a second transcript appends to the draft (draft="buy oat milk at noon")
+✓ DICTATION: sending the dictated draft clears the box
+✓ DICTATION: the dictated text sends as a chat turn
+✓ CONTINUOUS: tapping the mic starts the hands-free loop
+✓ CONTINUOUS: a final transcript sends a VOICE_DM (spoken-reply turn), not a draft
+✓ CONTINUOUS: converse does NOT leave text in the composer box
+✓ PTT: press-and-hold starts a DICTATE capture
+✓ PTT: release stops the capture
+✓ PTT: a held press does NOT toggle hands-free (suppress-click guard)
+✓ PTT-CANCEL: the hold started dictation
+✓ PTT-CANCEL: pointercancel stops the capture
+✓ PTT-CANCEL: the NEXT tap still toggles hands-free (suppress did not leak)
+✓ TYPING-PAUSE: a draft pauses the always-on loop (setComposerHasDraft true)
+✓ TYPING-PAUSE: clearing the draft resumes the loop (setComposerHasDraft false)
+✓ SUGGESTIONS: no chips rendered (flagged off)
+  📸 34-state-suggestions-off.png
+✓ MULTILINE: composer grows with newlines (32 → 99px)
+  📸 35-state-multiline-input.png
+✓ FOCUS: composer holds focus
+✓ FOCUS: focusing opens the chat
+✓ CLICK-OUT: blurs the composer (mobile keyboard drops)
+✓ CLICK-OUT: collapses the chat
+✓ KEYBOARD: overlay rests at the bottom with no keyboard (bottom 0px)
+✓ KEYBOARD(collapsed): overlay lifts to sit above the keyboard (bottom 334px ≈ 334)
+✓ KEYBOARD(collapsed): input panel sits above the keyboard line (bottom 528 ≤ 540)
+  📸 36-state-keyboard-collapsed.png
+✓ KEYBOARD: pulled to FULL with the keyboard open (got full)
+✓ KEYBOARD(full): tall panel does NOT spill above the screen top (top 64 ≥ 0)
+✓ KEYBOARD(full): panel stays above the keyboard line (bottom 528 ≤ 540)
+✓ KEYBOARD(full): panel height capped to the visible area (h 464 ≤ 484)
+  📸 37-state-keyboard-full.png
+✓ KEYBOARD: overlay returns to the bottom when the keyboard closes (bottom 0px)
+✓ NO_PROVIDER: structured recovery gate is rendered (not raw error text)
+✓ NO_PROVIDER: 'Open Settings' CTA shown
+  📸 38-state-no-provider-gate.png
+✓ NO_PROVIDER: tapping the CTA jumps to Settings
+✓ PILL: starts at input (collapsed)
+✓ PILL: slow drag-down collapses the input → pill
+✓ PILL: reset to the input peek before flick check
+✓ PILL: flick-down collapses the input → pill
+✓ PILL: the recoverable pill capsule is shown
+✓ PILL: the input is visually hidden in pill mode (content opacity 0.000737397)
+✓ PILL: the input is inert (out of tab order / a11y tree) in pill mode
+  📸 39-state-pill.png
+✓ PILL-TAP: collapsed to pill first
+✓ PILL-TAP: tap animates pill → chat, content fully formed (opacity 1)
+✓ PILL-TAP: a SINGLE tap opens the chat to half (got half)
+✓ PILL-TAP: the chat is open after one tap
+  📸 40-state-pill-tap-opened.png
+✓ REDUCED-MOTION: pull-up still opens
+  📸 41-state-reduced-motion-open.png
+✓ NAV: opened to half
+✓ NAV: single launcher button present and enabled
+✓ NAV: legacy home/views/settings buttons removed (#9450)
+✓ NAV-CLOSE: maximized before tapping launcher
+✓ NAV-CLOSE: tapping launcher animates OUT of maximize
+✓ NAV-CLOSE: tapping launcher collapses the sheet (close)
+✓ NAV-CLOSE: launcher navigation fires after the close starts
+✓ MAX-HALF: at half before maximize
+✓ MAX-HALF: maximize from HALF goes full-screen
+✓ MAX-HALF: full-screen fills top-to-bottom — no bottom gap (y=0, bottom=874, vh=874)
+✓ MAX-INSET: maximized full-bleed
+✓ MAX-INSET: maximized panel fills to the TOP despite the bottom inset (y=0) — no status-bar seam
+✓ MAX-INSET: header buttons sit at the safe area, not pushed down by a gap (y=38)
+  📸 42-state-maximized-with-inset.png
+✓ STATES: rest is INPUT
+✓ STATES: INPUT shows no header buttons
+  📸 43-state-INPUT.png
+✓ STATES: flick-up → OPEN_HALF_OR_OVER (got OPEN_HALF_OR_OVER)
+✓ STATES: OPEN_HALF_OR_OVER shows header buttons
+  📸 44-state-OPEN_HALF_OR_OVER.png
+✓ STATES: maximize → MAXIMIZED (got MAXIMIZED)
+  📸 45-state-MAXIMIZED.png
+✓ #10698: populated thread renders message bubbles (found 24)
+✓ #10698: message bubbles have NO per-message fill (transparent bg); filled=[]
+✓ STATES: slow free-rest below half → OPEN_UNDER_HALF (got OPEN_UNDER_HALF)
+✓ STATES: OPEN_UNDER_HALF hides header buttons
+✓ STATES: OPEN_UNDER_HALF insets the thread below the grabber (paddingTop 20)
+  📸 46-state-OPEN_UNDER_HALF.png
+✓ STATES: flick-down from input → CLOSED (got CLOSED)
+  📸 47-state-CLOSED.png
+✓ PILL-MORPH: collapsed to pill
+✓ PILL-MORPH: content lerps in mid-drag (opacity 0.5)
+✓ PILL-MORPH: never two handle bars at once (grabber 0, pill 0.0909091)
+  📸 48-transition-pill-to-input-mid-drag.png
+✓ PILL-MORPH: a flick from the pill reaches the chat (got OPEN_HALF_OR_OVER)
+  📸 49-transition-pill-to-chat-flick.png
+✓ INPUT-PILL-MORPH: starts at the input peek
+✓ INPUT-PILL-MORPH: the input fades mid-drag (content opacity 0.25)
+✓ INPUT-PILL-MORPH: the pill capsule fades in mid-drag (pill opacity 0.545455)
+  📸 50-transition-input-to-pill-mid-drag.png
+✓ INPUT-PILL-MORPH: settles to the pill on release
+✓ PILL-INPUT: collapsed to pill first
+✓ PILL-INPUT: held drag keeps glass/content radii in sync (surface 32, content 32)
+✓ PILL-INPUT: held drag uses a real capsule radius, not a huge clamped radius (32)
+✓ PILL-INPUT: short slow pull from pill settles at INPUT, not half (got INPUT)
+  📸 51-transition-pill-slow-pull-to-input.png
+✓ ROTATION: collapsed to pill first
+✓ ROTATION: held mid-crossfade before rotating (content 0.5)
+✓ ROTATION: never two bars after rotating mid-morph (grab 0, pill 1)
+✓ ROTATION: morph re-settled to the single pill bar (grab 0, pill 1)
+  📸 52-rotation-mid-morph-resettled.png
+✓ HEADER-LIVE: header shown at full before the drag
+✓ HEADER-LIVE: header is HIDDEN mid-drag once the panel renders below half
+  📸 53-state-mid-drag-below-half-no-header.png
+✓ HEADER-LIVE: chat-state MAXIMIZED iff data-maximized (state=MAXIMIZED, maximized=true)
+✓ STREAMING: dots are anchored inside the in-flight assistant bubble (found 1)
+  📸 54-state-streaming-dots-in-bubble.png
+✓ MULTI-SEND: STOP shown while responding with no draft
+✓ MULTI-SEND: mic gated while responding
+✓ MULTI-SEND: send shown while responding + draft
+✓ MULTI-SEND: send ENABLED while responding (send another)
+✓ MULTI-SEND: sending while responding appends another message (13 → 14)
+  📸 55-state-multi-send-while-responding.png
+✓ no uncaught page errors (0)
+✓ no error-level console messages (0)
+✓ fixture logged a voice interaction (mic tap → hands-free / recording)
+Screenshots (55) written to /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-interaction-epic/packages/ui/src/components/shell/__e2e__/output
+CHAT-SHEET E2E PASSED

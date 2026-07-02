@@ -173,6 +173,49 @@
         "default": "npx -y @zed-industries/codex-acp@0.14.0",
         "sensitive": false
       },
+      "ELIZA_CODEX_ACP_SANDBOX_MODE": {
+        "type": "string",
+        "description": "Optional Codex ACP sandbox_mode override. Accepted values: read-only, workspace-write, danger-full-access.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_SANDBOX_MODE": {
+        "type": "string",
+        "description": "Compatibility alias for ELIZA_CODEX_ACP_SANDBOX_MODE.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE": {
+        "type": "string",
+        "description": "Codex ACP sandbox_mode used when Linux Landlock is unavailable.",
+        "required": false,
+        "default": "danger-full-access",
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_APPROVAL_POLICY": {
+        "type": "string",
+        "description": "Optional Codex ACP approval_policy override. The no-Landlock fallback defaults this to never when unset.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_APPROVAL_POLICY": {
+        "type": "string",
+        "description": "Compatibility alias for ELIZA_CODEX_ACP_APPROVAL_POLICY.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_LANDLOCK": {
+        "type": "string",
+        "description": "Force Codex ACP Landlock detection for container deployments or tests. Accepted values include 1/true and 0/false. Unset means auto-detect.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_LANDLOCK": {
+        "type": "string",
+        "description": "Compatibility alias for ELIZA_CODEX_ACP_LANDLOCK.",
+        "required": false,
+        "sensitive": false
+      },
       "ELIZA_CLAUDE_ACP_COMMAND": {
         "type": "string",
         "description": "Native ACP command used for Claude sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",

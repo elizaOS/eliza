@@ -822,7 +822,32 @@ class RedeemableEarningsService {
 
     const amountDecimal = new Decimal(amount).toFixed(4);
 
-    await dbWrite.transaction(async (tx) => {
+    const isExisting = await dbWrite.transaction(async (tx) => {
+      // Get earnings with row lock
+      const [earnings] = await tx
+        .select()
+        .from(redeemableEarnings)
+        .where(eq(redeemableEarnings.user_id, userId))
+        .for("update");
+
+      if (!earnings) {
+        throw new Error("Earnings record not found");
+      }
+
+      // Check for existing refund with same redemption ID (idempotency)
+      const existingRefund = await tx.query.redeemableEarningsLedger.findFirst({
+        where: and(
+          eq(redeemableEarningsLedger.user_id, userId),
+          eq(redeemableEarningsLedger.redemption_id, redemptionId),
+          eq(redeemableEarningsLedger.entry_type, "refund"),
+        ),
+      });
+
+      if (existingRefund) {
+        // Idempotent - already refunded, no mutation
+        return true;
+      }
+
       // Update balances - move from pending back to available
       const [updated] = await tx
         .update(redeemableEarnings)
@@ -851,6 +876,8 @@ class RedeemableEarningsService {
           refunded_at: new Date().toISOString(),
         }),
       });
+
+      return false;
     });
 
     logger.info("[RedeemableEarnings] Redemption refunded", {
@@ -858,6 +885,7 @@ class RedeemableEarningsService {
       redemptionId: redemptionId.slice(0, 8) + "...",
       amount,
       reason,
+      isExisting,
     });
 
     return { success: true };

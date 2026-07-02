@@ -49,7 +49,14 @@ function currentBenchmarkName(): string {
 }
 
 function isBenchmarkActionDisabledForCurrentContext(): boolean {
-  return false;
+  // The standard public suite (MMLU / GSM8K / HumanEval / MT-Bench) measures
+  // plain text answers through the normal agent pipeline and declares an
+  // empty tool surface (`tools: []`). Exposing BENCHMARK_ACTION there is an
+  // attractive nuisance: its ANSWER/GUESS similes lure the planner into
+  // detouring a one-shot exam answer through the tool + completion-evaluator
+  // machinery, which multiplies LLM calls and can end the turn in a
+  // trajectory-limit apology instead of the answer.
+  return currentBenchmarkName() === "standard";
 }
 
 // Captured action from the last agent response

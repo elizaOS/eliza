@@ -743,6 +743,47 @@ def _is_benchmark_directory(path: Path) -> bool:
     return name not in IGNORED_BENCHMARK_DIRS
 
 
+def _git_visible_dir_names(benchmarks_root: Path) -> set[str] | None:
+    """Top-level names under ``benchmarks_root`` that contain at least one
+    git-tracked or untracked-but-not-ignored file, or ``None`` when git is
+    unavailable (non-repo checkouts keep the pure filesystem scan).
+
+    Benchmarks deleted from the tree (e.g. the #9475/#9506 de-larp waves:
+    claw-eval, loca-bench, qwen-claw-bench, skillsbench, swe-bench-pro, and
+    later lifeops-quality) can linger on disk in long-lived checkouts because
+    every remaining file in them is gitignored (venvs, results, media), so
+    ``git checkout`` never removes the directory. Such residue directories are
+    not part of the repo and must not be reported as benchmark directories the
+    orchestrator has to cover. Genuinely new, not-yet-committed benchmark
+    directories still show up: their files are untracked but not ignored.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(benchmarks_root),
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                ".",
+            ],
+            capture_output=True,
+            timeout=60,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    names: set[str] = set()
+    for entry in proc.stdout.decode("utf-8", errors="replace").split("\0"):
+        if entry:
+            names.add(entry.split("/", 1)[0])
+    return names
+
+
 def _make_registry_adapter(
     workspace_root: Path,
     benchmarks_root: Path,
@@ -2310,10 +2351,16 @@ def _score_from_personality_bench(path: Path) -> ScoreSummary:
 
 def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     benchmarks_root = workspace_root / "benchmarks"
+    # Skip gitignored residue of benchmarks deleted from the tree — see
+    # _git_visible_dir_names. Directories whose only on-disk content is
+    # ignored (stale venvs/results/media surviving a `git checkout` after a
+    # de-larp deletion) are not benchmark directories.
+    git_visible = _git_visible_dir_names(benchmarks_root)
     benchmark_dirs = sorted(
         p.name
         for p in benchmarks_root.iterdir()
         if _is_benchmark_directory(p)
+        and (git_visible is None or p.name in git_visible)
     )
 
     score_extractor_factory = RegistryScoreExtractor(workspace_root)
@@ -2383,13 +2430,18 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "no_demo": True,
             "expand_scenarios": True,
         },
+        # Standard-suite smoke defaults keep `limit` tiny for cost, but
+        # max_tokens must stay at the suite's real default (2048): GSM8K needs
+        # chain-of-thought room, reasoning models spend hidden tokens before
+        # the visible answer, and 256 silently truncates both — depressing
+        # real scores to near-zero without any error surfacing.
         "gsm8k": {
             "limit": 2,
-            "max_tokens": 256,
+            "max_tokens": 2048,
         },
         "humaneval": {
             "limit": 2,
-            "max_tokens": 256,
+            "max_tokens": 2048,
             "timeout_s": 5,
         },
         "gauntlet": {
@@ -2398,7 +2450,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mmlu": {
             "limit": 2,
-            "max_tokens": 256,
+            "max_tokens": 2048,
         },
         "mt_bench": {
             "limit": 1,

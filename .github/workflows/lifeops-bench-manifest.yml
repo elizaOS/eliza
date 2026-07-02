@@ -3,14 +3,15 @@
 # Re-runs the manifest generator (TS exporter + Python umbrella augment) and
 # fails the build if the committed `actions.manifest.json` differs from a
 # fresh regeneration. This keeps `packages/benchmarks/lifeops-bench/manifests/`
-# in sync with the actual plugin actions exposed by app-lifeops, app-contacts,
-# app-phone, plugin-todos, plugin-imessage, and plugin-bluebubbles.
+# in sync with the actual plugin actions exposed by contacts, personal
+# assistant, phone, BlueBubbles, iMessage, and todos.
 #
 # Local equivalent (run before pushing):
 #
 #     tmp="$(mktemp)"
-#     cp packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
-#     (cd packages/benchmarks/lifeops-bench && python -m eliza_lifeops_bench.manifest_export "$tmp")
+#     node --conditions=eliza-source --conditions=development --import tsx \
+#       scripts/lifeops-bench/export-action-manifest.ts \
+#       --out "$tmp" --summary-out none
 #     diff -u packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
 #
 # Triggers on PRs that touch any of the input plugins, the export script,
@@ -28,7 +29,9 @@ on:
       - "plugins/plugin-bluebubbles/**"
       - "plugins/plugin-imessage/**"
       - "plugins/plugin-todos/**"
+      - "scripts/lifeops-bench/export-action-manifest.ts"
       - "packages/benchmarks/lifeops-bench/manifests/actions.manifest.json"
+      - "packages/benchmarks/lifeops-bench/manifests/actions.summary.md"
       - "packages/benchmarks/lifeops-bench/eliza_lifeops_bench/manifest_export.py"
       - ".github/workflows/lifeops-bench-manifest.yml"
   workflow_dispatch:
@@ -83,10 +86,11 @@ jobs:
         run: |
           set -e
           tmp="$(mktemp)"
-          trap 'rm -f "$tmp"' EXIT
-          cp packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
-          (
-            cd packages/benchmarks/lifeops-bench
-            python -m eliza_lifeops_bench.manifest_export "$tmp"
-          )
+          summary_tmp="$(mktemp)"
+          trap 'rm -f "$tmp" "$summary_tmp"' EXIT
+          node --conditions=eliza-source --conditions=development --import tsx \
+            scripts/lifeops-bench/export-action-manifest.ts \
+            --out "$tmp" \
+            --summary-out "$summary_tmp"
           diff -u packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
+          diff -u packages/benchmarks/lifeops-bench/manifests/actions.summary.md "$summary_tmp"

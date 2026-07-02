@@ -8,7 +8,7 @@
 import { createUniqueUuid } from "../../../entities.ts";
 import { logger } from "../../../logger.ts";
 import type { Component, IAgentRuntime, UUID } from "../../../types/index.ts";
-import { isEncryptedSecret, type KeyManager } from "../crypto/index.ts";
+import { isEncryptedSecret, type KeyManager } from "../crypto/encryption.ts";
 import type {
 	EncryptedSecret,
 	SecretConfig,

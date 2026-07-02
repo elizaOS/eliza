@@ -63,6 +63,12 @@ async function requestJson(
 }
 
 async function createAgent(): Promise<string> {
+  // The create-agent endpoint is idempotent: a fresh create returns 201, but
+  // when the account already owns an agent (e.g. a prior run's agent that
+  // teardown never deleted — teardown only reaps the Hetzner server, not the
+  // cloud agent) it returns 200 with `created:false` and the existing record.
+  // Accept both so a leftover agent surfaces as an actionable warning + reuse
+  // instead of an opaque `POST … returned 200: {…}` throw that burns the lane.
   const { body } = await requestJson(
     "/api/v1/eliza/agents",
     {
@@ -82,11 +88,24 @@ async function createAgent(): Promise<string> {
         environmentVars: { HETZNER_E2E_RUN_ID: runId },
       }),
     },
-    [201],
+    [200, 201],
   );
   const data = body.data as JsonObject | undefined;
   if (!data || typeof data.id !== "string") {
     throw new Error("Create agent response missing data.id");
+  }
+  if (body.created === false) {
+    // Loud + actionable, but not fatal: reuse the pre-existing agent so the
+    // provision/healthcheck heartbeat still runs. Writing this id to the state
+    // file lets teardown pick it up. If the reused agent is unhealthy, the
+    // downstream provision/healthcheck steps fail loudly with the real reason.
+    console.log(
+      `::warning::[hetzner-e2e-deploy-agent] create returned created:false — ` +
+        `reusing pre-existing agent ${data.id} (${String(data.agentName ?? "")}). ` +
+        `A prior run's agent was not torn down (teardown reaps the Hetzner ` +
+        `server, not the cloud agent). Delete stale agents on the staging ` +
+        `showcase account if this recurs.`,
+    );
   }
   return data.id;
 }

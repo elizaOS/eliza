@@ -8,6 +8,15 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
+  appendCodexAcpSandboxConfig,
+  type CodexSandboxMode,
+  commandHasCodexSandboxConfig,
+  detectLandlockAvailability,
+  isCodexLandlockPanic,
+  normalizeCodexApprovalPolicy,
+  normalizeCodexSandboxMode,
+} from "./codex-sandbox.js";
+import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   diagnoseCodingAccountFallback,
@@ -96,6 +105,9 @@ type RunResult = {
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
+const DEFAULT_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
+const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
+const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
 
 /**
  * Resolve the absolute workdir for a spawned session. When `isolate` is true,
@@ -795,8 +807,20 @@ export class AcpService extends Service {
       if (this.nativePromptSessionIds.has(sessionId)) {
         throw new Error(`ACP session is already busy: ${sessionId}`);
       }
-      await this.store.updateStatus(sessionId, "busy");
-      return this.sendNativePrompt(session, text, opts, startedAt);
+      // Claim the session SYNCHRONOUSLY, before the first await. Previously the
+      // busy marker was only added deep inside sendNativePrompt (after
+      // `updateStatus` + client setup await), so two concurrent sendPrompt calls
+      // could both pass the has() check before either added, driving two prompts
+      // onto the same native session. Cleanup on the pre-prompt error paths;
+      // sendNativePrompt's own finally clears it on the normal path.
+      this.nativePromptSessionIds.add(sessionId);
+      try {
+        await this.store.updateStatus(sessionId, "busy");
+        return await this.sendNativePrompt(session, text, opts, startedAt);
+      } catch (err) {
+        this.nativePromptSessionIds.delete(sessionId);
+        throw err;
+      }
     }
     await this.store.updateStatus(sessionId, "busy");
     const args = this.baseArgs({
@@ -1212,50 +1236,146 @@ export class AcpService extends Service {
     return resolveVendoredOpencodeAcpCommand();
   }
 
+  private codexAcpSandboxMode(): CodexSandboxMode | undefined {
+    const raw =
+      this.setting("ELIZA_CODEX_ACP_SANDBOX_MODE") ??
+      this.setting("ELIZA_CODEX_SANDBOX_MODE");
+    const mode = normalizeCodexSandboxMode(raw);
+    if (raw?.trim() && !mode) {
+      this.log("warn", "Ignoring invalid Codex ACP sandbox mode", {
+        value: raw,
+        supported: ["read-only", "workspace-write", "danger-full-access"],
+      });
+    }
+    return mode;
+  }
+
+  private codexAcpApprovalPolicy(): string | undefined {
+    const raw =
+      this.setting("ELIZA_CODEX_ACP_APPROVAL_POLICY") ??
+      this.setting("ELIZA_CODEX_APPROVAL_POLICY");
+    const policy = normalizeCodexApprovalPolicy(raw);
+    if (raw?.trim() && !policy) {
+      this.log("warn", "Ignoring invalid Codex ACP approval policy", {
+        value: raw,
+        supported: ["untrusted", "on-request", "on-failure", "never"],
+      });
+    }
+    return policy;
+  }
+
+  private codexNoLandlockSandboxMode(): CodexSandboxMode {
+    const raw = this.setting("ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE");
+    const mode = normalizeCodexSandboxMode(raw);
+    if (raw?.trim() && !mode) {
+      this.log("warn", "Ignoring invalid Codex ACP no-Landlock sandbox mode", {
+        value: raw,
+        supported: ["read-only", "workspace-write", "danger-full-access"],
+      });
+    }
+    return mode ?? CODEX_NO_LANDLOCK_SANDBOX_MODE;
+  }
+
+  private codexAgentCommand(): string {
+    const command =
+      this.setting("ELIZA_CODEX_ACP_COMMAND") ?? DEFAULT_CODEX_ACP_COMMAND;
+    const configuredSandboxMode = this.codexAcpSandboxMode();
+    if (configuredSandboxMode) {
+      return appendCodexAcpSandboxConfig(
+        command,
+        configuredSandboxMode,
+        this.codexAcpApprovalPolicy() ??
+          (configuredSandboxMode === "danger-full-access"
+            ? CODEX_NO_LANDLOCK_APPROVAL_POLICY
+            : undefined),
+      );
+    }
+    if (commandHasCodexSandboxConfig(command)) return command;
+
+    const landlock = detectLandlockAvailability({
+      env: {
+        ELIZA_CODEX_ACP_LANDLOCK: this.setting("ELIZA_CODEX_ACP_LANDLOCK"),
+        ELIZA_CODEX_LANDLOCK: this.setting("ELIZA_CODEX_LANDLOCK"),
+      },
+    });
+    if (landlock !== "unavailable") return command;
+
+    this.log(
+      "warn",
+      "Landlock unavailable; starting Codex ACP with sandbox fallback",
+      {
+        sandboxMode: this.codexNoLandlockSandboxMode(),
+        approvalPolicy:
+          this.codexAcpApprovalPolicy() ?? CODEX_NO_LANDLOCK_APPROVAL_POLICY,
+      },
+    );
+    return appendCodexAcpSandboxConfig(
+      command,
+      this.codexNoLandlockSandboxMode(),
+      this.codexAcpApprovalPolicy() ?? CODEX_NO_LANDLOCK_APPROVAL_POLICY,
+    );
+  }
+
+  private codexLandlockFallbackCommand(
+    agentType: AgentType,
+    command: string,
+    message: string,
+  ): string | undefined {
+    if ((normalizeTaskAgentAdapter(agentType) ?? agentType) !== "codex")
+      return undefined;
+    if (!isCodexLandlockPanic(message)) return undefined;
+    if (commandHasCodexSandboxConfig(command)) return undefined;
+    return appendCodexAcpSandboxConfig(
+      command,
+      this.codexAcpSandboxMode() ?? this.codexNoLandlockSandboxMode(),
+      this.codexAcpApprovalPolicy() ?? CODEX_NO_LANDLOCK_APPROVAL_POLICY,
+    );
+  }
+
   private async spawnNativeSession(
     id: string,
     session: SessionInfo,
     opts: SpawnOptions,
   ): Promise<SpawnResult> {
     const command = this.nativeAgentCommand(session.agentType);
-    const stderr: string[] = [];
-    const client = new NativeAcpClient({
-      command,
-      cwd: session.workdir,
-      approvalPreset: session.approvalPreset,
-      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-      terminal: !this.shouldDisableTerminalCapability(),
-      env: this.buildEnv(
-        opts.env,
-        opts.customCredentials,
-        opts.model,
-        session.agentType,
-        id,
-      ),
-      // Auto-inherit the parent runtime's configured MCP servers (config
-      // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
-      // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
-      mcpServers: readConfigMcpServers(),
-      onEvent: (event, protocolSessionId) => {
-        this.handleAcpEvent(
-          event,
+    const createClient = (clientCommand: string, stderr: string[]) =>
+      new NativeAcpClient({
+        command: clientCommand,
+        cwd: session.workdir,
+        approvalPreset: session.approvalPreset,
+        timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+        terminal: !this.shouldDisableTerminalCapability(),
+        env: this.buildEnv(
+          opts.env,
+          opts.customCredentials,
+          opts.model,
+          session.agentType,
           id,
-          "",
-          Date.now(),
-          false,
-          new Set<string>(),
-        );
-        if (protocolSessionId && protocolSessionId !== id) {
-          void this.store
-            .update(id, { acpxSessionId: protocolSessionId })
-            .catch(() => undefined);
-        }
-      },
-      onStderr: (chunk) => {
-        stderr.push(chunk);
-      },
-    });
-    try {
+        ),
+        // Auto-inherit the parent runtime's configured MCP servers (config
+        // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
+        // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
+        mcpServers: readConfigMcpServers(),
+        onEvent: (event, protocolSessionId) => {
+          this.handleAcpEvent(
+            event,
+            id,
+            "",
+            Date.now(),
+            false,
+            new Set<string>(),
+          );
+          if (protocolSessionId && protocolSessionId !== id) {
+            void this.store
+              .update(id, { acpxSessionId: protocolSessionId })
+              .catch(() => undefined);
+          }
+        },
+        onStderr: (chunk) => {
+          stderr.push(chunk);
+        },
+      });
+    const attachClient = async (client: NativeAcpClient) => {
       await client.start();
       const nativeSession = await client.createSession(session.workdir);
       this.nativeClients.set(id, client);
@@ -1274,13 +1394,45 @@ export class AcpService extends Service {
       });
       const updated = await this.store.get(id);
       return toSpawnResult(updated ?? { ...session, status: "ready" });
+    };
+    let stderr: string[] = [];
+    let client = createClient(command, stderr);
+    try {
+      return await attachClient(client);
     } catch (err) {
       await client.close().catch(() => undefined);
       // A failed spawn must not leave a closed client registered: the entry is
       // set above before the store writes that can throw here. Idempotent when
       // the failure happened before the set.
       this.nativeClients.delete(id);
-      const message = stderr.join("").trim() || errorMessage(err);
+      let message = stderr.join("").trim() || errorMessage(err);
+      const fallbackCommand = this.codexLandlockFallbackCommand(
+        session.agentType,
+        command,
+        message,
+      );
+      if (fallbackCommand) {
+        this.log(
+          "warn",
+          "Codex ACP Landlock unavailable; retrying with sandbox fallback",
+          {
+            sessionId: id,
+            sandboxMode: this.codexNoLandlockSandboxMode(),
+            approvalPolicy:
+              this.codexAcpApprovalPolicy() ??
+              CODEX_NO_LANDLOCK_APPROVAL_POLICY,
+          },
+        );
+        stderr = [];
+        client = createClient(fallbackCommand, stderr);
+        try {
+          return await attachClient(client);
+        } catch (retryErr) {
+          await client.close().catch(() => undefined);
+          this.nativeClients.delete(id);
+          message = stderr.join("").trim() || errorMessage(retryErr);
+        }
+      }
       await this.store.updateStatus(id, "errored", message);
       this.emitSessionEvent(id, "error", {
         message,
@@ -1438,17 +1590,13 @@ export class AcpService extends Service {
       if (command) return command;
       return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
     }
+    if (normalizedAgentType === "codex") return this.codexAgentCommand();
     const override = this.setting(
       `ELIZA_${String(normalizedAgentType)
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "_")}_ACP_COMMAND`,
     );
     if (override?.trim()) return override.trim();
-    if (normalizedAgentType === "codex")
-      return (
-        this.setting("ELIZA_CODEX_ACP_COMMAND") ??
-        "npx -y @zed-industries/codex-acp@0.14.0"
-      );
     if (normalizedAgentType === "claude")
       return (
         this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??

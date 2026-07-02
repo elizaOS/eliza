@@ -2,12 +2,21 @@ import {
   type AutocompleteProvider,
   Editor,
   type Focusable,
+  Markdown,
   type TUI,
 } from "@elizaos/tui";
 import chalk from "chalk";
 import { createEditorTheme } from "../lib/editor-theme.js";
+import { createChatMarkdownTheme } from "../lib/markdown-theme.js";
 import { useStore } from "../lib/store.js";
 import type { Message } from "../types.js";
+
+// Rendering markdown below ~40 cols is cramped (code fences + gutters eat the
+// line); fall back to the plain wrapper there. This also keeps the #11043
+// narrow-terminal guarantee simple on the cockpit's ~43-col phone xterm.
+const MARKDOWN_MIN_WIDTH = 40;
+// One shared theme instance (chalk style fns; cheap, but no need to rebuild).
+const chatMarkdownTheme = createChatMarkdownTheme();
 
 interface ChatPaneProps {
   onSubmit: (text: string) => Promise<void>;
@@ -21,6 +30,9 @@ interface RenderLine {
   dim?: boolean;
   italic?: boolean;
   bold?: boolean;
+  /** `text` is already ANSI-styled (e.g. Markdown output) — render verbatim,
+   *  do not re-apply chalk. */
+  raw?: boolean;
 }
 
 function formatTime(timestamp: Date | number | string | undefined): string {
@@ -116,9 +128,24 @@ function toRenderLines(messages: Message[], maxWidth: number): RenderLine[] {
 
     const indent = "  ";
     const contentWidth = Math.max(1, maxWidth - indent.length);
-    const wrapped = wrapText(msg.content, contentWidth);
-    for (const line of wrapped) {
-      lines.push({ text: indent + line });
+    if (contentWidth >= MARKDOWN_MIN_WIDTH) {
+      // Render the body as markdown (headings, lists, fenced code, inline
+      // styles) into pre-styled lines. Markdown wraps to contentWidth, so
+      // `indent + line` never exceeds maxWidth; MainScreen's truncateToWidth is
+      // the final overflow backstop.
+      const md = new Markdown(msg.content, 0, 0, chatMarkdownTheme).render(
+        contentWidth,
+      );
+      const body = md.length > 0 ? md : [""];
+      for (const line of body) {
+        lines.push({ text: indent + line, raw: true });
+      }
+    } else {
+      // Narrow terminal (e.g. the ~43-col cockpit xterm): plain wrap.
+      const wrapped = wrapText(msg.content, contentWidth);
+      for (const line of wrapped) {
+        lines.push({ text: indent + line });
+      }
     }
   }
 
@@ -257,6 +284,11 @@ export class ChatPane implements Focusable {
       }
     } else {
       for (const line of visibleLines) {
+        if (line.raw) {
+          // Already ANSI-styled (Markdown output) — don't re-chalk.
+          output.push(" ".repeat(paddingX) + line.text);
+          continue;
+        }
         let styled = line.text;
         if (line.bold) styled = chalk.bold(styled);
         if (line.italic) styled = chalk.italic(styled);

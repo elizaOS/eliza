@@ -1,11 +1,51 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PGLITE_ERROR_CODES } from "../../../pglite/errors";
 import { PGliteClientManager } from "../../../pglite/manager";
 
 const lockPathFor = (dataDir: string) => path.join(dataDir, "eliza-pglite.lock");
+
+const readLinuxBootId = (): string | null => {
+  try {
+    const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim();
+    return bootId.length > 0 ? bootId : null;
+  } catch {
+    return null;
+  }
+};
+
+const readLinuxProcStartTicks = (pid: number | "self"): string | null => {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf-8");
+    const commEnd = stat.lastIndexOf(")");
+    if (commEnd === -1) {
+      return null;
+    }
+    const fieldsAfterComm = stat
+      .slice(commEnd + 2)
+      .trim()
+      .split(/\s+/);
+    const startTicks = fieldsAfterComm[19];
+    return startTicks && /^\d+$/.test(startTicks) ? startTicks : null;
+  } catch {
+    return null;
+  }
+};
+
+const currentProcessIdentity = (): { bootId?: string; processStartTicks?: string } => {
+  const bootId = readLinuxBootId();
+  const processStartTicks = readLinuxProcStartTicks("self");
+  return {
+    ...(bootId ? { bootId } : {}),
+    ...(processStartTicks ? { processStartTicks } : {}),
+  };
+};
+
+type PGliteManagerInternals = {
+  readLinuxProcessStartedAtMs(pid: number): number | null;
+};
 
 describe("PGliteClientManager file lock", () => {
   const tempDirs: string[] = [];
@@ -51,7 +91,12 @@ describe("PGliteClientManager file lock", () => {
     const ancientCreatedAt = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     writeFileSync(
       lockPathFor(dataDir),
-      `${JSON.stringify({ pid: process.pid, createdAt: ancientCreatedAt, dataDir })}\n`
+      `${JSON.stringify({
+        pid: process.pid,
+        createdAt: ancientCreatedAt,
+        dataDir,
+        ...currentProcessIdentity(),
+      })}\n`
     );
 
     let error: unknown;
@@ -63,6 +108,41 @@ describe("PGliteClientManager file lock", () => {
     expect((error as { code?: string }).code).toBe(PGLITE_ERROR_CODES.ACTIVE_LOCK);
     // The live lock must be left intact, not reclaimed.
     expect(existsSync(lockPathFor(dataDir))).toBe(true);
+  });
+
+  it("reclaims a legacy live-pid lock when proc start time proves PID reuse", async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), "eliza-pglite-lock-"));
+    tempDirs.push(dataDir);
+
+    const lockCreatedAtMs = Date.now() - 60_000;
+    const processStartedAfterLockMs = lockCreatedAtMs + 10_000;
+    const startTimeSpy = vi
+      .spyOn(
+        PGliteClientManager.prototype as unknown as PGliteManagerInternals,
+        "readLinuxProcessStartedAtMs"
+      )
+      .mockReturnValue(processStartedAfterLockMs);
+
+    try {
+      // The PID is alive, but the lock predates that PID's process generation.
+      // A process cannot create a lock before it starts, so the PID was reused.
+      // This is the pid-1-in-container failure mode from #11222 generalized to
+      // the current test runner PID.
+      writeFileSync(
+        lockPathFor(dataDir),
+        `${JSON.stringify({
+          pid: process.pid,
+          createdAt: new Date(lockCreatedAtMs).toISOString(),
+          dataDir,
+        })}\n`
+      );
+
+      const manager = new PGliteClientManager({ dataDir });
+      await manager.close();
+      expect(existsSync(lockPathFor(dataDir))).toBe(false);
+    } finally {
+      startTimeSpy.mockRestore();
+    }
   });
 
   it("reclaims a lock owned by a non-running PID", async () => {

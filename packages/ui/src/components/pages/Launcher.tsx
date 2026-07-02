@@ -2,16 +2,31 @@
  * Launcher — iOS-like app/view launcher.
  *
  * Renders every available view as a names-only icon on swipeable pages. Tap
- * launches; long-press enters edit mode where icons can be reordered (drag)
- * and — for manageable (dynamic developer) views — edited or deleted. Page
- * order is persisted via the pure `launcher-layout` model. Fully token-themed
- * (light/dark + overrides) and renders no background of its own — the shared
- * root `AppBackground` shows through, matching the home screen.
+ * launches; in the free-form (non-curated) mode a long-press enters edit mode
+ * where icons can be reordered (drag) and — for manageable (dynamic developer)
+ * views — edited or deleted, with the order persisted via the pure
+ * `launcher-layout` model. (The production mount via LauncherSurface always
+ * passes `pageGroups`, so it renders read-only curated pages; edit mode is
+ * exercised by the standalone stories / launcher-e2e.)
+ *
+ * The springboard renders no background of its own — the shared root
+ * `AppBackground` shows through, matching the home screen. Tiles, labels, the
+ * skeleton, and the pager chevrons deliberately use a FIXED white-on-wallpaper
+ * treatment (theme-independent, kept legible by a text-shadow/scrim over the
+ * ambient field) rather than light/dark theme tokens.
  */
 
 import { Pencil, Trash2 } from "lucide-react";
 import { Reorder } from "motion/react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  type MutableRefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
@@ -74,6 +89,11 @@ interface IconTileProps {
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLongPress: () => void;
+  /** Parent-owned "a long-press just fired" flag. Lives on the Launcher (not
+   *  the tile) because toggling edit mode switches which JSX branch renders
+   *  the tile — the remount would wipe a tile-local ref and the click the
+   *  browser synthesizes from the SAME press would ghost-launch the tile. */
+  longPressClickGuard: MutableRefObject<boolean>;
 }
 
 const LONG_PRESS_MS = 450;
@@ -110,9 +130,18 @@ const IconTile = memo(function IconTile({
   onEdit,
   onDelete,
   onLongPress,
+  longPressClickGuard,
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStart = useRef<{ x: number; y: number } | null>(null);
+  // A fired long-press must swallow the click the browser synthesizes from the
+  // SAME press on release. Without this, a long-press while ALREADY in edit
+  // mode toggled edit OFF and the trailing click then passed the `!editing`
+  // guard — the tile ghost-launched. The flag is the parent-owned
+  // `longPressClickGuard` (see IconTileProps): exiting edit mode remounts the
+  // tile into a different JSX branch, so a tile-local ref would be wiped
+  // before the synthesized click arrives.
+  const longPressFired = longPressClickGuard;
   const badge = viewKindBadge(entry);
 
   const clear = () => {
@@ -133,12 +162,20 @@ const IconTile = memo(function IconTile({
           type="button"
           aria-label={entry.label}
           onClick={() => {
+            if (longPressFired.current) {
+              longPressFired.current = false;
+              return;
+            }
             if (!editing) onLaunch(entry);
           }}
           onPointerDown={(event) => {
             clear();
+            longPressFired.current = false;
             pressStart.current = { x: event.clientX, y: event.clientY };
-            timer.current = setTimeout(onLongPress, LONG_PRESS_MS);
+            timer.current = setTimeout(() => {
+              longPressFired.current = true;
+              onLongPress();
+            }, LONG_PRESS_MS);
           }}
           // A long-press requires a near-stationary finger: once movement passes
           // LONG_PRESS_MOVE_SLOP the press is a pan/swipe, so cancel the timer.
@@ -288,15 +325,6 @@ export function Launcher({
     setLayout((prev) => reconcileLayout(prev, availableIds));
   }, [availableIds]);
 
-  // Keep the LOCAL active page index in range when pages shrink (views removed).
-  // When controlled, the store clamps the page, so this only guards the
-  // standalone path.
-  useEffect(() => {
-    if (pageControlled) return;
-    const pageCount = layout.pages.length > 0 ? layout.pages.length : 1;
-    setLocalPage((p) => (p > pageCount - 1 ? pageCount - 1 : p));
-  }, [layout.pages.length, pageControlled]);
-
   const commit = useCallback((next: LauncherLayout) => {
     setLayout(next);
     writeLauncherLayout(next);
@@ -345,6 +373,16 @@ export function Launcher({
     return filtered.length > 0 ? filtered : [[]];
   }, [curatedPages, layout.pages]);
 
+  // Keep the LOCAL active page index in range when the RENDERED page count
+  // shrinks. Must clamp against `pages` (the actually-rendered list — curated in
+  // grouped mode, free-form otherwise), not `layout.pages`, which in grouped
+  // mode is a different, unrendered list. `pages` is always non-empty. When
+  // controlled, the store owns the clamp, so this only guards the standalone path.
+  useEffect(() => {
+    if (pageControlled) return;
+    setLocalPage((p) => Math.min(p, pages.length - 1));
+  }, [pages.length, pageControlled]);
+
   // Report the page count up so an outer surface (the rail) can size the single
   // unified page indicator. Fires only on an actual count change.
   useEffect(() => {
@@ -369,6 +407,10 @@ export function Launcher({
     [layout, commit],
   );
 
+  // Parent-owned so it survives the tile remount when edit mode toggles
+  // switch render branches (see IconTileProps.longPressClickGuard).
+  const longPressClickGuard = useRef(false);
+
   const renderTile = useCallback(
     (entry: ViewEntry) => (
       <IconTile
@@ -379,6 +421,7 @@ export function Launcher({
         onEdit={onEditView}
         onDelete={onDeleteView}
         onLongPress={toggleEditMode}
+        longPressClickGuard={longPressClickGuard}
       />
     ),
     [
@@ -435,11 +478,14 @@ export function Launcher({
           onPointerUp={pager.handlers.onPointerUp}
           onPointerCancel={pager.handlers.onPointerCancel}
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
+          // Swallow the click a committed inter-page swipe synthesizes so it
+          // can't tap-launch the tile that just slid under the finger.
+          onClickCapture={pager.handlers.onClickCapture}
         >
           <div
             ref={pager.railRef}
             data-testid="launcher-page-rail"
-            className="flex h-full min-h-0 w-full motion-reduce:transition-none"
+            className="flex h-full min-h-0 w-full"
           >
             {loading && entries.length === 0 ? (
               <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">

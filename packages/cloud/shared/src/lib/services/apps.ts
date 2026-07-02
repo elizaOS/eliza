@@ -168,41 +168,22 @@ export class AppsService {
   }
 
   /**
-   * Resolve a monetized app id only when the caller may attribute inference to it.
+   * Resolve a monetized app id for paid inference attribution.
    *
-   * Same-org callers are app owners/operators. Cross-org callers must have gone
-   * through the app-auth connect flow, which persists an app_users row with
-   * signup_source="oauth". Plain inference tracking also creates app_users rows,
-   * but without that OAuth source, so first-touch analytics cannot bootstrap its
-   * own authorization.
+   * Monetized apps are public to authenticated callers: the debit lands on the
+   * caller's organization balance and the creator earns only the configured
+   * markup. Non-monetized apps are still excluded from this hot path.
    */
   async getAuthorizedMonetizedAppForUser(
     appId: string,
-    user: { id: string; organization_id: string },
+    _user: { id: string; organization_id: string },
   ): Promise<App | undefined> {
     const app = await this.getById(appId);
     if (!app?.monetization_enabled) {
       return undefined;
     }
 
-    if (app.organization_id === user.organization_id) {
-      return app;
-    }
-
-    const appUser = await appsRepository.findAppUser(app.id, user.id);
-    if (appUser?.signup_source === "oauth") {
-      return app;
-    }
-
-    logger.warn("[Apps] Rejected unauthorized X-App-Id attribution", {
-      appId: app.id,
-      userId: user.id,
-      userOrganizationId: user.organization_id,
-      appOrganizationId: app.organization_id,
-      hasAppUser: Boolean(appUser),
-      appUserSignupSource: appUser?.signup_source ?? null,
-    });
-    return undefined;
+    return app;
   }
 
   /**

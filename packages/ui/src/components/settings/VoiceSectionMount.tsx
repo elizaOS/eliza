@@ -18,6 +18,7 @@ import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
 import {
   loadWakeWordEnabled,
+  saveContinuousChatMode,
   saveVadAutoStop,
   saveWakeWordEnabled,
 } from "../../state/persistence";
@@ -69,18 +70,13 @@ function readStoredVoicePrefs(
     string,
     unknown
   >;
+  // Note: legacy `cloudFirstLineCache` / `autoLearnVoices` keys may still sit
+  // in older persisted `messages.voice` blobs; they are dead (no readers) and
+  // intentionally dropped here — see the removal note in VoiceSection.tsx.
   return {
     continuous: isContinuousMode(stored.continuous)
       ? stored.continuous
       : DEFAULT_VOICE_SECTION_PREFS.continuous,
-    cloudFirstLineCache:
-      typeof stored.cloudFirstLineCache === "boolean"
-        ? stored.cloudFirstLineCache
-        : DEFAULT_VOICE_SECTION_PREFS.cloudFirstLineCache,
-    autoLearnVoices:
-      typeof stored.autoLearnVoices === "boolean"
-        ? stored.autoLearnVoices
-        : DEFAULT_VOICE_SECTION_PREFS.autoLearnVoices,
     vadAutoStop: readVadAutoStop(stored.vadAutoStop),
   };
 }
@@ -108,8 +104,13 @@ export function VoiceSectionMount(): React.ReactElement {
       if (cancelled) return;
       const loaded = readStoredVoicePrefs(config);
       setPrefs(loaded);
-      // Seed the local mirror so the capture hot path reads the server value.
+      // Seed the local mirrors so the capture hot path reads the server value.
       if (loaded.vadAutoStop) saveVadAutoStop(loaded.vadAutoStop);
+      // The surfaces that implement continuous chat (ChatView,
+      // useShellController) read ONLY the localStorage mirror via
+      // loadContinuousChatMode — never `messages.voice.continuous` — so the
+      // server value must be seeded into it, same as vadAutoStop above.
+      saveContinuousChatMode(loaded.continuous);
     })();
     return () => {
       cancelled = true;
@@ -143,6 +144,10 @@ export function VoiceSectionMount(): React.ReactElement {
       // Mirror to localStorage immediately so the capture path picks up the new
       // VAD thresholds without waiting on the config round-trip.
       if (next.vadAutoStop) saveVadAutoStop(next.vadAutoStop);
+      // Mirror continuous-chat mode too: ChatView / useShellController read it
+      // synchronously from localStorage (loadContinuousChatMode) and never see
+      // the `messages.voice.continuous` config blob.
+      saveContinuousChatMode(next.continuous);
       try {
         const config = await client.getConfig();
         const messages = (config.messages ?? {}) as Record<string, unknown>;

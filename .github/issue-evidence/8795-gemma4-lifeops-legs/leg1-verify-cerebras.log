@@ -1,0 +1,27 @@
+$ bun --bun plugins/plugin-personal-assistant/scripts/verify-cerebras-wiring.ts
+[verify-cerebras] starting smoke test
+[verify-cerebras] env: {
+  CEREBRAS_BASE_URL: "(default https://api.cerebras.ai/v1)",
+  CEREBRAS_MODEL: "(default gemma-4-31b)",
+  EVAL_MODEL: undefined,
+  TRAIN_MODEL: undefined,
+  EVAL_MODEL_PROVIDER: undefined,
+  TRAIN_MODEL_PROVIDER: undefined,
+  has_CEREBRAS_API_KEY: true,
+}
+[verify-cerebras] eval text: {"ok": true}
+[verify-cerebras] eval usage: {
+  promptTokens: 26,
+  completionTokens: 6,
+  totalTokens: 32,
+  cachedTokens: 0,
+}
+[verify-cerebras] train text: What's the weather going to be like tomorrow?
+[verify-cerebras] train usage: {
+  promptTokens: 44,
+  completionTokens: 12,
+  totalTokens: 56,
+  cachedTokens: 0,
+}
+[verify-cerebras] judge text: 5
+[verify-cerebras] OK — the Cerebras eval model is reachable for both eval and training

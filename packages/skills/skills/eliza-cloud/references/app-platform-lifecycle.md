@@ -24,25 +24,33 @@ Use this order:
 
 ## Current Hosting Reality
 
-Cloud has first-class app records, app auth, backend container deploys, custom
-domains, analytics, monetization, promotion, advertising, and content
-generation. It does not yet have first-class managed frontend hosting for user
-build artifacts.
+Cloud has first-class app records, app auth, managed frontend hosting, backend
+container deploys, custom domains, analytics, monetization, promotion,
+advertising, and content generation.
 
-Until managed frontend hosting lands:
+Use this hosting split:
 
-- For static frontend-only apps, use an external/static host and register that
-  URL in `app_url` and `allowed_origins`.
-- For apps that need server-side code, deploy a container and use its
-  `production_url` or attached custom domain.
-- Do not claim Cloud can upload and serve arbitrary user frontend build output
-  as a managed static site yet.
-- Do not deploy a container just to get a static frontend online.
+- For static frontend-only apps, publish the built site with
+  `POST /api/v1/apps/:id/frontend` or the `DEPLOY_FRONTEND` agent action. Cloud
+  content-addresses the files to R2, creates an immutable frontend deployment,
+  and can activate it immediately. `GET /api/v1/apps/:id/frontend` lists
+  deployments and the active id.
+- Preview the active or selected deployment at
+  `/api/v1/apps/:id/frontend/preview`.
+- Public traffic is served from the app's system frontend host or a verified
+  active custom domain through the Cloud Worker/R2 serve path. Cloud injects SEO
+  metadata and a page-view analytics beacon into document responses and records
+  the page view server-side.
+- Activate an older deployment with
+  `POST /api/v1/apps/:id/frontend/:deploymentId/activate` to roll back.
+- Use an external/static host only when the app intentionally should not use
+  Cloud managed frontend hosting; register that URL in `app_url` and
+  `allowed_origins`.
+- Deploy a backend container only when the app needs server-side code.
 
-The planned managed frontend host should be Worker/R2 based: immutable frontend
-artifacts in R2, an active manifest on the app, Worker/hostname serving,
-SEO/meta injection, page analytics beaconing, cache policy, rollback, and
-domain routing through the existing app/domain model.
+Remaining product/operator gaps: dashboard upload/activate/rollback UI,
+production DNS/wildcard host pointing for all managed frontend hosts, and the
+remaining session/funnel analytics tail.
 
 ## Backend Container Rule
 
@@ -71,13 +79,13 @@ parent/user confirmation.
 
 ## Analytics And SEO Rule
 
-Current analytics are strongest for API/request usage. Page-view/session/funnel
-analytics become first-class once Cloud owns frontend responses.
+Cloud records API/request analytics and hosted-frontend page views. Session and
+funnel analytics are still product gaps.
 
-Current SEO can create metadata/artifacts, but Cloud cannot reliably inject
-them into arbitrary external frontends. For external hosts, return the metadata
-for the app builder to install. For managed frontend hosting, inject metadata,
-`robots.txt`, `sitemap.xml`, and structured data at the serving layer.
+For managed frontend hosting, Cloud owns the response and can inject metadata,
+SEO tags, page-view beaconing, `robots.txt`, `sitemap.xml`, and structured data
+at the serving layer. For external hosts, Cloud cannot reliably inject into the
+response; return the metadata for the app builder to install in that frontend.
 
 ## Promotion, Advertising, And Content
 
@@ -96,10 +104,18 @@ is real.
 ## Source Map
 
 - Platform review: `packages/cloud/APP_PLATFORM_REVIEW.md`
+- Agent-first experience plan: `packages/cloud/AGENT_FIRST_EXPERIENCE.md`
 - App routes: `packages/cloud/api/v1/apps/**/route.ts`
+- Frontend routes: `packages/cloud/api/v1/apps/[id]/frontend/**/route.ts`
+- Hosted frontend serve route:
+  `packages/cloud/api/v1/hosted-frontend/serve/[[...path]]/route.ts`
 - Domain routes: `packages/cloud/api/v1/apps/[id]/domains/**/route.ts`
 - Backend deploy: `packages/cloud/api/v1/apps/[id]/deploy/route.ts`
 - App schema: `packages/cloud/shared/src/db/schemas/apps.ts`
+- Frontend deployment schema:
+  `packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts`
+- Frontend hosting service:
+  `packages/cloud/shared/src/lib/services/app-frontend-hosting.ts`
 - Deploy services: `packages/cloud/shared/src/lib/services/app-deployments.ts`,
   `app-deploy-orchestrator.ts`
 - Promotion: `packages/cloud/shared/src/lib/services/app-promotion.ts`,

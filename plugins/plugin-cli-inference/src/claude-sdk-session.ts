@@ -43,6 +43,7 @@
  */
 
 import { logger } from "@elizaos/core";
+import type { RotationSubprocessEnv } from "./account-rotation";
 import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -167,6 +168,11 @@ export interface ClaudeSdkSessionConfig {
   restartAfterTurns?: number;
   /** Hard wall-clock budget for one SDK turn. Defaults below common 120s connector timeouts. */
   turnTimeoutMs?: number;
+  /**
+   * Optional subprocess-only env for a pooled account. Passed to the Claude SDK
+   * query options; never written to the parent process env.
+   */
+  subprocessEnv?: RotationSubprocessEnv | null;
   /** Injected for tests; defaults to the real SDK + zod. */
   sdkModule?: SdkModule;
   zodModule?: ZodModule;
@@ -229,6 +235,7 @@ export class ClaudeSdkSession {
   private readonly claudeExecutablePath: string | null;
   private readonly restartAfterTurns: number;
   private readonly turnTimeoutMs: number;
+  private readonly subprocessEnv: RotationSubprocessEnv | null;
   private readonly sdkOverride?: SdkModule;
   private readonly zodOverride?: ZodModule;
 
@@ -256,6 +263,7 @@ export class ClaudeSdkSession {
       config.turnTimeoutMs && config.turnTimeoutMs > 0
         ? config.turnTimeoutMs
         : DEFAULT_TURN_TIMEOUT_MS;
+    this.subprocessEnv = config.subprocessEnv ?? null;
     this.sdkOverride = config.sdkModule;
     this.zodOverride = config.zodModule;
   }
@@ -342,6 +350,9 @@ export class ClaudeSdkSession {
       // "I'll fetch it…" preamble-then-act pattern that leaks when maxTurns>1.
       maxTurns: this.router ? 1 : this.textMaxTurns,
     };
+    if (this.subprocessEnv) {
+      options.env = this.subprocessEnv;
+    }
     if (this.systemPrompt) options.systemPrompt = this.systemPrompt;
     if (this.claudeExecutablePath) {
       options.pathToClaudeCodeExecutable = this.claudeExecutablePath;

@@ -222,6 +222,74 @@ describe("EvaluatorService", () => {
 		);
 	});
 
+	it("logs an unserializable invalid section without aborting the run", async () => {
+		const runtime = makeRuntime();
+		const warnSpy = vi.spyOn(runtime.logger, "warn");
+		const processed: string[] = [];
+
+		runtime.registerEvaluator({
+			name: "circular",
+			description: "circular section",
+			priority: 20,
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract circular.",
+			parse: () => null,
+			processors: [
+				{
+					process: async () => {
+						processed.push("circular");
+					},
+				},
+			],
+		});
+
+		runtime.registerEvaluator({
+			name: "ok",
+			description: "ok section",
+			priority: 10,
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract ok.",
+			parse: (output) => output as never,
+			processors: [
+				{
+					process: async () => {
+						processed.push("ok");
+						return { success: true };
+					},
+				},
+			],
+		});
+
+		const circularSection: Record<string, unknown> = { big: 1n };
+		circularSection.self = circularSection;
+		runtime.useModel = vi.fn(async () => ({
+			circular: circularSection,
+			ok: { ok: true },
+		})) as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		// JSON.stringify throws on this section; the log must not turn one
+		// evaluator's parse failure into an abort of the whole run.
+		expect(processed).toEqual(["ok"]);
+		expect(result.processedEvaluators).toEqual(["ok"]);
+		expect(result.errors).toEqual([
+			expect.objectContaining({
+				evaluatorName: "circular",
+				error: "Evaluator output section did not validate",
+			}),
+		]);
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				evaluator: "circular",
+				rawSection: expect.any(String),
+			}),
+			"Evaluator output section did not validate",
+		);
+	});
+
 	it("retries without responseSchema when the provider rejects structured schemas", async () => {
 		const runtime = makeRuntime();
 		const processed: string[] = [];

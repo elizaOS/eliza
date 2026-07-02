@@ -46,6 +46,7 @@ type MockNativeClient = {
 type NativeMockState = {
   NativeAcpClient?: new (opts: NativeOptions) => MockNativeClient;
   instances: MockNativeClient[];
+  startImplementation?: (client: MockNativeClient) => Promise<void>;
 };
 
 function getNativeMockState(): NativeMockState {
@@ -65,7 +66,9 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
   {
     opts: NativeOptions;
     eventHandler?: NativeEventHandler;
-    start = vi.fn(async () => undefined);
+    start = vi.fn(async () => {
+      await getNativeMockState().startImplementation?.(this);
+    });
     createSession = vi.fn(async () => ({
       sessionId: "protocol-session",
       agentSessionId: "agent-session",
@@ -247,6 +250,7 @@ async function waitForSessionStatus(
 beforeEach(() => {
   spawnMock.mockReset();
   nativeClientMock.instances.length = 0;
+  nativeClientMock.startImplementation = undefined;
 });
 
 afterEach(() => {
@@ -493,6 +497,132 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances[0]?.opts.command).toBe(
       "codex-acp --stdio",
     );
+  });
+
+  it("adds configured Codex ACP sandbox settings to the native command", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+        ELIZA_CODEX_ACP_SANDBOX_MODE: "workspace-write",
+        ELIZA_CODEX_ACP_APPROVAL_POLICY: "never",
+      }),
+    );
+    await service.start();
+
+    await service.spawnSession({
+      name: "codex-sandbox-config",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      "codex-acp --stdio -c sandbox_mode=workspace-write -c approval_policy=never",
+    );
+  });
+
+  it("honors generic Codex sandbox setting aliases", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+        ELIZA_CODEX_SANDBOX_MODE: "read-only",
+        ELIZA_CODEX_APPROVAL_POLICY: "on-request",
+      }),
+    );
+    await service.start();
+
+    await service.spawnSession({
+      name: "codex-sandbox-aliases",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      "codex-acp --stdio -c sandbox_mode=read-only -c approval_policy=on-request",
+    );
+  });
+
+  it("starts Codex ACP with the no-Landlock fallback when the runtime probe is disabled", async () => {
+    const rt = runtime({
+      ELIZA_ACP_TRANSPORT: "native",
+      ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      ELIZA_CODEX_ACP_LANDLOCK: "0",
+    });
+    const service = new AcpService(rt);
+    await service.start();
+
+    await service.spawnSession({
+      name: "codex-no-landlock",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      "codex-acp --stdio -c sandbox_mode=danger-full-access -c approval_policy=never",
+    );
+    const logger = (rt as { logger: { warn: ReturnType<typeof vi.fn> } })
+      .logger;
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Landlock unavailable"),
+      expect.objectContaining({
+        sandboxMode: "danger-full-access",
+        approvalPolicy: "never",
+      }),
+    );
+  });
+
+  it("retries Codex ACP once with a no-Landlock sandbox fallback after the panic", async () => {
+    const previousOverride = process.env.ELIZA_CODEX_ACP_LANDLOCK;
+    process.env.ELIZA_CODEX_ACP_LANDLOCK = "1";
+    try {
+      nativeClientMock.startImplementation = async (client) => {
+        if (!client.opts.command.includes("sandbox_mode=danger-full-access")) {
+          throw new Error(
+            "ACP agent exited with code 101: thread 'main' panicked: permission profiles requiring direct runtime enforcement are incompatible with --use-legacy-landlock",
+          );
+        }
+      };
+      const rt = runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      });
+      const service = new AcpService(rt);
+      await service.start();
+
+      const result = await service.spawnSession({
+        name: "codex-landlock-retry",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+
+      expect(result.status).toBe("ready");
+      expect(nativeClientMock.instances).toHaveLength(2);
+      expect(nativeClientMock.instances[0]?.opts.command).toBe(
+        "codex-acp --stdio",
+      );
+      expect(nativeClientMock.instances[1]?.opts.command).toBe(
+        "codex-acp --stdio -c sandbox_mode=danger-full-access -c approval_policy=never",
+      );
+      const logger = (rt as { logger: { warn: ReturnType<typeof vi.fn> } })
+        .logger;
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Codex ACP Landlock unavailable"),
+        expect.objectContaining({
+          sandboxMode: "danger-full-access",
+          approvalPolicy: "never",
+        }),
+      );
+    } finally {
+      if (previousOverride === undefined) {
+        delete process.env.ELIZA_CODEX_ACP_LANDLOCK;
+      } else {
+        process.env.ELIZA_CODEX_ACP_LANDLOCK = previousOverride;
+      }
+    }
   });
 
   it("does not emit task_complete from the session creation command", async () => {
@@ -1814,5 +1944,36 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
         !["stopped", "errored", "completed", "cancelled"].includes(s.status),
     );
     expect(active).toHaveLength(2);
+  });
+
+  it("rejects a concurrent prompt for the same native session (TOCTOU #11028)", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
+    await service.start();
+    const spawned = await service.spawnSession({
+      name: "busy-guard",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    // Hold the first prompt in-flight so the session stays claimed while the
+    // second call races it.
+    let release: (() => void) | undefined;
+    firstNativeClient().prompt = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ stopReason: "end_turn" });
+        }),
+    );
+    const p1 = service.sendPrompt(spawned.sessionId, "first");
+    // NO tick between the two sendPrompt calls: the race the fix closes is a
+    // same-tick check-then-claim, and inserting even a 10ms sleep here made the
+    // test pass on the PRE-fix code (the first prompt's claim landed during the
+    // sleep). Issuing both in the same microtask is what reproduces the TOCTOU.
+    // Before the fix, the busy marker was only set deep inside sendNativePrompt,
+    // so this concurrent prompt slipped through and ran on the same session.
+    await expect(
+      service.sendPrompt(spawned.sessionId, "second"),
+    ).rejects.toThrow(/busy/i);
+    release?.();
+    await p1;
   });
 });

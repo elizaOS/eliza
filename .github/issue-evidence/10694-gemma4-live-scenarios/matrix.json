@@ -1,0 +1,351 @@
+{
+  "runId": "83d46fed-b313-47e4-8ab8-f04e9b0ff4f2",
+  "startedAtIso": "2026-07-02T07:09:38.629Z",
+  "completedAtIso": "2026-07-02T07:09:53.325Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "background-live",
+      "title": "Real LLM drives BACKGROUND set/undo/redo/reset from chat",
+      "domain": "scenario-runner",
+      "tags": [
+        "live",
+        "real-llm",
+        "app-control",
+        "background"
+      ],
+      "status": "passed",
+      "durationMs": 7931,
+      "turns": [
+        {
+          "name": "set a dark blue background from natural phrasing",
+          "kind": "message",
+          "text": "Please make my background dark blue.",
+          "responseText": "I've set your background to dark blue.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "set",
+                  "color": "darkblue",
+                  "preset": "aurora",
+                  "prompt": "dark blue background"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "set",
+                  "mode": "shader",
+                  "color": "#1e3a8a"
+                },
+                "text": "Set the background to dark blue.",
+                "raw": {
+                  "success": true,
+                  "text": "Set the background to dark blue.",
+                  "values": {
+                    "op": "set",
+                    "mode": "shader",
+                    "color": "#1e3a8a"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 2067,
+          "failedAssertions": []
+        },
+        {
+          "name": "undo the background change",
+          "kind": "message",
+          "text": "Undo the background change.",
+          "responseText": "I've undone the background change for you.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "undo"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "undo"
+                },
+                "text": "Reverted the background to the previous one.",
+                "raw": {
+                  "success": true,
+                  "text": "Reverted the background to the previous one.",
+                  "values": {
+                    "op": "undo"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 1614,
+          "failedAssertions": []
+        },
+        {
+          "name": "redo the background change",
+          "kind": "message",
+          "text": "Actually, redo the background change.",
+          "responseText": "! I've redone that background change for you.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "redo",
+                  "color": "#00008B",
+                  "preset": "aurora",
+                  "prompt": "dark blue"
+                },
+                "actionContext": {
+                  "previousResults": [
+                    {
+                      "success": false,
+                      "text": "Argument 'preset' value '#00008B' is not one of: aurora, lava, plasma, waves, nebula",
+                      "data": {
+                        "actionName": "BACKGROUND",
+                        "parameterErrors": [
+                          "Argument 'preset' value '#00008B' is not one of: aurora, lava, plasma, waves, nebula"
+                        ]
+                      },
+                      "error": "Argument 'preset' value '#00008B' is not one of: aurora, lava, plasma, waves, nebula"
+                    }
+                  ]
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "redo"
+                },
+                "text": "Re-applied the background you undid.",
+                "raw": {
+                  "success": true,
+                  "text": "Re-applied the background you undid.",
+                  "values": {
+                    "op": "redo"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 2342,
+          "failedAssertions": []
+        },
+        {
+          "name": "reset the background to default",
+          "kind": "message",
+          "text": "Reset the background to the default.",
+          "responseText": "Your background has been reset to the default.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "reset",
+                  "color": "#000000",
+                  "preset": "aurora",
+                  "prompt": "#000000"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "reset"
+                },
+                "text": "Reset the background to the default.",
+                "raw": {
+                  "success": true,
+                  "text": "Reset the background to the default.",
+                  "values": {
+                    "op": "reset"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 1870,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "BACKGROUND succeeded 4x (4 total call(s))"
+        },
+        {
+          "label": "background:apply broadcast ops are exact and ordered",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "set",
+              "color": "darkblue",
+              "preset": "aurora",
+              "prompt": "dark blue background"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "set",
+              "mode": "shader",
+              "color": "#1e3a8a"
+            },
+            "text": "Set the background to dark blue.",
+            "raw": {
+              "success": true,
+              "text": "Set the background to dark blue.",
+              "values": {
+                "op": "set",
+                "mode": "shader",
+                "color": "#1e3a8a"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "undo"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "undo"
+            },
+            "text": "Reverted the background to the previous one.",
+            "raw": {
+              "success": true,
+              "text": "Reverted the background to the previous one.",
+              "values": {
+                "op": "undo"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "redo",
+              "color": "#00008B",
+              "preset": "aurora",
+              "prompt": "dark blue"
+            },
+            "actionContext": {
+              "previousResults": [
+                {
+                  "success": false,
+                  "text": "Argument 'preset' value '#00008B' is not one of: aurora, lava, plasma, waves, nebula",
+                  "data": {
+                    "actionName": "BACKGROUND",
+                    "parameterErrors": [
+                      "Argument 'preset' value '#00008B' is not one of: aurora, lava, plasma, waves, nebula"
+                    ]
+                  },
+                  "error": "Argument 'preset' value '#00008B' is not one of: aurora, lava, plasma, waves, nebula"
+                }
+              ]
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "redo"
+            },
+            "text": "Re-applied the background you undid.",
+            "raw": {
+              "success": true,
+              "text": "Re-applied the background you undid.",
+              "values": {
+                "op": "redo"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "reset",
+              "color": "#000000",
+              "preset": "aurora",
+              "prompt": "#000000"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "reset"
+            },
+            "text": "Reset the background to the default.",
+            "raw": {
+              "success": true,
+              "text": "Reset the background to the default.",
+              "values": {
+                "op": "reset"
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "openai"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/home/shaw/eliza-wt-gemma4/reports/scenarios/gemma4-background",
+    "matrixJson": "/home/shaw/eliza-wt-gemma4/reports/scenarios/gemma4-background/matrix.json",
+    "viewerIndex": "/home/shaw/eliza-wt-gemma4/reports/scenarios/gemma4-background/viewer/index.html",
+    "viewerData": "/home/shaw/eliza-wt-gemma4/reports/scenarios/gemma4-background/viewer/data.js"
+  }
+}

@@ -96,3 +96,56 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
     expect(toggle.checked).toBe(false);
   });
 });
+
+const CONTINUOUS_KEY = "eliza:voice:continuous-chat-mode";
+
+describe("VoiceSectionMount — continuous-chat localStorage mirror", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    clientMock.getConfig.mockResolvedValue({});
+    clientMock.updateConfig.mockResolvedValue({});
+    clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+      tier: "GOOD",
+      reason: "",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("mirrors a continuous-chat change into the localStorage key the chat surfaces read", async () => {
+    const user = userEvent.setup();
+    render(<VoiceSectionMount />);
+    const row = await screen.findByTestId("voice-section-continuous-row");
+    const alwaysOn = row.querySelector(
+      "button[data-mode='always-on']",
+    ) as HTMLButtonElement;
+    expect(alwaysOn).toBeTruthy();
+
+    await user.click(alwaysOn);
+
+    // ChatView / useShellController implement continuous chat by reading
+    // loadContinuousChatMode() (this key) — the server config alone is not
+    // enough, so the control must mirror the store on every change.
+    await waitFor(() =>
+      expect(window.localStorage.getItem(CONTINUOUS_KEY)).toBe("always-on"),
+    );
+    // And the server config still gets the same value.
+    await waitFor(() => expect(clientMock.updateConfig).toHaveBeenCalled());
+    const payload = clientMock.updateConfig.mock.calls[0]?.[0] as {
+      messages: { voice: { continuous: string } };
+    };
+    expect(payload.messages.voice.continuous).toBe("always-on");
+  });
+
+  it("seeds the localStorage mirror from the server config on load", async () => {
+    clientMock.getConfig.mockResolvedValue({
+      messages: { voice: { continuous: "vad-gated" } },
+    });
+    render(<VoiceSectionMount />);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(CONTINUOUS_KEY)).toBe("vad-gated"),
+    );
+  });
+});

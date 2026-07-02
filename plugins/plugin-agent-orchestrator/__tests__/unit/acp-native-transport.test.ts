@@ -351,6 +351,29 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     expect((error as Error).message).toBe("ACP request timed out: initialize");
   });
 
+  it("includes captured stderr in startup close errors", async () => {
+    const p = queueProc();
+    const client = new NativeAcpClient({
+      command: "codex-acp",
+      cwd: "/tmp/native-acp",
+      approvalPreset: "autonomous",
+    });
+
+    const started = client.start();
+    await waitForWrites(p, 1);
+    p.stderr.emit(
+      "data",
+      Buffer.from(
+        "permission profiles requiring direct runtime enforcement are incompatible with --use-legacy-landlock\n",
+      ),
+    );
+    closeProc(p, 101);
+
+    await expect(started).rejects.toThrow(
+      /ACP agent exited with code 101: .*--use-legacy-landlock/,
+    );
+  });
+
   it("returns method-not-found for unsupported client request methods", async () => {
     const { p } = await startClient();
 
@@ -642,5 +665,37 @@ describe("splitCommandLine", () => {
       command: "npx",
       args: ["-y", "pkg name", "--flag", "two words"],
     });
+  });
+
+  it("does not let a throwing onEvent break message processing (#11028)", async () => {
+    const seen: unknown[] = [];
+    // A consumer whose onEvent throws must not derail the transport — before the
+    // fix this surfaced as an unhandled rejection out of the un-awaited
+    // handleLine (and broke request/notify synchronously).
+    const { client, p } = await startClient({
+      onEvent: (m) => {
+        seen.push(m);
+        throw new Error("observer boom");
+      },
+    });
+    expect(() =>
+      emitJson(p, { jsonrpc: "2.0", method: "session/update", params: { x: 1 } }),
+    ).not.toThrow();
+    // The client is still healthy: a fresh request round-trips.
+    const created = client.createSession("/tmp/native-acp/work");
+    await waitForWrites(p, 2);
+    const call = writeAt(p, p.stdinWrites.length - 1);
+    emitJson(p, { jsonrpc: "2.0", id: call.id as number, result: { sessionId: "s1" } });
+    await expect(created).resolves.toMatchObject({ sessionId: "s1" });
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  it("does not let a throwing onStderr break the stderr stream (#11028)", async () => {
+    const { p } = await startClient({
+      onStderr: () => {
+        throw new Error("stderr observer boom");
+      },
+    });
+    expect(() => p.stderr.emit("data", Buffer.from("a log line"))).not.toThrow();
   });
 });

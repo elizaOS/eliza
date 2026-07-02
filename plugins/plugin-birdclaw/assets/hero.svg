@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Birdclaw">
+  <defs>
+    <linearGradient id="bg-birdclaw" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#28180f"/>
+      <stop offset="1" stop-color="#170e0b"/>
+    </linearGradient>
+    <radialGradient id="blobA-birdclaw" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff9a3c" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ff9a3c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blobB-birdclaw" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d8563c" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#d8563c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vig-birdclaw" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="0.72" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+    </radialGradient>
+    <linearGradient id="label-birdclaw" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+    </linearGradient>
+    <filter id="soft-birdclaw" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="46"/>
+    </filter>
+    <filter id="iglow-birdclaw" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#ffb15e" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg-birdclaw)"/>
+
+  <g opacity="0.9">
+    <circle cx="232" cy="220" r="300" fill="url(#blobA-birdclaw)" filter="url(#soft-birdclaw)"/>
+    <circle cx="840" cy="800" r="340" fill="url(#blobB-birdclaw)" filter="url(#soft-birdclaw)"/>
+  </g>
+
+  <g stroke="#efe0d2" stroke-width="1.4" opacity="0.06">
+    <line x1="0" y1="256" x2="1024" y2="256"/>
+    <line x1="0" y1="512" x2="1024" y2="512"/>
+    <line x1="0" y1="768" x2="1024" y2="768"/>
+    <line x1="256" y1="0" x2="256" y2="1024"/>
+    <line x1="512" y1="0" x2="512" y2="1024"/>
+    <line x1="768" y1="0" x2="768" y2="1024"/>
+  </g>
+
+  <g opacity="0.5">
+    <path d="M120 470 A 400 400 0 0 1 904 470" fill="none" stroke="#ffb15e" stroke-width="3" opacity="0.35"/>
+  </g>
+
+  <!-- Line-art bird (lucide "Bird" glyph scaled 24 → 384 units, centered). -->
+  <g transform="translate(320 256) scale(16)" filter="url(#iglow-birdclaw)"
+     stroke="#efe0d2" stroke-width="1.25"
+     stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M16 7h.01"/>
+    <path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"/>
+    <path d="m20 7 2 .5-2 .5"/>
+    <path d="M10 18v3"/>
+    <path d="M14 17.75V21"/>
+    <path d="M7 18a6 6 0 0 0 3.84-10.61"/>
+  </g>
+
+  <rect x="0" y="784" width="1024" height="240" fill="url(#label-birdclaw)"/>
+  <text x="512" y="892" text-anchor="middle"
+        font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="76" font-weight="600" letter-spacing="0.5"
+        fill="#efe0d2">Birdclaw</text>
+  <rect x="460" y="924" width="104" height="6" rx="3" fill="#ffb15e"/>
+
+  <rect width="1024" height="1024" fill="url(#vig-birdclaw)"/>
+</svg>

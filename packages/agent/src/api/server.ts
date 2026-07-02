@@ -49,7 +49,6 @@ import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,
   normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
 } from "@elizaos/shared/character-presets";
 import {
   isMobilePlatform,
@@ -437,6 +436,7 @@ import {
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
+  resolveMirroredAvatarPresetId,
 } from "./server-helpers.ts";
 import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
@@ -1802,6 +1802,13 @@ function getOrCreateRuntimeOperationManager(
   return cachedRuntimeOperationManager;
 }
 
+import {
+  attachPtySessionWsBridge,
+  cancelPendingPtySessionStop,
+  MAX_PTY_INPUT_MESSAGE_LENGTH,
+  resolvePtyDisconnectGraceMs,
+  schedulePtySessionStopAfterGrace,
+} from "./pty-ws-bridge.ts";
 import {
   isLifeOpsCloudPluginRoute,
   maybeRouteAutonomyEventToConversation,
@@ -4615,11 +4622,19 @@ export async function startApiServer(opts?: {
               }
               const diskCfg = loadElizaConfig();
               const lang = state.config.ui?.language ?? diskCfg.ui?.language;
-              const preset = resolveStylePresetByAvatarIndex(avatarIndex, lang);
+              // Keep an already-consistent presetId: avatarIndex is a VRM
+              // art-asset index shared by several personas, so re-deriving the
+              // preset from the index would overwrite the user's persona (e.g.
+              // persisting presetId "chen" over an Eliza selection).
+              const presetId = resolveMirroredAvatarPresetId(
+                state.config.ui?.presetId ?? diskCfg.ui?.presetId,
+                avatarIndex,
+                lang,
+              );
               const nextUi: ElizaConfig["ui"] = {
                 ...(state.config.ui ?? {}),
                 avatarIndex,
-                ...(preset?.id ? { presetId: preset.id } : {}),
+                ...(presetId ? { presetId } : {}),
               };
               state.config = {
                 ...state.config,
@@ -4724,6 +4739,18 @@ export async function startApiServer(opts?: {
     WebSocket,
     Map<string, () => void>
   >();
+  /**
+   * Grace-window reap timers for disconnected PTY owners, keyed by clientId.
+   * A WS close/error no longer kills the client's PTY sessions instantly —
+   * phone lock, app switch, or a network blip would otherwise nuke a live
+   * interactive terminal. The stop is delayed by the grace window and
+   * canceled when the same clientId re-authenticates (ownership survives
+   * reconnects because sessions are owned by clientId, not by socket).
+   */
+  const wsPtyPendingStops = new Map<string, ReturnType<typeof setTimeout>>();
+  const wsPtyDisconnectGraceMs = resolvePtyDisconnectGraceMs(
+    process.env.ELIZA_PTY_WS_DISCONNECT_GRACE_MS,
+  );
   /**
    * Short-window idempotency cache for client-tagged WS messages, keyed by
    * `${clientId}:${msgId}`. A message resent after a reconnect (same id) is
@@ -4851,6 +4878,14 @@ export async function startApiServer(opts?: {
 
     const activateAuthenticatedConnection = () => {
       wsClients.add(ws);
+      if (
+        wsClientId &&
+        cancelPendingPtySessionStop(wsClientId, wsPtyPendingStops)
+      ) {
+        logger.info(
+          `[eliza-api] client ${wsClientId} reconnected within the PTY grace window; keeping its PTY sessions alive`,
+        );
+      }
       addLog("info", "WebSocket client connected", "websocket", [
         "server",
         "websocket",
@@ -4918,6 +4953,35 @@ export async function startApiServer(opts?: {
       }
     };
 
+    /**
+     * Reap this client's PTY sessions only after the disconnect grace window,
+     * and only if no other live authenticated socket carries the same
+     * clientId (multi-tab) and the client hasn't reconnected in the interim.
+     */
+    const scheduleStopOwnedPtySessions = (reason: string): void => {
+      if (!wsClientId) return;
+      const clientId = wsClientId;
+      const clientHasLiveConnection = (): boolean => {
+        for (const other of wsClients) {
+          if (
+            other !== ws &&
+            other.readyState === 1 &&
+            wsClientIds.get(other) === clientId
+          ) {
+            return true;
+          }
+        }
+        return false;
+      };
+      schedulePtySessionStopAfterGrace({
+        clientId,
+        graceMs: wsPtyDisconnectGraceMs,
+        pendingStops: wsPtyPendingStops,
+        clientHasLiveConnection,
+        stopOwnedSessions: () => stopOwnedPtySessions(reason),
+      });
+    };
+
     ws.on("message", async (data: unknown) => {
       try {
         const msg = JSON.parse(String(data));
@@ -4975,28 +5039,19 @@ export async function startApiServer(opts?: {
             // Don't double-subscribe
             if (!subs.has(msg.sessionId)) {
               const targetId = msg.sessionId;
-              const listener = (evt: { sessionId: string; data: string }) => {
-                if (evt.sessionId !== targetId) return;
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: "pty-output",
-                      sessionId: targetId,
-                      data: evt.data,
-                    }),
-                  );
-                }
-              };
-              bridge.on(
-                "session_output",
-                listener as (...args: unknown[]) => void,
-              );
-              subs.set(targetId, () =>
-                bridge.off(
-                  "session_output",
-                  listener as (...args: unknown[]) => void,
-                ),
-              );
+              // Bridges BOTH `session_output` (→ pty-output) and
+              // `session_exit` (→ pty-exit) so the client can surface a dead
+              // session instead of showing a "ready" pane forever.
+              const detach = attachPtySessionWsBridge({
+                bridge,
+                sessionId: targetId,
+                send: (frame) => {
+                  if (ws.readyState === 1) {
+                    ws.send(JSON.stringify(frame));
+                  }
+                },
+              });
+              subs.set(targetId, detach);
             }
           }
         } else if (
@@ -5024,10 +5079,23 @@ export async function startApiServer(opts?: {
             logger.warn(
               `[eliza-api] pty-input rejected: client ${wsClientId ?? "unknown"} does not own session ${msg.sessionId}`,
             );
-          } else if (msg.data.length > 4096) {
+          } else if (msg.data.length > MAX_PTY_INPUT_MESSAGE_LENGTH) {
+            // Per-message DoS cap only — the client chunks large pastes into
+            // <=cap messages (sendPtyInput), so hitting this means a
+            // misbehaving client. Echo a pty-error so the drop isn't silent.
             logger.warn(
-              `[eliza-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
+              `[eliza-api] pty-input rejected: payload too large (${msg.data.length} chars) for session ${msg.sessionId}`,
             );
+            if (ws.readyState === 1) {
+              ws.send(
+                JSON.stringify({
+                  type: "pty-error",
+                  sessionId: msg.sessionId,
+                  code: "input-too-large",
+                  message: `pty-input exceeds ${MAX_PTY_INPUT_MESSAGE_LENGTH} chars; send large input in chunks`,
+                }),
+              );
+            }
           } else {
             const bridge = getPtyConsoleBridge(state);
             if (bridge) {
@@ -5108,7 +5176,7 @@ export async function startApiServer(opts?: {
         for (const unsub of subs.values()) unsub();
         subs.clear();
       }
-      stopOwnedPtySessions("websocket close");
+      scheduleStopOwnedPtySessions("websocket close");
       addLog("info", "WebSocket client disconnected", "websocket", [
         "server",
         "websocket",
@@ -5127,7 +5195,7 @@ export async function startApiServer(opts?: {
         for (const unsub of subs.values()) unsub();
         subs.clear();
       }
-      stopOwnedPtySessions("websocket error");
+      scheduleStopOwnedPtySessions("websocket error");
     });
   });
 

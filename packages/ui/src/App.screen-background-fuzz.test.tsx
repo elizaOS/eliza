@@ -5,12 +5,12 @@
 // The unified app background (`AppBackground`) is mounted ONCE at the shell root
 // and is driven purely by the persisted background config — so navigating
 // between views must NEVER change the screen color. Each route resolves a
-// background policy (`useActiveScreenBackgroundPolicy`) to exactly one of two
-// painted layers:
+// background policy (`useActiveScreenBackgroundPolicy`) to exactly one painted
+// layer:
 //
-//   • `app-background-shader` / `app-background-image` — the persisted wallpaper
-//     shows through (policy "shared"). The screen color === the user's chosen
-//     background color.
+//   • `app-background-shader` / `app-background-image` / `app-background-glsl`
+//     — the persisted wallpaper shows through (policy "shared"). The screen
+//     color === the user's chosen background color.
 //   • `app-opaque-background` — an opaque `bg-bg` underlay covers the wallpaper
 //     (policy "opaque"). The screen color === the theme base.
 //
@@ -18,8 +18,8 @@
 // and fuzzes randomized walks over EVERY builtin tab, returning to the launcher
 // (`/views`) between every view, asserting after every transition:
 //
-//   A. Exactly one background layer renders (shader/image XOR opaque) — the
-//      screen color is always defined; never blank, never two conflicting layers.
+//   A. Exactly one background layer renders (shader/image/glsl XOR opaque) —
+//      the screen color is always defined; never blank, never two conflicting layers.
 //   B. When the wallpaper shows, its color === the seeded persisted color —
 //      switching views never mutates the user's background color.
 //   C. The known-shared surfaces (chat, background, settings, /views,
@@ -27,13 +27,18 @@
 //   D. Returning to the launcher (`/views`) always restores the wallpaper,
 //      regardless of which (possibly opaque) view preceded it.
 //
-// Runs the whole fuzz under a shader config AND an image config so both
-// wallpaper kinds are proven to survive every transition.
+// Runs the whole fuzz under shader, image, and programmable GLSL configs so
+// every wallpaper kind is proven to survive every transition.
 
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getShaderPreset } from "./backgrounds/shader-presets";
+import { BACKGROUND_APPLY_EVENT } from "./backgrounds/useBackgroundApplyChannel";
 import type { BuiltinTab } from "./navigation";
+import type { BackgroundConfig } from "./state/ui-preferences";
+import { makeGlslConfig } from "./state/ui-preferences";
+import { emitViewEvent } from "./views/view-event-bus";
 
 // ── Live mutable state read by the mocks (mirrors App.navigate-view-wiring) ──
 const appState = vi.hoisted(() => ({
@@ -44,11 +49,20 @@ const appState = vi.hoisted(() => ({
 // The persisted background config the root AppBackground renders from. Mutated
 // between the two fuzz passes (shader color vs image) and read LIVE by the mock.
 const bgState = vi.hoisted(() => ({
-  config: { mode: "shader", color: "#059669" } as {
-    mode: "shader" | "image";
-    color: string;
-    imageUrl?: string;
-  },
+  config: { mode: "shader", color: "#059669" } as BackgroundConfig,
+}));
+
+const backgroundConfigMock = vi.hoisted(() => ({
+  redoBackgroundConfig: vi.fn(),
+  setBackgroundConfig: vi.fn((config: BackgroundConfig) => {
+    bgState.config = config;
+  }),
+  undoBackgroundConfig: vi.fn(),
+}));
+
+const glslRuntimeState = vi.hoisted(() => ({
+  compileOk: true,
+  rendererCount: 0,
 }));
 
 const desktopTabsState = vi.hoisted(() => ({
@@ -157,8 +171,8 @@ vi.mock("./state", () => {
     agentStatus: null,
     backendConnection: { state: "connected" },
     backgroundConfig: bgState.config,
-    setBackgroundConfig: vi.fn(),
-    undoBackgroundConfig: vi.fn(),
+    setBackgroundConfig: backgroundConfigMock.setBackgroundConfig,
+    undoBackgroundConfig: backgroundConfigMock.undoBackgroundConfig,
     canUndoBackground: false,
     copyToClipboard: vi.fn(),
     databaseSubTab: "overview",
@@ -297,16 +311,90 @@ vi.mock("./hooks/useIsDeveloperMode", () => ({
 vi.mock("./state/useBackgroundConfig", () => ({
   useBackgroundConfig: () => ({
     backgroundConfig: bgState.config,
-    setBackgroundConfig: vi.fn(),
-    undoBackgroundConfig: vi.fn(),
-    redoBackgroundConfig: vi.fn(),
+    setBackgroundConfig: backgroundConfigMock.setBackgroundConfig,
+    undoBackgroundConfig: backgroundConfigMock.undoBackgroundConfig,
+    redoBackgroundConfig: backgroundConfigMock.redoBackgroundConfig,
     canUndoBackground: false,
     canRedoBackground: false,
   }),
 }));
-vi.mock("./backgrounds/useBackgroundApplyChannel", () => ({
-  useBackgroundApplyChannel: () => {},
-}));
+
+// The shell fuzz does not need a real browser WebGL context. Mock enough of
+// three.js for the real ProgrammableShaderBackground to compile, attach its
+// host layer, and deterministically signal fallback when a test asks for it.
+vi.mock("three", () => {
+  const compilingGl = {
+    COMPILE_STATUS: 0x8b81,
+    FRAGMENT_SHADER: 0x8b30,
+    compileShader: () => {},
+    createShader: () => ({}),
+    deleteShader: () => {},
+    getShaderInfoLog: () => "forced compile failure",
+    getShaderParameter: () => glslRuntimeState.compileOk,
+    shaderSource: () => {},
+  };
+  class WebGLRenderer {
+    domElement = document.createElement("canvas");
+    constructor() {
+      glslRuntimeState.rendererCount += 1;
+    }
+    dispose() {}
+    getContext() {
+      return compilingGl;
+    }
+    render() {}
+    setPixelRatio() {}
+    setSize() {}
+  }
+  class Vector2 {
+    constructor(
+      public x = 0,
+      public y = 0,
+    ) {}
+    set(x: number, y: number) {
+      this.x = x;
+      this.y = y;
+      return this;
+    }
+  }
+  class Vector3 {
+    constructor(
+      public x = 0,
+      public y = 0,
+      public z = 0,
+    ) {}
+    set(x: number, y: number, z: number) {
+      this.x = x;
+      this.y = y;
+      this.z = z;
+      return this;
+    }
+  }
+  class Scene {
+    add() {}
+  }
+  class Camera {}
+  class BufferGeometry {
+    dispose() {}
+    setAttribute() {}
+  }
+  class BufferAttribute {}
+  class RawShaderMaterial {
+    dispose() {}
+  }
+  class Mesh {}
+  return {
+    BufferAttribute,
+    BufferGeometry,
+    Camera,
+    Mesh,
+    RawShaderMaterial,
+    Scene,
+    Vector2,
+    Vector3,
+    WebGLRenderer,
+  };
+});
 
 import { App } from "./App";
 
@@ -390,9 +478,47 @@ const expectedRgb = (hex: string): string => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
+function getAuroraPresetForTest() {
+  const preset = getShaderPreset("aurora");
+  if (!preset) {
+    throw new Error("aurora shader preset missing");
+  }
+  return preset;
+}
+const AURORA_PRESET = getAuroraPresetForTest();
+
+function makeAuroraConfig(
+  color: string,
+  uniforms: Record<string, unknown> = {
+    u_intensity: 999,
+    u_scale: -10,
+    u_seed: 5000,
+    u_speed: 999,
+  },
+): BackgroundConfig {
+  return makeGlslConfig({
+    color,
+    presetId: AURORA_PRESET.id,
+    source: AURORA_PRESET.source,
+    uniforms,
+  });
+}
+
+function assertAuroraConfigClamped(config: BackgroundConfig): void {
+  expect(config.mode).toBe("glsl");
+  expect(config.shader?.presetId).toBe("aurora");
+  expect(config.shader?.source).toBe(AURORA_PRESET.source);
+  expect(config.shader?.uniforms).toEqual({
+    u_intensity: 2,
+    u_scale: 0.1,
+    u_seed: 1000,
+    u_speed: 3,
+  });
+}
+
 // Read the single painted background layer + assert exactly one exists.
 function readBackgroundLayer(container: HTMLElement): {
-  kind: "shader" | "image" | "opaque";
+  kind: "shader" | "image" | "glsl" | "opaque";
   el: HTMLElement;
 } {
   const shader = container.querySelector<HTMLElement>(
@@ -401,15 +527,19 @@ function readBackgroundLayer(container: HTMLElement): {
   const image = container.querySelector<HTMLElement>(
     '[data-testid="app-background-image"]',
   );
+  const glsl = container.querySelector<HTMLElement>(
+    '[data-testid="app-background-glsl"]',
+  );
   const opaque = container.querySelector<HTMLElement>(
     '[data-testid="app-opaque-background"]',
   );
-  const present = [shader, image, opaque].filter(Boolean);
+  const present = [shader, image, glsl, opaque].filter(Boolean);
   // Invariant A: exactly one background layer — the screen color is always
   // defined, and never two conflicting layers.
   expect(present.length).toBe(1);
   if (shader) return { kind: "shader", el: shader };
   if (image) return { kind: "image", el: image };
+  if (glsl) return { kind: "glsl", el: glsl };
   return { kind: "opaque", el: opaque as HTMLElement };
 }
 
@@ -427,7 +557,17 @@ describe("App screen-background fuzz — color invariant across view switching",
   beforeEach(() => {
     appState.tab = "views";
     appState.setTab.mockClear();
+    backgroundConfigMock.redoBackgroundConfig.mockClear();
+    backgroundConfigMock.setBackgroundConfig.mockClear();
+    backgroundConfigMock.undoBackgroundConfig.mockClear();
     desktopTabsState.tabs = [];
+    glslRuntimeState.compileOk = true;
+    glslRuntimeState.rendererCount = 0;
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    );
     window.history.replaceState(null, "", "/views");
     Reflect.deleteProperty(window, "__ELIZA_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
@@ -455,13 +595,31 @@ describe("App screen-background fuzz — color invariant across view switching",
     });
   }
 
+  async function applyBackground(
+    rerender: (ui: React.ReactElement) => void,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await act(async () => {
+      emitViewEvent(BACKGROUND_APPLY_EVENT, payload, "agent");
+      rerender(<App />);
+    });
+  }
+
+  const expectedWallpaperKind = (): "shader" | "image" | "glsl" => {
+    if (bgState.config.mode === "image") return "image";
+    if (bgState.config.mode === "glsl") return "glsl";
+    return "shader";
+  };
+
   // The core fuzz: a random walk over EVERY builtin tab, returning to the
   // launcher between every view, asserting the color invariant at each step.
-  async function runFuzzWalk(label: string, seed: number): Promise<void> {
+  async function runFuzzWalk(
+    label: string,
+    seed: number,
+    options: { churnGlsl?: boolean } = {},
+  ): Promise<void> {
     const rng = makeRng(seed);
     const order = shuffle(BUILTIN_TABS, rng);
-    const wallpaperKind = bgState.config.mode === "image" ? "image" : "shader";
-    const expectedColor = expectedRgb(bgState.config.color);
 
     const { container, rerender } = render(<App />);
     // Start clean on the launcher.
@@ -470,18 +628,36 @@ describe("App screen-background fuzz — color invariant across view switching",
     const assertWallpaper = (where: string) => {
       const layer = readBackgroundLayer(container);
       expect(layer.kind, `${label} ${where}: wallpaper shows`).toBe(
-        wallpaperKind,
+        expectedWallpaperKind(),
       );
       // Invariant B: the wallpaper color is the persisted color, unchanged.
-      if (layer.kind === "shader") {
+      if (layer.kind === "shader" || layer.kind === "glsl") {
         expect(
           layer.el.style.backgroundColor,
-          `${label} ${where}: shader color preserved`,
-        ).toBe(expectedColor);
+          `${label} ${where}: wallpaper color preserved`,
+        ).toBe(expectedRgb(bgState.config.color));
       }
     };
 
-    for (const entry of order) {
+    for (const [index, entry] of order.entries()) {
+      if (options.churnGlsl && index % 5 === 0) {
+        const color = index % 10 === 0 ? "#059669" : "#e11d48";
+        await applyBackground(rerender, {
+          color,
+          mode: "glsl",
+          op: "set",
+          presetId: "aurora",
+          uniforms: {
+            u_intensity: 999,
+            u_scale: -10,
+            u_seed: 5000,
+            u_speed: 999,
+          },
+        });
+        assertAuroraConfigClamped(bgState.config);
+        assertWallpaper(`after background:apply churn before ${entry.tab}`);
+      }
+
       // Switch to the view. The act() inside navigate() flushes the popstate
       // state update + the rerender, so the DOM is settled synchronously after.
       await navigate(rerender, entry.tab, entry.path);
@@ -492,14 +668,14 @@ describe("App screen-background fuzz — color invariant across view switching",
         expect(
           layer.kind,
           `${label} ${key}: known-shared route shows wallpaper`,
-        ).toBe(wallpaperKind);
+        ).toBe(expectedWallpaperKind());
       }
       // Invariant B everywhere a wallpaper shows: color is preserved.
-      if (layer.kind === "shader") {
+      if (layer.kind === "shader" || layer.kind === "glsl") {
         expect(
           layer.el.style.backgroundColor,
-          `${label} ${key}: shader color preserved`,
-        ).toBe(expectedColor);
+          `${label} ${key}: wallpaper color preserved`,
+        ).toBe(expectedRgb(bgState.config.color));
       }
 
       // Invariant D: bounce back to the launcher — wallpaper always restored.
@@ -529,6 +705,25 @@ describe("App screen-background fuzz — color invariant across view switching",
     }
   }, 120_000);
 
+  it("preserves a GLSL preset wallpaper across view switching and background:apply churn", async () => {
+    bgState.config = makeAuroraConfig("#059669");
+    assertAuroraConfigClamped(bgState.config);
+    await runFuzzWalk("glsl#13", 13, { churnGlsl: true });
+  }, 120_000);
+
+  it("falls back to the shader color field when the GLSL renderer signals onFallback", async () => {
+    glslRuntimeState.compileOk = false;
+    bgState.config = makeAuroraConfig("#65a30d");
+    const { container, rerender } = render(<App />);
+
+    await navigate(rerender, LAUNCHER.tab, LAUNCHER.path);
+    await act(async () => {});
+
+    const layer = readBackgroundLayer(container);
+    expect(layer.kind).toBe("shader");
+    expect(layer.el.style.backgroundColor).toBe(expectedRgb("#65a30d"));
+  }, 60_000);
+
   it("never leaves the screen without a defined background on ANY builtin tab", async () => {
     bgState.config = { mode: "shader", color: "#059669" };
     const { container, rerender } = render(<App />);
@@ -536,7 +731,7 @@ describe("App screen-background fuzz — color invariant across view switching",
     for (const entry of BUILTIN_TABS) {
       await navigate(rerender, entry.tab, entry.path);
       const layer = readBackgroundLayer(container); // throws if !== 1 layer
-      expect(["shader", "image", "opaque"]).toContain(layer.kind);
+      expect(["shader", "image", "glsl", "opaque"]).toContain(layer.kind);
     }
   }, 60_000);
 });

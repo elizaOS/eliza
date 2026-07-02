@@ -20,6 +20,7 @@ import {
 
 import {
   clearChatDraft,
+  readChatDraft,
   writeChatDraft,
 } from "../../state/ChatComposerContext.hooks";
 
@@ -66,6 +67,7 @@ import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
+  type ConversationNav,
   type ShellController,
 } from "./useShellController";
 
@@ -249,6 +251,51 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    expect(overlay.getAttribute("data-open")).toBeNull();
+    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+    expect(overlay.getAttribute("data-open")).toBe("true");
+  });
+
+  it("opens the sheet when the thread lands AFTER the composer was focused (focus wins the boot race, #11112)", () => {
+    // Boot: the overlay renders (and can be focused) before the restored
+    // conversation's messages arrive. The focus→expand used to be a one-shot
+    // no-op with nothing revealable, so data-open never flipped.
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    const composer = screen.getByTestId("chat-composer-textarea");
+    act(() => {
+      composer.focus();
+    });
+    // Nothing to reveal yet — focusing the bare input must not open an empty sheet.
+    expect(overlay.getAttribute("data-open")).toBeNull();
+
+    // The restored conversation's messages land while the composer is still
+    // focused: the parked focus-open intent completes the open.
+    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    expect(overlay.getAttribute("data-open")).toBe("true");
+  });
+
+  it("drops the parked focus-open intent if the composer blurred before the thread arrived", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    const composer = screen.getByTestId("chat-composer-textarea");
+    act(() => {
+      composer.focus();
+      composer.blur();
+    });
+
+    // The thread arriving later must NOT pop the sheet open — the user left.
+    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    expect(overlay.getAttribute("data-open")).toBeNull();
   });
 
   it("does not move the overlay bottom padding just because the composer is focused", () => {
@@ -911,6 +958,30 @@ describe("ContinuousChatOverlay", () => {
       viewer.remove();
     }
     // Viewer gone: Escape collapses the chat as before.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("lets the desktop notification panel own Escape — the chat only collapses once the panel is gone", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // The desktop anchored notification panel carries role="dialog" but NO
+    // data-state="open" (it is not a Radix dialog), so it wouldn't match the
+    // dialog guard — Escape must close IT alone, not also collapse the chat.
+    const panel = document.createElement("div");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("data-testid", "notification-panel");
+    document.body.appendChild(panel);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      panel.remove();
+    }
+    // Panel gone: Escape collapses the chat as before.
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
@@ -1626,6 +1697,62 @@ describe("ContinuousChatOverlay", () => {
     // it must NOT open a hands-free conversation.
     expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
     expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("a mic tap ends transcription even while a reply is in flight (#9880 inline reply)", () => {
+    // A wake-word inline reply during transcription flips `responding` true
+    // while `handsFree` is false (the transcript layer paused it). The mic —
+    // labeled "stop transcription" — must still turn the session off; gating
+    // the OFF path on `responding` left a lit, dead mic button until the reply
+    // finished.
+    const stopTranscriptionAndMic = vi.fn();
+    const toggleHandsFree = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          recording: true,
+          responding: true,
+          handsFree: false,
+          stopTranscriptionAndMic,
+          toggleHandsFree,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("chat-composer-mic"));
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
+    expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("the audio-unlock chip works while the sheet is open (not swallowed as an outside tap)", () => {
+    // The unlock chip renders at the overlay root ABOVE the glass panel. The
+    // document-level outside-tap detectors treated everything outside the panel
+    // as "outside", so the chip's tap was swallowed (click suppressed) and the
+    // sheet collapsed — enabling voice output was impossible while the chat was
+    // open. The whole overlay now counts as inside.
+    const unlockAudio = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          needsAudioUnlock: true,
+          unlockAudio,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    const chip = screen.getByTestId("overlay-voice-audio-unlock");
+    // Real pointer sequence: the document-level detectors see pointerdown/up in
+    // the capture phase before the click reaches the button.
+    fireEvent.pointerDown(chip, { clientX: 200, clientY: 200, pointerId: 7 });
+    fireEvent.pointerUp(chip, { clientX: 200, clientY: 200, pointerId: 7 });
+    fireEvent.click(chip, { clientX: 200, clientY: 200 });
+
+    expect(unlockAudio).toHaveBeenCalledTimes(1);
+    // The sheet must stay open — the chip tap is not an outside collapse.
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
   it("does not enter push-to-talk on a long press while transcribing", () => {
@@ -2747,5 +2874,99 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("half-written thought");
     clearChatDraft("conv-draft-x");
+  });
+
+  // Draft handoff on conversation switch (mirrors ChatView's
+  // handleSelectConversation fix): the leaving conversation's in-progress text
+  // must be flushed under ITS OWN key, and a draftless target must CLEAR the
+  // composer — not inherit the previous conversation's text (which the
+  // debounced persister would then re-home under the WRONG conversation's key).
+  describe("draft handoff on conversation switch", () => {
+    const navFor = (activeId: string): ConversationNav => ({
+      hasPrev: false,
+      hasNext: false,
+      goPrev: () => {},
+      goNext: () => {},
+      activeId,
+      index: 0,
+    });
+
+    beforeEach(() => {
+      clearChatDraft("conv-a");
+      clearChatDraft("conv-b");
+    });
+
+    afterEach(() => {
+      clearChatDraft("conv-a");
+      clearChatDraft("conv-b");
+    });
+
+    it("switching A(typed) → B(no draft) clears the composer and saves the text under A's key — never B's", async () => {
+      const { rerender } = render(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-a") })}
+        />,
+      );
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "half-typed for A" } });
+
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-b") })}
+        />,
+      );
+
+      // The draftless target CLEARS — A's text must not stay visible in B.
+      expect(input.value).toBe("");
+      // The handoff flushed the text under the LEAVING conversation's key
+      // synchronously (the debounced persister's pending timer is cancelled
+      // by the switch, so only the explicit flush can have written this).
+      expect(readChatDraft("conv-a")).toBe("half-typed for A");
+      expect(readChatDraft("conv-b")).toBeNull();
+
+      // Outlast the 500ms persist debounce: the wrong-conversation write
+      // (A's text under B's key) must NEVER land.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      });
+      expect(readChatDraft("conv-b")).toBeNull();
+      expect(readChatDraft("conv-a")).toBe("half-typed for A");
+    });
+
+    it("switching A(typed) → B(saved draft) restores B's own draft and keeps A's under A's key", () => {
+      writeChatDraft("conv-b", "B's parked reply");
+      const { rerender } = render(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-a") })}
+        />,
+      );
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "half-typed for A" } });
+
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-b") })}
+        />,
+      );
+
+      expect(input.value).toBe("B's parked reply");
+      expect(readChatDraft("conv-a")).toBe("half-typed for A");
+      expect(readChatDraft("conv-b")).toBe("B's parked reply");
+    });
+
+    it("a successful send still clears both the composer and the active conversation's saved draft", () => {
+      writeChatDraft("conv-a", "stale saved draft");
+      const controller = makeController({ conversationNav: navFor("conv-a") });
+      render(<ContinuousChatOverlay controller={controller} />);
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "ship it" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ship it");
+      expect(input.value).toBe("");
+      // The submit path drops the persisted draft immediately (not just via
+      // the debounced persist of the now-empty draft).
+      expect(readChatDraft("conv-a")).toBeNull();
+    });
   });
 });

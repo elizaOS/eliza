@@ -115,6 +115,45 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notification-sheet")).toBeNull();
   });
 
+  it("does NOT open on the compat click a real browser synthesizes after an upward drag", () => {
+    // jsdom's fireEvent.pointerUp never synthesizes the trailing `click` a real
+    // browser fires from the same press, which is exactly how the original
+    // direction gate looked correct in unit tests while being defeated live.
+    // Fire the click explicitly, with the release coordinates, as Chrome does.
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const zone = screen.getByTestId("home-notification-pull-zone");
+
+    fireEvent.pointerDown(zone, { pointerId: 1, clientX: 120, clientY: 84 });
+    fireEvent.pointerMove(zone, { pointerId: 1, clientX: 120, clientY: 40 });
+    fireEvent.pointerMove(zone, { pointerId: 1, clientX: 120, clientY: 8 });
+    fireEvent.pointerUp(zone, { pointerId: 1, clientX: 120, clientY: 8 });
+    fireEvent.click(zone, { detail: 1, clientX: 120, clientY: 8 });
+
+    expect(screen.queryByTestId("notification-sheet")).toBeNull();
+  });
+
+  it("still opens on a genuine TAP (press + release within tap slop, then click)", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const zone = screen.getByTestId("home-notification-pull-zone");
+
+    fireEvent.pointerDown(zone, { pointerId: 1, clientX: 120, clientY: 8 });
+    fireEvent.pointerUp(zone, { pointerId: 1, clientX: 121, clientY: 10 });
+    fireEvent.click(zone, { detail: 1, clientX: 121, clientY: 10 });
+
+    expect(screen.getByTestId("notification-sheet")).toBeTruthy();
+  });
+
+  it("still opens on keyboard activation (click with no preceding pointer press)", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const zone = screen.getByTestId("home-notification-pull-zone");
+
+    // Enter/Space on a button dispatches a click with detail 0 and no
+    // pointerdown before it — the press ref is empty, so it must open.
+    fireEvent.click(zone, { detail: 0, clientX: 0, clientY: 0 });
+
+    expect(screen.getByTestId("notification-sheet")).toBeTruthy();
+  });
+
   it("dismisses the pulled-down sheet on a backdrop tap", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     const zone = screen.getByTestId("home-notification-pull-zone");

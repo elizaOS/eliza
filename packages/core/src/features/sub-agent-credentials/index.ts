@@ -7,12 +7,14 @@
  * constants).
  */
 
-export {
-	awaitChildAgentDecisionAction,
-	declareSubAgentCredentialScopeAction,
-	retrieveChildAgentResultsAction,
-	tunnelCredentialToChildSessionAction,
-} from "./actions/index.ts";
+// Re-export each action from its defining file, NOT through a re-export-only
+// barrel — see the note in ./plugin.ts (Bun.build drops barrel-only-reachable
+// modules when the mobile bundle lowers @elizaos/core to lazy CJS-interop
+// inits, crashing the on-device agent at load).
+export { awaitChildAgentDecisionAction } from "./actions/await-child-agent-decision.ts";
+export { declareSubAgentCredentialScopeAction } from "./actions/declare-sub-agent-credential-scope.ts";
+export { retrieveChildAgentResultsAction } from "./actions/retrieve-child-agent-results.ts";
+export { tunnelCredentialToChildSessionAction } from "./actions/tunnel-credential-to-child-session.ts";
 
 export {
 	subAgentCredentialsPlugin,

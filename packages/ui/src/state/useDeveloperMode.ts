@@ -5,8 +5,10 @@ import { useSyncExternalStore } from "react";
  * and settings marked `developerOnly: true` (logs viewer, trajectory viewer,
  * raw config, etc). Persists to localStorage so it survives reloads.
  *
- * Default: ON in development builds, OFF in production — until the user sets it
- * explicitly, after which their choice wins on every platform/build.
+ * Default: OFF on every build — dev and production alike. There is no
+ * `import.meta.env.DEV` bypass: a developer running `bun run dev` sees exactly
+ * the launcher a user sees until they flip Settings → Advanced → "Developer
+ * views". Once set, the user's explicit choice wins on every platform/build.
  */
 
 const STORAGE_KEY = "eliza:developerMode";
@@ -15,13 +17,9 @@ const DISABLED = "0";
 
 const listeners = new Set<() => void>();
 
-/** Build-default when the user hasn't chosen: dev builds on, production off. */
+/** Default when the user hasn't chosen: always off, on every build. */
 function defaultDeveloperMode(): boolean {
-  try {
-    return Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 function readStorage(): boolean {

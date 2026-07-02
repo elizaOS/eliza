@@ -18,6 +18,13 @@ import { logger as elizaLogger, type IAgentRuntime } from "@elizaos/core";
 /** Timeout for trajectory DB calls to prevent blocking agent spawn. */
 const QUERY_TIMEOUT_MS = 5000;
 const SLOW_PATH_BUDGET_MS = 15_000;
+/**
+ * Per-trajectory insight budget. The fast path already caps metadata insights
+ * at this many per trajectory; the slow-path detail scan mirrors it so a single
+ * legacy trajectory with many steps/LLM calls can't balloon the intermediate
+ * `experiences` array before the final dedup + `maxEntries` cap.
+ */
+const MAX_INSIGHTS_PER_TRAJECTORY = 50;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -275,7 +282,7 @@ export async function queryPastExperience(
               (value): value is string =>
                 typeof value === "string" && value.trim().length > 0,
             )
-            .slice(0, 50)
+            .slice(0, MAX_INSIGHTS_PER_TRAJECTORY)
         : [];
       const decisionType = metadata?.orchestrator?.decisionType ?? "unknown";
       const taskLabel = metadata?.orchestrator?.taskLabel ?? "";
@@ -318,7 +325,11 @@ export async function queryPastExperience(
       ).catch(() => null);
       if (!detail?.steps) continue;
 
-      for (const step of detail.steps) {
+      // Mirror the fast path's per-trajectory insight budget so a single
+      // legacy trajectory with many steps/LLM calls can't balloon the
+      // intermediate array before the final dedup + maxEntries cap.
+      let insightsForThisTrajectory = 0;
+      stepsLoop: for (const step of detail.steps) {
         if (!step.llmCalls) continue;
 
         for (const call of step.llmCalls) {
@@ -330,12 +341,16 @@ export async function queryPastExperience(
           );
 
           for (const insight of insights) {
+            if (insightsForThisTrajectory >= MAX_INSIGHTS_PER_TRAJECTORY) {
+              break stepsLoop;
+            }
             experiences.push({
               timestamp: call.timestamp ?? summary.startTime,
               decisionType: call.purpose ?? decisionType,
               taskLabel,
               insight,
             });
+            insightsForThisTrajectory += 1;
           }
         }
       }

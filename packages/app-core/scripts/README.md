@@ -25,3 +25,12 @@ Most scripts here are invoked from **root `package.json`** (`bun run …`). **Ap
 | `vite-renderer-dist-stale.mjs` | Cheap mtime check so `vite build` is skipped when `apps/app/dist` is still fresh — avoids redundant multi‑minute production builds on restart. |
 | `kill-ui-listen-port.mjs` | Clears the UI port before Vite binds; Unix uses `lsof`, Windows uses `netstat` + `taskkill` because `lsof` is not standard there. |
 | `kill-process-tree.mjs` | Kills **only** the PID tree rooted at each spawned child — avoids `pkill bun` style collateral damage to other workspaces. |
+
+### Process supervision split
+
+`dev-ui.mjs`, `dev-platform.mjs`, `dev-all.mjs`, and
+`packages/scripts/run-all-tests.mjs` intentionally do not share one generic
+child-process supervision helper. Their lifecycle contracts differ enough that a
+shared helper would mostly be flags for incompatible behavior. The in-tree
+rationale is tracked in
+[`packages/scripts/process-supervision.md`](../../scripts/process-supervision.md).

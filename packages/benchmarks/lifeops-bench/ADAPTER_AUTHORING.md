@@ -259,18 +259,23 @@ SAFE_RISKS = set()  # only allow actions with no risk tag
 filtered = [t for t in tools if t.get("_risk") in (None, *SAFE_RISKS)]
 ```
 
-The exporter exposes the same filters at generation time:
+The in-tree manifest exporter exposes the same filters at generation time:
 
 ```bash
 # Generate a calendar-only manifest
-bun run scripts/lifeops-bench/export-action-manifest.ts \
-  --domain calendar --out manifests/calendar.manifest.json
+node --conditions=eliza-source --conditions=development --import tsx \
+  scripts/lifeops-bench/export-action-manifest.ts \
+  --domain calendar \
+  --out packages/benchmarks/lifeops-bench/manifests/calendar.manifest.json \
+  --summary-out none
 
 # Generate a sandboxed manifest excluding all dangerous actions
-bun run scripts/lifeops-bench/export-action-manifest.ts \
+node --conditions=eliza-source --conditions=development --import tsx \
+  scripts/lifeops-bench/export-action-manifest.ts \
   --capability read \
   --exclude-risk irreversible --exclude-risk financial --exclude-risk user-visible \
-  --out manifests/safe.manifest.json
+  --out packages/benchmarks/lifeops-bench/manifests/safe.manifest.json \
+  --summary-out none
 ```
 
 This is useful for CI runs where a misbehaving live agent must not be

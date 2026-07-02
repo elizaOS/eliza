@@ -114,15 +114,27 @@ function makeLedgerReservation(startBalance: number, hold: number) {
 }
 
 let ledger = makeLedgerReservation(100, 0.015);
+const reserveCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/services/credits", () => ({
   creditsService: {
     createAnonymousReservation: mock(
       () => makeLedgerReservation(0, 0).reservation,
     ),
-    reserve: mock(async () => ledger.reservation),
+    reserve: mock(async (params: Record<string, unknown>) => {
+      reserveCalls.push(params);
+      return ledger.reservation;
+    }),
   },
   InsufficientCreditsError: TestInsufficientCreditsError,
+}));
+
+// #11169 part 2: control the CoT thinking budget so a test can assert the
+// reservation is sized for the real output ceiling, not the 500 default.
+let cotBudgetImpl: number | null = null;
+mock.module("@/lib/providers/anthropic-thinking", () => ({
+  resolveAnthropicThinkingBudgetTokens: () => cotBudgetImpl,
+  mergeAnthropicCotProviderOptions: () => ({}),
 }));
 
 const { default: chatRoute } = await import("../v1/chat/route");
@@ -179,6 +191,46 @@ describe("/v1/chat streaming credit reservation", () => {
     await onAbort?.();
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+  });
+});
+
+describe("/v1/chat reservation output-ceiling sizing (#11169 part 2)", () => {
+  test("CoT model reserves for the effective output ceiling, not the 500 default", async () => {
+    reserveCalls.length = 0;
+    cotBudgetImpl = 8000; // → effectiveMax = max(4096, 8000 + 4096) = 12096
+    try {
+      streamTextImpl = () => ({
+        toUIMessageStreamResponse: () => new Response("ok"),
+      });
+      const res = await chatRoute.request("/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+      });
+      expect(res.status).toBe(200);
+      expect(reserveCalls).toHaveLength(1);
+      // Pre-fix this was absent → reserve used DEFAULT_OUTPUT_TOKENS (500),
+      // letting a CoT completion consume ~24x its hold.
+      expect(reserveCalls[0]?.estimatedOutputTokens).toBe(12096);
+    } finally {
+      cotBudgetImpl = null;
+    }
+  });
+
+  test("non-CoT model reserves without an output override (500 default preserved)", async () => {
+    reserveCalls.length = 0;
+    cotBudgetImpl = null;
+    streamTextImpl = () => ({
+      toUIMessageStreamResponse: () => new Response("ok"),
+    });
+    const res = await chatRoute.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+    });
+    expect(res.status).toBe(200);
+    expect(reserveCalls).toHaveLength(1);
+    expect(reserveCalls[0]?.estimatedOutputTokens).toBeUndefined();
   });
 });
 

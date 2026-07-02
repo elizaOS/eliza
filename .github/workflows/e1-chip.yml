@@ -28,6 +28,25 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
+      - name: Preflight — AlphaChip checkpoint-blocker attestation freshness
+        # `make clean ci-fast` (the regression step below) runs docs-check ->
+        # ai-eda-alphachip-checkpoint-blocker-check, a MONTHLY attestation that
+        # the AlphaChip TPU checkpoint is still 403-blocked / closed-source. The
+        # check fails when docs/toolchain/alphachip-checkpoint-blocker.md +
+        # external/circuit_training/pin-manifest.json ("Last audited" /
+        # last_audited) are not in the current month. On a month rollover it
+        # therefore fails DEEP inside the run — after ~10 min of building the
+        # Verilator/yosys tool image — with an opaque `make: Error 1`.
+        #
+        # The check is pure Python (pyyaml only) and needs no built toolchain, so
+        # run it on the host FIRST. A stale attestation fails here in seconds with
+        # the exact actionable message instead of burning the toolchain build.
+        # This is a fail-fast surface for a deliberate human re-attestation gate;
+        # it does not weaken or auto-satisfy the gate.
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 scripts/ai_eda/check_alphachip_checkpoint_blocker.py --run-id "preflight-${GITHUB_RUN_ID}"
+
       - name: Build tool image
         run: docker build -t eliza-soc-tools .
 

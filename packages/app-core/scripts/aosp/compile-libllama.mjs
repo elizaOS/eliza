@@ -1353,7 +1353,7 @@ export function ensureZigDrivers({
       : null;
 
   // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
-  // `-march=armv8.2-a+dotprod+fp16+i8mm` (from GGML_CPU_ARM_ARCH). Zig 0.13's
+  // `-march=armv8.2-a+dotprod+fp16` (from GGML_CPU_ARM_ARCH). Zig 0.13's
   // bundled LLVM rejects that for the aarch64 target — it tries to translate
   // `armv8.2-a` to a `-mcpu=` value and dies with "unknown CPU: 'armv8.2'"
   // (the same class of breakage the riscv64 filter handles). Zig instead
@@ -1513,7 +1513,7 @@ export function buildLibllamaForAbi({
 
   // arm64-v8a: GGML_NATIVE=OFF leaves the cross-build at the bare armv8-a
   // baseline, which keeps ggml's dotprod/i8mm/fp16 NEON kernels AND the eliza
-  // QJL NEON-dotprod kernel dead. Pin the armv8.2-a+dotprod+fp16+i8mm floor and
+  // QJL NEON-dotprod kernel dead. Pin the armv8.2-a+dotprod+fp16 floor (no i8mm — see arm64-simd.mjs) and
   // flip the QJL dispatch define so the Pixel-class Tensor G4 actually runs the
   // accelerated paths. See build-helpers/arm64-simd.mjs for the full rationale.
   const arm64BuildFlags = androidArm64SimdCmakeFlags(abi);

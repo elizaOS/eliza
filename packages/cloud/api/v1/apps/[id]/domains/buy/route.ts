@@ -9,7 +9,10 @@
  * The idempotency claim (a UNIQUE row inserted BEFORE any money moves) makes the
  * debit + register pair single-flighted: a retried or concurrent buy of the same
  * domain short-circuits on the completed row's cached response instead of
- * charging twice. Mirrors apps/[id]/generate-image's idempotent-charge pattern.
+ * charging twice. The cached replay is app-scoped: a completed claim only
+ * replays for the app it was created for — the same org buying the same domain
+ * for a DIFFERENT app falls through to the owned-domain reassign path (no second
+ * charge). Mirrors apps/[id]/generate-image's idempotent-charge pattern.
  */
 
 import { eq } from "drizzle-orm";
@@ -115,10 +118,26 @@ app.post("/", async (c) => {
         );
       }
       if (existingClaim.status === "completed" && existingClaim.response_body) {
-        return c.json(
-          existingClaim.response_body as Record<string, unknown>,
-          200,
-        );
+        if (existingClaim.app_id === appId) {
+          return c.json(
+            existingClaim.response_body as Record<string, unknown>,
+            200,
+          );
+        }
+        // Same org+domain but a DIFFERENT app: replaying the cached body would
+        // report the original app's success while leaving THIS app unassigned.
+        // Run the real purchase instead — the already-owned branch of
+        // executeDomainPurchase reassigns the org's domain to the requested app
+        // without a second debit. The claim row is intentionally left as-is: it
+        // keeps guarding the org+domain charge, and a retry for the original
+        // app keeps its idempotent replay.
+        const reassignment = await executeDomainPurchase({
+          organizationId: user.organization_id,
+          appId,
+          appUrl: appRow.app_url,
+          domain,
+        });
+        return c.json(reassignment.body, reassignment.status);
       }
       return c.json(
         {

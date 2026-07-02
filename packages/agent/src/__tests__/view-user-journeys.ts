@@ -90,6 +90,7 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "task-coordinator", viewType: "tui", path: "/task-coordinator" },
   { id: "orchestrator", viewType: "gui", path: "/orchestrator" },
   { id: "orchestrator", viewType: "tui", path: "/orchestrator" },
+  { id: "cockpit", viewType: "gui", path: "/cockpit" },
   { id: "trajectory-logger", viewType: "gui", path: "/trajectory-logger" },
   { id: "trajectory-logger", viewType: "tui", path: "/trajectory-logger" },
   { id: "training", viewType: "gui", path: "/apps/fine-tuning" },

@@ -179,7 +179,7 @@ bun run --cwd plugins/plugin-cli-inference build
 - **Isolated cwd per call.** Created with `mkdtemp` under `tmpdir()`, validated by `resolveSafeCwd`, removed in a `finally`. Keeps the CLI out of real projects (suppresses Claude Code repo-context identity).
 - **`/dev/null` stdin is REQUIRED** — without it the CLI waits ~3s for stdin.
 - **sandbox.ts is a copy.** Keep in sync with `packages/plugin-remote-manifest/src/sub-agent-claude-code/sandbox.ts` if `SENSITIVE_ENV_RE` / `SAFE_ENV_KEYS` change upstream.
-- **Multi-account/AccountPool failover is OUT of v1** — the CLI owns one on-disk cred set. Single-token chat-inference is a documented gap.
+- **Multi-account rotation (SDK backends only).** On a subscription-limit throw the `claude-sdk` / `codex-sdk` chat brain rotates to the next healthy pooled account (via the `eliza.account-pool.coding-agent.v1` bridge, in `src/account-rotation.ts`) before falling to provider failover — see issue #11180. Rotation builds a subprocess-only SDK env (`CLAUDE_CODE_OAUTH_TOKEN` / per-account `CODEX_HOME`), evicts the warm session so it re-auths as the new account, and retries transparently without mutating the parent `process.env`. Only rate-limit-class errors rotate; non-limit errors rethrow straight to failover. Default ON when a pool is present; opt out with `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION=0`. The COLD `claude --print` / `codex exec` CLIs still own one on-disk cred set (rotation is SDK-only; the bare-CLI shim is issue #11180 Gap B).
 - See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->

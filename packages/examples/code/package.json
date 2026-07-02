@@ -4,7 +4,7 @@
   "description": "Async coding agent terminal app - Claude Code meets ElizaOS",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos/eliza.git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
     "directory": "packages/examples/code"
   },
   "type": "module",

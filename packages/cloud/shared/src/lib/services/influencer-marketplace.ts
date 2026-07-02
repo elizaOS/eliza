@@ -337,20 +337,25 @@ export class InfluencerMarketplaceService {
   }
 
   /**
-   * Refund the advertiser (influencer declined, or advertiser cancel).
+   * Refund the advertiser — every refund leg: influencer declines an offered/
+   * accepted booking, advertiser rejects a delivered deliverable (#11116), or
+   * advertiser cancels an un-accepted offer.
    *
-   * Claim-then-refund (#11167, mirroring the #11116 `delivered` fork): the
-   * offer/accept refunds ALSO race a payout — `accepted` is one hop from the
-   * payable `delivered` state, so a refund that moves money before claiming
-   * the booking can collide with a concurrent deliver + approve and pay one
-   * escrow out twice. So the refund first CLAIMS the booking with an atomic
-   * CAS `<from> → refunding` — once claimed, no other transition can enter
-   * (accept needs `offered`, submitDeliverable needs `accepted`, approve needs
-   * `delivered`/`approving`) — and only then moves money. The refund is
-   * idempotent on the booking id (one refund per booking, ever) and a refund
-   * failure leaves the booking `refunding` so the operation can be resumed —
-   * this can never mark a booking rejected/cancelled while the advertiser is
-   * still debited, and never refunds an escrow a payout already claimed.
+   * Claim-then-refund (#11116, #11167): every refund races a payout — the
+   * `delivered` fork directly against approveBooking, and the offer/accept
+   * legs because `accepted` is one hop from the payable `delivered` state —
+   * so a refund that moves money before claiming the booking can collide with
+   * a concurrent deliver + approve and pay one escrow out twice. The refund
+   * therefore first CLAIMS the booking with an atomic CAS `<from> → refunding`
+   * — once claimed, no other transition can enter (accept needs `offered`,
+   * submitDeliverable needs `accepted`, approve needs `delivered`/`approving`)
+   * — and only then moves money. The refund is idempotent on the booking id
+   * (one refund per booking, ever) and a refund failure leaves the booking
+   * `refunding` so the operation can be resumed; a booking found already
+   * `refunding` is admitted as that resume. Each caller finalizes with its own
+   * terminal (`rejected`/`cancelled`), so a resume through the other route
+   * only relabels an already-committed refund — money never moves twice, and
+   * a booking is never marked terminal while the advertiser is still debited.
    */
   private async refund(
     id: string,
@@ -420,61 +425,13 @@ export class InfluencerMarketplaceService {
     );
   }
 
+  /** Advertiser rejects a submitted deliverable — the refund side of the `delivered` money fork (#11116), racing `approveBooking` for the same escrow. */
   rejectDeliverable(id: string, advertiserOrgId: string): Promise<BookingResult> {
     return this.getBooking(id).then((b) =>
       !b || b.advertiser_org_id !== advertiserOrgId
         ? { ok: false, error: "Booking not found" }
-        : this.rejectDelivered(id, b),
+        : this.refund(id, ["delivered"], "rejected"),
     );
-  }
-
-  /**
-   * Refund side of the `delivered` money fork (#11116). Rejecting a *delivered*
-   * booking races `approveBooking` for the same escrow, so it must CLAIM the
-   * fork (CAS `delivered → refunding`) BEFORE refunding — exactly one of
-   * approve/reject wins, the loser refunds nothing. Resumable from `refunding`
-   * (the refund is idempotent on the booking id). Mirrors approveBooking; the
-   * generic offer/accept `refund()` uses the same claim (#11167).
-   */
-  private async rejectDelivered(id: string, booking: InfluencerBooking): Promise<BookingResult> {
-    if (booking.status === "delivered") {
-      const claimed = await this.transition(id, "delivered", "refunding");
-      if (!claimed) {
-        const current = await this.getBooking(id);
-        if (current?.status !== "refunding") {
-          return { ok: false, error: "Not in a refundable state" };
-        }
-      }
-    } else if (booking.status !== "refunding") {
-      return { ok: false, error: "Not in a refundable state" };
-    }
-
-    try {
-      await creditsService.refundCredits({
-        organizationId: booking.advertiser_org_id,
-        amount: Number(booking.amount),
-        description: "Influencer booking refund",
-        stripePaymentIntentId: `influencer_refund_${id}`,
-        metadata: { kind: "influencer_refund", bookingId: id },
-      });
-    } catch (error) {
-      logger.error("[Influencer] escrow refund failed; booking left refunding for retry", {
-        bookingId: id,
-        error,
-      });
-      return { ok: false, error: "Refund failed — retry" };
-    }
-
-    const moved = await this.transition(id, "refunding", "rejected", { resolved_at: new Date() });
-    if (moved) return { ok: true, booking: moved };
-
-    const current = await this.getBooking(id);
-    if (current?.status === "rejected") return { ok: true, booking: current };
-    logger.error("[Influencer] refund committed but booking moved off refunding", {
-      bookingId: id,
-      status: current?.status,
-    });
-    return { ok: false, error: "Booking changed state during refund" };
   }
 
   cancelBooking(id: string, advertiserOrgId: string): Promise<BookingResult> {

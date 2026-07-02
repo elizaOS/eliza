@@ -17,11 +17,17 @@ interface TurnScript {
 function makeFakeCodex(scripts: TurnScript[]): {
   codexModule: CodexModule;
   starts: () => number;
+  codexOptions: () => Array<Record<string, unknown>>;
 } {
   let startCount = 0;
   let turn = 0;
+  const constructedOptions: Array<Record<string, unknown>> = [];
   const codexModule = {
     Codex: class {
+      constructor(options?: Record<string, unknown>) {
+        constructedOptions.push(options ?? {});
+      }
+
       startThread() {
         startCount += 1;
         return {
@@ -35,18 +41,23 @@ function makeFakeCodex(scripts: TurnScript[]): {
       }
     },
   } as unknown as CodexModule;
-  return { codexModule, starts: () => startCount };
+  return { codexModule, starts: () => startCount, codexOptions: () => constructedOptions };
 }
 
 function makeSession(
   scripts: TurnScript[],
-  opts: { router?: boolean; restartAfterTurns?: number } = {}
+  opts: {
+    router?: boolean;
+    restartAfterTurns?: number;
+    subprocessEnv?: Record<string, string | undefined>;
+  } = {}
 ) {
   const fake = makeFakeCodex(scripts);
   const session = new CodexSdkSession({
     model: "gpt-test",
     router: opts.router ?? false,
     restartAfterTurns: opts.restartAfterTurns,
+    subprocessEnv: opts.subprocessEnv,
     codexModule: fake.codexModule,
   });
   return { session, ...fake };
@@ -56,6 +67,16 @@ describe("CodexSdkSession — TEXT mode", () => {
   it("returns the turn finalResponse", async () => {
     const { session } = makeSession([{ finalResponse: "hello" }]);
     expect(await session.generate("hi")).toBe("hello");
+    session.dispose();
+  });
+
+  it("passes rotated account env to the Codex SDK constructor only", async () => {
+    const subprocessEnv = { PATH: "/bin", CODEX_HOME: "/selected/codex" };
+    const { session, codexOptions } = makeSession([{ finalResponse: "hello" }], {
+      subprocessEnv,
+    });
+    expect(await session.generate("hi")).toBe("hello");
+    expect(codexOptions()[0].env).toBe(subprocessEnv);
     session.dispose();
   });
 

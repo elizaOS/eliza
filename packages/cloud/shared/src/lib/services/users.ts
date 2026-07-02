@@ -31,6 +31,22 @@ function getErrorDetails(error: unknown): Record<string, unknown> {
 }
 
 /**
+ * Personal-org slug for a detached member — mirrors the signup generators in
+ * steward-sync.ts (email local-part / wallet prefix / name + entropy suffix).
+ */
+function generatePersonalOrgSlug(user: User): string {
+  const base = user.email
+    ? user.email.split("@")[0]
+    : user.wallet_address
+      ? `wallet-${user.wallet_address.substring(0, 8)}`
+      : user.name || "user";
+  const sanitized = base.toLowerCase().replace(/[^a-z0-9]/g, "-");
+  const random = Math.random().toString(36).substring(2, 8);
+  const timestamp = Date.now().toString(36).slice(-4);
+  return `${sanitized}-${timestamp}${random}`;
+}
+
+/**
  * Service for user operations including organization lookups.
  */
 export class UsersService {
@@ -305,6 +321,74 @@ export class UsersService {
       cache.del(CacheKeys.user.byStewardId(stewardUserId)),
       cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)),
     ]);
+  }
+
+  /**
+   * Detach a user from their current organization WITHOUT deleting the account
+   * (#11332): removing an org member must not destroy their identity. The
+   * removed user is moved to a fresh personal organization where they are
+   * owner — the same shape signup auto-creates — and their API keys scoped to
+   * the old organization are deactivated (those keys authenticate AS the old
+   * org; a removed member must not keep spending its credits). The new org
+   * starts at $0: detach is not signup, so no welcome credits — an
+   * invite→remove cycle must not mint free credit.
+   */
+  async detachFromOrganization(id: string): Promise<User> {
+    const user = await usersRepository.findById(id);
+    if (!user) {
+      throw new Error(`User ${id} not found`);
+    }
+
+    let slug = generatePersonalOrgSlug(user);
+    let attempts = 0;
+    while (await organizationsRepository.findBySlug(slug)) {
+      attempts++;
+      if (attempts > 10) {
+        throw new Error(`Failed to generate unique organization slug for user ${id}`);
+      }
+      slug = generatePersonalOrgSlug(user);
+    }
+
+    const organization = await organizationsRepository.create({
+      name: `${user.name || user.email || "User"}'s Organization`,
+      slug,
+      credit_balance: "0.00",
+    });
+
+    let updated: User | undefined;
+    try {
+      updated = await usersRepository.update(id, {
+        organization_id: organization.id,
+        role: "owner",
+      });
+      if (!updated) {
+        throw new Error(`Failed to move user ${id} to personal organization ${organization.id}`);
+      }
+    } catch (error) {
+      // Don't strand an empty org when the move fails.
+      try {
+        await organizationsRepository.delete(organization.id);
+      } catch (rollbackError) {
+        logger.error("[UsersService] Failed to roll back personal org after detach failure", {
+          userId: id,
+          organizationId: organization.id,
+          ...getErrorDetails(rollbackError),
+        });
+      }
+      throw error;
+    }
+
+    if (user.organization_id) {
+      await apiKeysRepository.deactivateByUserAndOrganization(id, user.organization_id);
+    }
+
+    await this.invalidateCache(user);
+    await this.invalidateCache(updated);
+    // The revoked keys may still be warm in the inference-auth cache under the
+    // old org's identity — evict them so they stop fast-pathing immediately.
+    await this.invalidateInferenceAuthForUser(id);
+
+    return updated;
   }
 
   async delete(id: string): Promise<void> {

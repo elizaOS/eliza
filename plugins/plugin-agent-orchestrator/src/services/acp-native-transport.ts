@@ -129,6 +129,7 @@ export class NativeAcpClient {
   private proc?: ChildProcessWithoutNullStreams;
   private nextId = 1;
   private readBuffer = "";
+  private stderrBuffer = "";
   private pending = new Map<JsonRpcId, PendingRequest>();
   private terminals = new Map<string, TerminalRecord>();
   private closed = false;
@@ -154,15 +155,24 @@ export class NativeAcpClient {
     this.proc = proc;
 
     proc.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
-    proc.stderr.on("data", (chunk: Buffer) =>
-      this.opts.onStderr?.(chunk.toString("utf8")),
-    );
+    proc.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      this.stderrBuffer = `${this.stderrBuffer}${text}`.slice(-16_384);
+      // Observer callback — a consumer throw here must not surface as a stream
+      // 'error' event that tears down stderr for the whole agent.
+      try {
+        this.opts.onStderr?.(text);
+      } catch {
+        // best-effort observability; swallow
+      }
+    });
     proc.on("error", (err) => this.rejectAll(err));
     proc.on("close", (code, signal) => {
       this.closed = true;
+      const stderr = this.stderrBuffer.trim();
       this.rejectAll(
         new Error(
-          `ACP agent exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}`,
+          `ACP agent exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}${stderr ? `: ${stderr}` : ""}`,
         ),
       );
     });
@@ -273,7 +283,7 @@ export class NativeAcpClient {
     const id = this.nextId++;
     const proc = this.requireProcess();
     const payload = { jsonrpc: "2.0", id, method, params };
-    this.opts.onEvent?.(payload as AcpJsonRpcMessage);
+    this.emitEvent(payload as AcpJsonRpcMessage);
     proc.stdin.write(`${JSON.stringify(payload)}\n`);
     return new Promise((resolve, reject) => {
       const timer =
@@ -291,8 +301,23 @@ export class NativeAcpClient {
   private async notify(method: string, params: unknown): Promise<void> {
     const proc = this.requireProcess();
     const payload = { jsonrpc: "2.0", method, params };
-    this.opts.onEvent?.(payload as AcpJsonRpcMessage);
+    this.emitEvent(payload as AcpJsonRpcMessage);
     proc.stdin.write(`${JSON.stringify(payload)}\n`);
+  }
+
+  /**
+   * Fire the onEvent observer without letting a consumer's throw derail the
+   * transport. onEvent is best-effort observability (trajectory capture); a
+   * throw used to propagate — synchronously breaking `request`/`notify`, or as
+   * an unhandled rejection out of the un-awaited `handleLine` — instead of being
+   * contained here.
+   */
+  private emitEvent(message: AcpJsonRpcMessage): void {
+    try {
+      this.opts.onEvent?.(message);
+    } catch {
+      // best-effort observer; swallow so ACP I/O keeps flowing
+    }
   }
 
   private requireProcess(): ChildProcessWithoutNullStreams {
@@ -318,7 +343,7 @@ export class NativeAcpClient {
     } catch {
       return;
     }
-    this.opts.onEvent?.(message);
+    this.emitEvent(message);
 
     const id = (message as { id?: JsonRpcId }).id;
     if (id !== undefined && ("result" in message || "error" in message)) {
@@ -462,7 +487,15 @@ export class NativeAcpClient {
       record.output += chunk.toString("utf8");
       if (Buffer.byteLength(record.output, "utf8") > record.limit) {
         record.truncated = true;
-        record.output = record.output.slice(-record.limit);
+        // Keep the last `limit` BYTES, not characters. `String.slice(-limit)`
+        // keeps `limit` CHARACTERS, so multi-byte UTF-8 output could exceed the
+        // byte budget by up to 4×. Slice the encoded buffer to the last `limit`
+        // bytes, then drop any leading UTF-8 continuation bytes so we decode on
+        // a character boundary.
+        const tail = Buffer.from(record.output, "utf8").subarray(-record.limit);
+        let start = 0;
+        while (start < tail.length && (tail[start] & 0xc0) === 0x80) start += 1;
+        record.output = tail.subarray(start).toString("utf8");
       }
     };
     proc.stdout.on("data", capture);

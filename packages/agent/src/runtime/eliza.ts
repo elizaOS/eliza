@@ -337,6 +337,9 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-pty") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-pty");
     }
+    if (packageName === "@elizaos/plugin-birdclaw") {
+      return await import(/* @vite-ignore */ "@elizaos/plugin-birdclaw");
+    }
     if (packageName === "@elizaos/plugin-ollama") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
     }
@@ -491,6 +494,15 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       phase: "deferred",
       required: false,
       load: () => getOptionalPlugin("@elizaos/plugin-pty"),
+    },
+    {
+      // Auto-on only when the host has the birdclaw CLI or an existing
+      // ~/.birdclaw data root (see birdclawRequested in plugin-collector.ts).
+      // Registers BIRDCLAW_SERVICE + the local Twitter/X archive view/action.
+      packageName: "@elizaos/plugin-birdclaw",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-birdclaw"),
     },
     {
       packageName: "@elizaos/plugin-commands",

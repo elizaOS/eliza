@@ -12,6 +12,7 @@ import { ArrowLeft, X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
+  type CSSProperties,
   type LazyExoticComponent,
   lazy,
   type ReactNode,
@@ -1499,7 +1500,25 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       ? APP_SHELL_CLASS_TRANSPARENT
       : APP_SHELL_CLASS;
   return (
-    <div key={`tab-shell-${props.tab}`} className={shellClass}>
+    // --shell-backnav-clearance reserves top space for the fixed ShellBackButton
+    // so spatial views' first row (filter chips) clears it (#11144). The button
+    // bottom sits at safe-area-top + 3rem (0.75rem offset + 2.25rem button) in
+    // VIEWPORT coords, but this wrapper lives inside the root content column,
+    // which absorbs only max(safe-area-top - 1.25rem, 1.25rem) of the safe area
+    // — up to 1.25rem less than the button's full safe-area offset on notched
+    // devices. min(safe-area-top, 1.25rem) adds back exactly that deficit: 3rem
+    // at safe-area-top 0 (unchanged), tight at real notch insets (≥ 2.5rem).
+    // Consumed by SpatialSurface (spatial/dom.tsx); unset elsewhere → 0px.
+    <div
+      key={`tab-shell-${props.tab}`}
+      className={shellClass}
+      style={
+        {
+          "--shell-backnav-clearance":
+            "calc(3rem + min(var(--safe-area-top, 0px), 1.25rem))",
+        } as CSSProperties
+      }
+    >
       <ShellBackButton onBack={props.onNavigateBack} />
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
@@ -1523,7 +1542,19 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
  */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
-    <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+    <div
+      key={`fullbleed-shell-${props.tab}`}
+      className={APP_SHELL_CLASS}
+      // Same clearance contract as RoutedShellContent (see the derivation
+      // there): 3rem button clearance + the ≤1.25rem safe-area deficit the
+      // root content column does not absorb (#11144).
+      style={
+        {
+          "--shell-backnav-clearance":
+            "calc(3rem + min(var(--safe-area-top, 0px), 1.25rem))",
+        } as CSSProperties
+      }
+    >
       <ShellBackButton onBack={props.onNavigateBack} />
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <ViewRouter />
@@ -2293,7 +2324,17 @@ export function App() {
               detail:
                 "The auth probe could not reach /api/auth/me. If this is local development, start the local agent API with `bun run dev` or `bun run dev:desktop`, then retry.",
             }}
-            onRetry={retryStartup}
+            onRetry={() => {
+              // This screen is triggered by the AUTH probe failing
+              // (useAuthStatus publishes `server_unavailable` after its 10×1s
+              // retry budget), so `retryStartup()` alone is a no-op here —
+              // the startup coordinator is already in a ready/hydrating phase
+              // whose reducer has no RETRY arm. Re-probe auth so a transient
+              // outage (agent restart, phone network blip) actually recovers,
+              // and still kick the startup retry for the mixed case.
+              refetchAuth();
+              retryStartup();
+            }}
           />
           <BugReportModal />
         </BugReportProvider>

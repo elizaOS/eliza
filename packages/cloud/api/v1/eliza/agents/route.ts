@@ -345,8 +345,10 @@ app.post("/", async (c) => {
   const shouldProvisionEagerly =
     autoProvision && tierProvisionsEagerly(executionTier);
 
-  // Captured from the credit gate below so the forceCreate quota (#11023) can
-  // scale the org's live-agent ceiling by its balance tier.
+  // Captured from the credit gate below so the per-org agent quota (#11023)
+  // can scale the org's agent ceiling by its balance tier. Stays undefined on
+  // the non-eager (shared-tier) path — no credit gate runs there — so those
+  // creates get the smallest-tier ceiling.
   let orgBalanceForQuota: number | undefined;
 
   if (shouldProvisionEagerly) {
@@ -400,12 +402,16 @@ app.post("/", async (c) => {
       // shared→dedicated handoff's migration target) mints a fresh agent instead
       // of getting the shared one handed back.
       reuseExistingNonTerminal: !parsed.data.forceCreate,
-      // A user-facing forceCreate bypasses the reuse guard, so bound it by the
-      // org's balance-tiered live-agent ceiling — enforced atomically under the
-      // advisory lock — so it can't mint unbounded dedicated containers (#11023).
-      maxNonTerminalAgents: parsed.data.forceCreate
-        ? getMaxNonTerminalAgentsForOrg(orgBalanceForQuota)
-        : undefined,
+      // EVERY user-facing create is bounded by the org's balance-tiered agent
+      // ceiling — enforced atomically under the advisory lock (#11023).
+      // forceCreate needs it because it bypasses the reuse guard; the normal
+      // path needs it because suspended (`stopped`) / slept (`sleeping`)
+      // agents keep their per-tenant managed DB but are not LIVE, so after a
+      // suspend the reuse guard has nothing to hand back and would otherwise
+      // mint a fresh uncapped row on every create (the create→suspend→create
+      // loop). Trusted internal multi-agent callers don't go through this
+      // route and stay uncapped.
+      maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(orgBalanceForQuota),
     });
   } catch (error) {
     if (error instanceof AgentQuotaExceededError) {

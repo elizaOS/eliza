@@ -290,6 +290,48 @@ describe("OpenRouter native text plumbing", () => {
     expect(generateText).not.toHaveBeenCalled();
   });
 
+  it("rejects provider errors delivered through streaming onError instead of resolving empty", async () => {
+    const providerError = new Error("provider stream failed");
+    const streamText = vi.fn((options: { onError?: (event: { error: unknown }) => void }) => {
+      options.onError?.({ error: providerError });
+      return {
+        textStream: (async function* textStream() {
+          // The AI SDK yields no text chunks for this failure mode.
+        })(),
+        text: Promise.resolve(""),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("error"),
+        usage: Promise.resolve(undefined),
+      };
+    });
+    vi.doMock("ai", () => ({
+      generateText: vi.fn(),
+      streamText,
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "stream fails before first token",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    await expect(
+      (async () => {
+        for await (const _chunk of stream.textStream) {
+          // consume primary stream path
+        }
+      })()
+    ).rejects.toThrow("provider stream failed");
+    expect(streamText).toHaveBeenCalledWith(
+      expect.objectContaining({ onError: expect.any(Function) })
+    );
+  });
+
   it("turns attachment-only requests into a user message", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",

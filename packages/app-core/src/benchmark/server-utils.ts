@@ -547,6 +547,9 @@ export function composeBenchmarkPrompt(params: {
     typeof params.context?.benchmark === "string"
       ? params.context.benchmark
       : undefined;
+  if (benchmark === "standard") {
+    return composeStandardSuitePrompt(params.text, params.context);
+  }
   const isLocaBenchmark =
     benchmark === "loca_bench" || benchmark === "loca-bench";
   const isOrchestratorLifecycle =
@@ -601,6 +604,54 @@ export function composeBenchmarkPrompt(params: {
     );
   }
 
+  return segments.join("\n\n");
+}
+
+/**
+ * The standard public suite (MMLU / GSM8K / HumanEval / MT-Bench) grades the
+ * reply TEXT and declares an empty tool surface. Composing its turns with the
+ * generic "BENCHMARK CONTEXT (authoritative)" JSON + "Respond using normal
+ * Eliza action output…" trailer makes the Stage-1 router classify exam
+ * questions as tool-requiring (observed live: `candidateActions: ["VIEWS"]`
+ * for abstract-algebra MCQs), which hard-forces a non-terminal tool call and
+ * ends the turn in a `required_tool_misses` apology. Render only what the
+ * task needs: the exam system prompt, prior turns (MT-Bench carries them in
+ * `context.messages` — each harness turn opens a fresh session, so room
+ * history cannot supply them), and the question itself.
+ */
+function composeStandardSuitePrompt(
+  text: string,
+  context: Record<string, unknown> | undefined,
+): string {
+  const segments: string[] = [];
+  const systemPrompt =
+    typeof context?.system_prompt === "string" && context.system_prompt.trim()
+      ? context.system_prompt.trim()
+      : "";
+  if (systemPrompt) segments.push(systemPrompt);
+  const rawMessages = Array.isArray(context?.messages) ? context.messages : [];
+  const conversationTurns = rawMessages
+    .filter(
+      (entry): entry is Record<string, unknown> =>
+        !!entry && typeof entry === "object",
+    )
+    .filter((entry) => entry.role === "user" || entry.role === "assistant");
+  if (conversationTurns.length > 1) {
+    const transcript = conversationTurns
+      .slice(0, -1)
+      .map(
+        (entry) =>
+          `${String(entry.role)}: ${
+            typeof entry.content === "string"
+              ? entry.content
+              : JSON.stringify(entry.content)
+          }`,
+      )
+      .join("\n");
+    segments.push(`Previous conversation:\n${transcript}`);
+  }
+  segments.push(text.trim());
+  segments.push("Answer directly in your reply text. Do not use tools.");
   return segments.join("\n\n");
 }
 

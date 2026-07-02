@@ -64,6 +64,13 @@ jobs:
     name: Run Database Migrations
     runs-on: ubuntu-latest
     needs: determine-env
+    # Job-level concurrency groups are repo-wide: this serializes against the
+    # migrate-db gate in cloud-cf-deploy.yml (#11208) so overlapping triggers
+    # (a develop push fires both workflows) never run the migrator
+    # concurrently against the same database.
+    concurrency:
+      group: cloud-db-migrate-${{ needs.determine-env.outputs.environment }}
+      cancel-in-progress: false
     environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 10
     env:

@@ -32,6 +32,13 @@ function ViewFrame({
   );
 }
 
+/** Drag-clamp margins. The clamp keeps the title bar fully on-canvas
+ *  vertically and at least WINDOW_GRAB_MARGIN_PX of it visible horizontally,
+ *  so a dragged window can always be grabbed again. WINDOW_TITLE_BAR_PX
+ *  matches `h-8` on the drag handle below. */
+const WINDOW_GRAB_MARGIN_PX = 48;
+const WINDOW_TITLE_BAR_PX = 32;
+
 /**
  * Draggable in-canvas window for `floating`-placement views. Under kiosk mode
  * there is exactly one OS toplevel, so a "floating" view is a movable panel
@@ -43,15 +50,48 @@ function FloatingViewWindow({
   surface: KioskViewSurface;
 }): React.JSX.Element {
   const [position, setPosition] = React.useState({ x: 80, y: 64 });
-  const dragState = React.useRef<{ x: number; y: number } | null>(null);
+  const dragState = React.useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  /** Keep the title bar reachable: fully on-canvas vertically, and at least
+   *  WINDOW_GRAB_MARGIN_PX of it visible horizontally — a window can never be
+   *  dragged somewhere it cannot be dragged back from. */
+  const clampToCanvas = React.useCallback(
+    (handle: HTMLElement, x: number, y: number) => {
+      const canvas = handle.parentElement?.parentElement;
+      if (!canvas) return { x, y };
+      return {
+        x: Math.min(
+          Math.max(x, WINDOW_GRAB_MARGIN_PX - surface.width),
+          Math.max(0, canvas.clientWidth - WINDOW_GRAB_MARGIN_PX),
+        ),
+        y: Math.min(
+          Math.max(y, 0),
+          Math.max(0, canvas.clientHeight - WINDOW_TITLE_BAR_PX),
+        ),
+      };
+    },
+    [surface.width],
+  );
 
   const onPointerDown = React.useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      // One drag at a time: a second touch point must not re-base the origin
+      // of the drag already in flight.
+      if (dragState.current) return;
       dragState.current = {
+        pointerId: e.pointerId,
         x: e.clientX - position.x,
         y: e.clientY - position.y,
       };
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Capture is best-effort (detached node / already-released pointer).
+      }
     },
     [position.x, position.y],
   );
@@ -59,19 +99,32 @@ function FloatingViewWindow({
   const onPointerMove = React.useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const origin = dragState.current;
-      if (!origin) return;
-      setPosition({ x: e.clientX - origin.x, y: e.clientY - origin.y });
+      if (!origin || origin.pointerId !== e.pointerId) return;
+      setPosition(
+        clampToCanvas(
+          e.currentTarget,
+          e.clientX - origin.x,
+          e.clientY - origin.y,
+        ),
+      );
     },
-    [],
+    [clampToCanvas],
   );
 
-  const onPointerUp = React.useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      dragState.current = null;
+  // Shared release path for pointerup AND pointercancel/lostpointercapture:
+  // a touch-scroll takeover or OS revocation ends the pointer with a CANCEL,
+  // not an up — leaving dragState set made the window ghost-follow the next
+  // buttonless hover over the title bar.
+  const endDrag = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const origin = dragState.current;
+    if (!origin || origin.pointerId !== e.pointerId) return;
+    dragState.current = null;
+    try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    },
-    [],
-  );
+    } catch {
+      // The browser may already have revoked capture.
+    }
+  }, []);
 
   return (
     <div
@@ -85,9 +138,15 @@ function FloatingViewWindow({
     >
       <div
         className="flex h-8 shrink-0 cursor-grab items-center px-3 text-xs font-medium text-txt active:cursor-grabbing select-none border-b border-border/40 bg-card/80"
+        // The handle is a pure drag surface: without `touch-action: none` a
+        // touch drag is claimed by the browser as a scroll attempt, which
+        // fires pointercancel mid-drag instead of tracking the finger.
+        style={{ touchAction: "none" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
       >
         {surface.title}
       </div>

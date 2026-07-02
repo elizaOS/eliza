@@ -37,7 +37,7 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
-import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
+import { type AgentSandboxStatus, agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { organizations } from "../../../db/schemas/organizations";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
@@ -78,6 +78,10 @@ async function countOrgRows(organizationId: string): Promise<number> {
     where: eq(agentSandboxes.organization_id, organizationId),
   });
   return rows.length;
+}
+
+async function setAgentStatus(agentId: string, status: AgentSandboxStatus): Promise<void> {
+  await dbWrite.update(agentSandboxes).set({ status }).where(eq(agentSandboxes.id, agentId));
 }
 
 beforeAll(async () => {
@@ -272,6 +276,179 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
         }),
       ).rejects.toBeInstanceOf(AgentQuotaExceededError);
       expect(await countOrgRows(orgId)).toBe(CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+/**
+ * F3 residual of #11023: `stopped` (suspend keeps the container + node slot +
+ * per-tenant managed Postgres) and `sleeping` (cold storage keeps the managed
+ * Postgres) retain the org's durable per-agent resources, yet the original
+ * quota counted only `pending`/`provisioning`/`running` — so a
+ * create→suspend→create loop minted unbounded agents, each a real managed DB.
+ * Prong 2: the NORMAL (reuse) create path had no cap at all, and after a
+ * suspend there is no live agent for the reuse guard to hand back, so every
+ * subsequent normal create inserted a fresh uncapped row.
+ */
+describe("suspend/sleep quota residual (#11023 F3)", () => {
+  test(
+    "stopped + sleeping rows still hold their quota slot: both capped create paths throw",
+    async () => {
+      if (!pgliteReady) return;
+      const orgId = await seedOrg();
+      const userId = await seedUser(orgId);
+      const svc = new ElizaSandboxService();
+
+      const ids: string[] = [];
+      for (let i = 0; i < CAP; i++) {
+        const res = await svc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: `agent-${i}`,
+          executionTier: "dedicated-always",
+          maxNonTerminalAgents: CAP,
+        });
+        ids.push(res.agent.id);
+      }
+      // Suspend one, sleep another. Both keep the org's per-tenant managed
+      // Postgres (suspend also keeps the container + node slot), so they must
+      // keep counting toward the ceiling.
+      await setAgentStatus(ids[0], "stopped");
+      await setAgentStatus(ids[1], "sleeping");
+
+      await expect(
+        svc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: "agent-past-cap",
+          executionTier: "dedicated-always",
+          maxNonTerminalAgents: CAP,
+        }),
+      ).rejects.toBeInstanceOf(AgentQuotaExceededError);
+      await expect(
+        svc.createCodingContainerAgent({
+          organizationId: orgId,
+          userId,
+          agentName: "cc-past-cap",
+          dockerImage: "ghcr.io/elizaos/tool:v99",
+          executionTier: "custom",
+          maxNonTerminalAgents: CAP,
+        }),
+      ).rejects.toBeInstanceOf(AgentQuotaExceededError);
+      expect(await countOrgRows(orgId)).toBe(CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "the create→suspend→create loop is dead: the NORMAL reuse path throws when every existing agent is suspended/sleeping",
+    async () => {
+      if (!pgliteReady) return;
+      const orgId = await seedOrg();
+      const userId = await seedUser(orgId);
+      const svc = new ElizaSandboxService();
+
+      const ids: string[] = [];
+      for (let i = 0; i < CAP; i++) {
+        const res = await svc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: `agent-${i}`,
+          executionTier: "dedicated-always",
+          maxNonTerminalAgents: CAP,
+        });
+        ids.push(res.agent.id);
+      }
+      // Suspend/sleep EVERYTHING: the reuse guard now has no live agent to
+      // hand back, so pre-fix the normal path fell through to an uncapped
+      // insert — one fresh agent (and managed DB) per loop iteration.
+      for (const [i, id] of ids.entries()) {
+        await setAgentStatus(id, i % 2 === 0 ? "stopped" : "sleeping");
+      }
+
+      await expect(
+        svc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: "agent-loop",
+          executionTier: "dedicated-always",
+          reuseExistingNonTerminal: true,
+          maxNonTerminalAgents: CAP,
+        }),
+      ).rejects.toBeInstanceOf(AgentQuotaExceededError);
+      expect(await countOrgRows(orgId)).toBe(CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "reuse semantics unchanged: at the cap a LIVE agent is still handed back (never a suspended row, never a throw)",
+    async () => {
+      if (!pgliteReady) return;
+      const orgId = await seedOrg();
+      const userId = await seedUser(orgId);
+      const svc = new ElizaSandboxService();
+
+      const ids: string[] = [];
+      for (let i = 0; i < CAP; i++) {
+        const res = await svc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: `agent-${i}`,
+          executionTier: "dedicated-always",
+          maxNonTerminalAgents: CAP,
+        });
+        ids.push(res.agent.id);
+      }
+      await setAgentStatus(ids[0], "stopped");
+
+      const res = await svc.createAgent({
+        organizationId: orgId,
+        userId,
+        agentName: "agent-reuse",
+        executionTier: "dedicated-always",
+        reuseExistingNonTerminal: true,
+        maxNonTerminalAgents: CAP,
+      });
+      expect(res.idempotent).toBe(true);
+      expect(res.agent.id).not.toBe(ids[0]);
+      expect(await countOrgRows(orgId)).toBe(CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "terminal states stay excluded: error / deletion_pending rows free their quota slot",
+    async () => {
+      if (!pgliteReady) return;
+      const orgId = await seedOrg();
+      const userId = await seedUser(orgId);
+      const svc = new ElizaSandboxService();
+
+      const ids: string[] = [];
+      for (let i = 0; i < CAP; i++) {
+        const res = await svc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: `agent-${i}`,
+          executionTier: "dedicated-always",
+          maxNonTerminalAgents: CAP,
+        });
+        ids.push(res.agent.id);
+      }
+      await setAgentStatus(ids[0], "error");
+      await setAgentStatus(ids[1], "deletion_pending");
+
+      const res = await svc.createAgent({
+        organizationId: orgId,
+        userId,
+        agentName: "agent-after-terminal",
+        executionTier: "dedicated-always",
+        maxNonTerminalAgents: CAP,
+      });
+      expect(res.idempotent).toBe(false);
+      expect(await countOrgRows(orgId)).toBe(CAP + 1);
     },
     PGLITE_TIMEOUT,
   );

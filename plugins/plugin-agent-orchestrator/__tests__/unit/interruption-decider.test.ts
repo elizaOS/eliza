@@ -1,7 +1,18 @@
-import { describe, expect, it } from "vitest";
-import { decideInterruption } from "../../src/services/interruption-decider.js";
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import {
+  decideInterruption,
+  decideInterruptionWithModel,
+} from "../../src/services/interruption-decider.js";
 
 const base = { agentType: "claude", agentLabel: "Ada" } as const;
+
+/** Minimal runtime exposing only `useModel`, which is all the classifier uses. */
+function runtimeWithModel(
+  useModel: (type: unknown, params: unknown) => Promise<unknown>,
+): IAgentRuntime {
+  return { useModel: vi.fn(useModel) } as unknown as IAgentRuntime;
+}
 
 describe("decideInterruption", () => {
   it("ignores empty text", () => {
@@ -176,5 +187,84 @@ describe("decideInterruption", () => {
     expect(
       decideInterruption({ ...base, text: "stop", sessionBusy: true }).action,
     ).toBe("interrupt");
+  });
+});
+
+describe("decideInterruptionWithModel", () => {
+  it("skips the model for empty text (ignore)", async () => {
+    const useModel = vi.fn(async () => "{}");
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      { ...base, text: "   ", sessionBusy: true },
+    );
+    expect(decision.action).toBe("ignore");
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("skips the model for an idle agent in a solo room (deliver via regex)", async () => {
+    const useModel = vi.fn(async () => "{}");
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      { ...base, text: "add a dark mode toggle", sessionBusy: false },
+    );
+    expect(decision.action).toBe("deliver");
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("consults the model mid-turn and uses its verdict", async () => {
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "queue", reason: "additive test request" }),
+    );
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      { ...base, text: "also add unit tests for the parser", sessionBusy: true },
+    );
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(decision.action).toBe("queue");
+    expect(decision.reason).toMatch(/^model:/);
+  });
+
+  it("lets the model interrupt for a semantic redirect the regex would only queue", async () => {
+    // "let's rework this to use Postgres" has no STOP/REDIRECT regex token, so
+    // the pure decider queues it; the model recognizes a direction-invalidating
+    // redirect and interrupts.
+    const regex = decideInterruption({
+      ...base,
+      text: "let's rework this to use Postgres",
+      sessionBusy: true,
+    });
+    expect(regex.action).toBe("queue");
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "interrupt", reason: "invalidating redirect" }),
+    );
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      { ...base, text: "let's rework this to use Postgres", sessionBusy: true },
+    );
+    expect(decision.action).toBe("interrupt");
+  });
+
+  it("falls back to the regex decision when the model throws", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("model unavailable");
+    });
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      { ...base, text: "stop", sessionBusy: true },
+    );
+    // Regex still interrupts on a bare "stop".
+    expect(decision.action).toBe("interrupt");
+  });
+
+  it("falls back to the regex decision on an unparseable / invalid verdict", async () => {
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "banana", reason: "nonsense" }),
+    );
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      { ...base, text: "also add tests", sessionBusy: true },
+    );
+    // Invalid action → regex fallback (mid-turn relevant → queue).
+    expect(decision.action).toBe("queue");
   });
 });

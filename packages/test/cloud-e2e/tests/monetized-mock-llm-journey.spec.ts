@@ -13,6 +13,7 @@
  * fully real and runs without any paid key.
  */
 
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import { seedTestUser } from "../src/fixtures/seed";
 import { authedClient } from "../src/helpers/monetization";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
@@ -70,6 +71,21 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
     const appId = created.json.app?.id;
     expect(appId, "apps.create returns an app id").toBeTruthy();
     if (!appId) throw new Error("apps.create did not return an app id");
+
+    const draftMonetize = await creator(
+      "PUT",
+      `/api/v1/apps/${appId}/monetization`,
+      {
+        monetizationEnabled: true,
+        inferenceMarkupPercentage: 100,
+        purchaseSharePercentage: 10,
+      },
+    );
+    expect(
+      draftMonetize.status,
+      "draft app cannot enable monetization before compliance approval",
+    ).toBe(403);
+    await approveAppForMockJourney(appId);
 
     const monetize = await creator(
       "PUT",
@@ -184,3 +200,14 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
     expect(redeemBal.status).toBe(200);
   });
 });
+
+async function approveAppForMockJourney(appId: string): Promise<void> {
+  // This spec validates billing + creator earnings, not the live review model.
+  // Use the deterministic grandfathered approval used by the other monetization
+  // e2e suites so the money path can run after proving the draft gate is closed.
+  await appsRepository.update(appId, {
+    review_status: "approved",
+    review_content_hash: null,
+    reviewed_at: new Date(),
+  });
+}

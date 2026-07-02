@@ -34,8 +34,10 @@ type ToolHandler = (args: {
 function makeFakeSdk(scripts: TurnScript[]): {
   sdk: SdkModule;
   starts: () => number;
+  queryOptions: () => Array<Record<string, unknown>>;
 } {
   let startCount = 0;
+  const startedOptions: Array<Record<string, unknown>> = [];
   // Script progression is GLOBAL across query restarts: a self-heal/restart
   // creates a fresh query() but should continue consuming the next scripted
   // turn (mirroring a real warm session that gets fresh turns after a restart).
@@ -45,6 +47,7 @@ function makeFakeSdk(scripts: TurnScript[]): {
     createSdkMcpServer: (opts) => ({ tools: opts.tools }) as unknown,
     query: ({ options }) => {
       startCount += 1;
+      startedOptions.push(options);
       // Reach the route tool handler the session registered (ROUTE mode only).
       const servers = options.mcpServers as
         | { eliza?: { tools?: Array<{ handler: ToolHandler }> } }
@@ -82,7 +85,7 @@ function makeFakeSdk(scripts: TurnScript[]): {
       } as unknown as ReturnType<SdkModule["query"]>;
     },
   };
-  return { sdk, starts: () => startCount };
+  return { sdk, starts: () => startCount, queryOptions: () => startedOptions };
 }
 
 const fakeZod = {
@@ -91,25 +94,41 @@ const fakeZod = {
 
 function makeSession(
   scripts: TurnScript[],
-  opts: { router?: boolean; restartAfterTurns?: number; turnTimeoutMs?: number } = {}
+  opts: {
+    router?: boolean;
+    restartAfterTurns?: number;
+    turnTimeoutMs?: number;
+    subprocessEnv?: Record<string, string | undefined>;
+  } = {}
 ) {
-  const { sdk, starts } = makeFakeSdk(scripts);
+  const { sdk, starts, queryOptions } = makeFakeSdk(scripts);
   const session = new ClaudeSdkSession({
     model: "test-model",
     systemPrompt: "test system",
     router: opts.router ?? false,
     restartAfterTurns: opts.restartAfterTurns,
     turnTimeoutMs: opts.turnTimeoutMs,
+    subprocessEnv: opts.subprocessEnv,
     sdkModule: sdk,
     zodModule: fakeZod,
   });
-  return { session, starts };
+  return { session, starts, queryOptions };
 }
 
 describe("ClaudeSdkSession — TEXT mode", () => {
   it("returns streamed assistant text", async () => {
     const { session } = makeSession([{ text: "hello world", subtype: "success" }]);
     expect(await session.generate("hi")).toBe("hello world");
+    await session.dispose();
+  });
+
+  it("passes rotated account env to the Claude SDK query options only", async () => {
+    const subprocessEnv = { PATH: "/bin", CLAUDE_CODE_OAUTH_TOKEN: "selected-token" };
+    const { session, queryOptions } = makeSession([{ text: "hello world", subtype: "success" }], {
+      subprocessEnv,
+    });
+    expect(await session.generate("hi")).toBe("hello world");
+    expect(queryOptions()[0].env).toBe(subprocessEnv);
     await session.dispose();
   });
 

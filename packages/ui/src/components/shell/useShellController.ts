@@ -1210,18 +1210,20 @@ export function useShellController(): ShellController {
   // auto-stop on silence) ends after each utterance — re-open it so long-form
   // recording continues. Mirrors the hands-free loop but re-opens in
   // "transcription" intent and needs no spoken-reply gate (mode never replies).
+  // Unlike hands-free, a composer draft does NOT pause it: transcription is an
+  // additive layer — the composer keeps working and the mic stays on the whole
+  // time. Gating on the draft silently dropped meeting audio while the badge
+  // still said "Transcribing".
   React.useEffect(() => {
     if (!transcriptionMode || !ready) return;
     if (recording || captureRef.current) return;
     if (chatSending || voiceOutput.speaking) return;
-    if (composerHasDraft) return;
     const timer = window.setTimeout(() => {
       if (
         transcriptionModeRef.current &&
         !captureRef.current &&
         !chatSending &&
-        !voiceOutput.speaking &&
-        !composerHasDraftRef.current
+        !voiceOutput.speaking
       ) {
         startCapture("transcription");
       }
@@ -1233,7 +1235,6 @@ export function useShellController(): ShellController {
     recording,
     chatSending,
     voiceOutput.speaking,
-    composerHasDraft,
     startCapture,
   ]);
 
