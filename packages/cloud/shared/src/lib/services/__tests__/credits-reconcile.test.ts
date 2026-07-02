@@ -74,7 +74,7 @@ beforeAll(async () => {
         id uuid PRIMARY KEY,
         name text NOT NULL DEFAULT 'test-org',
         slug text NOT NULL DEFAULT 'test-org',
-        credit_balance numeric(20,6) NOT NULL DEFAULT '0',
+        credit_balance numeric(20,6) NOT NULL DEFAULT '0' CHECK (credit_balance >= 0),
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,
@@ -404,6 +404,191 @@ describe("CreditsService.reconcile", () => {
       // exactly what skipping reconcile(0) once chargeSettled is true prevents.
       expect(await getBalance()).toBeCloseTo(11.6, 6);
       expect(await countByType("refund")).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+/**
+ * #10846 finding 2: the reconcile retry loop double-applied the refund/overage
+ * on a commit-then-ack-loss because neither branch carried a dedupe key. The fix
+ * derives a stable `recon:<reservation_transaction_id>:<phase>` key and threads
+ * it into refundCredits / deductCredits, so a re-run of an already-settled
+ * reconcile is a no-op. Re-invoking reconcile with the same reservation id is the
+ * observable equivalent of the retry (the key is what protects the retry).
+ */
+describe("CreditsService.reconcile idempotency (#10846)", () => {
+  const RES_ID = "00000000-0000-0000-0000-0000000000f6";
+
+  test(
+    "a re-run refund with the same reservation id does NOT double-credit",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      const args = {
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.4,
+        description: "reconcile refund idempotent",
+        metadata: { user_id: USER_ID, reservation_transaction_id: RES_ID },
+      };
+
+      const first = await creditsService.reconcile(args);
+      const second = await creditsService.reconcile(args);
+
+      // Refund applied exactly once: balance = 10 + 0.6, one refund row.
+      expect(await getBalance()).toBeCloseTo(10.6, 6);
+      expect(await countByType("refund")).toBe(1);
+      expect(await countTransactions()).toBe(1);
+      // Both invocations report the SAME settlement transaction.
+      expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a re-run overage with the same reservation id does NOT double-charge",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      const args = {
+        organizationId: ORG_ID,
+        reservedAmount: 0.4,
+        actualCost: 1.0,
+        description: "reconcile overage idempotent",
+        metadata: { user_id: USER_ID, reservation_transaction_id: RES_ID },
+      };
+
+      const first = await creditsService.reconcile(args);
+      const second = await creditsService.reconcile(args);
+
+      // Overage charged exactly once: balance = 20 - 0.6, one debit row.
+      expect(await getBalance()).toBeCloseTo(19.4, 6);
+      expect(await countByType("debit")).toBe(1);
+      expect(await countTransactions()).toBe(1);
+      expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "without a reservation id the fix is opt-in — behavior is unchanged (still double-applies)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      // No reservation_transaction_id => no dedupe key => prior non-idempotent
+      // behavior is preserved (this documents that the fix does NOT silently
+      // change any existing caller that lacks a reservation id).
+      const args = {
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.4,
+        description: "reconcile refund no-key",
+        metadata: { user_id: USER_ID },
+      };
+
+      await creditsService.reconcile(args);
+      await creditsService.reconcile(args);
+
+      expect(await getBalance()).toBeCloseTo(11.2, 6);
+      expect(await countByType("refund")).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+/**
+ * #10920: a Stripe refund / chargeback must claw back credits the top-up
+ * granted, while respecting the live credit_balance >= 0 check constraint.
+ */
+describe("CreditsService.clawbackCredits (#10920)", () => {
+  test(
+    "floors the balance at zero and records unrecovered shortfall metadata",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("50"); // org spent a $100 top-up down to $50
+      const r = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 100,
+        description: "refund clawback",
+        stripePaymentIntentId: "stripe:refund:ch_1:10000",
+        metadata: { payment_intent_id: "pi_1" },
+      });
+
+      expect(await getBalance()).toBeCloseTo(0, 6);
+      expect(r.newBalance).toBeCloseTo(0, 6);
+      expect(r.appliedAmount).toBeCloseTo(50, 6);
+      expect(r.shortfallAmount).toBeCloseTo(50, 6);
+      expect(r.alreadyProcessed).toBe(false);
+      expect(await countByType("clawback")).toBe(1);
+
+      const clawbackRow = await dbWrite.execute(
+        `SELECT amount, metadata FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'clawback';`,
+      );
+      const row = clawbackRow.rows[0] as {
+        amount: string;
+        metadata: Record<string, unknown>;
+      };
+      expect(Number(row.amount)).toBeCloseTo(-50, 6);
+      expect(Number(row.metadata.unrecovered_clawback_usd)).toBeCloseTo(50, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "is idempotent on the stripePaymentIntentId key (no double claw on re-delivery)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+      const key = "stripe:refund:ch_2:5000";
+
+      const first = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 50,
+        description: "refund clawback",
+        stripePaymentIntentId: key,
+        metadata: { payment_intent_id: "pi_2" },
+      });
+      const second = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 50,
+        description: "refund clawback",
+        stripePaymentIntentId: key,
+        metadata: { payment_intent_id: "pi_2" },
+      });
+
+      expect(await getBalance()).toBeCloseTo(50, 6); // clawed once, not twice
+      expect(await countByType("clawback")).toBe(1);
+      expect(second.transaction.id).toBe(first.transaction.id);
+      expect(second.alreadyProcessed).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "getClawedBackUsdForPaymentIntent sums prior applied clawbacks (for partial-refund deltas)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+      await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 30,
+        description: "partial 1",
+        stripePaymentIntentId: "stripe:refund:ch_3:3000",
+        metadata: { payment_intent_id: "pi_3" },
+      });
+      await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 20,
+        description: "partial 2",
+        stripePaymentIntentId: "stripe:refund:ch_3:5000",
+        metadata: { payment_intent_id: "pi_3" },
+      });
+
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_3")).toBeCloseTo(50, 6);
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_none")).toBe(0);
+      // Balance clawed the full $50 across the two partials.
+      expect(await getBalance()).toBeCloseTo(50, 6);
     },
     PGLITE_TIMEOUT,
   );

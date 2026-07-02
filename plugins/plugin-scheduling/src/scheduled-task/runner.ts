@@ -449,15 +449,18 @@ export interface EscalationCursorView {
  *   a gate denied, or the task was already terminal and not eligible for
  *   recurrence refire.
  * - `dispatch_deferred` — the dispatcher returned a typed
- *   `DispatchResult { ok: false }` and the dispatch policy chose to retry the
- *   same step after a backoff or advance to the next escalation-ladder step.
- *   The task is back in `"scheduled"` with `state.firedAt` set to the next
- *   attempt time (the scheduled-override the tick honors). Nothing reached
- *   the user yet.
- * - `dispatch_failed` — the atomic claim succeeded but the dispatcher threw,
- *   OR it returned `{ ok: false }` with no retry/escalation step remaining.
- *   The runner persists the row as `"failed"` and writes a failed state-log
- *   entry so history does not strand the task as successfully fired.
+ *   `DispatchResult { ok: false }` and {@link decideDispatchPolicy} chose to
+ *   retry the SAME step after a backoff (transient failures, bounded
+ *   attempts) or advance to the next escalation-ladder step (permanent
+ *   failures with rungs remaining). The task is back in `"scheduled"` with
+ *   `state.firedAt` set to the next attempt time (the scheduled-override the
+ *   tick honors). Nothing reached the user yet.
+ * - `dispatch_failed` — the atomic claim succeeded but the dispatch did not
+ *   reach the user and no retry/escalation step remains: the dispatcher
+ *   threw, or it returned a non-retriable `{ ok: false }` with the ladder
+ *   exhausted. The runner persists the row as `"failed"`, writes a failed
+ *   state-log entry, and runs `pipeline.onFail` so history does not strand
+ *   the task as successfully fired.
  */
 export type ScheduledTaskFireResult =
   | { kind: "fired"; task: ScheduledTask }
@@ -1066,6 +1069,48 @@ export function createScheduledTaskRunner(
     }
   }
 
+  /**
+   * Record a claimed task as `failed` and return the `dispatch_failed`
+   * outcome. Shared by two callers: (1) the dispatcher THREW, and (2) the
+   * dispatcher RETURNED a non-retriable `DispatchResult { ok: false }`. Both
+   * mean the user-visible send did not happen, so history must not strand the
+   * row as successfully `fired`. The failure runs `pipeline.onFail` exactly
+   * like the throw path always has.
+   *
+   * `dispatchResult` is attached to `metadata.lastDispatchResult` on the
+   * returned-failure path so the connector-degradation surface can read the
+   * typed reason; on the throw path there is no result to attach.
+   */
+  async function recordDispatchFailure(
+    claimed: ScheduledTask,
+    failure: { error: Error; dispatchResult?: DispatchResult },
+  ): Promise<ScheduledTaskFireResult> {
+    const reason = `dispatch_failed: ${failure.error.message}`;
+    claimed.state.status = "failed";
+    claimed.state.lastDecisionLog = reason;
+    clearPendingDispatch(claimed);
+    claimed.metadata = {
+      ...(claimed.metadata ?? {}),
+      lastDispatchError: {
+        name: failure.error.name,
+        message: failure.error.message,
+      },
+      ...(failure.dispatchResult
+        ? { lastDispatchResult: failure.dispatchResult }
+        : {}),
+    };
+    await persist(claimed);
+    await logger.log(claimed.taskId, "failed", {
+      reason,
+      detail: {
+        errorName: failure.error.name,
+        message: failure.error.message,
+      },
+    });
+    await runPipeline(claimed, "failed");
+    return { kind: "dispatch_failed", task: claimed, error: failure.error };
+  }
+
   async function fireWithResult(
     taskId: string,
     args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
@@ -1287,28 +1332,9 @@ export function createScheduledTaskRunner(
       });
     } catch (error) {
       const wrapped = error instanceof Error ? error : new Error(String(error));
-      const reason = `dispatch_failed: ${wrapped.message}`;
-      claimed.state.status = "failed";
-      claimed.state.lastDecisionLog = reason;
-      clearPendingDispatch(claimed);
-      claimed.metadata = {
-        ...(claimed.metadata ?? {}),
-        lastDispatchError: {
-          name: wrapped.name,
-          message: wrapped.message,
-        },
-      };
-      await persist(claimed);
-      await logger.log(claimed.taskId, "failed", {
-        reason,
-        detail: {
-          errorName: wrapped.name,
-          message: wrapped.message,
-        },
-      });
-      await runPipeline(claimed, "failed");
-      return { kind: "dispatch_failed", task: claimed, error: wrapped };
+      return recordDispatchFailure(claimed, { error: wrapped });
     }
+
     if (dispatchResult) {
       claimed.metadata = {
         ...(claimed.metadata ?? {}),
@@ -1468,7 +1494,7 @@ export function createScheduledTaskRunner(
     reason: string,
     message?: string,
   ): Promise<ScheduledTaskFireResult> {
-    const detailMessage = message ?? reason;
+    const detailMessage = message ? `${reason}: ${message}` : reason;
     task.state.status = "failed";
     task.state.lastDecisionLog = `dispatch_failed: ${detailMessage}`;
     clearPendingDispatch(task);
@@ -1488,7 +1514,7 @@ export function createScheduledTaskRunner(
     return {
       kind: "dispatch_failed",
       task,
-      error: new Error(`dispatch failed (${reason}): ${detailMessage}`),
+      error: new Error(detailMessage),
     };
   }
 

@@ -554,6 +554,39 @@ try {
       `developer tool "${id}" renders on the launcher developer page`,
     );
   }
+
+  // ── MOUSE drag-paging across the nested pagers. The outer rail used to steal
+  // pointer capture from the inner grid pager mid-drag (both pagers commit the
+  // axis on the same bubbled move; the outer's later setPointerCapture won), so
+  // a mouse drag left on launcher page 0 could NEVER reach the developer page.
+  // The claim registry now hands the gesture to the movable inner pager. Drive
+  // real mouse drags over the inner page window: back to the apps page, then
+  // forward again through the historically dead path.
+  const innerRailX = async () =>
+    mobile.getByTestId("launcher-page-rail").evaluate((el) => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
+    });
+  await swipeRight(mobile.getByTestId("launcher-page-window"));
+  await mobile.waitForTimeout(750);
+  const backToApps = await innerRailX();
+  assert(
+    backToApps.x > -backToApps.width * 0.5,
+    `mouse swipe right pages the inner grid back to apps (rail x=${Math.round(backToApps.x)})`,
+  );
+  assert(
+    (await mobile
+      .getByTestId("home-launcher-surface")
+      .getAttribute("data-page")) === "launcher",
+    "inner mouse paging stays on the launcher (the rail did not hijack the drag)",
+  );
+  await swipeLeft(mobile.getByTestId("launcher-page-window"));
+  await mobile.waitForTimeout(750);
+  const forwardAgain = await innerRailX();
+  assert(
+    forwardAgain.x < -forwardAgain.width * 0.5,
+    `mouse swipe left from page 0 reaches the developer page (rail x=${Math.round(forwardAgain.x)})`,
+  );
   await snap(mobile, "mobile-launcher-page2");
 
   // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"

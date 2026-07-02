@@ -1406,6 +1406,7 @@ type FailureReplyAttempt =
 export {
 	buildFailureReplyPrompt,
 	isAuthError,
+	isModelProviderFallbackError,
 	isRateLimitError,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
@@ -3789,6 +3790,15 @@ export function messageHandlerFromFieldResult(
 		modelProvidedRunnableDelegationCandidate(
 			rawCandidateActions,
 			runtimeContext?.actions ?? [],
+			// With a planning context the model's own routing already signals
+			// work, so any delegation-class candidate (including the ambiguous
+			// legacy alias "TASKS") confirms the commitment. In the contradictory
+			// contexts=[simple] shape the candidate is the ONLY delegation
+			// signal, so it must be unambiguous — bare "TASKS" (task-list
+			// management as much as delegation) on a loosely coding-shaped
+			// message ("update me on the project") must not override a complete
+			// direct answer into forced planning.
+			{ requireUnambiguous: initialPlanningContexts.length === 0 },
 		);
 	const preferCompleteDirectReply =
 		!preemptDirect &&
@@ -4010,8 +4020,16 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 	// app" reply that read as a complete sentence could be kept direct and never
 	// spawn. Restricting the valve to non-coding-work turns keeps the build-spawn
 	// path intact while still short-circuiting finished plain-text answers.
+	// The !looksLikeWebSearchRequest guard closes the freshness hole the valve
+	// would otherwise open (adversarial review): on an explicitly fresh ask
+	// ("what's the current BTC price?") a model that confidently HALLUCINATES a
+	// complete-looking plain-text answer must not be kept direct — a stale price
+	// delivered confidently is worse than the extra fetch. The valve's wins
+	// (lucky-number echoes, solved riddles, static knowledge) carry no
+	// current-info signal and keep taking the direct path.
 	if (
 		!looksLikeCodingWorkRequest(currentMessageText) &&
+		!looksLikeWebSearchRequest(currentMessageText) &&
 		shouldPreferCompleteDirectReply({
 			replyText: String(messageHandler.plan.reply ?? ""),
 			candidateActions: runnableCandidateActions,
@@ -4113,13 +4131,22 @@ function shouldPreferCompleteDirectReply(args: {
 function modelProvidedRunnableDelegationCandidate(
 	candidateActions: readonly string[],
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	opts?: { requireUnambiguous?: boolean },
 ): boolean {
 	if (candidateActions.length === 0) return false;
 	const delegationActionName = findCodingDelegationActionName(actions);
 	if (!delegationActionName) return false;
+	// Bare "TASKS" is the one legacy alias that is ambiguous — it names task-list
+	// management as readily as coding delegation. When the caller needs an
+	// unambiguous commitment (no planning context backing the candidate), it only
+	// counts if the REGISTERED delegation action is itself named TASKS (then the
+	// model named the real action, not the ambiguous alias).
+	const legacyNames = opts?.requireUnambiguous
+		? LEGACY_CODING_DELEGATION_ACTION_NAMES.filter((name) => name !== "TASKS")
+		: LEGACY_CODING_DELEGATION_ACTION_NAMES;
 	const wanted = new Set<string>([
 		normalizeActionIdentifier(delegationActionName),
-		...LEGACY_CODING_DELEGATION_ACTION_NAMES.map(normalizeActionIdentifier),
+		...legacyNames.map(normalizeActionIdentifier),
 	]);
 	return candidateActions.some((name) =>
 		wanted.has(normalizeActionIdentifier(name)),
@@ -6158,7 +6185,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			typeof onResponseHandlerEarlyReply === "function";
 		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
 			await onResponseHandlerEarlyReply({
-				text: earlyReplyText,
+				text: restorePiiInUserReplyText(earlyReplyText),
 				messageHandler,
 			});
 		}

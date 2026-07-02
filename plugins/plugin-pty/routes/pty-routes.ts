@@ -160,8 +160,13 @@ function ptyAccessRejection(
 function interactiveEnabled(runtime: IAgentRuntime): boolean {
   const variant = (getStr(runtime, "ELIZA_BUILD_VARIANT") ?? "").toLowerCase();
   if (variant === "store") return false;
-  const flag = getStr(runtime, "PTY_INTERACTIVE_ENABLED");
-  if (flag !== undefined) return flag !== "false" && flag !== "0";
+  const flag = getStr(runtime, "PTY_INTERACTIVE_ENABLED")?.trim().toLowerCase();
+  if (flag !== undefined && flag !== "") {
+    // An explicit setting only ENABLES on a recognized truthy value — a
+    // near-miss disable ("off", "FALSE", "no", a typo) must not silently
+    // leave spawning on when the operator believes it is off.
+    return flag === "true" || flag === "1" || flag === "on" || flag === "yes";
+  }
   return true;
 }
 
@@ -230,8 +235,13 @@ async function spawnHandler(
       binPath,
       tier,
       baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
-      fastModel: str(body.fastModel),
-      smartModel: str(body.smartModel),
+      // Deployment knob (like PTY_ELIZA_CLOUD_API_KEY): pin the tier models
+      // without a client change, e.g. while the deployed cloud's model
+      // registry lags the repo's DEFAULT_CEREBRAS_TEXT_MODEL.
+      fastModel:
+        str(body.fastModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_FAST_MODEL"),
+      smartModel:
+        str(body.smartModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_SMART_MODEL"),
     });
     spec.ownerClientId = header(ctx, "x-elizaos-client-id");
     const cols = num(body.cols);

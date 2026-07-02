@@ -4103,6 +4103,7 @@
   "settings.sections.aimodel.desc": "Cloud, local, subscriptions, and direct providers.",
   "settings.sections.appearance.desc": "Content packs, VRM avatars, backgrounds, and themes",
   "settings.sections.appearance.label": "Appearance",
+  "settings.sections.background.label": "Background",
   "settings.sections.apps.basedOnLabel": "Based on existing app (optional)",
   "settings.sections.apps.basedOnNone": "Start from scratch",
   "settings.sections.apps.col.actions": "Actions",

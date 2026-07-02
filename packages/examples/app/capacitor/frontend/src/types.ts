@@ -65,7 +65,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     anthropicLargeModel: "claude-sonnet-4-6",
 
     elizacloudApiKey: "",
-    elizacloudBaseUrl: "https://www.elizacloud.ai/api/v1",
+    elizacloudBaseUrl: "https://elizacloud.ai/api/v1",
     elizacloudSmallModel: "gemma-4-31b",
     elizacloudLargeModel: "gemma-4-31b",
 

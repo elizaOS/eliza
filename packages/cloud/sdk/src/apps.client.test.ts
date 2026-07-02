@@ -151,6 +151,58 @@ describe("ElizaCloudClient typed app methods", () => {
     });
   });
 
+  it("deployAppFrontend POSTs /api/v1/apps/:id/frontend with the bundle", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      deployment: {
+        id: "dep_fe_1",
+        version: 1,
+        status: "active",
+        file_count: 2,
+      },
+    });
+    const res = await client.deployAppFrontend("app_1", {
+      files: [{ path: "index.html", content: "<html></html>" }],
+      buildMeta: { source: "agent" },
+    });
+    expect(res.deployment.id).toBe("dep_fe_1");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/frontend",
+      method: "POST",
+      body: {
+        files: [{ path: "index.html", content: "<html></html>" }],
+        buildMeta: { source: "agent" },
+      },
+    });
+  });
+
+  it("listAppFrontendDeployments GETs /api/v1/apps/:id/frontend", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      active_deployment_id: "dep_fe_1",
+      deployments: [],
+    });
+    const res = await client.listAppFrontendDeployments("app_1");
+    expect(res.active_deployment_id).toBe("dep_fe_1");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/frontend",
+      method: "GET",
+    });
+  });
+
+  it("activateAppFrontend POSTs /api/v1/apps/:id/frontend/:deploymentId/activate", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      deployment: { id: "dep_fe_2", version: 2, status: "active" },
+    });
+    const res = await client.activateAppFrontend("app_1", "dep_fe_2");
+    expect(res.deployment.id).toBe("dep_fe_2");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/frontend/dep_fe_2/activate",
+      method: "POST",
+    });
+  });
+
   it("getAppDeployStatus GETs /api/v1/apps/:id/deploy/status", async () => {
     const { client, requests } = createClientRecorder({
       success: true,
@@ -196,15 +248,99 @@ describe("ElizaCloudClient typed app methods", () => {
     });
   });
 
-  it("buyAppDomain (deferred stub) POSTs /api/v1/apps/:id/domains/buy with { domain }", async () => {
+  it("buyAppDomain POSTs /api/v1/apps/:id/domains/buy and returns the typed purchase envelope", async () => {
     const { client, requests } = createClientRecorder({
       success: true,
       domain: "example.com",
+      appDomainId: "ad_1",
+      zoneId: null,
+      status: "pending",
+      verified: false,
+      expiresAt: "2027-07-01T00:00:00.000Z",
+      pendingZoneProvisioning: true,
+      debited: { totalUsdCents: 1399, currency: "USD" },
     });
     const res = await client.buyAppDomain("app_1", { domain: "example.com" });
-    expect(res.success).toBe(true);
+    expect(res.pendingZoneProvisioning).toBe(true);
+    expect(res.debited?.totalUsdCents).toBe(1399);
     expect(requests[0]).toMatchObject({
       url: "https://cloud.test/api/v1/apps/app_1/domains/buy",
+      method: "POST",
+      body: { domain: "example.com" },
+    });
+  });
+
+  it("checkAppDomain POSTs /api/v1/apps/:id/domains/check and returns the typed quote", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      domain: "example.com",
+      available: true,
+      currency: "USD",
+      years: 1,
+      price: {
+        wholesaleUsdCents: 1029,
+        marginUsdCents: 370,
+        totalUsdCents: 1399,
+        marginBps: 3600,
+      },
+      renewal: { totalUsdCents: 1399 },
+    });
+    const res = await client.checkAppDomain("app_1", {
+      domain: "example.com",
+    });
+    expect(res.available).toBe(true);
+    expect(res.price?.totalUsdCents).toBe(1399);
+    expect(res.renewal?.totalUsdCents).toBe(1399);
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/domains/check",
+      method: "POST",
+      body: { domain: "example.com" },
+    });
+  });
+
+  it("listAppDomains GETs /api/v1/apps/:id/domains and returns typed rows", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      domains: [
+        {
+          id: "ad_1",
+          domain: "example.com",
+          registrar: "cloudflare",
+          status: "active",
+          verified: true,
+          sslStatus: "active",
+          expiresAt: "2027-07-01T00:00:00.000Z",
+          cloudflareZoneId: "zone_1",
+          verificationToken: null,
+        },
+      ],
+    });
+    const res = await client.listAppDomains("app_1");
+    expect(Array.isArray(res.domains)).toBe(true);
+    expect(res.domains[0]?.sslStatus).toBe("active");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/domains",
+      method: "GET",
+    });
+  });
+
+  it("getAppDomainStatus POSTs /api/v1/apps/:id/domains/status and returns the live registrar view", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      domain: "example.com",
+      registrar: "cloudflare",
+      status: "active",
+      verified: true,
+      sslStatus: "active",
+      expiresAt: "2027-07-01T00:00:00.000Z",
+      live: { status: "active", completedAt: null, failureReason: null },
+    });
+    const res = await client.getAppDomainStatus("app_1", {
+      domain: "example.com",
+    });
+    expect(res.live?.status).toBe("active");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/domains/status",
       method: "POST",
       body: { domain: "example.com" },
     });

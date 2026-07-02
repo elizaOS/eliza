@@ -9,6 +9,11 @@ Use this skill once the user already has at least one domain attached to one of 
 
 It does NOT register new domains — that's `eliza-cloud-buy-domain`. It does not modify DNS on external (user-owned-elsewhere) domains — those records live at the user's existing DNS provider.
 
+In a conversational agent running `@elizaos/plugin-cloud-apps`, the read path
+("what domains does my app have", "is it verified") is already a first-class
+action — `LIST_APP_DOMAINS` — so prefer that from chat. DNS record CRUD,
+verify, sync, and detach remain SDK/skill territory below.
+
 For live status checks, use the Cloud API plus direct HTTP/DNS/RDAP requests.
 Do not use web search snippets or registrar-search pages to decide whether a
 domain is bought, attached, or serving an app; those results can be stale.
@@ -18,7 +23,7 @@ domain is bought, attached, or serving an app; those results can be stale.
 | User intent | Endpoint | Notes |
 |---|---|---|
 | "list my domains" / "what domains do I own" | `GET /api/v1/domains` | org-wide across all their apps |
-| "what domains does {app} have" | `GET /api/v1/apps/{appId}/domains` | per-app |
+| "what domains does {app} have" | `GET /api/v1/apps/{appId}/domains` | per-app; from chat prefer the `LIST_APP_DOMAINS` action |
 | "did myapp.com get bought" / "is it active" | `POST /api/v1/apps/{appId}/domains/status` | one attached domain's live registrar status |
 | "show dns records for myapp.com" | `GET /api/v1/apps/{appId}/domains/{domain}/dns` | cloudflare zones only |
 | "add a CNAME pointing www.myapp.com to ..." | `POST /api/v1/apps/{appId}/domains/{domain}/dns` | cloudflare zones only |

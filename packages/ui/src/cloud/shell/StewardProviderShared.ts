@@ -8,6 +8,7 @@ import { createContext } from "react";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { decodeJwtPayload } from "../lib/jwt";
+import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
 
 export function isPlaceholderValue(value: string | undefined): boolean {
   if (!value) return true;
@@ -25,15 +26,23 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-const ELIZA_CLOUD_COOKIE_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-]);
-const ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT =
-  "https://api.elizacloud.ai/api/auth/steward-session";
-const ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT =
-  "https://api.elizacloud.ai/api/auth/steward-refresh";
+// On co-hosted elizacloud.ai surfaces, session-sync + refresh bypass the
+// Pages/Worker proxy and call each host's OWN API worker directly (the shared
+// host → worker map in steward-url.ts). Everywhere else they stay same-origin.
+function directCloudApiBase(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return ELIZA_CLOUD_DIRECT_API_BY_HOST[window.location.hostname.toLowerCase()];
+}
+
+function directStewardSessionEndpoint(): string | undefined {
+  const base = directCloudApiBase();
+  return base ? `${base}${STEWARD_SESSION_ENDPOINT}` : undefined;
+}
+
+function directStewardRefreshEndpoint(): string | undefined {
+  const base = directCloudApiBase();
+  return base ? `${base}${STEWARD_REFRESH_ENDPOINT}` : undefined;
+}
 
 export type LocalStewardAuthValue = {
   isAuthenticated: boolean;
@@ -63,10 +72,7 @@ function isLocalhostApiBase(value: string): boolean {
 }
 
 function isBrowserOnElizaHost(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    ELIZA_CLOUD_COOKIE_HOSTS.has(window.location.hostname.toLowerCase())
-  );
+  return directCloudApiBase() !== undefined;
 }
 
 function configuredApiBase(): string | undefined {
@@ -86,8 +92,9 @@ export function configuredSessionEndpoint(): string {
       return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
     }
   }
-  if (isBrowserOnElizaHost()) {
-    return ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT;
+  const direct = directStewardSessionEndpoint();
+  if (direct) {
+    return direct;
   }
   return STEWARD_SESSION_ENDPOINT;
 }
@@ -99,8 +106,9 @@ export function configuredRefreshEndpoint(): string {
       return `${trimTrailingSlash(apiBase)}${STEWARD_REFRESH_ENDPOINT}`;
     }
   }
-  if (isBrowserOnElizaHost()) {
-    return ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT;
+  const direct = directStewardRefreshEndpoint();
+  if (direct) {
+    return direct;
   }
   return STEWARD_REFRESH_ENDPOINT;
 }
@@ -108,8 +116,9 @@ export function configuredRefreshEndpoint(): string {
 function stewardSessionClearUrls(): string[] {
   if (typeof window === "undefined") return [configuredSessionEndpoint()];
   const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
-  if (isBrowserOnElizaHost()) {
-    urls.add(ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT);
+  const direct = directStewardSessionEndpoint();
+  if (direct) {
+    urls.add(direct);
   }
   return [...urls];
 }
@@ -132,7 +141,11 @@ export function readStoredToken(): string | null {
 export function tokenIsExpired(token: string): boolean {
   const payload = decodeJwtPayload(token);
   if (!payload) return true;
-  if (!payload.exp) return false;
+  // No exp claim ⇒ treat as expired. Steward always mints exp; an exp-less
+  // token is foreign/malformed, and since the 401 handlers keep any
+  // NON-expired token, an exp-less one would otherwise be uncloseable — no
+  // 401 could ever clear it and it never ages out on its own.
+  if (!payload.exp) return true;
   return payload.exp * 1000 < Date.now();
 }
 

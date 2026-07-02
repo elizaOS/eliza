@@ -3,7 +3,9 @@ import {
   bucket,
   computeVerdict,
   evaluateAestheticMetricBudget,
+  evaluateStrictGate,
   exceedsMinimalismBudget,
+  type GateFinding,
   MINIMALISM_DENSITY_CEILING,
   minimalismDensity,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
@@ -322,5 +324,122 @@ describe("evaluateAestheticMetricBudget (#9950 minimalism gate)", () => {
         },
       ),
     ).toEqual([]);
+  });
+});
+
+describe("evaluateStrictGate (#9304 / #10710 strict verdict gate)", () => {
+  const gateFinding = (o: Partial<GateFinding> = {}): GateFinding => ({
+    slug: "plugin-foo-gui",
+    viewport: "desktop",
+    verdict: "good",
+    consoleErrors: [],
+    qualityIssues: [],
+    readableChars: 500,
+    ...o,
+  });
+
+  it("default opts: only undebted `broken` fails; `needs-work` is logged, not gated", () => {
+    const findings = [
+      gateFinding({ slug: "a", verdict: "broken", consoleErrors: ["boom"] }),
+      gateFinding({ slug: "b", verdict: "needs-work" }),
+      gateFinding({ slug: "c", verdict: "good" }),
+    ];
+    const gate = evaluateStrictGate(findings, {});
+    // strict defaults on → the undebted broken view is a hard fail.
+    expect(gate.undebtedBroken.map((f) => f.slug)).toEqual(["a"]);
+    expect(gate.failed).toBe(true);
+    expect(gate.message).toContain("STRICT gate failed");
+    expect(gate.message).toContain("a @ desktop: boom");
+    // needs-work is surfaced in the tally but does not fail the run by default.
+    expect(gate.undebtedNeedsWork.map((f) => f.slug)).toEqual(["b"]);
+    expect(gate.message).not.toContain("'needs-work'");
+  });
+
+  it("default opts + only an undebted `needs-work`: passes (no broken to gate)", () => {
+    const findings = [gateFinding({ slug: "b", verdict: "needs-work" })];
+    const gate = evaluateStrictGate(findings, {});
+    expect(gate.undebtedNeedsWork.map((f) => f.slug)).toEqual(["b"]);
+    expect(gate.failed).toBe(false);
+    expect(gate.message).toBe("");
+  });
+
+  it("a `broken` debt entry tolerates that view's broken render (no fail)", () => {
+    const findings = [
+      gateFinding({ slug: "a", verdict: "broken", consoleErrors: ["boom"] }),
+    ];
+    const gate = evaluateStrictGate(findings, { "a-desktop": "broken" });
+    expect(gate.undebtedBroken).toEqual([]);
+    expect(gate.failed).toBe(false);
+  });
+
+  it("a `needs-work` debt entry does NOT tolerate a broken render", () => {
+    const findings = [
+      gateFinding({ slug: "a", verdict: "broken", consoleErrors: ["boom"] }),
+    ];
+    const gate = evaluateStrictGate(findings, { "a-desktop": "needs-work" });
+    expect(gate.undebtedBroken.map((f) => f.slug)).toEqual(["a"]);
+    expect(gate.failed).toBe(true);
+  });
+
+  it("needsWorkStrict on: an undebted `needs-work` also fails; a debted one does not", () => {
+    const findings = [
+      gateFinding({ slug: "fresh", verdict: "needs-work" }),
+      gateFinding({ slug: "allowlisted", verdict: "needs-work" }),
+    ];
+    const gate = evaluateStrictGate(
+      findings,
+      { "allowlisted-desktop": "needs-work" },
+      { needsWorkStrict: true },
+    );
+    expect(gate.undebtedNeedsWork.map((f) => f.slug)).toEqual(["fresh"]);
+    expect(gate.failed).toBe(true);
+    expect(gate.message).toContain("'needs-work'");
+    expect(gate.message).toContain("fresh @ desktop");
+    expect(gate.message).not.toContain("allowlisted @ desktop");
+  });
+
+  it("needsWorkStrict on: a `broken` debt entry ALSO tolerates a needs-work for that slug", () => {
+    const findings = [
+      gateFinding({
+        slug: "tolerated",
+        viewport: "mobile",
+        verdict: "needs-work",
+      }),
+    ];
+    const gate = evaluateStrictGate(
+      findings,
+      { "tolerated-mobile": "broken" },
+      { needsWorkStrict: true },
+    );
+    expect(gate.undebtedNeedsWork).toEqual([]);
+    expect(gate.failed).toBe(false);
+    expect(gate.message).toBe("");
+  });
+
+  it("strict off: the tally is still computed but nothing fails (default-behavior parity)", () => {
+    const findings = [
+      gateFinding({ slug: "a", verdict: "broken", consoleErrors: ["boom"] }),
+      gateFinding({ slug: "b", verdict: "needs-work" }),
+    ];
+    const gate = evaluateStrictGate(findings, {}, { strict: false });
+    // Findings are still classified for the log line…
+    expect(gate.undebtedBroken.map((f) => f.slug)).toEqual(["a"]);
+    expect(gate.undebtedNeedsWork.map((f) => f.slug)).toEqual(["b"]);
+    // …but with strict off and needsWorkStrict off, the run does not fail.
+    expect(gate.failed).toBe(false);
+    expect(gate.message).toBe("");
+  });
+
+  it("reports both broken and needs-work sections when both flags gate", () => {
+    const findings = [
+      gateFinding({ slug: "crash", verdict: "broken", readableChars: 0 }),
+      gateFinding({ slug: "debt", verdict: "needs-work" }),
+    ];
+    const gate = evaluateStrictGate(findings, {}, { needsWorkStrict: true });
+    expect(gate.failed).toBe(true);
+    expect(gate.message).toContain("'broken'");
+    expect(gate.message).toContain("crash @ desktop: readableChars=0");
+    expect(gate.message).toContain("'needs-work'");
+    expect(gate.message).toContain("debt @ desktop");
   });
 });

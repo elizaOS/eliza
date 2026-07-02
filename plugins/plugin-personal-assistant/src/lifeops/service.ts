@@ -392,13 +392,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.googleDomain.deleteCalendarReminderPlansForEvents(_eventIds);
   }
 
-  public setPreferredGoogleConnectorMode(
-    _mode: LifeOpsConnectorMode | null,
-    _side?: LifeOpsConnectorSide,
-  ): Promise<LifeOpsConnectorGrant | null> {
-    return this.googleDomain.setPreferredGoogleConnectorMode(_mode, _side);
-  }
-
   public requireGoogleCalendarGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,

@@ -157,7 +157,8 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-sm border border-border bg-card p-4">
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
+    <section>
       <div className="mb-4">
         <h2 className="text-base font-semibold text-txt">{title}</h2>
         {description ? (
@@ -349,7 +350,7 @@ function StatusNotice({
   }
   if (notice) {
     return (
-      <div className="rounded-sm border border-border bg-bg px-3 py-2 text-sm text-muted">
+      <div className="px-3 py-2 text-sm text-muted">
         {notice}
       </div>
     );
@@ -359,7 +360,7 @@ function StatusNotice({
 
 function EmptyState({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-sm border border-border bg-bg p-3 text-sm text-muted">
+    <div className="px-1 py-2 text-sm text-muted">
       {children}
     </div>
   );
@@ -505,7 +506,7 @@ const PhoneContactRow = memo(function PhoneContactRow({
     [onSms, contactNumber],
   );
   return (
-    <div className="rounded-sm border border-border bg-bg p-3 text-sm">
+    <div className="p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-medium text-txt">
@@ -567,7 +568,7 @@ function PhoneRoleRow({
   onRequest: (role: AndroidRoleStatus) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card p-2 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-2 p-2 text-sm">
       <div className="min-w-0">
         <div className="font-medium text-txt">
           {role.role}: {role.held ? heldLabel : notHeldLabel}
@@ -1156,7 +1157,7 @@ export function PhonePageView() {
         >
           {selectedCall ? (
             <div className="grid gap-3">
-              <div className="rounded-sm border border-border bg-bg p-3 text-sm">
+              <div className="p-3 text-sm">
                 <div className="font-medium text-txt">
                   {callDisplayName(selectedCall)}
                 </div>
@@ -1170,7 +1171,7 @@ export function PhonePageView() {
                 </div>
               </div>
               {selectedCall.transcription ? (
-                <div className="rounded-sm border border-border bg-bg p-3 text-sm text-txt">
+                <div className="p-3 text-sm text-txt">
                   <div className="mb-1 text-xs font-medium uppercase text-muted">
                     {t("elizaosapps.phone.transcript.voicemail", {
                       defaultValue: "Voicemail transcription",
@@ -1299,14 +1300,14 @@ export function PhonePageView() {
             </div>
           </div>
           <div className="grid gap-3">
-            <div className="grid gap-1 rounded-sm border border-border bg-bg p-3 text-sm text-muted">
+            <div className="grid gap-1 p-3 text-sm text-muted">
               {status.length > 0
                 ? status.map((line) => <div key={line}>{line}</div>)
                 : t("elizaosapps.phone.dialer.noStatus", {
                     defaultValue: "No status loaded.",
                   })}
             </div>
-            <div className="grid gap-2 rounded-sm border border-border bg-bg p-3">
+            <div className="grid gap-2 p-3">
               <div className="text-sm font-medium text-txt">
                 {t("elizaosapps.phone.dialer.defaultRoles", {
                   defaultValue: "Android default roles",
@@ -1353,7 +1354,7 @@ export function PhonePageView() {
                 {t("elizaosapps.phone.settings", { defaultValue: "Settings" })}
               </SecondaryButton>
             </div>
-            <div className="rounded-sm border border-border bg-bg p-3">
+            <div className="p-3">
               <div className="mb-3 text-sm font-medium text-txt">
                 {t("elizaosapps.phone.newContact.title", {
                   defaultValue: "New Contact",
@@ -1705,7 +1706,7 @@ export function MessagesPageView() {
         >
           <div className="grid gap-3">
             {incomingSms ? (
-              <div className="rounded-sm border border-border bg-bg p-3 text-sm">
+              <div className="p-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                   <span>
                     {incomingSms.sender ||
@@ -1800,7 +1801,7 @@ export function MessagesPageView() {
               messages.map((message) => (
                 <div
                   key={message.id}
-                  className="rounded-sm border border-border bg-bg p-3 text-sm"
+                  className="p-3 text-sm"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                     <span>
@@ -2010,7 +2011,7 @@ export function ContactsPageView() {
               contacts.map((contact) => (
                 <div
                   key={contact.id}
-                  className="rounded-sm border border-border bg-bg p-3 text-sm"
+                  className="p-3 text-sm"
                 >
                   <div className="font-medium text-txt">
                     {contact.displayName}

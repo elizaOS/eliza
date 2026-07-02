@@ -63,6 +63,8 @@ export function extractSelfNameClaim(
  *   - "this is Jill, my wife"      → {name:"Jill", label:"wife"}
  *   - "Bob is my husband"          → {name:"Bob",  label:"husband"}
  *   - "Sam is my partner"
+ *   - "this is my wife Jill"       → {name:"Jill", label:"wife"}
+ *   - "my husband Bob just called" → {name:"Bob",  label:"husband"}
  *
  * Returns the first match; multi-relationship sentences are rare
  * enough to warrant punting until we have a real classifier.
@@ -106,7 +108,40 @@ const PARTNER_CLAIM_PATTERNS: ReadonlyArray<{
     nameGroup: 1,
     labelGroup: 2,
   },
+  // Label-before-name phrasing: "this is my <label> <name>" / "my <label>
+  // <name>". Capture a SINGLE trailing name token so it can't swallow the
+  // following verb ("my husband Bob just called" → "Bob", not "Bob just").
+  {
+    pattern: new RegExp(
+      `\\b(?:this\\s+is\\s+)?my\\s+(${PARTNER_LABELS.join("|")})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
+      "i",
+    ),
+    nameGroup: 2,
+    labelGroup: 1,
+  },
 ];
+
+// Words that a name regex can capture but that never denote a real person.
+// Applied to the captured NAME so a matched-but-invalid candidate (e.g.
+// "this is my wife Jill" matching name="this" via the "<name> is my <label>"
+// pattern) is skipped and the loop continues to a better pattern.
+const NAME_STOPWORDS = new Set([
+  "this",
+  "that",
+  "it",
+  "he",
+  "she",
+  "they",
+  "here",
+  "there",
+  "is",
+  "was",
+  "the",
+  "my",
+  "a",
+  "an",
+  "and",
+]);
 
 export function extractPartnerClaim(
   text: string | null | undefined,
@@ -117,7 +152,7 @@ export function extractPartnerClaim(
     if (m?.[nameGroup] && m[labelGroup]) {
       const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
       const label = m[labelGroup].toLowerCase();
-      if (name.length > 0) {
+      if (name.length > 0 && !NAME_STOPWORDS.has(name.toLowerCase())) {
         return { name, label, type: "partner_of" };
       }
     }

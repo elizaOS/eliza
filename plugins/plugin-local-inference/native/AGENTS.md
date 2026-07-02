@@ -124,7 +124,7 @@ Backbones (do not change without explicit human approval):
   once wrapped it has been removed. Do not add a new standalone wrapper;
   new voice code goes through `libelizainference`.
 
-  Kokoro and OmniVoice both satisfy the same `OmniVoiceBackend +
+  Kokoro and OmniVoice both satisfy the same `TtsBackend +
   StreamingTtsBackend` contract — the runtime selector
   (`services/voice/kokoro/runtime-selection.ts`) picks one at arm time
   based on the tier policy, the `ELIZA_TTS_BACKEND` env override

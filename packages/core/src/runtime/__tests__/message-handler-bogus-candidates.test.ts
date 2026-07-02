@@ -272,6 +272,39 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
 	});
 
+	it("does NOT treat bare legacy 'TASKS' as a delegation commitment in the SIMPLE-context shape", () => {
+		// Adversarial-review probe on the simple-context spawn fix: a loosely
+		// coding-shaped status question ("update me on the project") where the
+		// model routed contexts=["simple"], answered completely, and named the
+		// ambiguous legacy alias "TASKS" (task-list management as much as
+		// delegation; not a registered action here — the registry has
+		// TASKS_SPAWN_AGENT). Without a planning context backing it, the
+		// ambiguous alias must not override the complete direct answer into
+		// forced planning. Unambiguous spawn-class names (TASKS_SPAWN_AGENT,
+		// previous test) still commit.
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: ["TASKS"],
+				replyText:
+					"The project is on track — the build pipeline was green this morning and the last deploy finished cleanly.",
+				intents: ["project status"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText: "update me on the project",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).not.toBe(true);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+	});
+
 	it("still force-plans a genuine build ask when the model only acked", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

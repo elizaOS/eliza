@@ -100,7 +100,7 @@ export {
 	type EngineVoiceBridgeOptions,
 	encodeMonoPcm16Wav,
 	FfiOmniVoiceBackend,
-	StubOmniVoiceBackend,
+	StubTtsBackend,
 	type VoiceTurnEvents,
 } from "./engine-bridge";
 export {

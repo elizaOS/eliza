@@ -55,6 +55,9 @@ mock.module("@/db/repositories/users", () => ({
     findById: mock(async () => ({ name: "Agent User" })),
   },
 }));
+mock.module("@/lib/security/safe-fetch", () => ({
+  safeFetch: webhookFetch,
+}));
 mock.module("@/lib/services/app-charge-callbacks", () => ({
   appChargeCallbacksService: {},
 }));

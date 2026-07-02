@@ -24,13 +24,19 @@ let existingRows: AgentSandbox[] = [];
 let insertedRows: NewAgentSandbox[] = [];
 let capturedSelectWhere: SQL | undefined;
 let executeCalls: number = 0;
+// The capped (#11023) path's `select({count}).from().where()` is AWAITED at
+// `.where()` (no orderBy/for/limit), so the chain is thenable and resolves to
+// these count rows. The reuse guard instead ends in `.limit()` (returns
+// existingRows), so it never hits the thenable.
+let countRows: Array<{ count: number }> = [{ count: 0 }];
 
 const txExecute = mock(async (_sql: SQL) => {
   executeCalls += 1;
   return { rows: [] };
 });
 
-// tx.select().from().where(clause).orderBy().for("update").limit() -> existingRows
+// reuse guard:  select().from().where(clause).orderBy().for("update").limit() -> existingRows
+// cap count:    select({count}).from().where(clause) [awaited]               -> countRows
 const txSelect = mock(() => {
   const chain = {
     from: () => chain,
@@ -41,6 +47,8 @@ const txSelect = mock(() => {
     orderBy: () => chain,
     for: () => chain,
     limit: () => existingRows,
+    then: (resolve: (rows: Array<{ count: number }>) => unknown) =>
+      resolve(countRows),
   } as Record<string, unknown>;
   return chain;
 });
@@ -134,6 +142,7 @@ function resetTx(): void {
   insertedRows = [];
   capturedSelectWhere = undefined;
   executeCalls = 0;
+  countRows = [{ count: 0 }];
   txExecute.mockClear();
   txSelect.mockClear();
   txInsert.mockClear();
@@ -243,6 +252,91 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       expect(res.idempotent).toBe(false);
       expect(res.agent.id).toBe("repo-created");
       // No transaction, no advisory lock, no reuse SELECT on the multi-agent path.
+      expect(transaction).not.toHaveBeenCalled();
+      expect(txExecute).not.toHaveBeenCalled();
+      expect(repoCreate).toHaveBeenCalledTimes(1);
+    } finally {
+      repoCreate.mockRestore();
+    }
+  });
+});
+
+describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)", () => {
+  test("a fresh (non-reuse) create under maxNonTerminalAgents inserts, atomically under the advisory lock", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+
+    // Org already has 3 live agents; cap is 5 → the create proceeds.
+    countRows = [{ count: 3 }];
+    const res = await svc.createAgent({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "forced-under-cap",
+      dockerImage: "ghcr.io/example/agent:latest",
+      reuseExistingNonTerminal: false,
+      maxNonTerminalAgents: 5,
+    });
+
+    expect(res.idempotent).toBe(false);
+    expect(insertedRows.length).toBe(1);
+    // The count + insert ran inside the transaction that first took the org
+    // advisory lock — so the check and the write are atomic (no TOCTOU).
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(executeCalls).toBe(1);
+    // The count scoped to this org AND to non-terminal statuses only.
+    expect(capturedSelectWhere).toBeDefined();
+    const sql = new PgDialect().sqlToQuery(capturedSelectWhere as SQL).sql;
+    expect(sql).toContain("organization_id");
+    expect(sql).toContain("'pending'");
+    expect(sql).toContain("'provisioning'");
+    expect(sql).toContain("'running'");
+  });
+
+  test("a fresh create AT the cap is refused with AgentQuotaExceededError and NO insert (fleet-DoS closed)", async () => {
+    const { ElizaSandboxService, AgentQuotaExceededError } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const svc = new ElizaSandboxService();
+
+    // Org is already at the cap → a fresh forceCreate must not mint another.
+    countRows = [{ count: 5 }];
+    await expect(
+      svc.createAgent({
+        organizationId: ORG_A,
+        userId: USER,
+        agentName: "forced-at-cap",
+        dockerImage: "ghcr.io/example/agent:latest",
+        reuseExistingNonTerminal: false,
+        maxNonTerminalAgents: 5,
+      }),
+    ).rejects.toBeInstanceOf(AgentQuotaExceededError);
+
+    // The lock was taken (so the count was authoritative) but NO row was inserted.
+    expect(executeCalls).toBe(1);
+    expect(insertedRows.length).toBe(0);
+  });
+
+  test("an unset cap keeps the uncapped plain-insert fast path (trusted internal multi-agent callers)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+
+    const repoCreate = spyOn(agentSandboxesRepository, "create").mockResolvedValue({
+      ...baseRow(),
+      id: "repo-created-uncapped",
+    });
+    try {
+      // Even with many existing agents, an unset cap does NOT gate the insert.
+      countRows = [{ count: 999 }];
+      const res = await svc.createAgent({
+        organizationId: ORG_A,
+        userId: USER,
+        agentName: "waifu-launch",
+        dockerImage: "ghcr.io/example/agent:latest",
+        reuseExistingNonTerminal: false,
+        // maxNonTerminalAgents intentionally unset
+      });
+      expect(res.agent.id).toBe("repo-created-uncapped");
+      // No transaction / advisory lock / count query on the uncapped path.
       expect(transaction).not.toHaveBeenCalled();
       expect(txExecute).not.toHaveBeenCalled();
       expect(repoCreate).toHaveBeenCalledTimes(1);

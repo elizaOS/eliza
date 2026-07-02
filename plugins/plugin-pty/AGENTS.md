@@ -98,10 +98,11 @@ bun run --cwd plugins/plugin-pty lint
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PTY_INTERACTIVE_ENABLED` | `true` | Set `false` (or run a store build) to disable spawning. |
+| `PTY_INTERACTIVE_ENABLED` | `true` | Explicit values enable only on `true`, `1`, `on`, or `yes`; any other non-empty value disables spawning. Store builds also disable spawning. |
 | `PTY_ALLOWED_DIRECTORY` | process cwd | Directory sessions are confined to. |
 | `ELIZA_TERMINAL_RUN_TOKEN` | — | Required step-up token for remote HTTP access to PTY spawn/list/stop routes. Trusted loopback cockpit traffic is allowed server-side without exposing the token to browser JavaScript. |
 | `PTY_ELIZA_CLOUD_API_KEY` | — | Dedicated Eliza Cloud key eliza-code authenticates with. Do not use the agent server's primary `OPENAI_API_KEY` for PTY sessions. |
+| `PTY_ELIZA_CLOUD_FAST_MODEL` / `PTY_ELIZA_CLOUD_SMART_MODEL` | `gemma-4-31b` | Optional deployment pins for the fast/smart eliza-code model ids. Request body model values still take precedence. |
 | `PTY_ALLOWED_BASE_URLS` | Eliza Cloud API | Comma-separated operator allowlist for non-default OpenAI-compatible base URLs. |
 | `PTY_IDLE_TIMEOUT_MS` | `900000` | Idle live-session timeout. Set `0` to disable the fallback reaper. |
 | `ELIZA_CODE_BIN` | auto-resolved | Absolute path to built `eliza-code` `dist/index.js`. |

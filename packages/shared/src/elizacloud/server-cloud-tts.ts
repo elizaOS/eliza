@@ -182,7 +182,7 @@ export function resolveCloudTtsBaseUrl(
   const fromConfig =
     fromEnv.length > 0 ? null : resolveCloudBaseUrlFromConfig();
   const configured = fromEnv.length > 0 ? fromEnv : (fromConfig?.trim() ?? "");
-  const fallback = "https://www.elizacloud.ai/api/v1";
+  const fallback = "https://elizacloud.ai/api/v1";
   const base = configured.length > 0 ? configured : fallback;
 
   try {

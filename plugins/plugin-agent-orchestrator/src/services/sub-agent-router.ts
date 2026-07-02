@@ -12,7 +12,9 @@ import { Service, ServiceType } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import {
   accountMetaFromSessionMetadata,
+  type CodingAccountFailureKind,
   classifyAccountFailure,
+  getCodingAccountBridge,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
 import {
@@ -744,6 +746,8 @@ export class SubAgentRouter extends Service {
     // account-health panel reflect it), instead of swallowing it and re-picking
     // the same account next spawn. Best-effort and conservative — see
     // classifyAccountFailure (a false positive would evict a healthy account).
+    let accountFailoverExhausted: CodingAccountFailureKind | null = null;
+    let accountFailoverCount = 0;
     if (event === "error") {
       const failureKind = classifyAccountFailure(
         pickPayloadString(data, "message"),
@@ -758,12 +762,51 @@ export class SubAgentRouter extends Service {
           accountId: accountMeta.accountId,
           failureKind,
         });
-        void reportCodingAccountFailure(
+        // Awaited (not fire-and-forget): the failover respawn below re-selects
+        // through the pool, so the dud account's mark must land first or the
+        // replacement can be handed the very account that just failed.
+        await reportCodingAccountFailure(
           accountMeta,
           failureKind,
           Date.now(),
           `sub-agent session ${sessionId} (${session.agentType})`,
         );
+        // Bounded in-router account failover, mirroring the state_lost
+        // recovery: the failed account was just marked rate-limited /
+        // needs-reauth (or verified healthy again by the bridge's auto-heal),
+        // so a respawn through the normal spawn path selects a healthy
+        // account and the task continues instead of dying with the session.
+        // Shares the state_lost lineage budget so combined crash + limit
+        // flapping stays bounded, and only fires while a healthy pooled
+        // account remains — with the whole pool exhausted the honest failure
+        // below reaches the user.
+        if (this.hasHealthyPooledAccount(session.agentType)) {
+          const { state, decision } = routerLoopTransition(this.loopState, {
+            type: "state_lost",
+            lineageKey: respawnLineageKey(session, origin),
+            completionKey: completionLineageKey(session, origin),
+          });
+          this.loopState = state;
+          if (decision.kind === "already_terminal") {
+            await acp.stopSession(sessionId).catch(() => {});
+            return;
+          }
+          if (decision.kind === "respawn") {
+            const respawned = await this.respawnStateLost(
+              session,
+              `account ${failureKind}`,
+            );
+            if (respawned) {
+              this.verifyRetryHandedOffSessions.add(sessionId);
+              await acp.stopSession(sessionId).catch(() => {});
+              return;
+            }
+          } else if (decision.kind === "terminal_failure") {
+            accountFailoverExhausted = failureKind;
+            accountFailoverCount = decision.count;
+            await acp.stopSession(sessionId).catch(() => {});
+          }
+        }
       }
     }
 
@@ -943,11 +986,13 @@ export class SubAgentRouter extends Service {
     // link 404s even though the directory exists under the ASCII-hyphen
     // name — breaking it for both the verification probe AND the user.
     const baseText = normalizeUrlsInText(
-      stateLostExhausted
-        ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.loopState.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
-        : capExceeded
-          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.loopState.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-          : composeNarration(event, origin.label, session, data, changeSet),
+      accountFailoverExhausted
+        ? `[sub-agent: ${origin.label} (${session.agentType}) — account ${accountFailoverExhausted}]\nThis task hit a pooled-account ${accountFailoverExhausted} failure ${accountFailoverCount} times and exhausted its automatic account-failover restarts (cap=${this.loopState.stateLostRespawnCap}). Decide whether to wait for the limit to reset, connect another account, or drop the task.`
+        : stateLostExhausted
+          ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.loopState.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
+          : capExceeded
+            ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.loopState.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+            : composeNarration(event, origin.label, session, data, changeSet),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
     // routinely report "the app is live at <url>" without writing the
@@ -1352,7 +1397,10 @@ export class SubAgentRouter extends Service {
    * count + cap), parallel to the verify-retry budget, so a flapping session
    * can't respawn unbounded.
    */
-  private async respawnStateLost(session: SessionInfo): Promise<boolean> {
+  private async respawnStateLost(
+    session: SessionInfo,
+    reason = "session_state_lost",
+  ): Promise<boolean> {
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
     // The original task is stashed on metadata by TASKS op=spawn_agent —
     // SessionInfo itself doesn't carry it. Without it we can't reconstruct the
@@ -1366,6 +1414,11 @@ export class SubAgentRouter extends Service {
       (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
     if (!service?.spawnSession) return false;
 
+    // Drop the dead session's account descriptor: spawnSession re-selects and
+    // re-stamps `account`, but if the pool degrades to single-account on the
+    // respawn a stale copy would mis-attribute the replacement's failures to
+    // an account that isn't serving it.
+    const { account: _staleAccount, ...carriedMeta } = meta;
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -1378,12 +1431,12 @@ export class SubAgentRouter extends Service {
         // records the lineage; keepAliveAfterComplete:false mirrors the
         // verify-retry recovery.
         metadata: {
-          ...meta,
+          ...carriedMeta,
           keepAliveAfterComplete: false,
           retryOfSessionId: session.id,
         },
       });
-      this.log("info", "re-dispatched sub-agent after session_state_lost", {
+      this.log("info", `re-dispatched sub-agent after ${reason}`, {
         sessionId: session.id,
         retrySessionId: result.sessionId,
       });
@@ -1391,12 +1444,30 @@ export class SubAgentRouter extends Service {
     } catch (err) {
       this.log(
         "warn",
-        "state_lost respawn spawn failed; surfacing the failure instead",
+        `${reason} respawn spawn failed; surfacing the failure instead`,
         {
           sessionId: session.id,
           error: err instanceof Error ? err.message : String(err),
         },
       );
+      return false;
+    }
+  }
+
+  /**
+   * Whether the account pool still has ≥1 healthy pooled account for this
+   * agent type — the gate for the in-router account failover. False when the
+   * bridge is absent (single-account host) or the pool is fully exhausted, in
+   * which case the honest failure must reach the user instead of a doomed
+   * respawn burning a lineage-budget slot.
+   */
+  private hasHealthyPooledAccount(agentType: string): boolean {
+    const bridge = getCodingAccountBridge();
+    if (!bridge) return false;
+    try {
+      const rows = bridge.describe()[agentType.toLowerCase()] ?? [];
+      return rows.some((row) => row.healthy > 0);
+    } catch {
       return false;
     }
   }

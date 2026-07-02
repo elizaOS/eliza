@@ -293,6 +293,36 @@ function proxyGeneratedAgentRequest(
   );
 }
 
+/**
+ * Managed frontend hosting (#10690): when `ELIZA_FRONTEND_HOST_SUFFIX` is set,
+ * a non-API request to `<app-slug>.<suffix>` is served from the app's active
+ * frontend deployment. We rewrite it to the internal public serve route (which
+ * has DB + R2 bootstrapped) rather than resolving in this thin entrypoint.
+ * Opt-in: returns null (no-op) when the suffix env is unset. `/api/*` and
+ * `/steward/*` on a system host still reach the API (so the page-view beacon and
+ * app APIs work), so only non-API paths are rewritten.
+ */
+export function getHostedFrontendServeRewrite(
+  url: URL,
+  env: { ELIZA_FRONTEND_HOST_SUFFIX?: string },
+): URL | null {
+  const suffix = normalizeHostname(env.ELIZA_FRONTEND_HOST_SUFFIX)?.replace(
+    /^\.+/,
+    "",
+  );
+  if (!suffix) return null;
+  const hostname = normalizeHostname(url.hostname);
+  if (!hostname?.endsWith(`.${suffix}`)) return null;
+  const slug = hostname.slice(0, hostname.length - suffix.length - 1);
+  if (!slug || slug.includes(".")) return null;
+  if (isFrontendAliasBackendPath(url)) return null;
+
+  const rewritten = new URL(url);
+  rewritten.pathname = `/api/v1/hosted-frontend/serve${url.pathname === "/" ? "" : url.pathname}`;
+  rewritten.searchParams.set("host", hostname);
+  return rewritten;
+}
+
 const scheduled = makeCronHandler(async (request, env, ctx) =>
   (await getApp()).fetch(request, env, ctx),
 );
@@ -323,6 +353,15 @@ export default {
     if (agentProxyResponse) return agentProxyResponse;
     const frontendRedirect = redirectFrontendHost(url, env);
     if (frontendRedirect) return frontendRedirect;
+
+    const hostedFrontendServe = getHostedFrontendServeRewrite(url, env);
+    if (hostedFrontendServe) {
+      return (await getApp()).fetch(
+        new Request(hostedFrontendServe, request),
+        env,
+        ctx,
+      );
+    }
 
     if (url.pathname === "/api/health") {
       return healthResponse(env);

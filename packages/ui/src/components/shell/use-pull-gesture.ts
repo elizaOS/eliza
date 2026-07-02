@@ -157,6 +157,11 @@ export function usePullGesture(
   } | null>(null);
   // Which axis the gesture committed to, once it crossed AXIS_COMMIT_SLOP.
   const axis = React.useRef<"x" | "y" | null>(null);
+  // Last observed pointer position/time while pressed. REAL touch can end a
+  // gesture with `pointercancel` (Android's renderer-unresponsive touch
+  // pipeline, OS takeover) whose event coordinates are not trustworthy, so the
+  // cancel-time commit decision (#9943) reads this tracked position instead.
+  const last = React.useRef<{ x: number; y: number; t: number } | null>(null);
 
   // Coalesce the continuous drag updates to at most one per animation frame.
   // A trackpad/touch panel emits pointermove well above the display refresh
@@ -216,6 +221,7 @@ export function usePullGesture(
         pointerId: event.pointerId,
       };
       axis.current = null;
+      last.current = { x: event.clientX, y: event.clientY, t: start.current.t };
       // Pure horizontal swipe surfaces defer capture until axis commit so native
       // vertical scrolling still works. A vertical pull handle captures
       // immediately even when it also supports horizontal swipes; otherwise a
@@ -235,6 +241,11 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      last.current = {
+        x: event.clientX,
+        y: event.clientY,
+        t: performance.now(),
+      };
       const dy = s.y - event.clientY; // up positive
       const dx = s.x - event.clientX; // left positive
 
@@ -292,6 +303,7 @@ export function usePullGesture(
       const committedAxis = axis.current;
       start.current = null;
       axis.current = null;
+      last.current = null;
       if (!s) return;
 
       const deltaUp = s.y - event.clientY; // up positive
@@ -312,8 +324,23 @@ export function usePullGesture(
         return;
       }
 
-      // Horizontal swipe path (only when the gesture committed to the X axis).
-      if (committedAxis === "x") {
+      // Horizontal swipe path. Normally gated on the mid-gesture X-axis commit,
+      // but REAL touch on a busy device (Android WebView with a janked main
+      // thread) can coalesce EVERY intermediate pointermove into the release —
+      // the handler then sees pointerdown → pointerup with the full travel
+      // between them and no committed axis. Derive the axis from the release
+      // deltas with the same dominance rule as the mid-gesture commit so a real
+      // finger flick still commits (#9943); the vertical path below already
+      // resolves from release deltas alone.
+      const releaseAxis =
+        committedAxis ??
+        (hasSwipe && movedX >= AXIS_COMMIT_SLOP && movedX > movedY
+          ? "x"
+          : null);
+      if (releaseAxis === "x") {
+        // The mid-gesture commit (which resets the other axis's visual) never
+        // ran on the derived-axis path — settle the vertical visual now.
+        if (committedAxis === null) onDragReset?.();
         onDragX?.(0); // settle the swipe visual
         const swipe = resolveSwipe(
           deltaLeft,
@@ -345,6 +372,7 @@ export function usePullGesture(
     },
     [
       flushPendingDrag,
+      hasSwipe,
       onDragReset,
       onDragX,
       onPullUp,
@@ -364,14 +392,59 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      const committedAxis = axis.current;
+      const l = last.current;
       cancelDrag();
       start.current = null;
       axis.current = null;
+      last.current = null;
+      // Commit-on-cancel (REAL touch, #9943): Android's touch pipeline can
+      // revoke the pointer with `pointercancel` AFTER the finger already
+      // completed the flick — the renderer-unresponsive ack timeout or an OS
+      // takeover, which `touch-action: none` on the handle cannot prevent
+      // (it only stops scroll-takeover cancels). If the track we observed
+      // before the cancel already crossed the horizontal swipe threshold on a
+      // horizontal-dominant, non-vertically-committed gesture, honor the swipe
+      // the user performed instead of silently discarding it. The cancel
+      // event's own coordinates are NOT trustworthy (Chromium may report a
+      // stale/zero position), so this reads only the tracked pointermoves.
+      if (hasSwipe && committedAxis !== "y" && l) {
+        const deltaUp = s.y - l.y; // up positive
+        const deltaLeft = s.x - l.x; // left positive
+        const movedX = Math.abs(deltaLeft);
+        if (movedX >= AXIS_COMMIT_SLOP && movedX > Math.abs(deltaUp)) {
+          const elapsed = Math.max(1, l.t - s.t);
+          const swipe = resolveSwipe(
+            deltaLeft,
+            deltaLeft / elapsed,
+            deltaUp,
+            distanceThresholdX,
+            velocityThresholdX,
+          );
+          if (swipe) {
+            onDragReset?.();
+            onDragX?.(0);
+            if (swipe === "left") onSwipeLeft?.();
+            else onSwipeRight?.();
+            return;
+          }
+        }
+      }
       onDragReset?.();
       onDragX?.(0);
       onCancel?.();
     },
-    [cancelDrag, onDragReset, onDragX, onCancel],
+    [
+      cancelDrag,
+      hasSwipe,
+      onDragReset,
+      onDragX,
+      onSwipeLeft,
+      onSwipeRight,
+      onCancel,
+      distanceThresholdX,
+      velocityThresholdX,
+    ],
   );
 
   // Cancel any in-flight coalesced frame if the consumer unmounts mid-gesture.

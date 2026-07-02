@@ -65,6 +65,7 @@
 
 import { randomUUID } from "node:crypto";
 import { appEarningsRepository } from "@elizaos/cloud-shared/db/repositories/app-earnings";
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import { containersRepository } from "@elizaos/cloud-shared/db/repositories/containers";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {
@@ -320,6 +321,23 @@ async function deployAndMonetizeApp(ctx: {
   expect(appId, `${app.name}: apps.create returns an id`).toBeTruthy();
   if (!appId) throw new Error(`${app.name}: apps.create did not return an id`);
 
+  // New apps must pass the compliance-review gate before monetization opens.
+  const draftMonetize = await authed(
+    "PUT",
+    `/api/v1/apps/${appId}/monetization`,
+    {
+      monetizationEnabled: true,
+      inferenceMarkupPercentage: MARKUP_PCT,
+      purchaseSharePercentage: 10,
+    },
+  );
+  expect(
+    draftMonetize.status,
+    `${app.name}: draft app cannot enable monetization before review`,
+  ).toBe(403);
+
+  await approveAppForShowcaseMonetization(appId);
+
   // ── 2. enable monetization BEFORE the charge (it must drive the markup). ──
   const monetize = await authed("PUT", `/api/v1/apps/${appId}/monetization`, {
     monetizationEnabled: true,
@@ -513,4 +531,15 @@ async function deployAndMonetizeApp(ctx: {
     totalCost: charge.totalCost,
     markup: charge.creatorMarkup,
   };
+}
+
+async function approveAppForShowcaseMonetization(appId: string): Promise<void> {
+  // This spec validates deploy + billing + earnings, not the live review model.
+  // Mirror the review-gate e2e helper's deterministic "grandfathered approval"
+  // so the monetization path opens while the draft 403 above keeps the gate visible.
+  await appsRepository.update(appId, {
+    review_status: "approved",
+    review_content_hash: null,
+    reviewed_at: new Date(),
+  });
 }

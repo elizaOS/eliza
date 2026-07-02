@@ -212,12 +212,34 @@ export function saveBackgroundConfig(config: BackgroundConfig): void {
  */
 const UI_BACKGROUND_HISTORY_STORAGE_KEY = "eliza:ui-background-history";
 export const MAX_BACKGROUND_HISTORY = 10;
+/**
+ * Data-URL image entries are the quota hazard: one downscaled photo is 1–4 MB
+ * against localStorage's ~5 MB total, and `tryLocalStorage` swallows
+ * QuotaExceededError — the write silently fails and the wallpaper reverts on
+ * reload. Media-store (`/api/media/<hash>`) entries are tiny, so only inline
+ * data URLs are capped: keep the single most recent one (uploads are re-hosted
+ * to the media store on the primary path; a data URL only persists as the
+ * offline fallback).
+ */
+export const MAX_BACKGROUND_HISTORY_DATA_URLS = 1;
 
 export function normalizeBackgroundHistory(value: unknown): BackgroundConfig[] {
   if (!Array.isArray(value)) return [];
-  return value
+  const bounded = value
     .map((entry) => normalizeBackgroundConfig(entry))
     .slice(-MAX_BACKGROUND_HISTORY);
+  let dataUrlBudget = MAX_BACKGROUND_HISTORY_DATA_URLS;
+  const kept: BackgroundConfig[] = [];
+  // Walk newest → oldest so the retained data-URL entry is the most recent.
+  for (let i = bounded.length - 1; i >= 0; i--) {
+    const entry = bounded[i];
+    if (entry.imageUrl?.startsWith("data:")) {
+      if (dataUrlBudget === 0) continue;
+      dataUrlBudget--;
+    }
+    kept.unshift(entry);
+  }
+  return kept;
 }
 
 export function loadBackgroundHistory(): BackgroundConfig[] {

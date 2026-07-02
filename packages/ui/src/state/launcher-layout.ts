@@ -8,8 +8,13 @@
  * here so it is unit testable without a DOM.
  *
  * The `favorites` field is the launcher dock. Fresh installs seed a tiny,
- * stable dock with Chat + Settings; explicit stored layouts (including an empty
- * user-cleared dock) are respected.
+ * stable dock with Chat + Settings. An explicitly cleared dock is respected
+ * only when the payload carries the `dockCleared` marker (stamped by
+ * {@link writeLauncherLayout} whenever a layout is committed with no
+ * favorites). A stored `favorites: []` WITHOUT the marker is legacy residue
+ * from the no-dock era (#10789–#10800) — the product had no way to clear a
+ * dock then, so it re-seeds the default instead of suppressing the dock
+ * forever.
  *
  * Mirrors the persistence style of `view-recents.ts`.
  */
@@ -56,6 +61,12 @@ export interface LauncherLayout {
    * arrangement is preserved.
    */
   manual?: boolean;
+  /**
+   * True when an empty dock was explicitly committed (user intent) rather
+   * than inherited from the pre-dock era. Distinguishes "cleared" from
+   * "never had a dock" so the default dock can be re-seeded for the latter.
+   */
+  dockCleared?: boolean;
 }
 
 export function emptyLayout(): LauncherLayout {
@@ -86,32 +97,52 @@ function parseLayout(raw: string): LauncherLayout {
       ? (record.pages as string[][])
       : [];
   const manual = record.manual === true ? true : undefined;
-  return { favorites, pages, manual };
+  const dockCleared = record.dockCleared === true ? true : undefined;
+  return { favorites, pages, manual, dockCleared };
+}
+
+/**
+ * Upgrade path (#10800 QA): a stored empty dock WITHOUT the explicit
+ * `dockCleared` marker predates the dock feature (or is corrupt residue) —
+ * the product had no clear-dock affordance then, so it cannot be user intent.
+ * Re-seed the default dock for those payloads; marked payloads stay empty.
+ */
+function withSeededDock(layout: LauncherLayout): LauncherLayout {
+  if (layout.favorites.length > 0 || layout.dockCleared === true) {
+    return layout;
+  }
+  return { ...layout, favorites: [...DEFAULT_LAUNCHER_FAVORITES] };
 }
 
 export function readLauncherLayout(): LauncherLayout {
   if (typeof window === "undefined") return emptyLayout();
   try {
     const raw = window.localStorage.getItem(LAUNCHER_STORAGE_KEY);
-    if (raw) return parseLayout(raw);
+    if (raw) return withSeededDock(parseLayout(raw));
     // One-time migration from the pre-rename "springboard" key (#9951): read the
     // legacy layout, persist it under the new key, and drop the old entry so the
     // user keeps their page order / favorites / manual flag across the rename.
     const legacyRaw = window.localStorage.getItem(LEGACY_LAUNCHER_STORAGE_KEY);
     if (!legacyRaw) return defaultLayout();
-    const migrated = parseLayout(legacyRaw);
+    const migrated = withSeededDock(parseLayout(legacyRaw));
     writeLauncherLayout(migrated);
     window.localStorage.removeItem(LEGACY_LAUNCHER_STORAGE_KEY);
     return migrated;
   } catch {
-    return emptyLayout();
+    // Corrupt/unreadable payload: fall back to the first-run default (with the
+    // seeded dock) rather than a dock-less empty layout.
+    return defaultLayout();
   }
 }
 
 export function writeLauncherLayout(layout: LauncherLayout): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(layout));
+    // Stamp an explicitly-committed empty dock so a future read distinguishes
+    // user intent from pre-dock-era residue (see withSeededDock).
+    const toStore =
+      layout.favorites.length === 0 ? { ...layout, dockCleared: true } : layout;
+    window.localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(toStore));
   } catch {
     /* localStorage unavailable */
   }

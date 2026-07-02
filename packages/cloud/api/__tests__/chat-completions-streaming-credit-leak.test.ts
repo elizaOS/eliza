@@ -121,7 +121,6 @@ function callStreaming(
     REQUEST,
     { id: USER, organization_id: ORG },
     null,
-    undefined,
     null,
     "idem-1",
     "req-1",

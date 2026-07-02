@@ -18,7 +18,7 @@ export type {
   UpdatedUserResponse,
 } from "./types.cloud-api.js";
 
-export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://elizacloud.ai";
 export const DEFAULT_ELIZA_CLOUD_API_ORIGIN = "https://api.elizacloud.ai";
 export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = `${DEFAULT_ELIZA_CLOUD_API_ORIGIN}/api/v1`;
 
@@ -957,6 +957,73 @@ export interface AppDeployStatusResponse {
   startedAt: string | null;
 }
 
+// ---- Managed frontend hosting (#10690) -----------------------------------
+
+/** One file in a frontend deploy bundle. `content` is UTF-8 unless base64. */
+export interface FrontendUploadFileInput {
+  path: string;
+  content: string;
+  encoding?: "utf8" | "base64";
+  contentType?: string;
+}
+
+/** `POST /api/v1/apps/:id/frontend` body — publish a static site in one call. */
+export interface DeployAppFrontendInput {
+  files: FrontendUploadFileInput[];
+  /** Document served for "/" and (with spaFallback) unmatched routes. Default "index.html". */
+  entrypoint?: string;
+  /** Fall back to the entrypoint for unmatched extensionless routes. Default true. */
+  spaFallback?: boolean;
+  /** Activate immediately after finalize. Default true. */
+  activate?: boolean;
+  buildMeta?: {
+    source?: string | null;
+    framework?: string | null;
+    gitCommit?: string | null;
+    note?: string | null;
+  };
+}
+
+/** A managed frontend deployment record. */
+export interface AppFrontendDeploymentDto {
+  id: string;
+  app_id: string;
+  version: number;
+  status:
+    | "pending"
+    | "uploading"
+    | "ready"
+    | "active"
+    | "superseded"
+    | "failed";
+  r2_prefix: string;
+  content_hash: string | null;
+  file_count: number;
+  total_bytes: number;
+  error: string | null;
+  created_at: string;
+  activated_at: string | null;
+}
+
+/** `POST /api/v1/apps/:id/frontend` response (201). */
+export interface DeployAppFrontendResponse {
+  success: boolean;
+  deployment: AppFrontendDeploymentDto;
+}
+
+/** `GET /api/v1/apps/:id/frontend` response. */
+export interface ListAppFrontendDeploymentsResponse {
+  success: boolean;
+  active_deployment_id: string | null;
+  deployments: AppFrontendDeploymentDto[];
+}
+
+/** `POST /api/v1/apps/:id/frontend/:deploymentId/activate` response. */
+export interface ActivateAppFrontendResponse {
+  success: boolean;
+  deployment: AppFrontendDeploymentDto;
+}
+
 /** Per-resource counts the cleanup pass reports on app deletion. */
 export interface AppCleanupSummary {
   domainsRemoved: number;
@@ -994,13 +1061,118 @@ export interface BuyAppDomainInput {
 }
 
 /**
- * `POST /api/v1/apps/:id/domains/buy` response. DEFERRED: the domain-purchase
- * flow is the last piece of the apps launch and its response envelope is not yet
- * finalized server-side, so this captures only the stable fields.
+ * `POST /api/v1/apps/:id/domains/buy` response. Covers all three success
+ * branches: a fresh purchase (carries `debited` + `expiresAt`), a server-side
+ * idempotent replay of an earlier success (`alreadyRegistered`), and the
+ * recovery of a purchase that charged + registered but failed to persist
+ * (`recoveredFromRegistrar` — assigned without a new charge).
  */
 export interface BuyAppDomainResponse {
   success: boolean;
   domain?: string;
+  /** The managed-domain attachment row id. */
+  appDomainId?: string;
+  /** Cloudflare zone id; null until the zone finishes provisioning. */
+  zoneId?: string | null;
+  status?: string;
+  verified?: boolean;
+  expiresAt?: string | null;
+  /**
+   * True when Cloudflare accepted the registration but the zone (and the
+   * automatic DNS record pointing the domain at the app) is not provisioned
+   * yet — poll `getAppDomainStatus` until it goes live.
+   */
+  pendingZoneProvisioning?: boolean;
+  /** Present only when this call actually debited the org credit balance. */
+  debited?: { totalUsdCents: number; currency: string };
+  /** True when the org already owned the domain — nothing was charged. */
+  alreadyRegistered?: boolean;
+  /**
+   * True when an earlier interrupted purchase (charged + registered, persist
+   * failed) was recovered and attached without a new charge.
+   */
+  recoveredFromRegistrar?: boolean;
+  error?: string;
+}
+
+/** `POST /api/v1/apps/:id/domains/check` request body. */
+export interface CheckAppDomainInput {
+  domain: string;
+}
+
+/** Marked-up price quote returned by the domain availability check. */
+export interface AppDomainPriceQuote {
+  wholesaleUsdCents: number;
+  marginUsdCents: number;
+  totalUsdCents: number;
+  marginBps: number;
+}
+
+/**
+ * `POST /api/v1/apps/:id/domains/check` response. A dry run — never charges,
+ * never registers. `price`/`renewal` are present only when `available`;
+ * `renewal.totalUsdCents` is the annual price the renewal cron will re-charge.
+ */
+export interface CheckAppDomainResponse {
+  success: boolean;
+  domain: string;
+  available: boolean;
+  currency?: string;
+  years?: number;
+  price?: AppDomainPriceQuote;
+  renewal?: { totalUsdCents: number };
+  error?: string;
+}
+
+/** One domain attachment row from `GET /api/v1/apps/:id/domains`. */
+export interface AppDomainDto {
+  id: string;
+  domain: string;
+  registrar: "external" | "cloudflare";
+  status: "pending" | "active" | "expired" | "suspended" | "transferring";
+  verified: boolean;
+  /** Nullable: the ssl_status column has a default but no NOT NULL constraint. */
+  sslStatus: "pending" | "provisioning" | "active" | "error" | null;
+  expiresAt: string | null;
+  cloudflareZoneId: string | null;
+  /**
+   * The TXT verification token — non-null only for unverified external
+   * domains (so the client can re-render the `_eliza-cloud-verify` record).
+   */
+  verificationToken: string | null;
+}
+
+/** `GET /api/v1/apps/:id/domains` response. */
+export interface ListAppDomainsResponse {
+  success: boolean;
+  domains: AppDomainDto[];
+  error?: string;
+}
+
+/** `POST /api/v1/apps/:id/domains/status` request body. */
+export interface AppDomainStatusInput {
+  domain: string;
+}
+
+/**
+ * `POST /api/v1/apps/:id/domains/status` response. `live` (real-time registrar
+ * registration status) is populated only for cloudflare-registered domains and
+ * is always null for external ones; the top-level `status` prefers the live
+ * value when present.
+ */
+export interface AppDomainStatusResponse {
+  success: boolean;
+  domain: string;
+  registrar?: "external" | "cloudflare";
+  status?: string;
+  verified?: boolean;
+  sslStatus?: string;
+  expiresAt?: string | null;
+  live?: {
+    status: string;
+    completedAt: string | null;
+    failureReason: string | null;
+  } | null;
   error?: string;
 }
 
@@ -1138,4 +1310,135 @@ export interface ApiKeyCreateResponse {
 
 export interface ApiKeyListResponse {
   keys: ApiKeySummary[];
+}
+
+// ---- Ad inventory / SSP (#10687) ----
+
+export type AdSlotFormat = "banner" | "native" | "interstitial" | "feed";
+
+export interface AdSlotDto {
+  id: string;
+  app_id: string;
+  name: string;
+  format: AdSlotFormat;
+  status: "active" | "paused";
+  floor_cpm: string;
+  total_impressions: number;
+  total_clicks: number;
+  total_revenue: string;
+}
+
+export interface CreateAdSlotInput {
+  appId: string;
+  name: string;
+  format: AdSlotFormat;
+  floorCpm?: number;
+}
+
+export interface CreateAdSlotResponse {
+  success: boolean;
+  slot: AdSlotDto;
+  /**
+   * Signed capability the public serve endpoint requires (`&token=` on the ad
+   * tag). Null when the deployment has no `ELIZA_AD_TAG_SECRET` configured.
+   */
+  adTagToken: string | null;
+}
+
+export interface ListAdSlotsResponse {
+  success: boolean;
+  slots: AdSlotDto[];
+}
+
+// ---- Influencer marketplace (#10687) ----
+
+export interface InfluencerProfileDto {
+  id: string;
+  display_name: string;
+  niche: string | null;
+  bio: string | null;
+  platforms: Array<{ platform: string; handle: string; followers: number }>;
+  status: "active" | "inactive";
+}
+
+export interface CreateInfluencerProfileInput {
+  displayName: string;
+  niche?: string;
+  bio?: string;
+  platforms?: Array<{ platform: string; handle: string; followers: number }>;
+  rateCard?: Record<string, unknown>;
+}
+
+export interface CreateInfluencerProfileResponse {
+  success: boolean;
+  profile: InfluencerProfileDto;
+}
+
+export interface ListInfluencersResponse {
+  success: boolean;
+  profiles: InfluencerProfileDto[];
+}
+
+export interface InfluencerBookingDto {
+  id: string;
+  advertiser_org_id: string;
+  influencer_profile_id: string;
+  amount: string;
+  status:
+    | "funding"
+    | "offered"
+    | "accepted"
+    | "delivered"
+    | "approved"
+    | "rejected"
+    | "cancelled";
+  brief: string;
+}
+
+export interface CreateBookingInput {
+  profileId: string;
+  brief: string;
+  amount: number;
+  /** Optional create key: a retry with the same key returns the original booking instead of funding twice. */
+  idempotencyKey?: string;
+}
+
+export interface CreateBookingResponse {
+  success: boolean;
+  booking?: InfluencerBookingDto;
+  error?: string;
+}
+
+// ---- App config backup / restore (#10204) ----
+
+export interface AppBackupSnapshot {
+  version: number;
+  exportedAt: string;
+  app: {
+    name: string;
+    description: string | null;
+    app_url: string;
+    allowed_origins: string[];
+    logo_url: string | null;
+    website_url: string | null;
+    contact_email: string | null;
+    linked_character_ids: string[];
+  };
+  monetization: {
+    enabled: boolean;
+    inference_markup_percentage: number;
+    purchase_share_percentage: number;
+  };
+  active_frontend_content_hash?: string | null;
+}
+
+export interface ExportAppBackupResponse {
+  success: boolean;
+  backup: AppBackupSnapshot;
+}
+
+export interface RestoreAppBackupResponse {
+  success: boolean;
+  app: { id: string; name: string; slug: string };
+  apiKey: string;
 }

@@ -735,16 +735,21 @@ async function runCreate(
           model,
         );
       }
-      return { session, label, agentType };
+      return { session, label, agentType, originalTask: taskWithRouteHints };
     }),
   );
 
   const results: Array<Record<string, unknown>> = [];
   const sessions: SpawnResult[] = [];
+  // Parallel to `sessions`; carries the per-part context needed to attach a
+  // successful spawn into the durable task thread minted below. Kept out of
+  // SpawnResult so the ACP contract stays lean.
+  const sessionAttachHints: Array<{ label: string; originalTask: string }> = [];
   for (const [index, outcome] of settled.entries()) {
     if (outcome.status === "fulfilled") {
-      const { session, label } = outcome.value;
+      const { session, label, originalTask } = outcome.value;
       sessions.push(session);
+      sessionAttachHints.push({ label, originalTask });
       results.push({
         id: session.sessionId,
         sessionId: session.sessionId,
@@ -796,16 +801,12 @@ async function runCreate(
   // The ACP sessions have already succeeded; a failure here is logged but
   // never demotes the action's success — the agents are still running.
   //
-  // KNOWN GAP (tracked): the ACP sessions spawned above via
-  // `service.spawnSession` are NOT attached to this durable thread — only
-  // sessions created through `OrchestratorTaskService.spawnAgentForTask`
-  // land in the task store's session index (see `resolveTaskId`). So the
-  // freshly-minted thread reads `0/0 agents` and no token usage until/unless
-  // a session reports an event that resolves back to it. The widget still
-  // renders and navigates correctly; wiring true session linkage (a public
-  // `attachSession`, or routing create through `spawnAgentForTask`) is a
-  // follow-up slice that touches the spawn lifecycle — see
-  // docs/orchestrator-dashboard-task-widget-secrets-assessment.md.
+  // The ACP sessions spawned above via `service.spawnSession` are then
+  // registered against the freshly-minted thread through the task service's
+  // `attachSession` — without that, `resolveTaskId` never learns about them,
+  // event routing drops their session events, and the widget reads `0/0
+  // agents`. Per-session attach failures are logged but never demote the
+  // action's success, same policy as thread-mint failure.
   const taskTitle =
     pickString(params, content, "title") ??
     pickString(params, content, "goal") ??
@@ -834,10 +835,10 @@ async function runCreate(
       ? swarmRoomMetadata.originRoomId
       : undefined;
   let threadId: string | null = null;
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
   try {
-    const taskService = runtime.getService?.(
-      OrchestratorTaskService.serviceType,
-    ) as OrchestratorTaskService | null | undefined;
     if (taskService && typeof taskService.createTask === "function") {
       const detail = await taskService.createTask({
         title: taskTitle,
@@ -860,6 +861,49 @@ async function runCreate(
       }`,
     );
     threadId = null;
+  }
+
+  // Bind every successfully spawned session to the freshly-minted thread so
+  // the task widget / tasks panel sees them (sessionCount, latestSessionId,
+  // token usage). Thread-mint-failed path skips this cleanly — no taskId to
+  // attach against, and the sessions are still running / stopped independently.
+  if (
+    threadId &&
+    taskService &&
+    typeof taskService.attachSession === "function"
+  ) {
+    for (const [index, session] of sessions.entries()) {
+      const hint = sessionAttachHints[index];
+      try {
+        // Every session that resolved fulfilled above was driven through
+        // runPromptAndClose / runPromptViaSmithers, which stop it in their
+        // `finally` before we reach here. So the `SpawnResult.status` captured
+        // at spawn time is a stale `ready` snapshot — passing it would make
+        // attachSession falsely promote the task to `active` and count a
+        // finished single-turn session as live. Read the real post-run status
+        // from the service instead; a fulfilled outcome always means the
+        // session was stopped, so fall back to a terminal status if its record
+        // is already gone.
+        const refreshed = await service.getSession(session.sessionId);
+        const effectiveStatus = refreshed?.status ?? "stopped";
+        await taskService.attachSession(threadId, {
+          sessionId: session.sessionId,
+          agentType: session.agentType,
+          workdir: session.workdir,
+          status: effectiveStatus,
+          ...(session.metadata ? { metadata: session.metadata } : {}),
+          ...(hint?.label ? { label: hint.label } : {}),
+          ...(hint?.originalTask ? { originalTask: hint.originalTask } : {}),
+          ...(model ? { model } : {}),
+        });
+      } catch (error) {
+        logger(runtime).warn(
+          `[TASKS:create] attachSession failed for ${session.sessionId} on task ${threadId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
   }
 
   const widgetBlock = threadId

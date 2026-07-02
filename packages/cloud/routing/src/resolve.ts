@@ -9,7 +9,7 @@ import {
 } from "./features.js";
 import type { CloudRoute, FeatureCloudRoute, RouteSpec } from "./types.js";
 
-const CLOUD_BASE_FALLBACK = "https://www.elizacloud.ai/api/v1";
+const CLOUD_BASE_FALLBACK = "https://elizacloud.ai/api/v1";
 
 export interface RuntimeSettings {
   getSetting(key: string): string | boolean | number | null | undefined;

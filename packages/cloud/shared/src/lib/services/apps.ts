@@ -438,6 +438,33 @@ export class AppsService {
       }
     }
 
+    // Clean up managed frontend deployment R2 artifacts BEFORE the app row is
+    // deleted — the FK cascade removes the deployment rows but never the R2
+    // bytes, so cleaning after would orphan them (#10690 review). Fail-soft.
+    if (app) {
+      try {
+        const { appFrontendDeploymentsRepository } = await import(
+          "../../db/repositories/app-frontend-deployments"
+        );
+        const { appFrontendHostingService } = await import("./app-frontend-hosting");
+        const deployments = await appFrontendDeploymentsRepository.listByApp(id, 1000);
+        for (const dep of deployments) {
+          await appFrontendHostingService.deleteArtifacts(dep);
+        }
+        if (deployments.length > 0) {
+          logger.info("Cleaned up frontend deployment artifacts for app", {
+            appId: id,
+            deployments: deployments.length,
+          });
+        }
+      } catch (error) {
+        logger.warn("Failed to clean up frontend artifacts (continuing with deletion)", {
+          appId: id,
+          error: error instanceof Error ? error.message : "Unknown",
+        });
+      }
+    }
+
     if (app?.api_key_id) {
       await apiKeysService.delete(app.api_key_id);
     }

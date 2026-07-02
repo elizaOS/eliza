@@ -146,6 +146,9 @@ type RuntimeLike = IAgentRuntime & {
       (message: string, data?: unknown) => void
     >
   >;
+  /** Modern eliza runtime property. */
+  adapter?: unknown;
+  /** Legacy alias for pre-2026 runtimes and some container harnesses. */
   databaseAdapter?: unknown;
   getSetting?: (key: string) => string | undefined | null;
 };
@@ -220,6 +223,25 @@ export interface SpawnAgentForTaskOptions {
    * the max-nesting-depth cap so self-spawning can't run away.
    */
   nestingDepth?: number;
+}
+
+/** Descriptor for an already-spawned ACP session that we want to bind to an
+ *  existing task thread. Only what the attach path genuinely needs — identity,
+ *  workdir + status from the spawn, and the caller's context that isn't
+ *  discoverable from the SpawnResult (originalTask, model, providerSource,
+ *  repo). See {@link OrchestratorTaskService.attachSession}. */
+export interface AttachSessionInput {
+  sessionId: string;
+  agentType: string;
+  workdir: string;
+  status: string;
+  metadata?: Record<string, unknown>;
+  label?: string;
+  originalTask?: string;
+  model?: string;
+  providerSource?: string;
+  repo?: string;
+  goalPrompt?: string;
 }
 
 export interface AddMessageInput {
@@ -590,6 +612,10 @@ export class OrchestratorTaskService extends Service {
       opts.store ??
       new OrchestratorTaskStore({
         runtime: {
+          // Feed both names. The store prefers `adapter` and falls back to
+          // `databaseAdapter`. This keeps ancient hand-rolled runtimes working
+          // while wiring modern eliza runtimes to the SQL backend for real.
+          adapter: this.runtime.adapter,
           databaseAdapter: this.runtime.databaseAdapter,
           logger: this.runtime.logger,
           getSetting: (key) => {
@@ -994,8 +1020,11 @@ export class OrchestratorTaskService extends Service {
    *    and `mirrorChangeSetToStore` use, rendered with {@link renderChangeSetBody};
    *  - `toolOutput` — test/build/lint stdout mined from recorded `tool_running`
    *    events (and sub-agent messages) and classified by {@link classifyToolOutput};
-   *  - `verifiedUrls` — URLs probed at completion (session/task `subAgentVerifiedUrls`
-   *    metadata plus URLs mined from the summary and sub-agent replies);
+   *  - `verifiedUrls` — ONLY URLs the router actually probed at completion
+   *    (session/task `subAgentVerifiedUrls` metadata); URLs merely mentioned in
+   *    the summary / sub-agent replies go to `mentionedUrls`, rendered as an
+   *    explicitly-unverified claim so a written "deployed to https://…" cannot
+   *    masquerade as a probe-verified deploy;
    *  - `screenshots` — screenshot artifact paths on the task/session.
    *
    * Pure with respect to throwing: returns at least the summary on any error.
@@ -1055,11 +1084,20 @@ export class OrchestratorTaskService extends Service {
     ];
     const toolOutput = classifyToolOutput(toolSignals);
 
+    // ONLY router-probed URLs are "verified". URLs merely mined from the
+    // sub-agent's prose are claims, not proof, and must not be labelled verified
+    // to the judge (a sub-agent could otherwise pass by writing "deployed to
+    // https://…"). They are surfaced separately as `mentionedUrls`.
     const verifiedUrls = [
-      ...new Set([
-        ...this.metadataVerifiedUrls(doc, sessionId),
-        ...collectUrls([summary, ...subAgentReplies]),
-      ]),
+      ...new Set(this.metadataVerifiedUrls(doc, sessionId)),
+    ];
+    const verifiedSet = new Set(verifiedUrls);
+    const mentionedUrls = [
+      ...new Set(
+        collectUrls([summary, ...subAgentReplies]).filter(
+          (url) => !verifiedSet.has(url),
+        ),
+      ),
     ];
 
     const screenshots = this.collectArtifactRefs(doc, sessionId).flatMap(
@@ -1071,6 +1109,7 @@ export class OrchestratorTaskService extends Service {
       diffSummary,
       toolOutput,
       verifiedUrls,
+      mentionedUrls,
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -2662,6 +2701,96 @@ export class OrchestratorTaskService extends Service {
     this.sessionTaskIndex.set(result.sessionId, taskId);
     await this.advanceTaskStatus(taskId, "active");
     return this.getTask(taskId);
+  }
+
+  /**
+   * Bind an ACP session that was spawned OUTSIDE `spawnAgentForTask` (e.g. the
+   * `TASKS:create` chat action, which spawns via `AcpService.spawnSession`
+   * directly and does its own multi-part label / prefix / model routing) into
+   * an existing task thread's session index.
+   *
+   * Without this the task store's `sessionTaskIndex` never learns about those
+   * sessions, so `resolveTaskId` returns undefined, the event bridge drops
+   * their events, and DTOs read `0/0 agents` with no token attribution.
+   *
+   * Idempotent: attaching the same sessionId twice is a no-op (the store's
+   * `addSession` also upserts by sessionId). If the task doesn't exist, returns
+   * `false` — callers treat that as a soft failure, same policy as thread-mint
+   * failure in the create action.
+   *
+   * Only advances the task status to `active` for a non-terminal session; a
+   * session that's already `completed` / `stopped` / `error` on arrival gets
+   * indexed for history + token attribution but doesn't lie about liveness.
+   */
+  async attachSession(
+    taskId: string,
+    input: AttachSessionInput,
+  ): Promise<boolean> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return false;
+    // Idempotent short-circuit — already indexed against THIS task.
+    if (this.sessionTaskIndex.get(input.sessionId) === taskId) {
+      const existing = doc.sessions.find(
+        (s) => s.sessionId === input.sessionId,
+      );
+      if (existing) return true;
+    }
+    const account = accountMetaFromSessionMetadata(input.metadata);
+    const ts = nowIso();
+    const now = Date.now();
+    const originalTask = input.originalTask ?? doc.task.goal;
+    const session: OrchestratorTaskSession = {
+      id: randomUUID(),
+      taskId,
+      sessionId: input.sessionId,
+      framework: input.agentType,
+      ...(input.providerSource ? { providerSource: input.providerSource } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(account
+        ? {
+            accountProviderId: account.providerId,
+            accountId: account.accountId,
+            accountLabel: account.label,
+          }
+        : {}),
+      label: input.label ?? input.sessionId,
+      originalTask,
+      ...(input.goalPrompt ? { goalPrompt: input.goalPrompt } : {}),
+      workdir: input.workdir,
+      ...(input.repo ? { repo: input.repo } : {}),
+      status: input.status,
+      decisionCount: 0,
+      autoResolvedCount: 0,
+      registeredAt: now,
+      lastActivityAt: now,
+      idleCheckCount: 0,
+      taskDelivered: false,
+      lastSeenDecisionIndex: 0,
+      spawnedAt: now,
+      ...(TERMINAL_TASK_SESSION_STATUSES.has(input.status)
+        ? { stoppedAt: now }
+        : {}),
+      retryCount: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheTokens: 0,
+      costUsd: 0,
+      usageState: "unavailable",
+      metadata: {},
+      createdAt: ts,
+      updatedAt: ts,
+    };
+    await this.store.addSession(session);
+    this.sessionTaskIndex.set(input.sessionId, taskId);
+    // Only claim liveness if the session actually is live — a terminal-on-
+    // arrival session (chat action's runPromptAndClose already stopped it) gets
+    // indexed for history + future token attribution without falsely promoting
+    // task status.
+    if (!TERMINAL_TASK_SESSION_STATUSES.has(input.status)) {
+      await this.advanceTaskStatus(taskId, "active");
+    }
+    return true;
   }
 
   async sendToTaskAgent(

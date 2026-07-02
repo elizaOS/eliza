@@ -12,8 +12,10 @@ import {
   assertAllowedAbsoluteRedirectUrl,
   getDefaultPlatformRedirectOrigins,
 } from "../security/redirect-validation";
+import { ForbiddenError } from "../api/errors";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
+import { isAppMonetizationApproved } from "./app-review";
 import { sanitizeAppChargeMetadata } from "./app-charge-callbacks";
 import { cryptoPaymentsService } from "./crypto-payments";
 import type { OxaPayNetwork } from "./oxapay";
@@ -219,6 +221,14 @@ export class AppChargeRequestsService {
 
     if (app.organization_id !== params.creatorOrganizationId) {
       throw new Error("Access denied");
+    }
+
+    // Compliance gate (#10732): an app cannot take payments until the automated
+    // review clears it. Fails closed — a material change since approval re-gates.
+    if (!isAppMonetizationApproved(app)) {
+      throw new ForbiddenError(
+        "App must pass compliance review before it can take payments. Submit it for review and reach 'approved' status first.",
+      );
     }
 
     const amount = normalizeAmount(params.amountUsd);

@@ -3,6 +3,7 @@ import {
   buildDeprovisionDdl,
   buildDsn,
   buildIdempotentAdminDdl,
+  buildMaintenanceDbHardeningDdl,
   buildTenantDdl,
   deriveTenantIdent,
   quoteIdent,
@@ -51,6 +52,18 @@ describe("buildIdempotentAdminDdl — the hard cross-tenant boundary as a contra
     expect(joined).toContain(
       `GRANT CONNECT ON DATABASE ${quoteIdent(ident.dbName)} TO ${quoteIdent(ident.roleName)}`,
     );
+  });
+
+  test("hardens shared maintenance databases before creating tenant credentials", () => {
+    const hardening = buildMaintenanceDbHardeningDdl();
+    expect(hardening).toEqual([
+      `GRANT CONNECT ON DATABASE ${quoteIdent("postgres")} TO CURRENT_USER`,
+      `GRANT CONNECT ON DATABASE ${quoteIdent("template1")} TO CURRENT_USER`,
+      `REVOKE CONNECT ON DATABASE ${quoteIdent("postgres")} FROM PUBLIC`,
+      `REVOKE CONNECT ON DATABASE ${quoteIdent("template1")} FROM PUBLIC`,
+      "REVOKE ALL ON SCHEMA public FROM PUBLIC",
+    ]);
+    expect(ddl.slice(0, hardening.length)).toEqual(hardening);
   });
 
   test("the role is least-privilege (no superuser/createdb/createrole)", () => {

@@ -45,18 +45,32 @@ const cloudSharedSrc = path.join(
   "shared",
   "src",
 );
-const cloudApiTests = path.join(
-  repoRoot,
-  "packages",
-  "cloud",
-  "api",
-  "__tests__",
-);
 // cloud-tests.yml already triggers on `packages/scripts/cloud/**`, but nothing
 // here ran those tests — the daemon/admin guards (e.g. the provisioning-worker
 // env-reconcile regression test for #8756) silently never executed. Include the
 // directory so the path trigger actually exercises them.
 const cloudScriptsTests = path.join(repoRoot, "packages", "scripts", "cloud");
+// The routing (model-routing resolver) and infra (IaC / static-config) packages
+// carry pure, DB-free unit suites (104 tests) that ran on NO PR lane: this
+// runner did not include them and cloud-tests.yml did not list them in `paths:`,
+// so a routing/infra-only change was a silent false-green. Both suites resolve
+// their fixtures via import.meta.dir, so they are cwd-independent under the
+// staging-dir run below. (Added alongside the cloud-tests.yml `paths:` update so
+// the workflow actually triggers when they change.)
+const cloudRoutingTests = path.join(
+  repoRoot,
+  "packages",
+  "cloud",
+  "routing",
+  "src",
+);
+const cloudInfraTests = path.join(
+  repoRoot,
+  "packages",
+  "cloud",
+  "infra",
+  "tests",
+);
 
 // Fail loud if a test root is missing. `bun test <nonexistent-dir>` exits 0 with
 // no tests run, so a stale path (e.g. after a package move) turns this gate into
@@ -81,7 +95,13 @@ const cloudApiUnitTests = existsSync(cloudApiRoot)
   ? walkApiUnitTests(cloudApiRoot).sort()
   : [];
 
-const testRoots = { cloudSharedSrc, cloudApiTests, cloudScriptsTests };
+const testRoots = {
+  cloudSharedSrc,
+  cloudApiRoot,
+  cloudScriptsTests,
+  cloudRoutingTests,
+  cloudInfraTests,
+};
 const missing = Object.entries(testRoots)
   .filter(([, dir]) => !existsSync(dir))
   .map(([name, dir]) => `${name} -> ${dir}`);
@@ -100,6 +120,8 @@ const result = spawnSync(
     cloudSharedSrc,
     ...cloudApiUnitTests,
     cloudScriptsTests,
+    cloudRoutingTests,
+    cloudInfraTests,
     "--timeout",
     "120000",
     "--isolate",

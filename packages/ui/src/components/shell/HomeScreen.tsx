@@ -178,6 +178,9 @@ export function HomeScreen({
   // Pull-DOWN from the top edge opens the notification center (#10706), iOS-style.
   // The gesture lives on a thin non-scrolling top strip — deliberately NOT the
   // scrollable widget list — so it can never fight the list's vertical scroll.
+  // The strip is a real button: click/tap and Enter/Space open the center too,
+  // so desktop fine-pointer and keyboard/AT users aren't locked out of the
+  // only notification entry point.
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationPull = usePullGesture({
     onPullDown: () => setNotificationsOpen(true),
@@ -186,13 +189,22 @@ export function HomeScreen({
   return (
     <>
       {/* Thin top-edge pull affordance. Sits above the home surface (z-[2]) but
-          only over the status-bar strip, so widget taps/scroll below are
-          untouched. A faint grabber hints the gesture. */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only pull target, not a click affordance (the notification center has its own reachable trigger). */}
-      <div
+          only over the status-bar-adjacent band, so widget taps/scroll below
+          are untouched. A faint grabber hints the gesture.
+
+          Height math: the shell root already pads the status bar away with
+          paddingTop: max(var(--safe-area-top) − 1.25rem, 1.25rem) (App.tsx), so
+          this strip must NOT add the full safe-area again (that double-count
+          deadened ~70px of home content on notched iPhones). It only spans the
+          residual tucked band — the part of the safe area the root deliberately
+          shaves, capped at 1.25rem — plus a 30px grab margin. */}
+      <button
+        type="button"
         data-testid="home-notification-pull-zone"
-        className="absolute inset-x-0 top-0 z-[2] flex h-[calc(var(--safe-area-top,0px)+30px)] items-end justify-center pb-1"
+        aria-label="Open notifications"
+        className="absolute inset-x-0 top-0 z-[2] flex h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default items-end justify-center rounded-none border-0 bg-transparent p-0 pb-1 outline-none"
         style={{ touchAction: "none" }}
+        onClick={() => setNotificationsOpen(true)}
         {...notificationPull}
       >
         <div
@@ -200,7 +212,7 @@ export function HomeScreen({
           aria-hidden
           data-testid="home-notification-grabber"
         />
-      </div>
+      </button>
       <NotificationCenter
         variant="sheet"
         open={notificationsOpen}

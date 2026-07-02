@@ -7,7 +7,7 @@ export const APP_CONFIG = {
   // without NEXT_PUBLIC_ELIZA_CLOUD_URL set still redirects to a live host
   // instead of dead-ending at localhost:3000 (#9300).
   elizaCloudUrl:
-    process.env.NEXT_PUBLIC_ELIZA_CLOUD_URL || "https://www.elizacloud.ai",
+    process.env.NEXT_PUBLIC_ELIZA_CLOUD_URL || "https://elizacloud.ai",
 };
 
 export const ROUTES = {

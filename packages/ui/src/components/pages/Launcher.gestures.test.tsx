@@ -101,18 +101,14 @@ function clearTelemetry() {
 
 function mockDesktopPagingMedia({
   finePointer,
-  desktopWidth = true,
 }: {
   finePointer: boolean;
-  desktopWidth?: boolean;
 }): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches:
       finePointer &&
-      desktopWidth &&
       query.includes("(hover: hover)") &&
-      query.includes("(pointer: fine)") &&
-      query.includes("(min-width: 1024px)"),
+      query.includes("(pointer: fine)"),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -251,12 +247,17 @@ describe("Launcher swipe paging (onDragEnd)", () => {
     expect(screen.queryByTestId("launcher-pager-edge-next")).toBeNull();
   });
 
-  it("hides pager edge buttons at phone width even when the browser reports a fine pointer", () => {
-    mockDesktopPagingMedia({ finePointer: true, desktopWidth: false });
+  it("shows pager edge buttons on any fine-pointer window — the gate has no min-width clause", () => {
+    mockDesktopPagingMedia({ finePointer: true });
     render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
 
-    expect(screen.queryByTestId("launcher-pager-edge-prev")).toBeNull();
-    expect(screen.queryByTestId("launcher-pager-edge-next")).toBeNull();
+    // Fine pointer + hover is sufficient: a sub-1024px window still gets the
+    // `>` control (production renders no page dots, so without it a narrow
+    // fine-pointer window would have no paging affordance at all).
+    expect(screen.queryByTestId("launcher-pager-edge-next")).not.toBeNull();
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      expect.not.stringContaining("min-width"),
+    );
   });
 
   it("shows desktop edge buttons and pages exactly one step per click", () => {

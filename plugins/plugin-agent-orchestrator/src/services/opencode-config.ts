@@ -5,7 +5,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 
-const ELIZA_CLOUD_OPENAI_BASE = "https://www.elizacloud.ai/api/v1";
+const ELIZA_CLOUD_OPENAI_BASE = "https://elizacloud.ai/api/v1";
 const OPENCODE_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1";
 const OPENCODE_OPENAI_COMPATIBLE_NPM = "@ai-sdk/openai-compatible";
 const OPENCODE_CEREBRAS_NPM = "@ai-sdk/cerebras";

@@ -15,13 +15,7 @@ import {
   type StewardNonceExchangeResponse,
   StewardSessionError,
 } from "@elizaos/shared/steward-session-client";
-
-const ELIZA_CLOUD_AUTH_BASES: Record<string, string> = {
-  "elizacloud.ai": "https://api.elizacloud.ai",
-  "www.elizacloud.ai": "https://api.elizacloud.ai",
-  "dev.elizacloud.ai": "https://api.elizacloud.ai",
-  "staging.elizacloud.ai": "https://api-staging.elizacloud.ai",
-};
+import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
   path: string,
@@ -29,7 +23,7 @@ export function resolveStewardAuthEndpoint(
     ? ""
     : window.location.hostname.toLowerCase(),
 ): string {
-  const base = ELIZA_CLOUD_AUTH_BASES[hostname.toLowerCase()];
+  const base = ELIZA_CLOUD_DIRECT_API_BY_HOST[hostname.toLowerCase()];
   return base ? `${base}${path}` : path;
 }
 

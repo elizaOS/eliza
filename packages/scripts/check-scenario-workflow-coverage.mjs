@@ -150,6 +150,62 @@ function getStaticStringProperty(objectLiteral, propertyName) {
   return undefined;
 }
 
+/** Return the object-literal initializer of a nested object property, or null. */
+function getStaticObjectProperty(objectLiteral, propertyName) {
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    if (propertyNameText(property.name) !== propertyName) continue;
+    if (ts.isObjectLiteralExpression(property.initializer)) {
+      return property.initializer;
+    }
+    return null;
+  }
+  return null;
+}
+
+// OS values for which a self-hosted CI runner currently exists. A scenario that
+// requires an OS NOT in this set is platform-gated and cannot run in any lane
+// until that runner is provisioned — it is reported as "deferred platform-gated"
+// so the inventory stays honest instead of conflating it with live-only. When an
+// `eliza-e2e-macos` runner lands, add "macos" here and the shard un-defers. (#10757)
+const AVAILABLE_OS_RUNNERS = new Set();
+
+/** Human-readable deferral for a required-but-unavailable OS. */
+function deferralForOs(os) {
+  if (os === "macos") {
+    return {
+      reason:
+        "requires a macOS host for native integrations (SelfControl/Screen Time, iMessage/BlueBubbles, mac remote-control); no self-hosted macOS runner yet",
+      runner: "eliza-e2e-macos",
+    };
+  }
+  return { reason: `requires OS "${os}"; no self-hosted runner yet` };
+}
+
+/**
+ * Classify a scenario's coverage lane into the three inventory classes the
+ * #10757 acceptance criteria call for: keyless PR-deterministic, deferred
+ * platform-gated, or credentialed live-only. Derives platform-gating from the
+ * existing `requires.os` gate (authoritative) plus any explicit `deferred`
+ * annotation. Returns { class, os?, deferral? }.
+ */
+function classifyScenarioLane(meta) {
+  if (meta.lane === "pr-deterministic") {
+    return { class: "pr-deterministic" };
+  }
+  if (meta.deferred) {
+    return { class: "deferred-platform", deferral: meta.deferred };
+  }
+  if (meta.platformOs && !AVAILABLE_OS_RUNNERS.has(meta.platformOs)) {
+    return {
+      class: "deferred-platform",
+      os: meta.platformOs,
+      deferral: deferralForOs(meta.platformOs),
+    };
+  }
+  return { class: "live-only" };
+}
+
 function scenarioObjectFromExpression(expression) {
   if (ts.isObjectLiteralExpression(expression)) {
     return expression;
@@ -211,13 +267,30 @@ function loadScenarioMetadataFile(file) {
       `[scenario-catalog] ${file}: no statically readable scenario id in default export or exported 'scenario' value.`,
     );
   }
-  return {
+  const requiresObj = getStaticObjectProperty(objectLiteral, "requires");
+  const platformOs = requiresObj
+    ? getStaticStringProperty(requiresObj, "os")
+    : undefined;
+  const deferredObj = getStaticObjectProperty(objectLiteral, "deferred");
+  const deferred = deferredObj
+    ? {
+        reason: getStaticStringProperty(deferredObj, "reason"),
+        ...(getStaticStringProperty(deferredObj, "runner")
+          ? { runner: getStaticStringProperty(deferredObj, "runner") }
+          : {}),
+      }
+    : undefined;
+  const meta = {
     file,
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
     lane: getStaticStringProperty(objectLiteral, "lane"),
+    platformOs,
+    deferred,
   };
+  meta.laneClass = classifyScenarioLane(meta);
+  return meta;
 }
 
 function listScenarioMetadata(root, { includePending = false } = {}) {
@@ -643,6 +716,26 @@ function renderMarkdown(summary, runArtifacts = []) {
     `scenario-runner test scenarios: ${summary.scenarioRunnerCount}`,
     `Unified scenario catalog entries: ${summary.allScenarioCount}`,
     "",
+    "## Corpus coverage split (#10757)",
+    "",
+    "Honest three-way split across the full scenario corpus, so deterministic PR",
+    "coverage, credentialed live-matrix coverage, and platform-gated coverage that",
+    "is deferred (no runner yet) are counted separately rather than lumped together:",
+    "",
+    `- keyless PR-deterministic: ${summary.corpusLaneSplit.prDeterministicCount}`,
+    `- credentialed live-only (live matrix): ${summary.corpusLaneSplit.liveOnlyCount}`,
+    `- deferred platform-gated (no runner yet): ${summary.corpusLaneSplit.deferredPlatformCount}`,
+    `- total corpus: ${summary.corpusLaneSplit.total}`,
+    "",
+    "### Deferred platform-gated scenarios",
+    "",
+    ...(summary.deferredPlatformScenarios.length === 0
+      ? ["- none"]
+      : summary.deferredPlatformScenarios.map(
+          (s) =>
+            `- \`${s.id}\`${s.os ? ` (os: ${s.os})` : ""} — ${s.reason ?? "platform-gated"}${s.runner ? ` [runner: ${s.runner}]` : ""}`,
+        )),
+    "",
     `Default package pr-deterministic scenarios: ${summary.prDeterministicDefaultCount}`,
     `Workflow covered default package scenarios: ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}`,
     `Deferred default package scenarios tracked by follow-up: ${summary.deferredDefaultIds.length}`,
@@ -801,7 +894,43 @@ function main() {
   const deferredDefaultReasons = Object.fromEntries(
     deferredDefaultIds.map((id) => [id, deferred.get(id)]),
   );
+  // #10757: honest three-way corpus split — keyless PR-deterministic vs
+  // credentialed live-only vs deferred platform-gated (needs an OS/runner that
+  // does not exist yet). Derived from `lane` + `requires.os` + explicit
+  // `deferred`, so the checked-in counts cannot drift from the actual gates.
+  const corpusMeta = laneScanRoots.flatMap((root) =>
+    listScenarioMetadata(root, { includePending: true }),
+  );
+  const laneClassBuckets = {
+    "pr-deterministic": [],
+    "live-only": [],
+    "deferred-platform": [],
+  };
+  const deferredPlatformScenarios = [];
+  for (const meta of corpusMeta) {
+    const cls = meta.laneClass?.class ?? "live-only";
+    (laneClassBuckets[cls] ?? laneClassBuckets["live-only"]).push(meta.id);
+    if (cls === "deferred-platform") {
+      deferredPlatformScenarios.push({
+        id: meta.id,
+        file: toPosixPath(path.relative(REPO_ROOT, meta.file)),
+        os: meta.platformOs ?? null,
+        reason: meta.laneClass?.deferral?.reason ?? null,
+        runner: meta.laneClass?.deferral?.runner ?? null,
+      });
+    }
+  }
+  deferredPlatformScenarios.sort((a, b) => a.id.localeCompare(b.id));
+  const corpusLaneSplit = {
+    total: corpusMeta.length,
+    prDeterministicCount: laneClassBuckets["pr-deterministic"].length,
+    liveOnlyCount: laneClassBuckets["live-only"].length,
+    deferredPlatformCount: laneClassBuckets["deferred-platform"].length,
+  };
+
   const summary = {
+    corpusLaneSplit,
+    deferredPlatformScenarios,
     defaultScenarioCount: defaultIds.length,
     includePendingScenarioCount: includePendingIds.length,
     pluginLifeopsCount: pluginLifeopsIds.length,

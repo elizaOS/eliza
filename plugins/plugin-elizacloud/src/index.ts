@@ -11,6 +11,7 @@ import {
   handleActionPlanner,
   handleImageDescription,
   handleImageGeneration,
+  handleAudioGeneration,
   handleResearch,
   handleResponseHandler,
   handleBatchTextEmbedding,
@@ -21,6 +22,7 @@ import {
   handleTextNano,
   handleTextSmall,
   handleTextToSpeech,
+  handleVideoGeneration,
 } from "./models";
 // Cloud services
 import { CloudAuthService } from "./services/cloud-auth";
@@ -31,6 +33,7 @@ import { CloudContainerService } from "./services/cloud-container";
 import { CloudCredentialProvider } from "./services/cloud-credential-provider";
 import { CloudManagedGatewayRelayService } from "./services/cloud-managed-gateway-relay";
 import { CloudModelRegistryService } from "./services/cloud-model-registry";
+import { getSetting } from "./utils/config";
 import { createCloudApiClient } from "./utils/sdk-client";
 import { createWaifuMeteringHandler } from "./utils/waifu-metering";
 
@@ -40,6 +43,12 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
 
+const cloudEmbeddingModels: NonNullable<Plugin["models"]> = {
+  [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
+  [ModelType.TEXT_EMBEDDING_BATCH]: (runtime, params: { texts: string[] }) =>
+    handleBatchTextEmbedding(runtime, params.texts),
+};
+
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
     return {};
@@ -48,6 +57,75 @@ function getProcessEnv(): ProcessEnvLike {
 }
 
 const env = getProcessEnv();
+
+// ─── Chat-brain text-inference handlers ───────────────────────────────
+// Registered from init() rather than the static `models` map so a host can
+// run a DIFFERENT text brain (a CLI/SDK subscription provider, a local
+// model, …) while keeping Cloud's capability handlers — IMAGE,
+// IMAGE_DESCRIPTION, TEXT_TO_SPEECH, embeddings, RESEARCH — active. At
+// priority 50 a static registration silently steals the chat-brain slots
+// from priority-0 provider plugins whenever a Cloud key is present, which
+// forced hosts to nuke ELIZAOS_CLOUD_API_KEY wholesale and lose image/media
+// generation as collateral (elizaOS/eliza#10819).
+//
+// The host expresses the arbitration decision through
+// ELIZAOS_CLOUD_USE_INFERENCE (written by applyCloudConfigToEnv):
+//   - explicit "false"  → another provider owns the chat brain; skip these
+//                         handlers, capability handlers stay registered.
+//   - "true" or unset   → Cloud serves the chat brain (unset preserves
+//                         standalone plugin use outside the agent host).
+// Mirrors plugin-openai's registerMediaModels() conditional-registration
+// pattern; init() runs before the runtime's static-models registration
+// loop, so both paths land in the same priority-sorted registry.
+const textInferenceModels: NonNullable<Plugin["models"]> = {
+  [TEXT_NANO_MODEL_TYPE]: handleTextNano,
+  [TEXT_MEDIUM_MODEL_TYPE]: handleTextMedium,
+  [ModelType.TEXT_SMALL]: handleTextSmall,
+  [ModelType.TEXT_LARGE]: handleTextLarge,
+  [TEXT_MEGA_MODEL_TYPE]: handleTextMega,
+  [RESPONSE_HANDLER_MODEL_TYPE]: handleResponseHandler,
+  [ACTION_PLANNER_MODEL_TYPE]: handleActionPlanner,
+};
+
+function isExplicitFalseFlag(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "false";
+}
+
+export function registerTextInferenceModels(runtime: IAgentRuntime): void {
+  const flag = getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE");
+  if (flag?.trim().toLowerCase() === "false") {
+    logger.info(
+      "[ElizaOSCloud] Not registering chat-brain text handlers: ELIZAOS_CLOUD_USE_INFERENCE=false (another provider owns the text brain; image/media/TTS/embedding handlers stay active)"
+    );
+    return;
+  }
+  for (const [modelType, handler] of Object.entries(textInferenceModels)) {
+    runtime.registerModel(
+      modelType,
+      handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      elizaOSCloudPlugin.name,
+      elizaOSCloudPlugin.priority
+    );
+  }
+}
+
+export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
+  const flag = getSetting(runtime, "ELIZAOS_CLOUD_USE_EMBEDDINGS");
+  if (isExplicitFalseFlag(flag)) {
+    logger.info(
+      "[ElizaOSCloud] Not registering cloud embedding handlers: ELIZAOS_CLOUD_USE_EMBEDDINGS=false (another provider owns TEXT_EMBEDDING)"
+    );
+    return;
+  }
+  for (const [modelType, handler] of Object.entries(cloudEmbeddingModels)) {
+    runtime.registerModel(
+      modelType,
+      handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      elizaOSCloudPlugin.name,
+      elizaOSCloudPlugin.priority
+    );
+  }
+}
 
 export const elizaOSCloudPlugin: Plugin = {
   name: "elizaOSCloud",
@@ -130,6 +208,11 @@ export const elizaOSCloudPlugin: Plugin = {
   async init(config, runtime) {
     // Initialize inference (OpenAI-compatible client)
     initializeOpenAI(config, runtime);
+    // Chat-brain text handlers and embedding handlers are conditional (see
+    // textInferenceModels/cloudEmbeddingModels above); other capability handlers
+    // stay in the static `models` map below.
+    registerTextInferenceModels(runtime);
+    registerCloudEmbeddingModels(runtime);
   },
 
   // ─── Runtime Event Handlers ──────────────────────────────────────────
@@ -170,24 +253,19 @@ export const elizaOSCloudPlugin: Plugin = {
     modelRegistryProvider,
   ],
 
-  // ─── Inference Model Handlers ────────────────────────────────────────
+  // ─── Capability Model Handlers ───────────────────────────────────────
+  // Always registered: these capabilities don't compete with BYO embedding or
+  // chat-brain slots and must survive an external text provider. The chat-brain
+  // text handlers (TEXT_*, RESPONSE_HANDLER, ACTION_PLANNER) and embedding
+  // handlers are registered conditionally from init() — see textInferenceModels
+  // and cloudEmbeddingModels above.
   models: {
-    [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
-    // Batch path: one request embeds N texts (the embedding-drain service uses
-    // this to collapse serial single-text round-trips into fewer batched calls).
-    [ModelType.TEXT_EMBEDDING_BATCH]: (runtime, params: { texts: string[] }) =>
-      handleBatchTextEmbedding(runtime, params.texts),
-    [TEXT_NANO_MODEL_TYPE]: handleTextNano,
-    [TEXT_MEDIUM_MODEL_TYPE]: handleTextMedium,
-    [ModelType.TEXT_SMALL]: handleTextSmall,
-    [ModelType.TEXT_LARGE]: handleTextLarge,
-    [TEXT_MEGA_MODEL_TYPE]: handleTextMega,
-    [RESPONSE_HANDLER_MODEL_TYPE]: handleResponseHandler,
-    [ACTION_PLANNER_MODEL_TYPE]: handleActionPlanner,
     [ModelType.RESEARCH]: handleResearch,
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
     [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
+    [ModelType.AUDIO]: handleAudioGeneration,
+    [ModelType.VIDEO]: handleVideoGeneration,
   },
 
   tests: [

@@ -41,7 +41,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   const baseURL = (
     isBrowser() && browserURL
       ? browserURL
-      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://www.elizacloud.ai/api/v1")
+      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://elizacloud.ai/api/v1")
   ) as string;
   return baseURL;
 }
@@ -61,6 +61,43 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
 
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
   return getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+}
+
+/**
+ * Truthiness for host-written cloud flags: "true" or "1" (trimmed,
+ * case-insensitive), mirroring how core `isCloudConnected` reads
+ * `ELIZAOS_CLOUD_ENABLED`. Runtime boolean `true` arrives here as the
+ * string "true" (getSetting/resolveSetting coerce to string).
+ */
+function isTruthyCloudFlag(value: string | undefined): boolean {
+  if (!value) return false;
+  const lower = value.trim().toLowerCase();
+  return lower === "true" || lower === "1";
+}
+
+/**
+ * Whether Cloud TTS may serve: a Cloud API key is present AND the operator
+ * turned cloud audio on — either through the full cloud connection
+ * (`ELIZAOS_CLOUD_ENABLED`) or through the per-service routing flag
+ * (`ELIZAOS_CLOUD_USE_TTS`) that `applyCloudConfigToEnv` writes in
+ * capability-only mode (elizaOS/eliza#10819), where an external provider
+ * owns the text brain so `ELIZAOS_CLOUD_ENABLED` deliberately stays unset.
+ *
+ * This is deliberately NOT a change to core `isCloudConnected`: its other
+ * consumers (wallet RPC proxy routing, streaming, tailscale) read ENABLED as
+ * "Eliza Cloud is the inference brain" and must keep that coupling. TTS is a
+ * capability with an explicit per-service opt-in that has to work without
+ * the inference coupling — gating it on ENABLED alone made the registered
+ * TEXT_TO_SPEECH handler throw `CloudTtsUnavailableError` on every call in
+ * capability-only mode, even when the operator cloud-routed TTS.
+ */
+export function isCloudTtsAvailable(runtime: IAgentRuntime): boolean {
+  const apiKey = getApiKey(runtime);
+  if (!apiKey?.trim()) return false;
+  return (
+    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_ENABLED")) ||
+    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_USE_TTS"))
+  );
 }
 
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {

@@ -135,8 +135,7 @@ function cloudOAuthSecretRequest(
       fields: [],
       submitLabel: "Connect Eliza Cloud",
       provider: "elizacloud",
-      authorizationUrl:
-        getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
+      authorizationUrl: getBootConfig().cloudApiBase || "https://elizacloud.ai",
     },
   };
 }

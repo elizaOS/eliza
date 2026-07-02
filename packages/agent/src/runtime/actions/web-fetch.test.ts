@@ -5,7 +5,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __setDnsLookupImplForTests,
   __setPinnedFetchImplForTests,
@@ -164,5 +164,90 @@ describe("WEB_FETCH action", () => {
     const { result } = await runHandler({});
     expect(result.success).toBe(false);
     expect(result.text).toContain("url");
+  });
+});
+
+describe("guarded WEB_FETCH User-Agent defaults", () => {
+  const originalOperatorUserAgent = process.env.ELIZA_WEB_FETCH_USER_AGENT;
+
+  afterEach(() => {
+    if (originalOperatorUserAgent === undefined) {
+      delete process.env.ELIZA_WEB_FETCH_USER_AGENT;
+    } else {
+      process.env.ELIZA_WEB_FETCH_USER_AGENT = originalOperatorUserAgent;
+    }
+    vi.resetModules();
+  });
+
+  async function loadGuardedFetchWithOperatorUserAgent(
+    userAgent: string | undefined,
+  ) {
+    vi.resetModules();
+    if (userAgent === undefined) {
+      delete process.env.ELIZA_WEB_FETCH_USER_AGENT;
+    } else {
+      process.env.ELIZA_WEB_FETCH_USER_AGENT = userAgent;
+    }
+    return import("../custom-actions.ts");
+  }
+
+  async function captureGuardedFetchUserAgent(
+    userAgent: string | undefined,
+    url: string,
+    headers?: Record<string, string>,
+  ): Promise<string | null> {
+    const customActions =
+      await loadGuardedFetchWithOperatorUserAgent(userAgent);
+    let capturedUserAgent: string | null = null;
+    customActions.__setDnsLookupImplForTests(async () => ["93.184.216.34"]);
+    customActions.__setPinnedFetchImplForTests(async ({ init }) => {
+      capturedUserAgent = new Headers(init.headers).get("user-agent");
+      return new Response("ok", { status: 200 });
+    });
+
+    try {
+      const result = await customActions.performGuardedHttpGet(url, {
+        headers,
+      });
+      expect(result.ok).toBe(true);
+      return capturedUserAgent;
+    } finally {
+      customActions.__setPinnedFetchImplForTests(null);
+      customActions.__setDnsLookupImplForTests(null);
+    }
+  }
+
+  it("uses the CLI User-Agent for wttr.in, including trailing-dot FQDNs", async () => {
+    await expect(
+      captureGuardedFetchUserAgent(undefined, "https://wttr.in./London"),
+    ).resolves.toBe("Eliza/1.0 (+https://elizaos.ai)");
+  });
+
+  it("honors the operator User-Agent override for wttr.in hosts", async () => {
+    await expect(
+      captureGuardedFetchUserAgent(
+        "CorpProxyAllowlist/2026",
+        "https://wttr.in/London",
+      ),
+    ).resolves.toBe("CorpProxyAllowlist/2026");
+  });
+
+  it("honors the operator User-Agent override for non-wttr.in hosts", async () => {
+    await expect(
+      captureGuardedFetchUserAgent(
+        "CorpProxyAllowlist/2026",
+        "https://api.example.test/data",
+      ),
+    ).resolves.toBe("CorpProxyAllowlist/2026");
+  });
+
+  it("keeps caller-supplied User-Agent headers above defaults", async () => {
+    await expect(
+      captureGuardedFetchUserAgent(
+        "CorpProxyAllowlist/2026",
+        "https://wttr.in/London",
+        { "user-agent": "CallerUA/1.0" },
+      ),
+    ).resolves.toBe("CallerUA/1.0");
   });
 });

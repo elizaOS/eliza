@@ -86,6 +86,33 @@ describe("media-store", () => {
     expect(fs.existsSync(path.join(stateDir, "media", a.fileName))).toBe(true);
   });
 
+  it("recovers when the resolved state dir changes or the media dir is removed", () => {
+    const first = persistMediaBytes(Buffer.from("first-state"), "image/png");
+    fs.rmSync(path.join(stateDir, "media"), { recursive: true, force: true });
+
+    const second = persistMediaBytes(
+      Buffer.from("first-state-after-delete"),
+      "image/png",
+    );
+    expect(fs.existsSync(mediaPath(second.fileName))).toBe(true);
+    expect(fs.existsSync(mediaPath(first.fileName))).toBe(false);
+
+    const originalStateDir = stateDir;
+    const nextStateDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "media-store-test-next-"),
+    );
+    process.env.ELIZA_STATE_DIR = nextStateDir;
+    try {
+      const third = persistMediaBytes(Buffer.from("next-state"), "image/png");
+      expect(
+        fs.existsSync(path.join(nextStateDir, "media", third.fileName)),
+      ).toBe(true);
+    } finally {
+      process.env.ELIZA_STATE_DIR = originalStateDir;
+      fs.rmSync(nextStateDir, { recursive: true, force: true });
+    }
+  });
+
   it("deduplicates identical bytes (same hash + URL)", () => {
     const bytes = Buffer.from("identical-content");
     const a = persistMediaBytes(bytes, "image/jpeg");

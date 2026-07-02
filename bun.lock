@@ -210,6 +210,7 @@
         "@capacitor/browser": "8.0.3",
         "@capacitor/core": "8.4.0",
         "@capacitor/device": "8.0.2",
+        "@capacitor/filesystem": "^8.0.0",
         "@capacitor/haptics": "8.0.2",
         "@capacitor/ios": "8.4.1",
         "@capacitor/keyboard": "8.0.3",
@@ -217,6 +218,7 @@
         "@capacitor/network": "^8.0.0",
         "@capacitor/preferences": "8.0.1",
         "@capacitor/push-notifications": "8.0.3",
+        "@capacitor/share": "^8.0.0",
         "@capacitor/status-bar": "8.0.2",
         "@elizaos/app-core": "workspace:*",
         "@elizaos/app-model-tester": "workspace:*",
@@ -5875,6 +5877,8 @@
     "@capacitor/preferences": ["@capacitor/preferences@8.0.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-T6no3ebi79XJCk91U3Jp/liJUwgBdvHR+s6vhvPkPxSuch7z3zx5Rv1bdWM6sWruNx+pViuEGqZvbfCdyBvcHQ=="],
 
     "@capacitor/push-notifications": ["@capacitor/push-notifications@8.0.3", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-jmBBoJvOzmzem8YoO9dQJBPFiM1bksTNAoV7yksCBN10BybAOtmBF19vFPt/jr2KGAirnPZz0ne2X0OH/rRGtg=="],
+
+    "@capacitor/share": ["@capacitor/share@8.0.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-3cSBKBCJVon54rKDROP2rqGyeGks4pBh9TbaEk9S375Kbek/ZHe72N50zIa0Vn9Eac/SuhwgehO/mmA4CsUOiw=="],
 
     "@capacitor/splash-screen": ["@capacitor/splash-screen@8.0.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-c/ew/Z3eA7z8l06WoRAtzVF16VwYYrExmHmfGq1Cg675pVzaC/yuucB8/1xG1vhEfnW4fZ1KhSf/kzR1RiVYgg=="],
 

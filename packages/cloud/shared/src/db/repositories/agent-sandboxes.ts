@@ -722,6 +722,27 @@ export class AgentSandboxesRepository {
    * Used by the forecast to predict next-period demand.
    * Excludes pool sentinel org rows.
    */
+  /**
+   * Count an org's NON-TERMINAL (`pending`/`provisioning`/`running`, non-pool)
+   * agent sandboxes — the org's live dedicated-container footprint on the fleet.
+   * Used by the create path's per-org quota (#11023). Best-effort read; the
+   * authoritative check runs under the advisory lock inside createAgent.
+   */
+  async countNonTerminalByOrganization(organizationId: string): Promise<number> {
+    await ensureAgentSandboxSchema();
+    const [row] = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.organization_id, organizationId),
+          sql`${agentSandboxes.pool_status} is null`,
+          sql`${agentSandboxes.status} in ('pending', 'provisioning', 'running')`,
+        ),
+      );
+    return row?.count ?? 0;
+  }
+
   async countUserProvisionsSince(sinceMs: number): Promise<number> {
     await ensureAgentSandboxSchema();
     const since = new Date(Date.now() - sinceMs);

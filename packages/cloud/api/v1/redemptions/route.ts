@@ -26,6 +26,9 @@ const CreateRedemptionSchema = z.object({
     .min(100, "Minimum redemption is 100 points ($1.00)")
     .max(100000, "Maximum redemption is 100,000 points ($1,000.00)"),
   network: z.enum(["ethereum", "base", "bnb", "bsc", "solana"]),
+  // Payout asset (#10732). Defaults to USDC (Solana/Base); `eliza` keeps the
+  // legacy elizaOS-token payout on its multi-chain set.
+  asset: z.enum(["eliza", "usdc"]).optional().default("usdc"),
   payoutAddress: z.string().min(20).max(100),
   signature: z.string().optional(),
   idempotencyKey: z.string().uuid().optional(),
@@ -95,12 +98,23 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       );
     }
 
-    const { appId, pointsAmount, payoutAddress, signature, idempotencyKey } =
-      validation.data;
+    const {
+      appId,
+      pointsAmount,
+      payoutAddress,
+      signature,
+      idempotencyKey,
+      asset,
+    } = validation.data;
     const network = normalizeRedemptionNetwork(validation.data.network);
 
+    // The network-availability probe reflects the elizaOS hot-wallet status and
+    // only applies to elizaOS payouts. USDC payouts (#10732) are guarded by the
+    // payout processor's own USDC balance check before broadcast.
     const networkAvailability =
-      await payoutStatusService.isNetworkAvailable(network);
+      asset === "usdc"
+        ? { available: true, message: "" }
+        : await payoutStatusService.isNetworkAvailable(network);
     if (!networkAvailability.available) {
       const status = await payoutStatusService.getStatus();
       const availableNetworks = status.networks
@@ -155,6 +169,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       appId,
       pointsAmount,
       network,
+      asset,
       payoutAddress,
       signature,
       idempotencyKey,

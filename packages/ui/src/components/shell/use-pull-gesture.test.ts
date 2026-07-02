@@ -90,6 +90,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("collapses many pointermoves in a frame into ONE onDrag with the last value", () => {
@@ -233,6 +234,171 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onDragReset).toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onPullUp).not.toHaveBeenCalled();
+  });
+
+  it("commits a horizontal flick whose moves were ALL coalesced into the release (#9943)", () => {
+    // REAL touch on a busy device (Android WebView main thread janked): the
+    // browser coalesces every intermediate pointermove into the release, so the
+    // handler sees pointerdown → pointerup with the full travel between them
+    // and the axis never committed mid-gesture. The release deltas alone must
+    // resolve the swipe — the vertical path already works this way.
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onSwipeLeft = vi.fn();
+    const onSettleFree = vi.fn();
+    const onPullUp = vi.fn();
+    const onTap = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onDragReset: vi.fn(),
+        onPullUp,
+        onPullDown: vi.fn(),
+        onSettleFree,
+        onSwipeLeft,
+        onSwipeRight: vi.fn(),
+        onTap,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(300, 300));
+    t = 280; // adb-like 280ms flick; NO pointermove was delivered
+    b.onPointerUp(pointer(150, 294));
+
+    expect(onSwipeLeft).toHaveBeenCalledTimes(1);
+    expect(onSettleFree).not.toHaveBeenCalled();
+    expect(onPullUp).not.toHaveBeenCalled();
+    expect(onTap).not.toHaveBeenCalled();
+  });
+
+  it("commits a horizontal flick that ends in pointercancel after crossing the threshold (#9943)", () => {
+    // Android's touch pipeline can revoke the pointer (`pointercancel`) AFTER
+    // the finger already completed the swipe — renderer-unresponsive ack
+    // timeout / OS takeover — even under `touch-action: none`. A track that
+    // already crossed the horizontal swipe threshold must commit, not vanish.
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onSwipeLeft = vi.fn();
+    const onCancel = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onDragReset: vi.fn(),
+        onPullUp: vi.fn(),
+        onSettleFree: vi.fn(),
+        onSwipeLeft,
+        onSwipeRight: vi.fn(),
+        onCancel,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(300, 300));
+    t = 100;
+    b.onPointerMove(pointer(210, 298));
+    t = 200;
+    b.onPointerMove(pointer(150, 296));
+    t = 250;
+    b.onPointerCancel(pointer(150, 296));
+
+    expect(onSwipeLeft).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("still treats a pre-threshold pointercancel as a cancel (#9943)", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onSwipeLeft = vi.fn();
+    const onCancel = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onDragReset: vi.fn(),
+        onSwipeLeft,
+        onSwipeRight: vi.fn(),
+        onCancel,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(300, 300));
+    t = 500; // slow 40px drift: under both distance (64) and velocity (0.4)
+    b.onPointerMove(pointer(260, 298));
+    t = 520;
+    b.onPointerCancel(pointer(260, 298));
+
+    expect(onSwipeLeft).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("never swipe-commits a cancel after the gesture committed to the VERTICAL axis (#9943)", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onSwipeLeft = vi.fn();
+    const onCancel = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onDragReset: vi.fn(),
+        onPullUp: vi.fn(),
+        onSwipeLeft,
+        onSwipeRight: vi.fn(),
+        onCancel,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(300, 300));
+    t = 50;
+    b.onPointerMove(pointer(298, 280)); // dy=20 dominates → commits to y
+    t = 150;
+    b.onPointerMove(pointer(180, 270)); // finger drifts far left afterwards
+    t = 200;
+    b.onPointerCancel(pointer(180, 270));
+
+    expect(onSwipeLeft).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
   it("ignores moves and releases from a different pointer id", () => {

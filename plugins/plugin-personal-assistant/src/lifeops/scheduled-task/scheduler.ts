@@ -152,8 +152,14 @@ export async function processDueScheduledTasks(
   });
   const timeoutTaskIds = new Set<string>();
 
+  // Each pass gets its OWN budget of `limit`, not a shared one. A shared
+  // budget lets a burst of completion-timeouts (this pass) consume the whole
+  // tick and starve every user-facing due fire (the pass below) — a dropped
+  // reminder / mobile notification. Independent counters cost at most ~2x
+  // cheap indexed DB ops in a pathological burst and guarantee the due-fire
+  // pass always gets its full `limit`.
   for (const task of timeoutCandidates) {
-    if (result.fires.length + result.completionTimeouts.length >= limit) {
+    if (result.completionTimeouts.length >= limit) {
       break;
     }
     const timeout = isCompletionTimeoutDue(task, request.now);
@@ -185,7 +191,7 @@ export async function processDueScheduledTasks(
 
   for (const task of dueCandidates) {
     if (timeoutTaskIds.has(task.taskId)) continue;
-    if (result.fires.length + result.completionTimeouts.length >= limit) {
+    if (result.fires.length >= limit) {
       break;
     }
     const decision = await isScheduledTaskDue(task, dueContext);

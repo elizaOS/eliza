@@ -74,6 +74,13 @@ export interface Bindings {
    * URLs returned to clients. Defaults to "blob.elizacloud.ai" if unset.
    */
   R2_PUBLIC_HOST?: string;
+  /**
+   * Base domain for managed frontend hosting system hosts. When set (e.g.
+   * "sites.elizacloud.ai"), a request to `<app-slug>.<suffix>` is served from
+   * the app's active frontend deployment by the Worker entry (see
+   * `getHostedFrontendServeRewrite` in `packages/cloud/api/src/index.ts`).
+   */
+  ELIZA_FRONTEND_HOST_SUFFIX?: string;
   SQL_HEAVY_PAYLOAD_STORAGE?: string;
   SQL_HEAVY_PAYLOAD_MIN_BYTES?: string;
   SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES?: string;

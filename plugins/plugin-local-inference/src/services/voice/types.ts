@@ -94,7 +94,7 @@ export interface AudioSink {
 	bufferedSamples(): number;
 }
 
-export interface OmniVoiceBackend {
+export interface TtsBackend {
 	synthesize(args: {
 		phrase: Phrase;
 		preset: SpeakerPreset;

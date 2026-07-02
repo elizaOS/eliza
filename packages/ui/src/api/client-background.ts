@@ -16,6 +16,15 @@ declare module "./client-base" {
       prompt: string,
       size?: string,
     ): Promise<{ url: string }>;
+    /**
+     * Re-host a user-picked wallpaper (downscaled data URL) into the
+     * content-addressed media store, returning a durable same-origin
+     * `/api/media/<hash>` URL. Persisting THAT keeps the background config +
+     * undo history tiny instead of stacking multi-MB data URLs into the
+     * ~5 MB localStorage quota (where writes fail silently and the wallpaper
+     * reverts on reload).
+     */
+    uploadBackgroundImage(dataUrl: string): Promise<{ url: string }>;
   }
 }
 
@@ -31,5 +40,15 @@ ElizaClient.prototype.generateBackgroundImage = async function (
   return this.fetch<{ url: string }>("/api/background/generate-image", {
     method: "POST",
     body: JSON.stringify({ prompt, ...(size ? { size } : {}) }),
+  });
+};
+
+ElizaClient.prototype.uploadBackgroundImage = async function (
+  this: ElizaClient,
+  dataUrl,
+) {
+  return this.fetch<{ url: string }>("/api/background/upload-image", {
+    method: "POST",
+    body: JSON.stringify({ dataUrl }),
   });
 };

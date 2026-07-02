@@ -51,7 +51,10 @@ import {
   pollCodexUsage,
   recordCall as recordUsageEntry,
 } from "./account-usage.js";
-import { installCodingAgentSelectorBridge } from "./coding-account-bridge.js";
+import {
+  adoptRotatedCodexTokens,
+  installCodingAgentSelectorBridge,
+} from "./coding-account-bridge.js";
 
 export type Strategy =
   | "priority"
@@ -397,11 +400,23 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    // Callers pass a heuristic cool-off (60s probe default / 15min session
+    // default), but the provider's own usage window is authoritative when we
+    // have it: Anthropic and Codex both report the window's reset timestamp
+    // via the usage probes. Using it re-admits the account exactly when the
+    // limit lifts — a shorter heuristic ping-pongs spawns onto a still-limited
+    // account (a ~5h window retried every 60s), a longer one strands a
+    // recovered account out of rotation.
+    const providerResetMs = account.usage?.resetsAt;
+    const heuristicUntil =
+      Number.isFinite(untilMs) && untilMs > Date.now()
+        ? untilMs
+        : Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS;
     const healthDetail: LinkedAccountHealthDetail = {
       until:
-        Number.isFinite(untilMs) && untilMs > Date.now()
-          ? untilMs
-          : Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
+        typeof providerResetMs === "number" && providerResetMs > Date.now()
+          ? providerResetMs
+          : heuristicUntil,
       lastChecked: Date.now(),
       ...(detail ? { lastError: detail } : {}),
     };
@@ -923,6 +938,13 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
 
+      // A Codex CLI may have rotated the one-time refresh token inside its
+      // per-account CODEX_HOME mid-session; adopt it BEFORE resolving, or the
+      // refresh below burns on the consumed token and this sweep marks a
+      // perfectly recoverable account needs-reauth.
+      if (providerId === "openai-codex") {
+        await adoptRotatedCodexTokens(record.id).catch(() => false);
+      }
       const token = await getAccountAccessToken(providerId, record.id);
       if (!token) {
         result.failed += 1;

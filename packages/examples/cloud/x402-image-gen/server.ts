@@ -37,7 +37,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_DIR = new URL("./public/", import.meta.url);
 
 const CLOUD_URL = (
-  process.env.ELIZA_CLOUD_URL ?? "https://www.elizacloud.ai"
+  process.env.ELIZA_CLOUD_URL ?? "https://elizacloud.ai"
 ).replace(/\/+$/, "");
 const API_KEY =
   process.env.ELIZAOS_CLOUD_API_KEY ?? process.env.ELIZA_CLOUD_API_KEY ?? "";

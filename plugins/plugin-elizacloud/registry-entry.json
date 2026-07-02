@@ -22,7 +22,7 @@
       "type": "url",
       "required": false,
       "sensitive": false,
-      "default": "https://www.elizacloud.ai/api/v1",
+      "default": "https://elizacloud.ai/api/v1",
       "label": "Cloud Base Url",
       "help": "Base URL for all ElizaOS Cloud API requests.",
       "advanced": false

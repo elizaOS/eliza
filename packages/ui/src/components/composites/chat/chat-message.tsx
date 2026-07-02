@@ -59,6 +59,11 @@ export interface ChatMessageProps {
 }
 
 const HOVER_MEDIA_QUERY = "(hover: hover) and (pointer: fine)";
+// Tap-to-reveal move slop: finger travel past this between touchstart and
+// touchend means the gesture was a transcript scroll, not a tap, so it must
+// not toggle the action rail (mirrors the shell ThreadLine's
+// COPY_MOVE_CANCEL_PX).
+const TAP_REVEAL_MOVE_CANCEL_PX = 10;
 const hoverSupportListeners = new Set<() => void>();
 let hoverMediaQuery: MediaQueryList | null = null;
 let hoverMediaQueryUnsubscribe: (() => void) | null = null;
@@ -323,6 +328,7 @@ export const ChatMessage = memo(function ChatMessage({
   const [savingEdit, setSavingEdit] = useState(false);
   const articleRef = useRef<HTMLElement | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const tapStartRef = useRef<{ x: number; y: number } | null>(null);
   const isUser = message.role === "user";
   const isRightAligned = isUser ? userMessagesOnRight : !userMessagesOnRight;
   const canEdit =
@@ -421,11 +427,37 @@ export const ChatMessage = memo(function ChatMessage({
     }
   }, [draftText, message.id, message.text, onEdit]);
 
+  const handleTapStart = useCallback((event: TouchEvent<HTMLElement>) => {
+    const touch = event.touches[0];
+    tapStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }, []);
+
   const handleTapReveal = useCallback(
     (event: TouchEvent<HTMLElement>) => {
+      const tapStart = tapStartRef.current;
+      tapStartRef.current = null;
       if (supportsHover || isEditing) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("button, a, textarea, input")) {
+        return;
+      }
+      // Scroll, not tap: finger travel past the slop means the touch was a
+      // transcript flick, so it must not toggle the rail on whichever message
+      // it happened to start on (mirrors the shell ThreadLine).
+      const touch = event.changedTouches[0];
+      if (
+        tapStart &&
+        touch &&
+        (Math.abs(touch.clientX - tapStart.x) > TAP_REVEAL_MOVE_CANCEL_PX ||
+          Math.abs(touch.clientY - tapStart.y) > TAP_REVEAL_MOVE_CANCEL_PX)
+      ) {
+        return;
+      }
+      // Never hijack a text selection: a tap that ends a highlight drag must
+      // not also toggle the rail (the bubble text stays selectable to copy).
+      const selection =
+        typeof window !== "undefined" ? window.getSelection() : null;
+      if (selection && !selection.isCollapsed) {
         return;
       }
       setShowActions((prev) => !prev);
@@ -510,6 +542,7 @@ export const ChatMessage = memo(function ChatMessage({
       data-role={message.role}
       onMouseEnter={supportsHover ? () => setShowActions(true) : undefined}
       onMouseLeave={supportsHover ? () => setShowActions(false) : undefined}
+      onTouchStart={handleTapStart}
       onTouchEnd={handleTapReveal}
       aria-label={`${
         isUser && showSenderHeader

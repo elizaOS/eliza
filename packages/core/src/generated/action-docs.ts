@@ -3579,6 +3579,19 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "BACKUP_APP",
+			description:
+				"Export a portable config snapshot (backup) of one of the user's Eliza Cloud apps so it can be saved and recreated later. Use when the user wants to back up / export an app's configuration.",
+			parameters: [],
+			descriptionCompressed: "Export a config backup snapshot of a Cloud app.",
+			similes: [
+				"EXPORT_APP",
+				"SAVE_APP_CONFIG",
+				"APP_BACKUP",
+				"EXPORT_APP_CONFIG",
+			],
+		},
+		{
 			name: "BLOCK",
 			description: "Block/unblock phone apps or desktop websites. ",
 			parameters: [
@@ -3748,6 +3761,85 @@ export const allActionsSpec = {
 							packageNames: "example",
 							appTokens: "example",
 							durationMinutes: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "BOOK_INFLUENCER",
+			description:
+				"Book (hire) an influencer on Eliza Cloud to promote — funds an escrowed offer from the org's credits. MONEY: the first ask only confirms intent; the booking is funded on explicit confirmation. Use when the user wants to hire/sponsor/pay an influencer.",
+			parameters: [
+				{
+					name: "profileId",
+					description: "Influencer profile id to book.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Influencer profile id to book.",
+				},
+				{
+					name: "influencer",
+					description: "Influencer display name to book (resolved via browse).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Influencer display name to book (resolved via browse).",
+				},
+				{
+					name: "amount",
+					description: "USD budget for the booking.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "USD budget for the booking.",
+				},
+				{
+					name: "brief",
+					description: "What the influencer should post / the campaign brief.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"What the influencer should post/the campaign brief.",
+				},
+				{
+					name: "confirm",
+					description:
+						"Follow-up: true confirms the pending booking, false cancels.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Follow-up: true confirms the pending booking, false cancels.",
+				},
+			],
+			descriptionCompressed:
+				"Book an influencer to promote (escrowed; two-step confirm).",
+			similes: [
+				"HIRE_INFLUENCER",
+				"SPONSOR_INFLUENCER",
+				"PAY_INFLUENCER",
+				"PROMOTE_WITH_INFLUENCER",
+			],
+			exampleCalls: [
+				{
+					user: "Use BOOK_INFLUENCER with the provided parameters.",
+					actions: ["BOOK_INFLUENCER"],
+					params: {
+						BOOK_INFLUENCER: {
+							profileId: "example",
+							influencer: "example",
+							amount: 1,
+							brief: "example",
+							confirm: false,
 						},
 					},
 				},
@@ -4163,6 +4255,66 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "BUY_APP_DOMAIN",
+			description:
+				"Buy a domain through Eliza Cloud (Cloudflare registrar) and attach it to a Cloud app. MONEY-OUT: charged from the org credit balance — the first ask only quotes the price and asks for confirmation. Use when the user asks to buy, purchase, or register a domain.",
+			parameters: [
+				{
+					name: "domain",
+					description: "The domain to buy, e.g. yourbrand.com.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "The domain to buy, e. g. yourbrand. com.",
+				},
+				{
+					name: "appName",
+					description:
+						"Name, slug, or id of the Cloud app the domain attaches to.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name, slug, or id of the Cloud app the domain attaches to.",
+				},
+				{
+					name: "confirm",
+					description:
+						"Follow-up confirmation. Set true only when the user is confirming the pending domain-purchase prompt; set false when canceling.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Follow-up confirmation. Set true only when user is confirming the pending domain-purchase prompt. set false when canceling.",
+				},
+			],
+			descriptionCompressed:
+				"Buy + attach a domain to a Cloud app (money-out; two-step confirm).",
+			similes: [
+				"BUY_DOMAIN",
+				"PURCHASE_DOMAIN",
+				"REGISTER_DOMAIN",
+				"GET_A_DOMAIN",
+				"BUY_CUSTOM_DOMAIN",
+			],
+			exampleCalls: [
+				{
+					user: "Use BUY_APP_DOMAIN with the provided parameters.",
+					actions: ["BUY_APP_DOMAIN"],
+					params: {
+						BUY_APP_DOMAIN: {
+							domain: "example",
+							appName: "example",
+							confirm: false,
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "CALENDAR",
 			description:
 				"Live calendar: event CRUD, availability, meeting prefs. Subactions: ",
@@ -4490,6 +4642,54 @@ export const allActionsSpec = {
 							defaultDurationMinutes: 1,
 							travelBufferMinutes: 1,
 							blackoutWindows: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "CHECK_APP_DOMAIN",
+			description:
+				"Check whether a domain is available to register and what it costs per year (purchase + renewal). Read-only — never charges or registers. Use when the user asks if a domain is available, free, taken, or how much it costs.",
+			parameters: [
+				{
+					name: "domain",
+					description: "The domain to check, e.g. yourbrand.com.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "The domain to check, e. g. yourbrand. com.",
+				},
+				{
+					name: "appName",
+					description:
+						"Optional name, slug, or id of the Cloud app the domain is for.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional name, slug, or id of the Cloud app the domain is for.",
+				},
+			],
+			descriptionCompressed:
+				"Check a domain's availability + yearly price (read-only).",
+			similes: [
+				"CHECK_DOMAIN",
+				"DOMAIN_AVAILABLE",
+				"DOMAIN_PRICE",
+				"SEARCH_DOMAIN",
+				"IS_DOMAIN_AVAILABLE",
+			],
+			exampleCalls: [
+				{
+					user: "Use CHECK_APP_DOMAIN with the provided parameters.",
+					actions: ["CHECK_APP_DOMAIN"],
+					params: {
+						CHECK_APP_DOMAIN: {
+							domain: "example",
+							appName: "example",
 						},
 					},
 				},
@@ -5191,6 +5391,20 @@ export const allActionsSpec = {
 			descriptionCompressed: "Show current context info",
 		},
 		{
+			name: "CREATE_AD_SLOT",
+			description:
+				"Create an ad slot on one of the user's Eliza Cloud apps so it can earn from serving ads. Use when the user wants to monetize an app with ads / sell ad space.",
+			parameters: [],
+			descriptionCompressed:
+				"Create an ad slot on an app to earn from serving ads.",
+			similes: [
+				"ADD_AD_SLOT",
+				"MONETIZE_WITH_ADS",
+				"SELL_AD_SPACE",
+				"CREATE_AD_PLACEMENT",
+			],
+		},
+		{
 			name: "CREATE_APP",
 			description:
 				"Create a new Eliza Cloud app for the user from a name (and optional description / monetization intent). Use when the user asks to build, make, create, or start a new app.",
@@ -5198,6 +5412,19 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"Create a new Eliza Cloud app from the user's intent.",
 			similes: ["BUILD_APP", "MAKE_APP", "NEW_APP", "CREATE_CLOUD_APP"],
+		},
+		{
+			name: "CREATE_INFLUENCER_PROFILE",
+			description:
+				"Publish an influencer profile on Eliza Cloud so the agent/user can be booked by advertisers and earn. Use when the user wants to become / list as an influencer or offer promotion services.",
+			parameters: [],
+			descriptionCompressed:
+				"Publish an influencer profile to be booked + earn.",
+			similes: [
+				"BECOME_INFLUENCER",
+				"PUBLISH_INFLUENCER_PROFILE",
+				"OFFER_INFLUENCER_SERVICES",
+			],
 		},
 		{
 			name: "CREDENTIALS",
@@ -5324,7 +5551,29 @@ export const allActionsSpec = {
 			name: "DELETE_APP",
 			description:
 				"Delete an Eliza Cloud app. DESTRUCTIVE: tears down the app's container and tenant database. Requires an explicit confirmation — the first ask only confirms intent. Use when the user asks to delete, remove, or destroy an app.",
-			parameters: [],
+			parameters: [
+				{
+					name: "appName",
+					description: "Name, slug, or id of the Cloud app to delete.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name, slug, or id of the Cloud app to delete.",
+				},
+				{
+					name: "confirm",
+					description:
+						"Follow-up confirmation. Set true only when the user is confirming the pending delete prompt for this app; set false when canceling.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Follow-up confirmation. Set true only when user is confirming the pending delete prompt for this app. set false when canceling.",
+				},
+			],
 			descriptionCompressed:
 				"Delete a Cloud app (destructive; two-step confirm).",
 			similes: [
@@ -5332,6 +5581,18 @@ export const allActionsSpec = {
 				"DELETE_MY_APP",
 				"DESTROY_APP",
 				"DELETE_CLOUD_APP",
+			],
+			exampleCalls: [
+				{
+					user: "Use DELETE_APP with the provided parameters.",
+					actions: ["DELETE_APP"],
+					params: {
+						DELETE_APP: {
+							appName: "example",
+							confirm: false,
+						},
+					},
+				},
 			],
 		},
 		{
@@ -5341,6 +5602,21 @@ export const allActionsSpec = {
 			parameters: [],
 			descriptionCompressed: "Deploy a Cloud app and verify it is live.",
 			similes: ["SHIP_APP", "GO_LIVE", "DEPLOY_CLOUD_APP", "LAUNCH_APP"],
+		},
+		{
+			name: "DEPLOY_FRONTEND",
+			description:
+				"Publish a static frontend (built site directory or files) to an Eliza Cloud app's managed host, served with SEO + analytics. Use when the user asks to host, publish, or deploy the app's website/frontend.",
+			parameters: [],
+			descriptionCompressed:
+				"Publish an app's static frontend to Eliza Cloud managed hosting.",
+			similes: [
+				"HOST_FRONTEND",
+				"PUBLISH_SITE",
+				"PUBLISH_FRONTEND",
+				"DEPLOY_SITE",
+				"HOST_SITE",
+			],
 		},
 		{
 			name: "ELEVATED_COMMAND",
@@ -6300,17 +6576,28 @@ export const allActionsSpec = {
 		{
 			name: "INBOX",
 			description:
-				"Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed. Subactions: list, search, summarize.",
+				"Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage, reply, snooze, archive, approve.",
 			parameters: [
 				{
 					name: "action",
-					description: "Inbox op: list | search | summarize.",
+					description:
+						"Inbox op: list | search | summarize | triage | reply | snooze | archive | approve.",
 					required: false,
 					schema: {
 						type: "string",
-						enum: ["list", "search", "summarize"],
+						enum: [
+							"list",
+							"search",
+							"summarize",
+							"triage",
+							"reply",
+							"snooze",
+							"archive",
+							"approve",
+						],
 					},
-					descriptionCompressed: "Inbox op: list | search | summarize.",
+					descriptionCompressed:
+						"Inbox op: list | search | summarize | triage | reply | snooze | archive | approve.",
 				},
 				{
 					name: "platforms",
@@ -6353,9 +6640,48 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Required for search. Free-form query.",
 				},
+				{
+					name: "entryId",
+					description:
+						"Persisted triage entry id for reply, snooze, archive, or approve.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Persisted triage entry id for reply, snooze, archive, or approve.",
+				},
+				{
+					name: "body",
+					description: "Reply body for reply/approve.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reply body for reply/approve.",
+				},
+				{
+					name: "until",
+					description: "Snooze-until timestamp for snooze. ISO-8601.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Snooze-until timestamp for snooze. ISO-8601.",
+				},
+				{
+					name: "confirmed",
+					description: "Explicit owner confirmation for sending reply/approve.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Explicit owner confirmation for sending reply/approve.",
+				},
 			],
 			descriptionCompressed:
-				"INBOX list|search|summarize gmail|slack|discord|telegram|signal|imessage|whatsapp",
+				"INBOX list|search|summarize|triage|reply|snooze|archive|approve gmail|slack|discord|telegram|signal|imessage|whatsapp",
 			exampleCalls: [
 				{
 					user: "Use INBOX with the provided parameters.",
@@ -6367,6 +6693,10 @@ export const allActionsSpec = {
 							since: "example",
 							limit: 1,
 							query: "example",
+							entryId: "example",
+							body: "example",
+							until: "example",
+							confirmed: false,
 						},
 					},
 				},
@@ -6427,6 +6757,52 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "LIST_AD_SLOTS",
+			description:
+				"List the user's Eliza Cloud ad slots with impressions, clicks, and revenue. Use when the user asks about their ad inventory or ad earnings.",
+			parameters: [],
+			descriptionCompressed:
+				"List the user's ad slots + their impressions/clicks/revenue.",
+			similes: ["SHOW_AD_SLOTS", "MY_AD_INVENTORY", "AD_REVENUE"],
+		},
+		{
+			name: "LIST_APP_DOMAINS",
+			description:
+				"List the custom domains attached to an Eliza Cloud app, with registrar, status, SSL, verification state, and renewal date. Read-only. Use when the user asks what domains an app has or whether a domain is set up/verified.",
+			parameters: [
+				{
+					name: "appName",
+					description:
+						"Name, slug, or id of the Cloud app whose domains to list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name, slug, or id of the Cloud app whose domains to list.",
+				},
+			],
+			descriptionCompressed: "List a Cloud app's attached domains (read-only).",
+			similes: [
+				"LIST_DOMAINS",
+				"SHOW_DOMAINS",
+				"MY_DOMAINS",
+				"APP_DOMAINS",
+				"WHAT_DOMAINS",
+			],
+			exampleCalls: [
+				{
+					user: "Use LIST_APP_DOMAINS with the provided parameters.",
+					actions: ["LIST_APP_DOMAINS"],
+					params: {
+						LIST_APP_DOMAINS: {
+							appName: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "LIST_CLOUD_APPS",
 			description:
 				"List the Eliza Cloud apps the user owns (name, URL, deployment status, and credits/earnings when present). Use when the user asks what apps they have, to see their apps, or to list their Cloud apps.",
@@ -6440,6 +6816,28 @@ export const allActionsSpec = {
 				"MY_CLOUD_APPS",
 				"LIST_APPS",
 			],
+		},
+		{
+			name: "LIST_FRONTEND_DEPLOYMENTS",
+			description:
+				"List an Eliza Cloud app's frontend deployment versions and which one is live. Use when the user asks about their app's frontend versions / deploy history.",
+			parameters: [],
+			descriptionCompressed:
+				"List an app's frontend deployment versions + the live one.",
+			similes: [
+				"SHOW_FRONTEND_VERSIONS",
+				"FRONTEND_HISTORY",
+				"APP_FRONTEND_DEPLOYMENTS",
+			],
+		},
+		{
+			name: "LIST_INFLUENCERS",
+			description:
+				"Browse active influencer profiles on Eliza Cloud (optionally by niche) so the user can pick one to book for promotion. Use when the user wants to find / hire an influencer.",
+			parameters: [],
+			descriptionCompressed:
+				"Browse influencer profiles to book for promotion.",
+			similes: ["BROWSE_INFLUENCERS", "FIND_INFLUENCERS", "SEARCH_INFLUENCERS"],
 		},
 		{
 			name: "MANAGE_BROWSER_BRIDGE",
@@ -7669,7 +8067,30 @@ export const allActionsSpec = {
 			name: "REGENERATE_APP_API_KEY",
 			description:
 				"Regenerate (rotate) an Eliza Cloud app's API key. SECURITY-SENSITIVE: invalidates the current key immediately. Requires an explicit confirmation — the first ask only confirms intent. Use when the user asks to rotate, regenerate, reset, or get a new API key for an app.",
-			parameters: [],
+			parameters: [
+				{
+					name: "appName",
+					description:
+						"Name, slug, or id of the Cloud app whose API key to rotate.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name, slug, or id of the Cloud app whose API key to rotate.",
+				},
+				{
+					name: "confirm",
+					description:
+						"Follow-up confirmation. Set true only when the user is confirming the pending API-key rotation prompt for this app; set false when canceling.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Follow-up confirmation. Set true only when user is confirming the pending API-key rotation prompt for this app. set false when canceling.",
+				},
+			],
 			descriptionCompressed:
 				"Rotate a Cloud app's API key (security; two-step confirm).",
 			similes: [
@@ -7678,6 +8099,18 @@ export const allActionsSpec = {
 				"REGENERATE_API_KEY",
 				"RESET_API_KEY",
 				"ROTATE_APP_KEY",
+			],
+			exampleCalls: [
+				{
+					user: "Use REGENERATE_APP_API_KEY with the provided parameters.",
+					actions: ["REGENERATE_APP_API_KEY"],
+					params: {
+						REGENERATE_APP_API_KEY: {
+							appName: "example",
+							confirm: false,
+						},
+					},
+				},
 			],
 		},
 		{
@@ -7749,6 +8182,52 @@ export const allActionsSpec = {
 							action: "approve",
 							requestId: "example",
 							reason: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "ROLLBACK_FRONTEND",
+			description:
+				"Roll an Eliza Cloud app's frontend back to a previous deployment (make an earlier version live again). Use when the user wants to revert / undo / roll back an app's frontend to an earlier version.",
+			parameters: [
+				{
+					name: "appName",
+					description: "Name/slug/id of the app to roll back.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Name/slug/id of the app to roll back.",
+				},
+				{
+					name: "version",
+					description:
+						"Specific frontend version number to restore. Omit to roll back to the previous one.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Specific frontend version number to restore. Omit to roll back to the previous one.",
+				},
+			],
+			descriptionCompressed:
+				"Roll an app's frontend back to a previous version.",
+			similes: [
+				"REVERT_FRONTEND",
+				"RESTORE_FRONTEND_VERSION",
+				"UNDO_FRONTEND_DEPLOY",
+			],
+			exampleCalls: [
+				{
+					user: "Use ROLLBACK_FRONTEND with the provided parameters.",
+					actions: ["ROLLBACK_FRONTEND"],
+					params: {
+						ROLLBACK_FRONTEND: {
+							appName: "example",
+							version: 1,
 						},
 					},
 				},
@@ -10123,7 +10602,41 @@ export const allActionsSpec = {
 			name: "WITHDRAW_APP_EARNINGS",
 			description:
 				"Withdraw (cash out) an Eliza Cloud app's earnings. MONEY-OUT: requires an explicit confirmation — the first ask only confirms intent and hands off a dashboard link. Use when the user asks to withdraw, cash out, or request a payout of an app's earnings.",
-			parameters: [],
+			parameters: [
+				{
+					name: "appName",
+					description:
+						"Name, slug, or id of the Cloud app whose earnings to withdraw.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name, slug, or id of the Cloud app whose earnings to withdraw.",
+				},
+				{
+					name: "amount",
+					description:
+						"Optional USD amount to withdraw on the first ask. Omit to withdraw the full available balance.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Optional USD amount to withdraw on the first ask. Omit to withdraw the full available balance.",
+				},
+				{
+					name: "confirm",
+					description:
+						"Follow-up confirmation. Set true only when the user is confirming the pending withdrawal prompt for this app and amount; set false when canceling.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Follow-up confirmation. Set true only when user is confirming the pending withdrawal prompt for this app and amount. set false when canceling.",
+				},
+			],
 			descriptionCompressed:
 				"Withdraw a Cloud app's earnings (money-out; two-step confirm).",
 			similes: [
@@ -10132,6 +10645,19 @@ export const allActionsSpec = {
 				"WITHDRAW_EARNINGS",
 				"REQUEST_PAYOUT",
 				"CASH_OUT_APP",
+			],
+			exampleCalls: [
+				{
+					user: "Use WITHDRAW_APP_EARNINGS with the provided parameters.",
+					actions: ["WITHDRAW_APP_EARNINGS"],
+					params: {
+						WITHDRAW_APP_EARNINGS: {
+							appName: "example",
+							amount: 1,
+							confirm: false,
+						},
+					},
+				},
 			],
 		},
 		{

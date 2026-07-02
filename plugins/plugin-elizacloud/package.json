@@ -130,7 +130,7 @@
         "type": "string",
         "description": "Base URL for all ElizaOS Cloud API requests.",
         "required": false,
-        "default": "https://www.elizacloud.ai/api/v1",
+        "default": "https://elizacloud.ai/api/v1",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_NANO_MODEL": {

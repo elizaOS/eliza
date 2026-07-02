@@ -401,6 +401,61 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("routes a grabber flick whose moves were coalesced into the release to the launcher (#9943)", () => {
+    // REAL touch on a janked Android WebView delivers pointerdown → pointerup
+    // with the whole travel between them (every pointermove coalesced away).
+    // The swipe must still commit from the release deltas.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(getShellSurface().page).toBe("home");
+
+    fireEvent.pointerDown(grabber, {
+      clientX: 260,
+      clientY: 420,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(grabber, {
+      clientX: 110,
+      clientY: 414,
+      pointerId: 1,
+    });
+
+    expect(getShellSurface().page).toBe("launcher");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("routes a grabber flick that ends in pointercancel after crossing the threshold to the launcher (#9943)", () => {
+    // Android's touch pipeline can revoke the pointer AFTER the finger already
+    // completed the swipe (renderer-unresponsive ack timeout) — the observed
+    // track must commit instead of being discarded.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(getShellSurface().page).toBe("home");
+
+    fireEvent.pointerDown(grabber, {
+      clientX: 260,
+      clientY: 420,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(grabber, {
+      clientX: 110,
+      clientY: 414,
+      pointerId: 1,
+    });
+    fireEvent.pointerCancel(grabber, {
+      clientX: 0,
+      clientY: 0,
+      pointerId: 1,
+    });
+
+    expect(getShellSurface().page).toBe("launcher");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
   // Regression guard for #9142: the grabber bar was hardcoded `opacity-0`
   // unconditionally, so on desktop/web (no OS home indicator) the handle was
   // grabbable but the bar never painted. It must be visible off-iOS.
@@ -705,6 +760,60 @@ describe("ContinuousChatOverlay", () => {
     // the visual backdrop itself remains pointer-transparent for drags.
     fireEvent.pointerDown(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
     fireEvent.pointerUp(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("cedes taps to a layer painted ABOVE the chat (dialog / notification sheet) instead of collapsing", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // Simulate the notification pull-down sheet / a Radix dialog stacked above
+    // the chat glass (role="dialog" or data-above-shell-overlay): its taps must
+    // NOT be swallowed into a chat collapse — the overlay's own handlers win.
+    const overlay = document.createElement("div");
+    overlay.setAttribute("role", "dialog");
+    const rowButton = document.createElement("button");
+    overlay.appendChild(rowButton);
+    document.body.appendChild(overlay);
+    try {
+      fireEvent.pointerDown(rowButton, {
+        clientX: 30,
+        clientY: 30,
+        pointerId: 5,
+      });
+      fireEvent.pointerUp(rowButton, {
+        clientX: 30,
+        clientY: 30,
+        pointerId: 5,
+      });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      overlay.remove();
+    }
+  });
+
+  it("lets an open dialog own Escape — the chat only collapses once the dialog is gone", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // An open Radix dialog (e.g. the command palette) above the chat: Escape
+    // must close IT, not also collapse the chat underneath.
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("data-state", "open");
+    document.body.appendChild(dialog);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      dialog.remove();
+    }
+    // Dialog gone: Escape collapses the chat as before.
+    fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 

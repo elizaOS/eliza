@@ -737,6 +737,31 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
   JOB_TYPES.AGENT_DOWNGRADE,
 ]);
 
+/**
+ * Per-job execution timeout for the `withTimeout(executeJob(job), …)` wrap,
+ * BY JOB TYPE (#10919).
+ *
+ * The flat `PER_JOB_TIMEOUT_MS` (300s) matches only the leaf `docker pull`
+ * ceiling — NOT a full cold boot, which is image-pull (`PULL_TIMEOUT_MS` 300s) +
+ * agent health-check (`HEALTH_CHECK_TIMEOUT_MS` 360s) ≈ up to 11 min. At the flat
+ * 300s, a legitimate slow cold provision had its awaiter rejected mid-boot; the
+ * catch's `incrementAttempt` flipped the still-running job to `pending`, a later
+ * poll re-claimed it (nothing blocks a non-`in_progress` re-claim), and the
+ * second provision collided on the deterministic `agent-<id>` name and
+ * force-removed the first still-booting container — provision flapping on the
+ * exact cold-start path every new dedicated agent hits.
+ *
+ * Cold-boot job types therefore get the same 15-min budget `recoverStaleJobs`
+ * already uses, so the per-job wrap can't fire before a legitimate cold boot
+ * finishes (15 min > ~11 min). Fast ops keep the tight 300s. This is the wrap's
+ * counterpart to the stale-recovery threshold — both are now cold-boot-aware.
+ */
+export function resolvePerJobTimeoutMs(jobType: string): number {
+  return COLD_BOOT_JOB_TYPES.has(jobType as ProvisioningJobType)
+    ? Math.max(PER_JOB_TIMEOUT_MS, COLD_BOOT_STALE_JOB_THRESHOLD_MS)
+    : PER_JOB_TIMEOUT_MS;
+}
+
 export class ProvisioningJobService {
   /**
    * Common path for the seven `enqueueAgent*Once` methods. Acquires the
@@ -1599,8 +1624,15 @@ export class ProvisioningJobService {
         // underlying SSH/headscale I/O — those are themselves bounded. On
         // timeout this throws → the catch below runs incrementAttempt, which
         // flips the row to error/deletion_failed once attempts exhaust;
-        // recoverStaleJobs (5-min in_progress threshold) is the backstop.
-        await withTimeout(this.executeJob(job), PER_JOB_TIMEOUT_MS, `job ${job.type}`);
+        // recoverStaleJobs is the backstop. The timeout is BY JOB TYPE
+        // (resolvePerJobTimeoutMs): cold-boot types get the full ~11-min boot
+        // budget so a slow cold provision is not rejected mid-boot → no
+        // premature incrementAttempt → no re-claim → no double-provision (#10919).
+        await withTimeout(
+          this.executeJob(job),
+          resolvePerJobTimeoutMs(job.type),
+          `job ${job.type}`,
+        );
         result.succeeded++;
       } catch (err) {
         result.failed++;

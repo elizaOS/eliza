@@ -23,7 +23,7 @@ for (const envPath of ENV_CANDIDATE_PATHS) {
 export const LIVE_EVM_RPC_TEST = process.env.ELIZA_LIVE_EVM_RPC_TEST === "1";
 
 export const ELIZA_CLOUD_BASE_URL = (
-  process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://www.elizacloud.ai/api/v1"
+  process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://elizacloud.ai/api/v1"
 ).replace(/\/$/, "");
 export const ELIZA_CLOUD_API_KEY = process.env.ELIZAOS_CLOUD_API_KEY?.trim() || "";
 export const HAS_ELIZA_CLOUD_RPC_KEY = ELIZA_CLOUD_API_KEY.length > 0;

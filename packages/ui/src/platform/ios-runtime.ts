@@ -1,4 +1,4 @@
-export const DEFAULT_ELIZA_CLOUD_BASE = "https://www.elizacloud.ai";
+export const DEFAULT_ELIZA_CLOUD_BASE = "https://elizacloud.ai";
 
 export type IosRuntimeMode =
   | "remote-mac"

@@ -49,6 +49,15 @@ jobs:
       - name: Run type-safety ratchet
         run: bun run audit:type-safety-ratchet
 
+      - name: Run anti-larp test gate self-test
+        run: bun run audit:focused-tests:self-test
+
+      - name: Run anti-larp test gate
+        run: bun run audit:focused-tests
+
+      - name: Run test realness ratchet
+        run: bun run audit:test-realness
+
       - name: Run type-duplication finder self-test
         run: bun run audit:type-duplication:self-test
 

@@ -853,6 +853,38 @@ describe("training analysis index", () => {
     ]);
 
     const html = await readFile(index.indexHtmlPath, "utf8");
+
+    // The embedded report <script> must be syntactically valid. A broken regex
+    // in hrefForPath (`:///i`, parsed by the browser as a regex literal + a `//`
+    // line comment) previously left an unclosed `if (` and turned the ENTIRE
+    // <script> into a SyntaxError, disabling all report interactivity (filters,
+    // sorting, clickable source-file links). new Function() compiles without
+    // executing, so it surfaces a SyntaxError without needing a DOM.
+    const clientScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    expect(clientScript, "report client <script> not found").toBeTruthy();
+    expect(() => new Function(clientScript as string)).not.toThrow();
+
+    // hrefForPath must build valid file:// URLs for POSIX and Windows paths and
+    // pass existing URLs through (it is pure, so eval it in isolation).
+    const hrefForPathSrc = clientScript?.match(
+      /function hrefForPath\(value\)[\s\S]*?\n {4}\}/,
+    )?.[0];
+    expect(
+      hrefForPathSrc,
+      "hrefForPath not found in report script",
+    ).toBeTruthy();
+    const hrefForPath = new Function(
+      `${hrefForPathSrc}\nreturn hrefForPath;`,
+    )() as (value: string) => string | null;
+    expect(hrefForPath("https://example.com/x")).toBe("https://example.com/x");
+    expect(hrefForPath("/home/me/report.html")).toBe(
+      "file:///home/me/report.html",
+    );
+    expect(hrefForPath("C:\\Users\\me\\report.html")).toBe(
+      "file:///C:/Users/me/report.html",
+    );
+    expect(hrefForPath("plain.txt")).toBeNull();
+
     expect(html).toContain("Eliza Training Analysis");
     expect(html).toContain("Source inventory");
     expect(html).toContain("Readable source samples");

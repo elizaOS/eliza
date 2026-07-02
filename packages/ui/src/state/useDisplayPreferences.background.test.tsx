@@ -6,6 +6,8 @@ import {
   loadBackgroundHistory,
   loadHomeTimeWidgetHidden,
   MAX_BACKGROUND_HISTORY,
+  MAX_BACKGROUND_HISTORY_DATA_URLS,
+  normalizeBackgroundHistory,
   saveHomeTimeWidgetHidden,
 } from "./persistence";
 import { DEFAULT_BACKGROUND_COLOR } from "./ui-preferences";
@@ -145,6 +147,50 @@ describe("useDisplayPreferences — background history + undo", () => {
       });
     }
     expect(loadBackgroundHistory().length).toBe(MAX_BACKGROUND_HISTORY);
+  });
+
+  it("caps inline data-URL image entries to the single most recent (quota hazard)", () => {
+    expect(MAX_BACKGROUND_HISTORY_DATA_URLS).toBe(1);
+    const dataEntry = (n: number) => ({
+      mode: "image",
+      color: "#111111",
+      imageUrl: `data:image/jpeg;base64,${"A".repeat(8)}${n}`,
+    });
+    const mediaEntry = (n: number) => ({
+      mode: "image",
+      color: "#222222",
+      imageUrl: `/api/media/hash${n}.jpg`,
+    });
+    const normalized = normalizeBackgroundHistory([
+      dataEntry(1),
+      mediaEntry(1),
+      dataEntry(2),
+      { mode: "shader", color: "#333333" },
+      mediaEntry(2),
+      dataEntry(3),
+    ]);
+    const dataUrls = normalized.filter((e) => e.imageUrl?.startsWith("data:"));
+    // Only the most recent data-URL entry survives; media-store + shader
+    // entries are all kept in order.
+    expect(dataUrls.length).toBe(1);
+    expect(dataUrls[0]?.imageUrl).toContain("3");
+    expect(normalized.map((e) => e.imageUrl ?? e.color)).toEqual([
+      "/api/media/hash1.jpg",
+      "#333333",
+      "/api/media/hash2.jpg",
+      dataEntry(3).imageUrl,
+    ]);
+  });
+
+  it("keeps a full history of media-store image entries (tiny URLs, no cap pressure)", () => {
+    const entries = Array.from({ length: MAX_BACKGROUND_HISTORY }, (_, i) => ({
+      mode: "image",
+      color: "#000000",
+      imageUrl: `/api/media/h${i}.jpg`,
+    }));
+    expect(normalizeBackgroundHistory(entries).length).toBe(
+      MAX_BACKGROUND_HISTORY,
+    );
   });
 });
 
