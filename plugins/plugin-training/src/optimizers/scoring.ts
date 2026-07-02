@@ -25,8 +25,10 @@ interface ScorerOptions {
   /**
    * Per-example comparator. Defaults to Jaccard token overlap.
    * Returning 1.0 means a perfect match, 0.0 means no credit.
+   * May be async: the judge-based comparator for the prose LifeOps tasks
+   * (`createLifeOpsJudgeCompare`, #11384) grades with a live model.
    */
-  compare?: (actual: string, expected: string) => number;
+  compare?: (actual: string, expected: string) => number | Promise<number>;
 }
 
 /**
@@ -60,7 +62,7 @@ export function createPromptScorer(
         temperature,
         maxTokens,
       });
-      total += compare(completion, example.expectedOutput);
+      total += await compare(completion, example.expectedOutput);
     }
     return total / limited.length;
   };
