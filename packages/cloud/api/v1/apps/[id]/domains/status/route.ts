@@ -9,6 +9,8 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
 import { managedDomainsService } from "@/lib/services/managed-domains";
+import { extractErrorMessage } from "@/lib/utils/error-handling";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { loadOwnedApp } from "../guards";
 import { domainBodySchema as StatusSchema } from "../schemas";
@@ -51,7 +53,20 @@ app.post("/", async (c) => {
       failureReason: string | null;
     } | null = null;
     if (md.registrar === "cloudflare") {
-      live = await cloudflareRegistrarService.getRegistrationStatus(md.domain);
+      try {
+        live = await cloudflareRegistrarService.getRegistrationStatus(
+          md.domain,
+        );
+      } catch (err) {
+        logger.warn(
+          "[Domains Status] cloudflare status fetch failed; returning stored state",
+          {
+            appId,
+            domain: md.domain,
+            error: extractErrorMessage(err),
+          },
+        );
+      }
     }
 
     return c.json({
