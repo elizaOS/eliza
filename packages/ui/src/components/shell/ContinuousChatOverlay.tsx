@@ -4603,7 +4603,7 @@ export function ContinuousChatOverlay({
                 disabled={firstRunOpen}
                 placeholder={
                   firstRunOpen
-                    ? "Choose an option to continue"
+                    ? "Tap a highlighted option above to continue"
                     : booting
                       ? `Ask ${agentName} — waking up…`
                       : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
@@ -4615,7 +4615,13 @@ export function ContinuousChatOverlay({
                 // and only when a slash catalog is wired in — a plain message
                 // box otherwise.
                 {...comboboxAria}
-                className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                // During onboarding the composer is frozen (choice widgets are
+                // the only input), so brighten the placeholder from the resting
+                // 45% to 70% — a directive hint the user can actually read,
+                // rather than a greyed-out box that reads as dead.
+                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                  firstRunOpen ? "placeholder:text-white/70" : "placeholder:text-white/45"
+                }`}
               />
               <span id="cc-booting-hint" className="sr-only">
                 {agentName} is waking up — you can type now; your message sends

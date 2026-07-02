@@ -9,7 +9,7 @@
  * agent only ever sees one decision per prompt.
  */
 
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "../../ui/button";
 
@@ -33,6 +33,21 @@ function isCancelLike(value: string, label: string): boolean {
   const v = value.toLowerCase();
   const l = label.toLowerCase();
   return v === "cancel" || v === "no" || v === "none" || l === "cancel";
+}
+
+/**
+ * First-run onboarding is the primary CHOICE surface and the composer is frozen
+ * behind it, so its options must read as obvious, tappable, next-step targets —
+ * not the compact inline chips used for mid-conversation disambiguation. They
+ * render as full-width stacked rows with a chevron affordance; the single
+ * "(recommended)" option carries the accent (orange is accent-only).
+ */
+function isFirstRunScope(scope: string): boolean {
+  return scope === "first-run" || scope.startsWith("first-run");
+}
+
+function isRecommended(label: string): boolean {
+  return /\(recommended\)/i.test(label);
 }
 
 export function ChoiceWidget({
@@ -65,9 +80,15 @@ export function ChoiceWidget({
 
   if (options.length === 0 && !allowCustom) return null;
 
+  const firstRun = isFirstRunScope(scope);
+
   return (
     <fieldset
-      className="my-2 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0"
+      className={
+        firstRun
+          ? "my-2 flex min-w-0 flex-col items-stretch gap-2 border-0 p-0"
+          : "my-2 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0"
+      }
       aria-label={`Choose ${scope}`}
       data-choice-id={id}
       data-choice-scope={scope}
@@ -75,6 +96,37 @@ export function ChoiceWidget({
       {options.map((option) => {
         const cancel = isCancelLike(option.value, option.label);
         const isSelected = selected?.value === option.value;
+        if (firstRun) {
+          // Prominent, obviously-tappable next-step rows. The recommended
+          // option gets the accent; the rest are prominent neutral (secondary),
+          // so exactly one orange accent appears (brand rule).
+          const recommended = isRecommended(option.label);
+          const variant = recommended ? "default" : "secondary";
+          return (
+            <Button
+              key={option.value}
+              type="button"
+              variant={variant}
+              size="default"
+              disabled={selected !== null}
+              aria-label={option.label}
+              aria-pressed={isSelected}
+              data-testid={`choice-${option.value}`}
+              className="h-11 w-full justify-between px-4 text-sm font-medium disabled:opacity-40 aria-disabled:opacity-40"
+              onClick={() => handleChoose(option)}
+            >
+              <span className="inline-flex items-center gap-2">
+                {isSelected ? (
+                  <Check className="h-4 w-4 shrink-0" aria-hidden />
+                ) : null}
+                <span>{option.label}</span>
+              </span>
+              {!isSelected ? (
+                <ChevronRight className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+              ) : null}
+            </Button>
+          );
+        }
         const variant = cancel ? "ghost" : "outline";
         return (
           <Button
