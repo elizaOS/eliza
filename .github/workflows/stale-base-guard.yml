@@ -1,0 +1,104 @@
+# Stale Base Guard
+#
+# Blocks the PR #11271 failure mode: a PR whose tree carries stale file
+# contents (an old checkout committed onto a fresh-looking base), so that
+# squash-merging it silently reverts work already merged on the target branch.
+# #11271 landed 304 files (+6,532/−21,579) titled as a small cloud-refund
+# refactor; its merge-base was 8 minutes old, so no base-age check could have
+# caught it — the reverts were inside the PR's own diff. Restoration epic:
+# #11419; this guard is the final acceptance criterion of #11376.
+#
+# What runs (packages/scripts/stale-base-guard.mjs, plumbing-only, seconds):
+#   1. Silent-revert detection — fail when the PR sets a file byte-identically
+#      back to an older blob from the target branch's history, discarding
+#      newer merged work. Re-land/heal PRs (restoring work a clobber reverted)
+#      pass; deletion-only findings are non-blocking notices unless a
+#      modification-revert corroborates the stale-tree signature.
+#   2. Staleness backstop — fail when the merge-base is > 200 first-parent
+#      commits or > 72h behind the target tip.
+#
+# Override: apply the `stale-base-ack` label for a deliberate revert — the
+# guard then passes with loud warnings instead of failing.
+#
+# The guard script + self-test are taken from the BASE branch, so a PR cannot
+# neuter the logic that gates it (bootstrap exception: while the base branch
+# predates the guard, the PR's own copy is used, with a notice). History is
+# fetched blobless (--filter=blob:none): the detector compares object ids only
+# and never reads file contents (~15 MB, a few seconds for the 1500-commit
+# window on this repo; the whole job runs well under a minute).
+name: Stale Base Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+concurrency:
+  group: stale-base-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: stale-base guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      ACK: ${{ contains(github.event.pull_request.labels.*.name, 'stale-base-ack') && '1' || '' }}
+    steps:
+      - name: Checkout target branch (guard logic comes from the base, not the PR)
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 1
+          submodules: false
+
+      - name: Fetch PR head + bounded history (blobless)
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags --filter=blob:none --depth=1500 origin \
+            "$HEAD_SHA" \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
+      - name: Snapshot the guard from the base branch
+        run: |
+          set -euo pipefail
+          if [ -f packages/scripts/stale-base-guard.mjs ]; then
+            cp packages/scripts/stale-base-guard.mjs \
+               packages/scripts/stale-base-guard.self-test.mjs \
+               "$RUNNER_TEMP/"
+          else
+            # Bootstrap: the base branch predates the guard — only possible on
+            # the PR that first lands it (and forks of that moment). Uses the
+            # PR's own copy; lazy blob fetch is allowed for just these two reads.
+            echo "::notice::stale-base guard is not on the base branch yet — bootstrapping the script from the PR head."
+            git show "${HEAD_SHA}:packages/scripts/stale-base-guard.mjs" \
+              > "$RUNNER_TEMP/stale-base-guard.mjs"
+            git show "${HEAD_SHA}:packages/scripts/stale-base-guard.self-test.mjs" \
+              > "$RUNNER_TEMP/stale-base-guard.self-test.mjs"
+          fi
+
+      - name: Self-test the guard on fixture repos
+        run: node "$RUNNER_TEMP/stale-base-guard.self-test.mjs"
+
+      - name: Detect silent reverts + stale base
+        env:
+          # The detector is plumbing-only; hard-disable promisor blob fetches
+          # so an accidental content read fails loudly instead of hitting the
+          # network.
+          GIT_NO_LAZY_FETCH: "1"
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/stale-base-guard.mjs" \
+            --base "refs/remotes/origin/${BASE_REF}" \
+            --head "$HEAD_SHA" \
+            --window 1200 \
+            --max-behind-commits 200 \
+            --max-behind-hours 72 \
+            ${ACK:+--ack} \
+            --github \
+            --summary "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,29 @@
+{
+  "base": "d9d1a47ccd842d9dac20bf055f27cbdc5cd73962",
+  "head": "b390396976172b64546c4095b9b4254632beb3ba",
+  "mergeBase": "d9d1a47ccd842d9dac20bf055f27cbdc5cd73962",
+  "staleness": {
+    "behindCommits": 0,
+    "behindHours": 0,
+    "failed": false,
+    "reason": null
+  },
+  "revertFindings": [
+    {
+      "path": "packages/cloud/shared/src/lib/services/wallet-signup.ts",
+      "status": "M",
+      "prBlob": "c75ff77d36b35e4c093b4d51a6aac449a3c9e60f",
+      "discards": [
+        {
+          "sha": "d9d1a47ccd842d9dac20bf055f27cbdc5cd73962",
+          "shortSha": "d9d1a47ccd",
+          "date": "2026-07-02T16:26:30-04:00",
+          "subject": "fix(cloud): wallet signup makes the creator OWNER of the org it creates (#11565)"
+        }
+      ]
+    }
+  ],
+  "deletionNotices": [],
+  "ack": false,
+  "verdict": "fail"
+}

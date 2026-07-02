@@ -1,0 +1,10 @@
+ok 1 - clean edit on fresh base passes
+ok 2 - stale-tree clobber fails; stale-base-ack overrides loudly
+ok 3 - heal PR (restore past a clobber) passes
+ok 4 - deletion-only PR passes with a notice
+ok 5 - byte-identical re-add of a deleted file passes
+ok 6 - staleness backstop (commits) fails; ack overrides
+ok 7 - staleness backstop (hours) fails
+ok 8 - --window bounds how far back reverts are detected
+ok 9 - missing merge-base fails as severe staleness; ack overrides
+stale-base-guard self-test: 9/9 passed

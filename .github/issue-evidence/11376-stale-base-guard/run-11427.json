@@ -1,0 +1,15 @@
+{
+  "base": "1c5be2f08163512e5fd9b91182549f077d1ca6be",
+  "head": "714e44327f3550d376738e7f67aa2226993156f1",
+  "mergeBase": "7c13426b7a250b1efd1dd6277b52f752aa47e12a",
+  "staleness": {
+    "behindCommits": 7,
+    "behindHours": 0.31,
+    "failed": false,
+    "reason": null
+  },
+  "revertFindings": [],
+  "deletionNotices": [],
+  "ack": false,
+  "verdict": "pass"
+}
