@@ -16,10 +16,10 @@ import {
 } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
@@ -355,19 +355,13 @@ app.post("/", async (c) => {
     const creditCheck = await checkAgentCreditGate(user.organization_id);
     orgBalanceForQuota = creditCheck.balance;
     if (!creditCheck.allowed) {
-      logger.warn("[agent-api] Agent creation blocked: insufficient credits", {
-        orgId: user.organization_id,
-        balance: creditCheck.balance,
-        required: AGENT_PRICING.MINIMUM_DEPOSIT,
-      });
-      throw new ApiError(
+      return c.json(
+        insufficientCredits402(
+          creditCheck,
+          "[agent-api] Agent creation blocked: insufficient credits",
+          { orgId: user.organization_id },
+        ),
         402,
-        "insufficient_credits",
-        creditCheck.error ?? "Insufficient credits",
-        {
-          requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-          currentBalance: creditCheck.balance,
-        },
       );
     }
 
