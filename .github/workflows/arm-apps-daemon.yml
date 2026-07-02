@@ -91,6 +91,7 @@ jobs:
       # `[ -n "$DEPLOY_HOST" ]` check reports the right missing-secret error.
       DEPLOY_HOST: ${{ (github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_HOST) || (github.event.inputs.target == 'cp-daemon' && secrets.ELIZA_PROVISIONING_HOST) || '' }}
       DEPLOY_SSH_KEY: ${{ (github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_SSH_KEY) || (github.event.inputs.target == 'cp-daemon' && secrets.ELIZA_PROVISIONING_SSH_KEY) || '' }}
+      CONTAINERS_SSH_KEY_INPUT: ${{ secrets.CONTAINERS_SSH_KEY || (github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_SSH_KEY) || (github.event.inputs.target == 'cp-daemon' && secrets.ELIZA_PROVISIONING_SSH_KEY) || '' }}
       SYSTEMD_UNIT: ${{ github.event.inputs.target == 'apps-worker' && 'eliza-apps-worker.service' || 'eliza-provisioning-worker.service' }}
       BASE_DOMAIN: ${{ vars.APPS_BASE_DOMAIN }}
       APP_NODE: ${{ github.event.inputs.app_node }}
@@ -104,6 +105,7 @@ jobs:
           KEY_SECRET="${{ github.event.inputs.target == 'apps-worker' && 'ELIZA_APPS_WORKER_SSH_KEY' || 'ELIZA_PROVISIONING_SSH_KEY' }}"
           [ -n "$DEPLOY_HOST" ] || { echo "::error::missing secret $HOST_SECRET on the '${{ github.event.inputs.environment }}' environment (target=${{ github.event.inputs.target }})"; fail=1; }
           [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::missing secret $KEY_SECRET"; fail=1; }
+          [ -n "$CONTAINERS_SSH_KEY_INPUT" ] || { echo "::error::missing container SSH key material: set secret CONTAINERS_SSH_KEY or $KEY_SECRET"; fail=1; }
           [ -n "$BASE_DOMAIN" ] || { echo "::error::set vars.APPS_BASE_DOMAIN on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
           [ -n "$APP_NODE" ] || { echo "::error::app_node input is required (id:ip:capacity)"; fail=1; }
           # Derive the Caddy admin URL from the app node IP (2nd colon field).
@@ -111,6 +113,27 @@ jobs:
           echo "$NODE_IP" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::app_node must be id:ip:capacity with a valid IPv4"; fail=1; }
           echo "CADDY_ADMIN=http://$NODE_IP:2019" >> "$GITHUB_ENV"
           [ "$fail" = 0 ] || exit 1
+
+      - name: Prepare container SSH key
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          cleanup() { rm -f "$tmp"; }
+          trap cleanup EXIT
+
+          # docker-ssh.ts consumes CONTAINERS_SSH_KEY as base64. Accept either
+          # a dedicated already-base64 CONTAINERS_SSH_KEY secret or the raw
+          # target deploy key used by appleboy/ssh-action, then forward one
+          # single-line base64 value to the remote upsert script.
+          if printf '%s' "$CONTAINERS_SSH_KEY_INPUT" | base64 -d >"$tmp" 2>/dev/null && grep -q 'BEGIN .*PRIVATE KEY' "$tmp"; then
+            containers_ssh_key_b64="$(printf '%s' "$CONTAINERS_SSH_KEY_INPUT" | tr -d '\r\n')"
+          else
+            containers_ssh_key_b64="$(printf '%s' "$CONTAINERS_SSH_KEY_INPUT" | base64 -w0)"
+          fi
+
+          [ -n "$containers_ssh_key_b64" ] || { echo "::error::container SSH key resolved to an empty value"; exit 1; }
+          echo "::add-mask::$containers_ssh_key_b64"
+          echo "CONTAINERS_SSH_KEY_B64=$containers_ssh_key_b64" >> "$GITHUB_ENV"
 
       # OPTIONAL: pull the tenant admin DSN straight from the apps-shared
       # terraform output so the password never appears in a workflow input or in
@@ -149,7 +172,7 @@ jobs:
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 5m
           # Only the values; the upsert logic is fixed here (mirrors arm-apps-daemon.mjs).
-          envs: APP_NODE,BASE_DOMAIN,CADDY_ADMIN,TENANT_ADMIN_DSN,EGRESS_PROXY,SYSTEMD_UNIT
+          envs: APP_NODE,BASE_DOMAIN,CADDY_ADMIN,TENANT_ADMIN_DSN,EGRESS_PROXY,SYSTEMD_UNIT,CONTAINERS_SSH_KEY_B64
           script: |
             set -euo pipefail
             F=/opt/eliza/cloud/.env.local
@@ -175,13 +198,14 @@ jobs:
             upsert APPS_CONTAINERS_ENABLED 1
             upsert CONTAINERS_DOCKER_NODES "$APP_NODE"
             upsert CONTAINERS_SSH_USER deploy
+            upsert CONTAINERS_SSH_KEY "$CONTAINERS_SSH_KEY_B64"
             upsert APPS_CADDY_ADMIN_URL "$CADDY_ADMIN"
             upsert CONTAINERS_PUBLIC_BASE_DOMAIN "$BASE_DOMAIN"
             upsert APPS_TENANT_ADMIN_DSN "$TENANT_ADMIN_DSN"
             upsert CONTAINERS_EGRESS_PROXY_URL "$EGRESS_PROXY"
 
             echo "--- apps env now on the box (secrets redacted) ---"
-            sudo grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" \
+            sudo grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|SSH_KEY|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" \
               | sed -E 's/(DSN|KEY)=.*/\1=<redacted>/'
 
             # Restart whichever daemon we armed: the dedicated apps-worker on the
