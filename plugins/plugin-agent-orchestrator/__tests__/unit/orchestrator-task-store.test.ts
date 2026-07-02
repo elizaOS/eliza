@@ -682,3 +682,47 @@ describe("RuntimeDbTaskStore", () => {
     expect(detail?.sessions[0]?.sessionId).toBe("session-1");
   });
 });
+
+describe("orchestrator-task-store audit follow-ups (#11028)", () => {
+  it("SQL deleteTask reports whether the task existed, not an unconditional true", async () => {
+    const store = new RuntimeDbTaskStore(new FakeSqlAdapter());
+    const { task } = await store.createTask(createInput({ title: "real" }));
+    expect(await store.deleteTask(task.id)).toBe(true);
+    // A task that never existed must return false so DELETE /tasks/:id can 404
+    // instead of answering a misleading 200.
+    expect(await store.deleteTask("does-not-exist")).toBe(false);
+    // Already deleted → false on a second call.
+    expect(await store.deleteTask(task.id)).toBe(false);
+  });
+
+  it("FileTaskStore merges a concurrent insert instead of clobbering it", async () => {
+    const path = await tempFile();
+    const a = new FileTaskStore(path);
+    const b = new FileTaskStore(path);
+    // Both instances load the empty file; each inserts a distinct task. Before
+    // the read-merge-write fix, b's whole-document write clobbered a's task.
+    const ta = await a.createTask(createInput({ title: "from A" }));
+    const tb = await b.createTask(createInput({ title: "from B" }));
+    const reader = new FileTaskStore(path);
+    const ids = (await reader.listTasks()).map((t) => t.id);
+    expect(ids).toContain(ta.task.id);
+    expect(ids).toContain(tb.task.id);
+  });
+
+  it("FileTaskStore delete is honored even when afterWrite re-reads the deleted task from a concurrent write", async () => {
+    const path = await tempFile();
+    const a = new FileTaskStore(path);
+    const seed = await a.createTask(createInput({ title: "seed" }));
+    // A concurrent insert lands on disk (a second instance persists task X).
+    const b = new FileTaskStore(path);
+    const x = await b.createTask(createInput({ title: "X" }));
+    // `a` (which only knows about seed) deletes it. afterWrite re-reads disk
+    // {seed, X}; the tombstone drops seed while the concurrent insert X survives.
+    // Without the tombstone the re-read would resurrect seed.
+    expect(await a.deleteTask(seed.task.id)).toBe(true);
+    const reader = new FileTaskStore(path);
+    const ids = (await reader.listTasks()).map((t) => t.id);
+    expect(ids).not.toContain(seed.task.id);
+    expect(ids).toContain(x.task.id);
+  });
+});
