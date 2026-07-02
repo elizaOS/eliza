@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { logger } from "../../../logger.ts";
 import type {
 	EvaluatorProcessorContext,
 	IAgentRuntime,
 	Memory,
 	UUID,
 } from "../../../types/index.ts";
+import { parseExtractorOutputTolerant } from "./factExtractor.schema.ts";
 import { factMemoryEvaluator } from "./reflection-items.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -200,5 +202,68 @@ describe("reflection evaluator schemas are strict-structured-output safe", () =>
 			if (!schema) continue;
 			assertStrictObjectNodes(schema, evaluator.name ?? "evaluator");
 		}
+	});
+});
+
+describe("factExtractor tolerant parsing (#11235)", () => {
+	it("accepts an add op that omits structured_fields (wire-optional, prompt-unnamed)", () => {
+		const parsed = parseExtractorOutputTolerant({
+			ops: [
+				{ op: "add_durable", claim: "lives in Berlin", category: "identity" },
+			],
+		});
+		expect(parsed).not.toBeNull();
+		expect(parsed?.ops).toHaveLength(1);
+		expect(parsed?.ops[0]).toMatchObject({
+			op: "add_durable",
+			structured_fields: {},
+		});
+	});
+
+	it("keeps valid ops when one op is malformed, and warns about the drop", () => {
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const parsed = parseExtractorOutputTolerant({
+				ops: [
+					{ op: "add_durable", claim: "likes tea", category: "preference" },
+					{ op: "contradict" },
+					{ op: "strengthen", factId: "fact-123" },
+				],
+			});
+			expect(parsed).not.toBeNull();
+			expect(parsed?.ops.map((o) => o.op)).toEqual([
+				"add_durable",
+				"strengthen",
+			]);
+			expect(warnSpy).toHaveBeenCalledTimes(1);
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "factMemory",
+					count: 1,
+					issues: [expect.stringContaining("factId")],
+				}),
+				"dropped malformed extractor op(s)",
+			);
+		} finally {
+			warnSpy.mockRestore();
+		}
+	});
+
+	it("does not warn when every op parses", () => {
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			parseExtractorOutputTolerant({
+				ops: [{ op: "strengthen", factId: "fact-123" }],
+			});
+			expect(warnSpy).not.toHaveBeenCalled();
+		} finally {
+			warnSpy.mockRestore();
+		}
+	});
+
+	it("returns null only when the envelope itself is not { ops: array }", () => {
+		expect(parseExtractorOutputTolerant({ nope: true })).toBeNull();
+		expect(parseExtractorOutputTolerant(null)).toBeNull();
+		expect(parseExtractorOutputTolerant({ ops: [] })).toEqual({ ops: [] });
 	});
 });

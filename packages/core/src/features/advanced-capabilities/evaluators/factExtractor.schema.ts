@@ -11,6 +11,7 @@
  */
 
 import z from "zod";
+import { logger } from "../../../logger.ts";
 
 /**
  * Categories that durable facts can belong to. Closed set — the extractor
@@ -78,7 +79,7 @@ const AddDurableOpSchema = z.object({
 	op: z.literal("add_durable"),
 	claim: z.string().min(1),
 	category: DurableCategoryEnum,
-	structured_fields: StructuredFieldsSchema,
+	structured_fields: StructuredFieldsSchema.optional().default({}),
 	keywords: KeywordsSchema,
 	verification_status: VerificationStatusEnum.optional(),
 	reason: z.string().optional(),
@@ -88,7 +89,7 @@ const AddCurrentOpSchema = z.object({
 	op: z.literal("add_current"),
 	claim: z.string().min(1),
 	category: CurrentCategoryEnum,
-	structured_fields: StructuredFieldsSchema,
+	structured_fields: StructuredFieldsSchema.optional().default({}),
 	keywords: KeywordsSchema,
 	/**
 	 * ISO timestamp of when the state began. Optional in the schema because
@@ -149,3 +150,44 @@ export const ExtractorOutputSchema = z.object({
 });
 
 export type ExtractorOutput = z.infer<typeof ExtractorOutputSchema>;
+
+/**
+ * Tolerant extraction parse for production evaluator output.
+ *
+ * The extractor emits an `{ ops: [...] }` envelope. A single malformed op must
+ * not discard valid sibling ops, so this validates the envelope leniently and
+ * then validates each op independently. Dropped ops are logged here because the
+ * evaluator `parse` hook has no runtime/logger in scope.
+ */
+export function parseExtractorOutputTolerant(
+	output: unknown,
+): ExtractorOutput | null {
+	const envelope = z.object({ ops: z.array(z.unknown()) }).safeParse(output);
+	if (!envelope.success) return null;
+
+	const ops: ExtractorOp[] = [];
+	const issues: string[] = [];
+	for (const raw of envelope.data.ops) {
+		const parsed = OpSchema.safeParse(raw);
+		if (parsed.success) {
+			ops.push(parsed.data);
+			continue;
+		}
+		issues.push(
+			parsed.error.issues
+				.map(
+					(issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`,
+				)
+				.join("; "),
+		);
+	}
+
+	if (issues.length > 0) {
+		logger.warn(
+			{ src: "factMemory", count: issues.length, issues },
+			"dropped malformed extractor op(s)",
+		);
+	}
+
+	return { ops };
+}

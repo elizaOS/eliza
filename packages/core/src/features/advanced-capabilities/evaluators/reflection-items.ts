@@ -40,6 +40,7 @@ import {
 	type DecayOp,
 	type ExtractorOp,
 	ExtractorOutputSchema,
+	parseExtractorOutputTolerant,
 	type StrengthenOp,
 } from "./factExtractor.schema.ts";
 import {
@@ -901,8 +902,11 @@ Known current facts:
 ${formatKnownLines(current.slice(0, MAX_KNOWN_PER_KIND), "current")}`;
 	},
 	parse(output) {
-		const result = ExtractorOutputSchema.safeParse(output);
-		return result.success ? result.data : null;
+		// Tolerant, op-by-op: a single malformed op must not discard the whole
+		// turn's valid fact ops. Drops are logged inside
+		// parseExtractorOutputTolerant because this parse contract has no
+		// runtime/logger. Returns null only when the envelope is not `{ ops: [...] }`.
+		return parseExtractorOutputTolerant(output);
 	},
 	processors: [
 		{
