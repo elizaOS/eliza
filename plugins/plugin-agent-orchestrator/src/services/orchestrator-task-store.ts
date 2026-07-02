@@ -533,27 +533,33 @@ export class FileTaskStore extends InMemoryTaskStore {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const contents = await readFile(this.filePath, "utf8");
-      const parsed = JSON.parse(contents) as unknown;
-      if (Array.isArray(parsed)) {
-        this.hydrate(
-          parsed
-            .map(normalizeTaskDocument)
-            .filter((doc): doc is OrchestratorTaskDocument => doc !== null),
-        );
+    await this.enqueue(async () => {
+      if (this.loaded) return;
+      try {
+        const contents = await readFile(this.filePath, "utf8");
+        const parsed = JSON.parse(contents) as unknown;
+        if (Array.isArray(parsed)) {
+          this.hydrate(
+            parsed
+              .map(normalizeTaskDocument)
+              .filter((doc): doc is OrchestratorTaskDocument => doc !== null),
+          );
+        } else {
+          this.hydrate([]);
+        }
+      } catch (error) {
+        const code =
+          isRecord(error) && typeof error.code === "string" ? error.code : "";
+        if (code !== "ENOENT") {
+          this.logger?.warn?.(
+            "[OrchestratorTaskStore] task file unreadable; starting empty",
+            error,
+          );
+        }
+        this.hydrate([]);
       }
-    } catch (error) {
-      const code =
-        isRecord(error) && typeof error.code === "string" ? error.code : "";
-      if (code !== "ENOENT") {
-        this.logger?.warn?.(
-          "[OrchestratorTaskStore] task file unreadable; starting empty",
-          error,
-        );
-      }
-    }
-    this.loaded = true;
+      this.loaded = true;
+    });
   }
 
   override async createTask(input: CreateTaskInput) {
