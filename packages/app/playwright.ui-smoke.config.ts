@@ -167,7 +167,20 @@ export default defineConfig({
           {
             name: "webkit",
             testMatch: WEBKIT_POINTER_FOCUS_SPEC,
-            use: { ...devices["Desktop Safari"] },
+            use: {
+              ...devices["Desktop Safari"],
+              // Same parity as the desktop-webkit lane below: the PROD renderer
+              // registers /sw.js (skipWaiting + clients.claim), and WebKit —
+              // unlike Chromium — does NOT bypass a controlling service worker
+              // when page.route interception is active. Once the SW claims the
+              // page, every /api/* fetch silently goes AROUND the per-spec
+              // route fixtures to the real stub server (verified via an
+              // in-page probe: a route-fulfilled /api/conversations returned
+              // the stub server's conversations instead of the fixture's), so
+              // e.g. the conversation-persistence reload rehydrated a foreign
+              // thread and timed out (#11112 finding 2).
+              serviceWorkers: "block" as const,
+            },
           },
         ]
       : []),
