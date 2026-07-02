@@ -35,10 +35,14 @@ export function parseProviderApiErrorText(
   text: string
 ): { statusCode?: number; message: string } | null {
   const trimmed = text.trim();
-  const match = /^API Error:\s*(\d{3})\b[\s:.-]*(.*)$/is.exec(trimmed);
-  if (!match) return null;
+  // The SDK also emits NON-numeric envelopes ("API Error: Request was
+  // aborted.", "API Error: Usage credits required for 1M context · …") — the
+  // CLI's own detector anchors on `startsWith("API Error")`, so match any
+  // "API Error"-prefixed envelope and parse the 3-digit status when present.
+  if (!/^API Error(:|$)/i.test(trimmed)) return null;
+  const status = /^API Error:\s*(\d{3})\b/i.exec(trimmed);
   return {
-    statusCode: Number.parseInt(match[1], 10),
+    statusCode: status ? Number.parseInt(status[1], 10) : undefined,
     message: trimmed,
   };
 }
