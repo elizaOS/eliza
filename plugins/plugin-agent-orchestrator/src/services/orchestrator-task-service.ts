@@ -1609,6 +1609,9 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     await this.store.updateTask(taskId, {
       archived: false,
+      // A paused-then-archived task must not reopen frozen: paused:true would
+      // keep advanceTaskStatus inert with no archive surface left to clear it.
+      paused: false,
       status: doc.sessions.length > 0 ? "active" : "open",
       archivedAt: null,
       closedAt: null,
