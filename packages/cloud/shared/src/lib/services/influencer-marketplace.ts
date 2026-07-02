@@ -337,13 +337,20 @@ export class InfluencerMarketplaceService {
   }
 
   /**
-   * Refund the advertiser (deliverable rejected, influencer declined, or cancel).
+   * Refund the advertiser (influencer declined, or advertiser cancel).
    *
-   * Refund-then-finalize: the refund runs BEFORE the status move. The refund is
-   * idempotent on the booking id (one refund per booking, ever), so a
-   * crash/retry refunds at most once, and a refund failure leaves the prior
-   * status so the operation can be retried — this can never mark a booking
-   * rejected/cancelled while the advertiser is still debited.
+   * Claim-then-refund (#11167, mirroring the #11116 `delivered` fork): the
+   * offer/accept refunds ALSO race a payout — `accepted` is one hop from the
+   * payable `delivered` state, so a refund that moves money before claiming
+   * the booking can collide with a concurrent deliver + approve and pay one
+   * escrow out twice. So the refund first CLAIMS the booking with an atomic
+   * CAS `<from> → refunding` — once claimed, no other transition can enter
+   * (accept needs `offered`, submitDeliverable needs `accepted`, approve needs
+   * `delivered`/`approving`) — and only then moves money. The refund is
+   * idempotent on the booking id (one refund per booking, ever) and a refund
+   * failure leaves the booking `refunding` so the operation can be resumed —
+   * this can never mark a booking rejected/cancelled while the advertiser is
+   * still debited, and never refunds an escrow a payout already claimed.
    */
   private async refund(
     id: string,
@@ -352,7 +359,20 @@ export class InfluencerMarketplaceService {
   ): Promise<BookingResult> {
     const booking = await this.getBooking(id);
     if (!booking) return { ok: false, error: "Booking not found" };
-    if (!allowedFrom.includes(booking.status)) {
+
+    if (allowedFrom.includes(booking.status)) {
+      const claimed = await this.transition(id, booking.status, "refunding");
+      if (!claimed) {
+        // Lost the claim to a concurrent transition — re-read and continue
+        // only if a refund claim (concurrent or crashed) owns the booking.
+        const current = await this.getBooking(id);
+        if (current?.status !== "refunding") {
+          return { ok: false, error: "Not in a refundable state" };
+        }
+      }
+    } else if (booking.status !== "refunding") {
+      // `refunding` is a resume (a prior attempt claimed but hadn't finished
+      // refunding); anything else is not ours to refund.
       return { ok: false, error: "Not in a refundable state" };
     }
 
@@ -365,40 +385,27 @@ export class InfluencerMarketplaceService {
         metadata: { kind: "influencer_refund", bookingId: id },
       });
     } catch (error) {
-      logger.error("[Influencer] escrow refund failed; booking left in prior status for retry", {
+      logger.error("[Influencer] escrow refund failed; booking left refunding for retry", {
         bookingId: id,
-        from: booking.status,
         to,
         error,
       });
       return { ok: false, error: "Refund failed — retry" };
     }
 
-    const moved = await this.transition(id, booking.status, to, { resolved_at: new Date() });
+    const moved = await this.transition(id, "refunding", to, { resolved_at: new Date() });
     if (moved) return { ok: true, booking: moved };
 
-    // The refund is committed, so the booking MUST end in a refunded state.
+    // The refund is committed, so the booking MUST already be in a refunded
+    // state: once the claim is won nothing but a concurrent resume of this
+    // refund can move the booking.
     const current = await this.getBooking(id);
-    if (!current) return { ok: false, error: "Booking not found" };
-    if (current.status === "rejected" || current.status === "cancelled") {
-      return { ok: true, booking: current }; // a concurrent refund path finalized first
+    if (current && (current.status === "rejected" || current.status === "cancelled")) {
+      return { ok: true, booking: current }; // a concurrent resume finalized first
     }
-    if (current.status !== "approved") {
-      // A non-money transition (e.g. accept) raced in; force-finalize so the
-      // booking state agrees with the committed refund.
-      const forced = await this.transition(id, current.status, to, { resolved_at: new Date() });
-      if (forced) {
-        logger.warn("[Influencer] booking force-finalized after refund raced a transition", {
-          bookingId: id,
-          racedStatus: current.status,
-          to,
-        });
-        return { ok: true, booking: forced };
-      }
-    }
-    logger.error("[Influencer] refund committed but booking could not be finalized", {
+    logger.error("[Influencer] refund committed but booking moved off refunding", {
       bookingId: id,
-      status: current.status,
+      status: current?.status,
       to,
     });
     return { ok: false, error: "Booking changed state during refund" };
@@ -422,12 +429,12 @@ export class InfluencerMarketplaceService {
   }
 
   /**
-   * Refund side of the `delivered` money fork (#11116). Unlike the offer/accept
-   * refunds (which can't collide with a payout), rejecting a *delivered*
+   * Refund side of the `delivered` money fork (#11116). Rejecting a *delivered*
    * booking races `approveBooking` for the same escrow, so it must CLAIM the
    * fork (CAS `delivered → refunding`) BEFORE refunding — exactly one of
    * approve/reject wins, the loser refunds nothing. Resumable from `refunding`
-   * (the refund is idempotent on the booking id). Mirrors approveBooking.
+   * (the refund is idempotent on the booking id). Mirrors approveBooking; the
+   * generic offer/accept `refund()` uses the same claim (#11167).
    */
   private async rejectDelivered(id: string, booking: InfluencerBooking): Promise<BookingResult> {
     if (booking.status === "delivered") {
