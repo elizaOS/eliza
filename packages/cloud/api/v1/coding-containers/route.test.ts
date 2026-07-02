@@ -43,7 +43,20 @@ mock.module("@/lib/eliza-agent-web-ui", () => ({
     `https://${sandbox.id}.elizacloud.ai`,
 }));
 
+// The route imports this class for its instanceof quota branch; the mocked
+// module must export it or the route module fails to load.
+class AgentQuotaExceededError extends Error {
+  constructor(
+    readonly count: number,
+    readonly max: number,
+  ) {
+    super(`Agent quota exceeded: ${count}/${max}`);
+    this.name = "AgentQuotaExceededError";
+  }
+}
+
 mock.module("@/lib/services/eliza-sandbox", () => ({
+  AgentQuotaExceededError,
   elizaSandboxService: {
     createCodingContainerAgent,
     getAgent: mock(async () => undefined),
@@ -208,14 +221,14 @@ describe("coding containers route", () => {
     );
 
     expect(response.status).toBe(402);
-    expect(await response.json()).toEqual(
-      expect.objectContaining({
-        success: false,
-        code: "insufficient_credits",
-        currentBalance: 0,
-        requiredBalance: 0.1,
-      }),
-    );
+    // Exact-match on purpose: the canonical insufficientCredits402 wire shape.
+    expect(await response.json()).toEqual({
+      success: false,
+      code: "insufficient_credits",
+      error: "Insufficient credits",
+      currentBalance: 0,
+      requiredBalance: 0.1,
+    });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     // The gate must short-circuit BEFORE any paid compute is provisioned.
     expect(createCodingContainerAgent).not.toHaveBeenCalled();
