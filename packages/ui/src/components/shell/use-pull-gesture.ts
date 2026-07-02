@@ -460,6 +460,26 @@ export function usePullGesture(
     ],
   );
 
+  // A `lostpointercapture` that BUBBLED UP from a descendant (its `target` is
+  // not the element the binding is on) is that child's IMPLICIT touch capture
+  // being handed to US at axis-commit — a swipe that STARTS on an interactive/
+  // selectable child (e.g. a message bubble) gives that child implicit pointer
+  // capture on pointerdown; when the deferred-capture path then calls
+  // `setPointerCapture` on this surface, the child fires `lostpointercapture`,
+  // which bubbles here. Treating it as a cancel (as `onLostPointerCapture:
+  // cancel` did) aborts the swipe the instant it commits, so a genuine
+  // horizontal swipe that began on a bubble self-cancels. Ignore it: only a
+  // capture loss on the bound element ITSELF (`target === currentTarget` —
+  // device rotation / OS takeover, the case this handler exists for) should
+  // settle the gesture.
+  const lostCapture = React.useCallback(
+    (event: React.PointerEvent) => {
+      if (event.target !== event.currentTarget) return;
+      cancel(event);
+    },
+    [cancel],
+  );
+
   // Cancel any in-flight coalesced frame if the consumer unmounts mid-gesture.
   React.useEffect(() => cancelDrag, [cancelDrag]);
 
@@ -468,6 +488,6 @@ export function usePullGesture(
     onPointerMove,
     onPointerUp: finish,
     onPointerCancel: cancel,
-    onLostPointerCapture: cancel,
+    onLostPointerCapture: lostCapture,
   };
 }

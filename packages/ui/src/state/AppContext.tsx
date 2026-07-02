@@ -88,6 +88,7 @@ import { useMiscUiState } from "./useMiscUiState";
 import { useNavigationState } from "./useNavigationState";
 import { usePairingState } from "./usePairingState";
 import { usePluginsSkillsState } from "./usePluginsSkillsState";
+import { useResyncReconcile } from "./useResyncReconcile";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTabSync } from "./useTabSync";
 import { useTriggersState } from "./useTriggersState";
@@ -1406,6 +1407,12 @@ function AppProviderInner({
       }
     });
   }, []);
+
+  // Live consumer of the RESYNC_EVENT dispatched above. Without this the resync
+  // signal had no listener, so a reconnect never reconciled messages the agent
+  // emitted while the socket was down. This reloads the active conversation from
+  // the server on resync so those missed messages appear without a refresh.
+  useResyncReconcile({ activeConversationIdRef, loadConversationMessages });
 
   // ── Pairing ────────────────────────────────────────────────────────
 

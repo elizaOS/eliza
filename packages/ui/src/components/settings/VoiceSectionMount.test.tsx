@@ -1,0 +1,98 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// jsdom in this env ships a localStorage whose methods can throw; back it with an
+// in-memory Storage so the persisted wake-word pref actually round-trips.
+{
+  const store = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      get length() {
+        return store.size;
+      },
+      clear: () => store.clear(),
+      getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
+      key: (i: number) => Array.from(store.keys())[i] ?? null,
+      removeItem: (k: string) => void store.delete(k),
+      setItem: (k: string, v: string) => void store.set(k, String(v)),
+    } as Storage,
+  });
+}
+
+const clientMock = vi.hoisted(() => ({
+  getConfig: vi.fn(),
+  updateConfig: vi.fn(),
+  getLocalInferenceDeviceTier: vi.fn(),
+  fetch: vi.fn(),
+}));
+
+vi.mock("../../api/client", () => ({ client: clientMock }));
+
+// Voice profiles hit the network on mount; stub the sub-section since these
+// tests are about the wake-word toggle wiring, not profiles.
+vi.mock("./VoiceProfileSection", () => ({
+  VoiceProfileSection: () => null,
+}));
+
+import { VoiceSectionMount } from "./VoiceSectionMount";
+
+const WAKE_KEY = "eliza:voice:wake-word-enabled";
+
+describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    clientMock.getConfig.mockResolvedValue({});
+    clientMock.updateConfig.mockResolvedValue({});
+    clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+      tier: "GOOD",
+      reason: "",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("defaults the wake-word toggle ON (no stored pref) and reflects it", async () => {
+    render(<VoiceSectionMount />);
+    const toggle = (await screen.findByTestId(
+      "voice-section-wake-toggle",
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    // Let the mount-time async config/tier fetches settle to avoid act warnings.
+    await waitFor(() =>
+      expect(clientMock.getLocalInferenceDeviceTier).toHaveBeenCalled(),
+    );
+  });
+
+  it("persists the toggle so the shell's wake pref maps to actual enablement", async () => {
+    const user = userEvent.setup();
+    render(<VoiceSectionMount />);
+    const toggle = (await screen.findByTestId(
+      "voice-section-wake-toggle",
+    )) as HTMLInputElement;
+
+    // Turning it off writes the persisted pref the shell reads for wake gating.
+    await user.click(toggle);
+    await waitFor(() => expect(toggle.checked).toBe(false));
+    expect(window.localStorage.getItem(WAKE_KEY)).toBe("false");
+
+    // Turning it back on flips the pref again.
+    await user.click(toggle);
+    await waitFor(() => expect(toggle.checked).toBe(true));
+    expect(window.localStorage.getItem(WAKE_KEY)).toBe("true");
+  });
+
+  it("reflects a persisted wake-word-disabled pref on mount", async () => {
+    window.localStorage.setItem(WAKE_KEY, "false");
+    render(<VoiceSectionMount />);
+    const toggle = (await screen.findByTestId(
+      "voice-section-wake-toggle",
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+});

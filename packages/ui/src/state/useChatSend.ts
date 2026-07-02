@@ -870,6 +870,38 @@ export function useChatSend(deps: UseChatSendDeps) {
     [setConversationMessages],
   );
 
+  // Re-attach a stopped/interrupted turn's partial reply after the post-turn
+  // history reload full-replaced it away. The server frequently does NOT persist
+  // a reply that was cut off mid-stream, so the reload returns a thread without
+  // it and the bubble the user was watching stream in silently vanishes. Append
+  // the partial as an interrupted assistant turn — but ONLY when the reloaded
+  // thread's last message is not already an assistant turn (i.e. the server has
+  // no reply for this turn). When the server DID persist a reply the reload
+  // already carries it, so it is kept as-is and never duplicated.
+  const reattachInterruptedPartial = useCallback(
+    (partialText: string) => {
+      const text = partialText.trim();
+      if (!text) return;
+      setConversationMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") return prev;
+        return [
+          ...prev,
+          {
+            id: `local-interrupted-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+            role: "assistant",
+            text,
+            timestamp: Date.now(),
+            interrupted: true,
+          },
+        ];
+      });
+    },
+    [setConversationMessages],
+  );
+
   const runQueuedChatSend = useCallback(
     async (turn: Omit<QueuedChatSend, "resolve" | "reject">) => {
       const hasAttachedImages = Boolean(turn.images?.length);
@@ -1117,7 +1149,15 @@ export function useChatSend(deps: UseChatSendDeps) {
           });
         }
 
-        if (!data.completed && streamedAssistantText.trim()) {
+        // A stopped / dropped turn keeps a partial reply the user was watching.
+        // Snapshot it BEFORE the reload below (which full-replaces local state
+        // with the server's copy) so it can be re-attached if the server never
+        // persisted it.
+        const interruptedPartial =
+          !data.completed && streamedAssistantText.trim()
+            ? data.text.trim() || streamedAssistantText
+            : null;
+        if (interruptedPartial) {
           applyStreamingTextModification(setConversationMessages, {
             messageId: assistantMsgId,
             mode: "interrupt",
@@ -1128,6 +1168,12 @@ export function useChatSend(deps: UseChatSendDeps) {
         // mirrored by the optimistic streaming draft in local state.
         if (activeConversationIdRef.current === convId) {
           await loadConversationMessages(convId);
+          // The reload above full-replaces the thread; a stopped reply is often
+          // NOT persisted server-side, so re-attach the partial the user watched
+          // stream in (no-op / no duplicate when the server kept it).
+          if (interruptedPartial) {
+            reattachInterruptedPartial(interruptedPartial);
+          }
         }
 
         const userMessageCount = conversationMessagesRef.current.filter(
@@ -1392,6 +1438,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setCompanionMessageCutoffTs,
       setConversationMessages,
       dropEmptyAssistantPlaceholder,
+      reattachInterruptedPartial,
       setConversations,
       setActionNotice,
       setChatInput,
@@ -1727,7 +1774,13 @@ export function useChatSend(deps: UseChatSendDeps) {
             });
           }
 
-          if (!data.completed && streamedAssistantText.trim()) {
+          // Snapshot a stopped/dropped partial before the reload below so it can
+          // survive a full-replace the server's copy lacks (see runQueuedChatSend).
+          const interruptedPartial =
+            !data.completed && streamedAssistantText.trim()
+              ? data.text.trim() || streamedAssistantText
+              : null;
+          if (interruptedPartial) {
             applyStreamingTextModification(setConversationMessages, {
               messageId: assistantMsgId,
               mode: "interrupt",
@@ -1738,6 +1791,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           // additional action-generated messages during a successful send.
           if (activeConversationIdRef.current === convId) {
             await loadConversationMessages(convId);
+            if (interruptedPartial) {
+              reattachInterruptedPartial(interruptedPartial);
+            }
           }
 
           void loadConversations();
