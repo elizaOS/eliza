@@ -76,7 +76,10 @@ describe("LifeOps inbox triage schema bootstrap", () => {
       source: "gmail",
       channelName: "Newsletter Weekly",
       channelType: "email",
-      classification: "fyi",
+      // "info" is the low-priority label in the triage vocabulary owned by
+      // plugin-inbox (ignore/info/notify/needs_reply/urgent); the legacy
+      // "fyi" label pre-dates the #10778 carve-out and fails row parsing.
+      classification: "info",
       urgency: "low",
       confidence: 0.6,
       snippet: "Weekly product newsletter",

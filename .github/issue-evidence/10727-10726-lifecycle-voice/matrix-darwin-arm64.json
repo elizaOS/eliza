@@ -1,0 +1,3834 @@
+{
+  "schemaVersion": 1,
+  "issue": 10727,
+  "observedAt": "2026-07-02T08:21:53.824Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "totalRamGb": 128,
+    "freeRamGb": 8.1,
+    "gpuBackend": "metal",
+    "deviceBackends": [
+      "cpu",
+      "metal"
+    ],
+    "expectedPrimaryBackend": "metal",
+    "cpuFallbackAllowed": false,
+    "openvinoAsrDevice": null
+  },
+  "rows": [
+    {
+      "key": "eliza-1-2b:text",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "text",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/2b/text/eliza-1-2b-128k.gguf",
+      "bundleFile": "text/eliza-1-2b-128k.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b-128k.gguf?download=true",
+      "bootPath": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler",
+      "publishStatus": "published",
+      "quantization": {
+        "defaultVariantId": "q4_k_m",
+        "publishedVariantIds": [
+          "q4_k_m"
+        ],
+        "plannedVariantIds": [
+          "q3_k_m",
+          "q4_0",
+          "q5_k_m",
+          "q6_k",
+          "q8_0",
+          "wna8o8"
+        ],
+        "mobilePreferredVariantIds": [
+          "q4_0"
+        ]
+      },
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "componentFile": {
+          "status": "present",
+          "detail": "component file present (4967494592 bytes)",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+          "sizeBytes": 4967494592
+        }
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "text has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b-128k.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:45.536Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b-128k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "pass",
+          "detail": "bundle is installed locally",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "fail",
+          "detail": "load/run threw: Model \"eliza-1-2b\" is candidate-only — its manifest (version 0.0.1-local.1-gemma4) reports evals.textEval.passed=false. Refusing to activate. Failed evals: textEval, voiceRtf, e2eLoopOk, thirtyTurnOk, asrWer, vadLatencyMs, expressive. Wait for the publisher to flip the manifest off candidate/weights-staged and re-fetch the bundle. (backend: metal)",
+          "checkedAt": "2026-07-02T08:21:53.817Z"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": [
+        "loadsAndRunsOnDevice: load/run threw: Model \"eliza-1-2b\" is candidate-only — its manifest (version 0.0.1-local.1-gemma4) reports evals.textEval.passed=false. Refusing to activate. Failed evals: textEval, voiceRtf, e2eLoopOk, thirtyTurnOk, asrWer, vadLatencyMs, expressive. Wait for the publisher to flip the manifest off candidate/weights-staged and re-fetch the bundle. (backend: metal)"
+      ]
+    },
+    {
+      "key": "eliza-1-2b:voice",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "voice",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf",
+      "bundleFile": "tts/kokoro/kokoro-82m-v1_0.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true",
+      "bootPath": "TEXT_TO_SPEECH handler via the local voice pipeline",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf",
+        "componentFile": {
+          "status": "missing",
+          "detail": "component file is missing from the installed bundle",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf"
+        }
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "voice has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_TO_SPEECH handler via the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:45.927Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "fail",
+          "detail": "component file is missing from the installed bundle",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "fail",
+          "detail": "bundle is installed but missing bundleVerifiedAt on-device verification"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": [
+        "installed: component file is missing from the installed bundle",
+        "loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification"
+      ]
+    },
+    {
+      "key": "eliza-1-2b:asr",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "asr",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/2b/asr/mmproj-audio-2b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-2b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/asr/mmproj-audio-2b-bf16.gguf?download=true",
+      "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/asr/mmproj-audio-2b-bf16.gguf",
+        "componentFile": {
+          "status": "present",
+          "detail": "component file present (986833376 bytes)",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/asr/mmproj-audio-2b-bf16.gguf",
+          "sizeBytes": 986833376
+        }
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/asr/mmproj-audio-2b-bf16.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:46.055Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/asr/mmproj-audio-2b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "pass",
+          "detail": "bundle is installed locally",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "fail",
+          "detail": "bundle is installed but missing bundleVerifiedAt on-device verification"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": [
+        "loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification"
+      ]
+    },
+    {
+      "key": "eliza-1-2b:vad",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "vad",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/2b/vad/silero-vad-v5.gguf",
+      "bundleFile": "vad/silero-vad-v5.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vad/silero-vad-v5.gguf?download=true",
+      "bootPath": "voice activity detection inside the local voice pipeline",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.gguf",
+        "componentFile": {
+          "status": "present",
+          "detail": "component file present (620736 bytes)",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.gguf",
+          "sizeBytes": 620736
+        }
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vad has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "voice activity detection inside the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:46.304Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "pass",
+          "detail": "bundle is installed locally",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "fail",
+          "detail": "bundle is installed but missing bundleVerifiedAt on-device verification"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": [
+        "loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification"
+      ]
+    },
+    {
+      "key": "eliza-1-2b:embedding",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "embedding",
+      "expected": true,
+      "catalogAdvertised": false,
+      "sourceRepo": null,
+      "sourceFile": null,
+      "bundleFile": null,
+      "downloadUrl": null,
+      "bootPath": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler",
+      "knownGap": {
+        "kind": "served-by-alternate-runtime",
+        "reason": "tier ships no bundle embedding artifact by design; TEXT_EMBEDDING is served by the gte-small_fp16.gguf preset (ChristianAzinn/gte-small-gguf, 384-dim — matches plugin-sql's dim384 column; see runtime/embedding-presets.ts)"
+      },
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "skipped",
+          "detail": "tier ships no bundle embedding artifact by design; TEXT_EMBEDDING is served by the gte-small_fp16.gguf preset (ChristianAzinn/gte-small-gguf, 384-dim — matches plugin-sql's dim384 column; see runtime/embedding-presets.ts)"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "skipped",
+          "detail": "tier ships no bundle embedding artifact by design; TEXT_EMBEDDING is served by the gte-small_fp16.gguf preset (ChristianAzinn/gte-small-gguf, 384-dim — matches plugin-sql's dim384 column; see runtime/embedding-presets.ts)"
+        },
+        "published": {
+          "status": "skipped",
+          "detail": "tier ships no bundle embedding artifact by design; TEXT_EMBEDDING is served by the gte-small_fp16.gguf preset (ChristianAzinn/gte-small-gguf, 384-dim — matches plugin-sql's dim384 column; see runtime/embedding-presets.ts)"
+        },
+        "downloadable": {
+          "status": "skipped",
+          "detail": "tier ships no bundle embedding artifact by design; TEXT_EMBEDDING is served by the gte-small_fp16.gguf preset (ChristianAzinn/gte-small-gguf, 384-dim — matches plugin-sql's dim384 column; see runtime/embedding-presets.ts)"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "skipped",
+          "detail": "tier ships no bundle embedding artifact by design; TEXT_EMBEDDING is served by the gte-small_fp16.gguf preset (ChristianAzinn/gte-small-gguf, 384-dim — matches plugin-sql's dim384 column; see runtime/embedding-presets.ts)"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "tier ships no bundle embedding artifact by design; TEXT_EMBEDDING is served by the gte-small_fp16.gguf preset (ChristianAzinn/gte-small-gguf, 384-dim — matches plugin-sql's dim384 column; see runtime/embedding-presets.ts)"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": []
+    },
+    {
+      "key": "eliza-1-2b:vision",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "vision",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/2b/vision/mmproj-2b.gguf",
+      "bundleFile": "vision/mmproj-2b.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vision/mmproj-2b.gguf?download=true",
+      "bootPath": "IMAGE_DESCRIPTION handler and fused vision context path",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vision/mmproj-2b.gguf",
+        "componentFile": {
+          "status": "present",
+          "detail": "component file present (557367776 bytes)",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vision/mmproj-2b.gguf",
+          "sizeBytes": 557367776
+        }
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vision has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "IMAGE_DESCRIPTION handler and fused vision context path"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vision/mmproj-2b.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:46.409Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vision/mmproj-2b.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "pass",
+          "detail": "bundle is installed locally",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "fail",
+          "detail": "bundle is installed but missing bundleVerifiedAt on-device verification"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": [
+        "loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification"
+      ]
+    },
+    {
+      "key": "eliza-1-2b:litert",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "litert",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/2b/text/eliza-1-2b.litertlm",
+      "bundleFile": "text/eliza-1-2b.litertlm",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b.litertlm?download=true",
+      "bootPath": "mobile LiteRT-LM loader for on-device text/vision/audio",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm",
+        "componentFile": {
+          "status": "missing",
+          "detail": "component file is missing from the installed bundle",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm"
+        }
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "litert has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "mobile LiteRT-LM loader for on-device text/vision/audio"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b.litertlm?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:46.557Z",
+          "httpStatus": 404,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b.litertlm?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "fail",
+          "detail": "component file is missing from the installed bundle",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "fail",
+          "detail": "bundle is installed but missing bundleVerifiedAt on-device verification"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": [
+        "downloadable: HTTP 404 Not Found",
+        "installed: component file is missing from the installed bundle",
+        "loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification"
+      ]
+    },
+    {
+      "key": "eliza-1-2b:mtp",
+      "modelId": "eliza-1-2b",
+      "displayName": "eliza-1-2B",
+      "component": "mtp",
+      "expected": true,
+      "catalogAdvertised": false,
+      "sourceRepo": null,
+      "sourceFile": null,
+      "bundleFile": null,
+      "downloadUrl": null,
+      "bootPath": "fused llama.cpp MTP drafter loader",
+      "knownGap": {
+        "kind": "publish-pending",
+        "reason": "Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+      },
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": true,
+        "assignedSlots": [],
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "mtp runtime seam and catalog artifact path are implemented; Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "fused llama.cpp MTP drafter loader"
+        },
+        "deployable": {
+          "status": "fail",
+          "detail": "artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "22 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:49.679Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "pass",
+          "detail": "bundle is installed locally",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "fail",
+          "detail": "bundle is installed but missing bundleVerifiedAt on-device verification"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
+        }
+      },
+      "blockers": [
+        "deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+        "published: Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "downloadable: Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification"
+      ]
+    },
+    {
+      "key": "eliza-1-4b:text",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "text",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/text/eliza-1-4b-128k.gguf",
+      "bundleFile": "text/eliza-1-4b-128k.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b-128k.gguf?download=true",
+      "bootPath": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler",
+      "publishStatus": "published",
+      "quantization": {
+        "defaultVariantId": "q4_k_m",
+        "publishedVariantIds": [
+          "q4_k_m"
+        ],
+        "plannedVariantIds": [
+          "q3_k_m",
+          "q4_0",
+          "q5_k_m",
+          "q6_k",
+          "q8_0",
+          "wna8o8"
+        ],
+        "mobilePreferredVariantIds": [
+          "q4_0"
+        ]
+      },
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "text has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b-128k.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:46.665Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b-128k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": []
+    },
+    {
+      "key": "eliza-1-4b:voice",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "voice",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/tts/kokoro/kokoro-82m-v1_0.gguf",
+      "bundleFile": "tts/kokoro/kokoro-82m-v1_0.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true",
+      "bootPath": "TEXT_TO_SPEECH handler via the local voice pipeline",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "voice has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_TO_SPEECH handler via the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:46.737Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": []
+    },
+    {
+      "key": "eliza-1-4b:asr",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "asr",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/asr/mmproj-audio-4b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-4b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/asr/mmproj-audio-4b-bf16.gguf?download=true",
+      "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/asr/mmproj-audio-4b-bf16.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:46.827Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/asr/mmproj-audio-4b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": []
+    },
+    {
+      "key": "eliza-1-4b:vad",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "vad",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/vad/silero-vad-v5.gguf",
+      "bundleFile": "vad/silero-vad-v5.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vad/silero-vad-v5.gguf?download=true",
+      "bootPath": "voice activity detection inside the local voice pipeline",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vad has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "voice activity detection inside the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:47.031Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": []
+    },
+    {
+      "key": "eliza-1-4b:embedding",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "embedding",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/embedding/eliza-1-embedding.gguf",
+      "bundleFile": "embedding/eliza-1-embedding.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/embedding/eliza-1-embedding.gguf?download=true",
+      "bootPath": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "embedding has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:47.107Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": []
+    },
+    {
+      "key": "eliza-1-4b:vision",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "vision",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/vision/mmproj-4b.gguf",
+      "bundleFile": "vision/mmproj-4b.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vision/mmproj-4b.gguf?download=true",
+      "bootPath": "IMAGE_DESCRIPTION handler and fused vision context path",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vision has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "IMAGE_DESCRIPTION handler and fused vision context path"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vision/mmproj-4b.gguf?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-02T08:21:47.344Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vision/mmproj-4b.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": []
+    },
+    {
+      "key": "eliza-1-4b:litert",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "litert",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/text/eliza-1-4b.litertlm",
+      "bundleFile": "text/eliza-1-4b.litertlm",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b.litertlm?download=true",
+      "bootPath": "mobile LiteRT-LM loader for on-device text/vision/audio",
+      "publishStatus": "published",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "litert has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "mobile LiteRT-LM loader for on-device text/vision/audio"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b.litertlm?download=true"
+        },
+        "published": {
+          "status": "pass",
+          "detail": "tier publish status is published"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:47.834Z",
+          "httpStatus": 404,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b.litertlm?download=true"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "downloadable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-4b:mtp",
+      "modelId": "eliza-1-4b",
+      "displayName": "eliza-1-4B",
+      "component": "mtp",
+      "expected": true,
+      "catalogAdvertised": false,
+      "sourceRepo": null,
+      "sourceFile": null,
+      "bundleFile": null,
+      "downloadUrl": null,
+      "bootPath": "fused llama.cpp MTP drafter loader",
+      "knownGap": {
+        "kind": "publish-pending",
+        "reason": "Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+      },
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "mtp runtime seam and catalog artifact path are implemented; Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "fused llama.cpp MTP drafter loader"
+        },
+        "deployable": {
+          "status": "fail",
+          "detail": "artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "bundleClosure": {
+          "status": "pass",
+          "detail": "24 manifest file(s) passed remote checks",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+        "published: Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "downloadable: Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+      ]
+    },
+    {
+      "key": "eliza-1-9b:text",
+      "modelId": "eliza-1-9b",
+      "displayName": "eliza-1-9B",
+      "component": "text",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/9b/text/eliza-1-9b-128k.gguf",
+      "bundleFile": "text/eliza-1-9b-128k.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/text/eliza-1-9b-128k.gguf?download=true",
+      "bootPath": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler",
+      "publishStatus": "pending",
+      "quantization": {
+        "defaultVariantId": "q4_k_m",
+        "publishedVariantIds": [
+          "q4_k_m"
+        ],
+        "plannedVariantIds": [
+          "q3_k_m",
+          "q4_0",
+          "q5_k_m",
+          "q6_k",
+          "q8_0"
+        ],
+        "mobilePreferredVariantIds": []
+      },
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "text has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/text/eliza-1-9b-128k.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/text/eliza-1-9b-128k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-9b:voice",
+      "modelId": "eliza-1-9b",
+      "displayName": "eliza-1-9B",
+      "component": "voice",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/9b/tts/kokoro/kokoro-82m-v1_0.gguf",
+      "bundleFile": "tts/kokoro/kokoro-82m-v1_0.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true",
+      "bootPath": "TEXT_TO_SPEECH handler via the local voice pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "voice has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_TO_SPEECH handler via the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-9b:asr",
+      "modelId": "eliza-1-9b",
+      "displayName": "eliza-1-9B",
+      "component": "asr",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/9b/asr/mmproj-audio-9b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-9b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/asr/mmproj-audio-9b-bf16.gguf?download=true",
+      "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/asr/mmproj-audio-9b-bf16.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/asr/mmproj-audio-9b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-9b:vad",
+      "modelId": "eliza-1-9b",
+      "displayName": "eliza-1-9B",
+      "component": "vad",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/9b/vad/silero-vad-v5.gguf",
+      "bundleFile": "vad/silero-vad-v5.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vad/silero-vad-v5.gguf?download=true",
+      "bootPath": "voice activity detection inside the local voice pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vad has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "voice activity detection inside the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-9b:embedding",
+      "modelId": "eliza-1-9b",
+      "displayName": "eliza-1-9B",
+      "component": "embedding",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/9b/embedding/eliza-1-embedding.gguf",
+      "bundleFile": "embedding/eliza-1-embedding.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/embedding/eliza-1-embedding.gguf?download=true",
+      "bootPath": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "embedding has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-9b:vision",
+      "modelId": "eliza-1-9b",
+      "displayName": "eliza-1-9B",
+      "component": "vision",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/9b/vision/mmproj-9b.gguf",
+      "bundleFile": "vision/mmproj-9b.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vision/mmproj-9b.gguf?download=true",
+      "bootPath": "IMAGE_DESCRIPTION handler and fused vision context path",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vision has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "IMAGE_DESCRIPTION handler and fused vision context path"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vision/mmproj-9b.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vision/mmproj-9b.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-9b:mtp",
+      "modelId": "eliza-1-9b",
+      "displayName": "eliza-1-9B",
+      "component": "mtp",
+      "expected": true,
+      "catalogAdvertised": false,
+      "sourceRepo": null,
+      "sourceFile": null,
+      "bundleFile": null,
+      "downloadUrl": null,
+      "bootPath": "fused llama.cpp MTP drafter loader",
+      "knownGap": {
+        "kind": "publish-pending",
+        "reason": "Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+      },
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "mtp runtime seam and catalog artifact path are implemented; Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "fused llama.cpp MTP drafter loader"
+        },
+        "deployable": {
+          "status": "fail",
+          "detail": "artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.653Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+        "published: Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "downloadable: Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b:text",
+      "modelId": "eliza-1-27b",
+      "displayName": "eliza-1-27B",
+      "component": "text",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b/text/eliza-1-27b-128k.gguf",
+      "bundleFile": "text/eliza-1-27b-128k.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/text/eliza-1-27b-128k.gguf?download=true",
+      "bootPath": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler",
+      "publishStatus": "pending",
+      "quantization": {
+        "defaultVariantId": "q4_k_m",
+        "publishedVariantIds": [
+          "q4_k_m"
+        ],
+        "plannedVariantIds": [
+          "q3_k_m",
+          "q4_0",
+          "q5_k_m",
+          "q6_k",
+          "q8_0"
+        ],
+        "mobilePreferredVariantIds": []
+      },
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "text has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/text/eliza-1-27b-128k.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/text/eliza-1-27b-128k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.709Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b:voice",
+      "modelId": "eliza-1-27b",
+      "displayName": "eliza-1-27B",
+      "component": "voice",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b/tts/kokoro/kokoro-82m-v1_0.gguf",
+      "bundleFile": "tts/kokoro/kokoro-82m-v1_0.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true",
+      "bootPath": "TEXT_TO_SPEECH handler via the local voice pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "voice has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_TO_SPEECH handler via the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.709Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b:asr",
+      "modelId": "eliza-1-27b",
+      "displayName": "eliza-1-27B",
+      "component": "asr",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b/asr/mmproj-audio-27b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-27b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/asr/mmproj-audio-27b-bf16.gguf?download=true",
+      "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/asr/mmproj-audio-27b-bf16.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/asr/mmproj-audio-27b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.709Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b:vad",
+      "modelId": "eliza-1-27b",
+      "displayName": "eliza-1-27B",
+      "component": "vad",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b/vad/silero-vad-v5.gguf",
+      "bundleFile": "vad/silero-vad-v5.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vad/silero-vad-v5.gguf?download=true",
+      "bootPath": "voice activity detection inside the local voice pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vad has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "voice activity detection inside the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.709Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b:embedding",
+      "modelId": "eliza-1-27b",
+      "displayName": "eliza-1-27B",
+      "component": "embedding",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b/embedding/eliza-1-embedding.gguf",
+      "bundleFile": "embedding/eliza-1-embedding.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/embedding/eliza-1-embedding.gguf?download=true",
+      "bootPath": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "embedding has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.709Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b:vision",
+      "modelId": "eliza-1-27b",
+      "displayName": "eliza-1-27B",
+      "component": "vision",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b/vision/mmproj-27b.gguf",
+      "bundleFile": "vision/mmproj-27b.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vision/mmproj-27b.gguf?download=true",
+      "bootPath": "IMAGE_DESCRIPTION handler and fused vision context path",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vision has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "IMAGE_DESCRIPTION handler and fused vision context path"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vision/mmproj-27b.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vision/mmproj-27b.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.709Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b:mtp",
+      "modelId": "eliza-1-27b",
+      "displayName": "eliza-1-27B",
+      "component": "mtp",
+      "expected": true,
+      "catalogAdvertised": false,
+      "sourceRepo": null,
+      "sourceFile": null,
+      "bundleFile": null,
+      "downloadUrl": null,
+      "bootPath": "fused llama.cpp MTP drafter loader",
+      "knownGap": {
+        "kind": "publish-pending",
+        "reason": "Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+      },
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "mtp runtime seam and catalog artifact path are implemented; Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "fused llama.cpp MTP drafter loader"
+        },
+        "deployable": {
+          "status": "fail",
+          "detail": "artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.709Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+        "published: Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "downloadable: Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b-256k:text",
+      "modelId": "eliza-1-27b-256k",
+      "displayName": "eliza-1-27B-256k",
+      "component": "text",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b-256k/text/eliza-1-27b-256k.gguf",
+      "bundleFile": "text/eliza-1-27b-256k.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/text/eliza-1-27b-256k.gguf?download=true",
+      "bootPath": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler",
+      "publishStatus": "pending",
+      "quantization": {
+        "defaultVariantId": "q4_k_m",
+        "publishedVariantIds": [
+          "q4_k_m"
+        ],
+        "plannedVariantIds": [
+          "q3_k_m",
+          "q4_0",
+          "q5_k_m",
+          "q6_k",
+          "q8_0"
+        ],
+        "mobilePreferredVariantIds": []
+      },
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "text has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_SMALL/TEXT_LARGE handlers via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/text/eliza-1-27b-256k.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/text/eliza-1-27b-256k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.760Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b-256k:voice",
+      "modelId": "eliza-1-27b-256k",
+      "displayName": "eliza-1-27B-256k",
+      "component": "voice",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b-256k/tts/kokoro/kokoro-82m-v1_0.gguf",
+      "bundleFile": "tts/kokoro/kokoro-82m-v1_0.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/tts/kokoro/kokoro-82m-v1_0.gguf?download=true",
+      "bootPath": "TEXT_TO_SPEECH handler via the local voice pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "voice has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_TO_SPEECH handler via the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.760Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b-256k:asr",
+      "modelId": "eliza-1-27b-256k",
+      "displayName": "eliza-1-27B-256k",
+      "component": "asr",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-27b-256k-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf?download=true",
+      "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.760Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b-256k:vad",
+      "modelId": "eliza-1-27b-256k",
+      "displayName": "eliza-1-27B-256k",
+      "component": "vad",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b-256k/vad/silero-vad-v5.gguf",
+      "bundleFile": "vad/silero-vad-v5.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vad/silero-vad-v5.gguf?download=true",
+      "bootPath": "voice activity detection inside the local voice pipeline",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vad has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "voice activity detection inside the local voice pipeline"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vad/silero-vad-v5.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vad/silero-vad-v5.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.760Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b-256k:embedding",
+      "modelId": "eliza-1-27b-256k",
+      "displayName": "eliza-1-27B-256k",
+      "component": "embedding",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b-256k/embedding/eliza-1-embedding.gguf",
+      "bundleFile": "embedding/eliza-1-embedding.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/embedding/eliza-1-embedding.gguf?download=true",
+      "bootPath": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "embedding has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "TEXT_EMBEDDING handler via ensureLocalInferenceHandler"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.760Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b-256k:vision",
+      "modelId": "eliza-1-27b-256k",
+      "displayName": "eliza-1-27B-256k",
+      "component": "vision",
+      "expected": true,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b-256k/vision/mmproj-27b-256k.gguf",
+      "bundleFile": "vision/mmproj-27b-256k.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vision/mmproj-27b-256k.gguf?download=true",
+      "bootPath": "IMAGE_DESCRIPTION handler and fused vision context path",
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "vision has a catalog source file and download path"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "IMAGE_DESCRIPTION handler and fused vision context path"
+        },
+        "deployable": {
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vision/mmproj-27b-256k.gguf?download=true"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "tier publish status is pending"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vision/mmproj-27b-256k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.760Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    },
+    {
+      "key": "eliza-1-27b-256k:mtp",
+      "modelId": "eliza-1-27b-256k",
+      "displayName": "eliza-1-27B-256k",
+      "component": "mtp",
+      "expected": true,
+      "catalogAdvertised": false,
+      "sourceRepo": null,
+      "sourceFile": null,
+      "bundleFile": null,
+      "downloadUrl": null,
+      "bootPath": "fused llama.cpp MTP drafter loader",
+      "knownGap": {
+        "kind": "publish-pending",
+        "reason": "Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+      },
+      "publishStatus": "pending",
+      "quantization": null,
+      "runtime": {
+        "preferredBackend": "llama-cpp",
+        "requiredKernels": [
+          "turbo3",
+          "turbo4",
+          "turbo3_tcq"
+        ],
+        "supportedBackends": [
+          "metal",
+          "vulkan",
+          "cuda",
+          "rocm",
+          "cpu"
+        ],
+        "deviceBackends": [
+          "cpu",
+          "metal"
+        ],
+        "expectedPrimaryBackend": "metal",
+        "cpuFallbackAllowed": false
+      },
+      "local": {
+        "installed": false,
+        "assignedSlots": [],
+        "modelPath": null,
+        "bundleRoot": null,
+        "manifestPath": null,
+        "bundleVerifiedAt": null,
+        "componentPath": null,
+        "componentFile": null
+      },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
+      "checks": {
+        "implemented": {
+          "status": "pass",
+          "detail": "mtp runtime seam and catalog artifact path are implemented; Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "integrated": {
+          "status": "pass",
+          "detail": "fused llama.cpp MTP drafter loader"
+        },
+        "deployable": {
+          "status": "fail",
+          "detail": "artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)"
+        },
+        "published": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "downloadable": {
+          "status": "fail",
+          "detail": "Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-02T08:21:53.760Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
+        "installed": {
+          "status": "unknown",
+          "detail": "bundle is not installed in this state dir"
+        },
+        "loadsAndRunsOnDevice": {
+          "status": "skipped",
+          "detail": "no installed bundle on this host, so load/run evidence is absent"
+        },
+        "backendPolicy": {
+          "status": "pass",
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
+        }
+      },
+      "blockers": [
+        "deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+        "published: Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "downloadable: Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
+      ]
+    }
+  ],
+  "summary": {
+    "totalRows": 37,
+    "failingRows": 30,
+    "unknownRows": 29,
+    "installedRows": 8,
+    "verifiedRows": 0,
+    "pendingPublishRows": 23,
+    "blockers": [
+      "eliza-1-2b:text: loadsAndRunsOnDevice: load/run threw: Model \"eliza-1-2b\" is candidate-only — its manifest (version 0.0.1-local.1-gemma4) reports evals.textEval.passed=false. Refusing to activate. Failed evals: textEval, voiceRtf, e2eLoopOk, thirtyTurnOk, asrWer, vadLatencyMs, expressive. Wait for the publisher to flip the manifest off candidate/weights-staged and re-fetch the bundle. (backend: metal)",
+      "eliza-1-2b:voice: installed: component file is missing from the installed bundle",
+      "eliza-1-2b:voice: loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification",
+      "eliza-1-2b:asr: loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification",
+      "eliza-1-2b:vad: loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification",
+      "eliza-1-2b:vision: loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification",
+      "eliza-1-2b:litert: downloadable: HTTP 404 Not Found",
+      "eliza-1-2b:litert: installed: component file is missing from the installed bundle",
+      "eliza-1-2b:litert: loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification",
+      "eliza-1-2b:mtp: deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+      "eliza-1-2b:mtp: published: Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-2b:mtp: downloadable: Gemma MTP drafter mtp/drafter-2b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-2b:mtp: loadsAndRunsOnDevice: bundle is installed but missing bundleVerifiedAt on-device verification",
+      "eliza-1-4b:litert: downloadable: HTTP 404 Not Found",
+      "eliza-1-4b:mtp: deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+      "eliza-1-4b:mtp: published: Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-4b:mtp: downloadable: Gemma MTP drafter mtp/drafter-4b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-9b:text: published: tier publish status is pending",
+      "eliza-1-9b:text: downloadable: tier publish status is pending",
+      "eliza-1-9b:text: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-9b:voice: published: tier publish status is pending",
+      "eliza-1-9b:voice: downloadable: tier publish status is pending",
+      "eliza-1-9b:voice: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-9b:asr: published: tier publish status is pending",
+      "eliza-1-9b:asr: downloadable: tier publish status is pending",
+      "eliza-1-9b:asr: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-9b:vad: published: tier publish status is pending",
+      "eliza-1-9b:vad: downloadable: tier publish status is pending",
+      "eliza-1-9b:vad: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-9b:embedding: published: tier publish status is pending",
+      "eliza-1-9b:embedding: downloadable: tier publish status is pending",
+      "eliza-1-9b:embedding: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-9b:vision: published: tier publish status is pending",
+      "eliza-1-9b:vision: downloadable: tier publish status is pending",
+      "eliza-1-9b:vision: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-9b:mtp: deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+      "eliza-1-9b:mtp: published: Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-9b:mtp: downloadable: Gemma MTP drafter mtp/drafter-9b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-9b:mtp: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:text: published: tier publish status is pending",
+      "eliza-1-27b:text: downloadable: tier publish status is pending",
+      "eliza-1-27b:text: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:voice: published: tier publish status is pending",
+      "eliza-1-27b:voice: downloadable: tier publish status is pending",
+      "eliza-1-27b:voice: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:asr: published: tier publish status is pending",
+      "eliza-1-27b:asr: downloadable: tier publish status is pending",
+      "eliza-1-27b:asr: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:vad: published: tier publish status is pending",
+      "eliza-1-27b:vad: downloadable: tier publish status is pending",
+      "eliza-1-27b:vad: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:embedding: published: tier publish status is pending",
+      "eliza-1-27b:embedding: downloadable: tier publish status is pending",
+      "eliza-1-27b:embedding: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:vision: published: tier publish status is pending",
+      "eliza-1-27b:vision: downloadable: tier publish status is pending",
+      "eliza-1-27b:vision: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:mtp: deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+      "eliza-1-27b:mtp: published: Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-27b:mtp: downloadable: Gemma MTP drafter mtp/drafter-27b.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-27b:mtp: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:text: published: tier publish status is pending",
+      "eliza-1-27b-256k:text: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:text: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:voice: published: tier publish status is pending",
+      "eliza-1-27b-256k:voice: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:voice: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:asr: published: tier publish status is pending",
+      "eliza-1-27b-256k:asr: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:asr: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:vad: published: tier publish status is pending",
+      "eliza-1-27b-256k:vad: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:vad: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:embedding: published: tier publish status is pending",
+      "eliza-1-27b-256k:embedding: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:embedding: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:vision: published: tier publish status is pending",
+      "eliza-1-27b-256k:vision: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:vision: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:mtp: deployable: artifact awaits publish; no download URL until it is hosted (Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact)",
+      "eliza-1-27b-256k:mtp: published: Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-27b-256k:mtp: downloadable: Gemma MTP drafter mtp/drafter-27b-256k.gguf is not hosted on elizaos/eliza-1 (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS (currently empty) so the downloader never fetches a missing artifact",
+      "eliza-1-27b-256k:mtp: bundleClosure: manifest unavailable: HTTP 404 Not Found"
+    ]
+  }
+}

@@ -1411,6 +1411,15 @@ const APP_SHELL_CLASS_TRANSPARENT =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt";
 
 function ShellBackButton({ onBack }: { onBack: () => void }): ReactNode {
+  // 44px (`h-11 w-11`) button = the Apple-HIG minimum touch target enforced by
+  // the rendered-geometry gate (tap-target-geometry.spec.ts); the 36px visual
+  // circle sits centered inside, so the resting look is unchanged while the
+  // hit area is honest. Offsets keep the circle at the historical position
+  // (safe-area + 0.75rem). The shell wrappers that render this button set
+  // --shell-backnav-clearance (consumed by SpatialSurface as top padding) so
+  // the fixed z-[60] chrome never occludes a spatial view's first row (#11144);
+  // the clearance must cover the button's bottom edge (0.5rem + 2.75rem =
+  // 3.25rem) — guarded by spatial/dom.backnav-clearance.test.tsx.
   return (
     <button
       type="button"
@@ -1418,9 +1427,11 @@ function ShellBackButton({ onBack }: { onBack: () => void }): ReactNode {
       title="Go back"
       data-testid="shell-back-button"
       onClick={onBack}
-      className="fixed left-[calc(var(--safe-area-left,0px)+0.75rem)] top-[calc(var(--safe-area-top,0px)+0.75rem)] z-[60] grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-bg/90 text-txt shadow-sm transition-colors hover:bg-muted/70"
+      className="group fixed left-[calc(var(--safe-area-left,0px)+0.5rem)] top-[calc(var(--safe-area-top,0px)+0.5rem)] z-[60] grid h-11 w-11 place-items-center bg-transparent"
     >
-      <ArrowLeft className="h-4 w-4" aria-hidden />
+      <span className="grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-bg/90 text-txt shadow-sm transition-colors group-hover:bg-muted/70">
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+      </span>
     </button>
   );
 }
@@ -1502,12 +1513,12 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
   return (
     // --shell-backnav-clearance reserves top space for the fixed ShellBackButton
     // so spatial views' first row (filter chips) clears it (#11144). The button
-    // bottom sits at safe-area-top + 3rem (0.75rem offset + 2.25rem button) in
+    // bottom sits at safe-area-top + 3.25rem (0.5rem offset + 2.75rem hit target) in
     // VIEWPORT coords, but this wrapper lives inside the root content column,
     // which absorbs only max(safe-area-top - 1.25rem, 1.25rem) of the safe area
     // — up to 1.25rem less than the button's full safe-area offset on notched
-    // devices. min(safe-area-top, 1.25rem) adds back exactly that deficit: 3rem
-    // at safe-area-top 0 (unchanged), tight at real notch insets (≥ 2.5rem).
+    // devices. min(safe-area-top, 1.25rem) adds back exactly that deficit:
+    // 3.25rem at safe-area-top 0, tight at real notch insets (≥ 2.5rem).
     // Consumed by SpatialSurface (spatial/dom.tsx); unset elsewhere → 0px.
     <div
       key={`tab-shell-${props.tab}`}
@@ -1515,7 +1526,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       style={
         {
           "--shell-backnav-clearance":
-            "calc(3rem + min(var(--safe-area-top, 0px), 1.25rem))",
+            "calc(3.25rem + min(var(--safe-area-top, 0px), 1.25rem))",
         } as CSSProperties
       }
     >
@@ -1546,12 +1557,12 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
       key={`fullbleed-shell-${props.tab}`}
       className={APP_SHELL_CLASS}
       // Same clearance contract as RoutedShellContent (see the derivation
-      // there): 3rem button clearance + the ≤1.25rem safe-area deficit the
+      // there): 3.25rem button clearance + the ≤1.25rem safe-area deficit the
       // root content column does not absorb (#11144).
       style={
         {
           "--shell-backnav-clearance":
-            "calc(3rem + min(var(--safe-area-top, 0px), 1.25rem))",
+            "calc(3.25rem + min(var(--safe-area-top, 0px), 1.25rem))",
         } as CSSProperties
       }
     >

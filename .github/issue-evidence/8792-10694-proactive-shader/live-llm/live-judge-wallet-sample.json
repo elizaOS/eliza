@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-07-02T08:13:05.574Z",
+  "model": "gpt-oss-120b",
+  "usage": {
+    "prompt_tokens": 251,
+    "completion_tokens": 131
+  },
+  "interaction": {
+    "viewId": "wallet",
+    "viewLabel": "Wallet",
+    "initiatedBy": "user",
+    "source": "user"
+  },
+  "prompt": "The user just took an action in the app. Decide if there is ONE specific, helpful thing you can proactively offer right now.\nExamples: switched to wallet → \"Want me to pull your latest balances?\"; opened task-coordinator → \"Want me to summarize your open tasks?\".\nUse delivery \"chat\" only when the current view benefits from a visible suggestion. Use delivery \"notify\" for useful but low-urgency offers that should land quietly outside chat.\nStay silent (return null) for ambiguous or low-value interactions, settings/config screens, or anything where an offer would be noise.\nRespond as JSON: {\"comment\": <a short offer, or null>, \"delivery\": \"chat\" | \"notify\", \"confidence\": 0..1, \"urgency\": \"low\" | \"medium\" | \"high\", \"title\": <optional notification title>}.\nThe user just opened the Wallet view.",
+  "rawModelOutput": "{\"comment\":\"Want me to pull your latest balances for you?\",\"delivery\":\"chat\",\"confidence\":0.96,\"urgency\":\"medium\",\"title\":null}",
+  "parsedOffer": {
+    "text": "Want me to pull your latest balances for you?",
+    "delivery": "chat"
+  }
+}

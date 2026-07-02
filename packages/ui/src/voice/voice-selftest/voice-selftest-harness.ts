@@ -25,6 +25,7 @@ import {
   isLocalInferenceAsrReady,
   transcribeLocalInferenceWav,
 } from "../local-asr-transcribe";
+import { classifyErrorFallbackReply } from "./error-fallback-reply";
 import { now, sleep } from "./timing";
 
 /** Re-exported from the single source of truth (`@elizaos/shared/voice-wer`). */
@@ -54,6 +55,12 @@ export interface VoiceSelfTestReport {
   expectedPhrase: string;
   transcript: string;
   reply: string;
+  /**
+   * Which backend served the SEND reply: `local-inference:<model id>` when
+   * the SSE done event carried local-inference metadata, else
+   * `remote-provider`. Absent when the SEND stage never produced a reply.
+   */
+  sendBackend?: string;
   startedAt: string;
   finishedAt: string;
   stages: VoiceSelfTestStage[];
@@ -192,6 +199,7 @@ export async function runVoiceSelfTest(
   const startedAt = new Date().toISOString();
   let transcript = "";
   let reply = "";
+  let sendBackend: string | undefined;
 
   // ---- Stage ASR: known audio phrase -> transcript ------------------------
   {
@@ -273,7 +281,27 @@ export async function runVoiceSelfTest(
         opts.signal,
       );
       reply = (send.text ?? "").trim();
-      const ok = send.completed && reply.length > 0;
+      // Record which backend actually served the reply: the SSE done event
+      // carries local-inference metadata when the local engine answered.
+      sendBackend = send.localInference
+        ? `local-inference:${
+            send.localInference.activeModelId ??
+            send.localInference.modelId ??
+            send.localInference.provider ??
+            "unknown-model"
+          }`
+        : "remote-provider";
+      // Honesty gate (#10726): a completed stream with text is NOT enough —
+      // on provider failure the server substitutes a synthetic fallback reply
+      // and the old check reported `send: pass`. Fail on the structured
+      // `failureKind` first, then on a recognized fallback-reply text.
+      const fallbackReplyKind = classifyErrorFallbackReply(reply);
+      const failureKind = send.failureKind ?? null;
+      const ok =
+        send.completed &&
+        reply.length > 0 &&
+        failureKind === null &&
+        fallbackReplyKind === null;
       stages.push({
         stage: "send",
         status: ok ? "pass" : "fail",
@@ -284,8 +312,17 @@ export async function runVoiceSelfTest(
           replyChars: reply.length,
           completed: send.completed,
           agentName: send.agentName,
+          backend: sendBackend,
+          ...(failureKind ? { failureKind } : {}),
+          ...(fallbackReplyKind ? { fallbackReplyKind } : {}),
         },
-        error: ok ? undefined : "agent produced no reply / did not complete",
+        error: ok
+          ? undefined
+          : failureKind
+            ? `server reported a chat failure (failureKind: ${failureKind})`
+            : fallbackReplyKind
+              ? `reply is a known error-fallback text (${fallbackReplyKind}), not a model reply`
+              : "agent produced no reply / did not complete",
       });
     } catch (error) {
       stages.push({
@@ -390,6 +427,7 @@ export async function runVoiceSelfTest(
     expectedPhrase: opts.expectedPhrase,
     transcript,
     reply,
+    ...(sendBackend ? { sendBackend } : {}),
     startedAt,
     finishedAt: new Date().toISOString(),
     stages,

@@ -583,3 +583,17 @@ body.platform-android * {
   content-visibility: auto;
   contain-intrinsic-size: auto 96px;
 }
+
+/* Rendered tap-target floor for spatial buttons on touch surfaces (#10722).
+   The spatial GUI Button renders ~34px tall from padding + font-size inline
+   styles; on a coarse-pointer device that is under the 44px HIG floor the
+   rendered-geometry gate (tap-target-geometry.spec.ts) enforces. min-height /
+   min-width are NOT set inline by the primitive, so the floor composes with
+   the inline padding without specificity hacks. Fine-pointer (desktop mouse)
+   keeps the compact resting look. */
+@media (pointer: coarse) {
+  [data-spatial-surface] button[data-spatial-kind="button"] {
+    min-height: var(--min-touch-target, 2.75rem);
+    min-width: var(--min-touch-target, 2.75rem);
+  }
+}

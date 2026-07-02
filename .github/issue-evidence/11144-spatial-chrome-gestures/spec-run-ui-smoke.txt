@@ -1,0 +1,332 @@
+[ui-smoke] Waiting for another UI smoke run to finish...
+[build-views] plugins/plugin-health
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 4 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  10.55 kB │ gzip: 3.33 kB │ map: 29.08 kB
+
+✓ built in 243ms
+[build-views] plugins/plugin-feed
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 6 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  16.26 kB │ gzip: 4.72 kB │ map: 44.20 kB
+
+✓ built in 165ms
+[build-views] plugins/plugin-blocker
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 4 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  5.86 kB │ gzip: 1.87 kB │ map: 16.56 kB
+
+✓ built in 242ms
+[build-views] plugins/plugin-documents
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 4 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  9.32 kB │ gzip: 2.66 kB │ map: 29.24 kB
+
+✓ built in 253ms
+[build-views] plugins/plugin-app-control
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 6 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  5.93 kB │ gzip: 2.30 kB │ map: 20.56 kB
+
+✓ built in 307ms
+[build-views] plugins/plugin-calendar
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 6 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  9.82 kB │ gzip: 3.12 kB │ map: 30.92 kB
+
+✓ built in 278ms
+[build-views] plugins/plugin-finances
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 4 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  9.58 kB │ gzip: 2.86 kB │ map: 31.59 kB
+
+✓ built in 306ms
+[build-views] plugins/plugin-messages
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 13 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  24.67 kB │ gzip: 7.79 kB │ map: 71.28 kB
+
+✓ built in 287ms
+[build-views] plugins/plugin-inbox
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 5 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  7.40 kB │ gzip: 2.70 kB │ map: 28.44 kB
+
+✓ built in 217ms
+[build-views] plugins/plugin-facewear
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 9 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  19.35 kB │ gzip: 5.08 kB │ map: 109.04 kB
+
+✓ built in 387ms
+[build-views] plugins/plugin-goals
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 5 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  7.16 kB │ gzip: 2.43 kB │ map: 26.91 kB
+
+✓ built in 453ms
+[build-views] plugins/plugin-hyperliquid
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 7 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  16.42 kB │ gzip: 4.40 kB │ map: 40.15 kB
+
+✓ built in 443ms
+[build-views] plugins/plugin-phone
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 10 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  22.82 kB │ gzip: 7.33 kB │ map: 67.18 kB
+
+✓ built in 262ms
+[build-views] plugins/plugin-contacts
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 10 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  23.00 kB │ gzip: 7.05 kB │ map: 67.88 kB
+
+✓ built in 392ms
+[build-views] plugins/plugin-relationships
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 5 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  7.76 kB │ gzip: 2.50 kB │ map: 32.14 kB
+
+✓ built in 57ms
+[build-views] plugins/app-model-tester
+$ bunx --bun vite build --config vite.config.views.ts
+vite v7.3.3 building client environment for production...
+transforming...
+✓ 5 modules transformed.
+Unknown output options: codeSplitting. Allowed options: amd, assetFileNames, banner, chunkFileNames, compact, dir, dynamicImportInCjs, entryFileNames, esModule, experimentalMinChunkSize, exports, extend, externalImportAssertions, externalImportAttributes, externalLiveBindings, file, footer, format, freeze, generatedCode, globals, hashCharacters, hoistTransitiveImports, importAttributesKey, indent, inlineDynamicImports, interop, intro, manualChunks, minifyInternalExports, name, noConflict, onlyExplicitManualChunks, outro, paths, plugins, preserveModules, preserveModulesRoot, reexportProtoFromExternal, sanitizeFileName, sourcemap, sourcemapBaseUrl, sourcemapDebugIds, sourcemapExcludeSources, sourcemapFile, sourcemapFileNames, sourcemapIgnoreList, sourcemapPathTransform, strict, systemNullSetters, validate, virtualDirname
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  12.07 kB │ gzip: 3.87 kB │ map: 35.80 kB
+✓ built in 509ms
+[build-views] plugins/plugin-screenshare
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 6 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  15.37 kB │ gzip: 4.29 kB │ map: 39.24 kB
+
+✓ built in 189ms
+[build-views] plugins/plugin-polymarket
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 8 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  15.65 kB │ gzip: 4.36 kB │ map: 39.81 kB
+
+✓ built in 256ms
+[build-views] plugins/plugin-shopify
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 7 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  24.69 kB │ gzip: 5.79 kB │ map: 62.24 kB
+
+✓ built in 335ms
+[build-views] plugins/plugin-training
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 10 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  208.60 kB │ gzip: 30.90 kB │ map: 423.75 kB
+
+✓ built in 341ms
+[build-views] plugins/plugin-todos
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 4 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  5.85 kB │ gzip: 2.09 kB │ map: 19.33 kB
+
+✓ built in 305ms
+[build-views] plugins/plugin-vector-browser
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 3 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  36.30 kB │ gzip: 10.39 kB │ map: 90.44 kB
+
+✓ built in 164ms
+[build-views] plugins/plugin-wallet-ui
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 13 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  69.99 kB │ gzip: 16.40 kB │ map: 165.98 kB
+
+✓ built in 172ms
+[build-views] plugins/plugin-social-alpha
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 5 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  6.95 kB │ gzip: 2.27 kB │ map: 21.11 kB
+
+✓ built in 237ms
+[build-views] plugins/plugin-trajectory-logger
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 8 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  17.84 kB │ gzip: 5.17 kB │ map: 49.87 kB
+
+✓ built in 107ms
+[build-views] plugins/plugin-task-coordinator
+$ bunx --bun vite build --config vite.config.views.ts
+vite v8.0.16 building client environment for production...
+[2Ktransforming...✓ 31 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/views/bundle.js  592.80 kB │ gzip: 127.37 kB │ map: 1,090.72 kB
+
+✓ built in 362ms
+• turbo 2.10.0
+
+   • Packages in scope: @elizaos/core, @elizaos/shared
+   • Running build in 2 packages
+   • Remote caching disabled, using shared worktree cache
+
+@elizaos/contracts:build: cache miss, executing 9ba7025c52f58ca0
+@elizaos/logger:build: cache miss, executing d40018a7a9b75b9a
+@elizaos/logger:build: $ bun run build:dist
+@elizaos/contracts:build: $ tsc --noCheck -p tsconfig.build.json
+@elizaos/logger:build: $ node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/logger
+@elizaos/core:build: cache miss, executing 7df0ec79ddaf5810
+@elizaos/core:build: $ bun run --cwd ../logger build && bun run --cwd ../contracts build && ([ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts)
+@elizaos/core:build: $ bun run build:dist
+@elizaos/core:build: $ node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/logger
+@elizaos/core:build: $ tsc --noCheck -p tsconfig.build.json
+@elizaos/core:build: $ bun run build.ts
+@elizaos/core:build: 🚀 Starting dual build process for @elizaos/core
+@elizaos/core:build: 🔨 Building for Node.js...
+@elizaos/core:build: 🚀 Building @elizaos/core...
+@elizaos/core:build:
+@elizaos/core:build: 🌐 Building for Browser...
+@elizaos/core:build: 🚀 Building @elizaos/core...
+@elizaos/core:build:
+@elizaos/core:build: ⚡ Building for Edge...
+@elizaos/core:build: 🚀 Building @elizaos/core...
+@elizaos/core:build:
+@elizaos/core:build: 🧪 Building testing module...
+@elizaos/core:build: 🚀 Building @elizaos/core...
+@elizaos/core:build:
+@elizaos/core:build: ✓ Configuration prepared (0.35ms)
+@elizaos/core:build:
+@elizaos/core:build: Bundling with Bun...
+@elizaos/core:build: ✓ Configuration prepared (0.44ms)
+@elizaos/core:build:
+@elizaos/core:build: Bundling with Bun...
+@elizaos/core:build: ✓ Configuration prepared (0.45ms)
+@elizaos/core:build:
+@elizaos/core:build: Bundling with Bun...
+@elizaos/core:build: ✓ Configuration prepared (0.43ms)
+@elizaos/core:build:
+@elizaos/core:build: Bundling with Bun...
+@elizaos/core:build: ✓ Built 4 file(s) - 29.10MB (250.41ms)
+@elizaos/core:build:
+@elizaos/core:build: ✅ @elizaos/core build complete!
+@elizaos/core:build: ⏱️  Total build time: 250.82ms
+@elizaos/core:build: ✅ Node.js build complete in 0.25s
+@elizaos/core:build: ✓ Built 4 file(s) - 21.66MB (380.78ms)
+@elizaos/core:build:
+@elizaos/core:build: ✅ @elizaos/core build complete!
+@elizaos/core:build: ⏱️  Total build time: 381.27ms
+@elizaos/core:build: ✅ Browser build complete in 0.38s
+@elizaos/core:build: ✓ Built 2 file(s) - 18.84MB (509.27ms)
+@elizaos/core:build:
+@elizaos/core:build: ✅ @elizaos/core build complete!
+@elizaos/core:build: ⏱️  Total build time: 509.78ms
+@elizaos/core:build: ✅ Edge build complete in 0.51s
+@elizaos/core:build: ✓ Built 4 file(s) - 0.05MB (513.66ms)
+@elizaos/core:build:
+@elizaos/core:build: ✅ @elizaos/core build complete!
+@elizaos/core:build: ⏱️  Total build time: 514.13ms
+@elizaos/core:build: ✅ Testing module build complete in 0.51s
+@elizaos/core:build: 📝 Generating TypeScript declarations...
+@elizaos/core:build:    Compiling TypeScript declarations...
+@elizaos/core:build:    Rewrote 1509 relative specifier(s) in 467 .d.ts file(s) for NodeNext ESM
+@elizaos/core:build: ✅ TypeScript declarations generated in 28.31s
+@elizaos/core:build:
+@elizaos/core:build: 🎉 All builds complete in 28.83s
+@elizaos/registry:build: cache miss, executing fb7153bdd929bbb6
+@elizaos/registry:build: $ bun run src/generate.ts && bun run src/first-party/generate.ts
+@elizaos/registry:build: Generated /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/registry/generated-registry.json (20 third-party entries)
+@elizaos/registry:build: [registry/generate] wrote 116 entries + 9 curated-app definitions
+@elizaos/shared:build: cache miss, executing 6a5820083b1386ff
+@elizaos/shared:build: $ bun run build:i18n && bun run build:dist
+@elizaos/shared:build: $ node scripts/generate-keywords.mjs --target ts
+@elizaos/shared:build: Generating keyword code from JSON...
+@elizaos/shared:build:
+@elizaos/shared:build:   Loaded action-search.generated.keywords.json: 114 entries
+@elizaos/shared:build:   Loaded context-search.keywords.json: 38 entries
+@elizaos/shared:build:   Loaded shared.keywords.json: 71 entries
+@elizaos/shared:build:   Loaded typescript.keywords.json: 16 entries
+@elizaos/shared:build:   Loaded validate.keywords.json: 2 entries
+@elizaos/shared:build:
+@elizaos/shared:build: Total: 239 entries, 6 locales
+@elizaos/shared:build:
+@elizaos/shared:build:   TypeScript (shared): /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/shared/src/i18n/generated/validation-keyword-data.ts
+@elizaos/shared:build:   JavaScript (shared): /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/shared/src/i18n/generated/validation-keyword-data.js
+@elizaos/shared:build:   TypeScript (core):   /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/core/src/i18n/generated/validation-keyword-data.ts
+@elizaos/shared:build:
+@elizaos/shared:build: Done!
+@elizaos/shared:build: $ node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css
+@elizaos/shared:build: [rewrite-dist-relative-imports] rewrote 5 file(s)
+
+ Tasks:    5 successful, 5 total
+Cached:    0 cached, 5 total
+  Time:    49.382s

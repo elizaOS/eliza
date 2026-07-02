@@ -1046,10 +1046,18 @@ export function RelationshipsGraphPanel({
           </div>
         </div>
 
+        {/* max-w-[min(100%,100vw)] (#11145): `max-w-full` alone is circular on
+            the mobile workspace route — the ancestor chain stretches to fit
+            the zoomed svg (flex min-width:auto), so `100%` resolves to the
+            stretched width (measured: clientWidth === scrollWidth === 2640px
+            on a 412px Pixel-7 viewport) and the page scrolls horizontally
+            instead of the graph panning inside the container. Bounding by
+            100vw breaks the cycle: the svg overflows INSIDE the container,
+            which is what the pan gesture (and its e2e) drives. */}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
         <div
           ref={containerRef}
-          className={`${compact ? "max-h-[min(34rem,calc(100vh-120px))]" : "max-h-[min(42rem,calc(100vh-120px))]"} relative w-full min-w-0 max-w-full cursor-grab touch-none overflow-auto overscroll-contain rounded-none bg-transparent active:cursor-grabbing`}
+          className={`${compact ? "max-h-[min(34rem,calc(100vh-120px))]" : "max-h-[min(42rem,calc(100vh-120px))]"} relative w-full min-w-0 max-w-[min(100%,100vw)] cursor-grab touch-none overflow-auto overscroll-contain rounded-none bg-transparent active:cursor-grabbing`}
           data-graph-container
           onMouseLeave={hideTooltip}
           onPointerDown={beginPan}

@@ -12,7 +12,11 @@ import {
 import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { applyLaunchConnection } from "@elizaos/ui/platform/browser-launch";
-import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
+import {
+  buildAssistantLaunchHashRoute,
+  type DeepLinkNavigationIntent,
+  resolveDeepLinkNavigationIntent,
+} from "./deep-link-routing";
 import type { UrlTrustPolicy } from "./url-trust-policy";
 
 export interface DeepLinkHandlerContext {
@@ -30,6 +34,24 @@ export interface DeepLinkHandlerContext {
    * to the installed app; this is the in-app routing half. Subdomains match.
    */
   appLinkHosts?: string[];
+  /**
+   * Dispatch seam for top-level-surface navigation intents (Settings, Wallet,
+   * Browser, Connectors, the cloud-apps Deploy studio). Defaults to the in-app
+   * `eliza:navigate:view` CustomEvent bus — the platform-agnostic navigation
+   * path the rest of the app uses (a raw `window.location.hash` write never
+   * opens a tab on the mobile/Capacitor entrypoint). Injectable for tests.
+   */
+  dispatchNavigationIntent?: (intent: DeepLinkNavigationIntent) => void;
+}
+
+function defaultDispatchNavigationIntent(
+  intent: DeepLinkNavigationIntent,
+): void {
+  window.dispatchEvent(
+    new CustomEvent<DeepLinkNavigationIntent>("eliza:navigate:view", {
+      detail: intent,
+    }),
+  );
 }
 
 /** True for an `https://<trusted-host>/<path>` universal/App link. */
@@ -66,8 +88,15 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
       ? parsed.pathname.replace(/^\/+|\/+$/g, "")
       : getDeepLinkPath(parsed);
 
-    if (/^settings\/connectors\/[a-z0-9-]+$/i.test(path)) {
-      window.location.hash = "#connectors";
+    // Top-level-surface deep links (settings, wallet, browser, connectors,
+    // apps/deploy). Dispatched on the `eliza:navigate:view` bus — same as the
+    // live main.tsx handler — because a hash write never opens a tab on the
+    // mobile/Capacitor entrypoint (see resolveDeepLinkNavigationIntent).
+    const navigationIntent = resolveDeepLinkNavigationIntent(path);
+    if (navigationIntent) {
+      (ctx.dispatchNavigationIntent ?? defaultDispatchNavigationIntent)(
+        navigationIntent,
+      );
       return;
     }
 
@@ -91,17 +120,6 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
         break;
       case "contacts":
         setHashRoute("contacts", parsed.searchParams);
-        break;
-      case "wallet":
-      case "inventory":
-        setHashRoute("wallet", parsed.searchParams);
-        break;
-      case "browser":
-        setHashRoute("browser", parsed.searchParams);
-        break;
-      case "settings":
-        window.location.hash = "#settings";
-        ctx.dispatchDeepLinkCallback(url);
         break;
       case "notifications":
         // Desktop-native entry point (#10706): the "Notifications" menu/tray

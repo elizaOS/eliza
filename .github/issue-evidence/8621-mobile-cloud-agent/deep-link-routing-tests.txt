@@ -1,0 +1,40 @@
+
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/app
+
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes ask links through chat with trusted assistant source metadata 1ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > defaults chat links to the trusted assistant source so text is consumable 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes LifeOps create text into chat/planner, not a native task path 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > preserves macOS Shortcuts source and action on assistant links 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes iOS App Intent smart replies through chat with source metadata 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes Android Share Sheet smart replies through chat with source metadata 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes Android feature-open inventory to voice chat 1ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes Android widget daily brief links into chat with a planner hint 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes Android feature-open inventory to chat with a daily-brief hint 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes Android feature-open task inventory into chat with a tasks hint 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes text-free create links into chat with a create hint 0ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > fuzzes arbitrary assistant entry query strings without throwing or producing unsafe routes 33ms
+ ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > fuzzes unknown deep-link paths as non-routable instead of falling through to chat 8ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > routes a settings deep link to the settings tab 1ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > routes a wallet deep link to the inventory tab (/wallet) 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > treats the inventory alias like wallet 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > routes a browser deep link to the browser tab 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > routes apps/deploy to the cloud-apps studio page (#10823 Apps Deploy UI entry) 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > treats the cloud-apps page id as an alias for the Apps Deploy studio 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > does NOT claim the installed-apps or nested app-slug paths for the studio 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > routes a bare connectors deep link to Settings → Connectors 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > routes a per-provider connectors deep link to Settings → Connectors 0ms
+ ✓ src/deep-link-routing.test.ts > top-level-surface deep-link navigation intents > returns null for chat-launch and unknown paths (handled elsewhere) 0ms
+ ✓ src/deep-link-handler.test.ts > isTrustedAppLink > accepts https on a configured host or subdomain, rejects others 2ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — top-level-surface navigation intents > routes wallet links (custom scheme AND universal) onto the navigation bus, not the hash 1ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — top-level-surface navigation intents > maps the connectors deep path from a universal link to the Settings connectors section 0ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — top-level-surface navigation intents > routes apps/deploy (the #10823 Apps Deploy UI entry) to the cloud-apps page 0ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — top-level-surface navigation intents > dispatches on the eliza:navigate:view bus by default (no injected seam) 0ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — universal (https) app links > opens the notification center on a notifications deep link without changing route (#10706) 0ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — universal (https) app links > carries query params through a universal link 0ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — universal (https) app links > ignores an untrusted https host 0ms
+ ✓ src/deep-link-handler.test.ts > createDeepLinkHandler — universal (https) app links > ignores https when no appLinkHosts are configured 0ms
+
+ Test Files  2 passed (2)
+      Tests  32 passed (32)
+   Start at  04:19:22
+   Duration  7.07s (transform 5.03s, setup 156ms, import 6.28s, tests 52ms, environment 1.30s)

@@ -10,13 +10,16 @@
 // interaction owner that closes INTERACTION_DEBT in
 // view-interaction-coverage.test.ts.
 
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+// Shared CDP touch-emulation gestures (#10722 item 8) — one pinch/pan
+// implementation for every desktop-layout spec instead of a private copy here.
+import { touchPan, touchPinch } from "./helpers/real-touch-gestures";
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
@@ -232,6 +235,26 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
+  // Layout sanity (#11145 lineage): this decomposed route renders the unified
+  // list-based RelationshipsSpatialView (RelationshipsView.tsx), whose
+  // container is `[data-spatial-surface]` — the zoomable
+  // `[data-graph-container]` belongs to RelationshipsGraphPanel on the
+  // /apps/relationships workspace (covered by the pinch/pan tests below), not
+  // to this route. Assert the rendered surface never exceeds the viewport
+  // width (no horizontal page-scroll blowout).
+  const viewport = page.viewportSize();
+  if (viewport) {
+    const box = await page
+      .locator("[data-spatial-surface]")
+      .first()
+      .boundingBox();
+    expect(box, "spatial surface should be laid out").not.toBeNull();
+    if (box) {
+      // +1px slack for sub-pixel rounding.
+      expect(box.width).toBeLessThanOrEqual(viewport.width + 1);
+    }
+  }
+
   await page
     .getByRole("button", { name: "Organizations", exact: true })
     .click();
@@ -254,68 +277,10 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   await expect(page.getByText("Graph (3)").first()).toBeVisible({
     timeout: 15_000,
   });
+  await expect(page.getByText("Pat Doe").first()).toBeVisible({
+    timeout: 15_000,
+  });
 });
-
-/**
- * Drive a REAL two-finger pinch via CDP `Input.dispatchTouchEvent` (genuine
- * multi-touch input, not desktop mouse) — #9943 item 6 "pinch case". `scale > 1`
- * spreads the fingers apart (pinch-out → zoom in). Touch input is enabled at the
- * CDP level so the view keeps its desktop layout; only the gesture is touch.
- */
-async function touchPinch(
-  page: Page,
-  selector: string,
-  scale: number,
-  steps = 16,
-) {
-  const box = await page.locator(selector).first().boundingBox();
-  if (!box) throw new Error(`no bounding box for ${selector}`);
-  const viewport = page.viewportSize();
-  if (!viewport) throw new Error("no viewport size");
-  // Defensive (post-#11145): the graph container is now viewport-clamped, so
-  // its box should already fit on-screen — but a partially-scrolled or
-  // off-origin target is still possible, so pinch at the centre of the
-  // container ∩ viewport intersection to guarantee fingers land on VISIBLE
-  // pixels regardless.
-  const left = Math.max(box.x, 0);
-  const right = Math.min(box.x + box.width, viewport.width);
-  const top = Math.max(box.y, 0);
-  const bottom = Math.min(box.y + box.height, viewport.height);
-  if (right - left < 80 || bottom - top < 40) {
-    throw new Error(`${selector} is not sufficiently on-screen for a pinch`);
-  }
-  const cx = (left + right) / 2;
-  const cy = (top + bottom) / 2;
-  const startGap = Math.min(60, (right - left) / 4);
-  const points = (gap: number) => [
-    { x: cx - gap, y: cy, id: 0 },
-    { x: cx + gap, y: cy, id: 1 },
-  ];
-  const client = await page.context().newCDPSession(page);
-  try {
-    await client.send("Emulation.setTouchEmulationEnabled", {
-      enabled: true,
-      maxTouchPoints: 2,
-    });
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: points(startGap),
-    });
-    for (let i = 1; i <= steps; i += 1) {
-      const gap = startGap * (1 + (scale - 1) * (i / steps));
-      await client.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: points(gap),
-      });
-    }
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: [],
-    });
-  } finally {
-    await client.detach();
-  }
-}
 
 /**
  * A populated RelationshipsGraphSnapshot for the BUILT-IN relationships
@@ -415,4 +380,83 @@ test("relationships graph: two-finger pinch-out zooms in under REAL touch (not m
   await touchPinch(page, "[data-graph-container]", 2);
 
   await expect.poll(widthOf, { timeout: 10_000 }).toBeGreaterThan(before);
+
+  // Reverse path: bring the fingers together → pinch-in → zoom back out. The
+  // width must SHRINK from the zoomed-in size (MIN_ZOOM clamps the floor, but
+  // a 0.5 pinch from 2x stays well above it).
+  const zoomedIn = await widthOf();
+  await touchPinch(page, "[data-graph-container]", 0.5);
+  await expect.poll(widthOf, { timeout: 10_000 }).toBeLessThan(zoomedIn);
+});
+
+test("relationships graph: one-finger pan scrolls the zoomed graph under REAL touch (not mouse)", async ({
+  page,
+}) => {
+  // #10722 item 5: RelationshipsGraphPanel's single-pointer pan
+  // (pointer-capture + scrollLeft/scrollTop writes) had ZERO e2e coverage on
+  // any lane — only the pinch was exercised. Drive it with a genuine CDP
+  // touch drag and assert the container actually scrolled.
+  await page.route("**/api/relationships/graph**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(PINCH_GRAPH_SNAPSHOT),
+    });
+  });
+  await openAppPath(page, "/apps/relationships");
+  const container = page.locator("[data-graph-container]");
+  await expect(container).toBeVisible({ timeout: 60_000 });
+  const graphSvg = container.locator("svg").first();
+  await expect(graphSvg).toBeVisible({ timeout: 15_000 });
+
+  // Zoom in first (real pinch) so the svg overflows the container and there
+  // is somewhere to pan to.
+  const widthOf = () =>
+    graphSvg.evaluate((el) => {
+      const styled = Number.parseFloat((el as SVGElement).style.width);
+      return Number.isFinite(styled)
+        ? styled
+        : el.getBoundingClientRect().width;
+    });
+  const before = await widthOf();
+  await touchPinch(page, "[data-graph-container]", 2.5);
+  await expect.poll(widthOf, { timeout: 10_000 }).toBeGreaterThan(before);
+  const overflowState = await container.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+    svgStyleWidth: (el.querySelector("svg") as SVGElement | null)?.style.width,
+  }));
+  expect(
+    overflowState.scrollWidth,
+    `zoomed graph must overflow so pan has room (${JSON.stringify(overflowState)})`,
+  ).toBeGreaterThan(overflowState.clientWidth);
+
+  const scrollStateOf = () =>
+    container.evaluate((el) => ({
+      left: el.scrollLeft,
+      top: el.scrollTop,
+    }));
+  // Deterministic starting point: pin the scroll origin, then pan.
+  await container.evaluate((el) => {
+    el.scrollLeft = 0;
+    el.scrollTop = 0;
+  });
+  const zoomedWidth = await widthOf();
+
+  // Drag the finger LEFT → the content follows the finger → scrollLeft grows
+  // (beginPan/updatePan write scrollLeft = start - dx).
+  await touchPan(page, "[data-graph-container]", -140, 0);
+  await expect
+    .poll(async () => (await scrollStateOf()).left, { timeout: 10_000 })
+    .toBeGreaterThan(0);
+
+  // A one-finger pan must NOT zoom: the svg width is unchanged.
+  expect(await widthOf()).toBeCloseTo(zoomedWidth, 0);
+
+  // Reverse path: drag RIGHT past the origin → scrollLeft clamps back to 0
+  // (no negative scroll, no runaway).
+  await touchPan(page, "[data-graph-container]", 320, 0);
+  await expect
+    .poll(async () => (await scrollStateOf()).left, { timeout: 10_000 })
+    .toBe(0);
 });

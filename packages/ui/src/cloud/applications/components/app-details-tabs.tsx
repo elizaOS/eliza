@@ -11,6 +11,7 @@ import {
   Globe,
   Grid3x3,
   Megaphone,
+  Rocket,
   Settings,
   TrendingUp,
   Users,
@@ -22,6 +23,7 @@ import type { App } from "../lib/apps";
 import { AppAnalytics } from "./app-analytics";
 import { AppDomains } from "./app-domains";
 import { AppEarningsDashboard } from "./app-earnings-dashboard";
+import { AppFrontendHosting } from "./app-frontend-hosting";
 import { AppMonetizationSettings } from "./app-monetization-settings";
 import { AppOverview } from "./app-overview";
 import { AppPromote } from "./app-promote";
@@ -35,6 +37,7 @@ interface AppDetailsTabsProps {
 
 type TabValue =
   | "overview"
+  | "hosting"
   | "domains"
   | "promote"
   | "analytics"
@@ -64,6 +67,11 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
       value: "earnings",
       label: t("cloud.apps.tab.earnings", { defaultValue: "Earnings" }),
       icon: TrendingUp,
+    },
+    {
+      value: "hosting",
+      label: t("cloud.apps.tab.hosting", { defaultValue: "Hosting" }),
+      icon: Rocket,
     },
     {
       value: "domains",
@@ -107,7 +115,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
   return (
     <div className="space-y-3 sm:space-y-6">
       {/* Tabs */}
-      <div className="grid grid-cols-2 gap-1 rounded-sm border border-border bg-bg-accent p-1 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-1 rounded-sm border border-border bg-bg-accent p-1 sm:grid-cols-3 xl:grid-cols-9">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -134,6 +142,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
         {activeTab === "overview" && (
           <AppOverview app={app} showApiKey={showApiKey} />
         )}
+        {activeTab === "hosting" && <AppFrontendHosting appId={app.id} />}
         {activeTab === "domains" && <AppDomains appId={app.id} />}
         {activeTab === "promote" && <AppPromote app={app} />}
         {activeTab === "analytics" && <AppAnalytics appId={app.id} />}

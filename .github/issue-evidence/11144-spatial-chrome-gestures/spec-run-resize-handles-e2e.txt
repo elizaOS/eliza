@@ -1,0 +1,128 @@
+
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/ui
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/hooks/useRenderGuard.ts:79:15:
+      79 │   const meta = import.meta as ImportMetaWithEnv;
+         ╵                ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/hooks/useRenderGuard.ts:116:15:
+      116 │   const meta = import.meta as ImportMetaWithEnv;
+          ╵                ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/components/apps/helpers.ts:151:30:
+      151 │ ...turn parseBooleanEnvValue(import.meta.env.VITE_PUBLIC_SHOW_ALL...
+          ╵                              ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/components/apps/helpers.ts:174:20:
+      174 │     isProd = typeof import.meta.env.PROD === "boolean"
+          ╵                     ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/components/apps/helpers.ts:175:8:
+      175 │       ? import.meta.env.PROD
+          ╵         ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/components/apps/helpers.ts:176:16:
+      176 │       : Boolean(import.meta.env.PROD),
+          ╵                 ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/platform/init.ts:58:40:
+      58 │   return isDesktopPlatform() || Boolean(import.meta.env.DEV);
+         ╵                                         ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/api/android-native-agent-transport.ts:134:4:
+      134 │     import.meta as ImportMeta & {
+          ╵     ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/api/ios-local-agent-transport.ts:168:5:
+      168 │     (import.meta as ImportMeta & { env?: ImportMetaEnvRecord }).e...
+          ╵      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/navigation/index.ts:26:17:
+      26 │ const viteEnv = (import.meta as RuntimeImportMeta).env;
+         ╵                  ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/platform/android-runtime.ts:60:11:
+      60 │     typeof import.meta !== "undefined" &&
+         ╵            ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/platform/android-runtime.ts:61:5:
+      61 │     (import.meta as { env?: RuntimeEnv }).env
+         ╵      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/platform/android-runtime.ts:62:10:
+      62 │       ? ((import.meta as { env: RuntimeEnv }).env as RuntimeEnv)
+         ╵           ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/perf/perf-hud-control.ts:68:15:
+      68 │   const env = (import.meta as ImportMetaWithEnv).env;
+         ╵                ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/first-run/reconcile-mobile-runtime-mode.ts:123:5:
+      123 │     (import.meta as ImportMeta & { env?: RuntimeEnvRecord }).env ...
+          ╵      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  05:06:14
+   Duration  2.53s (transform 43ms, setup 28ms, import 212ms, tests 2.21s, environment 0ms)

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { EMBEDDING_PRESETS } from "../runtime/embedding-presets";
 import {
 	buildHuggingFaceResolveUrlForPath,
 	ELIZA_1_MTP_TIER_IDS,
@@ -63,6 +64,24 @@ export interface LifecycleLocalFileCheck {
 	sizeBytes?: number;
 }
 
+/**
+ * Direct load-and-run evidence for a model's text component, produced by the
+ * `--load-run` lane (`lifecycle-loadrun.ts`): the real FFI engine loaded the
+ * installed artifact and decoded tokens, so throughput and the serving
+ * backend are measured, not inferred from `bundleVerifiedAt`.
+ */
+export interface LifecycleLoadRunCheck {
+	status: "pass" | "fail" | "skipped";
+	detail: string;
+	checkedAt: string;
+	backend?: string;
+	loadMs?: number;
+	generateMs?: number;
+	promptTokens?: number;
+	decodeTokens?: number;
+	tokensPerSecond?: number;
+}
+
 export interface LifecycleBundleRemoteCheck {
 	status: "pass" | "fail" | "warn";
 	detail: string;
@@ -77,6 +96,26 @@ export interface LifecycleBundleRemoteCheck {
 	}>;
 }
 
+/**
+ * A catalog-grounded explanation for an expected component that has no
+ * advertised artifact. Distinguishes the two honest non-fail cases from a
+ * genuinely missing implementation (#10727 reconciliation):
+ *
+ * - `publish-pending`: the runtime seam and the exact artifact path are
+ *   implemented and documented in the catalog, but the artifact is not hosted
+ *   yet (e.g. Gemma MTP drafters gated by `ELIZA_1_HOSTED_MTP_TIER_IDS`).
+ *   The row stays red — but on `published`/`downloadable`, attributed to the
+ *   publish gap, and it counts in `pendingPublishRows`.
+ * - `served-by-alternate-runtime`: the model slot is deliberately served by a
+ *   different runtime artifact (e.g. the 2b tier ships no bundle embedding;
+ *   `TEXT_EMBEDDING` is served by the gte-small preset). The row is `skipped`
+ *   with the recorded product decision instead of a permanent unfixable fail.
+ */
+export interface LifecycleKnownGap {
+	kind: "publish-pending" | "served-by-alternate-runtime";
+	reason: string;
+}
+
 export interface LocalModelLifecycleArtifact {
 	key: string;
 	modelId: string;
@@ -89,6 +128,7 @@ export interface LocalModelLifecycleArtifact {
 	bundleFile: string | null;
 	downloadUrl: string | null;
 	bootPath: string;
+	knownGap?: LifecycleKnownGap;
 }
 
 export interface LocalModelLifecycleRow extends LocalModelLifecycleArtifact {
@@ -172,6 +212,8 @@ export interface BuildLocalModelLifecycleMatrixOptions {
 	remoteChecks?: Readonly<Record<string, LifecycleRemoteCheck>>;
 	bundleChecks?: Readonly<Record<string, LifecycleBundleRemoteCheck>>;
 	localFileChecks?: Readonly<Record<string, LifecycleLocalFileCheck>>;
+	/** Keyed by model id; applies to the model's `text` row. */
+	loadRunChecks?: Readonly<Record<string, LifecycleLoadRunCheck>>;
 }
 
 const COMPONENTS_WITH_LOCAL_RUNTIME: ReadonlySet<LocalModelLifecycleComponent> =
@@ -249,6 +291,45 @@ function sourceComponentFor(
 	return model.sourceModel?.components[component];
 }
 
+/**
+ * Catalog-grounded known-gap classification for an expected component that
+ * has no advertised source file. Keeps a deliberate catalog gate and a
+ * genuinely-missing implementation distinguishable in the matrix output —
+ * the exact "expected but not advertised" reconciliation from #10727.
+ */
+function knownGapFor(
+	model: CatalogModel,
+	component: LocalModelLifecycleComponent,
+	hasSourceFile: boolean,
+): LifecycleKnownGap | undefined {
+	if (hasSourceFile) return undefined;
+	if (component === "mtp" && hasTier(ELIZA_1_MTP_TIER_IDS, model.id)) {
+		const slug = model.id.startsWith("eliza-1-")
+			? model.id.slice("eliza-1-".length)
+			: model.id;
+		return {
+			kind: "publish-pending",
+			reason:
+				`Gemma MTP drafter mtp/drafter-${slug}.gguf is not hosted on ` +
+				`${model.hfRepo} (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the ` +
+				"catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS " +
+				"(currently empty) so the downloader never fetches a missing artifact",
+		};
+	}
+	if (component === "embedding") {
+		const preset = EMBEDDING_PRESETS.standard;
+		return {
+			kind: "served-by-alternate-runtime",
+			reason:
+				"tier ships no bundle embedding artifact by design; TEXT_EMBEDDING " +
+				`is served by the ${preset.model} preset (${preset.modelRepo}, ` +
+				`${preset.dimensions}-dim — matches plugin-sql's dim384 column; see ` +
+				"runtime/embedding-presets.ts)",
+		};
+	}
+	return undefined;
+}
+
 function bundleRelativeFileFor(model: CatalogModel, file: string): string {
 	const cleanFile = file.replace(/^\/+/, "");
 	const cleanPrefix = model.hfPathPrefix?.replace(/^\/+|\/+$/g, "");
@@ -270,6 +351,7 @@ export function listLocalModelLifecycleArtifacts(
 			const bundleFile = sourceFile
 				? bundleRelativeFileFor(model, sourceFile)
 				: null;
+			const knownGap = knownGapFor(model, component, Boolean(sourceFile));
 			rows.push({
 				key: lifecycleArtifactKey(model.id, component),
 				modelId: model.id,
@@ -284,6 +366,7 @@ export function listLocalModelLifecycleArtifacts(
 					? buildHuggingFaceResolveUrlForPath(model, sourceFile)
 					: null,
 				bootPath: COMPONENT_BOOT_PATHS[component],
+				...(knownGap ? { knownGap } : {}),
 			});
 		}
 	}
@@ -373,6 +456,15 @@ function implementedCheck(
 ): LifecycleCheck {
 	if (!artifact.expected) return status("skipped", "artifact is not expected");
 	if (!artifact.catalogAdvertised) {
+		if (artifact.knownGap?.kind === "served-by-alternate-runtime") {
+			return status("skipped", artifact.knownGap.reason);
+		}
+		if (artifact.knownGap?.kind === "publish-pending") {
+			return status(
+				"pass",
+				`${artifact.component} runtime seam and catalog artifact path are implemented; ${artifact.knownGap.reason}`,
+			);
+		}
 		return status(
 			"fail",
 			`${artifact.component} is expected but has no catalog source file`,
@@ -405,7 +497,16 @@ function deployableCheck(
 	implemented: LifecycleCheck,
 ): LifecycleCheck {
 	if (implemented.status === "fail") return implemented;
+	if (artifact.knownGap?.kind === "served-by-alternate-runtime") {
+		return status("skipped", artifact.knownGap.reason);
+	}
 	if (!artifact.downloadUrl) {
+		if (artifact.knownGap?.kind === "publish-pending") {
+			return status(
+				"fail",
+				`artifact awaits publish; no download URL until it is hosted (${artifact.knownGap.reason})`,
+			);
+		}
 		return status("fail", "artifact has no resolved download URL");
 	}
 	return status("pass", "artifact has a resolved catalog download URL", {
@@ -418,6 +519,12 @@ function publishedCheck(
 	publishStatus: "published" | "pending",
 ): LifecycleCheck {
 	if (!artifact.catalogAdvertised) {
+		if (artifact.knownGap?.kind === "served-by-alternate-runtime") {
+			return status("skipped", artifact.knownGap.reason);
+		}
+		if (artifact.knownGap?.kind === "publish-pending") {
+			return status("fail", artifact.knownGap.reason);
+		}
 		return status(
 			"fail",
 			"catalog does not advertise a hosted artifact for this component",
@@ -434,7 +541,13 @@ function downloadableCheck(
 	remote: LifecycleRemoteCheck | undefined,
 	published: LifecycleCheck,
 ): LifecycleCheck {
+	if (artifact.knownGap?.kind === "served-by-alternate-runtime") {
+		return status("skipped", artifact.knownGap.reason);
+	}
 	if (!artifact.downloadUrl) {
+		if (artifact.knownGap?.kind === "publish-pending") {
+			return status("fail", artifact.knownGap.reason);
+		}
 		return status("fail", "no download URL exists for this artifact");
 	}
 	if (published.status === "fail") {
@@ -486,7 +599,21 @@ function installedCheck(
 	});
 }
 
-function loadRunCheck(installed: InstalledModel | undefined): LifecycleCheck {
+function loadRunCheck(
+	installed: InstalledModel | undefined,
+	loadRun: LifecycleLoadRunCheck | undefined,
+): LifecycleCheck {
+	if (loadRun) {
+		const throughput =
+			loadRun.tokensPerSecond !== undefined
+				? ` (${loadRun.tokensPerSecond} tok/s decode on ${loadRun.backend ?? "unknown backend"})`
+				: loadRun.backend
+					? ` (backend: ${loadRun.backend})`
+					: "";
+		return status(loadRun.status, `${loadRun.detail}${throughput}`, {
+			checkedAt: loadRun.checkedAt,
+		});
+	}
 	if (!installed) {
 		return status(
 			"skipped",
@@ -588,8 +715,13 @@ export function buildLocalModelLifecycleMatrix(
 		const fileCheck = componentPath
 			? (options.localFileChecks?.[artifact.key] ?? null)
 			: null;
+		// A publish-pending known gap is a per-component pending publish, even
+		// when the tier itself is published (e.g. 2b/4b MTP drafters) — count
+		// it in `pendingPublishRows` like the pending 9b/27b tiers.
 		const publishStatus =
-			model.publishStatus ?? eliza1TierPublishStatus(model.id);
+			artifact.knownGap?.kind === "publish-pending"
+				? "pending"
+				: (model.publishStatus ?? eliza1TierPublishStatus(model.id));
 		const implemented = implementedCheck(artifact);
 		const integrated = integratedCheck(artifact, implemented);
 		const deployable = deployableCheck(artifact, implemented);
@@ -601,8 +733,19 @@ export function buildLocalModelLifecycleMatrix(
 		);
 		const bundleCheck = options.bundleChecks?.[model.id];
 		const bundleClosure = bundleClosureCheck(model, bundleCheck);
-		const installedStatus = installedCheck(installed, fileCheck);
-		const loadRun = loadRunCheck(installed);
+		const servedByAlternate =
+			artifact.knownGap?.kind === "served-by-alternate-runtime";
+		const installedStatus = servedByAlternate
+			? status("skipped", artifact.knownGap?.reason ?? "")
+			: installedCheck(installed, fileCheck);
+		const loadRun = servedByAlternate
+			? status("skipped", artifact.knownGap?.reason ?? "")
+			: loadRunCheck(
+					installed,
+					artifact.component === "text"
+						? options.loadRunChecks?.[model.id]
+						: undefined,
+				);
 		const backend = backendPolicyCheck(
 			deviceBackends,
 			supportedBackends,
@@ -747,7 +890,9 @@ export function formatLocalModelLifecycleMatrixMarkdown(
 		lines.push(
 			[
 				row.modelId,
-				row.component,
+				row.knownGap
+					? `${row.component} (${row.knownGap.kind})`
+					: row.component,
 				compactCheck(row.checks.published),
 				compactCheck(row.checks.downloadable),
 				compactCheck(row.checks.bundleClosure),

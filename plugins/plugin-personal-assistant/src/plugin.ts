@@ -45,7 +45,6 @@ import { connectorAction } from "./actions/connector.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
-import { inboxAction } from "./actions/inbox.js";
 import {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -152,7 +151,6 @@ import { crossChannelContextProvider } from "./providers/cross-channel-context.j
 // LifeOps core providers
 import { firstRunProvider } from "./providers/first-run.js";
 import { healthProvider } from "./providers/health.js";
-import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
@@ -774,7 +772,9 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(briefAction),
     ...promoteSubactionsToActions(prioritizeAction),
     ...promoteSubactionsToActions(conflictDetectAction),
-    ...promoteSubactionsToActions(inboxAction),
+    // INBOX (+ its INBOX_* virtuals) registers via @elizaos/plugin-inbox,
+    // which init() guarantees is loaded before PA's action array is
+    // processed; plugin-inbox promotes the subactions itself.
     ...promoteSubactionsToActions(voiceCallAction),
     workThreadAction,
     // The create virtual carries an explicit de-claim: on live small models a
@@ -803,7 +803,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     workThreadsProvider,
     recentTaskStatesProvider,
     healthProvider,
-    inboxTriageProvider,
+    // `inboxTriage` registers via @elizaos/plugin-inbox, which init()
+    // guarantees is loaded (ensureLifeOpsInboxPluginRegistered) before PA's
+    // own provider array is processed. Re-listing it here was a dead
+    // duplicate the runtime silently skipped.
     crossChannelContextProvider,
     activityProfileProvider,
   ],
