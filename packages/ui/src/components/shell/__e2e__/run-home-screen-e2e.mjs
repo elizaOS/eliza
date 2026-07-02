@@ -227,6 +227,15 @@ async function touchSwipeRight(page, testId) {
     stepDelayMs: 16,
   });
 }
+// A real downward touch drag — the home notification pull-down (#10706) is a
+// vertical gesture, so this drives it through the same CDP touch path as the
+// horizontal rail swipes.
+async function touchSwipeDown(page, testId, dy = 180) {
+  await touchSwipe(page, `[data-testid="${testId}"]`, 0, dy, {
+    steps: 12,
+    stepDelayMs: 16,
+  });
+}
 
 // A STATIONARY hold past the long-press window. On the curated launcher this
 // must NOT enter edit mode (the launcher is read-only, fixed placement).
@@ -407,6 +416,32 @@ try {
     !stability.flagged,
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
+
+  // Real touch pull-DOWN on the notification zone opens the NotificationCenter
+  // sheet (#10706) — previously only jsdom synthetic pointer events covered it.
+  assert(
+    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    "notification sheet starts closed",
+  );
+  await touchSwipeDown(mobile, "home-notification-pull-zone");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "visible", timeout: 4000 });
+  assert(
+    await mobile.getByTestId("notification-sheet-close").isVisible(),
+    "real-touch pull-down opens the notification sheet",
+  );
+  // Close it again (Escape — the sheet's documented dismiss) so the rail swipe
+  // below starts from a clean, settled home.
+  await mobile.keyboard.press("Escape");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "detached", timeout: 4000 });
+  assert(
+    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    "the notification sheet closes again (Escape)",
+  );
+  await waitForSurfacePageSettled(mobile, "home");
 
   // Real touch left-swipe on the home half pages the outer rail to the
   // launcher (the halves are `touch-pan-y`, so a horizontal touch gesture is
