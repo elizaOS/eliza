@@ -39,13 +39,14 @@ const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
     ? [
-        // The string alias below prefix-matches subpath imports, so
-        // "@elizaos/core/node" would otherwise rewrite to
-        // "<core entry file>/node" (ENOTDIR). Pin the /node subpath to the
-        // node entry first — same fix plugin-personal-assistant's own
-        // vitest.config.ts carries. Without it this lane cannot load the
-        // personal-assistant plugin graph (plugin-calendly's dist imports
-        // "@elizaos/core/node").
+        // Exact-match aliases only. A bare string alias prefix-matches
+        // subpath imports, so "@elizaos/core/node" would rewrite to
+        // "<core entry file>/node" (ENOTDIR) and the personal-assistant
+        // plugin graph could not load (plugin-calendly's dist imports
+        // "@elizaos/core/node") — see #11047. Pin the src entries for the
+        // root and the node/browser subpaths; every other subpath
+        // (./roles, ./testing, ./services/*) falls through to the package
+        // exports map.
         {
           find: /^@elizaos\/core\/node$/,
           replacement: path.join(
@@ -57,7 +58,17 @@ const integrationResolveAlias: ModuleAlias[] = [
           ),
         },
         {
-          find: "@elizaos/core",
+          find: /^@elizaos\/core\/browser$/,
+          replacement: path.join(
+            elizaWorkspaceRoot,
+            "packages",
+            "core",
+            "src",
+            "index.browser.ts",
+          ),
+        },
+        {
+          find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },
       ]
@@ -120,13 +131,19 @@ const integrationResolveAlias: ModuleAlias[] = [
 ];
 
 export default defineConfig({
+  // Anchor every relative test path at the eliza workspace root detected from
+  // this config file's location. The paths used to be "eliza/"-prefixed and
+  // cwd-relative, which only resolved from a consumer workspace that nests
+  // the checkout as literally `eliza/` — in a flat eliza checkout or a git
+  // worktree the lane found zero files (#11047).
+  root: elizaWorkspaceRoot,
   resolve: {
     alias: integrationResolveAlias,
   },
   test: {
     testTimeout: 120_000,
     hookTimeout: 120_000,
-    globalSetup: ["eliza/packages/app-core/test/e2e-global-setup.ts"],
+    globalSetup: ["packages/app-core/test/e2e-global-setup.ts"],
     // Integration files frequently replace globals and module-level mocks.
     // Shared module state causes cross-file bleed, which is more expensive to
     // debug than the small cost of per-file isolation.
@@ -142,16 +159,16 @@ export default defineConfig({
       shuffle: false,
     },
     include: [
-      "eliza/packages/agent/test/**/*.integration.test.ts",
-      "eliza/apps/*/test/**/*.integration.test.ts",
-      "eliza/packages/app-core/test/**/*.integration.test.ts",
+      "packages/agent/test/**/*.integration.test.ts",
+      "apps/*/test/**/*.integration.test.ts",
+      "packages/app-core/test/**/*.integration.test.ts",
       // Plugin-level integration tests (16 *.integration.test.ts files in
       // app-lifeops/test/) were dead in CI — neither the plugin's own
       // vitest.config.ts (which excludes the integration suffix from the
       // unit lane) nor this integration config picked them up. Include
       // them now so the existing coverage runs.
-      "eliza/plugins/plugin-personal-assistant/test/**/*.integration.test.ts",
-      "eliza/plugins/*/test/**/*.integration.test.ts",
+      "plugins/plugin-personal-assistant/test/**/*.integration.test.ts",
+      "plugins/*/test/**/*.integration.test.ts",
       // Src-level plugin integration tests were dead the same way: the
       // scheduler suite at plugin-personal-assistant/src/lifeops/
       // scheduled-task/scheduler.integration.test.ts (10 real-DB tests of the
@@ -159,10 +176,10 @@ export default defineConfig({
       // plugin's unit lane (integration suffix excluded) nor the test/**
       // globs above — vitest reported "No test files found" even when the
       // file was passed explicitly. Include src/** so the suite runs.
-      "eliza/plugins/plugin-personal-assistant/src/**/*.integration.test.ts",
-      "eliza/plugins/*/src/**/*.integration.test.ts",
+      "plugins/plugin-personal-assistant/src/**/*.integration.test.ts",
+      "plugins/*/src/**/*.integration.test.ts",
     ],
-    setupFiles: ["eliza/packages/app-core/test/setup.ts"],
+    setupFiles: ["packages/app-core/test/setup.ts"],
     exclude: [
       "dist/**",
       "**/node_modules/**",
@@ -177,10 +194,10 @@ export default defineConfig({
       "**/*.real.e2e.test.ts",
       "**/*.real.e2e.test.tsx",
       // --- server/runtime route tests must live in the live/real lane ---
-      "eliza/packages/app-core/src/api/**/*.test.{ts,tsx}",
-      "eliza/packages/app-core/src/services/**/*.test.{ts,tsx}",
-      "eliza/apps/*/src/**/*routes.test.{ts,tsx}",
-      "eliza/apps/*/src/services/**/*.test.{ts,tsx}",
+      "packages/app-core/src/api/**/*.test.{ts,tsx}",
+      "packages/app-core/src/services/**/*.test.{ts,tsx}",
+      "apps/*/src/**/*routes.test.{ts,tsx}",
+      "apps/*/src/services/**/*.test.{ts,tsx}",
     ],
     server: {
       deps: {
