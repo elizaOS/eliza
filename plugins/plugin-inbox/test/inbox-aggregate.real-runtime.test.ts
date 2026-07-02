@@ -102,7 +102,11 @@ class MemoryInboxCache implements InboxMessageCache {
   ): Promise<LifeOpsInboxMessage | null> {
     const row = this.rows.get(inboxEntryId);
     if (!row) return null;
-    const updated = { ...row, isRead: true };
+    const updated = {
+      ...row,
+      unread: false,
+      lastSeenAt: new Date().toISOString(),
+    };
     this.rows.set(inboxEntryId, updated);
     return updated;
   }
@@ -469,10 +473,11 @@ describe("InboxDomain on a real runtime", () => {
     const row = seeded[0];
     expect(row).toBeDefined();
     if (!row) throw new Error("unreachable");
-    cache.seed({ ...row, isRead: false }, new Date().toISOString());
+    cache.seed({ ...row, unread: true }, new Date().toISOString());
 
     const marked = await domain.markInboxEntryRead(row.id);
-    expect(marked?.isRead).toBe(true);
+    expect(marked?.unread).toBe(false);
+    expect(marked?.lastSeenAt).toBeTruthy();
 
     // Miss -> null; the HOST owns the transport mapping (PA raises 404).
     const missing = await domain.markInboxEntryRead("no-such-entry");

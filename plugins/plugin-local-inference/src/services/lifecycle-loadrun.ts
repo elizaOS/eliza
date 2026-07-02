@@ -82,13 +82,19 @@ export async function collectLifecycleLoadRunChecks(
 				modelId: model.id,
 			});
 			const generateStart = performance.now();
-			const result = await localInferenceEngine.generateInConversation(handle, {
-				prompt,
-				maxTokens,
-				temperature: 0,
-			});
+			let result: Awaited<
+				ReturnType<typeof localInferenceEngine.generateInConversation>
+			>;
+			try {
+				result = await localInferenceEngine.generateInConversation(handle, {
+					prompt,
+					maxTokens,
+					temperature: 0,
+				});
+			} finally {
+				await localInferenceEngine.closeConversation(handle);
+			}
 			const generateMs = Math.round(performance.now() - generateStart);
-			await localInferenceEngine.closeConversation(handle);
 			const trimmed = result.text.trim();
 			if (!trimmed) {
 				checks[model.id] = {

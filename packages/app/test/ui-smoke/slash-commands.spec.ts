@@ -193,7 +193,7 @@ test("slash menu: a navigate command consumes the draft instead of sending it", 
 // ---------------------------------------------------------------------------
 // #10722 — real-pointer gesture coverage for SlashCommandMenu. The menu is an
 // overflow-y-auto listbox floating over the composer; its pick contract is:
-//   - pointer-down only guards the composer's focus (preventDefault, no pick),
+//   - pointer-down only guards mouse/pen composer focus (preventDefault, no pick),
 //   - the pick itself fires on click, so the engine's own tap-vs-scroll
 //     discrimination applies (a scroll gesture never emits click).
 // These tests drive genuine engine input — Playwright mouse (both engines) and
@@ -309,8 +309,8 @@ test.describe("slash menu real-touch gestures (#10722)", () => {
     );
 
     // Genuine finger tap (touchStart → touchEnd, no movement). The pick moved
-    // from pointer-down to click; this proves a preventDefault'd pointerdown
-    // still yields the tap's click — i.e. touch users can still pick at all.
+    // from pointer-down to click, and touch keeps the platform default so
+    // WebKit-style touch-generated clicks are not suppressed.
     await touchTap(page, '[data-testid="slash-option-0"]');
     await expect(menu).toBeHidden();
     await expect(composer).toHaveValue("");

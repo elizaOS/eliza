@@ -34,7 +34,7 @@ import { Sidebar } from "../sidebar/sidebar-root";
 // favoriteApps, t, ...). Seed a minimal STABLE value so the real components
 // render without the full <AppProvider> host; unknown fields resolve to an
 // inert noop (mirroring the store's own provider-less test fallback).
-const seededFields: Record<string, unknown> = {
+const seededFields: Partial<AppContextValue> = {
   plugins: [],
   appRuns: [],
   favoriteApps: [],
@@ -45,8 +45,10 @@ const noop = new Proxy(() => noop, { get: () => noop });
 seedAppValue(
   new Proxy(seededFields, {
     get: (target, prop) =>
-      typeof prop === "string" && prop in target ? target[prop] : noop,
-  }) as unknown as AppContextValue,
+      typeof prop === "string" && Object.hasOwn(target, prop)
+        ? target[prop as keyof AppContextValue]
+        : noop,
+  }) as AppContextValue,
 );
 
 function SidebarSection() {

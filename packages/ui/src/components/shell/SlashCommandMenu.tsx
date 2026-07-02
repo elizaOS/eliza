@@ -268,16 +268,18 @@ export function SlashCommandMenu({
           aria-selected={index === state.activeIndex}
           data-testid={`slash-option-${index}`}
           data-active={index === state.activeIndex ? "true" : undefined}
-          // Mouse-enter highlights. Pointer-down only prevents the default
-          // focus steal (the composer input must keep focus); the pick itself
-          // fires on click so the engine's native tap-vs-scroll discrimination
-          // applies — a touch drag that scrolls this overflowing listbox emits
-          // pointercancel and never clicks, whereas the old pointer-down pick
-          // executed a command the instant a scroll gesture touched a row
-          // (#10722 real-pointer gesture coverage in slash-commands.spec.ts).
+          // Mouse-enter highlights. Pointer-down prevents the mouse/pen focus
+          // steal (the composer input must keep focus); touch keeps the
+          // platform default so iOS/WebKit does not suppress the tap's click.
+          // The pick itself fires on click so the engine's native
+          // tap-vs-scroll discrimination applies — a touch drag that scrolls
+          // this overflowing listbox emits pointercancel and never clicks,
+          // whereas the old pointer-down pick executed a command the instant a
+          // scroll gesture touched a row (#10722 real-pointer gesture coverage
+          // in slash-commands.spec.ts).
           onMouseEnter={() => state.setActiveIndex(index)}
           onPointerDown={(e) => {
-            e.preventDefault();
+            if (e.pointerType !== "touch") e.preventDefault();
           }}
           onClick={() => onPick(index)}
           className={cn(
