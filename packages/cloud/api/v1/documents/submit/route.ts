@@ -7,6 +7,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { deletePendingDocumentBlob } from "../_pending-blob-cleanup";
 import {
   createDocumentRecord,
   type PendingDocumentFile,
@@ -74,7 +75,7 @@ app.post("/", async (c) => {
         size: file.size,
         text: await object.text(),
       });
-      await c.env.BLOB.delete(key);
+      await deletePendingDocumentBlob(c.env.BLOB, key);
       results.push({ blobUrl: file.blobUrl, status: "success", document });
     }
 

@@ -7,6 +7,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { deletePendingDocumentBlob } from "../_pending-blob-cleanup";
 import {
   publicBlobUrl,
   r2KeyFromBlobUrl,
@@ -98,7 +99,7 @@ app.delete("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    await c.env.BLOB.delete(key);
+    await deletePendingDocumentBlob(c.env.BLOB, key);
     return c.json({ success: true });
   } catch (error) {
     return failureResponse(c, error);
