@@ -46,12 +46,12 @@ export function describeActiveModel(
   } catch {
     return null;
   }
+  // Only the env vars the provider plugins actually honor — showing a model
+  // from a var the agent ignores (OPENAI_MODEL / ANTHROPIC_MODEL) would lie.
   const model =
     provider === "openai"
-      ? (env.OPENAI_LARGE_MODEL ?? env.OPENAI_MODEL ?? env.OPENAI_SMALL_MODEL)
-      : (env.ANTHROPIC_LARGE_MODEL ??
-        env.ANTHROPIC_MODEL ??
-        env.ANTHROPIC_SMALL_MODEL);
+      ? (env.OPENAI_LARGE_MODEL ?? env.OPENAI_SMALL_MODEL)
+      : (env.ANTHROPIC_LARGE_MODEL ?? env.ANTHROPIC_SMALL_MODEL);
   const trimmed = model?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : provider;
 }

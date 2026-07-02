@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { visibleWidth } from "@elizaos/tui";
 import chalk from "chalk";
+import { useStore } from "../lib/store.js";
 import { StatusBar } from "./StatusBar.js";
 
 const MODEL_ENV_KEYS = [
@@ -29,6 +30,10 @@ beforeEach(() => {
     saved[k] = process.env[k];
     delete process.env[k];
   }
+  // Isolate room state per test (some cases set a max-length room name).
+  useStore.setState({ rooms: [] });
+  const room = useStore.getState().createRoom("Main");
+  useStore.getState().switchRoom(room.id);
 });
 
 afterEach(() => {
@@ -68,6 +73,30 @@ describe("status bar model indicator (#11294)", () => {
     const joined = new StatusBar().render(120).join("\n");
     expect(joined).toContain("…"); // elided
     expect(joined).not.toContain("exceeds-the-cap");
+  });
+
+  test("never overflows with a max-length room name + long cwd (50/80/100/120)", () => {
+    process.env.ELIZA_CODE_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "sk-test";
+    // Elides to the 22-char cap — the widest the indicator can get.
+    process.env.OPENAI_LARGE_MODEL =
+      "some-absurdly-long-model-identifier-that-exceeds-the-cap";
+
+    useStore.setState({ rooms: [] });
+    const room = useStore.getState().createRoom("a".repeat(20));
+    useStore.getState().switchRoom(room.id);
+
+    const bar = new StatusBar();
+    // Pin a long cwd (the ctor already stamped lastCwdCheck, so render()
+    // won't refresh it away within this test).
+    (bar as unknown as { cwd: string }).cwd =
+      `/Users/someone/${"deeply/nested/".repeat(4)}project`;
+
+    for (const width of [50, 80, 100, 120] as const) {
+      for (const l of bar.render(width)) {
+        expect(visibleWidth(l)).toBeLessThanOrEqual(width);
+      }
+    }
   });
 
   test("omits the model at narrow width and never crashes unconfigured", () => {
