@@ -196,6 +196,23 @@ test("invalid env default is ignored (falls through to the non-zero last resort,
   expect(result.totalCost).toBeLessThan(0.1);
 });
 
+test("zero env default is ignored so it cannot reopen $0 free inference (#11635)", async () => {
+  process.env.AI_PRICING_FALLBACK_INPUT_USD_PER_M = "0";
+  process.env.AI_PRICING_FALLBACK_OUTPUT_USD_PER_M = "0";
+
+  const result = await calculateTextCostFromCatalog({
+    model: "mystery-model-1",
+    provider: "someprovider",
+    inputTokens: 1_000,
+    outputTokens: 1_000,
+  });
+
+  expect(result.inputCost).toBeGreaterThan(0);
+  expect(result.outputCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeGreaterThan(0);
+  expect(result.totalCost).toBeLessThan(0.1);
+});
+
 test("no catalog and no env default keeps the request servable at a non-zero last resort (#11635)", async () => {
   const result = await calculateTextCostFromCatalog({
     model: "mystery-model-1",

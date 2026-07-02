@@ -169,7 +169,7 @@ function envFallbackTokenUnitPrice(chargeType: "input" | "output"): number | nul
     return null;
   }
   const usdPerMillion = Number(raw);
-  if (!Number.isFinite(usdPerMillion) || usdPerMillion < 0) {
+  if (!Number.isFinite(usdPerMillion) || usdPerMillion <= 0) {
     logger.warn("ai-pricing: ignoring invalid fallback-rate env value", {
       envName,
       value: raw,
