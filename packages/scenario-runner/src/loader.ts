@@ -9,10 +9,11 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import {
+  DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
   type ScenarioLane,
-  scenario as validateScenarioDefinition,
   scenarioLane,
+  scenario as validateScenarioDefinition,
 } from "@elizaos/scenario-runner/schema";
 import ts from "typescript";
 
@@ -461,7 +462,12 @@ export async function listScenarioMetadata(
       }
     }
     const result = await loadScenarioMetadataFile(file);
-    if (laneFilter && result.lane !== laneFilter) continue;
+    // Apply the default lane exactly like `scenarioLane()` does on the run
+    // path (loadAllScenarios): a scenario with no declared lane IS a
+    // live-only scenario, so `list --lane live-only` must include it.
+    if (laneFilter && (result.lane ?? DEFAULT_SCENARIO_LANE) !== laneFilter) {
+      continue;
+    }
     if (result.status === "pending" && !includePending) continue;
     const candidates = [
       result,

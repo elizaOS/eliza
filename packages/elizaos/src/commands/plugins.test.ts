@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { submitPluginToRegistry } from "./plugins.js";
 
 let tempDirs: string[] = [];
@@ -39,6 +39,32 @@ describe("submitPluginToRegistry", () => {
     await expect(
       submitPluginToRegistry(dir, { base: "main", dryRun: true }),
     ).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ["git+ssh://git@github.com/acme/plugin-weather.git"],
+    ["ssh://git@github.com/acme/plugin-weather.git"],
+    ["git://github.com/acme/plugin-weather.git"],
+  ])("normalizes the npm repository url form %s", async (repositoryUrl) => {
+    const dir = makePluginPackage({
+      name: "@acme/plugin-weather",
+      version: "1.0.0",
+      keywords: ["elizaos", "plugin"],
+      repository: { type: "git", url: repositoryUrl },
+    });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await submitPluginToRegistry(dir, { base: "main", dryRun: true });
+      const printed = logSpy.mock.calls.at(-1)?.[0];
+      expect(typeof printed).toBe("string");
+      const parsed = JSON.parse(printed as string) as {
+        metadata: { repository: string };
+      };
+      expect(parsed.metadata.repository).toBe("github:acme/plugin-weather");
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it("rejects PR submission when no writable registry repository is configured", async () => {

@@ -205,6 +205,77 @@ describe("scenario executor api turn captures", () => {
     expect(report.turns[1]?.responseText).not.toContain("token-abc");
   });
 
+  it("inserts captured values containing replacement patterns ($&, $$, $`) literally", async () => {
+    const rawToken = "pre$&mid$$post$`";
+    const runtime = createRuntime([], {
+      routes: [
+        {
+          type: "POST",
+          path: "/mint",
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
+            res.status(200).json({ secret: rawToken });
+          },
+        },
+        {
+          type: "POST",
+          path: "/echo",
+          handler: async (req: RouteRequest, res: RouteResponse) => {
+            const body = req.body ?? {};
+            res.status(200).json({ echoed: body.secret });
+          },
+        },
+      ],
+    });
+
+    const report = await runScenario(
+      {
+        id: "api-capture-dollar-patterns",
+        title: "API capture dollar patterns",
+        domain: "executor",
+        turns: [
+          {
+            kind: "api",
+            name: "mint",
+            method: "POST",
+            path: "/mint",
+            expectedStatus: 200,
+            captures: { secret: "secret" },
+          },
+          {
+            kind: "api",
+            name: "echo",
+            method: "POST",
+            path: "/echo",
+            body: { secret: "{{capture:secret}}" },
+            expectedStatus: 200,
+            assertResponse(status, body) {
+              const record =
+                body && typeof body === "object"
+                  ? (body as Record<string, unknown>)
+                  : {};
+              if (status !== 200) return `expected status 200, saw ${status}`;
+              if (record.echoed !== rawToken) {
+                return `expected captured value ${JSON.stringify(
+                  rawToken,
+                )} inserted literally, saw ${JSON.stringify(record.echoed)}`;
+              }
+              return undefined;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.turns.map((turn) => turn.failedAssertions)).toEqual([[], []]);
+    expect(report.status).toBe("passed");
+  });
+
   it("redacts configured API response fields only in persisted turn reports", async () => {
     const runtime = createRuntime([], {
       routes: [

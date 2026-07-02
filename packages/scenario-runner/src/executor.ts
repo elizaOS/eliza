@@ -1085,7 +1085,11 @@ async function resolveTemplateString(args: {
         `[executor] unsupported scenario template token ${fullMatch}`,
       );
     }
-    resolved = resolved.replace(fullMatch, replacement);
+    const literalReplacement = replacement;
+    // Replace via callback so `$` sequences in captured values (`$&`, `$$`,
+    // `` $` ``) are inserted literally instead of being expanded as
+    // replacement patterns.
+    resolved = resolved.replace(fullMatch, () => literalReplacement);
   }
   return resolved;
 }
