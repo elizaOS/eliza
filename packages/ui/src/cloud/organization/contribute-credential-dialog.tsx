@@ -128,7 +128,7 @@ export function ContributeCredentialDialog({
                 {t("cloud.contributeCredential.pooledDescription", {
                   provider: POOLED_PROVIDER_LABELS[provider],
                   defaultValue:
-                    "Your {{provider}} key passed live validation and is encrypted in the org vault. Nobody — including you — can read it back; everyone sees just the last 4 characters.",
+                    "Your {{provider}} key passed live validation and is encrypted in the org vault. It's never shown again in the dashboard — everyone sees just the last 4 characters.",
                 })}
               </DialogDescription>
             </DialogHeader>
