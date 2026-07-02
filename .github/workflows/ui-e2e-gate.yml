@@ -26,6 +26,11 @@ on:
       - "packages/ui/src/testing/**"
       - "packages/ui/src/hooks/**"
       - "packages/ui/package.json"
+      # The proactive-suggestions e2e drives these server modules for real.
+      - "packages/agent/src/services/proactive-interaction-*.ts"
+      - "packages/agent/src/api/views-routes.ts"
+      - "packages/agent/src/api/interactions-routes.ts"
+      - "packages/agent/src/api/server-helpers-swarm.ts"
       - ".github/workflows/ui-e2e-gate.yml"
   push:
     branches: [main, develop]
@@ -40,6 +45,10 @@ on:
       - "packages/ui/src/testing/**"
       - "packages/ui/src/hooks/**"
       - "packages/ui/package.json"
+      - "packages/agent/src/services/proactive-interaction-*.ts"
+      - "packages/agent/src/api/views-routes.ts"
+      - "packages/agent/src/api/interactions-routes.ts"
+      - "packages/agent/src/api/server-helpers-swarm.ts"
 
 concurrency:
   group: ui-e2e-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -141,6 +150,13 @@ jobs:
       - name: View lifecycle e2e
         run: bun run --cwd packages/ui test:view-lifecycle-e2e
 
+      # Proactive suggestions (#8792): real views/interactions routes → real
+      # decider + governance gate (rate limit, cooldowns, dedup, kill switch)
+      # → real broadcast frames → real ChatTranscript suggestion affordance
+      # (Suggestion chip, "Do it", dismiss) exercised with real clicks.
+      - name: Proactive suggestions pipeline + UI e2e
+        run: bun run --cwd packages/ui test:suggestions-e2e
+
       - name: Upload UI fixture e2e artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -159,5 +175,7 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output-bottombar
             packages/ui/src/components/shell/__e2e__/output-fused-wake-integration
             packages/ui/src/components/pages/__e2e__/output-launcher
+            packages/ui/src/components/pages/__e2e__/output-background
+            packages/ui/src/components/pages/__e2e__/output-suggestions
           retention-days: 14
           if-no-files-found: ignore

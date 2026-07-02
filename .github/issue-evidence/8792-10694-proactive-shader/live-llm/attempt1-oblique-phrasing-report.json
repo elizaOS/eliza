@@ -1,0 +1,238 @@
+{
+  "runId": "b31636b8-5e34-4e50-8a53-328f833d127e",
+  "startedAtIso": "2026-07-02T08:07:40.077Z",
+  "completedAtIso": "2026-07-02T08:08:03.617Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "live-background-actions",
+      "title": "Real LLM drives the BACKGROUND action (color, GLSL shader, undo)",
+      "domain": "scenario-runner",
+      "tags": [
+        "live",
+        "real-llm",
+        "app-control",
+        "background"
+      ],
+      "status": "failed",
+      "durationMs": 18175,
+      "turns": [
+        {
+          "name": "set a teal background from natural language",
+          "kind": "message",
+          "text": "Please make the app background teal.",
+          "responseText": "The app background has been set to teal.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "set",
+                  "color": "teal"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "set",
+                  "mode": "shader",
+                  "color": "#0891b2"
+                },
+                "text": "Set the background to teal.",
+                "raw": {
+                  "success": true,
+                  "text": "Set the background to teal.",
+                  "values": {
+                    "op": "set",
+                    "mode": "shader",
+                    "color": "#0891b2"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 13549,
+          "failedAssertions": [],
+          "judgeScore": 1
+        },
+        {
+          "name": "set an animated GLSL shader background",
+          "kind": "message",
+          "text": "Now give me one of the animated shader backgrounds instead — something like a lava lamp.",
+          "responseText": "I'm not sure how to answer that.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "I'm not sure how to answer that.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 1554,
+          "failedAssertions": [
+            "responseJudge: score 0.00 < 0.6: Assistant refused and did not apply any animated shader background"
+          ],
+          "judgeScore": 0
+        },
+        {
+          "name": "undo the background change",
+          "kind": "message",
+          "text": "Actually, undo that last background change.",
+          "responseText": "The background change has been undone; the previous teal background is back.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "undo"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "undo"
+                },
+                "text": "Reverted the background to the previous one.",
+                "raw": {
+                  "success": true,
+                  "text": "Reverted the background to the previous one.",
+                  "values": {
+                    "op": "undo"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 2564,
+          "failedAssertions": [],
+          "judgeScore": 1
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "failed",
+          "detail": "actionCalled: expected 3 successful BACKGROUND call(s) with result.success=true, saw 2. Calls: {\"actionName\":\"BACKGROUND\",\"parameters\":{\"parameters\":{\"op\":\"set\",\"color\":\"teal\"},\"actionContext\":{\"previousResults\":[]}},\"result\":{\"success\":true,\"text\":\"Set the background to teal.\",\"values\":{\"op\":\"set\",\"mode\":\"shader\",\"color\":\"#0891b2\"}}} | {\"actionName\":\"BACKGROUND\",\"parameters\":{\"parameters\":{\"op\":\"undo\"},\"actionContext\":{\"previousResults\":[]}},\"result\":{\"success\":true,\"text\":\"Reverted the background to the previous one.\",\"values\":{\"op\":\"undo\"}}}"
+        },
+        {
+          "label": "real background:apply broadcasts reached the renderer channel",
+          "type": "custom",
+          "status": "failed",
+          "detail": "expected at least 2 background:apply set broadcasts, saw [{\"op\":\"set\",\"mode\":\"shader\",\"color\":\"#0891b2\"},{\"op\":\"undo\"}]"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "set",
+              "color": "teal"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "set",
+              "mode": "shader",
+              "color": "#0891b2"
+            },
+            "text": "Set the background to teal.",
+            "raw": {
+              "success": true,
+              "text": "Set the background to teal.",
+              "values": {
+                "op": "set",
+                "mode": "shader",
+                "color": "#0891b2"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I'm not sure how to answer that.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "undo"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "undo"
+            },
+            "text": "Reverted the background to the previous one.",
+            "raw": {
+              "success": true,
+              "text": "Reverted the background to the previous one.",
+              "values": {
+                "op": "undo"
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [
+        {
+          "label": "set an animated GLSL shader background",
+          "detail": "responseJudge: score 0.00 < 0.6: Assistant refused and did not apply any animated shader background"
+        },
+        {
+          "label": "actionCalled",
+          "detail": "actionCalled: expected 3 successful BACKGROUND call(s) with result.success=true, saw 2. Calls: {\"actionName\":\"BACKGROUND\",\"parameters\":{\"parameters\":{\"op\":\"set\",\"color\":\"teal\"},\"actionContext\":{\"previousResults\":[]}},\"result\":{\"success\":true,\"text\":\"Set the background to teal.\",\"values\":{\"op\":\"set\",\"mode\":\"shader\",\"color\":\"#0891b2\"}}} | {\"actionName\":\"BACKGROUND\",\"parameters\":{\"parameters\":{\"op\":\"undo\"},\"actionContext\":{\"previousResults\":[]}},\"result\":{\"success\":true,\"text\":\"Reverted the background to the previous one.\",\"values\":{\"op\":\"undo\"}}}"
+        },
+        {
+          "label": "real background:apply broadcasts reached the renderer channel",
+          "detail": "expected at least 2 background:apply set broadcasts, saw [{\"op\":\"set\",\"mode\":\"shader\",\"color\":\"#0891b2\"},{\"op\":\"undo\"}]"
+        }
+      ],
+      "providerName": "openai",
+      "judgeScore": 0
+    }
+  ],
+  "totals": {
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 0,
+  "failedCount": 1,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/data.js"
+  }
+}

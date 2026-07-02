@@ -1,0 +1,53 @@
+$ bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-suggestions-e2e.mjs
+— phase 1: real routes → decider → gate → broadcast —
+ Info       [VIEWREGISTRY] Registered 15 built-in views (count=15)
+ Info       [VIEWSROUTES] [ViewsRoutes] Navigate to view "wallet" (viewId=wallet, viewPath=null)
+✓ s1: view-switch reached the small-model judge
+✓ s1: wallet switch produced a governed proactive-message frame
+✓ s1: the admitted comment was persisted to the conversation
+ Info       [VIEWSROUTES] [ViewsRoutes] Navigate to view "calendar" (viewId=calendar, viewPath=null)
+✓ s2: burst switch still consulted the judge
+✓ s2: burst switch was rate-limited (no second frame)
+✓ s2: gate recorded the suppression reason (global cooldown)
+✓ s3: slash command stayed policy-silent (no judge call, no frame)
+✓ s4: control shortcut (focus-composer) never reached the judge
+ Info       [VIEWSROUTES] [ViewsRoutes] Navigate to view "settings" (viewId=settings, viewPath=/settings)
+✓ s5: agent-initiated switch produced no proactive comment
+✓ s6: intent-bearing shortcut reached the judge
+✓ s6: clock-advanced shortcut was admitted (second frame)
+ Info       [VIEWSROUTES] [ViewsRoutes] Navigate to view "wallet" (viewId=wallet, viewPath=null)
+✓ s7: repeat wallet switch consulted the judge
+✓ s7: per-surface cooldown suppressed the repeat (per-surface cooldown)
+ Info       [VIEWSROUTES] [ViewsRoutes] Navigate to view "calendar" (viewId=calendar, viewPath=null)
+✓ s8: chattiness=off suppressed the interaction before the judge
+✓ s9: dedup candidate consulted the judge
+✓ s9: textual dedup suppressed the identical offer (duplicate of a recent comment)
+✓ phase 1: no route rejected a valid report
+  gate ledger:
+    t+  1.6s ADMIT    [wallet] ok
+    t+  3.2s SUPPRESS [calendar] global cooldown
+    t+131.6s ADMIT    [shortcut:open-command-palette] ok
+    t+261.6s SUPPRESS [wallet] per-surface cooldown
+    t+761.6s SUPPRESS [shortcut:open-command-palette] duplicate of a recent comment
+— phase 2: captured frames → real ChatTranscript in Chromium —
+✓ frame 1 (real capture) parsed and appended
+✓ one suggestion bubble rendered
+✓ the bubble shows the governed comment text
+✓ the bubble carries the "Suggestion" chip (not a normal reply)
+✓ the bubble exposes the "Do it" and dismiss affordances
+  📸 sg-01-suggestion-rendered.png
+✓ malformed frame is rejected by the real parser (unparseable frame)
+✓ a frame for an inactive conversation goes to unread, not the transcript
+✓ second governed frame renders a second bubble
+  📸 sg-02-two-suggestions.png
+✓ replaying an already-delivered frame does not duplicate the bubble
+✓ dismiss removes the suggestion bubble
+✓ dismiss sends nothing to the agent
+  📸 sg-03-after-dismiss.png
+✓ "Do it" clears the suggestion bubble
+✓ "Do it" sends the acceptance as a normal chat turn
+  📸 sg-04-after-accept.png
+  🎥 walkthrough.webm
+✓ no uncaught page errors (0)
+
+✅ proactive suggestions e2e passed

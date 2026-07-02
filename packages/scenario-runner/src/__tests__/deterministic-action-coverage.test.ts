@@ -763,6 +763,8 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
     "live-only real-LLM trajectory exercising LIST_CLOUD_APPS against the real Cloud API (#10277); it routes via the live model, NOT a deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract and is classified here (the no-deterministic-fixture bucket). Its gating proof is the keyless bun:test suite in plugins/plugin-cloud-apps/__tests__.",
   "background-live":
     "live-only real-LLM counterpart of deterministic-background-actions (#10694); a real model routes set/undo/redo/reset to BACKGROUND from natural phrasing, NOT a deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract and is classified here (the no-deterministic-fixture bucket). Its keyless gating proof is deterministic-background-actions in the pr-deterministic lane.",
+  "live-background-actions":
+    "live-only real-LLM counterpart of deterministic-background-actions (#10694); the live model routes BACKGROUND (color set, GLSL preset, undo) with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. The deterministic twin pins the exact payload ledger on the keyless lane.",
 };
 
 /**
