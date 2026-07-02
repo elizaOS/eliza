@@ -16,7 +16,7 @@
  *      it and prints the real before/after render for every loaded task:
  *
  *        LIFEOPS_VERIFY_STATE_DIR=/path/to/state-dir \
- *          bunx vitest run scripts/lifeops-verify-optimized-prompt.test.ts
+ *          bunx vitest run test/lifeops-optimized-artifact-verify.test.ts
  *
  *      Restrict to one task with `LIFEOPS_VERIFY_TASK=<task>`.
  */
