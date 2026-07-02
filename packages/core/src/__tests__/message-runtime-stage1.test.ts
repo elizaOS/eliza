@@ -603,8 +603,79 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("delivers bare-code and structured Stage 1 replies verbatim", async () => {
+		// #11504: the old junk heuristic flagged ANY character repeated 5+ times
+		// anywhere in the reply, so the 8+ consecutive spaces of two-level code
+		// indentation (a gemma-4-31b HumanEval-style bare function body), markdown
+		// "-----" dividers, and pretty-printed JSON all dead-ended into "I'm not
+		// sure how to answer that." — depressing eliza-harness HumanEval to 0.40
+		// vs 1.00 for the same model on raw harnesses.
+		const bareCodeBody = [
+			"def has_close_elements(numbers: List[float], threshold: float) -> bool:",
+			"    for idx, elem in enumerate(numbers):",
+			"        for idx2, elem2 in enumerate(numbers):",
+			"            if idx != idx2:",
+			"                distance = abs(elem - elem2)",
+			"                if distance < threshold:",
+			"                    return True",
+			"    return False",
+		].join("\n");
+		const fencedCode = `\`\`\`python\n${bareCodeBody}\n\`\`\``;
+		const proseThenFencedCode = `Here's the implementation:\n\n${fencedCode}`;
+		const prettyPrintedJson = [
+			"{",
+			'    "name": "config",',
+			'    "nested": {',
+			'        "deep": {',
+			'            "value": 1',
+			"        }",
+			"    }",
+			"}",
+		].join("\n");
+		const markdownWithDivider = "Results\n-------\nAll checks passed.";
+		for (const reply of [
+			bareCodeBody,
+			fencedCode,
+			proseThenFencedCode,
+			prettyPrintedJson,
+			markdownWithDivider,
+		]) {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: reply,
+				}),
+			]);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Write a Python function that checks whether any two numbers in a list are closer than a threshold.",
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+			expect(useModelCalls(runtime).length).toBe(1);
+		}
+	});
+
 	it("does not keep known-junk Stage 1 fragments when regeneration returns empty", async () => {
-		for (const badReply of ["RPPY", "{}", "aaaaa", "::::"]) {
+		for (const badReply of [
+			"RPPY",
+			"{}",
+			"aaaaa",
+			"::::",
+			// whitespace-only reply trims to empty
+			"   ",
+			// degenerate single-character spam, including across whitespace
+			"!!!!!!!!",
+			"aaaaa aaaaa",
+		]) {
 			const runtime = makeRuntime([
 				stage1Response({
 					contexts: ["simple"],
