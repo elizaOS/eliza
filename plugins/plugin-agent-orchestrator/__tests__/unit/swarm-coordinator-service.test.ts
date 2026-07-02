@@ -575,6 +575,39 @@ describe("SwarmCoordinatorService", () => {
     }
   });
 
+  it("cancels the pending eviction when the session resumes within the grace window", async () => {
+    vi.useFakeTimers();
+    try {
+      const acp = makeAcpStub({
+        agentType: "codex",
+        workdir: "/tmp/wd",
+        metadata: { label: "build-site", initialTask: "build it" },
+      });
+      const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+
+      // Turn 1 completes and schedules the 60s eviction. task_complete fires at
+      // the end of every prompt turn — it is NOT the end of the session.
+      acp.emit("sess-resume", "task_complete", { response: "turn 1 done" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(coordinator.tasks.has("sess-resume")).toBe(true);
+
+      // A follow-up turn reuses the same session WITHIN the grace window: a
+      // non-terminal event must cancel the pending eviction.
+      await vi.advanceTimersByTimeAsync(30_000);
+      acp.emit("sess-resume", "tool_running", { toolCall: { title: "Bash" } });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Past the original 60s deadline the live task state must survive — without
+      // the cancel it is evicted mid-turn, blinding Discord suppression + routing.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(coordinator.tasks.has("sess-resume")).toBe(true);
+      await coordinator.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("eviction does not fire a duplicate swarm-complete for the session", async () => {
     vi.useFakeTimers();
     try {
