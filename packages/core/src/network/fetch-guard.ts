@@ -225,7 +225,7 @@ export async function fetchWithSsrfGuard(
 	const visited = new Set<string>();
 	let currentUrl = params.url;
 	let redirectCount = 0;
-	let originalOrigin: string | null = null;
+	let hopHeaders = params.init?.headers;
 
 	while (true) {
 		let parsedUrl: URL;
@@ -239,8 +239,6 @@ export async function fetchWithSsrfGuard(
 			await release();
 			throw new Error("Invalid URL: must be http or https");
 		}
-		originalOrigin ??= parsedUrl.origin;
-
 		try {
 			let pinned: PinnedHostname | undefined;
 			if (lookupFn) {
@@ -288,14 +286,10 @@ export async function fetchWithSsrfGuard(
 
 			const init: RequestInit = {
 				...(params.init ? { ...params.init } : {}),
+				...(hopHeaders ? { headers: hopHeaders } : {}),
 				redirect: "manual",
 				...(signal ? { signal } : {}),
 			};
-			// A redirect hop that leaves the original origin must not carry the
-			// caller's credentials (matches standard fetch redirect semantics).
-			if (parsedUrl.origin !== originalOrigin && init.headers) {
-				init.headers = stripCredentialHeaders(init.headers);
-			}
 
 			const response =
 				pinned && pinnedFetchImpl
@@ -320,12 +314,21 @@ export async function fetchWithSsrfGuard(
 					await release();
 					throw new Error(`Too many redirects (limit: ${maxRedirects})`);
 				}
-				const nextUrl = new URL(location, parsedUrl).toString();
+				const nextParsedUrl = new URL(location, parsedUrl);
+				const nextUrl = nextParsedUrl.toString();
 				if (visited.has(nextUrl)) {
 					await release();
 					throw new Error("Redirect loop detected");
 				}
 				visited.add(nextUrl);
+				// A redirect hop that crosses origins must not carry the caller's
+				// credentials on the next request (matches standard fetch redirect
+				// semantics). Keep the stripped header state for later hops too;
+				// credentials deleted by a cross-origin redirect are not restored if
+				// the chain redirects back to the original origin.
+				if (parsedUrl.origin !== nextParsedUrl.origin) {
+					hopHeaders = stripCredentialHeaders(hopHeaders);
+				}
 				void response.body?.cancel();
 				currentUrl = nextUrl;
 				continue;

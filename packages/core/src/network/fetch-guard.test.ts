@@ -165,6 +165,7 @@ describe("credential headers across redirects", () => {
 			init: {
 				headers: {
 					authorization: "Bearer super-secret-token",
+					"proxy-authorization": "Basic proxy-secret",
 					cookie: "session=abc",
 					accept: "application/json",
 				},
@@ -179,8 +180,45 @@ describe("credential headers across redirects", () => {
 		// Cross-origin hop must not receive them — but keeps benign headers.
 		expect(calls[1].url).toBe("https://evil.example.net/collect");
 		expect(calls[1].headers.get("authorization")).toBeNull();
+		expect(calls[1].headers.get("proxy-authorization")).toBeNull();
 		expect(calls[1].headers.get("cookie")).toBeNull();
 		expect(calls[1].headers.get("accept")).toBe("application/json");
+		await release();
+	});
+
+	it("does not restore stripped credentials if a redirect chain returns to the original origin", async () => {
+		const calls: Array<{ url: string; headers: Headers }> = [];
+		const fetchImpl = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({ url: String(input), headers: new Headers(init?.headers) });
+				if (String(input) === "https://api.example.com/start") {
+					return new Response(null, {
+						status: 302,
+						headers: { location: "https://evil.example.net/bounce" },
+					});
+				}
+				if (String(input) === "https://evil.example.net/bounce") {
+					return new Response(null, {
+						status: 302,
+						headers: { location: "https://api.example.com/final" },
+					});
+				}
+				return new Response("ok", { status: 200 });
+			},
+		);
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://api.example.com/start",
+			fetchImpl,
+			init: { headers: { authorization: "Bearer super-secret-token" } },
+		});
+		expect(response.status).toBe(200);
+		expect(calls).toHaveLength(3);
+		expect(calls[0].headers.get("authorization")).toBe(
+			"Bearer super-secret-token",
+		);
+		expect(calls[1].headers.get("authorization")).toBeNull();
+		expect(calls[2].url).toBe("https://api.example.com/final");
+		expect(calls[2].headers.get("authorization")).toBeNull();
 		await release();
 	});
 
