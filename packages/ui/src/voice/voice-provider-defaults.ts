@@ -21,6 +21,12 @@
  * The picker is intentionally a pure function so it can be unit-tested
  * exhaustively. The React hook wrapper lives in
  * `hooks/useDefaultProviderPresets.ts`.
+ *
+ * The ASR side of this matrix is not just a platform guess — it is backed by
+ * the measured WER/latency/RTF decision record in `STT_SELECTION.md` (next to
+ * this file; #11337): fused eliza-1-asr measured at WER 0.008 / 3.8× realtime
+ * on desktop CPU (hence `local-inference` on desktop), while mobile/web stay
+ * on `eliza-cloud` until on-device Stage-B numbers justify a flip.
  */
 
 import type { AsrProvider, VoiceProvider } from "../api/client-types-config";
