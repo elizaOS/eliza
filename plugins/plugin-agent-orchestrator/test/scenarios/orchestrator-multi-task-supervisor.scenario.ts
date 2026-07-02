@@ -4,7 +4,7 @@ import {
   installOrchestratorScenarioHarness,
   ORCHESTRATOR_MULTI_TASK_SUPERVISOR,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerJudgeFixture,
+  registerCalibratedJudgeFixture,
 } from "./_helpers/orchestrator-scenario-harness";
 
 function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
@@ -33,9 +33,17 @@ export default scenario({
       name: "install deterministic multi-task harness",
       apply: async (ctx) => {
         await installOrchestratorScenarioHarness(ctx);
-        registerJudgeFixture(
-          ctx.runtime as Parameters<typeof registerJudgeFixture>[0],
+        // The judge only passes when the real forwarding target (a live
+        // harness session id) and the supervisor digest's task titles
+        // reached the judge candidate. None appear in the turn text.
+        registerCalibratedJudgeFixture(
+          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
           ORCHESTRATOR_MULTI_TASK_SUPERVISOR,
+          [
+            "forwarded only to orchestrator-scenario-session-",
+            "Alpha transcript parser",
+            "Beta browser callback",
+          ],
         );
         return undefined;
       },

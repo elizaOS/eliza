@@ -4,7 +4,7 @@ import {
   installOrchestratorScenarioHarness,
   ORCHESTRATOR_REFLEXION_RESPAWN,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerJudgeFixture,
+  registerCalibratedJudgeFixture,
   registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
@@ -51,9 +51,17 @@ export default scenario({
             },
           ],
         );
-        registerJudgeFixture(
-          ctx.runtime as Parameters<typeof registerJudgeFixture>[0],
+        // The judge only passes when the persisted post-mortem line (built
+        // by the real reflection-persistence path from the failed verify)
+        // and the replayed prompt section reached the judge candidate.
+        registerCalibratedJudgeFixture(
+          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
           ORCHESTRATOR_REFLEXION_RESPAWN,
+          [
+            `Attempt 1: ${FAIL_SUMMARY}`,
+            "--- Past Attempt Failures ---",
+            "persisted a post-mortem",
+          ],
         );
         return undefined;
       },

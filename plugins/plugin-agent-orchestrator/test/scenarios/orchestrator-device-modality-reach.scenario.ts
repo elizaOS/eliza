@@ -4,7 +4,6 @@ import {
   installOrchestratorScenarioHarness,
   ORCHESTRATOR_DEVICE_MODALITY_REACH,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerJudgeFixture,
   registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
@@ -66,10 +65,8 @@ export default scenario({
             },
           ],
         );
-        registerJudgeFixture(
-          ctx.runtime as Parameters<typeof registerJudgeFixture>[0],
-          ORCHESTRATOR_DEVICE_MODALITY_REACH,
-        );
+        // No judge fixture: this scenario has no judgeRubric/responseJudge
+        // check, so a registered judge stub would be dead weight.
         return undefined;
       },
     },

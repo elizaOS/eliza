@@ -4,7 +4,7 @@ import {
   installOrchestratorScenarioHarness,
   ORCHESTRATOR_EVIDENCE_BUNDLE,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerJudgeFixture,
+  registerCalibratedJudgeFixture,
   registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
@@ -46,9 +46,17 @@ export default scenario({
             },
           ],
         );
-        registerJudgeFixture(
-          ctx.runtime as Parameters<typeof registerJudgeFixture>[0],
+        // The judge only passes when the diff-stat, pasted test output, and
+        // verified URL from the harness's validated end-state summary
+        // reached the judge candidate. None appear in the turn text.
+        registerCalibratedJudgeFixture(
+          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
           ORCHESTRATOR_EVIDENCE_BUNDLE,
+          [
+            "## CHANGESET src/cache.ts",
+            "Tests 8 passed (8)",
+            "https://app.example.com/cache",
+          ],
         );
         return undefined;
       },

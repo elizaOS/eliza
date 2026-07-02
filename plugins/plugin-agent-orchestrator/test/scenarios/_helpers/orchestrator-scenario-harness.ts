@@ -111,9 +111,12 @@ type TaskDetail = {
 };
 
 class ScenarioAcpService {
-  private handler:
-    | ((sessionId: string, event: string, data: unknown) => void)
-    | null = null;
+  /** Multiple concurrent subscribers, matching the real AcpService: the task
+   * service's event bridge must stay live while `spawnReadOnlyVerifier`
+   * (#8898) temporarily subscribes for its ephemeral verifier session. */
+  private readonly handlers = new Set<
+    (sessionId: string, event: string, data: unknown) => void
+  >();
   private counter = 0;
   private readonly workdir = mkdtempSync(
     join(tmpdir(), "eliza-orchestrator-scenario-"),
@@ -130,14 +133,16 @@ class ScenarioAcpService {
   onSessionEvent(
     cb: (sessionId: string, event: string, data: unknown) => void,
   ): () => void {
-    this.handler = cb;
+    this.handlers.add(cb);
     return () => {
-      if (this.handler === cb) this.handler = null;
+      this.handlers.delete(cb);
     };
   }
 
   emit(sessionId: string, event: string, data: unknown = {}): void {
-    this.handler?.(sessionId, event, data);
+    for (const handler of [...this.handlers]) {
+      handler(sessionId, event, data);
+    }
   }
 
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
@@ -163,6 +168,21 @@ class ScenarioAcpService {
     };
     this.sessions.set(sessionId, session);
     this.initialTasks.set(sessionId, opts.initialTask ?? "");
+    if (metadata.source === "independent-verifier") {
+      // The real #8898 flow spawns a read-only ACP verifier session and blocks
+      // `autoVerifyCompletion` until it reports. Answer it deterministically
+      // with a CompletionEnvelope derived from the verifier prompt's own
+      // acceptance-criteria list so the real envelope parser + verdict path
+      // execute (a silent verifier session parks every changeset-backed
+      // completion in `validating` forever).
+      // setTimeout: `spawnReadOnlyVerifier` subscribes to session events only
+      // after `spawnSession` resolves; a macrotask lands after that.
+      setTimeout(() => {
+        this.emit(sessionId, "task_complete", {
+          response: independentVerifierCompletion(opts.initialTask ?? ""),
+        });
+      }, 0);
+    }
     return session;
   }
 
@@ -914,10 +934,26 @@ export function registerVerifierFixtures(
   });
 }
 
-export function registerJudgeFixture(
+/**
+ * Deterministic PR-lane judge that only passes when the scenario's real trace
+ * evidence reached the judge prompt. Each scenario supplies the concrete,
+ * flow-derived strings (test output, forwarded session ids, replayed
+ * reflections, …) that its harness run must have produced; the fixture scans
+ * ONLY the CANDIDATE RESPONSE section — never the rubric text — and returns
+ * score 0 naming the missing evidence when the trace is broken. A fixture
+ * that scores 1 regardless of trace content is not permitted in this lane.
+ * Local runs with Cerebras eval credentials judge outside the proxy.
+ */
+export function registerCalibratedJudgeFixture(
   runtime: ScenarioRuntime,
   actionName: string,
+  requiredTraceEvidence: readonly string[],
 ): void {
+  if (requiredTraceEvidence.length === 0) {
+    throw new Error(
+      `calibrated judge fixture for ${actionName} requires at least one trace-evidence string`,
+    );
+  }
   runtime.scenarioLlmFixtures?.register({
     name: `${actionName.toLowerCase()}-final-judge`,
     match: {
@@ -926,13 +962,75 @@ export function registerJudgeFixture(
         value.includes("Score the candidate response against the rubric") &&
         value.includes("Respond with ONLY a compact JSON object"),
     },
-    response: JSON.stringify({
-      score: 1,
-      reason: "scenario trace proves the requested orchestrator flow",
-    }),
-    // Local runs with Cerebras eval credentials judge outside the proxy.
+    response: (call: LlmProxyCall) => {
+      const prompt = call.params.prompt ?? "";
+      // The judge prompt embeds the rubric before the candidate; scanning the
+      // whole prompt would let rubric wording satisfy the evidence check.
+      const candidateStart = prompt.indexOf("CANDIDATE RESPONSE:");
+      const candidate =
+        candidateStart >= 0
+          ? prompt.slice(candidateStart + "CANDIDATE RESPONSE:".length)
+          : "";
+      const missing = requiredTraceEvidence.filter(
+        (needle) => !candidate.includes(needle),
+      );
+      if (missing.length > 0) {
+        return JSON.stringify({
+          score: 0,
+          reason: `trace evidence missing from judge candidate: ${missing.join(" | ").slice(0, 160)}`,
+        });
+      }
+      return JSON.stringify({
+        score: 1,
+        reason: "all required trace evidence present in judge candidate",
+      });
+    },
     times: "any",
   });
+}
+
+/**
+ * Deterministic final message for the #8898 read-only verifier session: a
+ * CompletionEnvelope whose per-criterion statuses are read back from the
+ * "--- Acceptance Criteria ---" section of the verifier's own spawn prompt
+ * (built by `buildIndependentVerifierPrompt` from the task's real criteria).
+ * Every criterion is confirmed met against the staged cache changeset + test
+ * output the scenario planted, so the real `verifierVerdict` path passes and
+ * `autoVerifyCompletion` proceeds to the text judge.
+ */
+function independentVerifierCompletion(verifierPrompt: string): string {
+  const criteriaSection =
+    verifierPrompt.split("--- Acceptance Criteria ---")[1] ?? "";
+  const criteria = criteriaSection
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^\d+\.\s/.test(line))
+    .map((line) => line.replace(/^\d+\.\s*/, ""));
+  const envelope = {
+    diffSummary: "1 file changed, 20 insertions(+)",
+    filesChanged: ["src/cache.ts"],
+    testResults: [
+      {
+        command: "bun test cache",
+        exitCode: 0,
+        summary: "Tests 8 passed (8) — staged deterministic evidence re-run",
+      },
+    ],
+    screenshotPaths: [],
+    acceptanceCriteriaStatus: criteria.map((criterion) => ({
+      criterion,
+      met: true,
+      evidence:
+        "confirmed against the staged src/cache.ts changeset and passing bun test cache output",
+    })),
+    residualRisks: [],
+  };
+  return [
+    "Independent read-only verification complete: every acceptance criterion is confirmed by execution.",
+    "```json",
+    JSON.stringify(envelope, null, 2),
+    "```",
+  ].join("\n");
 }
 
 function cacheChangeSet(): WorkspaceChangeSet {
