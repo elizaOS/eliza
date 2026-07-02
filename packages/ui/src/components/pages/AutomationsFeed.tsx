@@ -653,24 +653,22 @@ function FilterChipButton({
       type="button"
       onClick={() => onSelect(filter)}
       aria-current={isActive ? "true" : undefined}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+      // Borderless text tab (#10710): active reads as accent text on a faint
+      // wash; the count renders as plain text and hides at zero.
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
         isActive
-          ? "border-accent bg-accent/10 text-accent"
-          : "border-border/40 text-muted-strong hover:border-border hover:bg-bg-accent/40"
+          ? "bg-accent/10 text-accent"
+          : "text-muted-strong hover:bg-bg-accent/40"
       }`}
       {...agentProps}
     >
       <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
       <span>{label}</span>
-      <span
-        className={`min-w-4 rounded-full px-1 text-center text-[0.65rem] font-semibold tabular-nums ${
-          isActive
-            ? "bg-accent/20 text-accent"
-            : "bg-bg-accent text-muted-strong"
-        }`}
-      >
-        {count}
-      </span>
+      {count > 0 ? (
+        <span className="text-[0.65rem] font-semibold tabular-nums">
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }

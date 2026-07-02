@@ -135,10 +135,11 @@ function ScopeFilterChip({
       aria-pressed={active}
       aria-current={active ? "page" : undefined}
       onClick={() => onSelect(value)}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold transition-colors ${
+      // Borderless text tab (#10710): active = accent text on a faint wash.
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold transition-colors ${
         active
-          ? "border-accent/45 bg-accent/12 text-accent-fg"
-          : "border-border/30 bg-bg-muted/20 text-muted hover:border-border/55 hover:text-txt"
+          ? "bg-accent/12 text-accent"
+          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
       }`}
     >
       <Icon className="h-3 w-3" aria-hidden />
@@ -352,10 +353,11 @@ const CompactSearchChip = memo(function CompactSearchChip({
       {...agentProps}
       type="button"
       onClick={() => onSelect(id)}
-      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+      // Borderless selector pill (#10710): selection = accent text on a wash.
+      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-accent/45 bg-accent/12 text-accent-fg"
-          : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+          ? "bg-accent/12 text-accent"
+          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
       }`}
     >
       <FileSearch className="h-3.5 w-3.5" aria-hidden />
@@ -388,10 +390,11 @@ function CompactDocChip({
       {...agentProps}
       type="button"
       onClick={() => onSelect(doc.id)}
-      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+      // Borderless selector pill (#10710): selection = accent text on a wash.
+      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-accent/45 bg-accent/12 text-accent-fg"
-          : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+          ? "bg-accent/12 text-accent"
+          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
       }`}
     >
       <FileText className="h-3.5 w-3.5" aria-hidden />
@@ -1301,7 +1304,9 @@ export function DocumentsView({
         {fileInputId ? (
           <label
             htmlFor={fileInputId}
-            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm border border-accent/35 bg-accent/10 px-3 text-xs font-semibold text-accent-fg transition hover:bg-accent/16 ${
+            // Borderless accent action (#10710); text-accent (not accent-fg,
+            // which is near-white and illegible on a 10% wash).
+            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm bg-accent/10 px-3 text-xs font-semibold text-accent transition hover:bg-accent/20 ${
               uploading ? "pointer-events-none opacity-60" : ""
             }`}
           >
