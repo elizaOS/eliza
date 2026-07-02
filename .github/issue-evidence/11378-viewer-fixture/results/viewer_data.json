@@ -1,0 +1,85 @@
+{
+  "agent_summary": [],
+  "benchmark_summary": [
+    {
+      "benchmark_id": "woobench",
+      "best_score": 0.84,
+      "latest_model": "fixture-model",
+      "latest_provider": "fixture",
+      "latest_run_id": "run_woobench_20260702T103001Z_1_smithers",
+      "latest_started_at": "2026-07-02T10:30:01+00:00",
+      "runs": 3,
+      "succeeded_runs": 3
+    }
+  ],
+  "calibration_summary": [],
+  "generated_at": "2026-07-02T10:31:00+00:00",
+  "latest_scores": [],
+  "model_summary": [],
+  "run_groups": [
+    {
+      "benchmarks": [
+        "woobench"
+      ],
+      "created_at": "2026-07-02T10:30:00+00:00",
+      "run_group_id": "rg_11378_demo"
+    }
+  ],
+  "runs": [
+    {
+      "agent": "smithers",
+      "benchmark_id": "woobench",
+      "cached_tokens": 10,
+      "call_count": 2,
+      "duration_seconds": 3.4,
+      "input_tokens": 241,
+      "metrics": {
+        "canonical_entries": 2
+      },
+      "model": "fixture-model",
+      "output_tokens": 61,
+      "provider": "fixture",
+      "run_group_id": "rg_11378_demo",
+      "run_id": "run_woobench_20260702T103001Z_1_smithers",
+      "score": 0.84,
+      "started_at": "2026-07-02T10:30:01+00:00",
+      "status": "succeeded",
+      "total_tokens": 302
+    },
+    {
+      "agent": "eliza",
+      "benchmark_id": "woobench",
+      "cached_tokens": 10,
+      "call_count": 2,
+      "duration_seconds": 3.1,
+      "input_tokens": 241,
+      "metrics": {
+        "canonical_entries": 2
+      },
+      "model": "fixture-model",
+      "output_tokens": 61,
+      "provider": "fixture",
+      "run_group_id": "rg_11378_demo",
+      "run_id": "run_woobench_20260702T103000Z_1_eliza",
+      "score": 0.82,
+      "started_at": "2026-07-02T10:30:00+00:00",
+      "status": "succeeded",
+      "total_tokens": 302
+    },
+    {
+      "agent": "random_v1",
+      "benchmark_id": "woobench",
+      "duration_seconds": 0.1,
+      "metrics": {
+        "canonical_entries": 1
+      },
+      "model": "synthetic",
+      "provider": "fixture",
+      "run_group_id": "rg_11378_random",
+      "run_id": "random_v1_woobench_20260702T102900Z_1_baseline",
+      "score": 0.5,
+      "started_at": "2026-07-02T10:29:00+00:00",
+      "status": "succeeded"
+    }
+  ]
+}

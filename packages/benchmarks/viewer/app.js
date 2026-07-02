@@ -9,9 +9,14 @@ const state = {
   diffGroups: [],
   diffSelection: null,
   diffPayload: null,
+  playbackRuns: [],
+  playbackSelection: null,
+  playbackPayload: null,
+  playbackHarness: "",
+  playbackStepIndex: 0,
 };
 
-const HARNESS_ORDER = ["eliza", "openclaw", "hermes", "random_v1"];
+const HARNESS_ORDER = ["eliza", "openclaw", "hermes", "smithers", "random_v1"];
 
 const numericKeys = new Set([
   "score",
@@ -192,6 +197,8 @@ function render() {
   renderLatestScores(state.data);
   computeDiffGroups();
   renderDiffGroups();
+  computePlaybackRuns();
+  renderPlaybackRuns();
 }
 
 function escapeHtml(value) {
@@ -213,19 +220,24 @@ function computeDiffGroups() {
   const grouped = new Map();
   for (const row of runs) {
     if (row.status !== "succeeded") continue;
-    const canonical = row.metrics?.canonical_entries;
-    if (!canonical || Number(canonical) <= 0) continue;
+    if (canonicalEntryCount(row) <= 0) continue;
     const harness = textValue(row.agent);
     if (!HARNESS_ORDER.includes(harness)) continue;
-    const key = `${row.run_group_id}::${row.benchmark_id}::${row.run_id}`;
+    const key = `${row.run_group_id}::${row.benchmark_id}`;
     const existing = grouped.get(key) || {
       run_group_id: row.run_group_id,
       benchmark_id: row.benchmark_id,
       task_id: row.run_id,
+      task_ids: {},
       harnesses: new Set(),
       started_at: row.started_at,
     };
     existing.harnesses.add(harness);
+    existing.task_ids[harness] = row.run_id;
+    if (compareValues(row, existing, "started_at", "desc") < 0) {
+      existing.started_at = row.started_at;
+      existing.task_id = row.run_id;
+    }
     grouped.set(key, existing);
   }
   // Surface random_v1 as a passive participant by joining on benchmark id.
@@ -233,7 +245,7 @@ function computeDiffGroups() {
   for (const row of runs) {
     if (row.status !== "succeeded") continue;
     if (textValue(row.agent) !== "random_v1") continue;
-    if (Number(row.metrics?.canonical_entries) > 0) {
+    if (canonicalEntryCount(row) > 0) {
       randomByBenchmark.add(row.benchmark_id);
     }
   }
@@ -254,6 +266,13 @@ function computeDiffGroups() {
     textValue(b.started_at).localeCompare(textValue(a.started_at)),
   );
   state.diffGroups = result;
+}
+
+function canonicalEntryCount(row) {
+  const count = Number(
+    row?.metrics?.canonical_entries ?? row?.canonical_entries ?? 0,
+  );
+  return Number.isFinite(count) ? count : 0;
 }
 
 function renderDiffGroups() {
@@ -288,21 +307,33 @@ async function loadDiffPayload(runGroupId, benchmarkId, taskId) {
   }
 }
 
+function entryStepIndex(entry, fallback) {
+  const value = Number(entry?.step_index);
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
 function alignByStep(harnessEntries) {
-  // Build a step-indexed table. Each row is one step; each cell is the
-  // CanonicalEntry for that harness at that step (or null).
-  const lengths = HARNESS_ORDER.map((h) => (harnessEntries[h] || []).length);
-  const maxLen = Math.max(0, ...lengths);
-  const rows = [];
-  for (let i = 0; i < maxLen; i += 1) {
-    const cells = {};
-    for (const h of HARNESS_ORDER) {
-      const list = harnessEntries[h] || [];
-      cells[h] = i < list.length ? list[i] : null;
-    }
-    rows.push({ step: i, cells });
+  const steps = new Set();
+  const entriesByHarness = {};
+  for (const h of HARNESS_ORDER) {
+    const list = harnessEntries[h] || [];
+    const byStep = new Map();
+    list.forEach((entry, index) => {
+      const step = entryStepIndex(entry, index);
+      steps.add(step);
+      byStep.set(step, entry);
+    });
+    entriesByHarness[h] = byStep;
   }
-  return rows;
+  return [...steps]
+    .sort((a, b) => a - b)
+    .map((step) => {
+      const cells = {};
+      for (const h of HARNESS_ORDER) {
+        cells[h] = entriesByHarness[h]?.get(step) || null;
+      }
+      return { step, cells };
+    });
 }
 
 function formatToolCalls(toolCalls) {
@@ -321,13 +352,35 @@ function formatToolCalls(toolCalls) {
     .join("\n");
 }
 
+function toolCallsFor(entry) {
+  const response = entry?.response || {};
+  if (Array.isArray(response.toolCalls)) return response.toolCalls;
+  if (Array.isArray(response.tool_calls)) return response.tool_calls;
+  const params = response.params;
+  if (params && Array.isArray(params.tool_calls)) return params.tool_calls;
+  return [];
+}
+
+function responseTextFor(entry) {
+  const response = entry?.response || {};
+  const raw =
+    response.text ??
+    response.content ??
+    response.response_text ??
+    response.output_text ??
+    response.output ??
+    "";
+  if (typeof raw === "string") return raw;
+  return safeJson(raw);
+}
+
 function cellText(entry) {
   if (!entry) return "";
   const role = entry.request?.messages?.length
     ? entry.request.messages[entry.request.messages.length - 1].role
     : "(no prior)";
-  const text = entry.response?.text || "";
-  const toolCalls = formatToolCalls(entry.response?.toolCalls);
+  const text = responseTextFor(entry);
+  const toolCalls = formatToolCalls(toolCallsFor(entry));
   const parts = [`[role: ${escapeHtml(role)}]`, escapeHtml(text)];
   if (toolCalls) parts.push(`<div class="tool-calls">${toolCalls}</div>`);
   return parts.join("<br>");
@@ -339,15 +392,9 @@ function classifyRow(cells, presentHarnesses) {
     .map((h) => cells[h])
     .filter((entry) => entry !== null && entry !== undefined);
   if (populated.length < 2) return "diff-equal";
-  const texts = populated.map((e) => e.response?.text || "");
-  const someHasTool = populated.some(
-    (e) =>
-      Array.isArray(e.response?.toolCalls) && e.response.toolCalls.length > 0,
-  );
-  const allHaveTool = populated.every(
-    (e) =>
-      Array.isArray(e.response?.toolCalls) && e.response.toolCalls.length > 0,
-  );
+  const texts = populated.map(responseTextFor);
+  const someHasTool = populated.some((e) => toolCallsFor(e).length > 0);
+  const allHaveTool = populated.every((e) => toolCallsFor(e).length > 0);
   if (someHasTool && !allHaveTool) return "diff-tool-only";
   const firstText = texts[0];
   const sameText = texts.every((t) => t === firstText);
@@ -411,6 +458,252 @@ async function openDiff(runGroupId, benchmarkId, taskId) {
   renderDiffDetail(payload, group);
 }
 
+function computePlaybackRuns() {
+  if (!state.data) {
+    state.playbackRuns = [];
+    return;
+  }
+  state.playbackRuns = (state.data.runs || [])
+    .filter((row) => row.status === "succeeded")
+    .filter((row) => HARNESS_ORDER.includes(textValue(row.agent)))
+    .filter((row) => canonicalEntryCount(row) > 0)
+    .sort((a, b) => compareValues(a, b, "started_at", "desc"));
+}
+
+function renderPlaybackRuns() {
+  const body = document.getElementById("playback-runs-body");
+  if (!body) return;
+  const rows = state.playbackRuns;
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="7" class="muted">No successful runs with canonical trajectories yet.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows
+    .map(
+      (row) => `<tr>
+        <td>${escapeHtml(row.run_group_id)}</td>
+        <td>${escapeHtml(row.benchmark_id)}</td>
+        <td>${escapeHtml(row.run_id)}</td>
+        <td><span class="harness-pill harness-${escapeHtml(textValue(row.agent))}">${escapeHtml(row.agent)}</span></td>
+        <td>${canonicalEntryCount(row)}</td>
+        <td>${escapeHtml(row.started_at)}</td>
+        <td><button type="button" class="playback-open" data-run-group="${escapeHtml(row.run_group_id)}" data-benchmark="${escapeHtml(row.benchmark_id)}" data-task="${escapeHtml(row.run_id)}" data-harness="${escapeHtml(row.agent)}">Play</button></td>
+      </tr>`,
+    )
+    .join("");
+}
+
+function safeJson(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function messageContentText(message) {
+  const content = message?.content ?? message?.text ?? message?.value ?? "";
+  if (typeof content === "string") return content;
+  return safeJson(content);
+}
+
+function renderMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return "";
+  return messages
+    .map((message, index) => {
+      const role = escapeHtml(
+        message?.role || message?.from || `message ${index}`,
+      );
+      return `<div class="message-row">
+        <div class="message-role">${role}</div>
+        <pre>${escapeHtml(messageContentText(message))}</pre>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderRequest(entry) {
+  const request = entry?.request || {};
+  if (Array.isArray(request.messages) && request.messages.length > 0) {
+    return renderMessages(request.messages);
+  }
+  const prompt =
+    request.prompt ??
+    request.prompt_text ??
+    request.userPrompt ??
+    request.input ??
+    request.input_text;
+  if (prompt !== undefined && prompt !== null) {
+    return `<pre>${escapeHtml(typeof prompt === "string" ? prompt : safeJson(prompt))}</pre>`;
+  }
+  return `<pre>${escapeHtml(safeJson(request))}</pre>`;
+}
+
+function renderToolCallsBlock(entry) {
+  const calls = toolCallsFor(entry);
+  if (!calls.length) {
+    return `<p class="muted">No tool calls recorded for this step.</p>`;
+  }
+  return `<pre>${escapeHtml(safeJson(calls))}</pre>`;
+}
+
+function renderUsage(entry) {
+  const response = entry?.response || {};
+  const usage = {
+    response_usage: response.usage || null,
+    trajectoryTotals: entry?.trajectoryTotals || null,
+    cacheStats: entry?.cacheStats || null,
+  };
+  if (!usage.response_usage && !usage.trajectoryTotals && !usage.cacheStats) {
+    return `<p class="muted">No usage metadata recorded for this step.</p>`;
+  }
+  return `<pre>${escapeHtml(safeJson(usage))}</pre>`;
+}
+
+function playbackEntries() {
+  const harnesses = state.playbackPayload?.harnesses || {};
+  const entries = harnesses[state.playbackHarness];
+  return Array.isArray(entries) ? entries : [];
+}
+
+function playbackTaskLabel(selection) {
+  const taskIds = state.playbackPayload?.task_ids?.[state.playbackHarness];
+  if (Array.isArray(taskIds) && taskIds.length > 0) {
+    return taskIds.join(", ");
+  }
+  return selection?.task_id || "";
+}
+
+function renderPlaybackDetail() {
+  const panel = document.getElementById("playback-detail-panel");
+  const title = document.getElementById("playback-detail-title");
+  const subtitle = document.getElementById("playback-detail-subtitle");
+  const harnessSelect = document.getElementById("playback-harness-select");
+  const prev = document.getElementById("playback-prev");
+  const next = document.getElementById("playback-next");
+  const stepInput = document.getElementById("playback-step-index");
+  const stepTotal = document.getElementById("playback-step-total");
+  const body = document.getElementById("playback-step-body");
+  if (
+    !panel ||
+    !title ||
+    !subtitle ||
+    !harnessSelect ||
+    !prev ||
+    !next ||
+    !stepInput ||
+    !stepTotal ||
+    !body
+  )
+    return;
+
+  const selection = state.playbackSelection;
+  panel.hidden = false;
+  if (!selection) {
+    title.textContent = "Playback";
+    subtitle.textContent = "";
+    body.innerHTML = `<p class="muted">Choose a trajectory run to play.</p>`;
+    return;
+  }
+
+  title.textContent = `${selection.benchmark_id} :: ${playbackTaskLabel(selection)}`;
+  subtitle.textContent = `run_group_id=${selection.run_group_id}`;
+
+  if (state.playbackPayload?.error) {
+    body.innerHTML = `<p class="muted">Failed to load: ${escapeHtml(state.playbackPayload.error)}</p>`;
+    return;
+  }
+
+  const harnesses = state.playbackPayload?.harnesses || {};
+  const availableHarnesses = HARNESS_ORDER.filter(
+    (h) => Array.isArray(harnesses[h]) && harnesses[h].length > 0,
+  );
+  harnessSelect.innerHTML = availableHarnesses
+    .map(
+      (h) =>
+        `<option value="${escapeHtml(h)}"${h === state.playbackHarness ? " selected" : ""}>${escapeHtml(h)}</option>`,
+    )
+    .join("");
+  harnessSelect.disabled = availableHarnesses.length <= 1;
+
+  const entries = playbackEntries();
+  if (!entries.length) {
+    body.innerHTML = `<p class="muted">No canonical entries for ${escapeHtml(state.playbackHarness)}.</p>`;
+    prev.disabled = true;
+    next.disabled = true;
+    stepInput.disabled = true;
+    stepTotal.textContent = "0 steps";
+    return;
+  }
+
+  state.playbackStepIndex = Math.min(
+    Math.max(0, state.playbackStepIndex),
+    entries.length - 1,
+  );
+  const entry = entries[state.playbackStepIndex];
+  const displayedStep = entry?.step_index ?? state.playbackStepIndex;
+  prev.disabled = state.playbackStepIndex <= 0;
+  next.disabled = state.playbackStepIndex >= entries.length - 1;
+  stepInput.disabled = false;
+  stepInput.min = "0";
+  stepInput.max = String(entries.length - 1);
+  stepInput.value = String(state.playbackStepIndex);
+  stepTotal.textContent = `${state.playbackStepIndex + 1} of ${entries.length} (recorded step_index ${displayedStep})`;
+
+  body.innerHTML = `<div class="playback-step-grid">
+    <section class="playback-card">
+      <h3>Prompt</h3>
+      ${renderRequest(entry)}
+    </section>
+    <section class="playback-card">
+      <h3>Output</h3>
+      <pre>${escapeHtml(responseTextFor(entry))}</pre>
+    </section>
+    <section class="playback-card">
+      <h3>Tool Calls</h3>
+      ${renderToolCallsBlock(entry)}
+    </section>
+    <section class="playback-card">
+      <h3>Usage</h3>
+      ${renderUsage(entry)}
+    </section>
+    <section class="playback-card playback-card-wide">
+      <h3>Step Metadata</h3>
+      <pre>${escapeHtml(
+        safeJson({
+          agent_id: entry?.agent_id,
+          boundary: entry?.boundary,
+          model: entry?.model,
+          timestamp_ms: entry?.timestamp_ms,
+          scenarioId: entry?.scenarioId,
+          batchId: entry?.batchId,
+          metadata: entry?.metadata || {},
+        }),
+      )}</pre>
+    </section>
+  </div>`;
+}
+
+async function openPlayback(runGroupId, benchmarkId, taskId, harness) {
+  const payload = await loadDiffPayload(runGroupId, benchmarkId, taskId);
+  const availableHarnesses = HARNESS_ORDER.filter(
+    (h) =>
+      Array.isArray(payload.harnesses?.[h]) && payload.harnesses[h].length > 0,
+  );
+  const selectedHarness = availableHarnesses.includes(harness)
+    ? harness
+    : availableHarnesses[0] || harness;
+  state.playbackSelection = {
+    run_group_id: runGroupId,
+    benchmark_id: benchmarkId,
+    task_id: taskId,
+  };
+  state.playbackPayload = payload;
+  state.playbackHarness = selectedHarness;
+  state.playbackStepIndex = 0;
+  renderPlaybackDetail();
+}
+
 function setActiveTab(tabName) {
   state.activeTab = tabName;
   document.querySelectorAll(".tab-button").forEach((btn) => {
@@ -444,6 +737,12 @@ function wireControls() {
   const filterBenchmark = document.getElementById("filter-benchmark");
   const filterStatus = document.getElementById("filter-status");
   const filterSearch = document.getElementById("filter-search");
+  const playbackHarnessSelect = document.getElementById(
+    "playback-harness-select",
+  );
+  const playbackPrev = document.getElementById("playback-prev");
+  const playbackNext = document.getElementById("playback-next");
+  const playbackStepIndex = document.getElementById("playback-step-index");
 
   sortBy.addEventListener("change", (event) => {
     state.sortBy = event.target.value;
@@ -492,12 +791,45 @@ function wireControls() {
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (!target.classList.contains("diff-open")) return;
-    const runGroupId = target.dataset.runGroup || "";
-    const benchmarkId = target.dataset.benchmark || "";
-    const taskId = target.dataset.task || "";
-    if (runGroupId && benchmarkId && taskId) {
-      void openDiff(runGroupId, benchmarkId, taskId);
+    if (target.classList.contains("diff-open")) {
+      const runGroupId = target.dataset.runGroup || "";
+      const benchmarkId = target.dataset.benchmark || "";
+      const taskId = target.dataset.task || "";
+      if (runGroupId && benchmarkId && taskId) {
+        void openDiff(runGroupId, benchmarkId, taskId);
+      }
+      return;
+    }
+    if (target.classList.contains("playback-open")) {
+      const runGroupId = target.dataset.runGroup || "";
+      const benchmarkId = target.dataset.benchmark || "";
+      const taskId = target.dataset.task || "";
+      const harness = target.dataset.harness || "";
+      if (runGroupId && benchmarkId && taskId && harness) {
+        setActiveTab("playback");
+        void openPlayback(runGroupId, benchmarkId, taskId, harness);
+      }
+    }
+  });
+
+  playbackHarnessSelect?.addEventListener("change", (event) => {
+    state.playbackHarness = event.target.value;
+    state.playbackStepIndex = 0;
+    renderPlaybackDetail();
+  });
+  playbackPrev?.addEventListener("click", () => {
+    state.playbackStepIndex = Math.max(0, state.playbackStepIndex - 1);
+    renderPlaybackDetail();
+  });
+  playbackNext?.addEventListener("click", () => {
+    state.playbackStepIndex += 1;
+    renderPlaybackDetail();
+  });
+  playbackStepIndex?.addEventListener("change", (event) => {
+    const nextIndex = Number(event.target.value);
+    if (Number.isFinite(nextIndex)) {
+      state.playbackStepIndex = Math.trunc(nextIndex);
+      renderPlaybackDetail();
     }
   });
 }

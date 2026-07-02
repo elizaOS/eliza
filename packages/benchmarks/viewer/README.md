@@ -6,8 +6,8 @@ Static single-page UI for inspecting normalized elizaOS benchmark results. No bu
 
 | File | Purpose |
 |---|---|
-| `index.html` | Shell: summary cards, filterable runs table, latest-scores table, synthetic-baselines table, and a Trajectory Diff tab |
-| `app.js` | All client logic: fetches `/api/viewer-data`, filters/sorts runs, computes diff groups across harnesses (`eliza`, `openclaw`, `hermes`, `random_v1`), renders step-aligned trajectory diffs via `/api/trajectories/<run_group>/<benchmark>/<task>` |
+| `index.html` | Shell: summary cards, filterable runs table, latest-scores table, synthetic-baselines table, Trajectory Diff tab, and step-through Playback tab |
+| `app.js` | All client logic: fetches `/api/viewer-data`, filters/sorts runs, computes diff groups across harnesses (`eliza`, `openclaw`, `hermes`, `smithers`, `random_v1`), renders step-aligned trajectory diffs and single-harness playback via `/api/trajectories/<run_group>/<benchmark>/<task>` |
 | `styles.css` | Scoped styles; no external dependencies |
 
 ## How it is served

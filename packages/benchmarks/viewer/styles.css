@@ -49,6 +49,7 @@ body {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
+  min-width: 0;
   padding: 12px;
 }
 
@@ -58,9 +59,11 @@ body {
 }
 
 .card .v {
-  font-size: 24px;
+  font-size: 16px;
   font-weight: 700;
+  line-height: 1.15;
   margin-top: 4px;
+  overflow-wrap: anywhere;
 }
 
 .panel {
@@ -74,6 +77,7 @@ body {
 .panel h2 {
   margin: 0 0 10px;
   font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  overflow-wrap: anywhere;
 }
 
 .controls {
@@ -108,6 +112,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  min-width: 680px;
 }
 
 th,
@@ -212,11 +217,17 @@ tr:hover td {
   background: #ede9fe;
 }
 
+.harness-smithers {
+  background: #dcfce7;
+}
+
 .harness-random_v1 {
   background: #fee2e2;
 }
 
-.diff-open {
+.diff-open,
+.playback-open,
+.playback-controls button {
   background: var(--accent);
   color: #fff;
   border: none;
@@ -226,8 +237,16 @@ tr:hover td {
   font: inherit;
 }
 
-.diff-open:hover {
+.diff-open:hover,
+.playback-open:hover,
+.playback-controls button:hover {
   filter: brightness(1.1);
+}
+
+.playback-controls button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+  opacity: 0.55;
 }
 
 .diff-legend {
@@ -264,6 +283,7 @@ tr:hover td {
   white-space: pre-wrap;
   vertical-align: top;
   max-width: 360px;
+  min-width: 180px;
   word-break: break-word;
   font-size: 12px;
 }
@@ -295,4 +315,82 @@ tr:hover td {
   font-family: "JetBrains Mono", "Menlo", monospace;
   font-size: 11px;
   white-space: pre-wrap;
+}
+
+.playback-header {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.playback-header label,
+.playback-controls label {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.playback-controls {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.playback-controls input {
+  min-width: 92px;
+  width: 92px;
+}
+
+.playback-step-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.playback-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  min-width: 0;
+}
+
+.playback-card-wide {
+  grid-column: 1 / -1;
+}
+
+.playback-card h3 {
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.playback-card pre,
+.message-row pre {
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 6px;
+  font-family: "JetBrains Mono", "Menlo", monospace;
+  font-size: 12px;
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-row {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.message-role {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
