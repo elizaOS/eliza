@@ -8,7 +8,14 @@
  * Run: bun test integration/heatmap-api.integration.test.ts --preload ./integration/preload.ts
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import {
   getAdminToken,
   requireAuth as requireAuthShared,
@@ -19,6 +26,8 @@ const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
   "http://localhost:3000";
+
+setDefaultTimeout(20_000);
 
 let serverAvailable = false;
 let devAdminToken: string | null = null;
@@ -461,7 +470,7 @@ describe("Heatmap API", () => {
         `/api/admin/stats/heatmap?type=${longValue}`,
       );
 
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
   });
 

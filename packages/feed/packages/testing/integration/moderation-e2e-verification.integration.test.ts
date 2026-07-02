@@ -15,8 +15,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { User } from "@feed/db";
 import {
   db,
+  filterPostsByModeration,
   getBlockedByUserIds,
   getBlockedUserIds,
+  getFilteredUserIds,
   getMutedUserIds,
   hasBlocked,
   hasMuted,
@@ -292,10 +294,15 @@ describe("NPC Moderation - Special Handling", () => {
     // User1 has muted the NPC (from previous test)
     const mutedIds = await getMutedUserIds(testUser1.id);
 
-    // Simulate feed filtering
-    const shouldBeFiltered = mutedIds.includes(testNPC.id);
+    // The real feed filter must drop the muted NPC's post
+    const visiblePosts = filterPostsByModeration(
+      [{ id: npcPost.id, authorId: testNPC.id }],
+      [],
+      mutedIds,
+    );
 
-    expect(shouldBeFiltered).toBe(true);
+    expect(mutedIds).toContain(testNPC.id);
+    expect(visiblePosts).toHaveLength(0);
 
     console.log("✅ Muted NPCs are filtered from feed");
 
@@ -306,10 +313,9 @@ describe("NPC Moderation - Special Handling", () => {
 
 describe("Feed Filtering - Integration", () => {
   it("should filter posts from blocked users", async () => {
-    // User1 blocked user2 (from earlier test)
-    const blockedIds = await getBlockedUserIds(testUser1.id);
-    const blockedByIds = await getBlockedByUserIds(testUser1.id);
-    const allExcludedIds = [...blockedIds, ...blockedByIds];
+    // User1 blocked user2 (from earlier test); the real feed exclusion set
+    // (blocked + blocked-by) comes from the production helper, not a manual union
+    const allExcludedIds = await getFilteredUserIds(testUser1.id);
 
     // Create posts from blocked and non-blocked users
     const post1 = await db.post.create({
@@ -336,9 +342,7 @@ describe("Feed Filtering - Integration", () => {
       { id: post2.id, authorId: testUser3.id },
     ];
 
-    const filteredPosts = allPosts.filter(
-      (post) => !allExcludedIds.includes(post.authorId),
-    );
+    const filteredPosts = filterPostsByModeration(allPosts, allExcludedIds);
 
     // Both should be filtered out
     expect(filteredPosts.length).toBe(0);

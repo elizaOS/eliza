@@ -144,7 +144,7 @@ describe("API Endpoints - Complete Coverage", () => {
 
     test("GET /api/markets/bias/active", async () => {
       const res = await get("/api/markets/bias/active");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
 
     test("GET /api/markets/predictions/[id]/resolution", async () => {
@@ -164,7 +164,7 @@ describe("API Endpoints - Complete Coverage", () => {
 
     test("GET /api/users/search", async () => {
       const res = await get("/api/users/search?q=test");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(401);
     });
 
     test("GET /api/users/api-keys - requires auth", async () => {
@@ -418,7 +418,7 @@ describe("API Endpoints - Complete Coverage", () => {
 
     test("GET /api/trending/[tag]", async () => {
       const res = await get("/api/trending/crypto");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -433,12 +433,12 @@ describe("API Endpoints - Complete Coverage", () => {
 
     test("GET /api/game/card", async () => {
       const res = await get("/api/game/card");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
 
     test("GET /api/game/capabilities", async () => {
       const res = await get("/api/game/capabilities");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
 
     test("GET /api/game/guide", async () => {
@@ -478,7 +478,7 @@ describe("API Endpoints - Complete Coverage", () => {
 
     test("GET /api/user-groups", async () => {
       const res = await get("/api/user-groups");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(401);
     });
   });
 
@@ -587,12 +587,12 @@ describe("API Endpoints - Complete Coverage", () => {
   describe("Auth", () => {
     test("GET /api/auth/credentials/status", async () => {
       const res = await get("/api/auth/credentials/status");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
 
     test("GET /api/twitter/auth-status", async () => {
       const res = await get("/api/twitter/auth-status");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(401);
     });
   });
 
@@ -606,7 +606,7 @@ describe("API Endpoints - Complete Coverage", () => {
         method: "agent/discover",
         id: "test-1",
       });
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -616,12 +616,12 @@ describe("API Endpoints - Complete Coverage", () => {
   describe("Frame", () => {
     test("GET /api/frame", async () => {
       const res = await get("/api/frame");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
 
     test("GET /api/frame/metadata", async () => {
       const res = await get("/api/frame/metadata");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -631,7 +631,7 @@ describe("API Endpoints - Complete Coverage", () => {
   describe("HuggingFace", () => {
     test("GET /api/huggingface/status", async () => {
       const res = await get("/api/huggingface/status");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -714,13 +714,13 @@ describe("API Endpoints - Complete Coverage", () => {
       expect(text.toLowerCase()).not.toContain("/users/");
     });
 
-    test("malformed JSON returns 400 not 500", async () => {
+    test("malformed JSON is rejected by auth before parsing", async () => {
       const res = await fetch(`${BASE_URL}/api/posts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "not valid json {{{",
       });
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(401);
     });
   });
 
@@ -730,7 +730,7 @@ describe("API Endpoints - Complete Coverage", () => {
   describe("Security", () => {
     test("SQL injection in query params handled safely", async () => {
       const res = await get("/api/users/search?q='; DROP TABLE users; --");
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(401);
     });
   });
 });
