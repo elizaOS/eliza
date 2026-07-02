@@ -82,6 +82,9 @@ export interface TrajectoryListItem {
 	id: string;
 	agentId: string;
 	source: string;
+	roomId: string | null;
+	entityId: string | null;
+	metadata: Record<string, JsonValue | undefined>;
 	status: "active" | "completed" | "error" | "timeout";
 	startTime: number;
 	endTime: number | null;
@@ -2281,7 +2284,7 @@ export class TrajectoriesService extends Service {
         id, agent_id, source, status, start_time, end_time, duration_ms,
         step_count, llm_call_count, total_prompt_tokens, total_completion_tokens,
         total_cache_read_input_tokens, total_cache_creation_input_tokens,
-        total_reward, scenario_id, batch_id, created_at, updated_at
+        total_reward, scenario_id, batch_id, metadata_json, created_at, updated_at
       FROM trajectories
       ${whereClause}
       ORDER BY created_at DESC
@@ -2303,11 +2306,19 @@ export class TrajectoriesService extends Service {
 			});
 			const rawLlmCallCount = asNumber(pickCell(row, "llm_call_count")) ?? 0;
 			const llmCallCount = rawLlmCallCount;
+			const metadata = parseTrajectoryMetadata(
+				pickCell(row, "metadata_json", "metadata"),
+			);
+			const asNullableString = (value: JsonValue | undefined): string | null =>
+				typeof value === "string" ? value : null;
 
 			return {
 				id: asString(pickCell(row, "id")) ?? "",
 				agentId: asString(pickCell(row, "agent_id")) ?? "",
 				source: asString(pickCell(row, "source")) ?? "chat",
+				roomId: asNullableString(metadata.roomId),
+				entityId: asNullableString(metadata.entityId),
+				metadata,
 				status,
 				startTime,
 				endTime: timing.endTime,
