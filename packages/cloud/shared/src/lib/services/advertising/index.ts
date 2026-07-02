@@ -856,11 +856,21 @@ class AdvertisingService {
       }
     }
 
-    // Compute the genuinely-unused refund BEFORE the atomic claim — the spend
-    // refresh inside computeCreditsSpent needs the row to still exist. The
-    // two-column (#11151) spend logic lives in the shared helper.
-    const creditsSpent = await this.computeCreditsSpent(campaign);
-    const creditsRemaining = Math.max(0, parseFloat(campaign.credits_allocated) - creditsSpent);
+    // Best-effort external spend refresh BEFORE the atomic claim, while the
+    // row still exists — getCampaignMetrics persists the fresh total_spend
+    // onto the row (updateMetrics), so the claimed row below carries it. Keeps
+    // the #11151 protection against a never-synced campaign under-counting
+    // spend and over-refunding.
+    if (campaign.external_campaign_id) {
+      try {
+        await this.getCampaignMetrics(campaignId, organizationId);
+      } catch (metricsError) {
+        logger.warn("[Advertising] pre-delete spend refresh failed; using stored total_spend", {
+          campaignId,
+          error: metricsError instanceof Error ? metricsError.message : String(metricsError),
+        });
+      }
+    }
 
     // Atomic claim: only the caller that actually removes the row refunds, so
     // two concurrent deletes (or a delete retried after a mid-op failure) can't
@@ -873,6 +883,21 @@ class AdvertisingService {
       });
       return;
     }
+
+    // Refund from the CLAIMED row, never the pre-claim findById snapshot: a
+    // concurrent budget DECREASE commits its lower credits_allocated (and
+    // refunds the freed delta) before claimDelete removes the row, so a
+    // snapshot-based refund would pay that freed budget out a second time —
+    // and impressions served after the snapshot would be refunded too. The
+    // two-column (#11151) spend logic lives in the shared helper; external
+    // spend was already refreshed onto the row above and the row is gone now,
+    // so skip the in-helper re-refresh (it could only fail and warn) by
+    // passing external_campaign_id: null.
+    const creditsSpent = await this.computeCreditsSpent({
+      ...deleted,
+      external_campaign_id: null,
+    });
+    const creditsRemaining = Math.max(0, parseFloat(deleted.credits_allocated) - creditsSpent);
 
     if (creditsRemaining > 0) {
       await creditsService.refundCredits({
