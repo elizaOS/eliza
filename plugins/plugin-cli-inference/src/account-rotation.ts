@@ -17,13 +17,12 @@
  * rotate through — it maps backend → provider, pool-selects the next healthy
  * account, and MATERIALIZES the exact env the subprocess needs:
  * `CLAUDE_CODE_OAUTH_TOKEN` for claude, a per-account `CODEX_HOME` for codex).
- * We apply that env patch to `process.env` (the SDK reads its creds from there /
- * from the materialized `CODEX_HOME`), dispose the warm session so it re-auths as
- * the new account on its next start, and retry the turn transparently. Only when
- * the pool returns null (all accounts limited / no pool / single account) do we
- * rethrow so the caller's existing provider-failover chain runs. Rotation
- * (account A → account B, same provider) therefore composes with — and runs
- * BEFORE — failover (claude → cloud → api).
+ * We build a subprocess-only env patch for the next SDK session, dispose the
+ * warm session so it re-auths as the new account on its next start, and retry the
+ * turn transparently. Only when the pool returns null (all accounts limited / no
+ * pool / single account) do we rethrow so the caller's existing provider-failover
+ * chain runs. Rotation (account A → account B, same provider) therefore composes
+ * with — and runs BEFORE — failover (claude → cloud → api).
  *
  * Design notes:
  *  - **Bridge over `globalThis`, not an app-core import.** The pool + credential
@@ -33,11 +32,10 @@
  *    configured the bridge is absent and this module is a pass-through no-op
  *    (single-account behavior is byte-for-byte unchanged).
  *  - **TOS invariant preserved.** The subscription token materialized by the
- *    bridge only ever lands in `process.env` (which the first-party claude/codex
- *    SDK subprocess reads for its own auth) — the same place the ambient
- *    credential already lives for the claude-sdk path — never logged, never
- *    forwarded to a third-party API. `CODEX_HOME` is a directory path, not a
- *    secret.
+ *    bridge only ever lands in the first-party SDK subprocess env (`query
+ *    options.env` / `new Codex({ env })`), never the runtime's shared
+ *    `process.env`, never logs, never a third-party API. `CODEX_HOME` is a
+ *    directory path, not a secret.
  *  - **Rotation is opt-out-able**, gated like the rest of the plugin's env
  *    conventions: `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION` (default ON when a pool
  *    is present; set `0`/`false`/`off` to disable and go straight to failover).
@@ -55,6 +53,16 @@ const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
   "eliza.account-pool.coding-agent.v1"
 );
 
+export type RotationAgentType = "claude" | "codex";
+export type RotationSubprocessEnv = Record<string, string | undefined>;
+
+interface RotationState {
+  selection: RotationAccountSelection;
+  subprocessEnv: RotationSubprocessEnv;
+}
+
+const rotationStateBySession = new Map<string, RotationState>();
+
 /** A selected account plus the env the first-party subprocess needs to auth as it. */
 export interface RotationAccountSelection {
   providerId: string;
@@ -62,7 +70,7 @@ export interface RotationAccountSelection {
   label: string;
   source: "oauth" | "api-key";
   strategy: string;
-  /** Secrets / paths injected into the process env, never persisted or logged. */
+  /** Secrets / paths injected into the SDK subprocess env, never persisted or logged. */
   envPatch: Record<string, string>;
 }
 
@@ -98,13 +106,13 @@ export function getCodingAccountBridge(): CodingAgentSelectorBridge | null {
  * login and are out of scope for in-runtime rotation (they'd need the CLI shim,
  * issue #11180 Gap B), so ONLY the SDK backends map to a rotation agent type.
  */
-const BACKEND_TO_AGENT_TYPE: Readonly<Record<string, string>> = {
+const BACKEND_TO_AGENT_TYPE: Readonly<Record<string, RotationAgentType>> = {
   "claude-sdk": "claude",
   "codex-sdk": "codex",
 };
 
 /** Map an inference backend to the coding-agent pool type, or null when unrotatable. */
-export function rotationAgentTypeForBackend(backend: string): string | null {
+export function rotationAgentTypeForBackend(backend: string): RotationAgentType | null {
   return BACKEND_TO_AGENT_TYPE[backend] ?? null;
 }
 
@@ -150,12 +158,32 @@ export function rotationEnabled(getValue: (key: string) => string | undefined): 
   return true;
 }
 
-/** Apply an env patch to `process.env` (secrets/paths the SDK subprocess reads). */
-function applyEnvPatch(envPatch: Record<string, string>): void {
-  if (typeof process === "undefined") return;
-  for (const [key, value] of Object.entries(envPatch)) {
-    process.env[key] = value;
+/**
+ * Ambient auth vars that would compete with a rotated account's env patch.
+ * Both SDKs replace the subprocess environment when `env` is provided, so the
+ * merge spreads `process.env` (PATH/HOME survive) but drops these first;
+ * otherwise an operator's own ambient key/home could outrank the selected pool
+ * account.
+ */
+const COMPETING_AUTH_VARS: Readonly<Record<RotationAgentType, readonly string[]>> = {
+  claude: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
+  codex: ["CODEX_HOME", "OPENAI_API_KEY"],
+};
+
+/**
+ * Build the SDK subprocess env for a rotated account. Pure: it never mutates
+ * `process.env`, so pooled credentials cannot leak into the parent process or
+ * other in-process consumers.
+ */
+export function buildRotatedSubprocessEnv(
+  agentType: RotationAgentType,
+  envPatch: Record<string, string>
+): RotationSubprocessEnv {
+  const env: RotationSubprocessEnv = typeof process === "undefined" ? {} : { ...process.env };
+  for (const key of COMPETING_AUTH_VARS[agentType]) {
+    delete env[key];
   }
+  return { ...env, ...envPatch };
 }
 
 /** A description safe to log about a selection (label + provider, NEVER the token). */
@@ -180,6 +208,15 @@ export interface RotationContext {
   strategy?: string;
 }
 
+function rotationStateKey(ctx: RotationContext): string {
+  return `${ctx.backend}\u001f${ctx.sessionKey ?? "__default"}`;
+}
+
+/** Test seam: keeps per-test rotation state independent. */
+export function resetRotationStateForTests(): void {
+  rotationStateBySession.clear();
+}
+
 /**
  * Run `attempt` with transparent account rotation on subscription-limit errors.
  *
@@ -191,7 +228,7 @@ export interface RotationContext {
  *     the caller's existing provider-failover chain handles it.
  *  3. On a limit error: mark the current account rate-limited, select the next
  *     healthy account from the pool (excluding every account already tried),
- *     apply its env patch, dispose the warm session (`onRotate`), and retry.
+ *     build its subprocess-only env, dispose the warm session (`onRotate`), and retry.
  *     Repeat until an attempt succeeds or the pool is exhausted; when the pool
  *     returns null, rethrow the LAST limit error so failover runs.
  *
@@ -200,7 +237,7 @@ export interface RotationContext {
  * the pool mis-reports health.
  */
 export async function withAccountRotation(
-  attempt: () => Promise<string>,
+  attempt: (env?: RotationSubprocessEnv) => Promise<string>,
   ctx: RotationContext,
   maxRotations = 8
 ): Promise<string> {
@@ -212,22 +249,19 @@ export async function withAccountRotation(
     return attempt();
   }
 
-  const tried: string[] = [];
-  // The account we rotated INTO (null while still on the ambient credential).
-  // We only touch pool health/usage for accounts WE selected — the ambient
-  // credential may not be a pooled account at all, so guessing its provider id
-  // could mis-mark a stranger's account.
-  let current: RotationAccountSelection | null = null;
+  const stateKey = rotationStateKey(ctx);
+  let state = rotationStateBySession.get(stateKey) ?? null;
+  const tried: string[] = state ? [state.selection.accountId] : [];
   let lastError: unknown;
 
   for (let rotations = 0; rotations <= maxRotations; rotations += 1) {
     try {
-      const result = await attempt();
+      const result = await attempt(state?.subprocessEnv);
       // Record a successful call against the account we rotated INTO so
       // quota-aware selection reflects real usage (best-effort; never throws).
-      if (current) {
+      if (state) {
         void bridge
-          .recordUsage(current.providerId, current.accountId, { ok: true })
+          .recordUsage(state.selection.providerId, state.selection.accountId, { ok: true })
           .catch(() => undefined);
       }
       return result;
@@ -241,15 +275,17 @@ export async function withAccountRotation(
       // The active account just limited. Mark it (with its reset window) so
       // quota-aware selection routes around it, then pick the next healthy one.
       // Only for an account WE selected (the ambient credential is untracked).
-      if (current) {
+      if (state) {
         void bridge
           .markRateLimited(
-            current.providerId,
-            current.accountId,
+            state.selection.providerId,
+            state.selection.accountId,
             Date.now() + ROTATION_RATE_LIMIT_COOLOFF_MS,
             "cli-inference subscription limit"
           )
           .catch(() => undefined);
+        rotationStateBySession.delete(stateKey);
+        state = null;
       }
 
       let selection: RotationAccountSelection | null = null;
@@ -289,8 +325,11 @@ export async function withAccountRotation(
       }
 
       tried.push(selection.accountId);
-      current = selection;
-      applyEnvPatch(selection.envPatch);
+      state = {
+        selection,
+        subprocessEnv: buildRotatedSubprocessEnv(agentType, selection.envPatch),
+      };
+      rotationStateBySession.set(stateKey, state);
       // Tear down the warm session so it re-auths as the newly-selected account.
       try {
         await ctx.onRotate();
