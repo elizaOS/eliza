@@ -290,25 +290,41 @@ const reorderCountBefore = (await readTelemetry(page)).filter(
   (e) => e.action === "reorder",
 ).length;
 
-// Drag the FIRST tile down past a lower-row tile's midpoint. axis="y", so a
-// vertical drag past a neighbour's centre commits the reorder.
+// Drag the FIRST tile downward. axis="y" over a multi-column grid means a
+// whole row shares one y-centre, so a fixed-endpoint fling thrashes onReorder
+// while crossing a row boundary and can round-trip back to the original order
+// by release time (timing-dependent). Deterministic protocol instead: nudge
+// down in small steps with a dwell, poll the LIVE order after each step, and
+// release only once a swap has been observed AND re-confirmed stable with the
+// pointer held still (onReorder only fires on pointer movement, so a stable
+// stationary order cannot thrash back before mouse.up).
 {
   const firstId = orderBefore[0];
-  const targetId = orderBefore[Math.min(orderBefore.length - 1, 5)];
   const from = await page.getByTestId(firstId).boundingBox();
-  const to = await page.getByTestId(targetId).boundingBox();
   const fx = from.x + from.width / 2;
   const fy = from.y + from.height / 2;
-  const tx = to.x + to.width / 2;
-  const ty = to.y + to.height / 2;
   await page.mouse.move(fx, fy);
   await page.mouse.down();
-  // A small initial nudge to engage Framer's drag, then travel to the target.
-  await page.mouse.move(fx, fy + 8, { steps: 3 });
-  await page.mouse.move(tx, ty, { steps: 18 });
-  await page.mouse.move(tx, ty + 4, { steps: 3 });
+  // A small initial nudge to engage Framer's drag.
+  await page.mouse.move(fx, fy + 8, { steps: 4 });
+  let y = fy + 8;
+  // Bounded travel: about two grid rows below the start.
+  const maxY = fy + from.height * 3;
+  while (y < maxY) {
+    y += 12;
+    await page.mouse.move(fx, y, { steps: 2 });
+    await page.waitForTimeout(60);
+    const live = await activePageTileOrder(page);
+    if (live[0] !== orderBefore[0]) {
+      // Hold the pointer still and confirm the swap did not thrash back.
+      await page.waitForTimeout(300);
+      const settled = await activePageTileOrder(page);
+      if (settled[0] !== orderBefore[0]) break;
+    }
+  }
   await page.mouse.up();
-  await page.waitForTimeout(400);
+  // Let the Reorder settle animation finish before reading the final order.
+  await page.waitForTimeout(600);
 }
 
 const orderAfter = await activePageTileOrder(page);
