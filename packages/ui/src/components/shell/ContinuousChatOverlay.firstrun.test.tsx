@@ -30,7 +30,7 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { CHAT_PREFILL_EVENT } from "../../events";
+import { CHAT_PREFILL_EVENT, TUTORIAL_CHAT_CONTROL_EVENT } from "../../events";
 import { __setAppValueForTests } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
@@ -207,6 +207,31 @@ describe("ContinuousChatOverlay first-run gating", () => {
     fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 2 });
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");
+  });
+
+  it("ignores tutorial chat-control events (rest/reset/prefill) while onboarding is active", () => {
+    render(
+      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+
+    // The one collapse seam outside the gated funnel: a stray tour-control
+    // event must not collapse or un-pill the onboarding sheet.
+    for (const action of ["rest", "reset", "pill", "prefill"]) {
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent(TUTORIAL_CHAT_CONTROL_EVENT, {
+            detail: { action, text: "x" },
+          }),
+        );
+      });
+    }
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    // The composer stays locked (prefill did not open a send path).
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.disabled).toBe(true);
   });
 
   it("keeps the transcript CHOICE widgets interactive while the composer is locked", () => {

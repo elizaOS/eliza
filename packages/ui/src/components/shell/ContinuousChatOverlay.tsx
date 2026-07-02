@@ -2734,6 +2734,12 @@ export function ContinuousChatOverlay({
     const onControl = (event: Event) => {
       const detail = (event as CustomEvent<TutorialChatControlDetail>).detail;
       if (!detail) return;
+      // Defense-in-depth for the onboarding lock: while first-run pins the sheet
+      // at FULL, a stray/adversarial tutorial-control event (rest/reset →
+      // collapse, prefill → un-pill) must not move it. The tour only starts
+      // AFTER completeFirstRun, so this never fires in the real flow — it just
+      // closes the one collapse seam outside the gated funnel.
+      if (firstRunOpen) return;
       switch (detail.action) {
         case "pill":
           setMode("pill");
@@ -2766,7 +2772,7 @@ export function ContinuousChatOverlay({
     window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
     return () =>
       window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
-  }, [goToDetent]);
+  }, [goToDetent, firstRunOpen]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
