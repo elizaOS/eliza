@@ -43,7 +43,19 @@ on:
           - production
 
 concurrency:
-  group: deploy-apps-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  # Per-commit group (mirrors cloud-cf-deploy #10802/#10973). A SHARED
+  # deploy-apps-worker-<env> group with cancel-in-progress:false makes GitHub
+  # keep only the latest PENDING run per group and silently cancel the older
+  # pending ones (no annotation) — so a hot develop push/dispatch stream
+  # produces a chain of cancelled runs and zero completed deploys
+  # (elizaOS/eliza#10839). Keying on github.sha too gives each commit its own
+  # group so no run is ever silently superseded. Jobs run on ubuntu-latest
+  # (no runner-level serialization), so a host-side flock in the SSH scripts
+  # serializes concurrent deploys against the shared apps-control host; each
+  # run deploys the branch tip at fetch time, so the last to execute lands the
+  # newest code. Env stays in the key so staging and production never block
+  # each other.
+  group: deploy-apps-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ github.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -142,6 +154,11 @@ jobs:
           envs: DEPLOY_BRANCH,SYSTEMD_UNIT
           script: |
             set -euo pipefail
+            # Serialize deploys on the host: per-SHA concurrency groups mean
+            # overlapping runs are expected; without this they would interleave
+            # git clean/bun install/systemctl restart on the same checkout.
+            exec 9>/tmp/eliza-apps-worker-deploy.lock
+            flock -w 900 9 || { echo "::error::another apps-worker deploy holds the host lock after 15m"; exit 1; }
             echo "=== Deploying eliza-apps-worker (branch: $DEPLOY_BRANCH) ==="
 
             cd /opt/eliza
@@ -218,6 +235,11 @@ jobs:
           envs: SYSTEMD_UNIT
           script: |
             set -euo pipefail
+            # Hold the same host lock as the deploy step so a concurrent run's
+            # restart can never flip the unit mid-check (false red). 240s wait
+            # stays under this step's 5m command_timeout.
+            exec 9>/tmp/eliza-apps-worker-deploy.lock
+            flock -w 240 9 || { echo "::error::another apps-worker deploy holds the host lock after 4m"; exit 1; }
             # The apps worker has no HTTP endpoint; health = active + stable +
             # no fatal/restart-loop in the journal since deploy.
             HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
