@@ -7,7 +7,9 @@ and standalone runtime chooser are no longer part of the shipped UI.
 The current first-run flow is seeded by `use-first-run-conductor.ts` as inline
 chat choices:
 
-- `choice-__first_run__:runtime:{cloud|local|other}`
+- `choice-__first_run__:runtime:{cloud|local}` (the runtime location is a clean
+  two-option chooser as of #11509; "Bring your own keys" is not a location — it
+  lives on the provider axis below. Remote lives in Settings → Runtime post-#9952.)
 - `choice-__first_run__:provider:{on-device|elizacloud|other}`
 - `choice-__first_run__:tutorial:{start|skip}`
 

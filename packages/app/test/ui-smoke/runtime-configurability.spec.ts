@@ -8,9 +8,11 @@ import {
 
 // "Local, Cloud, etc. all work out of the box and are successfully
 // configurable." Runtime/provider setup now lives in the chat transcript:
-// Cloud (Eliza Cloud managed), Local (this device), and Bring your own keys.
-// This spec drives Local → provider to prove every runtime is reachable and
-// configurable, not just displayed.
+// Cloud (Eliza Cloud managed) and Local (this device). "Bring your own keys" is
+// NOT a runtime location — it is a provider sub-choice one step later
+// (provider:other), reached after picking Local (removed as a runtime chip in
+// #11509). This spec drives Local → provider to prove every runtime is reachable
+// and configurable, not just displayed.
 
 async function fulfillJson(
   route: Route,
@@ -70,7 +72,7 @@ async function expectInChatFirstRun(page: Page): Promise<void> {
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 }
 
-test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes and Local is configurable", async ({
+test("in-chat first-run exposes cloud and local runtimes and Local is configurable", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -85,10 +87,14 @@ test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes a
 
   const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
   const local = page.getByTestId("choice-__first_run__:runtime:local");
-  const other = page.getByTestId("choice-__first_run__:runtime:other");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible();
-  await expect(other).toBeVisible();
+  // Only Cloud and Local are runtime locations (#11509). The old third chip
+  // (runtime:other = "Bring your own keys") was removed — it conflated the
+  // inference-provider axis with the location axis. BYOK lives one step down.
+  await expect(
+    page.getByTestId("choice-__first_run__:runtime:other"),
+  ).toHaveCount(0);
 
   // Local is configurable: selecting it advances to the provider step,
   // where the on-device default, Eliza Cloud inference, and other are offered.

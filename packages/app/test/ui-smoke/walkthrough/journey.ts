@@ -838,26 +838,26 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "onboarding-runtime",
     title: "Onboarding runtime choice",
     expectation:
-      "The chat transcript asks how the agent should run, with Eliza Cloud, on-device, and bring-your-own-keys options.",
+      "The chat transcript asks how the agent should run, with Eliza Cloud and on-device options (Bring your own keys is a provider sub-choice, not a location — #11509).",
     async run({ page }) {
       await expect(
         page.getByText("First, where should your agent run?", { exact: false }),
       ).toBeVisible({ timeout: 15_000 });
       const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
       const local = page.getByTestId("choice-__first_run__:runtime:local");
-      const other = page.getByTestId("choice-__first_run__:runtime:other");
       await expect(cloud).toBeVisible();
       await expect(local).toBeVisible();
-      await expect(other).toBeVisible();
+      await expect(
+        page.getByTestId("choice-__first_run__:runtime:other"),
+      ).toHaveCount(0);
       return {
         assertions: [
-          "Runtime question visible (Eliza Cloud vs local vs own keys)",
-          "runtime cloud / local / other choices all visible",
+          "Runtime question visible (Eliza Cloud vs local)",
+          "runtime cloud / local choices visible; no runtime:other chip",
         ],
         dom: await domMarkers(page, {
           cloud: '[data-testid="choice-__first_run__:runtime:cloud"]',
           local: '[data-testid="choice-__first_run__:runtime:local"]',
-          other: '[data-testid="choice-__first_run__:runtime:other"]',
         }),
       };
     },

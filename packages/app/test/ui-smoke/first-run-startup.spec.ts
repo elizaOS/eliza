@@ -48,8 +48,9 @@ async function captureFirstRunRestoreEvidence(page: Page): Promise<void> {
 }
 
 // A full-capability host (real API base + Electrobun window marker) so the local
-// finish path would be reachable; the in-chat conductor seeds the same three
-// runtime choices (Cloud / On this device / Bring your own keys) regardless.
+// finish path would be reachable; the in-chat conductor seeds the same two
+// runtime choices (Cloud / On this device) regardless ("Bring your own keys" is
+// a provider sub-choice, not a runtime location — removed as a chip in #11509).
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
@@ -116,10 +117,12 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
   const local = page.getByTestId("choice-__first_run__:runtime:local");
-  const other = page.getByTestId("choice-__first_run__:runtime:other");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible();
-  await expect(other).toBeVisible();
+  // The old runtime:other ("Bring your own keys") chip was removed in #11509.
+  await expect(
+    page.getByTestId("choice-__first_run__:runtime:other"),
+  ).toHaveCount(0);
 
   // Local advances to the provider step (on-device vs Eliza Cloud vs other) —
   // the re-render churn on the newer step that previously froze.

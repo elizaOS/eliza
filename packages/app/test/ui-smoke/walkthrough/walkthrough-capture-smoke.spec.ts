@@ -198,9 +198,10 @@ test.describe("walkthrough capture smoke", () => {
     await expect(
       page.getByTestId("choice-__first_run__:runtime:local"),
     ).toBeVisible();
+    // runtime:other ("Bring your own keys") was removed as a location in #11509.
     await expect(
       page.getByTestId("choice-__first_run__:runtime:other"),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await captureState(page, testInfo, "walkthrough-01-onboarding.png");
 
     firstRun.setComplete(true);
