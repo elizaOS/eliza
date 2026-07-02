@@ -7,6 +7,16 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
@@ -103,6 +113,7 @@ function hub(
 
 describe("ModelDownloadWidget", () => {
   beforeEach(() => {
+    authMock.authenticated = true;
     getHubMock.mockReset();
     startDownloadMock.mockReset();
     startDownloadMock.mockResolvedValue({ job: {} });
@@ -248,5 +259,41 @@ describe("ModelDownloadWidget", () => {
         container.querySelector('[data-testid="chat-widget-model-download"]'),
       ).toBeNull(),
     );
+  });
+
+  // #11084 — the home surface mounts the widget before the auth probe
+  // resolves; the hub fetch (and download stream) must stay dormant while the
+  // session is unauthenticated.
+  it("does not fetch the hub while unauthenticated", async () => {
+    authMock.authenticated = false;
+    getHubMock.mockResolvedValue(
+      hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
+    );
+
+    const { container } = render(<ModelDownloadWidget />);
+
+    await Promise.resolve();
+    expect(getHubMock).not.toHaveBeenCalled();
+    // Dormant → the first-fetch loading hold renders nothing.
+    expect(
+      container.querySelector('[data-testid="chat-widget-model-download"]'),
+    ).toBeNull();
+  });
+
+  it("starts the hub fetch once the session flips to authenticated", async () => {
+    authMock.authenticated = false;
+    getHubMock.mockResolvedValue(
+      hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
+    );
+
+    const { rerender } = render(<ModelDownloadWidget />);
+    await Promise.resolve();
+    expect(getHubMock).not.toHaveBeenCalled();
+
+    authMock.authenticated = true;
+    rerender(<ModelDownloadWidget />);
+
+    await screen.findByTestId("chat-widget-model-download");
+    expect(getHubMock).toHaveBeenCalled();
   });
 });

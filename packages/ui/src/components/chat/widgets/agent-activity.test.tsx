@@ -1,6 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 import type { FeedActivityItem } from "../../../api/client-types-feed";
 import type { WidgetProps } from "../../../widgets/types";
 
@@ -50,6 +60,7 @@ const homeProps: Partial<WidgetProps> = {
 
 describe("AgentActivityWidget", () => {
   beforeEach(() => {
+    authMock.authenticated = true;
     getFeedAgentActivityMock.mockReset();
     openViewMock.mockReset();
   });

@@ -5,6 +5,7 @@ import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { dispatchChatPrefill } from "../../../events";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useNow } from "../../../hooks/useNow";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
@@ -55,9 +56,12 @@ export function useApprovals(): {
   const [pending, setPending] = useState<PendingUserAction[]>([]);
   const [loaded, setLoaded] = useState(false);
   const mountedRef = useRef(true);
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the 20s approvals poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
 
   const load = useCallback(async () => {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+    if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       if (mountedRef.current) {
         setPending([]);
         setLoaded(true);
@@ -75,7 +79,7 @@ export function useApprovals(): {
         setLoaded(true);
       }
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(
     () => () => {

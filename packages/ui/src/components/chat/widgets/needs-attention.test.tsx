@@ -9,6 +9,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 const {
   getBaseUrlMock,
   listPendingActionsMock,
@@ -80,6 +89,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  authMock.authenticated = true;
   getBaseUrlMock.mockReturnValue("http://localhost");
   publishHomeAttentionSpy.mockReset();
   dispatchChatPrefillSpy.mockReset();
@@ -209,5 +219,36 @@ describe("NeedsAttentionWidget (#9449)", () => {
       text: "Approve: Send the contract",
       select: true,
     });
+  });
+
+  // #11084 — the widget mounts before the auth probe resolves; the 20s
+  // approvals poll must not fire a single request while unauthenticated.
+  it("does not poll pending actions while unauthenticated", async () => {
+    authMock.authenticated = false;
+    mockPending([pending({ id: "a-1", title: "Send the contract" })]);
+
+    const { container } = render(<NeedsAttentionWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(listPendingActionsMock).not.toHaveBeenCalled();
+  });
+
+  it("starts the approvals poll once the session flips to authenticated", async () => {
+    authMock.authenticated = false;
+    mockPending([pending({ id: "a-1", title: "Send the contract" })]);
+
+    const { rerender } = render(<NeedsAttentionWidget {...fetchProps} />);
+    await Promise.resolve();
+    expect(listPendingActionsMock).not.toHaveBeenCalled();
+
+    authMock.authenticated = true;
+    rerender(<NeedsAttentionWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-needs-attention")).toBeTruthy();
+    });
+    expect(listPendingActionsMock).toHaveBeenCalled();
   });
 });
