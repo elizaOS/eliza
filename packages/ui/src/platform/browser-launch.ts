@@ -1,5 +1,6 @@
 import { client } from "../api";
 import { getBootConfig } from "../config/boot-config-store";
+import { upsertAndActivateAgentProfile } from "../state/agent-profiles";
 import {
   createPersistedActiveServer,
   savePersistedActiveServer,
@@ -201,15 +202,25 @@ export function applyLaunchConnection(args: {
   });
   const token = args.token?.trim() || null;
 
+  const kind = args.kind ?? "remote";
   client.setBaseUrl(normalizedApiBase);
   client.setToken(token);
-  savePersistedActiveServer(
-    createPersistedActiveServer({
-      kind: args.kind ?? "remote",
-      apiBase: normalizedApiBase,
-      ...(token ? { accessToken: token } : {}),
-    }),
-  );
+  const persisted = createPersistedActiveServer({
+    kind,
+    apiBase: normalizedApiBase,
+    ...(token ? { accessToken: token } : {}),
+  });
+  savePersistedActiveServer(persisted);
+  // Keep the agent-profile registry (the "My Runtimes" source of truth) in sync
+  // with the active server — otherwise a connection made here is invisible to
+  // the runtime switcher and leaves its Active badge stale. Idempotent: a
+  // repeat connect to the same host re-activates rather than duplicating.
+  upsertAndActivateAgentProfile({
+    kind,
+    label: persisted.label,
+    ...(persisted.apiBase !== undefined ? { apiBase: persisted.apiBase } : {}),
+    ...(token ? { accessToken: token } : {}),
+  });
 
   return { apiBase: normalizedApiBase, token };
 }
