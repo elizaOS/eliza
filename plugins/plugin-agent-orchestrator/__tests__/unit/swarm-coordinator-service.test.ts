@@ -21,6 +21,7 @@ import { AcpService } from "../../src/services/acp-service.ts";
 import {
   SWARM_COORDINATOR_SERVICE_TYPE,
   SwarmCoordinatorService,
+  sessionHasRouterOrigin,
   type SwarmEvent,
 } from "../../src/services/swarm-coordinator-service.ts";
 
@@ -57,6 +58,16 @@ function makeRuntime(services: Record<string, unknown>): IAgentRuntime {
   return {
     getService: vi.fn((key: string) => services[key] ?? null),
   } as unknown as IAgentRuntime;
+}
+
+/** The sub-agent-router serviceType the coordinator looks up to decide whether
+ *  the router is live enough to own an origin session's completion. */
+const SUB_AGENT_ROUTER_SERVICE_TYPE = "ACPX_SUB_AGENT_ROUTER";
+
+/** Minimal SubAgentRouter stub exposing only the `isActive()` accessor the
+ *  coordinator duck-types. `active: false` mimics a disabled / unbound router. */
+function makeRouterStub(active: boolean) {
+  return { isActive: vi.fn(() => active) };
 }
 
 describe("SwarmCoordinatorService", () => {
@@ -733,7 +744,451 @@ describe("SwarmCoordinatorService", () => {
     }
   });
 
+  // Ownership rule (#11634): the sub-agent-router owns the completion→chat post
+  // for origin-routed sessions. Swarm synthesis must NOT double-post those.
+  // A router-routed session stamps a valid UUID roomId + taskRoomId + source.
+  const ROUTER_ROOM_ID = "11111111-1111-4111-8111-111111111111";
+  const ROUTER_TASK_ROOM_ID = "22222222-2222-4222-8222-222222222222";
+
+  it("does NOT fire swarm-complete for a router-origin session when the router is active (task_complete)", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        initialTask: "build the landing page",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+        originConnectorMessageId: "discord-msg-11",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-router", "task_complete", { response: "deployed" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
+  it("STILL fires swarm-complete for a router-origin session when the router is DISABLED/unbound", async () => {
+    // ACPX_SUB_AGENT_ROUTER_DISABLED (or router failed to bind): the router
+    // will not post, so synthesis must remain the completion poster or the
+    // terminal completion goes silent.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(false),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-router-off", "task_complete", { response: "deployed" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
+
+  it("STILL fires when router room UUIDs are ONLY in the event data, not session metadata", async () => {
+    // readOrigin(session) reads session.metadata only. If the UUIDs live solely
+    // in the terminal event payload, the router returns "no origin" and posts
+    // nothing — so synthesis must remain the poster (no silent drop).
+    const acp = makeAcpStub({
+      agentType: "codex",
+      metadata: { label: "payload-only" }, // NO room UUIDs in session metadata
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // UUIDs present in the EVENT data only.
+    acp.emit("sess-payload-only", "task_complete", {
+      response: "deployed",
+      originRoomId: ROUTER_ROOM_ID,
+      taskRoomId: ROUTER_TASK_ROOM_ID,
+      source: "discord",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
+
+  it("a router-owned task_complete does NOT consume the session's synthesis slot (later stopped still fires)", async () => {
+    // ACP sessions are reused across turns. A router-owned task_complete is
+    // skipped here, but must NOT mark the session synthesized — otherwise a
+    // later `stopped` (which the router never posts) would be swallowed by the
+    // dedupe guard and go silent.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // Turn 1: router-owned completion — skipped, slot NOT consumed.
+    acp.emit("sess-reuse", "task_complete", { response: "deployed" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fired).not.toHaveBeenCalled();
+
+    // Turn 2: same session stops — router does not post this, so synthesis must.
+    acp.emit("sess-reuse", "stopped", {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      stopped: 1,
+      tasks: [{ sessionId: "sess-reuse", status: "stopped" }],
+    });
+    await coordinator.stop();
+  });
+
+  it("STILL fires swarm-complete for a router-origin `stopped` event even when the router is active", async () => {
+    // The router injects task_complete / error but NOT stopped, so synthesis
+    // remains the only poster for a stop/cancel/no-output terminal event.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-router-stopped", "stopped", {});
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      stopped: 1,
+      tasks: [{ sessionId: "sess-router-stopped", status: "stopped" }],
+    });
+    await coordinator.stop();
+  });
+
+  it("STILL fires swarm-complete for a custom-validator task_complete on a router-origin active session", async () => {
+    // The app-verification / custom-validator result is synthesized by the
+    // coordinator (dispatchCustomValidatorResult); the router never receives or
+    // posts it, so synthesis must remain its poster even on a router-owned
+    // active session, or the validated verdict would vanish.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // A validated completion carries the custom-validator marker.
+    acp.emit("sess-validated", "task_complete", {
+      summary: "App verification passed.",
+      response: "App verification passed.",
+      verification: {
+        source: "custom-validator",
+        validator: { service: "app-verification", method: "verifyApp" },
+        verdict: "pass",
+      },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      completed: 1,
+      tasks: [{ sessionId: "sess-validated", status: "completed" }],
+    });
+    await coordinator.stop();
+  });
+
+  it("STILL fires swarm-complete for a router-origin session when NO router service is registered", async () => {
+    // Fail-safe: missing router service is treated as "router not active".
+    const acp = makeAcpStub({
+      agentType: "codex",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-no-router", "task_complete", { response: "deployed" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
+
+  it("does NOT fire swarm-complete for a router-origin session on suppressed state-lost error (source optional)", async () => {
+    // No `source` here on purpose: readOrigin still owns this session, so the
+    // suppressed-error leak must be prevented even for connector-less origins.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // The router deliberately suppresses this (it respawns the session under
+    // cap); synthesis must not leak the "state was lost" scare to the channel.
+    acp.emit("sess-router-err", "error", {
+      failureKind: "session_state_lost",
+      message: "Sub-agent state was lost (process exited without persisting).",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
+  it("STILL fires swarm-complete for a session with NO router origin (task_complete)", async () => {
+    // Dashboard / API-spawned swarm task: no router origin metadata
+    // (non-UUID room, no source). Synthesis remains the completion poster —
+    // this is the gap synthesis exists to cover.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "dashboard-task",
+        initialTask: "nightly report",
+        originRoomId: "origin-room-11",
+      },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-dashboard", "task_complete", { response: "deployed" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      completed: 1,
+      tasks: [{ sessionId: "sess-dashboard", status: "completed" }],
+    });
+    await coordinator.stop();
+  });
+
+  // A microtask/macrotask flush deep enough to drain the per-session terminal
+  // completion chain (each event is 2+ awaits deep: chain .then + metadata
+  // await + eviction scheduling).
+  const flushChains = async () => {
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it("fires swarm-complete ONCE when two terminal events for the same non-router session race the metadata await", async () => {
+    // Regression (codex review, #11634): AcpService invokes listeners
+    // synchronously without awaiting them, so two terminal events emitted
+    // back-to-back for one session (e.g. error then stopped on a single exit)
+    // both enter the handler and suspend on the getEnrichmentMetadata await.
+    // Per-session serialization makes the second observe the first's completed
+    // dedupe decision, so the completion callback fires exactly ONCE.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: { label: "dashboard-race", initialTask: "nightly report" },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-race-dedupe", "error", { message: "boom" });
+    acp.emit("sess-race-dedupe", "stopped", {});
+    await flushChains();
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
+
+  it("still fires the `stopped` when it races a router-owned terminal on the same session (no swallow)", async () => {
+    // Regression (codex review, #11634): a router-owned task_complete/error and
+    // a `stopped` emitted back-to-back for one router-origin session. The
+    // router owns (and skips synthesis for) the task_complete but NEVER posts
+    // `stopped`, so synthesis must still deliver the stop. Per-session
+    // serialization guarantees the router-owned skip does not consume the slot
+    // AND the `stopped` is not swallowed by a claim/release race.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // Router-owned task_complete (skipped) immediately followed by a stopped
+    // (must post) — same tick, racing the metadata await.
+    acp.emit("sess-race-router", "task_complete", { response: "deployed" });
+    acp.emit("sess-race-router", "stopped", {});
+    await flushChains();
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      stopped: 1,
+      tasks: [{ sessionId: "sess-race-router", status: "stopped" }],
+    });
+    await coordinator.stop();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+});
+
+describe("sessionHasRouterOrigin", () => {
+  const ROOM = "11111111-1111-4111-8111-111111111111";
+  const TASK_ROOM = "22222222-2222-4222-8222-222222222222";
+
+  // The predicate takes ONLY the session metadata — the exact input
+  // readOrigin(session) reads (session.metadata). It must NOT consult the
+  // terminal event's data record, or it would judge a session router-owned
+  // that readOrigin would reject, silently dropping its completion.
+
+  it("is true for a valid UUID roomId + taskRoomId + source (router-owned)", () => {
+    expect(
+      sessionHasRouterOrigin({
+        originRoomId: ROOM,
+        taskRoomId: TASK_ROOM,
+        source: "discord",
+      }),
+    ).toBe(true);
+  });
+
+  it("derives taskRoomId from roomId when taskRoomId is absent", () => {
+    // readOrigin: taskRoomId = taskRoomId ?? roomId; roomId falls back to it.
+    expect(sessionHasRouterOrigin({ roomId: ROOM, source: "discord" })).toBe(
+      true,
+    );
+  });
+
+  it("is true when source is missing (source is optional, mirrors readOrigin)", () => {
+    // readOrigin returns a non-null origin without a source, so the router owns
+    // the session and synthesis must skip it regardless of source presence.
+    expect(
+      sessionHasRouterOrigin({ originRoomId: ROOM, taskRoomId: TASK_ROOM }),
+    ).toBe(true);
+  });
+
+  it("is true when originRoomId is non-UUID but taskRoomId is a valid UUID (fallthrough)", () => {
+    // Mirrors readOrigin's pickUuid(originRoomId) ?? ... ?? taskRoomId: a
+    // present-but-invalid earlier field must NOT short-circuit the fallback.
+    expect(
+      sessionHasRouterOrigin({
+        originRoomId: "dashboard-origin",
+        taskRoomId: TASK_ROOM,
+        source: "discord",
+      }),
+    ).toBe(true);
+  });
+
+  it("is false when a taskRoomId cannot be derived (no taskRoomId, roomId not a UUID)", () => {
+    // roomId can come from originRoomId, but taskRoomId only derives from
+    // taskRoomId ?? roomId — with neither a valid UUID, readOrigin returns null.
+    expect(
+      sessionHasRouterOrigin({
+        originRoomId: ROOM,
+        roomId: "not-a-uuid",
+        source: "discord",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when the roomId is not a valid UUID", () => {
+    expect(
+      sessionHasRouterOrigin({ originRoomId: "origin-room-11", source: "discord" }),
+    ).toBe(false);
+  });
+
+  it("is false for empty metadata", () => {
+    expect(sessionHasRouterOrigin({})).toBe(false);
   });
 });

@@ -575,6 +575,21 @@ export class SubAgentRouter extends Service {
     return this.loopState.roundTripCap;
   }
 
+  /**
+   * Is the router bound to the ACP session-event stream and therefore actually
+   * going to post completions for origin-routed sessions?
+   *
+   * False when the router is disabled via `ACPX_SUB_AGENT_ROUTER_DISABLED`
+   * (start() returns before binding), has been stopped, or has not yet bound to
+   * the ACP service. The SwarmCoordinatorService consults this before ceding
+   * ownership of an origin-routed session's completion: if the router is NOT
+   * active, swarm synthesis must remain the poster so terminal completions /
+   * errors still reach the user (issue elizaOS/eliza#11634 review follow-up).
+   */
+  isActive(): boolean {
+    return !this.stopped && this.unsubscribe !== undefined;
+  }
+
   private started = false;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;

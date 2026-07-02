@@ -61,6 +61,11 @@ import { TERMINAL_SESSION_STATUSES } from "./types.js";
 
 export const SWARM_COORDINATOR_SERVICE_TYPE = "SWARM_COORDINATOR";
 
+// Sub-agent-router serviceType, mirrored here as a literal (not imported from
+// sub-agent-router.ts) so this module keeps no dependency edge on the router
+// module. Kept in sync with `SubAgentRouter.serviceType`.
+const SUB_AGENT_ROUTER_SERVICE_TYPE = "ACPX_SUB_AGENT_ROUTER";
+
 /** Legacy swarm event shape consumed by the bridges. */
 export interface SwarmEvent {
   type: string;
@@ -143,6 +148,12 @@ interface EnrichmentMetadata {
 
 const STREAMING_SESSION_EVENTS = new Set(["message", "reasoning", "plan"]);
 
+// The terminal events the sub-agent-router itself posts (mirrors `shouldInject`
+// in sub-agent-router.ts, restricted to the terminal subset). Synthesis only
+// cedes ownership for these — notably NOT `stopped`, which the router does not
+// inject, so the coordinator stays the sole poster for stop/cancel/no-output.
+const ROUTER_OWNED_TERMINAL_EVENTS = new Set(["task_complete", "error"]);
+
 const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -159,6 +170,97 @@ function readString(
     : undefined;
 }
 
+// Same UUID shape the sub-agent-router's `pickUuid` gate accepts. Kept as a
+// local literal (not an import from sub-agent-router) so the coordinator does
+// not take a dependency on the router module — that file already imports this
+// service's siblings and a back-edge would risk a circular import.
+const ROUTER_ORIGIN_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function pickRouterUuid(value: unknown): string | undefined {
+  return typeof value === "string" && ROUTER_ORIGIN_UUID_RE.test(value)
+    ? value
+    : undefined;
+}
+
+/**
+ * Return the first VALID UUID among the given keys of a single metadata record.
+ *
+ * A present-but-non-UUID candidate does NOT short-circuit: it is skipped and
+ * later fallbacks are still considered, mirroring `readOrigin`'s
+ * `pickUuid(a) ?? pickUuid(b) ?? …` (a session with a non-UUID `originRoomId`
+ * but a valid UUID `taskRoomId` is still router-owned).
+ */
+function firstUuidOf(
+  meta: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const uuid = pickRouterUuid(meta[key]);
+    if (uuid) return uuid;
+  }
+  return undefined;
+}
+
+/**
+ * Does this session carry the sub-agent-router's origin routing?
+ *
+ * Mirrors the ownership gate in `readOrigin` (`sub-agent-router.ts`) EXACTLY,
+ * including its input: `readOrigin(session)` reads ONLY `session.metadata`, so
+ * this predicate takes the session metadata alone. Deciding ownership from the
+ * terminal event's data record instead would diverge — a session whose EVENT
+ * payload carries UUID room fields but whose persisted METADATA does not would
+ * be judged router-owned here while `readOrigin` returns null and the router
+ * posts nothing, silently dropping the completion/error. The coordinator's
+ * caller passes the session's enrichment metadata (the same
+ * `AcpService.getSession().metadata` the router reads).
+ *
+ * A routed session stamps a valid UUID `roomId` (via
+ * `originRoomId` / `sourceRoomId` / `taskRoomId` / `roomId`) AND a valid UUID
+ * `taskRoomId` (via `taskRoomId` / `roomId`). Those two UUIDs are the ONLY hard
+ * requirements `readOrigin` returns non-null on — `source` is read into the
+ * origin but is optional (a connector-less dashboard/web-origin task still gets
+ * a router-owned origin), so this predicate must NOT require `source`.
+ *
+ * When the router owns a session (both UUIDs present) it is the completion→chat
+ * poster (origin-aware, dedupe-keyed, respawn/retry-suppressing), so swarm
+ * synthesis must NOT fire a parallel completion for it. Sessions WITHOUT this
+ * shape (no valid origin UUIDs — e.g. API-spawned swarm tasks with only a
+ * bare label) are the gap synthesis exists to cover, so they still post.
+ */
+/**
+ * Is this terminal event a coordinator-generated validated completion (the
+ * app-verification / custom-validator synthetic result dispatched by
+ * `dispatchCustomValidatorResult`)? The sub-agent-router never receives or
+ * posts these — the raw ACP `task_complete` is intentionally withheld until
+ * validation and only this synthesized result carries the user-facing verdict
+ * (e.g. "App verification passed."). So even on a router-owned session, synthesis
+ * must remain the poster for it or the validated completion would vanish.
+ * Detected by the `verification.source === "custom-validator"` marker
+ * `dispatchCustomValidatorResult` stamps.
+ */
+function isCustomValidatorResult(record: Record<string, unknown>): boolean {
+  const verification = record.verification;
+  return (
+    isRecord(verification) && verification.source === "custom-validator"
+  );
+}
+
+export function sessionHasRouterOrigin(meta: Record<string, unknown>): boolean {
+  // roomId = pickUuid(originRoomId) ?? pickUuid(sourceRoomId) ?? taskRoomId
+  const roomId = firstUuidOf(meta, [
+    "originRoomId",
+    "sourceRoomId",
+    "taskRoomId",
+    "roomId",
+  ]);
+  if (!roomId) return false;
+  // taskRoomId = pickUuid(taskRoomId) ?? pickUuid(roomId)
+  const taskRoomId = firstUuidOf(meta, ["taskRoomId", "roomId"]);
+  if (!taskRoomId) return false;
+  return true;
+}
+
 export class SwarmCoordinatorService extends Service {
   static override serviceType = SWARM_COORDINATOR_SERVICE_TYPE;
 
@@ -172,6 +274,18 @@ export class SwarmCoordinatorService extends Service {
   private swarmCompleteCallback: SwarmCompleteCallback | null = null;
   private readonly inFlightDecisionSessions = new Set<string>();
   private readonly synthesizedCompletionSessions = new Set<string>();
+  // Per-session serialization chain for terminal-event synthesis. AcpService
+  // invokes session-event listeners SYNCHRONOUSLY without awaiting them, so two
+  // terminal events emitted back-to-back for the SAME session (e.g. a
+  // router-owned `task_complete` and a `stopped`, or a burst of duplicates)
+  // would otherwise both suspend on the `getEnrichmentMetadata` await and race
+  // the `synthesizedCompletionSessions` dedupe/ownership decision. Chaining each
+  // session's terminal handling onto the previous one guarantees the second
+  // event observes the first's completed decision (issue #11634).
+  private readonly terminalCompletionChains = new Map<
+    string,
+    Promise<void>
+  >();
   private readonly enrichmentMetadataCache = new Map<
     string,
     EnrichmentMetadata
@@ -269,6 +383,7 @@ export class SwarmCoordinatorService extends Service {
     this.swarmCompleteCallback = null;
     this.inFlightDecisionSessions.clear();
     this.synthesizedCompletionSessions.clear();
+    this.terminalCompletionChains.clear();
     this.enrichmentMetadataCache.clear();
     for (const timer of this.legacyTaskEvictionTimers.values()) {
       clearTimeout(timer);
@@ -375,6 +490,27 @@ export class SwarmCoordinatorService extends Service {
 
   private acp(): AcpService | null {
     return this.runtime.getService<AcpService>(AcpService.serviceType) ?? null;
+  }
+
+  /**
+   * Is the sub-agent-router actually going to post completions for
+   * origin-routed sessions? The ownership skip in `maybeFireSwarmComplete` is
+   * only safe to take when the router is live — if it is disabled
+   * (`ACPX_SUB_AGENT_ROUTER_DISABLED`), stopped, or has not bound to the ACP
+   * stream, swarm synthesis must remain the completion poster so terminal
+   * completions / errors still reach the user (issue elizaOS/eliza#11634).
+   *
+   * Looked up by serviceType string + duck-typed `isActive()` to avoid a
+   * value import of `SubAgentRouter` (keeps this module free of a back-edge to
+   * the router module). Fails SAFE: any missing service / accessor is treated
+   * as "router not active", so synthesis keeps posting rather than going
+   * silent.
+   */
+  private isRouterActive(): boolean {
+    const router = this.runtime.getService(SUB_AGENT_ROUTER_SERVICE_TYPE) as
+      | { isActive?: () => boolean }
+      | null;
+    return typeof router?.isActive === "function" && router.isActive() === true;
   }
 
   /**
@@ -660,7 +796,37 @@ export class SwarmCoordinatorService extends Service {
     return event;
   }
 
-  private async maybeFireSwarmComplete(
+  /**
+   * Serialize terminal-event synthesis PER SESSION. AcpService fans events out
+   * to listeners synchronously without awaiting them, so two terminal events
+   * for the same session (a router-owned `task_complete`/`error` racing a
+   * `stopped`, or duplicate terminals on one exit) would otherwise both suspend
+   * on the metadata await inside `runSwarmComplete` and race the ownership /
+   * dedupe decision — double-posting completions or swallowing a `stopped` the
+   * router never posts (issue #11634). Chaining onto the session's previous
+   * terminal handler makes the second event observe the first's finished
+   * decision. The chain entry is pruned once it is the tail (no newer event
+   * queued behind it) so the map does not grow unbounded.
+   */
+  private maybeFireSwarmComplete(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): Promise<void> {
+    const prior = this.terminalCompletionChains.get(sessionId) ?? Promise.resolve();
+    const next = prior
+      .catch(() => {})
+      .then(() => this.runSwarmComplete(sessionId, event, data));
+    this.terminalCompletionChains.set(sessionId, next);
+    void next.finally(() => {
+      if (this.terminalCompletionChains.get(sessionId) === next) {
+        this.terminalCompletionChains.delete(sessionId);
+      }
+    });
+    return next;
+  }
+
+  private async runSwarmComplete(
     sessionId: string,
     event: string,
     data: unknown,
@@ -669,8 +835,6 @@ export class SwarmCoordinatorService extends Service {
     if (!cb) return;
     const terminalStatus = this.completionStatusForEvent(event);
     if (!terminalStatus) return;
-    if (this.synthesizedCompletionSessions.has(sessionId)) return;
-    this.synthesizedCompletionSessions.add(sessionId);
 
     const record = isRecord(data) ? data : {};
     let sessionMeta: EnrichmentMetadata = { metadata: {} };
@@ -680,6 +844,57 @@ export class SwarmCoordinatorService extends Service {
       sessionMeta = { metadata: {} };
     }
     const meta = sessionMeta.metadata;
+
+    // Ownership rule (issue elizaOS/eliza#11634): the sub-agent-router owns the
+    // completion→chat post for origin-routed sessions — it is origin-aware,
+    // dedupe-keyed, respawn/retry-suppressing, and feeds the planner's clean
+    // user-facing reply. Firing swarm synthesis for the SAME session
+    // double-posts the completion AND leaks state-lost errors the router
+    // deliberately suppresses while it respawns under cap.
+    //
+    // Only cede the events the router actually posts. `shouldInject` in
+    // sub-agent-router.ts injects `task_complete` and `error` (plus blocked /
+    // coordination) but NOT `stopped` — a stop/cancel/no-output session is
+    // terminal for synthesis (`completionStatusForEvent("stopped")`) yet the
+    // router never posts it, so skipping `stopped` here would leave the user
+    // with NO terminal notice. Skip only when: the event is router-owned
+    // (task_complete / error), the session carries router origin, AND the
+    // router is actually live. Everything else (stopped events, no-origin
+    // dashboard/API tasks, disabled/unbound router) still synthesizes so a
+    // terminal status never goes silent.
+    //
+    // This ownership check runs BEFORE the `synthesizedCompletionSessions`
+    // dedupe guard, and a router-owned skip does NOT consume the slot: ACP
+    // sessions are reused across follow-up turns, so a router-owned turn must
+    // not claim the session's synthesis slot — otherwise a later `stopped` on
+    // the SAME session (which the router does not post) would be swallowed. The
+    // double-synthesis race this ordering would otherwise open is closed by
+    // `maybeFireSwarmComplete`, which serializes all terminal events for a
+    // session so the second observes the first's completed decision.
+    //
+    // Exempt coordinator-generated validated completions: the app-verification
+    // / custom-validator path (dispatchCustomValidatorResult) synthesizes a
+    // `task_complete` the router never receives or posts — the raw ACP
+    // completion was withheld until validation, and only this result carries
+    // the verdict ("App verification passed."). Ceding it to the router would
+    // drop it entirely, so synthesis must stay its poster even on a
+    // router-owned session.
+    if (
+      ROUTER_OWNED_TERMINAL_EVENTS.has(event) &&
+      !isCustomValidatorResult(record) &&
+      sessionHasRouterOrigin(meta) &&
+      this.isRouterActive()
+    ) {
+      return;
+    }
+
+    // Synthesis will actually fire for this session/turn: claim the dedupe slot
+    // now (a straggler duplicate terminal event for the same session is
+    // suppressed until eviction releases it). Safe post-await because
+    // `maybeFireSwarmComplete` serializes same-session terminal events.
+    if (this.synthesizedCompletionSessions.has(sessionId)) return;
+    this.synthesizedCompletionSessions.add(sessionId);
+
     const label =
       readString(record, "label") ?? readString(meta, "label") ?? sessionId;
     const agentType =

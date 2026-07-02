@@ -103,3 +103,43 @@ describe("SubAgentRouter round-trip getters (#8901)", () => {
     }
   });
 });
+
+// isActive() is the accessor SwarmCoordinatorService consults before ceding
+// ownership of an origin-routed session's completion (issue
+// elizaOS/eliza#11634). It must report true only while the router is bound to
+// the ACP stream, and flip to false when disabled or stopped — otherwise the
+// coordinator would go silent (router not posting) or double-post (both
+// posting).
+describe("SubAgentRouter.isActive (#11634 ownership gate)", () => {
+  it("is true once bound to the ACP session-event stream", async () => {
+    const acp = makeAcp(makeSession());
+    const router = await SubAgentRouter.start(makeRuntime(acp.service));
+    try {
+      expect(router.isActive()).toBe(true);
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it("is false after stop() unbinds the stream", async () => {
+    const acp = makeAcp(makeSession());
+    const router = await SubAgentRouter.start(makeRuntime(acp.service));
+    expect(router.isActive()).toBe(true);
+    await router.stop();
+    expect(router.isActive()).toBe(false);
+  });
+
+  it("is false when disabled via ACPX_SUB_AGENT_ROUTER_DISABLED (never binds)", async () => {
+    const acp = makeAcp(makeSession());
+    const router = await SubAgentRouter.start(
+      makeRuntime(acp.service, { ACPX_SUB_AGENT_ROUTER_DISABLED: "1" }),
+    );
+    try {
+      // start() returns before binding, so the router never posts — the
+      // coordinator must NOT cede ownership to it.
+      expect(router.isActive()).toBe(false);
+    } finally {
+      await router.stop();
+    }
+  });
+});
