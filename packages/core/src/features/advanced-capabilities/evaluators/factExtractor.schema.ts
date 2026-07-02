@@ -175,9 +175,7 @@ export function parseExtractorOutputTolerant(
 		}
 		issues.push(
 			parsed.error.issues
-				.map(
-					(issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`,
-				)
+				.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
 				.join("; "),
 		);
 	}

@@ -48,7 +48,10 @@ app.post("/", async (c) => {
       );
     }
 
-    const md = await managedDomainsService.getOwnDomainRow(user.organization_id, parsed.data.domain);
+    const md = await managedDomainsService.getOwnDomainRow(
+      user.organization_id,
+      parsed.data.domain,
+    );
     if (
       !md ||
       md.organizationId !== user.organization_id ||

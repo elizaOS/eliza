@@ -62,7 +62,9 @@ if (!hasMemberApiKey) {
 // Loud, counted skip instead of a silent pass when the Worker/key is absent.
 const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
 // Cross-org assertions need the seeded member key; loud skip otherwise.
-const testCrossOrg = test.skipIf(!serverReachable || !hasTestApiKey || !hasMemberApiKey);
+const testCrossOrg = test.skipIf(
+  !serverReachable || !hasTestApiKey || !hasMemberApiKey,
+);
 
 const createdAppIds: string[] = [];
 const createdCharacterIds: string[] = [];
@@ -297,17 +299,20 @@ describeE2E("GET /api/v1/apps", () => {
     expect(found?.name).toBe(created.name);
   });
 
-  testCrossOrg("org isolation: a member-org key does not see this org's app", async () => {
-    const created = await createTestApp();
+  testCrossOrg(
+    "org isolation: a member-org key does not see this org's app",
+    async () => {
+      const created = await createTestApp();
 
-    const res = await api.get("/api/v1/apps", {
-      headers: memberBearerHeaders(),
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as ListAppsResponse;
-    const leaked = body.apps?.find((entry) => entry.id === created.id);
-    expect(leaked).toBeUndefined();
-  });
+      const res = await api.get("/api/v1/apps", {
+        headers: memberBearerHeaders(),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as ListAppsResponse;
+      const leaked = body.apps?.find((entry) => entry.id === created.id);
+      expect(leaked).toBeUndefined();
+    },
+  );
 });
 
 // -------- GET /api/v1/apps/:id (detail) ------------------------------------
@@ -328,17 +333,20 @@ describeE2E("GET /api/v1/apps/:id", () => {
     expect(body.error).toBe("App not found");
   });
 
-  testCrossOrg("cross-org: 403 when a member-org key requests this org's app", async () => {
-    const created = await createTestApp();
+  testCrossOrg(
+    "cross-org: 403 when a member-org key requests this org's app",
+    async () => {
+      const created = await createTestApp();
 
-    const res = await api.get(`/api/v1/apps/${created.id}`, {
-      headers: memberBearerHeaders(),
-    });
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as { success?: boolean; error?: string };
-    expect(body.success).toBe(false);
-    expect(body.error).toBe("Access denied");
-  });
+      const res = await api.get(`/api/v1/apps/${created.id}`, {
+        headers: memberBearerHeaders(),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { success?: boolean; error?: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("Access denied");
+    },
+  );
 
   test("happy path: full detail for an owned app", async () => {
     const created = await createTestApp();
@@ -388,17 +396,20 @@ describeE2E("PUT /api/v1/apps/:id", () => {
     expect(res.status).toBe(404);
   });
 
-  testCrossOrg("cross-org: 403 when a member-org key updates this org's app", async () => {
-    const created = await createTestApp();
-    const res = await api.put(
-      `/api/v1/apps/${created.id}`,
-      { description: "hijack attempt" },
-      { headers: memberBearerHeaders() },
-    );
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as { success?: boolean; error?: string };
-    expect(body.error).toBe("Access denied");
-  });
+  testCrossOrg(
+    "cross-org: 403 when a member-org key updates this org's app",
+    async () => {
+      const created = await createTestApp();
+      const res = await api.put(
+        `/api/v1/apps/${created.id}`,
+        { description: "hijack attempt" },
+        { headers: memberBearerHeaders() },
+      );
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { success?: boolean; error?: string };
+      expect(body.error).toBe("Access denied");
+    },
+  );
 
   test("happy path: updates the name", async () => {
     const created = await createTestApp();
@@ -558,18 +569,21 @@ describeE2E("DELETE /api/v1/apps/:id", () => {
     expect(res.status).toBe(404);
   });
 
-  testCrossOrg("cross-org: 403 when a member-org key deletes this org's app", async () => {
-    const created = await createTestApp();
-    const res = await api.delete(`/api/v1/apps/${created.id}`, {
-      headers: memberBearerHeaders(),
-    });
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as { success?: boolean; error?: string };
-    expect(body.error).toBe("Access denied");
+  testCrossOrg(
+    "cross-org: 403 when a member-org key deletes this org's app",
+    async () => {
+      const created = await createTestApp();
+      const res = await api.delete(`/api/v1/apps/${created.id}`, {
+        headers: memberBearerHeaders(),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { success?: boolean; error?: string };
+      expect(body.error).toBe("Access denied");
 
-    // The app must still exist for the owner after the rejected delete.
-    expect((await getApp(created.id as string))?.id).toBe(created.id);
-  });
+      // The app must still exist for the owner after the rejected delete.
+      expect((await getApp(created.id as string))?.id).toBe(created.id);
+    },
+  );
 
   test("happy path: deletes then a follow-up GET is 404", async () => {
     const suffix = uniqueName("Disposable");
@@ -658,7 +672,6 @@ describeE2E("POST /api/v1/apps/check-name", () => {
 
 describeE2E("Apps lifecycle round-trip", () => {
   test("create → list → get → update → delete → 404", async () => {
-
     // create
     const created = await createTestApp();
     const appId = created.id as string;

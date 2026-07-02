@@ -239,42 +239,45 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
     expect(res.status).toBe(401);
   });
 
-  testSession("happy path: renames and disables a freshly created key", async () => {
-    if (!sessionCookie) throw new Error("session cookie missing");
+  testSession(
+    "happy path: renames and disables a freshly created key",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
 
-    const createRes = await api.post(
-      "/api/v1/api-keys",
-      {
-        name: `group-b-patch-${Date.now()}`,
-        description: "Group B patch test — revoked in afterAll.",
-        rate_limit: 60,
-      },
-      { headers: { Cookie: sessionCookie } },
-    );
-    expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { apiKey?: { id?: string } };
-    expect(created.apiKey?.id).toBeTruthy();
-    if (created.apiKey?.id) createdApiKeyIds.push(created.apiKey.id);
+      const createRes = await api.post(
+        "/api/v1/api-keys",
+        {
+          name: `group-b-patch-${Date.now()}`,
+          description: "Group B patch test — revoked in afterAll.",
+          rate_limit: 60,
+        },
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(createRes.status).toBe(201);
+      const created = (await createRes.json()) as { apiKey?: { id?: string } };
+      expect(created.apiKey?.id).toBeTruthy();
+      if (created.apiKey?.id) createdApiKeyIds.push(created.apiKey.id);
 
-    const patchRes = await api.patch(
-      `/api/v1/api-keys/${created.apiKey?.id}`,
-      { name: "group-b-patched", is_active: false, rate_limit: 30 },
-      { headers: { Cookie: sessionCookie } },
-    );
-    expect(patchRes.status).toBe(200);
-    const patched = (await patchRes.json()) as {
-      apiKey?: {
-        id?: string;
-        name?: string;
-        is_active?: boolean;
-        rate_limit?: number;
+      const patchRes = await api.patch(
+        `/api/v1/api-keys/${created.apiKey?.id}`,
+        { name: "group-b-patched", is_active: false, rate_limit: 30 },
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(patchRes.status).toBe(200);
+      const patched = (await patchRes.json()) as {
+        apiKey?: {
+          id?: string;
+          name?: string;
+          is_active?: boolean;
+          rate_limit?: number;
+        };
       };
-    };
-    expect(patched.apiKey?.id).toBe(created.apiKey?.id ?? "");
-    expect(patched.apiKey?.name).toBe("group-b-patched");
-    expect(patched.apiKey?.is_active).toBe(false);
-    expect(patched.apiKey?.rate_limit).toBe(30);
-  });
+      expect(patched.apiKey?.id).toBe(created.apiKey?.id ?? "");
+      expect(patched.apiKey?.name).toBe("group-b-patched");
+      expect(patched.apiKey?.is_active).toBe(false);
+      expect(patched.apiKey?.rate_limit).toBe(30);
+    },
+  );
 
   test("validation: 404 for an unknown id", async () => {
     const res = await api.patch(
@@ -389,23 +392,26 @@ describeE2E("POST /api/v1/user/wallets/provision", () => {
 
   // Live Steward provisioning is an integration check, not a release smoke.
   // Loud, counted opt-in via RUN_STEWARD_WALLET_E2E=1.
-  test.skipIf(!liveStewardWallet)("happy path: provisions when external signer is configured, otherwise fails after auth", async () => {
-    const clientAddress = TEST_WALLET_ACCOUNT.address;
-    const res = await api.post(
-      "/api/v1/user/wallets/provision",
-      {
-        chainType: "evm",
-        clientAddress,
-        controlProof: await signedProvisionProof(clientAddress, "evm"),
-      },
-      { headers: bearerHeaders() },
-    );
-    // Live-only (RUN_STEWARD_WALLET_E2E=1): the proof must be ACCEPTED — any
-    // 400/401 means the signed challenge broke. Beyond that the status is
-    // Steward's (200 provisioned; 403/500/503 downstream), named here because
-    // the external service's failure modes are not this Worker's contract.
-    expect([200, 403, 500, 503]).toContain(res.status);
-  });
+  test.skipIf(!liveStewardWallet)(
+    "happy path: provisions when external signer is configured, otherwise fails after auth",
+    async () => {
+      const clientAddress = TEST_WALLET_ACCOUNT.address;
+      const res = await api.post(
+        "/api/v1/user/wallets/provision",
+        {
+          chainType: "evm",
+          clientAddress,
+          controlProof: await signedProvisionProof(clientAddress, "evm"),
+        },
+        { headers: bearerHeaders() },
+      );
+      // Live-only (RUN_STEWARD_WALLET_E2E=1): the proof must be ACCEPTED — any
+      // 400/401 means the signed challenge broke. Beyond that the status is
+      // Steward's (200 provisioned; 403/500/503 downstream), named here because
+      // the external service's failure modes are not this Worker's contract.
+      expect([200, 403, 500, 503]).toContain(res.status);
+    },
+  );
 
   test("proof required: 400 when controlProof is absent", async () => {
     const res = await api.post(
@@ -677,50 +683,53 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
   // Keyless-deterministic variant: without STRIPE_SECRET_KEY the handler
   // answers 503 service-unavailable after auth.
   test.skipIf(
-    !serverReachable || !hasTestApiKey || sessionCookie === null || stripeConfigured,
-  )(
-    "keyless: checkout answers 503 when Stripe is not configured",
-    async () => {
-      if (!sessionCookie) throw new Error("session cookie missing");
-      const res = await api.post(
-        "/api/stripe/create-checkout-session",
-        { amount: 5 },
-        { headers: { Cookie: sessionCookie } },
-      );
-      expect(res.status).toBe(503);
-    },
-  );
-
-  // Live variant: with Stripe configured the checkout must fully succeed.
-  test.skipIf(
-    !serverReachable || !hasTestApiKey || sessionCookie === null || !stripeConfigured,
-  )(
-    "live: creates a Checkout session with id + https url",
-    async () => {
-      if (!sessionCookie) throw new Error("session cookie missing");
-      const res = await api.post(
-        "/api/stripe/create-checkout-session",
-        { amount: 5 },
-        { headers: { Cookie: sessionCookie } },
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { sessionId?: string; url?: string };
-      expect(body.sessionId).toBeTruthy();
-      expect(body.url).toMatch(/^https:\/\//);
-    },
-  );
-
-  testSession("validation: 400 when neither creditPackId nor amount is provided", async () => {
+    !serverReachable ||
+      !hasTestApiKey ||
+      sessionCookie === null ||
+      stripeConfigured,
+  )("keyless: checkout answers 503 when Stripe is not configured", async () => {
     if (!sessionCookie) throw new Error("session cookie missing");
     const res = await api.post(
       "/api/stripe/create-checkout-session",
-      {},
+      { amount: 5 },
       { headers: { Cookie: sessionCookie } },
     );
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error?: string };
-    expect(typeof body.error).toBe("string");
+    expect(res.status).toBe(503);
   });
+
+  // Live variant: with Stripe configured the checkout must fully succeed.
+  test.skipIf(
+    !serverReachable ||
+      !hasTestApiKey ||
+      sessionCookie === null ||
+      !stripeConfigured,
+  )("live: creates a Checkout session with id + https url", async () => {
+    if (!sessionCookie) throw new Error("session cookie missing");
+    const res = await api.post(
+      "/api/stripe/create-checkout-session",
+      { amount: 5 },
+      { headers: { Cookie: sessionCookie } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { sessionId?: string; url?: string };
+    expect(body.sessionId).toBeTruthy();
+    expect(body.url).toMatch(/^https:\/\//);
+  });
+
+  testSession(
+    "validation: 400 when neither creditPackId nor amount is provided",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
+      const res = await api.post(
+        "/api/stripe/create-checkout-session",
+        {},
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error?: string };
+      expect(typeof body.error).toBe("string");
+    },
+  );
 });
 
 // -------- /api/signup-code/redeem ------------------------------------------
@@ -731,19 +740,22 @@ describeE2E("POST /api/signup-code/redeem", () => {
     expect(res.status).toBe(401);
   });
 
-  testSession("happy path: invalid code path returns a structured error (no real code in fixtures)", async () => {
-    if (!sessionCookie) throw new Error("session cookie missing");
-    // No fixture seeds a redeemable code and the random code cannot exist,
-    // so the contract is exactly the 400 INVALID_CODE negative path.
-    const res = await api.post(
-      "/api/signup-code/redeem",
-      { code: `group-b-${Date.now()}` },
-      { headers: { Cookie: sessionCookie } },
-    );
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { success?: boolean; error?: string };
-    expect(typeof body.error).toBe("string");
-  });
+  testSession(
+    "happy path: invalid code path returns a structured error (no real code in fixtures)",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
+      // No fixture seeds a redeemable code and the random code cannot exist,
+      // so the contract is exactly the 400 INVALID_CODE negative path.
+      const res = await api.post(
+        "/api/signup-code/redeem",
+        { code: `group-b-${Date.now()}` },
+        { headers: { Cookie: sessionCookie } },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { success?: boolean; error?: string };
+      expect(typeof body.error).toBe("string");
+    },
+  );
 
   testSession("validation: 400 on missing code field", async () => {
     if (!sessionCookie) throw new Error("session cookie missing");

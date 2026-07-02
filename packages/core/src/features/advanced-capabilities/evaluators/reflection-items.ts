@@ -39,7 +39,7 @@ import {
 	type ContradictOp,
 	type DecayOp,
 	type ExtractorOp,
-	ExtractorOutputSchema,
+	type ExtractorOutputSchema,
 	parseExtractorOutputTolerant,
 	type StrengthenOp,
 } from "./factExtractor.schema.ts";

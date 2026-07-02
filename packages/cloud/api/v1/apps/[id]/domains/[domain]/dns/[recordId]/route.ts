@@ -51,7 +51,10 @@ async function loadCloudflareManagedDomain(c: AppContext) {
     return { error: "Access denied", status: 403 as const };
   }
 
-  const md = await managedDomainsService.getOwnDomainRow(user.organization_id, decodeURIComponent(domainParam));
+  const md = await managedDomainsService.getOwnDomainRow(
+    user.organization_id,
+    decodeURIComponent(domainParam),
+  );
   if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
     return { error: "Domain not attached to this app", status: 404 as const };
   }

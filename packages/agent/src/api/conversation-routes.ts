@@ -47,7 +47,6 @@ import type {
 import {
   classifyChatFailure,
   generateChatResponse,
-  normalizeAccountConnectRequest,
   generateConversationTitle,
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,

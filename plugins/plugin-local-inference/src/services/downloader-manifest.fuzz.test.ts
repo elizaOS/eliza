@@ -159,7 +159,17 @@ describe("validateManifest — targeted adversarial shapes", () => {
 	});
 
 	it("rejects non-object roots (null/undefined/number/string/array/empty)", () => {
-		for (const input of [null, undefined, 0, 1.5, "", "{}", [], [validManifest()], true]) {
+		for (const input of [
+			null,
+			undefined,
+			0,
+			1.5,
+			"",
+			"{}",
+			[],
+			[validManifest()],
+			true,
+		]) {
 			const result = validateManifest(input);
 			expect(result.ok).toBe(false);
 			if (result.ok === false) {
@@ -335,13 +345,10 @@ describe("collectBundleFiles — conflicting-sha rejection + dedup", () => {
 		const SHAS = [SHA_A, SHA_B];
 		for (let i = 0; i < 1000; i++) {
 			const m = validManifest("2b");
-			const entries = Array.from(
-				{ length: 1 + Math.floor(rng() * 6) },
-				() => ({
-					path: PATHS[Math.floor(rng() * PATHS.length)],
-					sha256: SHAS[Math.floor(rng() * SHAS.length)],
-				}),
-			);
+			const entries = Array.from({ length: 1 + Math.floor(rng() * 6) }, () => ({
+				path: PATHS[Math.floor(rng() * PATHS.length)],
+				sha256: SHAS[Math.floor(rng() * SHAS.length)],
+			}));
 			m.files.mtp = entries as Eliza1Manifest["files"]["mtp"];
 			// Conflicts are detected across ALL kinds, so fold in the baseline
 			// entries the fixture already carries (asr/cache/text/...).

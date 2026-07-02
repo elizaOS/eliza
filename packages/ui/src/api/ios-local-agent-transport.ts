@@ -520,7 +520,9 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       // startup with "Backend Timeout" (the reported first-run hang). A genuine
       // failure still surfaces below: runtime.start() throwing is NOT caught here.
       const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
-      logger.info("[ios-local-agent] full-Bun runtime plugin resolved; probing status");
+      logger.info(
+        "[ios-local-agent] full-Bun runtime plugin resolved; probing status",
+      );
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         return runtime;

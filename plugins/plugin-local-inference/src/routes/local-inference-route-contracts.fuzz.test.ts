@@ -135,7 +135,8 @@ function fakeRes(): {
 		return res;
 	}) as typeof res.writeHead;
 	res.end = ((chunk?: string | Uint8Array | Buffer) => {
-		if (typeof chunk === "string") body = Buffer.concat([body, Buffer.from(chunk)]);
+		if (typeof chunk === "string")
+			body = Buffer.concat([body, Buffer.from(chunk)]);
 		else if (chunk) body = Buffer.concat([body, Buffer.from(chunk)]);
 		return res;
 	}) as typeof res.end;
@@ -207,14 +208,18 @@ describe("sanitizeLocalInferenceSpeechText - fuzz", () => {
 	});
 
 	it("strips an unterminated think-tag to the end of input", () => {
-		expect(sanitizeLocalInferenceSpeechText("say this <think>never closed")).toBe(
-			"say this",
-		);
+		expect(
+			sanitizeLocalInferenceSpeechText("say this <think>never closed"),
+		).toBe("say this");
 	});
 });
 
 describe("sniffAudioContentType - fuzz", () => {
-	const KNOWN = new Set(["audio/wav", "audio/mpeg", "application/octet-stream"]);
+	const KNOWN = new Set([
+		"audio/wav",
+		"audio/mpeg",
+		"application/octet-stream",
+	]);
 
 	it("returns one of the three declared types for arbitrary bytes", () => {
 		const rng = makeRng(0x51ff);
@@ -247,9 +252,9 @@ describe("normalizeAudioBytes - contract", () => {
 		expect(Array.from(normalizeAudioBytes(view))).toEqual([1, 2, 3, 4]);
 		const dv = new DataView(backing.buffer, 2, 4);
 		expect(Array.from(normalizeAudioBytes(dv))).toEqual([1, 2, 3, 4]);
-		expect(
-			Array.from(normalizeAudioBytes(backing.buffer.slice(2, 6))),
-		).toEqual([1, 2, 3, 4]);
+		expect(Array.from(normalizeAudioBytes(backing.buffer.slice(2, 6)))).toEqual(
+			[1, 2, 3, 4],
+		);
 	});
 
 	it("throws on every non-binary payload", () => {
@@ -264,9 +269,7 @@ describe("normalizeAudioBytes - contract", () => {
 			{ buffer: new ArrayBuffer(4) },
 			true,
 		]) {
-			expect(() => normalizeAudioBytes(bad)).toThrow(
-				/non-binary payload/,
-			);
+			expect(() => normalizeAudioBytes(bad)).toThrow(/non-binary payload/);
 		}
 	});
 });
@@ -341,10 +344,7 @@ describe("POST /api/tts/local-inference - input-contract fuzz", () => {
 			fakeReq({
 				url: TTS_URL,
 				contentType: "application/json",
-				streamChunks: [
-					Buffer.from('{"text":"'),
-					Buffer.alloc(1_100_000, 0x61),
-				],
+				streamChunks: [Buffer.from('{"text":"'), Buffer.alloc(1_100_000, 0x61)],
 			}),
 			big.res,
 			ttsRuntimeState(async () => wavBytes()),

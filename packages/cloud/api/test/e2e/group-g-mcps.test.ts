@@ -156,7 +156,10 @@ describeE2E("Group G — MCP provider bridges", () => {
           return;
         }
         expect(res.status).toBe(501);
-        const body = (await res.json()) as { success?: boolean; error?: string };
+        const body = (await res.json()) as {
+          success?: boolean;
+          error?: string;
+        };
         expect(body.success).toBe(false);
         expect(body.error).toBe("not_yet_migrated");
       });

@@ -96,7 +96,9 @@ class TestInsufficientCreditsError extends Error {
     public readonly available: number,
     public readonly reason?: string,
   ) {
-    super(`Insufficient credits. Required: ${required}, available: ${available}`);
+    super(
+      `Insufficient credits. Required: ${required}, available: ${available}`,
+    );
   }
 }
 

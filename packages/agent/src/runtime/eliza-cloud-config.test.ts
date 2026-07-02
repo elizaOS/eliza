@@ -585,7 +585,8 @@ describe("stale vault/config key clobber guard (#11038)", () => {
 
   it("does not warn when config and env agree", () => {
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_same_key_012345678901234567890123456789";
+    process.env.ELIZAOS_CLOUD_API_KEY =
+      "eliza_same_key_012345678901234567890123456789";
     applyCloudConfigToEnv(
       cloudConfig("eliza_same_key_012345678901234567890123456789"),
     );

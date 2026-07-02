@@ -375,27 +375,32 @@ describeE2E("POST /api/eliza/rooms/:roomId/messages (legacy route)", () => {
 // /api/eliza/rooms/:roomId/messages/stream — legacy route contract
 // ---------------------------------------------------------------------------
 
-describeE2E("POST /api/eliza/rooms/:roomId/messages/stream (legacy route)", () => {
-  test("any request → 501 unsupported route contract", async () => {
-    const res = await api.post(
-      "/api/eliza/rooms/room-test-001/messages/stream",
-      {
-        text: "hello",
-      },
-    );
-    expect(res.status).toBe(501);
-    const body = (await res.json()) as { error?: string };
-    expect(body.error).toBe("not_yet_migrated");
-  });
+describeE2E(
+  "POST /api/eliza/rooms/:roomId/messages/stream (legacy route)",
+  () => {
+    test("any request → 501 unsupported route contract", async () => {
+      const res = await api.post(
+        "/api/eliza/rooms/room-test-001/messages/stream",
+        {
+          text: "hello",
+        },
+      );
+      expect(res.status).toBe(501);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).toBe("not_yet_migrated");
+    });
 
-  test("GET without auth (public path) → not 401", async () => {
-    // The /api/eliza prefix is public — global auth does not block it.
-    // The handler itself returns the legacy 501 contract for all methods.
-    const res = await api.get("/api/eliza/rooms/room-test-001/messages/stream");
-    // Should not be 401 (public path), but may be 404 or 501 depending on method registration.
-    expect(res.status).not.toBe(401);
-  });
-});
+    test("GET without auth (public path) → not 401", async () => {
+      // The /api/eliza prefix is public — global auth does not block it.
+      // The handler itself returns the legacy 501 contract for all methods.
+      const res = await api.get(
+        "/api/eliza/rooms/room-test-001/messages/stream",
+      );
+      // Should not be 401 (public path), but may be 404 or 501 depending on method registration.
+      expect(res.status).not.toBe(401);
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // /api/eliza/rooms/:roomId/welcome
@@ -603,23 +608,26 @@ describeE2E("POST /api/webhooks/twilio/:orgId", () => {
 // /api/webhooks/whatsapp/:orgId
 // ---------------------------------------------------------------------------
 
-describeE2E("GET /api/webhooks/whatsapp/:orgId (Meta verification handshake)", () => {
-  test("missing hub.mode query param → 403 (verification fails)", async () => {
-    // Without hub.mode, hub.verify_token, hub.challenge the service
-    // returns null → handler sends 403.
-    const res = await api.get("/api/webhooks/whatsapp/test-org-wa");
-    expect(res.status).toBe(403);
-  });
+describeE2E(
+  "GET /api/webhooks/whatsapp/:orgId (Meta verification handshake)",
+  () => {
+    test("missing hub.mode query param → 403 (verification fails)", async () => {
+      // Without hub.mode, hub.verify_token, hub.challenge the service
+      // returns null → handler sends 403.
+      const res = await api.get("/api/webhooks/whatsapp/test-org-wa");
+      expect(res.status).toBe(403);
+    });
 
-  test("correct challenge params but unknown org → 403", async () => {
-    const res = await api.get(
-      "/api/webhooks/whatsapp/test-org-wa?" +
-        "hub.mode=subscribe&hub.verify_token=any-token&hub.challenge=echo-this",
-    );
-    // Unknown org has no verify_token stored, so verification fails → 403.
-    expect(res.status).toBe(403);
-  });
-});
+    test("correct challenge params but unknown org → 403", async () => {
+      const res = await api.get(
+        "/api/webhooks/whatsapp/test-org-wa?" +
+          "hub.mode=subscribe&hub.verify_token=any-token&hub.challenge=echo-this",
+      );
+      // Unknown org has no verify_token stored, so verification fails → 403.
+      expect(res.status).toBe(403);
+    });
+  },
+);
 
 describeE2E("POST /api/webhooks/whatsapp/:orgId", () => {
   test("invalid signature with non-UUID orgId → 400 before signature handling", async () => {
