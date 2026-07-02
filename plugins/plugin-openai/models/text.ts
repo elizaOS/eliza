@@ -12,8 +12,10 @@ import type {
   RecordLlmCallDetails,
 } from "@elizaos/core";
 import {
+  assertActiveTrajectoryForLlmCall,
   buildCanonicalSystemPrompt,
   dropDuplicateLeadingSystemMessage,
+  logActiveTrajectoryLlmCall,
   logger,
   ModelType,
   normalizeSchemaForCerebras,
@@ -906,6 +908,12 @@ function handledPromise<T>(value: T | PromiseLike<T>): Promise<T> {
   return promise;
 }
 
+function getNowMs(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
 function handledMappedPromise<T, U>(
   value: T | PromiseLike<T>,
   mapper: (resolved: T) => U | PromiseLike<U>
@@ -1087,7 +1095,6 @@ async function generateTextWithTransientRetry(
   maxRetries = 3
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
   let attempt = 0;
-  // biome-ignore lint/suspicious/noExplicitAny: AI SDK's generateText overloads can't infer our NativeGenerateTextParams across the generic boundary.
   for (;;) {
     try {
       return (await generateText(
@@ -1333,13 +1340,54 @@ async function generateTextByModelType(
       generateParams
     );
     details.response = "";
-    const result = await recordLlmCall(runtime, details, () => streamText(generateParams));
+    assertActiveTrajectoryForLlmCall({
+      actionType: details.actionType,
+      model: details.model,
+      modelType,
+      purpose: details.purpose,
+    });
+    const streamStartedAt = getNowMs();
+    const result = await streamText(generateParams);
+    let finalizedStreamTelemetry = false;
+    const finalizeStreamTelemetry = async (response: string): Promise<void> => {
+      if (finalizedStreamTelemetry) {
+        return;
+      }
+      finalizedStreamTelemetry = true;
+
+      details.response = response;
+      const usage = await result.usage;
+      const finishReason = (await result.finishReason) as string | undefined;
+      details.finishReason = finishReason;
+
+      if (shouldReturnNativeResult) {
+        const toolCalls = await result.toolCalls;
+        details.toolCalls = toolCalls;
+      }
+
+      if (usage) {
+        applyUsageToDetails(details, usage);
+        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", usage);
+      }
+
+      logActiveTrajectoryLlmCall(runtime, {
+        ...details,
+        response,
+        latencyMs: Math.max(0, Math.round(getNowMs() - streamStartedAt)),
+      });
+    };
 
     return {
       textStream: (async function* textStreamWithCallback() {
-        for await (const chunk of result.textStream) {
-          params.onStreamChunk?.(chunk);
-          yield chunk;
+        let streamedText = "";
+        try {
+          for await (const chunk of result.textStream) {
+            streamedText += chunk;
+            params.onStreamChunk?.(chunk);
+            yield chunk;
+          }
+        } finally {
+          await finalizeStreamTelemetry(streamedText);
         }
       })(),
       text: handledPromise(result.text),

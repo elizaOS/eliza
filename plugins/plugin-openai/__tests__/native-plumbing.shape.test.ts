@@ -1,4 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { EventType, runWithTrajectoryContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -299,6 +300,73 @@ describe("OpenAI native text plumbing", () => {
     expect(chunks).toEqual(["hel", "lo"]);
     expect(onStreamChunk).toHaveBeenNthCalledWith(1, "hel");
     expect(onStreamChunk).toHaveBeenNthCalledWith(2, "lo");
+  });
+
+  it("emits streamed usage and records the consumed stream response in the trajectory", async () => {
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "hel";
+        yield "lo";
+      })(),
+      text: Promise.resolve("hello"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 4, outputTokens: 2, cachedInputTokens: 1 }),
+    });
+
+    const runtime = createRuntime();
+    const trajectoryLogger = {
+      isEnabled: () => true,
+      logLlmCall: vi.fn(),
+    };
+    vi.mocked(runtime.getService).mockImplementation((name: string) =>
+      name === "trajectories" ? trajectoryLogger : null
+    );
+    vi.mocked(runtime.getServicesByType).mockImplementation((type: string) =>
+      type === "trajectories" ? [trajectoryLogger] : []
+    );
+
+    const { handleTextSmall } = await import("../models/text");
+    await runWithTrajectoryContext({ trajectoryStepId: "step-openai-stream" }, async () => {
+      const stream = (await handleTextSmall(runtime, {
+        prompt: "stream",
+        stream: true,
+      } as never)) as { textStream: AsyncIterable<string> };
+
+      expect(trajectoryLogger.logLlmCall).not.toHaveBeenCalled();
+
+      const chunks: string[] = [];
+      for await (const chunk of stream.textStream) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.join("")).toBe("hello");
+    });
+
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MODEL_USED,
+      expect.objectContaining({
+        source: "openai",
+        type: "TEXT_SMALL",
+        tokens: {
+          prompt: 4,
+          completion: 2,
+          total: 6,
+          cached: 1,
+        },
+      })
+    );
+    expect(trajectoryLogger.logLlmCall).toHaveBeenCalledTimes(1);
+    expect(trajectoryLogger.logLlmCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stepId: "step-openai-stream",
+        actionType: "ai.streamText",
+        response: "hello",
+        finishReason: "stop",
+        promptTokens: 4,
+        completionTokens: 2,
+      })
+    );
   });
 
   it("maps string responseFormat json_object into the AI SDK responseFormat", async () => {
