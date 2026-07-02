@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ElizaOS Benchmark Viewer</title>
+    <title>elizaOS Benchmark Viewer</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="hero">
-        <h1>ElizaOS Benchmark Viewer</h1>
+        <h1>elizaOS Benchmark Viewer</h1>
         <p id="generated-at">Loading benchmark data...</p>
       </header>
 
@@ -19,6 +19,7 @@
       <nav class="tabs" id="tab-nav">
         <button type="button" class="tab-button is-active" data-tab="overview">Overview</button>
         <button type="button" class="tab-button" data-tab="diff">Trajectory Diff</button>
+        <button type="button" class="tab-button" data-tab="playback">Playback</button>
       </nav>
 
       <div class="tab-panel is-active" data-tab="overview">
@@ -171,6 +172,52 @@
               <tbody id="diff-table-body"></tbody>
             </table>
           </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-tab="playback">
+        <section class="panel">
+          <h2>Trajectory Playback</h2>
+          <p class="hint">Successful harness runs with canonical trajectory records. Choose one run to inspect each recorded step in order.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>run_group_id</th>
+                  <th>benchmark</th>
+                  <th>task_id</th>
+                  <th>harness</th>
+                  <th>steps</th>
+                  <th>started_at</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="playback-runs-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="playback-detail-panel" hidden>
+          <div class="playback-header">
+            <div>
+              <h2 id="playback-detail-title">Playback</h2>
+              <p class="hint" id="playback-detail-subtitle"></p>
+            </div>
+            <label>
+              Harness
+              <select id="playback-harness-select"></select>
+            </label>
+          </div>
+          <div class="playback-controls">
+            <button type="button" id="playback-prev">Prev</button>
+            <label>
+              Step index
+              <input id="playback-step-index" type="number" min="0" value="0" />
+            </label>
+            <span id="playback-step-total" class="hint">0 steps</span>
+            <button type="button" id="playback-next">Next</button>
+          </div>
+          <div id="playback-step-body"></div>
         </section>
       </div>
     </main>
