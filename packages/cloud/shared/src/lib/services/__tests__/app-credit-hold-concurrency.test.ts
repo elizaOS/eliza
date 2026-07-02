@@ -357,6 +357,52 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
   );
 
   test(
+    "a repeated reconcile REFUND for the same reservation is idempotent — no double-refund mint (#11512)",
+    async () => {
+      if (!pgliteReady) return;
+
+      const payerOrgId = await seedOrg("10.000000");
+      const consumerId = await seedUser(payerOrgId);
+      const creatorOrgId = await seedOrg("0.000000");
+      const creatorId = await seedUser(creatorOrgId);
+      const app = await seedApp({
+        organizationId: creatorOrgId,
+        createdByUserId: creatorId,
+        inferenceMarkupPercentage: 10,
+      });
+
+      // $2 estimate + 10% markup = $2.20 debited → org 7.80.
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId: consumerId,
+        estimatedBaseCost: 2,
+        description: "reconcile-refund idempotency",
+        idempotencyKey: "req-11512",
+        metadata: { model: "test-model" },
+        app,
+      });
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
+
+      // First settle: actual $0.5 → refund (2 − 0.5) × 1.1 = $1.65 → org 9.45.
+      const first = await reservation.reconcile(0.5);
+      expect(first?.adjustmentType).toBe("refund");
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+
+      // Second settle of the SAME reservation (the #11512 shape: the settler's
+      // first-call-wins guard reset on a mid-settle throw, so the route's
+      // fallback settleReservation(0) re-invokes reconcile). WITHOUT the
+      // idempotency key this commits a SECOND, larger refund → org 11.65
+      // (minted above its $10 start). WITH the key the refund dedupes on
+      // stripe_payment_intent_id (ON CONFLICT DO NOTHING) → balance unchanged.
+      await reservation.reconcile(0);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+      // Hard invariant: never minted above the debited amount.
+      expect(await orgBalance(payerOrgId)).toBeLessThan(10);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "a $0 estimate opens a MIN_RESERVATION floor hold instead of throwing 'Amount must be positive' (residual of #10892)",
     async () => {
       if (!pgliteReady) return;
