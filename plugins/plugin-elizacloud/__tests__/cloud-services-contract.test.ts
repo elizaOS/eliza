@@ -1,9 +1,13 @@
 /**
- * Tests for cloud services using a real local HTTP server.
+ * Deterministic contract tests for the cloud services' HTTP layer.
  *
- * CloudAuthService, CloudContainerService, and CloudBackupService all
- * use CloudApiClient which calls real `fetch`. We spin up a local server
- * that returns controlled responses so we test real code paths.
+ * CloudAuthService, CloudContainerService, and CloudBackupService all use
+ * CloudApiClient which calls real `fetch`; a loopback HTTP double returns
+ * controlled responses so the client-side code paths run for real.
+ *
+ * This is NOT live-cloud coverage. It was formerly misnamed
+ * `cloud-services.real.test.ts`, which parked a stub-backed test in the
+ * live-API `*.real.test.ts` lane. Live coverage lives in the post-merge real lane (`TEST_LANE=post-merge`).
  */
 
 import * as http from "node:http";
