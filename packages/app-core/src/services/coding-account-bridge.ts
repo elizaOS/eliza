@@ -35,8 +35,10 @@ import { accountRefreshMutex } from "@elizaos/agent/auth/refresh-mutex";
 import type { DirectAccountProvider } from "@elizaos/agent/auth/types";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
+  isDirectAccountProvider,
   isSubscriptionProvider,
 } from "@elizaos/agent/auth/types";
+import { probeDirectApiKey } from "@elizaos/agent/auth/direct-api-probe";
 import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
 import { logger, resolveStateDir } from "@elizaos/core";
 import type {
@@ -473,6 +475,25 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
                 ? { codexAccountId: record.organizationId }
                 : {}),
             });
+          } else if (isDirectAccountProvider(providerId)) {
+            // #11033 regression fix: a direct-API key resolves offline from
+            // local storage with a never-expires sentinel, so a successful
+            // `getAccessToken` proves NOTHING — a cached-but-revoked key that
+            // just 401'd a session would otherwise be logged "verified" and
+            // kept in rotation forever (doomed failover respawns). Probe it
+            // against the provider; only a real 2xx keeps it, a 401/403 falls
+            // through to markNeedsReauth. A network/timeout blip (status 0)
+            // is inconclusive → leave rotation state to the keep-alive sweep.
+            const probe = await probeDirectApiKey(providerId, token);
+            if (!probe.ok) {
+              if (probe.status === 401 || probe.status === 403) {
+                return pool.markNeedsReauth(accountId, detail, { providerId });
+              }
+              logger.info(
+                `[coding-account-bridge] ${providerId}/${accountId} auth-failure verify was inconclusive (probe status ${probe.status}${probe.error ? `: ${probe.error}` : ""}) — leaving rotation state to the keep-alive sweep`,
+              );
+              return;
+            }
           }
           logger.info(
             `[coding-account-bridge] ${providerId}/${accountId} reported an auth failure but its credential verifies — keeping it in rotation (injected token likely expired mid-session)${detail ? `: ${detail}` : ""}`,
