@@ -1644,11 +1644,26 @@ export class DirectWalletPaymentsService {
         stats.confirmed += 1;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        // Heuristic: receipt-not-yet-found means we should keep waiting.
-        // Anything else (wrong recipient, low value, reverted) is terminal
-        // — record it so the user sees a clear failure.
-        const transient =
-          /not found|not yet|pending|TransactionReceiptNotFoundError|could not be found/i.test(msg);
+        // Classify with a TERMINAL-error allowlist, not a transient one (#11154).
+        // Only a definitively-bad payment should fail closed on the first attempt:
+        // wrong recipient/treasury/ATA/sweep key, amount lower than expected /
+        // not enough transferred, a reverted receipt ("Transaction failed"), a
+        // tampered/mismatched quote or proof, or an invalid amount. These are the
+        // strings confirmPayment throws for genuinely-bad payments.
+        //
+        // EVERYTHING ELSE is treated as transient and retried up to
+        // MAX_VERIFY_ATTEMPTS — crucially including RPC/infra failures (viem
+        // HttpRequestError "HTTP request failed", 503/timeout/rate-limit) and the
+        // receipt-not-yet-mined cases ("not found", "not yet", "pending",
+        // TransactionReceiptNotFoundError). The old transient allowlist matched
+        // only the not-yet-mined strings, so an RPC blip coincident with the cron
+        // tick terminally marked a genuinely-paid deposit `failed_chain` with no
+        // self-serve recovery. Inverting the default lets a blip self-heal.
+        const terminal =
+          /does not match|lower than the expected|does not transfer enough|transaction failed|metadata mismatch|signature mismatch|invalid amount|tampered|reverted/i.test(
+            msg,
+          );
+        const transient = !terminal;
 
         const attempts =
           Number((metadataOf(payment) as Record<string, unknown>).verify_attempts ?? 0) + 1;

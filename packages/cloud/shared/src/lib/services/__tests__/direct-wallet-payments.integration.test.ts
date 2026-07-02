@@ -760,6 +760,86 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       expect(row2?.status).toBe("failed_chain");
     });
 
+    // #11154 — a transient RPC/infra failure (viem HttpRequestError, 503,
+    // timeout, rate-limit) must NOT terminally fail a genuinely-paid deposit.
+    // Before the fix the transient allowlist matched only not-yet-mined strings,
+    // so an RPC blip coincident with the cron tick set `failed_chain` on attempt
+    // 1 with no self-serve recovery. It must now stay `broadcast` and retry.
+    test("#11154 processBroadcastBatch keeps a paid deposit `broadcast` on a transient RPC error", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+      });
+      const hash = `0x${"a".repeat(64)}`;
+      await trustPayerProof(payment);
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+      // Simulate a Base/BSC RPC blip: viem throws an HttpRequestError-style
+      // message that does NOT match the terminal allowlist.
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        throwTerminal: "HTTP request failed.",
+      });
+      const stats = await service.processBroadcastBatch(env);
+      expect(stats.failed).toBe(0);
+      expect(stats.stillPending).toBe(1);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("broadcast");
+      expect(
+        Number((row?.metadata as Record<string, unknown>).verify_attempts ?? 0),
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    // #11154 — a genuinely-bad payment (wrong amount/recipient/reverted) must
+    // still fail closed on the FIRST attempt, not spin for MAX_VERIFY_ATTEMPTS.
+    test("#11154 processBroadcastBatch still fails a genuinely-bad payment on the first attempt", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+      });
+      const hash = `0x${"b".repeat(64)}`;
+      await trustPayerProof(payment);
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+      // A definitively-terminal outcome — matches the terminal allowlist.
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        throwTerminal: "Transaction amount is lower than the expected payment",
+      });
+      const stats = await service.processBroadcastBatch(env);
+      expect(stats.failed).toBe(1);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("failed_chain");
+      // Failed on the first attempt: the terminal path never bumps verify_attempts.
+      expect(Number((row?.metadata as Record<string, unknown>).verify_attempts ?? 0)).toBe(0);
+    });
+
     test("Solana confirmPayment rejects when receiving ATA owner mismatches treasury", async () => {
       await resetTable();
       // Configure the parsed-tx + ATA-owner overrides for this test only.
