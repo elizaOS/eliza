@@ -36,7 +36,11 @@ afterEach(() => {
 });
 
 function makeAppDist(
-  meta: { variant?: string; capacitorTarget?: string } = {},
+  meta: {
+    variant?: string;
+    capacitorTarget?: string;
+    runtimeMode?: string;
+  } = {},
 ) {
   const appDir = path.join(tmp, "app");
   const distDir = path.join(appDir, "dist");
@@ -127,6 +131,99 @@ describe("mobileWebDistReuseStatus", () => {
 
     expect(status.reusable).toBe(false);
     expect(status.problems).toContain("dist manifest is missing buildId");
+  });
+
+  it("does not reuse a dist baked for another lane's runtime mode (#11030)", () => {
+    // The exact leak: an ios cloud/store build left a cloud-hybrid renderer in
+    // dist, and a later build:ios:local (runtimeMode=local) picked it up.
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud-hybrid",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "local",
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist built for runtime mode 'cloud-hybrid' but this build targets 'local'",
+    );
+  });
+
+  it("does not reuse a dist with no runtime mode when the lane bakes one", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "local",
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist manifest is missing runtime mode; this build targets 'local'",
+    );
+  });
+
+  it("reuses a matching runtime-mode dist, and skips the mode check when the option is omitted", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "local",
+    });
+
+    expect(
+      mobileWebDistReuseStatus({
+        appDir,
+        repoRoot: tmp,
+        expectedVariant: "direct",
+        expectedTarget: "ios",
+        expectedRuntimeMode: "local",
+      }).reusable,
+    ).toBe(true);
+
+    // Omitted option (web/desktop surfaces without a runtime-mode lane):
+    // a baked mode is not held against the dist.
+    expect(
+      mobileWebDistReuseStatus({
+        appDir,
+        repoRoot: tmp,
+        expectedVariant: "direct",
+        expectedTarget: "ios",
+      }).reusable,
+    ).toBe(true);
+  });
+
+  it("asserts an explicitly modeless lane with expectedRuntimeMode: null", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud-hybrid",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: null,
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist built for runtime mode 'cloud-hybrid' but this build targets an unset runtime mode",
+    );
   });
 
   it("reports stale dist using the existing Vite staleness check", () => {
