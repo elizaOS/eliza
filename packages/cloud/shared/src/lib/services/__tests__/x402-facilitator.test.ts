@@ -134,7 +134,14 @@ const requirements = {
   payTo: PAY_TO,
 };
 
+// The facilitator sponsors gas, so it only settles to a platform-owned payTo:
+// the configured recipient env or its own signer address. Configure PAY_TO as
+// the platform recipient here so the legitimate settle tests below pass the
+// guard; the attacker test uses a DIFFERENT payTo that is not platform-owned.
+process.env.X402_RECIPIENT_ADDRESS = PAY_TO;
+
 function primeEvmFacilitator() {
+  process.env.X402_RECIPIENT_ADDRESS = PAY_TO;
   writeContract.mockClear();
   writeContract.mockResolvedValue(TX_HASH);
   waitForTransactionReceipt.mockClear();
@@ -266,4 +273,113 @@ test("settle succeeds only after the EVM receipt proves the required transfer", 
     timeout: 300_000,
   });
   expect(parseEventLogs).toHaveBeenCalledTimes(1);
+});
+
+// #11574: gas-drain via the unauthenticated /api/v1/x402/settle route. An
+// attacker relays their OWN valid EIP-3009 transfer — their funds, their
+// recipient, a self-consistent payTo (authorization.to === requirements.payTo)
+// so verify() passes — and the platform would sponsor the gas for free. The
+// payTo binding must reject it BEFORE any on-chain write / gas spend.
+const ATTACKER_PAY_TO = "0x9999999999999999999999999999999999999999";
+
+function attackerPaymentPayload() {
+  return {
+    x402Version: 2,
+    accepted: {
+      scheme: "exact",
+      network: NETWORK,
+      asset: ASSET,
+      amount: "100",
+      payTo: ATTACKER_PAY_TO,
+    },
+    payload: {
+      signature: SIGNATURE,
+      authorization: {
+        from: PAYER,
+        to: ATTACKER_PAY_TO,
+        value: "100",
+        validAfter: "0",
+        validBefore: String(Math.floor(Date.now() / 1000) + 300),
+        nonce: NONCE,
+      },
+    },
+  };
+}
+
+const attackerRequirements = {
+  scheme: "exact",
+  network: NETWORK,
+  asset: ASSET,
+  amount: "100",
+  payTo: ATTACKER_PAY_TO,
+};
+
+test("settle rejects a non-platform payTo without spending gas (writeContract never called)", async () => {
+  const { verifyTypedData, readContract } = primeEvmFacilitator();
+
+  const result = await x402FacilitatorService.settle(
+    attackerPaymentPayload(),
+    attackerRequirements,
+  );
+
+  expect(result).toEqual({
+    success: false,
+    transaction: "",
+    network: NETWORK,
+    errorReason: "payto_not_platform_owned",
+  });
+  // The whole point: the platform gas wallet is never touched.
+  expect(writeContract).not.toHaveBeenCalled();
+  expect(waitForTransactionReceipt).not.toHaveBeenCalled();
+  // Rejected up front — no verification / RPC work either.
+  expect(verifyTypedData).not.toHaveBeenCalled();
+  expect(readContract).not.toHaveBeenCalled();
+});
+
+test("settle to the facilitator's own signer address is allowed and reaches writeContract", async () => {
+  primeEvmFacilitator();
+  // No configured recipient env → the platform allowlist falls back to the
+  // facilitator's own signer address (mirrors resolvePaymentRecipient()).
+  delete process.env.X402_RECIPIENT_ADDRESS;
+
+  const signerPayload = {
+    x402Version: 2,
+    accepted: {
+      scheme: "exact",
+      network: NETWORK,
+      asset: ASSET,
+      amount: "100",
+      payTo: FACILITATOR,
+    },
+    payload: {
+      signature: SIGNATURE,
+      authorization: {
+        from: PAYER,
+        to: FACILITATOR,
+        value: "100",
+        validAfter: "0",
+        validBefore: String(Math.floor(Date.now() / 1000) + 300),
+        nonce: NONCE,
+      },
+    },
+  };
+  parseEventLogs.mockReturnValue([
+    { address: ASSET, args: { from: PAYER, to: FACILITATOR, value: 100n } },
+  ]);
+
+  const result = await x402FacilitatorService.settle(signerPayload, {
+    scheme: "exact",
+    network: NETWORK,
+    asset: ASSET,
+    amount: "100",
+    payTo: FACILITATOR,
+  });
+
+  expect(result).toEqual({
+    success: true,
+    transaction: TX_HASH,
+    network: NETWORK,
+    payer: PAYER,
+  });
+  expect(writeContract).toHaveBeenCalledTimes(1);
 });

@@ -620,6 +620,46 @@ class X402FacilitatorService {
   }
 
   /**
+   * Platform-owned recipient allowlist for a network. The facilitator SPONSORS
+   * GAS on settlement (`walletClient.writeContract` for EVM, the SVM fee-payer
+   * for Solana), so it must only ever settle payments whose funds land in a
+   * platform-controlled wallet. Mirrors `resolvePaymentRecipient()` in
+   * `x402-payment-requests.ts`: the configured recipient env for the network
+   * family, plus the facilitator's own signer address.
+   */
+  private getPlatformRecipients(network: string): string[] {
+    const env = getCloudAwareEnv();
+    const recipients: string[] = [];
+    if (isSolanaNetwork(network)) {
+      const configured = (
+        env.X402_SOLANA_RECIPIENT_ADDRESS ?? env.SOLANA_PAYOUT_WALLET_ADDRESS
+      )?.trim();
+      if (configured) recipients.push(configured);
+      const signer = this.svmScheme?.getSigners(network)[0];
+      if (signer) recipients.push(signer);
+    } else {
+      const configured = env.X402_RECIPIENT_ADDRESS?.trim();
+      if (configured) recipients.push(configured);
+      if (this.account) recipients.push(this.account.address);
+    }
+    return recipients;
+  }
+
+  /**
+   * True when `payTo` is a platform-owned recipient (see getPlatformRecipients).
+   * EVM addresses are compared case-insensitively; Solana base58 addresses
+   * exactly (the file lowercases EVM addresses everywhere else too).
+   */
+  private isPlatformOwnedRecipient(network: string, payTo: string): boolean {
+    const recipients = this.getPlatformRecipients(network);
+    if (isSolanaNetwork(network)) {
+      return recipients.includes(payTo);
+    }
+    const target = payTo.toLowerCase();
+    return recipients.some((addr) => addr.toLowerCase() === target);
+  }
+
+  /**
    * Return supported schemes, networks, and signer addresses.
    */
   getSupported(): SupportedResponse {
@@ -1030,6 +1070,31 @@ class X402FacilitatorService {
     paymentRequirements: PaymentRequirements,
   ): Promise<SettleResult> {
     await this.initialize();
+
+    // SECURITY (#11574): settlement SPONSORS GAS from the platform wallet, so it
+    // must only ever pay a PLATFORM-OWNED recipient. The unauthenticated
+    // /api/v1/x402/settle route passes a fully client-supplied
+    // `paymentRequirements`, and verify() only checks payTo self-consistency
+    // (payload ↔ requirements), never that payTo belongs to the platform.
+    // Without this gate an attacker relays their own valid EIP-3009 transfer
+    // (their funds, their recipient, self-consistent payTo) at net-zero cost and
+    // the platform sponsors the gas → gas-wallet drain. The topup + stored
+    // payment-request paths resolve payTo from platform config, so they pass.
+    const settleNetwork = isSolanaNetwork(paymentRequirements.network)
+      ? paymentRequirements.network
+      : paymentPayload.accepted.network;
+    if (!this.isPlatformOwnedRecipient(settleNetwork, paymentRequirements.payTo)) {
+      logger.warn("[x402-facilitator] Rejected settle to non-platform recipient", {
+        payTo: paymentRequirements.payTo,
+        network: settleNetwork,
+      });
+      return {
+        success: false,
+        transaction: "",
+        network: paymentRequirements.network,
+        errorReason: "payto_not_platform_owned",
+      };
+    }
 
     if (
       isSolanaNetwork(paymentRequirements.network) ||
