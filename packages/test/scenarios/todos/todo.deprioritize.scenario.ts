@@ -34,11 +34,15 @@ export default scenario({
       name: "deprioritize",
       text: "Move reorganize closet to low priority.",
       expectedActions: ["LIFE"],
+      // De-echoed (#9310): every old keyword was in the user's own turn text.
+      // The reply must express the completed derived change; the ledger
+      // predicate below asserts the actual persisted priority value.
       responseIncludesAny: [
-        "low priority",
-        "reorganize closet",
-        "closet",
-        "priority",
+        "lowered",
+        "dropped",
+        "reduced",
+        "deprioritized",
+        "back burner",
       ],
     },
   ],

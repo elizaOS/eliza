@@ -31,7 +31,16 @@ export default scenario({
       name: "update-priority",
       text: "Make the tax forms todo high priority.",
       expectedActions: ["LIFE"],
-      responseIncludesAny: ["high priority", "priority", "tax forms"],
+      // De-echoed (#9310): every old keyword was in the user's own turn text.
+      // The reply must express the completed derived change; the ledger
+      // predicate below asserts the actual persisted priority value.
+      responseIncludesAny: [
+        "raised",
+        "bumped",
+        "increased",
+        "urgent",
+        "top of the list",
+      ],
     },
   ],
   finalChecks: [
