@@ -11,6 +11,7 @@ import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   dispatchAppEvent,
+  dispatchBackIntent,
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
 } from "@elizaos/ui/events";
@@ -128,8 +129,23 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
 
     void Promise.resolve(
       CapacitorApp.addListener("backButton", ({ canGoBack }) => {
+        // Give the shell first crack at the back press: an open chat sheet (or
+        // any future back-dismissable overlay) closes ONE layer and reports it
+        // handled, so hardware back dismisses the sheet instead of navigating
+        // the app out from under it — matching desktop/web Escape-to-close
+        // (#9148). `dispatchBackIntent` resolves synchronously; only an
+        // unhandled press falls through to the app's default back below.
+        if (dispatchBackIntent()) return;
         if (canGoBack) {
           window.history.back();
+        } else {
+          // At the root view the hardware back button was a no-op (the app
+          // felt frozen). Match Android convention: send the app to the
+          // background (minimize) rather than killing it, so the agent + state
+          // survive.
+          void CapacitorApp.minimizeApp().catch(() => {
+            // minimizeApp is Android-only; ignore where unavailable.
+          });
         }
       }),
     ).catch((error) => {

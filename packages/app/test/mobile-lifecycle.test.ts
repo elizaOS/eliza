@@ -9,9 +9,12 @@
  *   - `initializeAppLifecycle()` — `@capacitor/app` `appStateChange` /
  *     `backButton` / `appUrlOpen` listeners + the cold-launch `getLaunchUrl()`
  *     deep-link bootstrap. Asserts the events the module dispatches
- *     (`APP_RESUME_EVENT` / `APP_PAUSE_EVENT`), that `window.history.back()` is
- *     called only when `canGoBack` is true, and that both cold (`getLaunchUrl`)
- *     and warm (`appUrlOpen`) launches route through `ctx.handleDeepLink`.
+ *     (`APP_RESUME_EVENT` / `APP_PAUSE_EVENT`), the shipped Android hardware
+ *     back contract (#9148) — `dispatchBackIntent()` gets first crack and a
+ *     handled press returns early; an unhandled press falls through to
+ *     `window.history.back()` when `canGoBack`, else `CapacitorApp.minimizeApp()`
+ *     — and that both cold (`getLaunchUrl`) and warm (`appUrlOpen`) launches
+ *     route through `ctx.handleDeepLink`.
  *   - `initializeNetworkListener()` — `@capacitor/network` `networkStatusChange`
  *     listener → `NETWORK_STATUS_CHANGE_EVENT` with the `{ connected }` detail.
  *
@@ -31,6 +34,8 @@ import { join } from "node:path";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
+  type BackIntentEventDetail,
+  ELIZA_BACK_INTENT_EVENT,
   NETWORK_STATUS_CHANGE_EVENT,
 } from "@elizaos/ui/events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,6 +78,7 @@ const { appListeners, networkListeners, capacitorAppMock, networkMock } =
             record(appListeners, eventName, handler),
         ),
         getLaunchUrl: vi.fn(() => Promise.resolve(launchUrl)),
+        minimizeApp: vi.fn(() => Promise.resolve()),
         __setLaunchUrl(next: { url?: string } | null) {
           launchUrl = next;
         },
@@ -153,16 +159,23 @@ afterEach(() => {
 });
 
 describe("createMobileLifecycle — app lifecycle", () => {
-  it("keeps the production app entrypoint wired to the visibilitychange fallback", () => {
+  it("keeps the production app entrypoint delegating app lifecycle to this module (no stale inline duplicate)", () => {
     const mainSrc = readFileSync(join(import.meta.dirname, "../src/main.tsx"), {
       encoding: "utf8",
     });
 
-    expect(mainSrc).toContain('addEventListener("visibilitychange"');
-    expect(mainSrc).toContain('document.visibilityState !== "hidden"');
+    // The live entrypoint must route through the extracted helper — this suite
+    // certifies the shipped behavior only while main.tsx actually calls it.
+    expect(mainSrc).toContain("getMobileLifecycle().initializeAppLifecycle()");
     expect(mainSrc).toContain(
-      "dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT)",
+      "getMobileLifecycle().initializeNetworkListener()",
     );
+    // ...and must not keep an inline duplicate of the wiring this module owns
+    // (the pre-extraction copies of the visibilitychange fallback and the
+    // hardware-back handler), or the tested code diverges from what ships.
+    expect(mainSrc).not.toContain('addEventListener("visibilitychange"');
+    expect(mainSrc).not.toContain('addListener("backButton"');
+    expect(mainSrc).not.toContain('addListener("appStateChange"');
   });
 
   it("dispatches APP_RESUME_EVENT when the app becomes active", async () => {
@@ -244,16 +257,51 @@ describe("createMobileLifecycle — app lifecycle", () => {
     setVisibility("visible");
   });
 
-  it("calls window.history.back() only when the back button can go back", async () => {
+  it("gives dispatchBackIntent first crack: a handled back press neither navigates nor minimizes", async () => {
     const lifecycle = createMobileLifecycle(makeContext());
     lifecycle.initializeAppLifecycle();
     await vi.waitFor(() => expect(appListeners.has("backButton")).toBe(true));
 
-    fireAppEvent("backButton", { canGoBack: false });
-    expect(historyBackSpy).not.toHaveBeenCalled();
+    // A shell consumer (e.g. the open chat sheet) claims the press (#9148).
+    const consumeBackIntent = (event: Event) => {
+      (event as CustomEvent<BackIntentEventDetail>).detail.handled = true;
+    };
+    window.addEventListener(ELIZA_BACK_INTENT_EVENT, consumeBackIntent);
+    try {
+      fireAppEvent("backButton", { canGoBack: true });
+      fireAppEvent("backButton", { canGoBack: false });
+    } finally {
+      window.removeEventListener(ELIZA_BACK_INTENT_EVENT, consumeBackIntent);
+    }
 
+    // Handled → early return: no history navigation, no minimize — regardless
+    // of canGoBack.
+    expect(historyBackSpy).not.toHaveBeenCalled();
+    expect(capacitorAppMock.minimizeApp).not.toHaveBeenCalled();
+  });
+
+  it("falls through an unhandled back press to window.history.back() when canGoBack", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() => expect(appListeners.has("backButton")).toBe(true));
+
+    // No consumer claims the intent (sheet at rest) → default back navigation.
     fireAppEvent("backButton", { canGoBack: true });
+
     expect(historyBackSpy).toHaveBeenCalledTimes(1);
+    expect(capacitorAppMock.minimizeApp).not.toHaveBeenCalled();
+  });
+
+  it("minimizes the app on an unhandled back press at the root view (!canGoBack)", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() => expect(appListeners.has("backButton")).toBe(true));
+
+    // No consumer + no history → Android convention: background, don't freeze.
+    fireAppEvent("backButton", { canGoBack: false });
+
+    expect(historyBackSpy).not.toHaveBeenCalled();
+    expect(capacitorAppMock.minimizeApp).toHaveBeenCalledTimes(1);
   });
 
   it("routes warm-launch appUrlOpen URLs through handleDeepLink", async () => {
