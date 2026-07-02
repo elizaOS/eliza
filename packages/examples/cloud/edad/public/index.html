@@ -248,6 +248,7 @@ async function handleOAuthCallback() {
       return;
     }
     lsSet(TOKEN_KEY, data.session);
+    historyLoaded = false;
     setNotice("signed in with eliza cloud. chat away.", "ok");
     setTimeout(() => setNotice(""), 3500);
     refreshAuthUI();

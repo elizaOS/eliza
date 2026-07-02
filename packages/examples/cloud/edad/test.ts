@@ -136,6 +136,64 @@ try {
     throw new Error(`exchange without a code should 400, got ${noCode.status}`);
   }
 
+  // ── Misconfiguration: a session secret alone must not enable sign-in ───────
+  const misconfiguredPort = port + 1;
+  const misconfiguredBaseUrl = `http://127.0.0.1:${misconfiguredPort}`;
+  const misconfigured = Bun.spawn(["bun", "run", "server.ts"], {
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      ELIZA_AFFILIATE_CODE: "AFF-TEST",
+      ELIZA_APP_ID: "00000000-0000-4000-8000-000000000000",
+      ELIZA_CLOUD_API_KEY: "",
+      ELIZA_CLOUD_URL: "https://elizacloud.ai",
+      ELIZAOS_CLOUD_API_KEY: "",
+      EDAD_SESSION_SECRET: SESSION_SECRET,
+      PORT: String(misconfiguredPort),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const misconfiguredReaders = [
+    collect(misconfigured.stdout).catch(() => {}),
+    collect(misconfigured.stderr).catch(() => {}),
+  ];
+  try {
+    const misconfiguredStarted = Date.now();
+    let misconfiguredReady = false;
+    while (!misconfiguredReady && Date.now() - misconfiguredStarted < 10_000) {
+      try {
+        const health = await fetch(`${misconfiguredBaseUrl}/health`);
+        misconfiguredReady =
+          health.status === 200 && (await health.text()) === "ok";
+      } catch {
+        await Bun.sleep(100);
+      }
+    }
+    if (!misconfiguredReady) {
+      throw new Error(
+        `misconfigured eDad server did not start on ${misconfiguredBaseUrl}\n${output}`,
+      );
+    }
+    const noOwnerKey = await fetch(
+      `${misconfiguredBaseUrl}/api/auth/exchange`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: "eac_test" }),
+      },
+    );
+    if (noOwnerKey.status !== 500) {
+      throw new Error(
+        `exchange without an owner Cloud key should 500, got ${noOwnerKey.status}`,
+      );
+    }
+  } finally {
+    misconfigured.kill();
+    await misconfigured.exited.catch(() => {});
+    await Promise.all(misconfiguredReaders);
+  }
+
   console.log("eDad local smoke test passed");
 } finally {
   proc.kill();
