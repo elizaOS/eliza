@@ -11,6 +11,8 @@
   --font-sans: "Poppins";
   --font-mono: "Poppins";
   --radius-xs: 3px;
+  /* Dark enough for AA contrast on white while staying in the orange brand family. */
+  --brand-orange-hover: #9c3600;
 }
 
 body {
@@ -760,8 +762,10 @@ article {
 }
 
 .app-release-link:hover,
-.app-checksum-row a:hover {
-  color: #9c3600;
+.app-release-link:focus-visible,
+.app-checksum-row a:hover,
+.app-checksum-row a:focus-visible {
+  color: var(--brand-orange-hover);
   text-decoration: underline;
 }
 
@@ -809,7 +813,9 @@ article {
   box-shadow: 0 20px 60px rgba(8, 9, 12, 0.06);
 }
 
-.app-download-card:hover {
+.app-download-card:hover,
+.app-download-card:focus-visible,
+.app-download-card:focus-within {
   background: var(--brand-black);
   color: var(--brand-white);
   transform: translateY(-1px);
@@ -866,7 +872,9 @@ article {
   color: rgba(8, 9, 12, 0.45);
 }
 
-.app-download-card:hover .app-card-icon {
+.app-download-card:hover .app-card-icon,
+.app-download-card:focus-visible .app-card-icon,
+.app-download-card:focus-within .app-card-icon {
   background: rgba(255, 255, 255, 0.12);
   color: var(--brand-white);
 }
@@ -874,7 +882,15 @@ article {
 .app-download-card:hover .app-download-card-copy span,
 .app-download-card:hover .app-download-card-copy small,
 .app-download-card:hover .app-download-card-meta,
-.app-download-card:hover .app-card-arrow {
+.app-download-card:hover .app-card-arrow,
+.app-download-card:focus-visible .app-download-card-copy span,
+.app-download-card:focus-visible .app-download-card-copy small,
+.app-download-card:focus-visible .app-download-card-meta,
+.app-download-card:focus-visible .app-card-arrow,
+.app-download-card:focus-within .app-download-card-copy span,
+.app-download-card:focus-within .app-download-card-copy small,
+.app-download-card:focus-within .app-download-card-meta,
+.app-download-card:focus-within .app-card-arrow {
   color: rgba(255, 255, 255, 0.78);
 }
 
@@ -1151,7 +1167,9 @@ article {
   }
 }
 
-/* Reduced motion */
+/* Reduced motion: this standalone homepage owns animated wordmarks, pulse loops,
+   reveal transitions, and smooth scrolling, so the global override intentionally
+   wins over component-level animation declarations for accessibility. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
