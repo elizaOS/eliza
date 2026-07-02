@@ -13,6 +13,14 @@
  *      app with signal 15. Never treat the post-capture app state as "still
  *      running", and never rely on console mode for boot-trace collection —
  *      the trace pull below works from a plain unattached launch.
+ *      WARNING (#11515): console attach runs the app under a debug session,
+ *      which is INCOMPATIBLE with the full-Bun (no-JIT) engine-host build — it
+ *      SIGTRAPs (signal 5) the moment the engine host loads, so console mode
+ *      never observes engine start on a local-runtime build. Icon-tap /
+ *      unattended launches are fine. For engine-start observability always use
+ *      `--no-console --pull-boot-trace` (the trace file is written from a plain
+ *      unattended launch). classifyConsoleExit() recognizes the SIGTRAP and
+ *      guides you there instead of misreporting it as a paired/locked failure.
  *   2. Boot-trace file: pulls the boot-trace JSON from the app's data
  *      container via `devicectl device copy from` (--pull-boot-trace).
  *      Path defaults to DEFAULT_BOOT_TRACE_CONTAINER_PATH (see the D1
@@ -31,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
   BOOT_TRACE_SIBLING_CONTAINER_PATHS,
+  classifyConsoleExit,
   DEFAULT_APP_BUNDLE_ID,
   DEFAULT_BOOT_TRACE_CONTAINER_PATH,
   findDeviceRecord,
@@ -93,31 +102,32 @@ function captureConsole({ device, bundleId, durationSeconds, outputFile }) {
       fs.closeSync(out);
       if (settled) return;
       settled = true;
-      const lines = fs.readFileSync(outputFile, "utf8").split("\n").length;
+      const logText = fs.readFileSync(outputFile, "utf8");
+      const lines = logText.split("\n").length;
       log(
         `console capture finished (exit=${code ?? `signal ${signal}`}, ${lines} lines)`,
       );
-      log(
-        "note: console mode ties the app lifetime to this process — the app was terminated (signal 15) on detach",
-      );
-      // Our own bounded detach can surface as signal=SIGTERM OR as a nonzero
-      // exit code (devicectl exits 1 after relaying the kill) — both are the
-      // EXPECTED end of a bounded capture, not a failure, and must never
-      // block the boot-trace pull that follows (#11030 leg D1 tool fix).
-      if (
-        !detachRequested &&
-        signal !== "SIGTERM" &&
-        code !== 0 &&
-        code !== null
-      ) {
-        reject(
-          new Error(
-            `devicectl console exited early with ${code}. Is the phone unlocked and paired? See ${outputFile}`,
-          ),
-        );
+      // Classify the exit. A bounded detach (signal=SIGTERM OR a nonzero
+      // devicectl exit after relaying our kill) and a clean exit both resolve
+      // and must never block the boot-trace pull that follows (#11030 leg D1
+      // tool fix). The #11515 SIGTRAP-at-engine-host is recognized FIRST from
+      // the captured log so it is not misreported as "phone locked/unpaired".
+      const verdict = classifyConsoleExit({
+        code,
+        signal,
+        detachRequested,
+        logText,
+      });
+      if (verdict.kind === "sigtrap-engine-host") {
+        log(`#11515: ${verdict.message}`);
+      } else if (verdict.kind === "bounded-detach") {
+        log(`note: ${verdict.message}`);
+      }
+      if (verdict.fatal) {
+        reject(new Error(`${verdict.message} See ${outputFile}`));
         return;
       }
-      resolve();
+      resolve(verdict);
     });
     child.on("error", (error) => {
       clearTimeout(timer);
@@ -210,6 +220,7 @@ async function main() {
   // console mode is best-effort observability; the trace file is the primary
   // artifact and never depends on console mode (#11030 leg D1 tool fix).
   let consoleCaptureError = null;
+  let consoleVerdict = null;
   if (!args["no-console"]) {
     const durationSeconds = Number.parseInt(args.duration ?? "120", 10);
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
@@ -220,14 +231,30 @@ async function main() {
     const outputFile =
       args.output || path.join(defaultDir, `console-${stamp}.log`);
     log(
-      "warning: --console ties the app lifetime to the console process; the app is killed (signal 15) when the bounded capture detaches",
+      "warning: --console ties the app lifetime to the console process (killed with signal 15 on detach) AND runs the app under a debug session that SIGTRAPs the full-Bun engine host at load (#11515) — for engine-start observability use --no-console --pull-boot-trace",
     );
     try {
-      await captureConsole({ device, bundleId, durationSeconds, outputFile });
+      consoleVerdict = await captureConsole({
+        device,
+        bundleId,
+        durationSeconds,
+        outputFile,
+      });
     } catch (error) {
       consoleCaptureError = error;
       log(
         `console capture failed (${error?.message ?? error}); continuing to the boot-trace pull`,
+      );
+    }
+    // The #11515 SIGTRAP means console mode observed nothing useful about the
+    // engine. If the caller did not also ask for the boot-trace pull, tell them
+    // the one invocation that works — don't leave them staring at a truncated log.
+    if (
+      consoleVerdict?.kind === "sigtrap-engine-host" &&
+      !args["pull-boot-trace"]
+    ) {
+      log(
+        "#11515: re-run with `--no-console --pull-boot-trace` to actually observe engine start (console mode cannot — it SIGTRAPs the engine host).",
       );
     }
   }

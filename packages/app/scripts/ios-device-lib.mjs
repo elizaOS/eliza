@@ -674,3 +674,75 @@ export function parseCliArgs(argv, { booleans = [] } = {}) {
   }
   return args;
 }
+
+// ── Console-capture exit classification (#11515) ────────────────────────
+
+/**
+ * Signatures of the #11515 SIGTRAP. An attached `devicectl … launch --console`
+ * runs the target under a debug session (ptrace + exception ports). On the
+ * full-Bun (no-JIT) engine-host build that debug session turns a benign
+ * guard-page / breakpoint probe into a fatal EXC_BREAKPOINT the moment the
+ * engine host loads — the app dies with **signal 5 (SIGTRAP)**. Icon-tap /
+ * unattended launches are NOT under a debug session and boot healthily.
+ * devicectl relays the target's termination reason into the console log
+ * ("signal 5", "SIGTRAP", or an EXC_BREAKPOINT note). The " 5" alternative is
+ * anchored with word boundaries so it never matches our own "signal 15" detach.
+ */
+export const CONSOLE_SIGTRAP_SIGNATURE =
+  /EXC_BREAKPOINT|SIGTRAP|\bsignal\s+5\b|Trace\/BPT\s+trap/i;
+
+/**
+ * Classify how a bounded `devicectl … launch --console` capture ended. Pure —
+ * the caller passes the console child's exit `code`/`signal`, whether OUR own
+ * bounded timer requested the detach, and the captured console log text.
+ *
+ * Precedence matters: the #11515 SIGTRAP is checked FIRST, because devicectl
+ * surfaces the target crash as a nonzero exit code (signal null) which would
+ * otherwise be misreported as a generic "phone locked / not paired" early exit.
+ *
+ * @param {{ code?: number | null, signal?: string | null, detachRequested?: boolean, logText?: string }} params
+ * @returns {{ kind: 'sigtrap-engine-host' | 'bounded-detach' | 'early-exit' | 'ok', fatal: boolean, message: string }}
+ */
+export function classifyConsoleExit({
+  code = null,
+  signal = null,
+  detachRequested = false,
+  logText = "",
+} = {}) {
+  if (signal === "SIGTRAP" || CONSOLE_SIGTRAP_SIGNATURE.test(logText)) {
+    return {
+      kind: "sigtrap-engine-host",
+      fatal: false,
+      message:
+        "attached-console launch SIGTRAP'd at full-Bun engine-host load (#11515): " +
+        "`devicectl … launch --console` runs the app under a debug session, which is " +
+        "incompatible with the no-JIT Bun engine host — the app dies with signal 5 the " +
+        "moment the engine loads. This is NOT an app bug: icon-tap / unattended launches " +
+        "boot healthily. Use `--no-console --pull-boot-trace` for engine-start observability.",
+    };
+  }
+  if (detachRequested || signal === "SIGTERM") {
+    return {
+      kind: "bounded-detach",
+      fatal: false,
+      message:
+        "console mode ties the app lifetime to this process — the app was terminated " +
+        "(signal 15) when the bounded capture detached; this is the expected end of a " +
+        "bounded capture, not a crash.",
+    };
+  }
+  if (code !== 0 && code !== null) {
+    return {
+      kind: "early-exit",
+      fatal: true,
+      message:
+        `devicectl console exited early with code ${code}. Is the phone unlocked and ` +
+        "paired? Console attach needs an unlocked, trusted device.",
+    };
+  }
+  return {
+    kind: "ok",
+    fatal: false,
+    message: "console capture completed cleanly.",
+  };
+}

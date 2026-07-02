@@ -131,6 +131,11 @@ bun run --cwd packages/app ios:device:deploy -- --device <id>   # flags: --skip-
 
 # Bounded console capture (relaunches the app with devicectl --console attached,
 # default 120 s) and/or pull the boot-trace JSON from the app data container.
+# ENGINE OBSERVABILITY: use --no-console --pull-boot-trace. Attached console runs
+# the app under a debug session that SIGTRAPs the full-Bun engine host at load
+# (#11515) — it can never observe engine start on a local-runtime build; the
+# tool now recognizes that SIGTRAP and points you here instead of misreporting
+# it as a locked/unpaired device. Icon-tap/unattended launches boot healthily.
 bun run --cwd packages/app ios:device:logs -- --device <id> --duration 120
 bun run --cwd packages/app ios:device:logs -- --device <id> --no-console --pull-boot-trace
 

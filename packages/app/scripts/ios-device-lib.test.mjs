@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildCodesignPlan,
   buildPlistXml,
+  classifyConsoleExit,
+  CONSOLE_SIGTRAP_SIGNATURE,
   deriveSigningEntitlements,
   extractXctestrunAppPaths,
   findDeviceRecord,
@@ -565,5 +567,85 @@ describe("parseCliArgs", () => {
     });
     expect(args["pull-boot-trace"]).toBe(true);
     expect(args.device).toBe("x");
+  });
+});
+
+describe("classifyConsoleExit (#11515)", () => {
+  it("flags the SIGTRAP-at-engine-host from the console log text (real devicectl signature)", () => {
+    // The real captured signature (d1-boot-trace/README.md): the app dies with
+    // "signal 5 (SIGTRAP)" the moment the full-Bun engine host loads. devicectl
+    // relays this as a nonzero exit code with signal=null — the case the old
+    // ad-hoc check misreported as "phone locked/unpaired".
+    const verdict = classifyConsoleExit({
+      code: 1,
+      signal: null,
+      detachRequested: false,
+      logText:
+        "Launching ai.elizaos.app…\nApp ai.elizaos.app terminated due to signal 5 (SIGTRAP).\n",
+    });
+    expect(verdict.kind).toBe("sigtrap-engine-host");
+    expect(verdict.fatal).toBe(false);
+    expect(verdict.message).toContain("#11515");
+    expect(verdict.message).toContain("--no-console --pull-boot-trace");
+  });
+
+  it("flags the SIGTRAP from an EXC_BREAKPOINT crash note", () => {
+    const verdict = classifyConsoleExit({
+      code: 1,
+      logText: "Thread 5 Crashed: EXC_BREAKPOINT (SIGTRAP) at 0x1042f...",
+    });
+    expect(verdict.kind).toBe("sigtrap-engine-host");
+    expect(verdict.fatal).toBe(false);
+  });
+
+  it("flags the SIGTRAP when the child itself is killed by SIGTRAP", () => {
+    const verdict = classifyConsoleExit({ code: null, signal: "SIGTRAP" });
+    expect(verdict.kind).toBe("sigtrap-engine-host");
+  });
+
+  it("does NOT confuse our own 'signal 15' bounded detach for a SIGTRAP", () => {
+    // Word-boundary anchoring: "signal 15" must never match the " 5" branch.
+    expect(CONSOLE_SIGTRAP_SIGNATURE.test("terminated due to signal 15")).toBe(
+      false,
+    );
+    const verdict = classifyConsoleExit({
+      code: null,
+      signal: "SIGTERM",
+      detachRequested: true,
+      logText: "…\nApp terminated due to signal 15.\n",
+    });
+    expect(verdict.kind).toBe("bounded-detach");
+    expect(verdict.fatal).toBe(false);
+  });
+
+  it("classifies a devicectl exit-1 after our bounded detach as non-fatal", () => {
+    // devicectl can exit 1 (signal null) after relaying our SIGTERM kill —
+    // detachRequested is the authoritative signal that this was expected.
+    const verdict = classifyConsoleExit({
+      code: 1,
+      signal: null,
+      detachRequested: true,
+      logText: "bounded capture window elapsed",
+    });
+    expect(verdict.kind).toBe("bounded-detach");
+    expect(verdict.fatal).toBe(false);
+  });
+
+  it("keeps a genuine early exit (locked/unpaired) fatal", () => {
+    const verdict = classifyConsoleExit({
+      code: 1,
+      signal: null,
+      detachRequested: false,
+      logText: "ERROR: The specified device was not found.",
+    });
+    expect(verdict.kind).toBe("early-exit");
+    expect(verdict.fatal).toBe(true);
+    expect(verdict.message).toContain("unlocked");
+  });
+
+  it("treats a clean exit as ok", () => {
+    const verdict = classifyConsoleExit({ code: 0, signal: null, logText: "" });
+    expect(verdict.kind).toBe("ok");
+    expect(verdict.fatal).toBe(false);
   });
 });
