@@ -56,6 +56,44 @@ export async function parseBody(
   });
 }
 
+/**
+ * Boundary coercion helpers for JSON request bodies. Route handlers receive
+ * untyped `parseBody` output, so casting `body.x as string` lets a client send
+ * `{repo: 123}` straight through to a service call. These validate first and
+ * return `undefined` on a type mismatch, so a handler can reject cleanly.
+ */
+export function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+/** A boolean, never a truthy string ("false"/"no"/"0" must not become `true`). */
+export function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+/** Trimmed non-empty strings from an array; undefined if not an array, [] if the
+ *  array holds no usable strings. */
+export function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter(
+    (v): v is string => typeof v === "string" && v.trim().length > 0,
+  );
+  return items.length > 0 ? items.map((s) => s.trim()) : [];
+}
+
+/** A finite number from a number or numeric string; rejects NaN/Infinity. */
+export function asFiniteNumber(value: unknown): number | undefined {
+  const n =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(n) ? n : undefined;
+}
+
 // Helper to send JSON response
 export function sendJson(
   res: ServerResponse,

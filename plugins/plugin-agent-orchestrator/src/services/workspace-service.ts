@@ -774,10 +774,13 @@ export class CodingWorkspaceService {
       (this.runtime.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
       this.readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
       process.env.ELIZA_CODING_DIRECTORY;
-    const codingDir = rawCodingDir.trim()
-      ? rawCodingDir.trim().startsWith("~")
-        ? path.join(os.homedir(), rawCodingDir.trim().slice(1))
-        : path.resolve(rawCodingDir.trim())
+    // ELIZA_CODING_DIRECTORY is optional — guard the trim so an unconfigured
+    // runtime (rawCodingDir === undefined) doesn't crash scratch-dir cleanup.
+    const trimmedCodingDir = rawCodingDir?.trim();
+    const codingDir = trimmedCodingDir
+      ? trimmedCodingDir.startsWith("~")
+        ? path.join(os.homedir(), trimmedCodingDir.slice(1))
+        : path.resolve(trimmedCodingDir)
       : undefined;
     const allowedDirs = codingDir ? [codingDir] : undefined;
     return removeScratchDir(
@@ -986,7 +989,7 @@ export class CodingWorkspaceService {
         (this.runtime.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
         this.readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
         process.env.ELIZA_CODING_DIRECTORY;
-      if (codingDir.trim()) return "persistent";
+      if (codingDir?.trim()) return "persistent";
     }
     return "pending_decision";
   }

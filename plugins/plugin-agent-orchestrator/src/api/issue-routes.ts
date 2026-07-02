@@ -10,7 +10,13 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./route-utils.js";
-import { parseBody, sendError, sendJson } from "./route-utils.js";
+import {
+  asString,
+  asStringArray,
+  parseBody,
+  sendError,
+  sendJson,
+} from "./route-utils.js";
 
 /**
  * Handle issue routes (/api/issues/*)
@@ -72,16 +78,18 @@ export async function handleIssueRoutes(
 
     try {
       const body = await parseBody(req);
-      const { repo, title, body: issueBody, labels } = body;
+      const repo = asString(body.repo);
+      const title = asString(body.title);
       if (!repo || !title) {
         sendError(res, "repo and title are required", 400);
         return true;
       }
+      const labels = asStringArray(body.labels);
 
-      const issue = await ctx.workspaceService.createIssue(repo as string, {
-        title: title as string,
-        body: (issueBody as string) ?? "",
-        labels: labels as string[] | undefined,
+      const issue = await ctx.workspaceService.createIssue(repo, {
+        title,
+        body: asString(body.body) ?? "",
+        ...(labels ? { labels } : {}),
       });
       sendJson(res, issue, 201);
     } catch (error) {
@@ -133,14 +141,15 @@ export async function handleIssueRoutes(
       const repo = `${commentMatch[1]}/${commentMatch[2]}`;
       const issueNumber = parseInt(commentMatch[3], 10);
       const body = await parseBody(req);
-      if (!body.body) {
+      const commentBody = asString(body.body);
+      if (!commentBody) {
         sendError(res, "body is required", 400);
         return true;
       }
       const comment = await ctx.workspaceService.addComment(
         repo,
         issueNumber,
-        body.body as string,
+        commentBody,
       );
       sendJson(res, comment, 201);
     } catch (error) {
