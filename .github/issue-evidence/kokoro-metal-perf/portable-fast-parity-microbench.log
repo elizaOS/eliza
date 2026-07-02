@@ -1,0 +1,36 @@
+# test_kokoro_layers_portable — M4 Max, clang -O3, native arm64 (NEON) run, 2026-07-02
+portable-fast path: NEON=1 threads=16
+
+== parity (fast vs scalar reference, tol 1e-04) ==
+conv1d  Cin=8 Cout=5 T=37 K=3 s=1 p=1 d=1 b=1              max|Δ| = 0.000e+00  PASS
+conv1d  Cin=16 Cout=16 T=100 K=7 s=1 p=15 d=5 b=1          max|Δ| = 0.000e+00  PASS
+conv1d  Cin=16 Cout=16 T=100 K=11 s=1 p=25 d=5 b=0         max|Δ| = 0.000e+00  PASS
+conv1d  Cin=22 Cout=32 T=264 K=12 s=6 p=3 d=1 b=1          max|Δ| = 0.000e+00  PASS
+conv1d  Cin=22 Cout=32 T=264 K=1 s=1 p=0 d=1 b=1           max|Δ| = 0.000e+00  PASS
+conv1d  Cin=64 Cout=22 T=200 K=7 s=1 p=3 d=1 b=1           max|Δ| = 0.000e+00  PASS
+conv1d  Cin=3 Cout=4 T=1 K=5 s=1 p=6 d=3 b=1               max|Δ| = 0.000e+00  PASS
+conv1d  Cin=1 Cout=1 T=9 K=3 s=2 p=0 d=1 b=0               max|Δ| = 0.000e+00  PASS
+conv1d  Cin=256 Cout=256 T=128 K=7 s=1 p=9 d=3 b=1         max|Δ| = 0.000e+00  PASS
+convtr  Cin=16 Cout=8 T=40 K=20 s=10 p=5 op=0 b=1          max|Δ| = 0.000e+00  PASS
+convtr  Cin=12 Cout=6 T=50 K=12 s=6 p=3 op=0 b=1           max|Δ| = 0.000e+00  PASS
+convtr  Cin=7 Cout=9 T=33 K=3 s=1 p=1 op=0 b=0             max|Δ| = 4.768e-07  PASS
+convtr  Cin=5 Cout=5 T=1 K=4 s=2 p=0 op=1 b=1              max|Δ| = 0.000e+00  PASS
+convtr  Cin=512 Cout=256 T=16 K=20 s=10 p=5 op=0 b=1       max|Δ| = 0.000e+00  PASS
+linear  in=128 out=1024 b=1                                max|Δ| = 5.722e-06  PASS
+linear  in=640 out=512 b=0                                 max|Δ| = 1.907e-05  PASS
+linear  in=3 out=2 b=1                                     max|Δ| = 2.980e-08  PASS
+lstm    I=16 H=8 b=1 (h)                                   max|Δ| = 2.980e-08  PASS
+lstm    I=16 H=8 b=1 (c)                                   max|Δ| = 5.960e-08  PASS
+lstm    I=64 H=48 b=0 (h)                                  max|Δ| = 8.941e-08  PASS
+lstm    I=64 H=48 b=0 (c)                                  max|Δ| = 2.384e-07  PASS
+lstm    I=512 H=512 b=1 (h)                                max|Δ| = 1.460e-06  PASS
+lstm    I=512 H=512 b=1 (c)                                max|Δ| = 2.086e-06  PASS
+
+== microbench (real iSTFTNet generator shapes) ==
+conv1d 256->256 T=2640 K=7 d=3 (stage0 resblock)     scalar    3843.7 ms   fast    35.82 ms    107.3x
+conv1d 128->128 T=15841 K=11 d=5 (stage1 resblock)   scalar    8124.5 ms   fast    89.09 ms     91.2x
+convtr 512->256 T=264 K=20 s=10 (ups[0])             scalar    1212.6 ms   fast    65.27 ms     18.6x
+convtr 256->128 T=2640 K=12 s=6 (ups[1])             scalar    1579.7 ms   fast   169.21 ms      9.3x
+lstm I=512 H=512 steps=264 (predictor-sized)         scalar     998.6 ms   fast   217.66 ms      4.6x
+
+ALL PARITY CHECKS PASSED (0 failures)
