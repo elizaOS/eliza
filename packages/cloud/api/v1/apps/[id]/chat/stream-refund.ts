@@ -68,3 +68,76 @@ export async function reconcileStreamProcessingError(
   });
   return { refunded: true };
 }
+
+/**
+ * Money-critical (#11169 part 1): the NON-streaming app-chat path debits the
+ * upfront hold, then reads the provider body + runs `calculateCost` +
+ * `reconcileCredits`. If the body-read or cost-calc throws AFTER the debit, the
+ * route's outer catch returns 500 WITHOUT refunding — stranding the reserved
+ * hold. Refund it: the caller received no billable answer and no settle was
+ * ever attempted.
+ *
+ * `settleStarted` is true once `reconcileCredits` has been INVOKED — not once
+ * it returned. `reconcileCredits` is not transactional: it commits its
+ * org-balance movement (refund or extra charge) before its earnings/counter
+ * writes, and that movement carries no idempotency key. A throw from inside it
+ * may therefore have already moved money, so refunding blindly would
+ * double-credit the org (mint credits during a DB blip, systemically across
+ * concurrent requests). Mirror of the streaming branch, which flips
+ * `streamCompleted` before ITS settle for the same reason. A hold stranded by
+ * that rare window is recovered by the stranded-reservation sweep
+ * (#11169 part 3).
+ */
+export async function reconcileNonStreamingSettleError(
+  params: {
+    settleStarted: boolean;
+    appId: string;
+    userId: string;
+    reservedBaseCost: number;
+    model: string;
+    provider: string;
+    billingSource: string;
+    errorMessage: string;
+  },
+  credits: StreamRefundCredits,
+): Promise<{ refunded: boolean }> {
+  const {
+    settleStarted,
+    appId,
+    userId,
+    reservedBaseCost,
+    model,
+    provider,
+    billingSource,
+    errorMessage,
+  } = params;
+
+  if (settleStarted) {
+    logger.error(
+      "[App Chat] Non-streaming throw at/after the settle reconcile; NOT refunding (movement may have committed — sweep recovers a stranded hold)",
+      { appId, userId, reservedBaseCost, error: errorMessage },
+    );
+    return { refunded: false };
+  }
+
+  logger.error(
+    "[App Chat] Non-streaming settle never started after debit; refunding reserved hold (#11169)",
+    { appId, userId, reservedBaseCost, error: errorMessage },
+  );
+  await credits.reconcileCredits({
+    appId,
+    userId,
+    estimatedBaseCost: reservedBaseCost,
+    actualBaseCost: 0, // Full refund — nothing was billed.
+    description: `Chat refund (non-streaming settle failed): ${model}`,
+    metadata: {
+      error: true,
+      streaming: false,
+      model,
+      provider,
+      billingSource,
+      refundReason: "non_streaming_settle_error",
+    },
+  });
+  return { refunded: true };
+}
