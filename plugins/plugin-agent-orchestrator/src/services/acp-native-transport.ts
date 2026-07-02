@@ -129,6 +129,7 @@ export class NativeAcpClient {
   private proc?: ChildProcessWithoutNullStreams;
   private nextId = 1;
   private readBuffer = "";
+  private stderrBuffer = "";
   private pending = new Map<JsonRpcId, PendingRequest>();
   private terminals = new Map<string, TerminalRecord>();
   private closed = false;
@@ -154,15 +155,18 @@ export class NativeAcpClient {
     this.proc = proc;
 
     proc.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
-    proc.stderr.on("data", (chunk: Buffer) =>
-      this.opts.onStderr?.(chunk.toString("utf8")),
-    );
+    proc.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      this.stderrBuffer = `${this.stderrBuffer}${text}`.slice(-16_384);
+      this.opts.onStderr?.(text);
+    });
     proc.on("error", (err) => this.rejectAll(err));
     proc.on("close", (code, signal) => {
       this.closed = true;
+      const stderr = this.stderrBuffer.trim();
       this.rejectAll(
         new Error(
-          `ACP agent exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}`,
+          `ACP agent exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}${stderr ? `: ${stderr}` : ""}`,
         ),
       );
     });
