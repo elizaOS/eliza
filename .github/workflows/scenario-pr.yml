@@ -598,6 +598,104 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+  # The real-WebKit lane (#10104/#10722): every prior browser job runs Chromium
+  # only, while the shipped app spends most of its life inside WebKit (every
+  # Capacitor iOS WebView, macOS WKWebView). WebKit-only differences are real —
+  # e.g. foreignObject canvas uploads still taint in WebKit but no longer in
+  # Chromium (packages/ui/src/spatial/WEBXR_PLATFORMS.md), and WebKit does not
+  # bypass the app service worker under route interception the way Chromium
+  # does. This job runs the `desktop-webkit` project (Desktop Safari profile)
+  # over the assertion-grade dashboard specs + shell smoke + input-modality
+  # spec. Note: the install step below uses `--with-deps` because this runner
+  # is ubuntu; on a macOS runner `--with-deps` must be omitted (no apt).
+  app-browser-webkit:
+    name: Zero-Key app browser WebKit lane
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers (WebKit)
+        run: bunx playwright install --with-deps webkit
+
+      - name: Real-WebKit dashboard + shell + input-modality browser coverage
+        run: bun run --cwd packages/app test:e2e --project=desktop-webkit
+
+      - name: Upload WebKit lane artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-webkit
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  app-accounts-ui:
+    name: Zero-Key accounts UI e2e (real API + pool + disk)
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers (Chromium)
+        run: bunx playwright install --with-deps chromium
+
+      - name: Accounts UI browser e2e — real AccountList + real accounts routes + real AccountPool
+        run: bun run --cwd packages/app test:e2e:accounts-ui
+
+      - name: Upload accounts-ui evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-accounts-ui
+          path: .github/issue-evidence/10722-accounts-ui-e2e/
+          if-no-files-found: ignore
+          retention-days: 3
+
   app-walkthrough-mock:
     name: Zero-Key full-walkthrough (mock lane)
     needs: changes
@@ -804,6 +902,10 @@ jobs:
       - app-browser-cloud-keyless
       - app-browser-ratcheted
       - app-browser-auto-discovered
+      - app-browser-touch-dashboard
+      - app-browser-touch-mobile
+      - app-browser-webkit
+      - app-accounts-ui
       - app-walkthrough-mock
       - app-diagnostics
       - scenario-runner-e2e
@@ -824,6 +926,10 @@ jobs:
             "app-browser-cloud-keyless:${{ needs.app-browser-cloud-keyless.result }}" \
             "app-browser-ratcheted:${{ needs.app-browser-ratcheted.result }}" \
             "app-browser-auto-discovered:${{ needs.app-browser-auto-discovered.result }}" \
+            "app-browser-touch-dashboard:${{ needs.app-browser-touch-dashboard.result }}" \
+            "app-browser-touch-mobile:${{ needs.app-browser-touch-mobile.result }}" \
+            "app-browser-webkit:${{ needs.app-browser-webkit.result }}" \
+            "app-accounts-ui:${{ needs.app-accounts-ui.result }}" \
             "app-walkthrough-mock:${{ needs.app-walkthrough-mock.result }}" \
             "app-diagnostics:${{ needs.app-diagnostics.result }}" \
             "scenario-runner-e2e:${{ needs.scenario-runner-e2e.result }}"; do
