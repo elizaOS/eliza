@@ -270,6 +270,58 @@ describe("OpenRouter native text plumbing", () => {
     expect(call.providerOptions).toBeUndefined();
   });
 
+  it("rejects live streaming when the provider reports an async stream error", async () => {
+    const providerError = new Error("provider stream failed");
+    const streamText = vi.fn((params: { onError?: (event: { error: unknown }) => void }) => {
+      params.onError?.({ error: providerError });
+      return {
+        textStream: (async function* emptyStream() {})(),
+        text: Promise.resolve(""),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve("stop"),
+      };
+    });
+    vi.doMock("ai", () => ({
+      generateText: vi.fn(),
+      streamText,
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    const result = (await handleTextSmall(createRuntime(), {
+      prompt: "stream this",
+      stream: true,
+    } as never)) as {
+      text: Promise<string>;
+      textStream: AsyncIterable<string>;
+      finishReason: Promise<string | undefined>;
+    };
+
+    const collect = async () => {
+      const chunks: string[] = [];
+      for await (const chunk of result.textStream) {
+        chunks.push(chunk);
+      }
+      return chunks.join("");
+    };
+
+    const textRejects = expect(result.text).rejects.toThrow("provider stream failed");
+    const finishReasonRejects = expect(result.finishReason).rejects.toThrow(
+      "provider stream failed"
+    );
+
+    expect(streamText).toHaveBeenCalledWith(
+      expect.objectContaining({ onError: expect.any(Function) })
+    );
+    await expect(collect()).rejects.toThrow("provider stream failed");
+    await textRejects;
+    await finishReasonRejects;
+  });
+
   it("rejects malformed text params before invoking the provider model", async () => {
     const generateText = vi.fn();
     const chat = vi.fn();

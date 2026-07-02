@@ -315,6 +315,16 @@ function usesNativeTextResult(params: GenerateTextParamsWithAttachments): boolea
   return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
 }
 
+function handledPromise<T>(value: T | PromiseLike<T>): Promise<T> {
+  const promise = Promise.resolve(value);
+  promise.catch(() => {
+    // Streaming callers commonly consume textStream only. Companion promises
+    // should still reject when awaited, but must not produce unhandled
+    // rejections when a caller ignores them.
+  });
+  return promise;
+}
+
 type TextModelType =
   | typeof TEXT_NANO_MODEL_TYPE
   | typeof ModelType.TEXT_SMALL
@@ -497,14 +507,39 @@ function handleStreamingGeneration(
   modelLabel: string,
   shouldReturnNativeResult: boolean
 ): TextStreamResult {
-  const streamResult = streamText(generateParams);
-  const usagePromise = Promise.resolve(streamResult.usage).then((usage) => {
-    if (!usage) {
-      return undefined;
-    }
-
-    return emitModelUsageEvent(runtime, modelType, prompt, usage, modelName, modelLabel);
+  let capturedStreamError: unknown;
+  const streamResult = streamText({
+    ...(generateParams as Parameters<typeof streamText>[0]),
+    onError: ({ error }: { error: unknown }) => {
+      capturedStreamError = error;
+    },
   });
+  const finishReasonPromise = handledPromise(
+    Promise.resolve(streamResult.finishReason).then((finishReason) => {
+      if (capturedStreamError) {
+        throw capturedStreamError;
+      }
+      return finishReason as string | undefined;
+    })
+  );
+  const usagePromise = handledPromise(
+    Promise.resolve(streamResult.usage).then(async (usage) => {
+      await finishReasonPromise;
+      if (!usage) {
+        return undefined;
+      }
+
+      return emitModelUsageEvent(runtime, modelType, prompt, usage, modelName, modelLabel);
+    })
+  );
+  const toolCallsPromise = shouldReturnNativeResult
+    ? handledPromise(
+        Promise.resolve(streamResult.toolCalls).then(async (toolCalls) => {
+          await finishReasonPromise;
+          return toolCalls;
+        })
+      )
+    : undefined;
   const ignoreUsageError = (): undefined => undefined;
 
   async function* textStreamWithUsage(): AsyncIterable<string> {
@@ -513,6 +548,7 @@ function handleStreamingGeneration(
       for await (const chunk of streamResult.textStream) {
         yield chunk;
       }
+      await finishReasonPromise;
       completed = true;
     } finally {
       if (completed) {
@@ -523,13 +559,16 @@ function handleStreamingGeneration(
 
   return {
     textStream: textStreamWithUsage(),
-    text: Promise.resolve(streamResult.text).then(async (text) => {
-      await usagePromise.catch(ignoreUsageError);
-      return text;
-    }),
-    ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(streamResult.toolCalls) } : {}),
+    text: handledPromise(
+      Promise.resolve(streamResult.text).then(async (text) => {
+        await finishReasonPromise;
+        await usagePromise.catch(ignoreUsageError);
+        return text;
+      })
+    ),
+    ...(toolCallsPromise ? { toolCalls: toolCallsPromise } : {}),
     usage: usagePromise,
-    finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+    finishReason: finishReasonPromise,
   };
 }
 
