@@ -18,6 +18,11 @@ import {
   vi,
 } from "vitest";
 
+import {
+  clearChatDraft,
+  writeChatDraft,
+} from "../../state/ChatComposerContext.hooks";
+
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
@@ -2674,5 +2679,73 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("");
     expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("shows Retry on a recoverable failed assistant turn and re-sends the preceding user turn", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          content: "what's the weather?",
+          createdAt: 1,
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "",
+          createdAt: 2,
+          failureKind: "rate_limited",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    const retry = screen.getByTestId("thread-line-retry");
+    expect(retry).toBeTruthy();
+    fireEvent.click(retry);
+    expect(controller.send).toHaveBeenCalledWith("what's the weather?");
+  });
+
+  it("does NOT show Retry on an unrecoverable failure (no_provider / insufficient_credits)", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "hi", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "",
+          createdAt: 2,
+          failureKind: "insufficient_credits",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
+  });
+
+  it("restores the persisted composer draft for the active conversation (overlay draft parity)", () => {
+    // The overlay wires useChatComposerDraftPersistence keyed by the
+    // controller's conversationNav.activeId — closing the platform gap where
+    // only the desktop ChatView restored drafts. A draft stored for the active
+    // conversation must repopulate the composer on mount.
+    clearChatDraft("conv-draft-x");
+    writeChatDraft("conv-draft-x", "half-written thought");
+    const controller = makeController({
+      conversationNav: {
+        hasPrev: false,
+        hasNext: false,
+        goPrev: () => {},
+        goNext: () => {},
+        activeId: "conv-draft-x",
+        index: 0,
+      },
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("half-written thought");
+    clearChatDraft("conv-draft-x");
   });
 });
