@@ -157,7 +157,7 @@ export const elizaOSCloudPlugin: Plugin = {
   // Cloud TTS still works as a fallback when local is unavailable: the
   // handler throws `CloudTtsUnavailableError` when cloud isn't connected
   // and the router's per-pick retry loop falls through to the next
-  // eligible provider (local kokoro / omnivoice, plugin-elevenlabs, ...).
+  // eligible provider (local Kokoro, plugin-elevenlabs, ...).
   priority: 50,
 
   config: {

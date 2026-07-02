@@ -62,7 +62,7 @@ export interface CloudTextToSpeechParams extends OpenAITextToSpeechParams {
 
 /**
  * Marker error used so the runtime can fall through to the next TTS handler
- * (e.g. local omnivoice) when Eliza Cloud is not connected.
+ * (e.g. local Kokoro) when Eliza Cloud is not connected.
  */
 export class CloudTtsUnavailableError extends Error {
   constructor(message = "Eliza Cloud is not connected") {
@@ -280,7 +280,7 @@ function buildAudioStreamResult(
  *   - When Cloud TTS is **not** available — no API key, or neither
  *     `ELIZAOS_CLOUD_ENABLED` nor `ELIZAOS_CLOUD_USE_TTS` is set — throws
  *     `CloudTtsUnavailableError` so the runtime's model-handler fallback
- *     chain can pick the next provider (e.g. local omnivoice, ElevenLabs
+ *     chain can pick the next provider (e.g. local Kokoro, ElevenLabs
  *     direct, etc.).
  *   - When available (full cloud connection, or capability-only mode where
  *     the host cloud-routed TTS via `ELIZAOS_CLOUD_USE_TTS=true` while an
