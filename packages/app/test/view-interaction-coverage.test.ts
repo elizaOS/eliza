@@ -215,13 +215,24 @@ const GUI_INTERACTION_OWNERS: Readonly<
     },
   ],
   "views-manager": [
+    // The standalone 'Dynamic view management' form (and its
+    // view-manager-actual-flow spec) left with the springboard->launcher
+    // curation; view management now lives in the launcher's long-press edit
+    // mode and the registered plugin-view lifecycle. Residual gap: an e2e for
+    // CREATING a dynamic view through the current product flow.
     {
-      spec: "packages/app/test/ui-smoke/view-manager-actual-flow.spec.ts",
+      spec: "packages/ui/src/components/pages/__e2e__/run-launcher-e2e.mjs",
       proves:
-        "Exercises dynamic view create, update, switch/open, remote bundle request, and delete flows.",
+        "Long-press edit mode plus real drag-to-reorder with persistence and telemetry on the launcher — the surface that replaced the dynamic-view manager form.",
+      signals: ["enters edit mode", "reorder"],
+    },
+    {
+      spec: "packages/app/test/ui-smoke/plugin-views-lifecycle.spec.ts",
+      proves:
+        "Registered plugin views load, unmount, reopen, and reload cleanly across the view lifecycle.",
       signals: [
-        "creates, updates, switches, opens, and deletes",
-        "registerCalls",
+        "registered plugin view lifecycle",
+        "loads, unmounts, reopens, and reloads",
       ],
     },
   ],

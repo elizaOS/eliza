@@ -20,10 +20,10 @@ test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
 test.describe("Leaderboard - Tab Toggle", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -98,10 +98,10 @@ test.describe("Leaderboard - Tab Toggle", () => {
 
 test.describe("Leaderboard - Pagination", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -200,10 +200,10 @@ test.describe("Leaderboard - Pagination", () => {
 
 test.describe("Leaderboard - Jump to Position", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -250,10 +250,10 @@ test.describe("Leaderboard - Jump to Position", () => {
 
 test.describe("Leaderboard - User Interaction", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);

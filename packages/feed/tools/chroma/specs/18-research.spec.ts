@@ -20,10 +20,10 @@ test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
 test.describe("Research - Form", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);

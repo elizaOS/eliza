@@ -310,20 +310,16 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
           instruction: instruction ?? "",
           roomId: message.channel,
         });
-        // For A4: a "create" with a meeting in the instruction also schedules a task.
-        const text = instruction?.toLowerCase() ?? "";
-        if (
-          /(meeting|schedule|carol|bob).*(friday|monday|tuesday|wednesday|thursday|saturday|sunday|tomorrow)/.test(
-            text,
-          ) ||
-          /\bat \d/.test(text)
-        ) {
-          state.scheduledTasks.push({
-            id: `task-${id}`,
-            owner: message.sender,
-            description: instruction ?? "",
-          });
-        }
+        break;
+      }
+      case "schedule_followup": {
+        // Scheduling is an explicit op the agent must emit — never inferred
+        // from instruction text.
+        state.scheduledTasks.push({
+          id: `task-gen-${trace.all().length}`,
+          owner: message.sender,
+          description: instruction ?? "",
+        });
         break;
       }
       case "mark_completed": {

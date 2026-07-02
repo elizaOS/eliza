@@ -84,6 +84,14 @@ export function buildHarnessSourceAliases(
           .filter((entry): entry is WorkspaceSourceEntry => entry !== undefined)
           .flatMap(({ packageName, indexPath, sourceDir }) => [
             { find: new RegExp(`^${packageName}$`), replacement: indexPath },
+            // Asset subpaths (JSON data imports like
+            // `@elizaos/registry/first-party/curated-app-definitions.json`)
+            // resolve to the source file as-is; the generic rule below would
+            // otherwise append `.ts` and break the resolve. First-match wins.
+            {
+              find: new RegExp(`^${packageName}/(.*\\.json)$`),
+              replacement: path.join(sourceDir, "$1"),
+            },
             {
               find: new RegExp(`^${packageName}/(.*)$`),
               replacement: path.join(sourceDir, "$1.ts"),

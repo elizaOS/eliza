@@ -63,6 +63,12 @@ async function assertScreenshotNotBlank(
   ).toEqual([]);
 }
 
+// Parallel fullPage captures of WebGL-heavy pages (THREE.js on /connected,
+// /login) transiently fail with CDP "Unable to capture screenshot" when
+// several workers composite at once. It is load-dependent (solo runs never
+// hit it), so it belongs in this retry loop; the final attempt rethrows.
+const TRANSIENT_CAPTURE_ERROR = /Unable to capture screenshot/;
+
 export async function captureScreenshotWithQualityRetry(
   page: Page,
   label: string,
@@ -70,7 +76,15 @@ export async function captureScreenshotWithQualityRetry(
 ): Promise<Buffer> {
   let lastBuffer: Buffer | undefined;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    lastBuffer = await page.screenshot(options);
+    try {
+      lastBuffer = await page.screenshot(options);
+    } catch (error) {
+      if (attempt === 2 || !TRANSIENT_CAPTURE_ERROR.test(String(error))) {
+        throw error;
+      }
+      await page.waitForTimeout(500 * (attempt + 1));
+      continue;
+    }
     const quality = await analyzeScreenshot(lastBuffer);
     const usable =
       lastBuffer.length > 1_000 &&

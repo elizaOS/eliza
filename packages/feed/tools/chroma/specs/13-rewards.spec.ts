@@ -24,10 +24,10 @@ test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
 test.describe("Rewards - Tab Navigation", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -115,10 +115,10 @@ test.describe("Rewards - Tab Navigation", () => {
 
 test.describe("Rewards - Overview Tab", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -227,10 +227,10 @@ test.describe("Rewards - Overview Tab", () => {
 
 test.describe("Rewards - Social Linking", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -288,10 +288,10 @@ test.describe("Rewards - Social Linking", () => {
 
 test.describe("Rewards - Achievements Tab", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -363,10 +363,10 @@ test.describe("Rewards - Achievements Tab", () => {
 
 test.describe("Rewards - Challenges Tab", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);

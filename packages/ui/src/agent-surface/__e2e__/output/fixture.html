@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>agent-surface e2e</title></head><body><div id="root"></div><script>"use strict";
+<!doctype html><html><head><meta charset="utf-8"><title>agent-surface e2e — fixture</title></head><body><div id="root"></div><script>"use strict";
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -12783,11 +12783,22 @@
     const highlighting = registry?.isHighlighting() ?? false;
     (0, import_react2.useEffect)(() => {
       if (!highlighting || typeof window === "undefined") return;
-      const onChange = () => setTick((t) => t + 1);
-      window.addEventListener("scroll", onChange, true);
+      let frameId = null;
+      const onChange = () => {
+        if (frameId !== null) return;
+        frameId = window.requestAnimationFrame(() => {
+          frameId = null;
+          setTick((t) => t + 1);
+        });
+      };
+      const scrollOptions = { capture: true, passive: true };
+      window.addEventListener("scroll", onChange, scrollOptions);
       window.addEventListener("resize", onChange);
       return () => {
-        window.removeEventListener("scroll", onChange, true);
+        if (frameId !== null) {
+          window.cancelAnimationFrame(frameId);
+        }
+        window.removeEventListener("scroll", onChange, scrollOptions);
         window.removeEventListener("resize", onChange);
       };
     }, [highlighting]);

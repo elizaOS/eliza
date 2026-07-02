@@ -142,7 +142,7 @@ const ADDRESSED_TO_EVAL: ResponseHandlerFieldEvaluator<string[]> = {
 const THREAD_OPS_EVAL: ResponseHandlerFieldEvaluator = {
   name: "threadOps",
   description:
-    "Thread operations to perform on durable work threads owned by this user. Each op has a 'type' (create | steer | stop | merge | attach_source | schedule_followup | mark_waiting | mark_completed | abort). The 'abort' op preempts the rest of the turn — emit it when the user clearly retracts (\"stop\", \"nvm\", \"actually don't\"). Use 'steer' for refining an existing thread. Use 'merge' to combine threads (workThreadId is the survivor; sourceWorkThreadIds are absorbed). Use 'create' to start a new thread. Use 'stop' to cleanly close a thread without aborting the turn. Emit an empty array when no thread action is needed.",
+    "Thread operations to perform on durable work threads owned by this user. Each op has a 'type' (create | steer | stop | merge | attach_source | schedule_followup | mark_waiting | mark_completed | abort). The 'abort' op preempts the rest of the turn — emit it when the user clearly retracts (\"stop\", \"nvm\", \"actually don't\"). Use 'steer' for refining an existing thread. Use 'merge' to combine threads (workThreadId is the survivor; sourceWorkThreadIds are absorbed). Use 'create' to start a new thread. Use 'stop' to cleanly close a thread without aborting the turn. Use 'schedule_followup' to create a scheduled task — the instruction is the task description (e.g. a meeting or reminder the user asked for); scheduling only happens through this op. Emit an empty array when no thread action is needed.",
   priority: 30,
   schema: {
     type: "array",

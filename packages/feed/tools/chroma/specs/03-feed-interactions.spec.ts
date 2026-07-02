@@ -25,10 +25,10 @@ test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
 test.describe("Feed - Core Functionality", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -56,10 +56,10 @@ test.describe("Feed - Core Functionality", () => {
 
 test.describe("Feed - Tab Switching", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -130,10 +130,10 @@ test.describe("Feed - Tab Switching", () => {
 
 test.describe("Feed - Post Composer", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -200,9 +200,8 @@ test.describe("Feed - Post Composer", () => {
           .isVisible({ timeout: TIMEOUTS.SHORT })
           .catch(() => false)
       ) {
-        const isDisabled = await submitButton.isDisabled().catch(() => false);
-        // Submit should be disabled for empty content
-        expect(typeof isDisabled).toBe("boolean");
+        // Submit must be disabled while the composer is empty.
+        await expect(submitButton).toBeDisabled();
       }
 
       await page.keyboard.press("Escape").catch(() => {});
@@ -315,10 +314,10 @@ test.describe("Feed - Post Composer", () => {
 
 test.describe("Feed - Post Card Interactions", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -389,7 +388,8 @@ test.describe("Feed - Post Card Interactions", () => {
             .isVisible({ timeout: TIMEOUTS.SHORT })
             .catch(() => false));
 
-        expect(hasCommentUI || true).toBe(true); // Comment may trigger navigation
+        // Clicking comment must land on the post detail or open a comment UI.
+        expect(hasCommentUI).toBe(true);
       }
     }
   });
@@ -418,7 +418,8 @@ test.describe("Feed - Post Card Interactions", () => {
             .catch(() => false)) ||
           (await pageContainsText(page, "copy", "share", "link"));
 
-        expect(typeof hasShareUI).toBe("boolean");
+        // Clicking share must open a share dropdown/modal or copy affordance.
+        expect(hasShareUI).toBe(true);
 
         await page.keyboard.press("Escape").catch(() => {});
       }
@@ -440,14 +441,13 @@ test.describe("Feed - Post Card Interactions", () => {
         await postContent.click({ force: true });
         await page.waitForTimeout(2000);
 
-        // Should navigate to post detail
+        // Clicking the post body must navigate to its detail page.
         const url = page.url();
         const navigated =
           url.includes("/post/") ||
           url.includes("/article/") ||
           url.includes("/comment/");
-        // May not navigate if clicking specific element
-        expect(typeof navigated).toBe("boolean");
+        expect(navigated).toBe(true);
       }
     }
 
@@ -498,10 +498,10 @@ test.describe("Feed - Post Card Interactions", () => {
 
 test.describe("Feed - Infinite Scroll", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -530,10 +530,10 @@ test.describe("Feed - Widget Sidebar", () => {
   });
 
   test("displays widget sidebar on desktop viewport", async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP_LARGE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -555,10 +555,10 @@ test.describe("Feed - Widget Sidebar", () => {
   });
 
   test("hides widget sidebar on tablet viewport", async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.TABLET);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
