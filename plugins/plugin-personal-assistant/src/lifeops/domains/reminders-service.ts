@@ -5310,6 +5310,7 @@ export class RemindersDomain {
         }),
     );
     const scheduledTaskFallback: ProcessDueScheduledTasksResult = {
+      completions: [],
       fires: [],
       completionTimeouts: [],
       pendingPrompts: [],
