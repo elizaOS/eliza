@@ -14,8 +14,8 @@
  * when a sole-member owner of an empty solo org can accept — moved into the
  * inviting org with the invited role, characters + conversations re-homed, and
  * the vacated solo org deleted. The remaining cases pin the boundary: owners
- * whose org has other members, deployed apps/agents, or more credits than the
- * signup grant stay blocked with actionable errors.
+ * whose org has other members, deployed apps/agents/domains, or more credits
+ * than the signup grant stay blocked with actionable errors.
  *
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails
  * to initialize — never a silent skip.
@@ -42,9 +42,7 @@ const PGLITE_TIMEOUT = 60_000;
 
 let pgliteReady = true;
 let dbWrite: typeof import("../../../db/client").dbWrite;
-let closeDb:
-  | typeof import("../../../db/client").closeDatabaseConnectionsForTests
-  | undefined;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let invitesService: typeof import("../invites").invitesService;
 let generateInviteToken: typeof import("../../utils/invite-tokens").generateInviteToken;
 let hashInviteToken: typeof import("../../utils/invite-tokens").hashInviteToken;
@@ -56,6 +54,8 @@ let schemas: {
   conversations: typeof import("../../../db/schemas/conversations").conversations;
   apps: typeof import("../../../db/schemas/apps").apps;
   containers: typeof import("../../../db/schemas/containers").containers;
+  agentSandboxes: typeof import("../../../db/schemas/agent-sandboxes").agentSandboxes;
+  managedDomains: typeof import("../../../db/schemas/managed-domains").managedDomains;
 };
 
 let seq = 0;
@@ -136,9 +136,7 @@ async function seedInviteScenario(options?: {
   };
 }
 
-async function readUser(
-  userId: string,
-): Promise<{ organization_id: string | null; role: string }> {
+async function readUser(userId: string): Promise<{ organization_id: string | null; role: string }> {
   const rows = await dbWrite.execute(
     `SELECT organization_id, role FROM users WHERE id = '${userId}';`,
   );
@@ -146,42 +144,38 @@ async function readUser(
 }
 
 async function orgExists(orgId: string): Promise<boolean> {
-  const rows = await dbWrite.execute(
-    `SELECT id FROM organizations WHERE id = '${orgId}';`,
-  );
+  const rows = await dbWrite.execute(`SELECT id FROM organizations WHERE id = '${orgId}';`);
   return rows.rows.length > 0;
 }
 
 beforeAll(async () => {
   try {
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import(
-      "../../../db/client"
-    ));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ invitesService } = await import("../invites"));
-    ({ generateInviteToken, hashInviteToken } = await import(
-      "../../utils/invite-tokens"
-    ));
+    ({ generateInviteToken, hashInviteToken } = await import("../../utils/invite-tokens"));
 
     const { organizations } = await import("../../../db/schemas/organizations");
     const { users } = await import("../../../db/schemas/users");
-    const { organizationInvites } = await import(
-      "../../../db/schemas/organization-invites"
-    );
-    const { userCharacters } = await import(
-      "../../../db/schemas/user-characters"
-    );
+    const { organizationInvites } = await import("../../../db/schemas/organization-invites");
+    const { userCharacters } = await import("../../../db/schemas/user-characters");
     const { conversations } = await import("../../../db/schemas/conversations");
     const { apiKeys } = await import("../../../db/schemas/api-keys");
-    const { creditTransactions } = await import(
-      "../../../db/schemas/credit-transactions"
-    );
-    const {
-      apps,
-      appDeploymentStatusEnum,
-      appReviewStatusEnum,
-      userDatabaseStatusEnum,
-    } = await import("../../../db/schemas/apps");
+    const { creditTransactions } = await import("../../../db/schemas/credit-transactions");
+    const { apps, appDeploymentStatusEnum, appReviewStatusEnum, userDatabaseStatusEnum } =
+      await import("../../../db/schemas/apps");
     const { containers } = await import("../../../db/schemas/containers");
+    const { agentSandboxes } = await import("../../../db/schemas/agent-sandboxes");
+    const {
+      domainModerationStatusEnum,
+      domainNameserverModeEnum,
+      domainRegistrarEnum,
+      domainResourceTypeEnum,
+      domainStatusEnum,
+      managedDomains,
+    } = await import("../../../db/schemas/managed-domains");
+    const { mcpPricingTypeEnum, mcpStatusEnum, userMcps } = await import(
+      "../../../db/schemas/user-mcps"
+    );
     schemas = {
       organizations,
       users,
@@ -190,6 +184,8 @@ beforeAll(async () => {
       conversations,
       apps,
       containers,
+      agentSandboxes,
+      managedDomains,
     };
 
     const { pushSchema } = await import("../../../db/push-schema-for-tests");
@@ -204,6 +200,16 @@ beforeAll(async () => {
         creditTransactions,
         apps,
         containers,
+        agentSandboxes,
+        managedDomains,
+        domainRegistrarEnum,
+        domainNameserverModeEnum,
+        domainResourceTypeEnum,
+        domainModerationStatusEnum,
+        domainStatusEnum,
+        userMcps,
+        mcpPricingTypeEnum,
+        mcpStatusEnum,
         appDeploymentStatusEnum,
         appReviewStatusEnum,
         userDatabaseStatusEnum,
@@ -213,10 +219,7 @@ beforeAll(async () => {
     await apply();
   } catch (error) {
     pgliteReady = false;
-    console.error(
-      "[invite-owner-accept.test] PGlite/pushSchema unavailable — failing.",
-      error,
-    );
+    console.error("[invite-owner-accept.test] PGlite/pushSchema unavailable — failing.", error);
   }
 }, PGLITE_TIMEOUT);
 
@@ -261,10 +264,7 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
         status: "deleted",
       });
 
-      const accepted = await invitesService.acceptInvite(
-        seeded.token,
-        seeded.inviteeUserId,
-      );
+      const accepted = await invitesService.acceptInvite(seeded.token, seeded.inviteeUserId);
 
       expect(accepted.status).toBe("accepted");
       expect(accepted.accepted_by_user_id).toBe(seeded.inviteeUserId);
@@ -278,16 +278,15 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
       const characterRows = await dbWrite.execute(
         `SELECT organization_id FROM user_characters WHERE id = '${characterId}';`,
       );
-      expect(
-        (characterRows.rows[0] as { organization_id: string }).organization_id,
-      ).toBe(seeded.inviterOrgId);
+      expect((characterRows.rows[0] as { organization_id: string }).organization_id).toBe(
+        seeded.inviterOrgId,
+      );
       const conversationRows = await dbWrite.execute(
         `SELECT organization_id FROM conversations WHERE id = '${conversationId}';`,
       );
-      expect(
-        (conversationRows.rows[0] as { organization_id: string })
-          .organization_id,
-      ).toBe(seeded.inviterOrgId);
+      expect((conversationRows.rows[0] as { organization_id: string }).organization_id).toBe(
+        seeded.inviterOrgId,
+      );
     },
     PGLITE_TIMEOUT,
   );
@@ -305,9 +304,9 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
         role: "member",
       });
 
-      await expect(
-        invitesService.acceptInvite(seeded.token, seeded.inviteeUserId),
-      ).rejects.toThrow(/other members/);
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        /other members/,
+      );
 
       const user = await readUser(seeded.inviteeUserId);
       expect(user.organization_id).toBe(seeded.inviteeOrgId);
@@ -333,12 +332,10 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
         app_url: "https://example.com",
       });
 
-      await expect(
-        invitesService.acceptInvite(seeded.token, seeded.inviteeUserId),
-      ).rejects.toThrow(/deployed apps or agents/);
-      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(
-        seeded.inviteeOrgId,
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        /deployed apps, agents, or managed domains/,
       );
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviteeOrgId);
       expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
     },
     PGLITE_TIMEOUT,
@@ -358,12 +355,53 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
         status: "running",
       });
 
-      await expect(
-        invitesService.acceptInvite(seeded.token, seeded.inviteeUserId),
-      ).rejects.toThrow(/deployed apps or agents/);
-      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(
-        seeded.inviteeOrgId,
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        /deployed apps, agents, or managed domains/,
       );
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviteeOrgId);
+      expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "owner with a live shared agent sandbox stays blocked",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario();
+      await dbWrite.insert(schemas.agentSandboxes).values({
+        id: uid(),
+        organization_id: seeded.inviteeOrgId,
+        user_id: seeded.inviteeUserId,
+        status: "running",
+        execution_tier: "shared",
+        agent_name: "shared agent",
+      });
+
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        /deployed apps, agents, or managed domains/,
+      );
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviteeOrgId);
+      expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "owner with a managed domain stays blocked",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario();
+      await dbWrite.insert(schemas.managedDomains).values({
+        id: uid(),
+        organizationId: seeded.inviteeOrgId,
+        domain: `solo-${seeded.inviteeUserId}.example.com`,
+      });
+
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        /deployed apps, agents, or managed domains/,
+      );
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviteeOrgId);
       expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
     },
     PGLITE_TIMEOUT,
@@ -377,12 +415,10 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
         inviteeOrgBalance: "25.000000",
       });
 
-      await expect(
-        invitesService.acceptInvite(seeded.token, seeded.inviteeUserId),
-      ).rejects.toThrow(/credits/);
-      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(
-        seeded.inviteeOrgId,
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        /credits/,
       );
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviteeOrgId);
       expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
     },
     PGLITE_TIMEOUT,
@@ -405,10 +441,7 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
         role: "owner",
       });
 
-      const accepted = await invitesService.acceptInvite(
-        seeded.token,
-        seeded.inviteeUserId,
-      );
+      const accepted = await invitesService.acceptInvite(seeded.token, seeded.inviteeUserId);
       expect(accepted.status).toBe("accepted");
 
       const user = await readUser(seeded.inviteeUserId);

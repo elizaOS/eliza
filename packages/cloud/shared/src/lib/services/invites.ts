@@ -8,6 +8,7 @@ import {
   organizationInvitesRepository,
   type User,
 } from "../../db/repositories";
+import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { appsRepository } from "../../db/repositories/apps";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { containersRepository } from "../../db/repositories/containers";
@@ -16,6 +17,7 @@ import { getInitialCredits } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
 import { emailService } from "./email";
+import { managedDomainsService } from "./managed-domains";
 import { organizationsService } from "./organizations";
 import { usersService } from "./users";
 
@@ -179,8 +181,8 @@ export class InvitesService {
     // Every self-signup provisions its user as the OWNER of a fresh solo org
     // (steward-sync), so a blanket owner block would dead-end every existing
     // account (#11332). An owner may accept iff their current org is an empty
-    // solo org: no other members, no deployed apps/agents, and no more credits
-    // than the signup grant. Anything richer keeps the block with an
+    // solo org: no other members, no deployed apps/agents/domains, and no more
+    // credits than the signup grant. Anything richer keeps the block with an
     // actionable error — abandoning a real org needs an explicit path.
     const vacatedSoloOrgId = user.role === "owner" ? user.organization_id : null;
     if (vacatedSoloOrgId) {
@@ -221,16 +223,23 @@ export class InvitesService {
       );
     }
 
-    const [appCount, containers] = await Promise.all([
+    const [appCount, containers, retainedAgentCount, managedDomainCount] = await Promise.all([
       appsRepository.countByOrganization(organizationId),
       containersRepository.listByOrganization(organizationId),
+      agentSandboxesRepository.countRetainedByOrganization(organizationId),
+      managedDomainsService.countForOrganization(organizationId),
     ]);
     const deployedContainers = containers.filter(
       (container) => container.status !== "deleted" && container.status !== "deleting",
     );
-    if (appCount > 0 || deployedContainers.length > 0) {
+    if (
+      appCount > 0 ||
+      deployedContainers.length > 0 ||
+      retainedAgentCount > 0 ||
+      managedDomainCount > 0
+    ) {
       throw new Error(
-        "You cannot join another organization while your current organization has deployed apps or agents. Delete them first.",
+        "You cannot join another organization while your current organization has deployed apps, agents, or managed domains. Delete or transfer them first.",
       );
     }
 
@@ -256,10 +265,13 @@ export class InvitesService {
     try {
       const remaining = await usersService.listByOrganization(previousOrganizationId);
       if (remaining.some((member) => member.id !== userId)) {
-        logger.warn("[InvitesService] Vacated org gained a member mid-accept; leaving it in place", {
-          previousOrganizationId,
-          userId,
-        });
+        logger.warn(
+          "[InvitesService] Vacated org gained a member mid-accept; leaving it in place",
+          {
+            previousOrganizationId,
+            userId,
+          },
+        );
         return;
       }
       await userCharactersRepository.reassignUserOrganization(
