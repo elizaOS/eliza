@@ -145,5 +145,26 @@ export default scenario({
       status: "success",
       minCount: 1,
     },
+    {
+      // Effect proof (#11381): the handler really received the inbound
+      // greeting through the pipeline — its result text must embed the exact
+      // user utterance, not merely success=true.
+      type: "custom",
+      name: "greeting-payload-roundtrip-effect",
+      predicate: (ctx) => {
+        const call = ctx.actionsCalled.find(
+          (action) =>
+            action.actionName === "GREET_USER" &&
+            action.result?.success === true,
+        );
+        if (!call) {
+          return "no successful GREET_USER call captured";
+        }
+        const expected = `Hello there! Great to meet you. You said: "${GREETING_INPUT}"`;
+        if (call.result?.text !== expected) {
+          return `expected the greeting ${JSON.stringify(expected)} in result.text, saw ${JSON.stringify(call.result?.text ?? null)}`;
+        }
+      },
+    },
   ],
 });
