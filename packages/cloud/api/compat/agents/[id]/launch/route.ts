@@ -12,10 +12,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { envelope, errorEnvelope } from "@/lib/api/compat-envelope";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import {
   launchManagedElizaAgent,
   ManagedElizaLaunchError,
 } from "@/lib/services/eliza-managed-launch";
+import { logger } from "@/lib/utils/logger";
 import { requireCompatAuth } from "../../../_lib/auth";
 import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
 import { handleCompatError } from "../../../_lib/error-handler";
@@ -29,6 +31,30 @@ async function __hono_POST(
   try {
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
+
+    // Gate on org credit before provisioning/waking a container. launch() is a
+    // third path into elizaSandboxService.provision() (via launchManagedElizaAgent,
+    // whenever the sandbox is not already running) alongside resume and restart —
+    // both of which already enforce this gate. Without it a credit-suspended
+    // dedicated agent could be launched (re-provisioned) for free, repeatedly
+    // (elizaOS/eliza#11152; same class as the resume/restart gap #10902/#10905).
+    const creditCheck = await checkAgentCreditGate(user.organization_id);
+    if (!creditCheck.allowed) {
+      logger.warn("[compat] Launch blocked: insufficient credits", {
+        agentId,
+        orgId: user.organization_id,
+        balance: creditCheck.balance,
+      });
+      return withCompatCors(
+        Response.json(
+          errorEnvelope(
+            creditCheck.error ?? "Insufficient credits to launch this agent",
+          ),
+          { status: 402 },
+        ),
+        CORS_METHODS,
+      );
+    }
 
     const result = await launchManagedElizaAgent({
       agentId,
