@@ -1,0 +1,90 @@
+{
+  "runId": "a919de7b-22a3-4622-adb3-35560cd71c24",
+  "startedAtIso": "2026-07-02T20:10:58.403Z",
+  "completedAtIso": "2026-07-02T20:11:33.233Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "local-inference.start-transcription",
+      "title": "Local inference: start voice transcription via the control bus",
+      "domain": "local-inference",
+      "tags": [
+        "smoke",
+        "local-inference",
+        "voice"
+      ],
+      "status": "passed",
+      "durationMs": 3276,
+      "turns": [
+        {
+          "name": "start",
+          "kind": "message",
+          "text": "Start transcribing this conversation.",
+          "responseText": "Starting transcription.",
+          "actionsCalled": [
+            {
+              "actionName": "START_TRANSCRIPTION",
+              "parameters": {
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "text": "Starting transcription.",
+                "raw": {
+                  "success": true,
+                  "text": "Starting transcription."
+                }
+              }
+            }
+          ],
+          "durationMs": 3071,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "START_TRANSCRIPTION succeeded 1x (1 total call(s))"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "START_TRANSCRIPTION",
+          "parameters": {
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "text": "Starting transcription.",
+            "raw": {
+              "success": true,
+              "text": "Starting transcription."
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0
+}
