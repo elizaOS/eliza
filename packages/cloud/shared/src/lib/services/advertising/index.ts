@@ -223,7 +223,12 @@ class AdvertisingService {
       account_name: input.accountName || validation.accountName || "Ad Account",
       access_token_secret_id: accessTokenSecret.id,
       refresh_token_secret_id: refreshTokenSecretId,
-      status: "active",
+      // Ad spend is money movement, so a newly-connected account starts
+      // "pending" and cannot run campaigns until a platform operator approves
+      // it (POST /api/v1/advertising/accounts/:id/approve, requireAdmin) — the
+      // same operator-executes posture as fiat payouts/redemptions. This
+      // prevents a stolen/abusive ad account from spending before review. (#11364)
+      status: "pending",
     });
 
     logger.info("[Advertising] Ad account connected", {
@@ -232,6 +237,53 @@ class AdvertisingService {
     });
 
     return account;
+  }
+
+  /**
+   * Approve a pending ad account so it can run campaigns. Platform-operator
+   * action (requireAdmin at the route) — the same operator-executes posture as
+   * fiat payouts; an org owner can never self-approve their own ad account. (#11364)
+   */
+  async approveAccount(accountId: string): Promise<AdAccount> {
+    const account = await adAccountsRepository.findById(accountId);
+    if (!account) {
+      throw new Error("Ad account not found");
+    }
+    if (account.status === "active") {
+      return account; // idempotent
+    }
+    if (account.status !== "pending") {
+      throw new Error(
+        `Ad account cannot be approved from status "${account.status}" (only "pending" accounts can be approved)`,
+      );
+    }
+    const updated = await adAccountsRepository.updateStatus(accountId, "active");
+    if (!updated) {
+      throw new Error("Ad account not found");
+    }
+    logger.info("[Advertising] Ad account approved", { accountId });
+    return updated;
+  }
+
+  /**
+   * Reject or suspend an ad account so it cannot run campaigns. Platform-operator
+   * action (requireAdmin at the route). Covers both rejecting a pending account
+   * on review and suspending an active account for ToS. (#11364)
+   */
+  async rejectAccount(accountId: string): Promise<AdAccount> {
+    const account = await adAccountsRepository.findById(accountId);
+    if (!account) {
+      throw new Error("Ad account not found");
+    }
+    if (account.status === "suspended") {
+      return account; // idempotent
+    }
+    const updated = await adAccountsRepository.updateStatus(accountId, "suspended");
+    if (!updated) {
+      throw new Error("Ad account not found");
+    }
+    logger.info("[Advertising] Ad account rejected/suspended", { accountId });
+    return updated;
   }
 
   async disconnectAccount(accountId: string, organizationId: string): Promise<void> {
@@ -449,6 +501,13 @@ class AdvertisingService {
     const account = await adAccountsRepository.findById(input.adAccountId);
     if (!account || account.organization_id !== input.organizationId) {
       throw new Error("Ad account not found");
+    }
+    // Only an approved (active) ad account may spend — a pending/suspended/
+    // disconnected account cannot create campaigns. (#11364)
+    if (account.status !== "active") {
+      throw new Error(
+        `Ad account is not active (status: ${account.status}); it must be approved before running campaigns`,
+      );
     }
 
     await contentSafetyService.assertSafeForPublicUse({
@@ -742,6 +801,14 @@ class AdvertisingService {
     const account = await adAccountsRepository.findById(campaign.ad_account_id);
     if (!account) {
       throw new Error("Ad account not found");
+    }
+    // Only an approved (active) ad account may spend — block starting a campaign
+    // on a pending/suspended/disconnected account (e.g. suspended for ToS after
+    // the campaign was created). (#11364)
+    if (account.status !== "active") {
+      throw new Error(
+        `Ad account is not active (status: ${account.status}); it must be approved before running campaigns`,
+      );
     }
 
     const credentials = await this.getCredentials(account);
