@@ -160,8 +160,8 @@ describe("GET /api/eliza-app/connections", () => {
         headers: { Authorization: "Bearer bogus" },
       },
     );
-    // Auth gate fires before platform check
-    expect([400, 401]).toContain(res.status);
+    // Auth gate fires before the platform check.
+    expect(res.status).toBe(401);
   });
 });
 
@@ -197,7 +197,8 @@ describe("POST /api/eliza-app/connections/:platform/initiate", () => {
       {},
       { headers: { Authorization: "Bearer bogus" } },
     );
-    expect([400, 401]).toContain(res.status);
+    // Session check fires before the unsupported-platform 400.
+    expect(res.status).toBe(401);
   });
 });
 
@@ -241,7 +242,9 @@ describe("POST /api/eliza-app/gateway/:agentId", () => {
         body: "not-json{{",
       },
     );
-    expect([400, 500]).toContain(res.status);
+    // The handler parses the body itself; malformed JSON surfaces as its own
+    // 500 envelope (not a middleware 400).
+    expect(res.status).toBe(500);
   });
 });
 
@@ -402,14 +405,12 @@ describe("POST /api/eliza/rooms/:roomId/welcome", () => {
   });
 
   test("missing text → 400", async () => {
-    // Even without auth, validation fires before auth when text is empty in
-    // some code paths — but in this handler auth check runs second. Either
-    // 400 or 401 is acceptable here; we assert the body is not 200.
+    // Empty-text validation fires before the auth check in this handler.
     const res = await api.post(
       "/api/eliza/rooms/room-welcome-test/welcome",
       {},
     );
-    expect([400, 401]).toContain(res.status);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -456,7 +457,10 @@ describe("POST /api/webhooks/blooio/:orgId", () => {
         body,
       },
     );
-    expect([401, 500]).toContain(res.status);
+    // No org/secret named test-org-blooio is seeded, so the verifier throws
+    // before signature comparison → the route's 500 envelope. (A seeded
+    // secret would make this a 401 signature-mismatch.)
+    expect(res.status).toBe(500);
   });
 
   test("invalid JSON body → 400", async () => {
@@ -474,7 +478,8 @@ describe("POST /api/webhooks/blooio/:orgId", () => {
         body: "not-json{{{{",
       },
     );
-    expect([400, 401, 500]).toContain(res.status);
+    // Same unseeded-org path: the verifier throws before JSON validation.
+    expect(res.status).toBe(500);
   });
 
   test("valid signed payload with SKIP_WEBHOOK_VERIFICATION → 200 or 500 (no DB)", async () => {
@@ -500,9 +505,11 @@ describe("POST /api/webhooks/blooio/:orgId", () => {
         body: bodyJson,
       },
     );
-    // Worker may not have the test secret configured, so either 200 (sig
-    // skipped via env) or 401/500 (no secret in DB / sig mismatch).
-    expect([200, 401, 500]).toContain(res.status);
+    // The e2e DB seeds no secret for test-org-blooio, so even a well-formed
+    // signature dies in the verifier's org lookup → 500. (With a seeded
+    // secret this is the 200 happy path; with SKIP_WEBHOOK_VERIFICATION the
+    // sig is skipped entirely.)
+    expect(res.status).toBe(500);
   });
 });
 
@@ -538,8 +545,8 @@ describe("POST /api/webhooks/twilio/:orgId", () => {
         body: formParams.toString(),
       },
     );
-    // Without X-Twilio-Signature + no auth token in DB → 401 or 500.
-    expect([401, 500]).toContain(res.status);
+    // No auth token is seeded for test-org-twilio: the verifier throws → 500.
+    expect(res.status).toBe(500);
   });
 
   test("invalid/missing form fields → 400", async () => {
@@ -552,11 +559,8 @@ describe("POST /api/webhooks/twilio/:orgId", () => {
         body: "not=valid",
       },
     );
-    // Zod validation runs before sig check in this handler, so 400.
-    // If SKIP_WEBHOOK_VERIFICATION is set AND the body passes Zod but sig check
-    // is skipped, we'd still get 400 for the invalid fields. Without
-    // SKIP_WEBHOOK_VERIFICATION and without a DB token, 500 is also valid.
-    expect([400, 401, 500]).toContain(res.status);
+    // Zod validation runs before the signature check → exactly 400.
+    expect(res.status).toBe(400);
   });
 
   test("valid signed form payload with SKIP_WEBHOOK_VERIFICATION → 200/xml or 401/500", async () => {
@@ -580,13 +584,10 @@ describe("POST /api/webhooks/twilio/:orgId", () => {
       },
       body: formBody,
     });
-    // 200 with XML TwiML response when Worker has SKIP_WEBHOOK_VERIFICATION=true,
-    // or 401/500 when not configured.
-    expect([200, 401, 500]).toContain(res.status);
-    if (res.status === 200) {
-      const contentType = res.headers.get("content-type") ?? "";
-      expect(contentType).toContain("xml");
-    }
+    // Without SKIP_WEBHOOK_VERIFICATION and with no seeded auth token the
+    // verifier throws → 500. (SKIP_WEBHOOK_VERIFICATION=true would yield the
+    // 200 TwiML path.)
+    expect(res.status).toBe(500);
   });
 });
 
@@ -613,7 +614,7 @@ describe("GET /api/webhooks/whatsapp/:orgId (Meta verification handshake)", () =
 });
 
 describe("POST /api/webhooks/whatsapp/:orgId", () => {
-  test("missing or invalid x-hub-signature-256 → 400 (bad orgId), 401 (no secret), or 500", async () => {
+  test("invalid signature with non-UUID orgId → 400 before signature handling", async () => {
     const body = JSON.stringify({
       object: "whatsapp_business_account",
       entry: [],
@@ -629,8 +630,11 @@ describe("POST /api/webhooks/whatsapp/:orgId", () => {
         body,
       },
     );
-    // 400 — orgId fails uuid validation; 401 — signature mismatch; 500 — verifier threw.
-    expect([400, 401, 500]).toContain(res.status);
+    // "test-org-wa" fails the route's UUID validation before any signature
+    // handling → exactly 400.
+    expect(res.status).toBe(400);
+    const errBody = (await res.json()) as { error?: string };
+    expect(errBody.error).toBe("Invalid organization ID");
   });
 
   test("invalid JSON body → 400", async () => {
@@ -645,7 +649,8 @@ describe("POST /api/webhooks/whatsapp/:orgId", () => {
         body: "not-json{{",
       },
     );
-    expect([400, 401, 500]).toContain(res.status);
+    // UUID validation still fires first — the malformed JSON is never read.
+    expect(res.status).toBe(400);
   });
 
   test("valid signed payload with SKIP_WEBHOOK_VERIFICATION → 200 or 400/401/500", async () => {
@@ -666,7 +671,8 @@ describe("POST /api/webhooks/whatsapp/:orgId", () => {
         body: bodyJson,
       },
     );
-    // 400 — orgId fails uuid validation; 401 — signature rejected; 500 — verifier threw.
-    expect([200, 400, 401, 500]).toContain(res.status);
+    // "test-org-wa" fails the route's UUID validation before any signature
+    // handling — even a well-formed signature → exactly 400.
+    expect(res.status).toBe(400);
   });
 });
