@@ -109,12 +109,14 @@ function shaderConfigsEqual(a?: ShaderConfig, b?: ShaderConfig): boolean {
   );
 }
 
-/** Build a normalized glsl `BackgroundConfig` from a shader source + partials. */
+/** Build a normalized glsl `BackgroundConfig` from a shader source + partials.
+ * `uniforms` accepts unknown-valued partials (agent/persisted input);
+ * `normalizeUniforms` clamps + coerces them to finite numbers. */
 export function makeGlslConfig(args: {
   source: string;
   color?: string;
   presetId?: string;
-  uniforms?: Partial<ShaderUniformValues>;
+  uniforms?: Partial<Record<keyof ShaderUniformValues, unknown>>;
 }): BackgroundConfig {
   return {
     mode: "glsl",

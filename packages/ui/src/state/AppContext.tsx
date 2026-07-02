@@ -1695,8 +1695,6 @@ function AppProviderInner({
     appendAutonomousEvent,
     notifyHeartbeatEvent,
     setSelectedVrmIndex,
-    setCustomVrmUrl,
-    setCustomBackgroundUrl,
     setWalletAddresses,
     setPtySessions,
     hasPtySessionsRef,

@@ -309,6 +309,10 @@ interface ViewFinding {
   whitespaceRatio: number;
   /** Rendered viewport area in px² — the divider-density normalization basis. */
   viewportArea: number;
+  /** The density probe crashed — surfaced as a finding, NOT scored as a
+   * zero-density "perfectly minimal" pass (a crashed probe used to silently
+   * satisfy the budget/ratchet). Non-empty means the metrics below are unknown. */
+  densityProbeFailures: string[];
   minimalismBudget: AestheticMetricBudget | null;
   minimalismBudgetViolations: string[];
   /** Blocking Her-minimal ratchet violations vs the committed baseline (#9950). */
@@ -867,6 +871,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
     `- **hover probe failures:** ${finding.hoverFailures.length ? finding.hoverFailures.join("; ") : "none"}`,
+    `- **density probe failures:** ${finding.densityProbeFailures.length ? finding.densityProbeFailures.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **floating chat overlay clearance:** ${finding.overlayClearanceIssues.length ? finding.overlayClearanceIssues.join("; ") : "clear"}`,
     `- **readable content chars:** ${finding.readableChars}`,
@@ -1063,19 +1068,31 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               () => [],
             )
           : [];
+        // A crashed density probe must NOT read as zero-density "perfectly
+        // minimal" — that silently satisfied both the budget and the ratchet.
+        // Record the failure (surfaced like hoverFailures) and skip scoring the
+        // placeholder zeros so the probe crash can never manufacture a pass.
+        const densityProbeFailures: string[] = [];
         const densityMetrics = await collectAestheticDensityMetrics(page).catch(
-          () => ({
-            borderDividerCount: 0,
-            borderDividerDensity: 0,
-            textDensity: 0,
-            whitespaceRatio: 1,
-            viewportArea: 0,
-          }),
+          (error: unknown) => {
+            densityProbeFailures.push(
+              `density probe failed: ${(error instanceof Error ? error.message : String(error)).split("\n")[0].slice(0, 120)}`,
+            );
+            return {
+              borderDividerCount: 0,
+              borderDividerDensity: 0,
+              textDensity: 0,
+              whitespaceRatio: 1,
+              viewportArea: 0,
+            };
+          },
         );
+        const densityProbeOk = densityProbeFailures.length === 0;
         const minimalismBudget = systemMetricBudgetFor(view.slug, vp.name);
-        const minimalismBudgetViolations = minimalismBudget
-          ? evaluateAestheticMetricBudget(densityMetrics, minimalismBudget)
-          : [];
+        const minimalismBudgetViolations =
+          minimalismBudget && densityProbeOk
+            ? evaluateAestheticMetricBudget(densityMetrics, minimalismBudget)
+            : [];
 
         const base = {
           slug: view.slug,
@@ -1091,17 +1108,24 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           overlayClearanceIssues,
           readableChars,
           ...densityMetrics,
+          densityProbeFailures,
           minimalismBudget,
           minimalismBudgetViolations,
           quality,
           qualityIssues,
         };
         // Her-minimal ratchet (#9950): blocks a NEW density breach (no baseline
-        // entry) or a baselined breach that regressed past tolerance.
-        const minimalismRatchetViolations = evaluateMinimalismRatchet(
-          base,
-          MINIMALISM_BASELINE.views[minimalismBaselineKey(view.slug, vp.name)],
-        );
+        // entry) or a baselined breach that regressed past tolerance. Only when
+        // the probe produced real metrics — a crashed probe's zero-density
+        // placeholder must not manufacture a ratchet pass.
+        const minimalismRatchetViolations = densityProbeOk
+          ? evaluateMinimalismRatchet(
+              base,
+              MINIMALISM_BASELINE.views[
+                minimalismBaselineKey(view.slug, vp.name)
+              ],
+            )
+          : [];
         const finding: ViewFinding = {
           ...base,
           minimalismRatchetViolations,
@@ -1177,6 +1201,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     const hoverProbeFailures = findings.filter(
       (f) => f.hoverFailures.length > 0,
     );
+    const densityProbeFailures = findings.filter(
+      (f) => f.densityProbeFailures.length > 0,
+    );
     console.log(
       `[aesthetic-audit] ${findings.length} findings — ` +
         `broken=${broken.length} needs-work=${needsWork.length} ` +
@@ -1185,6 +1212,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `minimalism-budget-failures=${minimalismBudgetFailures.length} ` +
         `minimalism-ratchet-failures=${minimalismRatchetFailures.length} ` +
         `hover-probe-failures=${hoverProbeFailures.length} ` +
+        `density-probe-failures=${densityProbeFailures.length} ` +
         `(strict=${AUDIT_STRICT}, needs-work-strict=${AUDIT_STRICT_NEEDS_WORK}, ` +
         `undebted-broken=${gate.undebtedBroken.length}, ` +
         `undebted-needs-work=${gate.undebtedNeedsWork.length})`,
