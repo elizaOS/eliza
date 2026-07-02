@@ -12,7 +12,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
-import type { SessionInfo } from "../services/types.js";
+import {
+  TERMINAL_SESSION_STATUSES,
+  type SessionInfo,
+} from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import { sendJson } from "./route-utils.js";
 
@@ -40,7 +43,6 @@ const BRIDGE_TIMEOUT_MS = 5_000;
 const DEFAULT_MEMORY_LIMIT = 10;
 const MAX_MEMORY_LIMIT = 50;
 const MEMORY_TABLES = ["facts", "messages", "documents"] as const;
-const TERMINAL_SESSION_STATUSES = new Set(["stopped", "error", "exited"]);
 
 class BridgeRouteError extends Error {
   constructor(
