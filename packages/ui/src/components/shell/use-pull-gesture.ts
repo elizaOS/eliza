@@ -54,8 +54,12 @@ export interface PullGestureOptions {
   velocityThresholdX?: number;
 }
 
-/** Movement (px) under which a release is treated as a tap, not a drag. */
-const TAP_SLOP = 8;
+/** Movement (px) under which a release is treated as a tap, not a drag.
+ *  Exported so consumers that must classify the browser's compat `click`
+ *  (synthesized from the same press) use the SAME tap definition as the
+ *  gesture engine — see the HomeScreen notification pull zone. */
+export const PULL_GESTURE_TAP_SLOP = 8;
+const TAP_SLOP = PULL_GESTURE_TAP_SLOP;
 /** Movement (px) at which the gesture commits to a single axis. */
 const AXIS_COMMIT_SLOP = 8;
 

@@ -120,6 +120,12 @@ const IconTile = memo(function IconTile({
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStart = useRef<{ x: number; y: number } | null>(null);
+  // A fired long-press must swallow the click the browser synthesizes from the
+  // SAME press on release. Without this, a long-press while ALREADY in edit
+  // mode toggled edit OFF and the trailing click then passed the `!editing`
+  // guard — the tile ghost-launched. (Entering edit mode only looked safe
+  // because the re-render flipped `editing` before the click arrived.)
+  const longPressFired = useRef(false);
   const badge = viewKindBadge(entry);
 
   const clear = () => {
@@ -140,12 +146,20 @@ const IconTile = memo(function IconTile({
           type="button"
           aria-label={entry.label}
           onClick={() => {
+            if (longPressFired.current) {
+              longPressFired.current = false;
+              return;
+            }
             if (!editing) onLaunch(entry);
           }}
           onPointerDown={(event) => {
             clear();
+            longPressFired.current = false;
             pressStart.current = { x: event.clientX, y: event.clientY };
-            timer.current = setTimeout(onLongPress, LONG_PRESS_MS);
+            timer.current = setTimeout(() => {
+              longPressFired.current = true;
+              onLongPress();
+            }, LONG_PRESS_MS);
           }}
           // A long-press requires a near-stationary finger: once movement passes
           // LONG_PRESS_MOVE_SLOP the press is a pan/swipe, so cancel the timer.
