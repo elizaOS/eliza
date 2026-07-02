@@ -31,26 +31,32 @@
 //   __ARM_FEATURE_DOTPROD, so this never produces an undefined symbol.
 //
 // Floor rationale:
-//   armv8.2-a is the floor that introduced dotprod + fp16 vector arithmetic;
-//   i8mm arrived at armv8.6-a but is back-portable as a `+i8mm` feature
-//   suffix on an armv8.2-a base (the toolchain emits the i8mm instructions;
-//   the runtime only executes them on hardware that has them, and the QJL/ggml
-//   kernels self-guard on the corresponding __ARM_FEATURE_* macros). The
-//   Pixel 9a / Tensor G4 reports asimddp + i8mm + asimdhp/fphp, so this floor
-//   is safe for the only Android arm64 device we ship to today. Devices below
-//   armv8.2-a (pre-2017 SoCs) are not a target; if that changes, switch to the
-//   GGML_CPU_ALL_VARIANTS=ON + GGML_BACKEND_DL=ON runtime-dispatch route (as
-//   the riscv64 build already does) instead of lowering this floor.
+//   armv8.2-a is the floor that introduced dotprod + fp16 vector arithmetic.
+//   i8mm is NOT in the floor. It was originally included on the assumption
+//   that the __ARM_FEATURE_* self-guards are runtime checks — they are not:
+//   they are compile-time macros that `-march=...+i8mm` defines
+//   unconditionally, so the compiler emits smmla into the quantized matmul
+//   kernels with no hardware gate. On any core older than ARMv8.6 that is a
+//   hard SIGILL: device-verified on a Pixel 6a (Tensor G1, Cortex-X1/A76/A55,
+//   /proc/cpuinfo Features has asimddp but no i8mm) — pure-CPU decode and the
+//   clip/mmproj encoder both die with "Illegal instruction" (exit 132), which
+//   breaks every Tensor G1/G2 device (Pixel 6/6a/6 Pro/7 series) on the CPU
+//   path (#10727). The Pixel 9a / Tensor G4 has i8mm, which is why earlier
+//   9a-only verification never caught it.
+//   To get i8mm speed back on v8.6+ cores without dropping v8.2 devices,
+//   switch to the GGML_CPU_ALL_VARIANTS=ON + GGML_BACKEND_DL=ON
+//   runtime-dispatch route (as the riscv64 build already does) — never
+//   re-add +i8mm to this fixed floor.
 
 /**
  * The fixed Android arm64-v8a SIMD architecture string passed to
  * `-DGGML_CPU_ARM_ARCH=`. Exported for tests / logging.
  */
-export const ANDROID_ARM64_CPU_ARCH = "armv8.2-a+dotprod+fp16+i8mm";
+export const ANDROID_ARM64_CPU_ARCH = "armv8.2-a+dotprod+fp16";
 
 /**
  * CMake `-D` flags that raise an Android arm64-v8a fork build from the bare
- * armv8-a baseline to the armv8.2-a+dotprod+fp16+i8mm floor AND turn on the
+ * armv8-a baseline to the armv8.2-a+dotprod+fp16 floor AND turn on the
  * QJL NEON-dotprod dispatch define.
  *
  * Returns an empty array for any non-arm64 ABI so callers can splat it
