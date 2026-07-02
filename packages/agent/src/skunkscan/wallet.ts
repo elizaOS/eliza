@@ -1,6 +1,7 @@
 import { getSolanaBalance, getSolanaRecentSignatures } from "./helius";
 import {
   SupportedChain,
+  WalletActivitySummary,
   WalletBalance,
   WalletInvestigationResult,
   WalletRecentTransaction,
@@ -43,6 +44,28 @@ export async function investigateWallet(
         : undefined,
     status: tx.err ? "failed" : "success",
   }));
+        const failedTransactionCount = recentTransactions.filter(
+  (tx) => tx.status === "failed",
+).length;
+
+const lastActiveAt =
+  recentTransactions.length > 0 ? recentTransactions[0].blockTime : null;
+
+const activityLevel =
+  recentTransactions.length === 0
+    ? "none"
+    : recentTransactions.length <= 3
+      ? "low"
+      : recentTransactions.length <= 10
+        ? "medium"
+        : "high";
+
+const activity: WalletActivitySummary = {
+  recentTransactionCount: recentTransactions.length,
+  failedTransactionCount,
+  lastActiveAt,
+  activityLevel,
+};
 
         return {
           chain,
@@ -51,6 +74,7 @@ export async function investigateWallet(
           balance: walletBalance,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
+activity,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
