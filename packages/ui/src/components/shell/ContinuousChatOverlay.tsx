@@ -3346,7 +3346,9 @@ export function ContinuousChatOverlay({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // An open Radix dialog (data-state="open" — e.g. the command palette)
-        // or the notification pull-down sheet (mounts only while open) sits
+        // or a notification surface (the mobile pull-down sheet or the desktop
+        // anchored panel — both mount only while open; the panel carries
+        // role="dialog" with NO data-state="open") sits
         // above the chat: let ITS Escape handling win — collapsing here too
         // closed both at once (e.g. an invisible palette + the chat). Scoped
         // to exactly these; broad role="dialog" would match always-mounted
@@ -3359,7 +3361,7 @@ export function ContinuousChatOverlay({
         // NOT also collapse the whole sheet + discard the in-progress edit.
         if (
           document.querySelector(
-            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
+            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="notification-panel"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
           )
         ) {
           return;

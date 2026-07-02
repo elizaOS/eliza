@@ -915,6 +915,30 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("lets the desktop notification panel own Escape — the chat only collapses once the panel is gone", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // The desktop anchored notification panel carries role="dialog" but NO
+    // data-state="open" (it is not a Radix dialog), so it wouldn't match the
+    // dialog guard — Escape must close IT alone, not also collapse the chat.
+    const panel = document.createElement("div");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("data-testid", "notification-panel");
+    document.body.appendChild(panel);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      panel.remove();
+    }
+    // Panel gone: Escape collapses the chat as before.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
   it("Escape closes an in-progress message edit without collapsing the whole sheet (#9148)", () => {
     render(
       <ContinuousChatOverlay
