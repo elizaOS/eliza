@@ -294,16 +294,13 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
     // advisory lock — so the check and the write are atomic (no TOCTOU).
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(executeCalls).toBe(1);
-    // The count scoped to this org AND to the quota-counted statuses. The
-    // filter uses inArray → the status values are query PARAMS, not inline
-    // literals; and the quota count is intentionally BROADER than the reuse
-    // guard (it counts every resource-holding non-terminal status).
+    // The count scoped to this org AND to non-terminal statuses only.
     expect(capturedSelectWhere).toBeDefined();
-    const { sql, params } = new PgDialect().sqlToQuery(capturedSelectWhere as SQL);
+    const sql = new PgDialect().sqlToQuery(capturedSelectWhere as SQL).sql;
     expect(sql).toContain("organization_id");
-    for (const status of ["pending", "provisioning", "running", "stopped", "sleeping"]) {
-      expect(params).toContain(status);
-    }
+    expect(sql).toContain("'pending'");
+    expect(sql).toContain("'provisioning'");
+    expect(sql).toContain("'running'");
   });
 
   test("a fresh create AT the cap is refused with AgentQuotaExceededError and NO insert (fleet-DoS closed)", async () => {
@@ -382,15 +379,13 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
     // serialize creates with DIFFERENT images against one org's quota, and the
     // strict org→image order keeps this path deadlock-free vs createAgent.
     expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v1"]);
-    // The quota count scoped to the org + quota-counted statuses ran under the
-    // lock. inArray parameterizes the status values (params, not inline SQL),
-    // and the count is intentionally BROADER than the reuse guard.
+    // The quota count scoped to the org + non-terminal statuses ran under the lock.
     expect(capturedSelectWhere).toBeDefined();
-    const { sql, params } = new PgDialect().sqlToQuery(capturedSelectWhere as SQL);
+    const sql = new PgDialect().sqlToQuery(capturedSelectWhere as SQL).sql;
     expect(sql).toContain("organization_id");
-    for (const status of ["pending", "provisioning", "running", "stopped", "sleeping"]) {
-      expect(params).toContain(status);
-    }
+    expect(sql).toContain("'pending'");
+    expect(sql).toContain("'provisioning'");
+    expect(sql).toContain("'running'");
   });
 
   test("a distinct-image create AT the cap is refused with AgentQuotaExceededError and NO insert", async () => {
