@@ -726,6 +726,179 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps a bare unfenced code-body Stage 1 reply verbatim (#11504)", async () => {
+		// gemma-4-31b answers HumanEval-style prompts with a bare Python body: no
+		// markdown fence, no chat prose, nested blocks at 8+ space indentation.
+		// The old unanchored repeated-character heuristic flagged the indentation
+		// run as junk and replaced the whole solution with a deferral, dropping
+		// the eliza-harness humaneval score to 0.40 vs 1.00 on raw harnesses.
+		const bareCode = [
+			"def has_close_elements(numbers: List[float], threshold: float) -> bool:",
+			"    for i in range(len(numbers)):",
+			"        for j in range(i + 1, len(numbers)):",
+			"            if abs(numbers[i] - numbers[j]) < threshold:",
+			"                return True",
+			"    return False",
+		].join("\n");
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: bareCode }),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Complete this Python function: def has_close_elements(numbers: List[float], threshold: float) -> bool: check if any two numbers are closer than threshold.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(bareCode);
+		}
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
+	it("keeps a fenced code block reply even with a prose lead-in (#11504)", async () => {
+		// The old fence exemption only fired when the reply STARTED with ``` — a
+		// prose sentence before the fence re-exposed the reply to the repeated-run
+		// check, which flagged the nested indentation inside the block.
+		const reply = [
+			"Here's the implementation:",
+			"",
+			"```python",
+			"def first_positive(xs):",
+			"    for x in xs:",
+			"        if x > 0:",
+			"            return x",
+			"    return None",
+			"```",
+		].join("\n");
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: reply }),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Write a Python function that returns the first positive number in a list.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(reply);
+		}
+	});
+
+	it("keeps a pretty-printed JSON structured reply (#11504)", async () => {
+		// 4-space pretty-printing nests to 8+ consecutive spaces, which the old
+		// unanchored repeated-run check classified as junk.
+		const reply = JSON.stringify(
+			{ user: { name: "Ada", roles: ["admin", "ops"], active: true } },
+			null,
+			4,
+		);
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: reply }),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Show me the user record as JSON, pretty-printed.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(reply);
+		}
+	});
+
+	it("keeps prose containing a separator or emphasis run (#11504)", async () => {
+		// "=====" separators and stretched words are legitimate content; only a
+		// reply that is NOTHING BUT repeated-character runs is degenerate output.
+		for (const reply of [
+			"Results:\n=====\nAll 20 checks passed.",
+			"Sooooo happy this worked out for you!",
+		]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: reply }),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "How did the checks go?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+		}
+	});
+
+	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
+		for (const badReply of [
+			"",
+			"   ",
+			"I am not sure.",
+			"I'm not sure how to answer that.",
+			"I don't know.",
+			"I'm sorry, I can't help with that.",
+			"aaaaa bbbbb",
+			"!!!!!\n!!!!!",
+		]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: badReply }),
+			]);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "What is 2+2?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"I'm not sure how to answer that.",
+				);
+			}
+		}
+	});
+
+	it("keeps a refusal that continues into content and a bare social apology (#11504)", async () => {
+		// Refusal-plus-content carries an answer; apology-only is a legitimate
+		// conversational reply. Neither is an unusable stub.
+		for (const reply of [
+			"I'm not sure, but my best guess is 42.",
+			"Sorry about that.",
+			"Sorry.",
+		]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: reply }),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "What's the answer?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+		}
+	});
+
 	it("uses a compact response-handler schema for direct channels", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
