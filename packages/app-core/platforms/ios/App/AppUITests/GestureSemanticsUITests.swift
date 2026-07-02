@@ -7,9 +7,12 @@ import XCTest
 /// engine — native touch pipeline → WKWebView pointer events → the web app's
 /// gesture code — not just "no crash":
 ///
-///   - `testChatSheetDetentFlickCycle` — flicks the chat pull-sheet through its
-///     detents (collapsed → half → full → half → collapsed) via the grabber and
-///     asserts the landed detent after every flick.
+///   - `testChatSheetDetentFlickCycle` — drives the chat pull-sheet through
+///     its detents via the grabber (slow-drag free-settle open → flick to full
+///     → flick down to half → flick down to collapsed) asserting the landed
+///     detent after every gesture, then exercises the thread-gated flick-up
+///     from collapsed against the AX-observed thread state (reveal at half
+///     with a thread, refusal on an empty one — both real semantics).
 ///   - `testLauncherPagerFiftyPercentSwipeThreshold` — a slow sub-threshold
 ///     drag on the home↔launcher rail must snap back; a slow drag past the 50%
 ///     point must commit the page (velocity deliberately killed with a
@@ -51,14 +54,17 @@ final class GestureSemanticsUITests: XCTestCase {
         try settleSheetToCollapsed(in: app)
         attachScreenshot(named: "detent-00-collapsed")
 
-        // Flick UP #1: collapsed → half (a 260pt flick is well past the
-        // velocity threshold but under the half+magnet height, so "half" is the
-        // deterministic landing detent).
-        try flickGrabber(in: app, dy: -260)
-        assertDetent(becomes: "half", in: app, step: "detent-10-after-flick-up")
+        // SLOW DRAG up from the collapsed input (velocity killed by the
+        // hold-before-release): the free-settle rule must open the sheet to the
+        // released height regardless of thread content, and a 260pt rest in the
+        // detent gap reads "half" (the label folds a mid free-rest into half).
+        // This is deliberately the DISTANCE path — the flick path from
+        // collapsed is thread-gated and is exercised separately below.
+        try slowDragGrabber(in: app, dy: -260)
+        assertDetent(becomes: "half", in: app, step: "detent-10-after-slow-open")
 
-        // Flick UP #2: half → full (any upward flick from an open, non-expanded
-        // sheet steps to the FULL detent).
+        // Flick UP: any upward flick on an open, non-expanded sheet steps to
+        // the FULL detent (not thread-gated).
         try flickGrabber(in: app, dy: -260)
         assertDetent(becomes: "full", in: app, step: "detent-20-after-flick-up")
 
@@ -66,10 +72,39 @@ final class GestureSemanticsUITests: XCTestCase {
         try flickGrabber(in: app, dy: 260)
         assertDetent(becomes: "half", in: app, step: "detent-30-after-flick-down")
 
+        // While the sheet is open, capture the AX ground truth for the
+        // thread-gated flick leg below: does the thread actually hold any
+        // message bubbles right now? (The app may have evicted the optimistic
+        // user turn when the agent never became ready — see the warm-up
+        // eviction note on ensurePersistentUserMessage.)
+        let threadHasBubbles = messageBubbles(in: app).count > 0
+        attachScreenshot(named: "detent-35-open-thread-state")
+
         // Flick DOWN #2: half → collapsed.
         try flickGrabber(in: app, dy: 260)
         assertDetent(
             becomes: "collapsed", in: app, step: "detent-40-after-flick-down")
+
+        // Flick UP from collapsed — BOTH outcomes are spec'd semantics, chosen
+        // by the observed thread state (never a silent skip):
+        //   thread present → the flick reveals the thread at the HALF detent;
+        //   thread empty   → the flick must be REFUSED (the sheet has nothing
+        //                    to reveal; ContinuousChatOverlay's onPullUp
+        //                    deliberately settles back), so the detent must
+        //                    still read "collapsed" after the poll.
+        try flickGrabber(in: app, dy: -260)
+        if threadHasBubbles {
+            assertDetent(
+                becomes: "half", in: app, step: "detent-50-flick-reveals-thread")
+        } else {
+            Thread.sleep(forTimeInterval: 2.0)
+            attachScreenshot(named: "detent-50-flick-refused-empty-thread")
+            XCTAssertEqual(
+                markerValue(Self.detentPrefix, in: app), "collapsed",
+                "a flick-up on a collapsed sheet with an EMPTY thread must be "
+                    + "refused (nothing to reveal) and leave the detent collapsed"
+            )
+        }
     }
 
     func testLauncherPagerFiftyPercentSwipeThreshold() throws {
@@ -120,7 +155,7 @@ final class GestureSemanticsUITests: XCTestCase {
         let app = XCUIApplication()
         try launchToRenderer(app)
         let messageText = "edit me please"
-        try ensureUserMessage(in: app, text: messageText)
+        try ensurePersistentUserMessage(in: app, text: messageText)
 
         // Tap the (last) user bubble → the action row must reveal Edit.
         let bubble = try lastMessageBubble(in: app)
@@ -165,7 +200,7 @@ final class GestureSemanticsUITests: XCTestCase {
         let app = XCUIApplication()
         try launchToRenderer(app)
         let messageText = "callout probe message"
-        try ensureUserMessage(in: app, text: messageText)
+        try ensurePersistentUserMessage(in: app, text: messageText)
 
         // POSITIVE CONTROL — the message bubble opts back into selection
         // (`[data-chat-selectable]` → -webkit-touch-callout: default), so a
@@ -345,6 +380,24 @@ final class GestureSemanticsUITests: XCTestCase {
             thenHoldForDuration: 0)
     }
 
+    /// Slow deliberate drag on the grabber with a hold-before-release: zero
+    /// release velocity, so the web gesture engine resolves it via the
+    /// free-settle (distance) rule, never the flick rule. Verified against the
+    /// real engine: this path opens the sheet even when the thread is empty,
+    /// unlike the thread-gated flick.
+    private func slowDragGrabber(in app: XCUIApplication, dy: CGFloat) throws {
+        guard let handle = grabber(in: app), handle.isHittable else {
+            attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-grabber")
+            throw XCTSkip("no hittable sheet grabber in the AX tree")
+        }
+        let start = handle.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = start.withOffset(CGVector(dx: 0, dy: dy))
+        start.press(
+            forDuration: 0.25, thenDragTo: end, withVelocity: .slow,
+            thenHoldForDuration: 0.6)
+    }
+
     /// Slow horizontal drag with a hold-before-release: the hold zeroes the
     /// release velocity, so only the DISTANCE threshold can commit the page —
     /// exactly the 50%-swipe rule under test.
@@ -507,6 +560,30 @@ final class GestureSemanticsUITests: XCTestCase {
             composerCleared
                 ? "sent '\(text)' but no user bubble surfaced in the AX tree within 15s"
                 : "the send control never cleared the draft — the message did not submit"
+        )
+    }
+
+    /// ensureUserMessage + persistence check. Sending during the local agent's
+    /// model warm-up can EVICT the optimistic user turn a few seconds later:
+    /// the post-turn history reload full-replaces the thread with server truth,
+    /// and a server that never accepted the turn returns an empty thread. The
+    /// message-dependent gesture tests (edit affordance, callout positive
+    /// control) need the bubble to still exist when they touch it, so verify it
+    /// survives the eviction window and retry once before skipping honestly.
+    private func ensurePersistentUserMessage(
+        in app: XCUIApplication, text: String
+    ) throws {
+        for attempt in 1...2 {
+            try ensureUserMessage(in: app, text: text)
+            Thread.sleep(forTimeInterval: 5.0)
+            if messageBubbles(in: app).count > 0 { return }
+            attachScreenshot(named: "persist-\(attempt)-bubble-evicted")
+        }
+        attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-evicted-thread")
+        throw XCTSkip(
+            "the app evicted the sent user turn during agent warm-up (the "
+                + "post-turn history reload returned an empty thread), so this "
+                + "message-dependent gesture cannot be exercised on this boot"
         )
     }
 
