@@ -5,6 +5,7 @@ import importlib.util
 import contextlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -84,11 +85,78 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
     assert "view-bundle-size" not in discovery.all_directories
     assert "skillsbench" not in discovery.all_directories
     assert "skillsbench" not in orchestrator_adapters.IGNORED_BENCHMARK_DIRS
-    assert not (_workspace_root() / "benchmarks" / "skillsbench").exists()
+    # skillsbench was deleted from the tree (#9506), but gitignored residue can
+    # linger on disk in long-lived checkouts, so assert against the git index
+    # rather than the raw filesystem.
+    skillsbench_tracked = subprocess.run(
+        ["git", "-C", str(_workspace_root()), "ls-files", "--", "benchmarks/skillsbench"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    assert skillsbench_tracked == ""
     assert "swe-bench-pro" not in discovery.all_directories
     assert "swe-bench-workspace" not in discovery.all_directories
     assert not any("gaia" in name.lower() for name in discovery.all_directories)
     assert not any("gaia" in adapter_id.lower() for adapter_id in discovery.adapters)
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+def _make_workspace_with_residue(tmp_path: Path) -> Path:
+    """Git workspace whose benchmarks/ holds a tracked dir, an untracked WIP
+    dir, and a deleted-benchmark residue dir whose only content is gitignored."""
+    repo = tmp_path / "workspace"
+    benchmarks = repo / "benchmarks"
+    benchmarks.mkdir(parents=True)
+    _git("init", "-q", str(repo), cwd=tmp_path)
+    (benchmarks / ".gitignore").write_text("residue-bench/\n")
+    tracked = benchmarks / "tracked-bench"
+    tracked.mkdir()
+    (tracked / "README.md").write_text("real benchmark\n")
+    wip = benchmarks / "new-bench"
+    wip.mkdir()
+    (wip / "runner.py").write_text("print('wip benchmark')\n")
+    residue = benchmarks / "residue-bench" / "results"
+    residue.mkdir(parents=True)
+    (residue / "out.json").write_text("{}")
+    _git("add", "benchmarks/.gitignore", "benchmarks/tracked-bench", cwd=repo)
+    return repo
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="requires git")
+def test_git_visible_dir_names_filters_ignored_residue(tmp_path: Path) -> None:
+    # Regression for the #11196 review finding: benchmarks deleted from the
+    # tree (#9475/#9506 de-larp: claw-eval, loca-bench, qwen-claw-bench,
+    # skillsbench, swe-bench-pro; later lifeops-quality) linger on disk in
+    # long-lived checkouts because their remaining files are all gitignored,
+    # and were reported as phantom coverage gaps.
+    repo = _make_workspace_with_residue(tmp_path)
+
+    visible = orchestrator_adapters._git_visible_dir_names(repo / "benchmarks")
+
+    assert visible is not None
+    assert "tracked-bench" in visible  # tracked content stays visible
+    assert "new-bench" in visible  # untracked-but-not-ignored WIP stays visible
+    assert "residue-bench" not in visible  # all-gitignored residue is skipped
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="requires git")
+def test_discovery_skips_gitignored_residue_directories(tmp_path: Path) -> None:
+    repo = _make_workspace_with_residue(tmp_path)
+
+    discovery = discover_adapters(repo)
+
+    assert "tracked-bench" in discovery.all_directories
+    assert "new-bench" in discovery.all_directories
+    assert "residue-bench" not in discovery.all_directories
+
+
+def test_git_visible_dir_names_returns_none_outside_git_repo(tmp_path: Path) -> None:
+    # Non-repo checkouts (tarball exports) keep the pure filesystem scan.
+    assert orchestrator_adapters._git_visible_dir_names(tmp_path) is None
 
 
 def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> None:
