@@ -1,6 +1,6 @@
 {
   "schema": "eliza_type_safety_ratchet_v1",
-  "updatedAt": "2026-07-02T12:29:25.739Z",
+  "updatedAt": "2026-07-02T23:03:00.368Z",
   "scope": {
     "trackedOnly": true,
     "enumeration": "git ls-files",
@@ -43,15 +43,15 @@
     ]
   },
   "limits": {
-    "asUnknownAs": 76,
+    "asUnknownAs": 75,
     "asAny": 0,
     "explicitAny": 124,
     "tsSuppress": 0,
-    "nonNullAssertion": 518,
+    "nonNullAssertion": 515,
     "nullishEmptyString": 615,
     "nullishEmptyArray": 581,
     "nullishEmptyObject": 377,
     "nullishZero": 375
   },
-  "filesScanned": 9991
+  "filesScanned": 10028
 }
