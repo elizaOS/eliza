@@ -51,9 +51,11 @@ const checkout = await cloud.createAppCreditsCheckout({
 
 // 4. Run inference billed to the app's credits via the `appId` option
 //    (sends the `X-App-Id` header). Omit `appId` to bill the caller's own credits.
+//    Add `affiliateCode` to attribute the call to an affiliate for revenue share
+//    (sends `X-Affiliate-Code`; read by the credit-billed inference routes).
 const reply = await cloud.createChatCompletion(
   { model: "anthropic/claude-sonnet-4.5", messages: [{ role: "user", content: "hi" }] },
-  { appId: "app_123" },
+  { appId: "app_123", affiliateCode: "aff_xyz" },
 );
 ```
 
@@ -78,9 +80,12 @@ The generated URL is
 Use `/app-auth/authorize`; do not use `/authorize`.
 
 `waitForCliLogin(sessionId, { timeoutMs?, intervalMs?, signal? })` and the
-`{ appId }` option on `createChatCompletion` / `createResponse` /
-`createEmbeddings` / `generateImage` exist so browser apps don't have to
-hand-roll the polling loop or a raw `fetch` to send `X-App-Id`.
+`{ appId, affiliateCode }` options on `createChatCompletion` / `createResponse` /
+`createEmbeddings` / `generateImage` / `transcribeAudio` exist so browser apps
+don't have to hand-roll the polling loop or a raw `fetch` to send `X-App-Id` /
+`X-Affiliate-Code`. `appId` bills the app and credits the creator markup;
+`affiliateCode` credits the affiliate's revenue share. Both are per-call and
+sent only when set.
 
 > Browser note: `startCliLogin` / `pollCliLogin` are CORS-friendly (token auth,
 > no cookies). `pairWithToken` is server/agent-only — it sets an `Origin` header

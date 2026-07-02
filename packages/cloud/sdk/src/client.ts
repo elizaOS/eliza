@@ -192,13 +192,28 @@ export interface InferenceCallOptions {
    * the caller's own org/personal credits.
    */
   appId?: string;
+  /**
+   * Attribute this request to an affiliate for revenue share by sending the
+   * `X-Affiliate-Code` header. Read by the credit-billed inference routes
+   * (chat/completions, embeddings, voice); routes without affiliate billing
+   * ignore it. Omit when no affiliate applies.
+   */
+  affiliateCode?: string;
 }
 
-/** Build the request options that carry the `X-App-Id` header, if an app id is set. */
-function appIdRequestOptions(appId?: string): {
+/**
+ * Build the request headers for an inference call: `X-App-Id` (app billing +
+ * creator markup) and `X-Affiliate-Code` (affiliate revenue share). Each is
+ * sent only when set, so a plain call carries neither.
+ */
+function inferenceRequestOptions(options: InferenceCallOptions): {
   headers?: Record<string, string>;
 } {
-  return appId ? { headers: { "X-App-Id": appId } } : {};
+  const headers: Record<string, string> = {};
+  if (options.appId) headers["X-App-Id"] = options.appId;
+  if (options.affiliateCode)
+    headers["X-Affiliate-Code"] = options.affiliateCode;
+  return Object.keys(headers).length > 0 ? { headers } : {};
 }
 
 function withPathParams(
@@ -397,7 +412,7 @@ export class ElizaCloudClient {
     return this.v1.post<ResponsesCreateResponse>(
       "/responses",
       request,
-      appIdRequestOptions(options.appId),
+      inferenceRequestOptions(options),
     );
   }
 
@@ -408,7 +423,7 @@ export class ElizaCloudClient {
     return this.v1.post<ChatCompletionResponse>(
       "/chat/completions",
       request,
-      appIdRequestOptions(options.appId),
+      inferenceRequestOptions(options),
     );
   }
 
@@ -419,7 +434,7 @@ export class ElizaCloudClient {
     return this.v1.post<EmbeddingsResponse>(
       "/embeddings",
       request,
-      appIdRequestOptions(options.appId),
+      inferenceRequestOptions(options),
     );
   }
 
@@ -430,7 +445,7 @@ export class ElizaCloudClient {
     return this.v1.post<GenerateImageResponse>(
       "/generate-image",
       request,
-      appIdRequestOptions(options.appId),
+      inferenceRequestOptions(options),
     );
   }
 
@@ -453,7 +468,7 @@ export class ElizaCloudClient {
       form.append("languageCode", request.languageCode);
     }
     return this.v1.request<VoiceSttResponse>("POST", "/voice/stt", {
-      ...appIdRequestOptions(options.appId),
+      ...inferenceRequestOptions(options),
       body: form,
     });
   }
