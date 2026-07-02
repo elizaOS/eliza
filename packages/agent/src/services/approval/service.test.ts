@@ -19,8 +19,8 @@ import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   APPROVAL_SERVICE,
-  ApprovalExpiredError,
   type ApprovalEnqueueInput,
+  ApprovalExpiredError,
   ApprovalNotFoundError,
   ApprovalService,
   ApprovalStateTransitionError,

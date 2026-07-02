@@ -308,7 +308,7 @@ describe("Influencer marketplace escrow (#10687)", () => {
     expect(await orgBalance(adv.orgId)).toBeCloseTo(30, 2); // still exactly one debit
   });
 
-  test("payout failure leaves the booking delivered; retry pays exactly once", async () => {
+  test("payout failure leaves the booking approving; retry pays exactly once", async () => {
     if (!pgliteReady) return;
     const adv = await seedOrgUser("100.00");
     const inf = await seedProfile();
@@ -332,10 +332,12 @@ describe("Influencer marketplace escrow (#10687)", () => {
       error: "simulated payout outage",
     });
     try {
-      // Payout fails → approve MUST NOT report success or move the status.
+      // Payout fails after the fork was claimed → approve MUST NOT report
+      // success or pay; the booking rests in `approving` for the same operation
+      // to resume (the claim CAS already fenced out a concurrent reject). (#11116)
       const failed = await service.approveBooking(id, adv.orgId);
       expect(failed.ok).toBe(false);
-      expect((await service.getBooking(id))?.status).toBe("delivered");
+      expect((await service.getBooking(id))?.status).toBe("approving");
       expect(await earnings(inf.userId)).toBe(0);
     } finally {
       redeemableEarningsService.addEarnings = originalAddEarnings;
@@ -437,5 +439,86 @@ describe("Influencer marketplace escrow (#10687)", () => {
       createdByUserId: inf.userId,
     });
     expect(res.ok).toBe(false);
+  });
+
+  // #11116 — the `delivered` money fork must never both pay the influencer AND
+  // refund the advertiser for one escrow. Before the CAS-claim fix, approve and
+  // rejectDeliverable each read `delivered` and moved money before their status
+  // CAS, under different idempotency keys, so a concurrent pair double-spent.
+  // Promise.all on single-connection PGlite interleaves the two methods' awaits
+  // (both reads land before either finalize), reproducing the race; the claim
+  // CAS (`delivered → approving`/`refunding`) now lets exactly one win.
+  test("concurrent approve + rejectDeliverable on a delivered booking moves money exactly once (#11116)", async () => {
+    if (!pgliteReady) return;
+    const adv = await seedOrgUser("100.00");
+    const inf = await seedProfile();
+    const { booking } = await service.createBooking({
+      advertiserOrgId: adv.orgId,
+      profileId: inf.profileId,
+      brief: "b",
+      amount: 40,
+      createdByUserId: adv.userId,
+    });
+    const id = booking?.id as string;
+    await service.acceptBooking(id, inf.userId);
+    await service.submitDeliverable(id, inf.userId, "https://x/post");
+    // Escrow funded: advertiser debited 40 → 60; nothing paid/refunded yet.
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(60, 2);
+    expect(await earnings(inf.userId)).toBe(0);
+
+    const [approve, reject] = await Promise.all([
+      service.approveBooking(id, adv.orgId),
+      service.rejectDeliverable(id, adv.orgId),
+    ]);
+
+    // Exactly one exit succeeds; the other is refused.
+    expect([approve.ok, reject.ok].filter(Boolean).length).toBe(1);
+
+    const paid = await earnings(inf.userId); // influencer payout (0 or 40)
+    const bal = await orgBalance(adv.orgId); // advertiser (60 held, or 100 refunded)
+    const refunded = bal >= 99.99; // refund returned the 40
+
+    // The invariant: NEVER both. Either influencer paid (40) and advertiser
+    // stays at 60, or advertiser refunded (100) and influencer paid 0.
+    expect(paid > 0 && refunded).toBe(false);
+    if (approve.ok) {
+      expect(paid).toBeCloseTo(40, 2);
+      expect(bal).toBeCloseTo(60, 2);
+      expect((await service.getBooking(id))?.status).toBe("approved");
+    } else {
+      expect(paid).toBe(0);
+      expect(bal).toBeCloseTo(100, 2);
+      expect((await service.getBooking(id))?.status).toBe("rejected");
+    }
+  });
+
+  test("a booking mid-approve (approving) cannot be refunded by reject (#11116)", async () => {
+    if (!pgliteReady) return;
+    const adv = await seedOrgUser("100.00");
+    const inf = await seedProfile();
+    const { booking } = await service.createBooking({
+      advertiserOrgId: adv.orgId,
+      profileId: inf.profileId,
+      brief: "b",
+      amount: 30,
+      createdByUserId: adv.userId,
+    });
+    const id = booking?.id as string;
+    await service.acceptBooking(id, inf.userId);
+    await service.submitDeliverable(id, inf.userId, "https://x/post");
+    // Simulate an approve that claimed the fork but hasn't finished paying.
+    await dbWrite
+      .update(influencerBookings)
+      .set({ status: "approving" })
+      .where(eq(influencerBookings.id, id));
+
+    const rejected = await service.rejectDeliverable(id, adv.orgId);
+    expect(rejected.ok).toBe(false);
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(70, 2); // escrow still held, no refund
+    // The rightful owner can still resume the approval and get paid once.
+    const resumed = await service.approveBooking(id, adv.orgId);
+    expect(resumed.ok).toBe(true);
+    expect(await earnings(inf.userId)).toBeCloseTo(30, 2);
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(70, 2);
   });
 });

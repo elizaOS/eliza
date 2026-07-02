@@ -3,7 +3,7 @@
 Tracking issue: [elizaOS/eliza#8785](https://github.com/elizaOS/eliza/issues/8785).
 
 elizaOS ships a mature voice pipeline (VAD, streaming ASR, EOT classifier,
-barge-in, diarization, speaker imprint/profiles, Kokoro/OmniVoice TTS) but its
+barge-in, diarization, speaker imprint/profiles, Kokoro TTS) but its
 test harnesses were **fragmented** across five families with no shared scenario
 format, no shared corpus, divergent metric definitions, and a headful surface
 that only covered a single-speaker, single-turn round-trip. The Voice Workbench

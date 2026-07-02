@@ -615,10 +615,10 @@ function OverviewStat({
   value: number;
 }) {
   return (
-    <div
-      className="rounded-sm border border-border/40 bg-bg-accent/25 px-3 py-2"
-      data-testid={`automation-stat-${statKey}`}
-    >
+    // Flat — no card border/fill (#10710, "no card chrome"): the grid gap +
+    // label/value type hierarchy group the stats; the surrounding surface shows
+    // through, matching the minimal eliza aesthetic (cf. SettingsView flat rows).
+    <div className="py-1" data-testid={`automation-stat-${statKey}`}>
       <div className="text-2xs font-medium uppercase tracking-normal text-muted-strong">
         {label}
       </div>
