@@ -1,4 +1,3 @@
-import Decimal from "decimal.js";
 import { aiPricingRepository } from "../../../db/repositories/ai-pricing";
 import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import { expandPersistedPricingProviderKeys } from "../../providers/model-id-translation";
@@ -157,6 +156,122 @@ async function resolvePreparedPricingEntry(params: {
   );
 }
 
+const FALLBACK_RATE_ENV_BY_CHARGE_TYPE: Record<"input" | "output", string> = {
+  input: "AI_PRICING_FALLBACK_INPUT_USD_PER_M",
+  output: "AI_PRICING_FALLBACK_OUTPUT_USD_PER_M",
+};
+
+/** Env-configured default rate (USD per million tokens) → per-token unit price. */
+function envFallbackTokenUnitPrice(chargeType: "input" | "output"): number | null {
+  const envName = FALLBACK_RATE_ENV_BY_CHARGE_TYPE[chargeType];
+  const raw = process.env[envName];
+  if (raw === undefined || raw.trim() === "") {
+    return null;
+  }
+  const usdPerMillion = Number(raw);
+  if (!Number.isFinite(usdPerMillion) || usdPerMillion < 0) {
+    logger.warn("ai-pricing: ignoring invalid fallback-rate env value", {
+      envName,
+      value: raw,
+    });
+    return null;
+  }
+  return usdPerMillion / 1_000_000;
+}
+
+type FallbackTokenRate = {
+  unitPrice: number;
+  source: "provider_max_catalog" | "env_default";
+  referenceModel?: string;
+};
+
+/**
+ * Conservative fallback rate for a servable model with no catalog row.
+ *
+ * A model id can be servable before its price lands in the catalog (newly
+ * released ids, catalog ingest lag). Failing the request at billing — or
+ * billing it at $0 — are both wrong: the first drops a servable request, the
+ * second under-bills. Instead, bill at the provider's MOST EXPENSIVE
+ * catalogued token rate for the same product family/charge type (an upper
+ * bound over any plausible real price from that provider), or an
+ * env-configured default (AI_PRICING_FALLBACK_{INPUT,OUTPUT}_USD_PER_M) when
+ * the provider has no catalogued entries at all. Both reserve (pre-flight
+ * estimate) and settle (actual usage) resolve through this same path, so both
+ * sides of a request bill at the same rate.
+ */
+async function resolveFallbackTokenRate(params: {
+  billingSource?: PricingBillingSource;
+  provider: string;
+  canonicalModel: string;
+  productFamily: PricingProductFamily;
+  chargeType: "input" | "output";
+}): Promise<FallbackTokenRate | null> {
+  const logicalProvider = providerForPricingCandidate(params.canonicalModel, params.provider);
+  const providerKeys = expandPersistedPricingProviderKeys(logicalProvider);
+  const sources = normalizeBillingSourceCandidates(params.billingSource, params.provider);
+
+  let best: PreparedPricingEntry | null = null;
+  const consider = (entry: PreparedPricingEntry) => {
+    if (entry.unit !== "token") return;
+    if (!Number.isFinite(entry.unitPrice) || entry.unitPrice <= 0) return;
+    if (!best || entry.unitPrice > best.unitPrice) {
+      best = entry;
+    }
+  };
+
+  for (const source of sources) {
+    for (const providerKey of providerKeys) {
+      // Same short-TTL cache as the exact-model read: this runs on the billing
+      // hot path only when the exact lookup already missed.
+      const cacheKey = `fallback|${source ?? ""}|${params.productFamily}|${params.chargeType}|${providerKey}`;
+      const persisted = await getCachedPersistedEntries(cacheKey, () =>
+        aiPricingRepository.listActiveEntries({
+          billingSource: source,
+          provider: providerKey,
+          productFamily: params.productFamily,
+          chargeType: params.chargeType,
+        }),
+      ).catch((error: unknown) => {
+        logger.warn("ai-pricing: fallback catalog read failed", {
+          provider: providerKey,
+          billingSource: source,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return [];
+      });
+      for (const row of persisted) {
+        consider(aiEntryToPrepared(row));
+      }
+    }
+
+    // Live catalog entries count too; fetchEntriesForSource degrades to [] on
+    // upstream failure and is cached, so this adds no new failure mode.
+    const live = await fetchEntriesForSource(source);
+    for (const entry of live) {
+      if (!providerKeys.includes(entry.provider)) continue;
+      if (entry.productFamily !== params.productFamily) continue;
+      if (entry.chargeType !== params.chargeType) continue;
+      consider(entry);
+    }
+  }
+
+  if (best !== null) {
+    const chosen: PreparedPricingEntry = best;
+    return {
+      unitPrice: chosen.unitPrice,
+      source: "provider_max_catalog",
+      referenceModel: chosen.model,
+    };
+  }
+
+  const envUnitPrice = envFallbackTokenUnitPrice(params.chargeType);
+  if (envUnitPrice !== null) {
+    return { unitPrice: envUnitPrice, source: "env_default" };
+  }
+
+  return null;
+}
+
 function computeCostFromEntry(entry: PreparedPricingEntry, quantity: number): FlatOperationCost {
   const baseCost = asDecimal(entry.unitPrice).mul(quantity);
   const markedUp = applyPlatformMarkup(baseCost);
@@ -220,42 +335,76 @@ export async function calculateTextCostFromCatalog(params: {
   outputTokens: number;
 }): Promise<TokenCostBreakdown> {
   const canonicalModel = canonicalModelId(params.model, params.provider);
+  const productFamily: PricingProductFamily = params.model.includes("embedding")
+    ? "embedding"
+    : "language";
   // Both lookups degrade to null on a catalog miss. A missing INPUT price used
   // to throw uncaught here (the OUTPUT lookup was already guarded), and the
   // throw propagated through calculateCost → the chat-completions reserve →
   // a 500 / masked "bridge unreachable" on any model whose input row isn't in
   // the catalog (notably embedding models, which are input-only and run every
-  // turn). Mirror the output handling — bill the missing side at $0 rather than
-  // failing the request — but log loudly so the catalog gap gets priced.
+  // turn). A servable request must never fail purely on a missing price — but
+  // it must not be under-billed at $0 either. On a miss, bill the missing side
+  // at a conservative fallback rate (provider max → env default → $0 last
+  // resort; see resolveFallbackTokenRate) and log loudly so the catalog gap
+  // gets priced.
   const inputEntry = await resolvePreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
     model: canonicalModel,
-    productFamily: params.model.includes("embedding") ? "embedding" : "language",
+    productFamily,
     chargeType: "input",
   }).catch(() => null);
   const outputEntry = await resolvePreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
     model: canonicalModel,
-    productFamily: params.model.includes("embedding") ? "embedding" : "language",
+    productFamily,
     chargeType: "output",
   }).catch(() => null);
 
-  if (!inputEntry) {
-    logger.warn("ai-pricing: input pricing unavailable; billing input at $0", {
+  // Resolve a fallback only for a side that actually bills tokens: a
+  // zero-token side costs $0 at any rate, and skipping it keeps input-only
+  // embedding traffic from warning on every turn about its unused output row.
+  const resolveMissingSide = async (
+    chargeType: "input" | "output",
+    tokens: number,
+  ): Promise<FallbackTokenRate | null> => {
+    if (tokens <= 0) {
+      return null;
+    }
+    const fallback = await resolveFallbackTokenRate({
+      billingSource: params.billingSource,
+      provider: params.provider,
+      canonicalModel,
+      productFamily,
+      chargeType,
+    });
+    logger.warn(`ai-pricing: ${chargeType} pricing unavailable; billing at fallback rate`, {
       canonicalModel,
       provider: params.provider,
       billingSource: params.billingSource,
+      fallbackSource: fallback?.source ?? "none_zero",
+      fallbackUnitPrice: fallback?.unitPrice ?? 0,
+      ...(fallback?.referenceModel ? { fallbackReferenceModel: fallback.referenceModel } : {}),
     });
-  }
+    return fallback;
+  };
 
-  const baseInputCost = inputEntry
-    ? asDecimal(inputEntry.unitPrice).mul(params.inputTokens)
-    : new Decimal(0);
-  const baseOutputCost = outputEntry
-    ? asDecimal(outputEntry.unitPrice).mul(params.outputTokens)
-    : new Decimal(0);
+  const inputFallback = inputEntry ? null : await resolveMissingSide("input", params.inputTokens);
+  const outputFallback = outputEntry
+    ? null
+    : await resolveMissingSide("output", params.outputTokens);
+
+  const inputUnitPrice = inputEntry
+    ? asDecimal(inputEntry.unitPrice)
+    : asDecimal(inputFallback?.unitPrice ?? 0);
+  const outputUnitPrice = outputEntry
+    ? asDecimal(outputEntry.unitPrice)
+    : asDecimal(outputFallback?.unitPrice ?? 0);
+
+  const baseInputCost = inputUnitPrice.mul(params.inputTokens);
+  const baseOutputCost = outputUnitPrice.mul(params.outputTokens);
 
   const inputTotals = applyPlatformMarkup(baseInputCost);
   const outputTotals = applyPlatformMarkup(baseOutputCost);
