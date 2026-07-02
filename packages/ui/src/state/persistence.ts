@@ -285,6 +285,27 @@ export function saveBackgroundHistory(history: BackgroundConfig[]): void {
   }, undefined);
 }
 
+// Redo stack (#10694) — persisted symmetrically with the undo history (the issue
+// deliverable is "undo + redo, bounded, persisted") so "step forward" survives a
+// reload just like "step back" does. Same bound + data-URL quota cap.
+const UI_BACKGROUND_REDO_STORAGE_KEY = "eliza:ui-background-redo";
+
+export function loadBackgroundRedo(): BackgroundConfig[] {
+  return tryLocalStorage(() => {
+    const raw = localStorage.getItem(UI_BACKGROUND_REDO_STORAGE_KEY);
+    return raw ? normalizeBackgroundHistory(JSON.parse(raw)) : [];
+  }, []);
+}
+
+export function saveBackgroundRedo(redo: BackgroundConfig[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      UI_BACKGROUND_REDO_STORAGE_KEY,
+      JSON.stringify(normalizeBackgroundHistory(redo)),
+    );
+  }, undefined);
+}
+
 /**
  * Apply the theme to the document root.
  * Sets both `data-theme` attribute and `.dark` class so both CSS selectors
