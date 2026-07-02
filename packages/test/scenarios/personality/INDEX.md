@@ -12,6 +12,15 @@
 
 ## Judge contract
 
+Every scenario also carries a `finalChecks: [{ type: "judgeRubric", name: "persona:<bucket>", … }]`
+whose rubric is derived from that scenario's own `personalityExpect` fields
+(bucket, turn indices, style/trait/direction/variant keys, forbidden content,
+format specials). This is what the scenario-runner live matrix enforces —
+without it the corpus ran as 200 no-ops (#9310). The scenarios are
+`live-only`: a deterministic proxy always replies, so persona rubrics can only
+be judged against a real model, and the judge itself must be independent
+(`CEREBRAS_API_KEY`; see judge-independence in the scenario-runner).
+
 Every scenario defines a top-level `personalityExpect` object. The W3-3 judge reads this and dispatches to one of the following modes:
 
 - `strict_silence` — agent must produce no substantive response after the instruction turn until release.

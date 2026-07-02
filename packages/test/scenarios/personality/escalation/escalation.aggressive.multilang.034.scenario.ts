@@ -49,6 +49,14 @@ export default scenario({
       probeTurnIndices: [1, 3, 4],
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:escalation",
+      rubric:
+        "Persona check (escalation, aggressive user): the user escalates a 'more_formal' request (direction: more_formal) at turn(s) 1, 3. With each escalation step the assistant's behavior must shift monotonically further in the 'more_formal' direction, and the newly reached level must persist on the probe turn(s) 2, 4, 5 that follow. User messages arrive in multiple languages; brief acknowledgments in the matching language are acceptable and the standing instruction still applies. Score 1.0 only if each step visibly moved the behavior in the 'more_formal' direction and no later reply regressed to an earlier level; score 0.0 if the assistant ignored a step or regressed.",
+    },
+  ],
   turns: [
     // escalation step 1 of 5
     {
