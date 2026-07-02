@@ -210,6 +210,24 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
+  // #11145 (fixed): the graph container is clamped to the viewport
+  // (`w-full max-w-full` + internal `overflow-auto`), so the zoomed SVG pans
+  // INSIDE it instead of stretching the layout box to the SVG width (was
+  // measured at 1188px on a 412px Pixel-7 viewport → horizontal page scroll).
+  // Assert the container's rendered box never exceeds the viewport width.
+  const viewport = page.viewportSize();
+  if (viewport) {
+    const box = await page
+      .locator("[data-graph-container]")
+      .first()
+      .boundingBox();
+    expect(box, "graph container should be laid out").not.toBeNull();
+    if (box) {
+      // +1px slack for sub-pixel rounding.
+      expect(box.width).toBeLessThanOrEqual(viewport.width + 1);
+    }
+  }
+
   await page
     .getByRole("button", { name: "Organizations", exact: true })
     .click();
@@ -251,10 +269,11 @@ async function touchPinch(
   if (!box) throw new Error(`no bounding box for ${selector}`);
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("no viewport size");
-  // The graph container tracks the zoomed svg width, so on the narrow Pixel-7
-  // viewport its box centre can sit off-screen (box 1188px wide on a 412px
-  // viewport). Fingers must land on VISIBLE pixels: pinch at the centre of the
-  // container ∩ viewport intersection.
+  // Defensive (post-#11145): the graph container is now viewport-clamped, so
+  // its box should already fit on-screen — but a partially-scrolled or
+  // off-origin target is still possible, so pinch at the centre of the
+  // container ∩ viewport intersection to guarantee fingers land on VISIBLE
+  // pixels regardless.
   const left = Math.max(box.x, 0);
   const right = Math.min(box.x + box.width, viewport.width);
   const top = Math.max(box.y, 0);
