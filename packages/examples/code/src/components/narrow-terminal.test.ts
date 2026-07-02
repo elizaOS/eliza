@@ -41,6 +41,7 @@ function makeScreen(cols: number) {
 // Keep the shared zustand store deterministic across tests.
 afterEach(() => {
   useStore.getState().setInputValue("");
+  useStore.getState().setLoading(false);
 });
 
 describe("eliza-code TUI at cockpit phone width", () => {
@@ -98,5 +99,21 @@ describe("eliza-code TUI at cockpit phone width", () => {
     // Without the innerWidth - 3 fix this row is width + 1 (44) and the TUI
     // aborts; with the fix it is width - 2 (41).
     expect(visibleWidth(composer)).toBeLessThanOrEqual(PHONE_COLS);
+  });
+
+  test("ChatPane loading row advertises abort without overflowing narrow terminals", () => {
+    const { chatPane } = makeScreen(PHONE_COLS);
+    chatPane.syncFocus(true);
+    useStore.getState().setLoading(true);
+
+    const phoneLines = chatPane.renderContent(PHONE_COLS, 24);
+    const phoneLoading = phoneLines.find((line) => line.includes("Processing"));
+    expect(phoneLoading).toBeDefined();
+    expect(visibleWidth(phoneLoading ?? "")).toBeLessThanOrEqual(PHONE_COLS);
+
+    const wideLines = chatPane.renderContent(80, 24);
+    const wideLoading = wideLines.find((line) => line.includes("Processing"));
+    expect(wideLoading).toContain("Esc/Ctrl+C abort");
+    expect(visibleWidth(wideLoading ?? "")).toBeLessThanOrEqual(80);
   });
 });

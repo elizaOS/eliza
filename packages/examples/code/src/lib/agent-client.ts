@@ -22,6 +22,8 @@ interface SendMessageParams {
    * produced by the runtime.
    */
   onDelta?: (delta: string) => void;
+  /** Optional caller-controlled cancellation signal for in-flight turns. */
+  abortSignal?: AbortSignal;
 }
 
 /**
@@ -90,6 +92,7 @@ class AgentClient {
       runtime,
       messageMemory,
       callback,
+      params.abortSignal ? { abortSignal: params.abortSignal } : undefined,
     );
 
     return response;

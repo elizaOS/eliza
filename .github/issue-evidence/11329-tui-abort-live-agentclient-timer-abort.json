@@ -1,0 +1,16 @@
+{
+  "issue": 11329,
+  "scenario": "AgentClient live model cancellation before first response callback",
+  "startedAt": "2026-07-02T11:20:33.243Z",
+  "finishedAt": "2026-07-02T11:20:35.925Z",
+  "provider": "openai-compatible Cerebras endpoint via @elizaos/plugin-openai",
+  "model": "gpt-oss-120b",
+  "signalAborted": true,
+  "abortMs": 1916,
+  "capturedDeltaCount": 1,
+  "capturedDeltaPreview": "On it. I will start by analyzing the edge cases and then proceed to write the comprehensive technical design for terminal cancellation.",
+  "outcome": "resolved",
+  "resolvedTextLength": 135,
+  "errorName": null,
+  "errorMessage": null
+}
