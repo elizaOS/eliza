@@ -132,10 +132,7 @@ describe("CockpitInteractiveTerminal — spawn → attach wiring", () => {
       const pane = await screen.findByTestId("pty-pane");
       expect(pane.getAttribute("data-session"), kind).toBe(`sess-${kind}`);
       // The header names the vendor CLI, not the cerebras tier.
-      expect(
-        screen.getByText(`${kind} · interactive`),
-        kind,
-      ).toBeTruthy();
+      expect(screen.getByText(`${kind} · interactive`), kind).toBeTruthy();
       unmount();
       mocks.spawnPtySession.mockClear();
     }
