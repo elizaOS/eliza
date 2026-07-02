@@ -234,28 +234,44 @@ export function ScreenshareSpatialView({
       )}
 
       <Divider label="connect" />
-      <Field
-        label="Remote server URL"
-        value={snapshot.remote?.baseUrl ?? ""}
-        placeholder="Server URL"
-        agent="input-remote-base"
-        onChange={(value) => onAction?.(`remote-base:${value}`)}
-      />
-      <Field
-        label="Remote session id"
-        value={snapshot.remote?.sessionId ?? ""}
-        placeholder="Session"
-        agent="input-remote-session"
-        onChange={(value) => onAction?.(`remote-session:${value}`)}
-      />
-      <Field
-        label="Remote session token"
-        value={snapshot.remote?.token ?? ""}
-        placeholder="Token"
-        kind="password"
-        agent="input-remote-token"
-        onChange={(value) => onAction?.(`remote-token:${value}`)}
-      />
+      <HStack gap={1}>
+        <Field
+          label="Remote server URL"
+          value={snapshot.remote?.baseUrl ?? ""}
+          placeholder="Server URL"
+          agent="input-remote-base"
+          grow={1}
+          onChange={(value) => onAction?.(`remote-base:${value}`)}
+        />
+        <Field
+          label="Remote session id"
+          value={snapshot.remote?.sessionId ?? ""}
+          placeholder="Session"
+          agent="input-remote-session"
+          grow={1}
+          onChange={(value) => onAction?.(`remote-session:${value}`)}
+        />
+      </HStack>
+      <HStack gap={1} align="end">
+        <Field
+          label="Remote session token"
+          value={snapshot.remote?.token ?? ""}
+          placeholder="Token"
+          kind="password"
+          agent="input-remote-token"
+          grow={1}
+          onChange={(value) => onAction?.(`remote-token:${value}`)}
+        />
+        <Button
+          variant="outline"
+          tone="default"
+          agent="refresh"
+          disabled={snapshot.loading}
+          onPress={dispatch("refresh")}
+        >
+          Refresh
+        </Button>
+      </HStack>
       <HStack gap={1} wrap>
         <Button
           grow={1}
@@ -266,15 +282,6 @@ export function ScreenshareSpatialView({
           onPress={dispatch("connect")}
         >
           Connect
-        </Button>
-        <Button
-          variant="outline"
-          tone="default"
-          agent="refresh"
-          disabled={snapshot.loading}
-          onPress={dispatch("refresh")}
-        >
-          Refresh
         </Button>
       </HStack>
     </Card>

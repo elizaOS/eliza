@@ -293,15 +293,21 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     [items, load, activeList],
   );
 
-  const filters: InboxChannelFilter[] = useMemo(
-    () =>
-      INBOX_CHANNELS.map((channel) => ({
-        channel,
-        label: INBOX_CHANNEL_LABELS[channel],
-        active: activeChannels.has(channel),
-      })),
-    [activeChannels],
-  );
+  const filters: InboxChannelFilter[] = useMemo(() => {
+    const visibleChannels =
+      state.kind === "ready" && state.data.connected.length > 0
+        ? INBOX_CHANNELS.filter(
+            (channel) =>
+              state.data.connected.includes(channel) ||
+              activeChannels.has(channel),
+          )
+        : INBOX_CHANNELS;
+    return visibleChannels.map((channel) => ({
+      channel,
+      label: INBOX_CHANNEL_LABELS[channel],
+      active: activeChannels.has(channel),
+    }));
+  }, [state, activeChannels]);
 
   const snapshot: InboxSnapshot = useMemo(() => {
     const status: InboxStatus =
