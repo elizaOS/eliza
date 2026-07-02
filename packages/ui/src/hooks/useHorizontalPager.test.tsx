@@ -30,15 +30,23 @@ function Harness({
   initialPage = 0,
   pageCount = 3,
   onPageChange,
+  edgeSwipeRightEnabled = false,
+  onEdgeSwipeRight,
+  onRailClick,
 }: {
   initialPage?: number;
   pageCount?: number;
   onPageChange?: (page: number) => void;
+  edgeSwipeRightEnabled?: boolean;
+  onEdgeSwipeRight?: () => void;
+  onRailClick?: () => void;
 }): React.JSX.Element {
   const [page, setPage] = React.useState(initialPage);
   const pager = useHorizontalPager({
     page,
     pageCount,
+    edgeSwipeRightEnabled,
+    onEdgeSwipeRight,
     onPageChange: (next) => {
       onPageChange?.(next);
       setPage(next);
@@ -47,6 +55,8 @@ function Harness({
   return (
     <div>
       <div ref={pager.viewportRef}>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: test-only click sink for the committed-swipe suppression assertion */}
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: test-only click sink; keyboard nav is not under test here */}
         <div
           data-testid="rail"
           ref={pager.railRef}
@@ -55,6 +65,8 @@ function Harness({
           onPointerUp={pager.handlers.onPointerUp}
           onPointerCancel={pager.handlers.onPointerCancel}
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
+          onClickCapture={pager.handlers.onClickCapture}
+          onClick={onRailClick}
         />
       </div>
       <button
@@ -388,5 +400,211 @@ describe("useHorizontalPager — edge-button navigation (#10717)", () => {
     });
     // From page 2 (after the advance), prev returns to page 1.
     expect(onChange).toHaveBeenLastCalledWith(1);
+  });
+});
+
+describe("useHorizontalPager — release-velocity flick", () => {
+  const opts = {
+    pointerId: 7,
+    pointerType: "touch",
+    isPrimary: true,
+    clientY: 300,
+  } as const;
+
+  it("commits a slow drag finished with a fast flick (release velocity, not average)", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      // Drag slowly to ~180px over 600ms (well under the 50% distance floor and
+      // a low AVERAGE velocity ~0.3 px/ms)…
+      fireEvent.pointerDown(rail, { ...opts, clientX: 800 });
+      fireEvent.pointerMove(rail, { ...opts, clientX: 780 });
+      clock = 1600;
+      fireEvent.pointerMove(rail, { ...opts, clientX: 620 });
+      // …then flick the last 120px in 20ms (release velocity ~6 px/ms).
+      clock = 1620;
+      fireEvent.pointerMove(rail, { ...opts, clientX: 500 });
+      fireEvent.pointerUp(rail, { ...opts, clientX: 500 });
+    });
+    // Distance was only 300px (< 512 half-width), so this commits ONLY via the
+    // fast release — the exact "drag then flick" the average-velocity path failed.
+    expect(onChange).toHaveBeenCalledWith(1);
+  });
+
+  it("does not commit a drag-forward-then-fling-back release (direction guard)", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...opts, clientX: 800 });
+      fireEvent.pointerMove(rail, { ...opts, clientX: 700 });
+      clock = 1400;
+      fireEvent.pointerMove(rail, { ...opts, clientX: 640 });
+      // Fling BACK toward the start fast (release velocity points +x while the
+      // net drag is -x) — must not commit the -x page.
+      clock = 1420;
+      fireEvent.pointerMove(rail, { ...opts, clientX: 760 });
+      fireEvent.pointerUp(rail, { ...opts, clientX: 760 });
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("useHorizontalPager — edge-swipe-home reduced threshold", () => {
+  const opts = {
+    pointerId: 8,
+    pointerType: "touch",
+    isPrimary: true,
+    clientY: 300,
+  } as const;
+
+  function slowRightDrag(rail: HTMLElement, px: number) {
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...opts, clientX: 100 });
+      fireEvent.pointerMove(rail, { ...opts, clientX: 100 + 20 });
+      // Slow: 500ms elapsed so neither average nor release velocity flicks.
+      clock = 1500;
+      fireEvent.pointerMove(rail, { ...opts, clientX: 100 + px });
+      clock = 1520;
+      fireEvent.pointerUp(rail, { ...opts, clientX: 100 + px });
+    });
+  }
+
+  it("fires onEdgeSwipeRight for a short (~70px) slow right drag at page 0 when enabled", () => {
+    const onEdge = vi.fn();
+    const { getByTestId } = render(
+      <Harness
+        initialPage={0}
+        edgeSwipeRightEnabled
+        onEdgeSwipeRight={onEdge}
+      />,
+    );
+    // 70px is far under the 50% (512px) inter-page floor, but the damped
+    // edge-swipe-home commits at the 64px MIN threshold.
+    slowRightDrag(getByTestId("rail"), 70);
+    expect(onEdge).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire onEdgeSwipeRight when edge-swipe is disabled", () => {
+    const onEdge = vi.fn();
+    const { getByTestId } = render(
+      <Harness
+        initialPage={0}
+        edgeSwipeRightEnabled={false}
+        onEdgeSwipeRight={onEdge}
+      />,
+    );
+    slowRightDrag(getByTestId("rail"), 70);
+    expect(onEdge).not.toHaveBeenCalled();
+  });
+});
+
+describe("useHorizontalPager — mouse-button guards + committed-swipe click suppression", () => {
+  it("ignores a non-primary (right/middle) mouse-button press", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      // button 2 (context menu), buttons bitmask 2.
+      fireEvent.pointerDown(rail, {
+        pointerId: 9,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 2,
+        buttons: 2,
+        clientX: 800,
+        clientY: 300,
+      });
+      fireEvent.pointerMove(rail, {
+        pointerId: 9,
+        pointerType: "mouse",
+        buttons: 2,
+        clientX: 200,
+        clientY: 300,
+      });
+      fireEvent.pointerUp(rail, {
+        pointerId: 9,
+        pointerType: "mouse",
+        clientX: 200,
+        clientY: 300,
+      });
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("abandons a mouse drag whose button was released off-surface (buttons=0 hover)", () => {
+    runAnimationFramesImmediately();
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    const mouse = {
+      pointerId: 10,
+      pointerType: "mouse",
+      isPrimary: true,
+    } as const;
+    act(() => {
+      // Press with a button down, wiggle < axis-commit slop (no capture taken).
+      fireEvent.pointerDown(rail, {
+        ...mouse,
+        button: 0,
+        buttons: 1,
+        clientX: 800,
+        clientY: 300,
+      });
+      fireEvent.pointerMove(rail, {
+        ...mouse,
+        buttons: 1,
+        clientX: 797,
+        clientY: 300,
+      });
+      // Later hover with NO button held (release happened off-surface): the drag
+      // must be abandoned, not resumed into a page change.
+      fireEvent.pointerMove(rail, {
+        ...mouse,
+        buttons: 0,
+        clientX: 300,
+        clientY: 300,
+      });
+      fireEvent.pointerUp(rail, { ...mouse, clientX: 300, clientY: 300 });
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("swallows the click a committed swipe synthesizes, but not an ordinary click", () => {
+    const onRailClick = vi.fn();
+    const { getByTestId } = render(
+      <Harness onPageChange={() => {}} onRailClick={onRailClick} />,
+    );
+    const rail = getByTestId("rail");
+    // Ordinary click (no preceding gesture) reaches the handler.
+    act(() => {
+      fireEvent.click(rail);
+    });
+    expect(onRailClick).toHaveBeenCalledTimes(1);
+
+    // A committed swipe arms suppression; the synthesized click is swallowed.
+    onRailClick.mockClear();
+    const touch = {
+      pointerId: 11,
+      pointerType: "touch",
+      isPrimary: true,
+      clientY: 300,
+    } as const;
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...touch, clientX: 900 });
+      fireEvent.pointerMove(rail, { ...touch, clientX: 880 });
+      fireEvent.pointerMove(rail, { ...touch, clientX: 100 });
+      clock = 1030;
+      fireEvent.pointerUp(rail, { ...touch, clientX: 100 });
+      // The browser synthesizes a click from the same press.
+      fireEvent.click(rail);
+    });
+    expect(onRailClick).not.toHaveBeenCalled();
   });
 });

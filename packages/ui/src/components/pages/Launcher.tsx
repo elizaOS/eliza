@@ -435,6 +435,9 @@ export function Launcher({
           onPointerUp={pager.handlers.onPointerUp}
           onPointerCancel={pager.handlers.onPointerCancel}
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
+          // Swallow the click a committed inter-page swipe synthesizes so it
+          // can't tap-launch the tile that just slid under the finger.
+          onClickCapture={pager.handlers.onClickCapture}
         >
           <div
             ref={pager.railRef}

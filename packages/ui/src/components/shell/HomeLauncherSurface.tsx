@@ -41,9 +41,6 @@ export function HomeLauncherSurface({
     setShellSurfacePage(initialPage);
   }, [initialPage]);
 
-  // A committed flick must swallow the click that the browser synthesizes from
-  // the same press, so the flick doesn't also tap-launch the tile underneath.
-  const suppressClickRef = React.useRef(false);
   // ONE pager owns the touch gesture per surface — the fix for the "two swipe
   // actions stacked on top of each other" the user reported. The rail owns the
   // gesture on the HOME half (swipe left → launcher) and while EDITING (the
@@ -65,11 +62,10 @@ export function HomeLauncherSurface({
     page: page === "launcher" ? 1 : 0,
     pageCount: 2,
     enabled: railGestureEnabled,
+    // The hook arms + swallows the committed-swipe click itself (handlers.
+    // onClickCapture, attached on both halves below), so this stays a plain
+    // navigation intent — no local click-suppression bookkeeping.
     onPageChange: (nextPage) => {
-      suppressClickRef.current = true;
-      window.setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 0);
       if (nextPage === 0) {
         goHome();
       } else {
@@ -77,15 +73,6 @@ export function HomeLauncherSurface({
       }
     },
   });
-  const suppressCommittedSwipeClick = React.useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!suppressClickRef.current) return;
-      suppressClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [],
-  );
   // No page indicator: the dots collided with the floating chat composer, and
   // the swipe gesture (left → launcher, right → home / back a page) is the
   // sole, sufficient navigation. Paging across launcher pages stays a swipe.
@@ -122,7 +109,7 @@ export function HomeLauncherSurface({
           onPointerUp={pager.handlers.onPointerUp}
           onPointerCancel={pager.handlers.onPointerCancel}
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
-          onClickCapture={suppressCommittedSwipeClick}
+          onClickCapture={pager.handlers.onClickCapture}
         >
           {home}
         </div>
@@ -137,7 +124,7 @@ export function HomeLauncherSurface({
           onPointerUp={pager.handlers.onPointerUp}
           onPointerCancel={pager.handlers.onPointerCancel}
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
-          onClickCapture={suppressCommittedSwipeClick}
+          onClickCapture={pager.handlers.onClickCapture}
         >
           {React.cloneElement(launcher, {
             onNavigateHomeFromEdge: goHome,
