@@ -5,6 +5,7 @@
 // sessionId; error -> retry; unmount/close -> client.stopPtySession), mocking
 // only the client boundary and the xterm pane (which needs a real DOM/canvas).
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -14,10 +15,31 @@ import {
 import type { ButtonHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  spawnPtySession: vi.fn(),
-  stopPtySession: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const wsHandlers = new Map<
+    string,
+    Set<(data: Record<string, unknown>) => void>
+  >();
+  return {
+    spawnPtySession: vi.fn(),
+    stopPtySession: vi.fn(),
+    wsHandlers,
+    onWsEvent: vi.fn(
+      (type: string, handler: (data: Record<string, unknown>) => void) => {
+        let handlers = wsHandlers.get(type);
+        if (!handlers) {
+          handlers = new Set();
+          wsHandlers.set(type, handlers);
+        }
+        handlers.add(handler);
+        return () => handlers.delete(handler);
+      },
+    ),
+    emitWsEvent: (type: string, data: Record<string, unknown>) => {
+      for (const handler of wsHandlers.get(type) ?? []) handler(data);
+    },
+  };
+});
 
 type ButtonMockProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
   agent?: string;
@@ -31,6 +53,7 @@ vi.mock("@elizaos/ui", () => ({
   client: {
     spawnPtySession: mocks.spawnPtySession,
     stopPtySession: mocks.stopPtySession,
+    onWsEvent: mocks.onWsEvent,
   },
   Button: (props: ButtonMockProps) => {
     const {
@@ -66,6 +89,7 @@ import { CockpitInteractiveTerminal } from "./CockpitInteractiveTerminal";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mocks.wsHandlers.clear();
 });
 
 describe("CockpitInteractiveTerminal — spawn → attach wiring", () => {
@@ -126,5 +150,96 @@ describe("CockpitInteractiveTerminal — spawn → attach wiring", () => {
     fireEvent.click(screen.getByTestId("cockpit-terminal-close"));
     expect(mocks.stopPtySession).toHaveBeenCalledWith("sess-close");
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("CockpitInteractiveTerminal — session death (pty-exit)", () => {
+  it("shows the ended state when the session's pty-exit arrives (was: stuck 'ready' forever)", async () => {
+    mocks.spawnPtySession.mockResolvedValue({ sessionId: "sess-exit" });
+    render(<CockpitInteractiveTerminal tier="fast" />);
+    const pane = await screen.findByTestId("pty-pane");
+    expect(pane.getAttribute("data-visible")).toBe("true");
+
+    act(() => {
+      mocks.emitWsEvent("pty-exit", {
+        type: "pty-exit",
+        sessionId: "sess-exit",
+        exitCode: 0,
+      });
+    });
+
+    const ended = await screen.findByTestId("cockpit-terminal-ended");
+    expect(ended.textContent).toContain("session ended");
+    expect(ended.textContent).toContain("exit 0");
+    // The dead pane is no longer presented as the live surface.
+    expect(screen.getByTestId("pty-pane").getAttribute("data-visible")).toBe(
+      "false",
+    );
+  });
+
+  it("does not stop an already-dead session on unmount", async () => {
+    mocks.spawnPtySession.mockResolvedValue({ sessionId: "sess-dead" });
+    const { unmount } = render(<CockpitInteractiveTerminal tier="fast" />);
+    await screen.findByTestId("pty-pane");
+
+    act(() => {
+      mocks.emitWsEvent("pty-exit", {
+        type: "pty-exit",
+        sessionId: "sess-dead",
+        exitCode: null,
+      });
+    });
+    await screen.findByTestId("cockpit-terminal-ended");
+
+    unmount();
+    expect(mocks.stopPtySession).not.toHaveBeenCalled();
+  });
+
+  it("ignores pty-exit for a different session", async () => {
+    mocks.spawnPtySession.mockResolvedValue({ sessionId: "sess-mine" });
+    render(<CockpitInteractiveTerminal tier="fast" />);
+    await screen.findByTestId("pty-pane");
+
+    act(() => {
+      mocks.emitWsEvent("pty-exit", {
+        type: "pty-exit",
+        sessionId: "sess-other",
+        exitCode: 1,
+      });
+    });
+
+    expect(screen.queryByTestId("cockpit-terminal-ended")).toBeNull();
+    expect(screen.getByTestId("pty-pane").getAttribute("data-visible")).toBe(
+      "true",
+    );
+  });
+
+  it("restart spawns a fresh session after the old one ended", async () => {
+    mocks.spawnPtySession.mockResolvedValueOnce({ sessionId: "sess-old" });
+    render(<CockpitInteractiveTerminal tier="smart" />);
+    await screen.findByTestId("pty-pane");
+
+    act(() => {
+      mocks.emitWsEvent("pty-exit", {
+        type: "pty-exit",
+        sessionId: "sess-old",
+        exitCode: 137,
+      });
+    });
+    await screen.findByTestId("cockpit-terminal-ended");
+
+    mocks.spawnPtySession.mockResolvedValueOnce({ sessionId: "sess-new" });
+    fireEvent.click(screen.getByTestId("cockpit-terminal-restart"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pty-pane").getAttribute("data-session")).toBe(
+        "sess-new",
+      );
+    });
+    expect(screen.getByTestId("pty-pane").getAttribute("data-visible")).toBe(
+      "true",
+    );
+    expect(screen.queryByTestId("cockpit-terminal-ended")).toBeNull();
+    expect(mocks.spawnPtySession).toHaveBeenCalledTimes(2);
   });
 });

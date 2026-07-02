@@ -59,7 +59,9 @@ import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   clearChatDraft,
+  readChatDraft,
   useChatComposerDraftPersistence,
+  writeChatDraft,
 } from "../../state/ChatComposerContext.hooks";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
@@ -1608,8 +1610,47 @@ export function ContinuousChatOverlay({
   // conversation-id change — so a just-prefilled composer is never clobbered. The
   // successful-send path clears it (below).
   const activeConversationId = conversationNav.activeId;
+  // Draft HANDOFF on conversation switch (mirrors ChatView's
+  // handleSelectConversation fix in useChatCallbacks): swiping A→B must repaint
+  // the composer for the TARGET. Flush the LEAVING conversation's in-progress
+  // text under ITS OWN key first (the debounced persister's pending timer is
+  // cancelled by the id change, so a fast edit would otherwise be lost), then
+  // restore the target's own saved draft — or CLEAR the composer when it has
+  // none. The explicit `?? ""` clear is load-bearing: the persistence hook's
+  // restore only sets when a saved draft EXISTS, so without the clear a
+  // draftless target inherits the previous conversation's composer text, which
+  // the debounced persister then saves under the TARGET's key — the half-typed
+  // message silently re-homes to (and would send to) the wrong conversation.
+  //
+  // The persistence hook is keyed by `persistedConversationId`, which trails
+  // `activeConversationId` by exactly this handoff commit — so the hook never
+  // observes the (new id, old conversation's draft) combination and never even
+  // schedules a write of the old text under the new key. Exactly one
+  // steady-state persistence path (the hook) remains; this effect only adds
+  // the one-shot switch-time flush + repaint the hook cannot do.
+  //
+  // Both null transitions are deliberate no-repaints: on boot (null → id) the
+  // composer may already hold a prefill (CHAT_PREFILL / assistant-launch) that
+  // must NOT be clobbered, and on id → null there is no target to paint.
+  const [persistedConversationId, setPersistedConversationId] = React.useState<
+    string | null
+  >(activeConversationId);
+  // Live handle to the draft so the handoff effect keys off the id change
+  // alone (a keystroke never re-runs it), same pattern as messagesRef above.
+  const draftRef = React.useRef(draft);
+  draftRef.current = draft;
+  React.useLayoutEffect(() => {
+    if (persistedConversationId === activeConversationId) return;
+    if (persistedConversationId !== null) {
+      writeChatDraft(persistedConversationId, draftRef.current);
+      if (activeConversationId !== null) {
+        setDraft(readChatDraft(activeConversationId) ?? "");
+      }
+    }
+    setPersistedConversationId(activeConversationId);
+  }, [activeConversationId, persistedConversationId]);
   useChatComposerDraftPersistence({
-    activeConversationId,
+    activeConversationId: persistedConversationId,
     chatInput: draft,
     setChatInput: setDraft,
   });

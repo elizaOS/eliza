@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { canonicalLauncherId, curateLauncherPages } from "./launcher-curation";
+import {
+  canonicalLauncherId,
+  curateLauncherPages,
+  LAUNCHER_HIDDEN_IDS,
+} from "./launcher-curation";
 
 const ENABLED = { developer: true, preview: true } as const;
 
@@ -288,6 +292,21 @@ describe("curateLauncherPages — full realistic view set", () => {
       "camera",
       "files",
     ]);
+  });
+});
+
+describe("launcher dead-tile guard", () => {
+  it("hides the legacy 'rolodex' alias (no directViews branch → would land on the fallback)", () => {
+    // rolodex is a routable tab with a launcher tile but no renderStaticViewRouterTab
+    // branch, so tapping it bounced the user back to the launcher fallback. The
+    // real contact surface is `relationships`.
+    expect(LAUNCHER_HIDDEN_IDS.has("rolodex")).toBe(true);
+    const pages = curateLauncherPages(
+      [entry("chat"), entry("rolodex"), entry("relationships")],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    expect(pages.flat().map((e) => e.id)).not.toContain("rolodex");
+    expect(pages.flat().map((e) => e.id)).toContain("relationships");
   });
 });
 

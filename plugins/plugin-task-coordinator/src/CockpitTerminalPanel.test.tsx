@@ -67,6 +67,8 @@ const ui = vi.hoisted(() => {
     resizePty: vi.fn(),
     sendPtyInput: vi.fn(),
     stopCodingAgent: vi.fn(),
+    // PtyTerminalPane re-sends pty-subscribe on WS reconnect.
+    onReconnect: vi.fn(() => () => undefined),
   };
   const emit = (event: string, payload: unknown) => {
     for (const handler of handlers[event] ?? []) handler(payload);

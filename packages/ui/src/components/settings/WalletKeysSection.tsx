@@ -9,6 +9,11 @@
 import { Eye, EyeOff, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
@@ -115,7 +120,11 @@ export function WalletKeysSection() {
     setError(null);
     setEntries(null);
     try {
-      const res = await fetch("/api/secrets/inventory?category=wallet");
+      const res = await client.rawRequest(
+        "/api/secrets/inventory?category=wallet",
+        undefined,
+        { allowNonOk: true },
+      );
       if (res.status === 404) {
         // Secrets/vault route not mounted on this surface (e.g. the mobile
         // agent) — show the empty "no wallet keys" state, not a raw red
@@ -150,8 +159,10 @@ export function WalletKeysSection() {
     async (key: string) => {
       setRevealLoading((prev) => ({ ...prev, [key]: true }));
       try {
-        const res = await fetch(
+        const res = await client.rawRequest(
           `/api/secrets/inventory/${encodeURIComponent(key)}`,
+          undefined,
+          { allowNonOk: true },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as RevealPayload;
@@ -198,9 +209,10 @@ export function WalletKeysSection() {
         }),
       );
       if (!ok) return;
-      const res = await fetch(
+      const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
         { method: "DELETE" },
+        { allowNonOk: true },
       );
       if (!res.ok) {
         setError(`HTTP ${res.status}`);
@@ -219,7 +231,7 @@ export function WalletKeysSection() {
       if (!key || !value) return;
       setSubmitting(true);
       setError(null);
-      const res = await fetch(
+      const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(key)}`,
         {
           method: "PUT",
@@ -229,6 +241,7 @@ export function WalletKeysSection() {
             category: "wallet",
           }),
         },
+        { allowNonOk: true },
       );
       setSubmitting(false);
       if (!res.ok) {

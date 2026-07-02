@@ -32,6 +32,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The REAL ELIZA_CLOUD_TIER_MODEL currently maps BOTH tiers to the same
+// Cerebras model (no smart model has shipped), which makes the pane hide the
+// Fast/Smart toggle. Mock it as a mutable record so the flip test can exercise
+// divergent tiers and the collapse test can exercise identical ones.
+const tierModels = vi.hoisted(() => ({
+  small: "gemma-4-31b",
+  large: "qwen-3-huge",
+}));
+
 const calls = {
   getOrchestratorStatus: vi.fn(),
   listCodingAgentTaskThreads: vi.fn(),
@@ -59,6 +68,7 @@ vi.mock("@elizaos/ui", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
+    ELIZA_CLOUD_TIER_MODEL: tierModels,
     client: {
       getOrchestratorStatus: () => calls.getOrchestratorStatus(),
       listCodingAgentTaskThreads: (o: unknown) =>
@@ -276,6 +286,10 @@ const timelineItems: CodingAgentTaskTimelineItem[] = [
 ];
 
 beforeEach(() => {
+  // Divergent tiers by default (the flip test needs a real choice); the
+  // collapse test overrides this per-case.
+  tierModels.small = "gemma-4-31b";
+  tierModels.large = "qwen-3-huge";
   for (const fn of Object.values(calls)) fn.mockReset();
   calls.getOrchestratorStatus.mockResolvedValue({ taskCount: 1 });
   calls.listCodingAgentTaskThreads.mockResolvedValue([
@@ -391,7 +405,7 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
       expect(calls.updateOrchestratorTask).toHaveBeenCalledWith(
         "task-1",
         expect.objectContaining({
-          providerPolicy: expect.objectContaining({ model: "gemma-4-31b" }),
+          providerPolicy: expect.objectContaining({ model: tierModels.large }),
         }),
       ),
     );
@@ -404,6 +418,43 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
       ),
     );
     expect(calls.addOrchestratorAgent).not.toHaveBeenCalled();
+  });
+
+  it("Eliza Cloud: hides the tier toggle when both tiers lower to the SAME model (no destructive placebo restart)", async () => {
+    // Mirror today's production reality: no smart model has shipped, so
+    // small === large. Offering the toggle would persist an identical policy
+    // and restart({stopActive:true}) — killing the live worker for nothing.
+    tierModels.large = tierModels.small;
+    calls.getCodingAgentTaskThread.mockResolvedValue({
+      ...detailFixture,
+      providerPolicy: {
+        preferredFramework: "elizaos",
+        providerSource: "eliza-cloud",
+        model: tierModels.small,
+      },
+    });
+    renderPane();
+    // The pane is fully loaded (title + transcript rendered)…
+    await waitFor(() =>
+      expect(screen.getByTestId("orchestrator-user-message")).toBeTruthy(),
+    );
+    // …but neither tier segment exists, so no flip (and no restart) can fire.
+    expect(screen.queryByTestId("cockpit-tier-small")).toBeNull();
+    expect(screen.queryByTestId("cockpit-tier-large")).toBeNull();
+    expect(calls.updateOrchestratorTask).not.toHaveBeenCalled();
+    expect(calls.restartOrchestratorTask).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed inspector action as an alert banner (actionError is not silent)", async () => {
+    calls.pauseOrchestratorTask.mockRejectedValue(new Error("pause exploded"));
+    renderPane();
+    const pause = await screen.findByTestId("orchestrator-inspector-pause");
+    fireEvent.click(pause);
+    // runMutation catches (does NOT rethrow) and stores the message as
+    // actionError — the pane must render it or every failed action is silent.
+    const banner = await screen.findByTestId("cockpit-session-action-error");
+    expect(banner.getAttribute("role")).toBe("alert");
+    expect(banner.textContent).toContain("pause exploded");
   });
 
   it("surfaces an error when a composer-driven message fails to deliver", async () => {
@@ -457,7 +508,10 @@ describe("CockpitSessionPane — inspector layout per surface (#11159 audit)", (
       const inspector = await screen.findByTestId("orchestrator-inspector");
       expect(inspector.className).not.toContain("w-80");
       // Drawer geometry comes from the inline style (closed => hidden).
-      expect(inspector.style.display === "none" || inspector.style.position === "absolute").toBe(true);
+      expect(
+        inspector.style.display === "none" ||
+          inspector.style.position === "absolute",
+      ).toBe(true);
     } finally {
       vi.unstubAllGlobals();
     }

@@ -4305,12 +4305,54 @@ ElizaClient.prototype.unsubscribePtyOutput = function (
   this.sendWsMessage({ type: "pty-unsubscribe", sessionId });
 };
 
+/**
+ * Max UTF-16 length of a single `pty-input` WS message the agent server
+ * accepts (its per-message DoS cap — see `MAX_PTY_INPUT_MESSAGE_LENGTH` in
+ * `packages/agent/src/api/pty-ws-bridge.ts`). Anything larger must be split
+ * client-side: xterm delivers an entire paste as ONE `onData` call, so a
+ * pasted stack trace/diff easily exceeds this.
+ */
+export const MAX_PTY_INPUT_CHUNK_LENGTH = 4096;
+
+/**
+ * Split PTY input into ordered chunks of at most `maxLength` UTF-16 units so
+ * each fits under the server's per-message cap. Never splits a surrogate
+ * pair across chunks (a lone surrogate would be mangled to U+FFFD when the
+ * server writes the chunk to the PTY as UTF-8). Input at or under the cap is
+ * returned as a single chunk, preserving the previous one-message behavior.
+ */
+export function chunkPtyInput(
+  data: string,
+  maxLength: number = MAX_PTY_INPUT_CHUNK_LENGTH,
+): string[] {
+  if (data.length <= maxLength) return [data];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < data.length) {
+    let end = Math.min(start + maxLength, data.length);
+    if (end < data.length && end - start > 1) {
+      const boundary = data.charCodeAt(end - 1);
+      // High surrogate at the cut point → keep the pair together by ending
+      // the chunk one unit earlier.
+      if (boundary >= 0xd800 && boundary <= 0xdbff) end -= 1;
+    }
+    chunks.push(data.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
+
 ElizaClient.prototype.sendPtyInput = function (
   this: ElizaClient,
   sessionId,
   data,
 ) {
-  this.sendWsMessage({ type: "pty-input", sessionId, data });
+  // One WS message per chunk, sent in order. Each message gets its own msgId
+  // (sendWsMessage stamps it), and both the open-socket path and the offline
+  // send-queue preserve call order, so the PTY receives the paste intact.
+  for (const chunk of chunkPtyInput(data)) {
+    this.sendWsMessage({ type: "pty-input", sessionId, data: chunk });
+  }
 };
 
 ElizaClient.prototype.resizePty = function (
