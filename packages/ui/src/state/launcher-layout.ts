@@ -25,9 +25,10 @@ export const LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
 const LEGACY_LAUNCHER_STORAGE_KEY = "elizaos.views.springboard";
 
 /**
- * Icons per launcher page (4 columns × 6 rows, iOS-like). The grid is
- * `overflow-y-auto`, so overflow scrolls rather than clipping. The Launcher
- * renders a fixed 4-column grid, so this is `4 × 6 = 24`.
+ * Icons per launcher page. The Launcher grid is responsive — `grid-cols-4`
+ * (portrait/mobile) and `sm:grid-cols-5` at ≥sm — and is `overflow-y-auto`, so a
+ * page that exceeds the visible rows scrolls rather than clipping. 24 gives exact
+ * 4×6 pages on mobile; at ≥sm it fills 4 rows of 5 plus a 4-tile final row.
  */
 export const LAUNCHER_PAGE_SIZE = 24;
 /**

@@ -25,6 +25,31 @@ const MAX_SETTLE_MS = 440;
 // flick divides through to a shorter duration (down to MIN_SETTLE_MS).
 const MIN_SETTLE_SPEED = 1.5;
 
+/** Rolling pointer sample used to derive RELEASE velocity (not the whole-gesture
+ *  average) so a slow drag finished with a fast flick still commits. */
+interface PointerSample {
+  x: number;
+  y: number;
+  t: number;
+}
+/** Only samples from the last RELEASE_VELOCITY_WINDOW_MS before release feed the
+ *  release-velocity estimate. */
+const RELEASE_VELOCITY_WINDOW_MS = 100;
+
+/** True when the OS/browser requests reduced motion. Read fresh per rail write
+ *  (matchMedia is a cheap synchronous query) so an OS-setting toggle takes effect
+ *  without a remount, and so it's never stale in tests. Returns false when
+ *  matchMedia is unavailable (SSR / jsdom without a stub) → animations stay on. */
+function prefersReducedMotion(): boolean {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return false;
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 interface DragState {
   pointerId: number;
   startX: number;
@@ -32,10 +57,20 @@ interface DragState {
   startTime: number;
   page: number;
   width: number;
+  /** Rail offset at pointerdown — the resting page offset, unless the finger
+   *  caught a settle mid-flight, in which case it's the live transform position
+   *  so the rail is grabbed where it sits (no teleport). */
+  baseOffset: number;
   captured: boolean;
   /** Element holding pointer capture for this drag (mouse/pen only). */
   captureTarget: HTMLDivElement | null;
   axis: "pending" | "horizontal" | "vertical";
+  /** Trailing pointer samples (post-axis-commit), pruned to the velocity window. */
+  samples: PointerSample[];
+  /** True when a mouse/pen button was pressed at pointerdown. Only then does a
+   *  later `buttons === 0` move mean the button was RELEASED off-surface (stale
+   *  drag) rather than a synthetic event that simply omits `buttons`. */
+  hadButtons: boolean;
 }
 
 /**
@@ -171,6 +206,14 @@ export interface HorizontalPagerBinding<
     onPointerUp: React.PointerEventHandler<HTMLDivElement>;
     onPointerCancel: React.PointerEventHandler<HTMLDivElement>;
     onLostPointerCapture: React.PointerEventHandler<HTMLDivElement>;
+    /**
+     * Swallows the click the browser synthesizes from a committed swipe/flick so
+     * it doesn't also tap-launch the element under the release point. Armed
+     * gesture-side on every commit (page change AND edge-swipe), NOT for
+     * goPrev/goNext button clicks. Attach on the same element as the pointer
+     * handlers.
+     */
+    onClickCapture: React.MouseEventHandler<HTMLDivElement>;
   };
   /** True when there is a previous page to page back to (for a `<` control). */
   canPrev: boolean;
@@ -192,6 +235,50 @@ function roundedPx(value: number): string {
 
 function pageOffset(page: number, width: number): number {
   return -page * width;
+}
+
+/**
+ * Release velocity (px/ms) from the trailing sample window — the finger's speed
+ * as it LEFT the surface, not averaged over the whole gesture. This is what lets
+ * "drag slowly to 40%, then flick" commit: the aggregate would read slow, but the
+ * final samples read fast. Falls back to the start-anchored average when there
+ * are too few samples (a tap-flick with no intermediate moves).
+ */
+function releaseVelocity(
+  samples: PointerSample[],
+  endX: number,
+  endT: number,
+  fallback: number,
+): number {
+  // Need at least two points spanning the window to estimate release speed; with
+  // one (a tap-flick, or a single synthetic move whose position equals release)
+  // the window delta is degenerate, so use the whole-gesture average instead.
+  if (samples.length < 2) return fallback;
+  // Oldest sample still inside the window (samples are already pruned to it).
+  const oldest = samples[0];
+  const dt = endT - oldest.t;
+  if (dt <= 0) return fallback;
+  const v = (endX - oldest.x) / dt;
+  // A degenerate window (finger ended exactly where the window started) carries
+  // no directional signal — defer to the average rather than reporting 0.
+  return v === 0 ? fallback : v;
+}
+
+/** Live horizontal translate of the rail (m41), for catching a settle mid-flight
+ *  on pointerdown so the grab never teleports to the animation's end. */
+function liveRailOffset(rail: HTMLDivElement, fallback: number): number {
+  if (typeof window === "undefined" || typeof getComputedStyle !== "function") {
+    return fallback;
+  }
+  const transition = rail.style.transition;
+  if (!transition || transition === "none") return fallback;
+  try {
+    const transform = getComputedStyle(rail).transform;
+    if (!transform || transform === "none") return fallback;
+    return new DOMMatrixReadOnly(transform).m41;
+  } catch {
+    return fallback;
+  }
 }
 
 function clampPage(page: number, pageCount: number): number {
@@ -263,6 +350,10 @@ export function useHorizontalPager<
   const dragRef = React.useRef<DragState | null>(null);
   const rafRef = React.useRef(0);
   const pendingOffsetRef = React.useRef<number | null>(null);
+  // Set true for one tick when a gesture commits, so the click the browser
+  // synthesizes from the same press is swallowed (onClickCapture below) instead
+  // of tap-launching the element under the finger.
+  const suppressClickRef = React.useRef(false);
   // A committed swipe advances the page via onPageChange, which re-runs the
   // layout effect below — so the velocity-derived settle duration is handed to
   // that effect here (instead of the fixed SETTLE_MS) so the momentum survives
@@ -303,10 +394,14 @@ export function useHorizontalPager<
     (offset: number, transitionMs: number | null) => {
       const rail = railRef.current;
       if (!rail) return;
+      // One seam for every animated write (momentum settle, snap-back,
+      // abandonDrag, edge buttons, mount effect): under prefers-reduced-motion
+      // the inline transition is dropped so the rail jumps instead of easing —
+      // the CSS `motion-reduce:transition-none` class can't win against an inline
+      // `transition` style, so the gate has to live here.
+      const ms = prefersReducedMotion() ? null : transitionMs;
       rail.style.transition =
-        transitionMs == null
-          ? "none"
-          : `transform ${transitionMs}ms ${SETTLE_EASING}`;
+        ms == null ? "none" : `transform ${ms}ms ${SETTLE_EASING}`;
       rail.style.transform = `translate3d(${roundedPx(offset)},0,0)`;
     },
     [],
@@ -388,8 +483,11 @@ export function useHorizontalPager<
     dragRef.current = null;
     releaseCapture(state);
     unregisterPagerPointerTracker(state.pointerId, pointerTrackerRef.current);
-    writeOffset(pageOffset(state.page, state.width), SETTLE_MS);
-  }, [cancelScheduledOffset, releaseCapture, writeOffset]);
+    // Re-measure: a viewport resize DURING the drag makes state.width stale, so
+    // settling to pageOffset(page, staleWidth) would leave the rail permanently
+    // mis-offset.
+    writeOffset(pageOffset(state.page, measureWidth()), SETTLE_MS);
+  }, [cancelScheduledOffset, measureWidth, releaseCapture, writeOffset]);
   abandonDragRef.current = abandonDrag;
 
   React.useLayoutEffect(() => {
@@ -443,15 +541,32 @@ export function useHorizontalPager<
       releaseCapture(state);
       unregisterPagerPointerTracker(event.pointerId, pointerTrackerRef.current);
 
-      const base = pageOffset(state.page, state.width);
+      // Settle geometry uses the CURRENT width (a mid-drag resize makes
+      // state.width stale); the commit decision below keeps state.width so the
+      // threshold reflects the geometry the gesture was actually performed under.
+      const width = measureWidth();
+      const base = pageOffset(state.page, width);
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
-      const elapsed = Math.max(1, now() - state.startTime);
-      const velocity = dx / elapsed;
+      const endT = now();
+      const elapsed = Math.max(1, endT - state.startTime);
+      // Whole-gesture average (fallback for a tap-flick with no samples).
+      const avgVelocity = dx / elapsed;
+      // RELEASE velocity from the trailing window — how fast the finger left,
+      // not the gesture average. This is what lets "drag slowly to 40%, then
+      // flick" commit even though the average reads slow.
+      const velocity = releaseVelocity(
+        state.samples,
+        event.clientX,
+        endT,
+        avgVelocity,
+      );
       // Where the rail physically sits at release (incl. edge rubber-band), so
       // the momentum settle covers the ACTUAL remaining distance to the target.
       const lastVisual =
-        state.axis === "horizontal" ? base + visualDragOffset(state, dx) : base;
+        state.axis === "horizontal"
+          ? state.baseOffset + visualDragOffset(state, dx)
+          : state.baseOffset;
       // Velocity-aware momentum: settle duration scales with how fast the finger
       // left, not a fixed rate — a flick lands quick, a slow drag eases in.
       const settleTo = (offset: number) =>
@@ -474,14 +589,27 @@ export function useHorizontalPager<
         return;
       }
 
-      const distanceThreshold = Math.max(
-        MIN_DISTANCE_THRESHOLD,
-        state.width * DISTANCE_THRESHOLD_RATIO,
-      );
+      // The edge-swipe-home direction (right drag at page 0 when enabled) commits
+      // on a shorter slow-drag distance than an inter-page swipe: it's damped by
+      // EDGE_RESISTANCE (the rail only moves ~35% of the finger), so requiring a
+      // full 50%-of-width raw drag would demand a half-screen pull for what reads
+      // as "you can't do this" resistance. Inter-page swipes keep the 50% floor.
+      const isEdgeSwipeHome =
+        dx > 0 && state.page === 0 && edgeSwipeRightEnabledRef.current;
+      const distanceThreshold = isEdgeSwipeHome
+        ? MIN_DISTANCE_THRESHOLD
+        : Math.max(
+            MIN_DISTANCE_THRESHOLD,
+            state.width * DISTANCE_THRESHOLD_RATIO,
+          );
       const shouldAdvance =
         Math.abs(dx) >= distanceThreshold ||
+        // Flick escape hatch: a fast RELEASE (same direction as the drag) commits
+        // short of the distance threshold. Direction guard stops a
+        // drag-forward-then-fling-back release from committing the wrong way.
         (Math.abs(dx) >= MIN_FLICK_DISTANCE &&
           Math.abs(velocity) >= FLICK_VELOCITY &&
+          Math.sign(velocity) === Math.sign(dx) &&
           Math.abs(dx) > Math.abs(dy) * AXIS_DOMINANCE_RATIO);
 
       if (!shouldAdvance) {
@@ -489,8 +617,14 @@ export function useHorizontalPager<
         return;
       }
 
-      if (dx > 0 && state.page === 0 && edgeSwipeRightEnabledRef.current) {
+      if (isEdgeSwipeHome) {
         settleTo(base);
+        // A committed edge-swipe-home is a gesture commit — swallow the
+        // synthesized click so it doesn't tap-launch the tile under the finger.
+        suppressClickRef.current = true;
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
         onEdgeSwipeRightRef.current?.();
         return;
       }
@@ -499,7 +633,7 @@ export function useHorizontalPager<
         state.page + (dx < 0 ? 1 : -1),
         pageCountRef.current,
       );
-      const targetOffset = pageOffset(targetPage, state.width);
+      const targetOffset = pageOffset(targetPage, width);
       if (targetPage !== pageRef.current) {
         // Park the momentum duration for the layout effect that the
         // onPageChange-driven re-render triggers, so the controlled-page update
@@ -511,6 +645,12 @@ export function useHorizontalPager<
             velocity,
           ),
         };
+        // A committed page change is a gesture commit — swallow the synthesized
+        // click so the flick doesn't also tap-launch the element under it.
+        suppressClickRef.current = true;
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
         onPageChangeRef.current(targetPage);
       } else {
         // Already at the clamped edge — settle directly (no page change fires).
@@ -520,6 +660,7 @@ export function useHorizontalPager<
     [
       canMove,
       cancelScheduledOffset,
+      measureWidth,
       releaseCapture,
       visualDragOffset,
       writeOffset,
@@ -543,7 +684,13 @@ export function useHorizontalPager<
       if (
         !enabledRef.current ||
         pageCountRef.current <= 0 ||
-        event.isPrimary === false
+        event.isPrimary === false ||
+        // Only the primary (left) button starts a drag. A right/middle-button
+        // (or pen barrel-button, button 2) press otherwise starts a real drag
+        // that can page while the OS context menu opens, and — since mouse
+        // capture is only taken after the axis commit — can go stale if released
+        // off-surface. Touch has no buttons, so guard mouse/pen only.
+        (event.pointerType !== "touch" && event.button !== 0)
       ) {
         return;
       }
@@ -558,6 +705,14 @@ export function useHorizontalPager<
       );
       const currentPage = clampPage(pageRef.current, pageCountRef.current);
       const width = measureWidth();
+      const restingOffset = pageOffset(currentPage, width);
+      // If a momentum settle is still animating, grab the rail where it visually
+      // sits (its live transform) instead of snapping it to the resting page —
+      // otherwise chaining swipes teleports the rail to the previous settle's end.
+      const rail = railRef.current;
+      const baseOffset = rail
+        ? liveRailOffset(rail, restingOffset)
+        : restingOffset;
       dragRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -565,11 +720,14 @@ export function useHorizontalPager<
         startTime: now(),
         page: currentPage,
         width,
+        baseOffset,
         captured: false,
         captureTarget: null,
         axis: "pending",
+        samples: [],
+        hadButtons: event.pointerType !== "touch" && event.buttons > 0,
       };
-      writeOffset(pageOffset(currentPage, width), null);
+      writeOffset(baseOffset, null);
     },
     [cancelScheduledOffset, measureWidth, writeOffset],
   );
@@ -578,6 +736,22 @@ export function useHorizontalPager<
     (event: React.PointerEvent<HTMLDivElement>) => {
       const state = dragRef.current;
       if (!state || state.pointerId !== event.pointerId) return;
+
+      // A mouse/pen drag that started with a button down but now reports no
+      // button held means the press ended off-surface (released over an
+      // overlaying sibling before capture was taken, so we never got pointerup)
+      // and this is a plain hover — abandon the stale drag instead of panning the
+      // rail with an un-pressed pointer. Gated on `hadButtons` so a drag that
+      // began without a pressed button (touch, or a synthetic event that omits
+      // `buttons`) is never spuriously abandoned.
+      if (
+        state.hadButtons &&
+        event.pointerType !== "touch" &&
+        event.buttons === 0
+      ) {
+        abandonDrag();
+        return;
+      }
 
       // Another pager already owns this pointer's horizontal gesture — stand
       // down instead of double-tracking it. (Eviction usually beat us to it;
@@ -635,9 +809,17 @@ export function useHorizontalPager<
           // Capture is best-effort; the transform can still follow pointermove.
         }
       }
-      scheduleOffset(
-        pageOffset(state.page, state.width) + visualDragOffset(state, dx),
-      );
+      // Record a trailing sample for the release-velocity estimate, pruned to the
+      // window so `finish()` reads the finger's speed as it LEFT, not the average.
+      const t = now();
+      state.samples.push({ x: event.clientX, y: event.clientY, t });
+      while (
+        state.samples.length > 1 &&
+        t - state.samples[0].t > RELEASE_VELOCITY_WINDOW_MS
+      ) {
+        state.samples.shift();
+      }
+      scheduleOffset(state.baseOffset + visualDragOffset(state, dx));
     },
     [abandonDrag, canMove, scheduleOffset, visualDragOffset],
   );
@@ -652,6 +834,20 @@ export function useHorizontalPager<
     [finish],
   );
 
+  // Swallow the click a committed swipe/flick synthesizes (armed in finish() for
+  // both page-change and edge-swipe commits) so it can't tap-launch the element
+  // under the release point. One mechanism for every consumer — inner launcher
+  // paging and the edge-swipe-home path included.
+  const onClickCapture = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!suppressClickRef.current) return;
+      suppressClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [],
+  );
+
   const clampedPage = clampPage(page, pageCount);
 
   return {
@@ -663,6 +859,7 @@ export function useHorizontalPager<
       onPointerUp,
       onPointerCancel,
       onLostPointerCapture: onPointerCancel,
+      onClickCapture,
     },
     canPrev: clampedPage > 0,
     canNext: clampedPage < pageCount - 1,

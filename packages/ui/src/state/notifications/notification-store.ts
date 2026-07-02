@@ -1,4 +1,11 @@
-import type { AgentNotification } from "@elizaos/core";
+import {
+  type AgentNotification,
+  DEFAULT_NOTIFICATION_CATEGORY,
+  DEFAULT_NOTIFICATION_PRIORITY,
+  type NotificationCategory,
+  type NotificationPriority,
+  type UUID,
+} from "@elizaos/core";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
@@ -148,15 +155,85 @@ interface WsAgentEvent {
   payload?: unknown;
 }
 
+const NOTIFICATION_CATEGORIES: ReadonlySet<string> =
+  new Set<NotificationCategory>([
+    "reminder",
+    "task",
+    "workflow",
+    "agent",
+    "approval",
+    "message",
+    "health",
+    "system",
+    "general",
+  ]);
+const NOTIFICATION_PRIORITIES: ReadonlySet<string> =
+  new Set<NotificationPriority>(["low", "normal", "high", "urgent"]);
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+function optionalTimestamp(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+/**
+ * Validate the untrusted WS notification payload into a typed AgentNotification,
+ * or null to drop it. The wire is an external boundary — `id` and `title` are
+ * required (a notification without either is unrenderable, so drop it), the
+ * category/priority unions fall back to their canonical defaults, `createdAt`
+ * falls back to now, and the optional fields pass through only when well-typed.
+ * This replaces the previous double-cast that trusted every field but `id`.
+ */
+function validateWsNotification(value: unknown): AgentNotification | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== "string" || typeof raw.title !== "string") return null;
+  const category =
+    typeof raw.category === "string" &&
+    NOTIFICATION_CATEGORIES.has(raw.category)
+      ? (raw.category as NotificationCategory)
+      : DEFAULT_NOTIFICATION_CATEGORY;
+  const priority =
+    typeof raw.priority === "string" &&
+    NOTIFICATION_PRIORITIES.has(raw.priority)
+      ? (raw.priority as NotificationPriority)
+      : DEFAULT_NOTIFICATION_PRIORITY;
+  const createdAt =
+    typeof raw.createdAt === "number" && Number.isFinite(raw.createdAt)
+      ? raw.createdAt
+      : Date.now();
+  return {
+    id: raw.id as UUID,
+    title: raw.title,
+    category,
+    priority,
+    source: optionalString(raw.source) ?? "unknown",
+    createdAt,
+    body: optionalString(raw.body),
+    deepLink: optionalString(raw.deepLink),
+    icon: optionalString(raw.icon),
+    groupKey: optionalString(raw.groupKey),
+    readAt: optionalTimestamp(raw.readAt),
+    expiresAt: optionalTimestamp(raw.expiresAt),
+  };
+}
+
 function handleWsAgentEvent(data: Record<string, unknown>): void {
   const event = data as WsAgentEvent;
   if (event.stream !== "notification") return;
-  const payload = event.payload as
-    | { notification?: AgentNotification; unreadCount?: number }
-    | undefined;
-  const notification = payload?.notification;
-  if (!notification || typeof notification.id !== "string") return;
-  ingest(notification, payload?.unreadCount);
+  const payload =
+    event.payload && typeof event.payload === "object"
+      ? (event.payload as { notification?: unknown; unreadCount?: unknown })
+      : undefined;
+  const notification = validateWsNotification(payload?.notification);
+  if (!notification) return;
+  const unreadCount =
+    typeof payload?.unreadCount === "number" ? payload.unreadCount : undefined;
+  ingest(notification, unreadCount);
 }
 
 async function hydrate(): Promise<void> {
@@ -247,4 +324,15 @@ export function __ingestNotificationForTests(
   unreadCount?: number,
 ): void {
   ingest(notification, unreadCount);
+}
+
+/** Test-only: drive the hydration flag to exercise the not-loaded vs empty UI. */
+export function __setHydratedForTests(value: boolean): void {
+  setState({ hydrated: value });
+}
+
+/** Test-only snapshot of the live store state (the WS-validation path asserts the
+ *  coerced fields directly rather than through a sink). */
+export function __getStateForTests(): NotificationState {
+  return state;
 }

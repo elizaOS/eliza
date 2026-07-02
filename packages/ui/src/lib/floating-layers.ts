@@ -17,6 +17,14 @@ export const Z_FIRST_RUN_CHOOSER = 9400;
 // glow + card always read over an expanded chat, but stays BELOW the
 // system-critical band so a fatal banner can never be painted over by the tour.
 export const Z_TUTORIAL = 9500;
+// The notification center's controlled shells (pull-down sheet + desktop panel)
+// and their dismiss backdrop. They sit ABOVE the tutorial spotlight (which is
+// pointer-events:none and purely visual) so an opened notification center reads
+// over an active tour, and BELOW the system-critical banner band so a fatal
+// banner is never painted over. Backdrop just under the overlay so the shell
+// always wins the tie.
+export const Z_NOTIFICATION_BACKDROP = 9550;
+export const Z_NOTIFICATION_OVERLAY = 9560;
 export const Z_SYSTEM_BANNER = 9998;
 export const Z_SYSTEM_CRITICAL = 9999;
 export const Z_GLOBAL_EMOTE = 11000;

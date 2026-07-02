@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { AgentNotification } from "@elizaos/core";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -152,12 +158,18 @@ describe("NotificationCenter", () => {
     expect(screen.queryByText("Discord reply waiting")).not.toBeNull();
     expect(screen.queryByText("Update installed")).not.toBeNull();
 
-    await user.click(screen.getByRole("tab", { name: "Reminders" }));
+    // Filter chips are toggle buttons (aria-pressed), scoped to the filter group.
+    const filterBar = screen.getByRole("group", {
+      name: "Filter notifications by category",
+    });
+    await user.click(
+      within(filterBar).getByRole("button", { name: "Reminders" }),
+    );
     expect(screen.queryByText("Take medication")).not.toBeNull();
     expect(screen.queryByText("Discord reply waiting")).toBeNull();
     expect(screen.queryByText("Update installed")).toBeNull();
 
-    await user.click(screen.getByRole("tab", { name: "All" }));
+    await user.click(within(filterBar).getByRole("button", { name: "All" }));
     expect(screen.queryByText("Take medication")).not.toBeNull();
     expect(screen.queryByText("Discord reply waiting")).not.toBeNull();
     expect(screen.queryByText("Update installed")).not.toBeNull();
@@ -173,7 +185,12 @@ describe("NotificationCenter", () => {
     render(<NotificationCenter />);
 
     await user.click(screen.getByRole("button", { name: /notifications/i }));
-    await user.click(screen.getByRole("tab", { name: "Reminders" }));
+    const filterBar = screen.getByRole("group", {
+      name: "Filter notifications by category",
+    });
+    await user.click(
+      within(filterBar).getByRole("button", { name: "Reminders" }),
+    );
     expect(screen.queryByText("Update installed")).toBeNull();
 
     await user.click(
@@ -184,8 +201,9 @@ describe("NotificationCenter", () => {
       expect(screen.queryByText("Take medication")).toBeNull();
       expect(screen.queryByText("Update installed")).not.toBeNull();
     });
+    // The filter group collapses when only one category remains present.
     expect(
-      screen.queryByRole("tablist", {
+      screen.queryByRole("group", {
         name: "Filter notifications by category",
       }),
     ).toBeNull();
@@ -371,5 +389,81 @@ describe("NotificationCenter", () => {
     });
     expect(screen.queryByTestId("notification-panel")).toBeNull();
     expect(screen.getByText("Reminder due")).toBeTruthy();
+  });
+
+  it("controlled shells are accessible dialogs: aria-modal, focus moves in, focus returns on close", async () => {
+    seedNotifications([notification("f1", "Focus me", "system")]);
+    const Harness = ({ open }: { open: boolean }) => (
+      <>
+        <button type="button" data-testid="opener">
+          open
+        </button>
+        <NotificationCenter
+          variant="sheet"
+          open={open}
+          onOpenChange={() => {}}
+        />
+      </>
+    );
+    // Start closed with the opener focused (the real flow: a trigger opens it).
+    const { rerender } = render(<Harness open={false} />);
+    (screen.getByTestId("opener") as HTMLElement).focus();
+    expect(document.activeElement).toBe(screen.getByTestId("opener"));
+
+    // Open: the effect captures the opener and moves focus into the dialog.
+    rerender(<Harness open />);
+    const dialog = screen.getByTestId("notification-sheet");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    await waitFor(() => expect(document.activeElement).toBe(dialog));
+
+    // Close: focus returns to the opener.
+    rerender(<Harness open={false} />);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("opener")),
+    );
+  });
+
+  it("empty state waits for hydration: shows Loading… before the inbox settles, then 'all caught up'", async () => {
+    const { __setHydratedForTests } = await import(
+      "../../state/notifications/notification-store"
+    );
+    // Keep the store's own hydrate() pending so `hydrated` stays false after mount.
+    mocks.listNotifications.mockReturnValue(new Promise(() => {}));
+
+    render(<NotificationCenter variant="sheet" open onOpenChange={() => {}} />);
+    // Not hydrated + no rows → neutral loading, NOT the definitive empty copy.
+    expect(screen.getByText("Loading…")).toBeTruthy();
+    expect(screen.queryByText("You're all caught up")).toBeNull();
+
+    // Hydration settles empty → the definitive empty state replaces Loading….
+    __setHydratedForTests(true);
+    await waitFor(() =>
+      expect(screen.getByText("You're all caught up")).toBeTruthy(),
+    );
+    expect(screen.queryByText("Loading…")).toBeNull();
+  });
+
+  it("category filter chips are toggle buttons (aria-pressed), not fake tabs", async () => {
+    seedNotifications([
+      notification("c1", "A reminder", "reminder"),
+      notification("c2", "A message", "message"),
+    ]);
+    const user = userEvent.setup();
+    render(<NotificationCenter variant="sheet" open onOpenChange={() => {}} />);
+    await screen.findByText("A reminder");
+
+    // No ARIA tabs machinery (which would promise arrow-key nav we don't ship).
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
+
+    const filterBar = screen.getByRole("group", {
+      name: "Filter notifications by category",
+    });
+    const remindersChip = within(filterBar).getByRole("button", {
+      name: "Reminders",
+    });
+    expect(remindersChip.getAttribute("aria-pressed")).toBe("false");
+    await user.click(remindersChip);
+    expect(remindersChip.getAttribute("aria-pressed")).toBe("true");
   });
 });

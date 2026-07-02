@@ -151,6 +151,30 @@ describe("curateLauncherPages", () => {
     expect(ids(pages)).toEqual([["wallet", "automations"]]);
   });
 
+  it("drops the alias path when an alias wins the tile, so launch/telemetry agree", () => {
+    // Only an aliased registration (todos → automations) is present, no canonical
+    // `automations`. The tile must carry the canonical id AND no alias path, so
+    // handleLaunch falls back to /apps/automations rather than /todos.
+    const pages = curateLauncherPages([entry("todos", { path: "/todos" })], {
+      isAosp: false,
+      enabledKinds: ENABLED,
+      cloudActive: true,
+    });
+    const tile = pages[0][0];
+    expect(tile.id).toBe("automations");
+    expect(tile.path).toBeUndefined();
+  });
+
+  it("keeps a non-aliased winner's real path intact", () => {
+    const pages = curateLauncherPages(
+      [entry("wallet", { path: "/wallet", kind: "view", state: "loaded" })],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    const tile = pages[0][0];
+    expect(tile.id).toBe("wallet");
+    expect(tile.path).toBe("/wallet");
+  });
+
   it("appends other loaded apps after the curated order on page 1", () => {
     const pages = curateLauncherPages(
       [

@@ -222,7 +222,16 @@ export function curateLauncherPages(
     if (!existing || preferenceScore(entry) > preferenceScore(existing)) {
       // Preserve the canonical id so navigation + telemetry stay stable even
       // when an aliased registration (e.g. `wallet.inventory`) wins the tile.
-      byCanonical.set(canonicalId, { ...entry, id: canonicalId });
+      // When the id is REWRITTEN (an alias won), drop its alias `path` too, so
+      // handleLaunch falls back to `/apps/<canonicalId>` — the route the dedup
+      // presumes — instead of navigating to the alias route while recents +
+      // telemetry record the canonical id (a real launch/telemetry mismatch).
+      byCanonical.set(
+        canonicalId,
+        canonicalId === entry.id
+          ? entry
+          : { ...entry, id: canonicalId, path: undefined },
+      );
     }
   }
 

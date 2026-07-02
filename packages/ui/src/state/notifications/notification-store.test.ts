@@ -35,6 +35,7 @@ vi.mock("../../bridge/native-notifications", () => ({
 }));
 
 import {
+  __getStateForTests,
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
   clearNotifications,
@@ -177,6 +178,53 @@ describe("notification-store", () => {
     });
     expect(sink).toHaveBeenCalledTimes(1);
     expect(sink.mock.calls[0][0]).toContain("From WS");
+  });
+
+  it("WS handler drops a payload missing id or title (validated, not cast)", () => {
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    const sink = vi.fn();
+    registerNotificationToastSink(sink);
+    // No title → unrenderable → dropped.
+    handler({
+      stream: "notification",
+      payload: { notification: { id: "abc", body: "no title" } },
+    });
+    // No id → dropped.
+    handler({
+      stream: "notification",
+      payload: { notification: { title: "no id" } },
+    });
+    expect(sink).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications).toHaveLength(0);
+  });
+
+  it("WS handler coerces an invalid category/priority to the defaults", () => {
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      stream: "notification",
+      payload: {
+        notification: {
+          id: "coerce-1",
+          title: "Bad enums",
+          category: "not-a-category",
+          priority: "SUPER-URGENT",
+          createdAt: "not-a-number",
+        },
+      },
+    });
+    const stored = __getStateForTests().notifications.find(
+      (n) => n.id === "coerce-1",
+    );
+    expect(stored).toBeTruthy();
+    expect(stored?.category).toBe("general");
+    expect(stored?.priority).toBe("normal");
+    expect(typeof stored?.createdAt).toBe("number");
   });
 
   it("markNotificationRead calls the API optimistically", async () => {
