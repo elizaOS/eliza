@@ -103,7 +103,9 @@ Operational knobs:
   for concurrent conversations; the engine warns when the conversation high
   water mark exceeds the running `--parallel` value.
 - Use `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` to trade streaming smoothness against
-  JS/FFI round trips. The default is `32`, clamped to `1`-`512`.
+  JS/FFI round trips. The shared FFI runner default is `32`, clamped to
+  `1`-`512`; the interactive chat path uses a finer default of `8` when the env
+  is unset (internal / planner / voice calls keep the coarse `32`).
 - Embedding overrides (`LOCAL_EMBEDDING_MODEL`,
   `LOCAL_EMBEDDING_GPU_LAYERS`, `LOCAL_EMBEDDING_CONTEXT_SIZE`,
   `LOCAL_EMBEDDING_DIMENSIONS`) should keep the SQL vector dimension in sync.
