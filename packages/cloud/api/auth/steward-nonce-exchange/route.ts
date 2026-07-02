@@ -35,7 +35,7 @@ import {
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
-import { syncUserFromSteward } from "@/lib/steward-sync";
+import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -431,9 +431,11 @@ app.post("/", async (c) => {
     });
   } catch (error) {
     logExchange("sync-failed");
+    // Workers Logs indexes only the message STRING — an Error passed in the
+    // context object is dropped entirely (a week of these prod 500s was
+    // unobservable because of exactly that). Inline everything.
     logger.error(
-      "[steward-nonce-exchange] Failed to sync Steward user before setting cookie",
-      { stewardUserId: claims.userId, error },
+      `[steward-nonce-exchange] Failed to sync Steward user before setting cookie (stewardUserId=${claims.userId}): ${describeSyncError(error)}`,
     );
     return c.json(
       errorBody("Could not sync Steward user", "steward_user_sync_failed"),
