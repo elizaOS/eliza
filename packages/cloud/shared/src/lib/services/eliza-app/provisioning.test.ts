@@ -9,6 +9,7 @@ const enqueueAgentProvision = mock();
 const deleteSandbox = mock();
 const hasElizaAppInitialFreeCredits = mock();
 const addCredits = mock();
+const checkAgentCreditGate = mock();
 
 const deleteSandboxSpy = spyOn(agentSandboxesRepository, "delete").mockImplementation(
   (...args) => deleteSandbox(...args) as never,
@@ -74,6 +75,10 @@ mock.module("../provisioning-jobs", () => ({
   },
 }));
 
+mock.module("../agent-billing-gate", () => ({
+  checkAgentCreditGate,
+}));
+
 afterAll(() => {
   listByOrganizationSpy.mockRestore();
   createAgentSpy.mockRestore();
@@ -92,6 +97,7 @@ describe("ensureElizaAppProvisioning", () => {
     deleteSandbox.mockReset();
     hasElizaAppInitialFreeCredits.mockReset();
     addCredits.mockReset();
+    checkAgentCreditGate.mockReset();
   });
 
   test("grants starter credits before provisioning a new Eliza App agent", async () => {
@@ -101,6 +107,7 @@ describe("ensureElizaAppProvisioning", () => {
       transaction: { id: "credit-tx-1" },
       newBalance: 5,
     });
+    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
       agent: { id: "agent-1", status: "provisioning", bridge_url: null },
       idempotent: false,
@@ -123,6 +130,9 @@ describe("ensureElizaAppProvisioning", () => {
       },
       stripePaymentIntentId: "eliza-app-initial-free-credits:org-1",
     });
+    // Fresh org: the starter grant lands before the gate runs, so the gate
+    // sees the $5 balance and provisioning proceeds.
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(createAgent).toHaveBeenCalledWith({
       organizationId: "org-1",
       userId: "user-1",
@@ -146,6 +156,7 @@ describe("ensureElizaAppProvisioning", () => {
   test("reuses an in-flight sandbox without enqueuing a second provision job", async () => {
     hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
+    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
       agent: { id: "agent-1", status: "provisioning", bridge_url: null },
       idempotent: true,
@@ -168,6 +179,7 @@ describe("ensureElizaAppProvisioning", () => {
   test("deletes the just-created sandbox when the provision enqueue throws", async () => {
     hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
+    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
       agent: { id: "agent-1", status: "pending", bridge_url: null },
       idempotent: false,
@@ -203,10 +215,45 @@ describe("ensureElizaAppProvisioning", () => {
     expect(addCredits).not.toHaveBeenCalled();
     expect(createAgent).not.toHaveBeenCalled();
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    // The existing-sandbox early return sits before the credit gate, so a
+    // drained org with a live sandbox still gets it back untouched.
+    expect(checkAgentCreditGate).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       status: "running",
       agentId: "agent-1",
       bridgeUrl: "https://agent.example",
+    });
+  });
+
+  test("returns insufficient_credits without provisioning when a drained org fails the credit gate", async () => {
+    // Returning drained org: the one-time starter grant was already consumed,
+    // so ensureElizaAppStarterCredits is a no-op and the gate sees the real
+    // (empty) balance.
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
+    listByOrganization.mockResolvedValue([]);
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: false,
+      balance: 0.05,
+      error:
+        "Insufficient credits. A balance greater than $0.10 is required to create or run Eliza agents.",
+    });
+
+    const result = await ensureElizaAppProvisioning({
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    expect(addCredits).not.toHaveBeenCalled();
+    // The denial must return a status, not throw — runOnboardingChat has no
+    // enclosing try/catch, so a throwing gate would 500 the onboarding turn.
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: "insufficient_credits",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
     });
   });
 });

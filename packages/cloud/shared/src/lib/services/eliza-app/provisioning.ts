@@ -3,6 +3,7 @@ import { creditTransactionsRepository } from "../../../db/repositories/credit-tr
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
+import { checkAgentCreditGate } from "../agent-billing-gate";
 import { creditsService } from "../credits";
 import { elizaSandboxService } from "../eliza-sandbox";
 import { provisioningJobService } from "../provisioning-jobs";
@@ -90,6 +91,27 @@ export async function ensureElizaAppProvisioning(params: {
   const existing = await getElizaAppProvisioningStatus(params.organizationId);
   if (existing.sandbox) {
     return existing;
+  }
+
+  // Every other create/provision/resume path runs the credit gate before
+  // createAgent; this onboarding entry point must too. Fresh orgs just
+  // received the starter grant above so they pass, and an org with a live
+  // sandbox already returned early — the gate only blocks NEW provisioning
+  // for a drained returning org. Return a non-provisioning status instead of
+  // throwing: runOnboardingChat has no enclosing try/catch, so a throw here
+  // would 500 the whole onboarding turn.
+  const creditGate = await checkAgentCreditGate(params.organizationId);
+  if (!creditGate.allowed) {
+    logger.warn("[eliza-app provisioning] Credit gate blocked provisioning", {
+      orgId: params.organizationId,
+      balance: creditGate.balance,
+    });
+    return {
+      status: "insufficient_credits",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    };
   }
 
   const { agent: sandbox, idempotent } = await elizaSandboxService.createAgent({

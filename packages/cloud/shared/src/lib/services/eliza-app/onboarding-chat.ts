@@ -383,6 +383,9 @@ function fallbackReply(args: {
   if (args.provisioning.status === "error") {
     return `I hit a provisioning issue, ${name}. Your control panel has the latest status, and the team can inspect it there.`;
   }
+  if (args.provisioning.status === "insufficient_credits") {
+    return `You're out of credits, ${name}. ${ELIZA_APP_PRICING_SUMMARY} Add credits at ${onboardingAppPath("/dashboard/billing")} and I'll start your private agent.`;
+  }
   return `Good, ${name}. Your private Eliza container is provisioning now. Keep chatting here while it starts up.`;
 }
 
@@ -432,6 +435,13 @@ async function generateOnboardingReply(args: {
   // generated ones so the SMS-safety invariant holds on every reply path
   // (session names captured before sanitization could carry non-ASCII).
   if (!args.preferredNameCaptured) {
+    return sanitizeReplyText(fallbackReply(args));
+  }
+
+  // Out-of-credits is a money-state reply: keep it deterministic (exact
+  // billing link, no invented amounts) instead of letting the model
+  // improvise billing copy.
+  if (args.provisioning.status === "insufficient_credits") {
     return sanitizeReplyText(fallbackReply(args));
   }
 
