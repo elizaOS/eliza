@@ -391,6 +391,17 @@ export class SwarmCoordinatorService extends Service {
     event: string,
     data: unknown,
   ): Promise<void> {
+    // A non-terminal event means the session resumed: a follow-up prompt turn
+    // reuses the same session (task_complete fires at the end of every turn, then
+    // the session returns to a non-terminal status and accepts more input). Cancel
+    // any pending post-terminal eviction so the still-live task state is not
+    // deleted mid-turn. Also refresh cached enrichment metadata: session metadata
+    // can be patched between turns, and a resumed turn must not reuse the prior
+    // turn's stale snapshot — so this must run BEFORE enrichment below.
+    if (!this.isTerminalEvent(event)) {
+      this.cancelLegacyTaskEviction(sessionId);
+    }
+
     const enrichedData = this.shouldEnrichEvent(event)
       ? await this.enrichEventData(sessionId, data)
       : data;
@@ -407,24 +418,6 @@ export class SwarmCoordinatorService extends Service {
       await this.runCustomValidatorAndDispatch(sessionId, enrichedData);
       this.scheduleLegacyTaskEviction(sessionId);
       return;
-    }
-
-    // A non-terminal event means the session resumed: a follow-up prompt turn
-    // reuses the same session (task_complete fires at the end of every turn, then
-    // the session returns to a non-terminal status and accepts more input). Cancel
-    // any pending post-terminal eviction so the still-live task state and its
-    // enrichment cache are not deleted mid-turn — an eviction inside the grace
-    // window blinds Discord timeout suppression and task routing until the next
-    // ACP event happens to recreate the entry.
-    // A non-terminal event means the session resumed: a follow-up prompt turn
-    // reuses the same session (task_complete fires at the end of every turn, then
-    // the session returns to a non-terminal status and accepts more input). Cancel
-    // any pending post-terminal eviction so the still-live task state and its
-    // enrichment cache are not deleted mid-turn — an eviction inside the grace
-    // window blinds Discord timeout suppression and task routing until the next
-    // ACP event happens to recreate the entry.
-    if (!this.isTerminalEvent(event)) {
-      this.cancelLegacyTaskEviction(sessionId);
     }
 
     const swarmEvent: SwarmEvent = {
@@ -626,6 +619,7 @@ export class SwarmCoordinatorService extends Service {
     if (!existing) return;
     clearTimeout(existing);
     this.legacyTaskEvictionTimers.delete(sessionId);
+    this.enrichmentMetadataCache.delete(sessionId);
   }
 
   private dispatchSwarmEvent(swarmEvent: SwarmEvent): void {
