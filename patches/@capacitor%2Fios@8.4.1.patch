@@ -1,0 +1,30 @@
+diff --git a/Capacitor/Capacitor/CapacitorBridge.swift b/Capacitor/Capacitor/CapacitorBridge.swift
+index 7b8b9b99dc32ae9f9da78854789e4f8a6370b758..ec312dc5314e9c3c9d4a5a875eddcf59d11399f8 100644
+--- a/Capacitor/Capacitor/CapacitorBridge.swift
++++ b/Capacitor/Capacitor/CapacitorBridge.swift
+@@ -271,10 +271,23 @@ open class CapacitorBridge: NSObject, CAPBridgeProtocol {
+             registerCordovaPlugins()
+         } else {
+             observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: OperationQueue.main) { [weak self] (_) in
+-                self?.triggerDocumentJSEvent(eventName: "resume")
++                // Skip until the initial page load has finished: with a UIScene-based
++                // lifecycle this notification also fires at cold launch, and evaluating
++                // `window.Capacitor.triggerEvent('resume', 'document')` before the
++                // Capacitor runtime is injected throws
++                // WKError.javaScriptExceptionOccurred ("JS Eval error").
++                guard let self = self, case .subsequentLoad = self.webViewDelegationHandler.webViewLoadingState else {
++                    return
++                }
++                self.triggerDocumentJSEvent(eventName: "resume")
+             })
+             observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: OperationQueue.main) { [weak self] (_) in
+-                self?.triggerDocumentJSEvent(eventName: "pause")
++                // Same guard as "resume": there is no page state to pause before the
++                // initial load has completed, and the eval would throw.
++                guard let self = self, case .subsequentLoad = self.webViewDelegationHandler.webViewLoadingState else {
++                    return
++                }
++                self.triggerDocumentJSEvent(eventName: "pause")
+             })
+         }
+     }

@@ -72,6 +72,10 @@ describe("isClaudeSdkApiErrorMessage", () => {
       "API Error: 429 rate limited",
       "API Error: 529 overloaded",
       "  API Error: 500 internal server error",
+      // Non-numeric envelopes baked into the shipping CLI binary:
+      "API Error: Request was aborted.",
+      "API Error: Missing Tool Result Block",
+      "API Error",
     ]) {
       expect(isClaudeSdkApiErrorMessage(s)).toBe(true);
     }
@@ -83,6 +87,8 @@ describe("isClaudeSdkApiErrorMessage", () => {
       "You're seeing 'API Error: 400' because the content block was empty.",
       "The API returned an error: 400.",
       "Error handling matters — retry on API Error status codes like 429.",
+      "API Error handling is a best practice for resilient clients.",
+      "API Errors come in many flavors; retry the retryable ones.",
       "42",
     ]) {
       expect(isClaudeSdkApiErrorMessage(s)).toBe(false);

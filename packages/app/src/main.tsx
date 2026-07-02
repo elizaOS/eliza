@@ -110,6 +110,7 @@ import {
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
+import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
 import {
   applyUiTheme,
   loadUiLanguage,
@@ -2759,6 +2760,7 @@ async function main(): Promise<void> {
     // plugin. Idempotent + native-gated; runs only after the local-agent
     // fetch bridge is installed so `/api/...` routes resolve to the agent.
     initScreenCaptureBridge();
+    initOcrBridge();
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
@@ -2767,6 +2769,7 @@ async function main(): Promise<void> {
     // plugin. Idempotent + native-gated; runs only after the Android fetch
     // bridge is installed so `/api/...` routes resolve to the agent.
     initScreenCaptureBridge();
+    initOcrBridge();
     // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
     // window.__jniVoice (the in-process JNI voice pipeline — the four fused
     // voice classifiers running IN the bionic app process via the ElizaVoice

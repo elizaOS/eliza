@@ -147,14 +147,54 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 	return {
 		name: "APP",
-		contexts: ["automation", "settings", "code"],
-		contextGate: { anyOf: ["automation", "settings", "code"] },
+		// "general" is included because unambiguous app asks ("show me the
+		// apps", "launch shopify") are routinely routed to the general context
+		// by Stage 1; without it the APP action never reaches the planner
+		// surface for exactly the requests it exists to serve (#9950).
+		contexts: ["automation", "settings", "code", "general"],
+		contextGate: { anyOf: ["automation", "settings", "code", "general"] },
 		roleGate: { minRole: "OWNER" },
-		similes: ["APP_CONTROL", "MANAGE_APPS"],
+		// Retrieval + Stage-1 candidate attractors. Deliberately excludes
+		// SHOW_APPS / OPEN_APPS / OPEN_APP / SHOW_APP — those are claimed by
+		// VIEWS (apps-page navigation) and by the core candidate alias map;
+		// APP keeps the list/launch/install vocabulary for the applications
+		// themselves.
+		similes: [
+			"APP_CONTROL",
+			"MANAGE_APPS",
+			"LIST_APPS",
+			"LIST_INSTALLED_APPS",
+			"GET_INSTALLED_APPS",
+			"INSTALLED_APPS",
+			"LIST_RUNNING_APPS",
+			"RUNNING_APPS",
+			"APP_LIST",
+			"LAUNCH_APP",
+			"START_APP",
+			"RUN_APP",
+			"RESTART_APP",
+			"RELAUNCH_APP",
+			"CREATE_APP",
+			"BUILD_APP",
+			"NEW_APP",
+		],
+		tags: [
+			"app",
+			"apps",
+			"applications",
+			"launcher",
+			"installed",
+			"running",
+			"launch",
+			"relaunch",
+			"scaffold",
+		],
 		description:
 			"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 		descriptionCompressed:
 			"apps launch|relaunch|list|load_folder|create; create scaffolds, coding-agent, verify",
+		routingHint:
+			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|relaunch|load_from_directory|create) — answer app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications.",
 		suppressPostActionContinuation: true,
 
 		parameters: [

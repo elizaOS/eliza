@@ -47,9 +47,15 @@ export interface DeviceRay {
   direction: Vec3;
 }
 
-/** A controller/headset aiming ray in emulated world space. */
+/**
+ * The emulated device a ray/hit belongs to. `"left"`/`"right"` are the
+ * controllers; hand-tracking inputs are namespaced `"hand-<handedness>"`.
+ */
+export type RaySource = "headset" | Handedness | `hand-${Handedness}`;
+
+/** A controller/hand/headset aiming ray in emulated world space. */
 export interface AimingRay {
-  source: "headset" | Handedness;
+  source: RaySource;
   origin: Vec3;
   /** Unit forward direction (the device's -Z rotated by its orientation). */
   direction: Vec3;
@@ -59,7 +65,7 @@ export interface AimingRay {
 
 /** The element a ray resolves to, computed via document.elementFromPoint. */
 export interface HitResult {
-  source: "headset" | Handedness;
+  source: RaySource;
   /** `data-agent-id` / `id` of the hit element, or null when the ray hits nothing. */
   elementId: string | null;
   point: { x: number; y: number };
@@ -78,6 +84,7 @@ export interface TelemetrySnapshot {
   mode: "flat" | "scene";
   headset: XRPose;
   controllers: Partial<Record<Handedness, XRPose>>;
+  /** Pose id ("default" / "pinch" / "point") per hand the harness activated. */
   hands: Partial<Record<Handedness, string>>;
   elements: ElementTelemetry[];
   rays: AimingRay[];
@@ -104,7 +111,12 @@ export interface XREmulatorAPI {
   // ── Controller + hand pose ───────────────────────────────────────────────
   /** Set a controller's world pose (connects it if needed). */
   setControllerPose(handedness: Handedness, pose: Partial<XRPose>): void;
-  /** Set a hand's named pose (e.g. "default", "pinch"); connects it if needed. */
+  /**
+   * Set a hand's named pose (e.g. "default", "pinch", "point"). Connects the
+   * hand, makes hands the primary input modality (IWER routes select events by
+   * `primaryInputMode`, like a Quest switching to hand-tracking), and places it
+   * at a natural offset from the head.
+   */
   setHandPose(handedness: Handedness, poseId: string): void;
   /**
    * Orient a controller so its forward ray hits the first element matching
@@ -112,6 +124,18 @@ export interface XREmulatorAPI {
    * flat mode it aims at the element's screen center. Returns false if not found.
    */
   aimControllerAt(handedness: Handedness, selector: string): boolean;
+  /**
+   * Orient a hand-tracking input so its target ray hits the first element
+   * matching `selector` (same aiming semantics as aimControllerAt). Activates
+   * the hand like setHandPose. Returns false if the element is not found.
+   */
+  aimHandAt(handedness: Handedness, selector: string): boolean;
+  /**
+   * Orient the HEADSET so its forward (gaze) ray hits the first element
+   * matching `selector`. The headset ray is the only gaze-style ray IWER can
+   * emulate — see getInputSources() for the input-source-level limitation.
+   */
+  aimHeadAt(selector: string): boolean;
 
   // ── Pose read-back (consumed by the 3D scene + assertions) ────────────────
   /** The current emulated headset world pose. */
@@ -136,6 +160,13 @@ export interface XREmulatorAPI {
   pressSelect(handedness: Handedness): Promise<void>;
   /** Fire squeezestart/squeeze/squeezeend on the controller (grip button). */
   pressSqueeze(handedness: Handedness): Promise<void>;
+  /**
+   * Pinch-select with a hand-tracking input: drives the hand's analog "pinch"
+   * gamepad button 0→1→0 so IWER fires real selectstart/select/selectend from
+   * the HAND XRInputSource, and (in 3D-scene mode) presses the element the
+   * hand ray currently hits so the authored view's real handler fires.
+   */
+  pressHandSelect(handedness: Handedness): Promise<void>;
 
   // ── Telemetry + capture ──────────────────────────────────────────────────
   /**
@@ -150,11 +181,32 @@ export interface XREmulatorAPI {
   getSelectLog(): InputEventRecord[];
   /** squeeze events the active session received (proves pressSqueeze fired). */
   getSqueezeLog(): InputEventRecord[];
+  /**
+   * The active session's live XRInputSource list (what a WebXR app would see).
+   * IWER 2.2.1 can only surface `targetRayMode: "tracked-pointer"` sources
+   * (controllers + hands) — there is no gaze/transient-pointer emulation; the
+   * gaze e2e pins that limitation with this read-back.
+   */
+  getInputSources(): InputSourceSnapshot[];
 }
 
+/** A session `select`/`squeeze` event as observed by the harness. */
 export interface InputEventRecord {
   handedness: Handedness | "unknown";
+  /** True when the event's XRInputSource is a hand-tracking input. */
+  viaHand: boolean;
+  /** The event source's targetRayMode ("tracked-pointer" for IWER inputs). */
+  targetRayMode: string;
   t: number;
+}
+
+/** Read-back of one live session XRInputSource. */
+export interface InputSourceSnapshot {
+  handedness: string;
+  targetRayMode: string;
+  /** True when the source carries an XRHand (hand-tracking input). */
+  hasHand: boolean;
+  profiles: string[];
 }
 
 /**

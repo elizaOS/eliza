@@ -1,6 +1,7 @@
 import { Download, Loader2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import {
   deriveHomeModelStatus,
   type HomeModelStatus,
@@ -102,8 +103,17 @@ function rowsFromReadiness(
 export function useLocalModelDownloads(): LocalModelDownloads {
   const [state, setState] = useState<LocalModelDownloads>(INITIAL);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Auth gate (#11084): the home surface mounts this widget before the auth
+  // probe resolves, so the hub fetch + download SSE stream must stay dormant
+  // until the session is authenticated (mirrors useHomeModelStatus).
+  const authenticated = useIsAuthenticated();
 
   useEffect(() => {
+    if (!authenticated) {
+      setState(INITIAL);
+      return;
+    }
+
     let cancelled = false;
 
     const refresh = async () => {
@@ -148,7 +158,7 @@ export function useLocalModelDownloads(): LocalModelDownloads {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       es?.close();
     };
-  }, []);
+  }, [authenticated]);
 
   return state;
 }

@@ -349,3 +349,100 @@ describe("MessageAttachments — unsafe-URL handling (security/error path)", () 
     ).not.toBeNull();
   });
 });
+
+describe("MessageAttachments — optimistic paste echo (self-composed data: URLs)", () => {
+  // The composer echoes a just-sent attachment on the user's bubble as an inline
+  // `data:` URL until the server round-trip swaps in the served URL. That echo
+  // must render as the correct media preview, exactly like a normal
+  // composer-attached file — NOT the "unsupported attachment" card. (FIX 2)
+
+  it("renders a pasted-image echo (data:image/*) as an image, not the unsupported tile", () => {
+    const url = "data:image/png;base64,iVBORw0KGgo=";
+    const { container } = render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "paste-img",
+            url,
+            mimeType: "image/png",
+            contentType: "image",
+            title: "pasted.png",
+          },
+        ]}
+      />,
+    );
+    // Never the unsupported/unsafe fallback...
+    expect(screen.queryByTestId("unsafe-attachment")).toBeNull();
+    // ...it renders the real image tile with the inline data URL.
+    expect(container.querySelector(`img[src="${url}"]`)).not.toBeNull();
+  });
+
+  it("renders a large-text paste echo (data:text/markdown) as a document preview, not the unsupported tile", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "paste-md",
+            // What `pastedTextToAttachment` → the optimistic echo produces for a
+            // large clipboard paste. `isSafeAttachmentUrl` allowlists only
+            // `data:text/plain`, so before FIX 2 this fell to the unsafe card.
+            url: "data:text/markdown;base64,SGVsbG8gd29ybGQ=",
+            mimeType: "text/markdown",
+            contentType: "document",
+            title: "pasted-text.md",
+          },
+        ]}
+      />,
+    );
+    // The user's own paste is not mislabeled unsupported...
+    expect(screen.queryByTestId("unsafe-attachment")).toBeNull();
+    // ...it previews as a text/code document (download card — no inline text).
+    expect(screen.getByTestId("code-attachment-fallback")).not.toBeNull();
+  });
+
+  it("renders a pasted .csv echo (data:text/csv) as a document preview, not the unsupported tile", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "paste-csv",
+            url: "data:text/csv;base64,YSxiLGMK",
+            mimeType: "text/csv",
+            contentType: "document",
+            title: "rows.csv",
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("unsafe-attachment")).toBeNull();
+    expect(screen.getByTestId("code-attachment-fallback")).not.toBeNull();
+  });
+
+  it("still neutralizes a script-capable data:text/html URL as unsupported (guard not widened)", () => {
+    const { container } = render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "danger",
+            url: "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+            mimeType: "text/html",
+            contentType: "document",
+            title: "x.html",
+          },
+        ]}
+      />,
+    );
+    // text/html can execute script, so the benign-text carve-out must NOT cover
+    // it — it stays the neutralized, non-clickable unsafe card.
+    expect(screen.getByTestId("unsafe-attachment")).not.toBeNull();
+    const hrefs = Array.from(container.querySelectorAll("[href]")).map((el) =>
+      el.getAttribute("href"),
+    );
+    const srcs = Array.from(container.querySelectorAll("[src]")).map((el) =>
+      el.getAttribute("src"),
+    );
+    expect([...hrefs, ...srcs]).not.toContain(
+      "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    );
+  });
+});

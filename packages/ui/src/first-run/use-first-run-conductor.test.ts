@@ -581,6 +581,23 @@ describe("useFirstRunConductor", () => {
     unmount();
     expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(false);
   });
+
+  it("is a complete no-op once firstRunComplete is true (the chat-overlay shell mounts it unconditionally)", async () => {
+    // The chat-overlay branch (desktop bottom bar AND any plain web
+    // ?shellMode=chat-overlay load) mounts the conductor UNGATED — this pins
+    // the hook's own gate so that mount adds no onboarding turns, no backup
+    // probe, and no first-run action interception after onboarding.
+    seedAppStore({ firstRunComplete: true });
+    const { transcript, unmount } = renderConductor();
+
+    // Flush effects + any stray microtasks: nothing may be seeded.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(transcript.current).toEqual([]);
+    expect(mocks.client.listLocalAgentBackups).not.toHaveBeenCalled();
+    // No handler registered → the chat send funnel is NOT intercepted.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(false);
+    unmount();
+  });
 });
 
 // ── surfaceCloudLoginRetryTurn (pure transcript seam) ────────────────────────

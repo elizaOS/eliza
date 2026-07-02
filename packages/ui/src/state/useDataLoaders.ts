@@ -41,6 +41,7 @@ import {
   type WorkbenchOverview,
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
 import { normalizeOwnerName } from "../utils/owner-name";
 import {
@@ -167,6 +168,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     setOwnerNameState,
   } = deps;
 
+  // Auth gate (#11084): AppProvider mounts these loaders before the auth probe
+  // resolves, so the shell one-shot fetches must stay dormant until the
+  // session is authenticated — an unauthenticated shell makes none of them.
+  const authenticated = useIsAuthenticated();
+
   // ── Autonomy ────────────────────────────────────────────────────────
 
   const applyAutonomyEventMerge = useCallback(
@@ -286,6 +292,15 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const activeMessageLoadAbortRef = useRef<AbortController | null>(null);
   // Per-id prefetch aborts so a neighbor is never double-fetched.
   const prefetchAbortRef = useRef<Map<string, AbortController>>(new Map());
+  // Which conversation's messages `conversationMessagesRef` currently holds.
+  // The ref only becomes that conversation's thread AFTER a load commits, so
+  // any caller judging a conversation by `conversationMessagesRef` (the
+  // empty-draft cleanup deletes in useChatCallbacks) MUST first check this id:
+  // during a rapid switch the ref still holds the PREVIOUS thread while the
+  // new fetch is in flight, and judging the new conversation by those stale
+  // messages silently deleted real conversations. `null` = holder unknown.
+  // Every `conversationMessagesRef.current` write below updates it in lockstep.
+  const loadedConversationIdRef = useRef<string | null>(null);
 
   const cacheConversationMessages = useCallback(
     (id: string, messages: ConversationMessage[]) => {
@@ -330,6 +345,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       if (cached) {
         greetingFiredRef.current = hasConversationBootstrapMessage(cached);
         conversationMessagesRef.current = cached;
+        loadedConversationIdRef.current = convId;
         setConversationMessages(cached);
       }
 
@@ -345,6 +361,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
+        loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
         return { ok: true };
       } catch (err) {
@@ -378,6 +395,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           conversationMessageCacheRef.current.delete(convId);
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
+          loadedConversationIdRef.current = null;
           setConversationMessages([]);
         }
         // For TRANSIENT errors (network drop mid-stream, timeout, 5xx) do NOT
@@ -427,6 +445,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
+        loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
         return true;
       } catch (error) {
@@ -584,7 +603,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const agentReachable = agentStatus !== null;
 
   useEffect(() => {
-    if (!agentReachable) {
+    if (!agentReachable || !authenticated) {
       return;
     }
 
@@ -611,7 +630,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     return () => {
       cancelled = true;
     };
-  }, [agentReachable, setOwnerNameState]);
+  }, [agentReachable, authenticated, setOwnerNameState]);
 
   // ── Character language sync ─────────────────────────────────────────
 
@@ -672,7 +691,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const [workbenchTodosAvailable, setWorkbenchTodosAvailable] = useState(false);
 
   const loadWorkbench = useCallback(async () => {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+    if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setWorkbench(null);
       setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
@@ -695,7 +714,20 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     } finally {
       setWorkbenchLoading(false);
     }
-  }, []);
+  }, [authenticated]);
+
+  // The workbench load normally fires on the agent-state "running" edge
+  // (useAgentGreetingEffects). When that edge lands before the auth probe
+  // resolves the load is suppressed by the gate above, so fire it once the
+  // session flips to authenticated with the agent already reachable.
+  const workbenchAuthArmedRef = useRef(authenticated);
+  useEffect(() => {
+    const was = workbenchAuthArmedRef.current;
+    workbenchAuthArmedRef.current = authenticated;
+    if (!was && authenticated && agentReachable) {
+      void loadWorkbench();
+    }
+  }, [agentReachable, authenticated, loadWorkbench]);
 
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -768,6 +800,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    loadedConversationIdRef,
     // BSC / Steward / Trading
     getBscTradePreflight,
     getBscTradeQuote,

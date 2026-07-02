@@ -62,6 +62,9 @@ project(':elizaos-capacitor-location').projectDir = new File('../../../../plugin
 include ':elizaos-capacitor-messages'
 project(':elizaos-capacitor-messages').projectDir = new File('../../../../plugins/plugin-native-messages/android')
 
+include ':elizaos-capacitor-mlkit-text'
+project(':elizaos-capacitor-mlkit-text').projectDir = new File('../../../../plugins/plugin-native-mlkit-text/android')
+
 include ':elizaos-capacitor-mobile-agent-bridge'
 project(':elizaos-capacitor-mobile-agent-bridge').projectDir = new File('../../../../plugins/plugin-native-mobile-agent-bridge/android')
 

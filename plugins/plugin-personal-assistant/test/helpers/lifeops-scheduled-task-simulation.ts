@@ -82,6 +82,7 @@ export interface LifeOpsScheduledTaskSimulationHarness {
   setActivity(bus: ActivitySignalBusView): void;
   setSubjectStore(store: SubjectStoreView): void;
   setOwnerFacts(facts: OwnerFactsView): void;
+  setGlobalPause(view: GlobalPauseView): void;
   schedulePrimitive(
     primitive: LifeOpsScheduledPrimitive,
     overrides?: Partial<ScheduledTaskInput>,
@@ -132,6 +133,9 @@ export function createLifeOpsScheduledTaskSimulationHarness(
   };
   let activity: ActivitySignalBusView = { hasSignalSince: () => false };
   let subjectStore: SubjectStoreView = { wasUpdatedSince: () => false };
+  let globalPause: GlobalPauseView = {
+    current: async () => ({ active: false }),
+  };
   let nextDispatchResult:
     | DispatchResult
     | ((record: ScheduledTaskDispatchRecord) => DispatchResult) = (record) => ({
@@ -204,6 +208,10 @@ export function createLifeOpsScheduledTaskSimulationHarness(
             typeof payloadRecord.message === "string"
               ? payloadRecord.message
               : "",
+          // `contextRequest` is required-but-nullable on the dispatch record;
+          // the simulated connector receives an already-serialized payload and
+          // has no context to reconstruct, so it is explicitly absent.
+          contextRequest: undefined,
         };
         const result =
           typeof nextDispatchResult === "function"
@@ -238,9 +246,7 @@ export function createLifeOpsScheduledTaskSimulationHarness(
     anchors: createAnchorRegistry(),
     consolidation: createConsolidationRegistry(),
     ownerFacts: () => ownerFacts,
-    globalPause: {
-      current: async () => ({ active: false }),
-    } as GlobalPauseView,
+    globalPause: { current: (nowDate) => globalPause.current(nowDate) },
     activity: { hasSignalSince: (...args) => activity.hasSignalSince(...args) },
     subjectStore: {
       wasUpdatedSince: (...args) => subjectStore.wasUpdatedSince(...args),
@@ -277,6 +283,9 @@ export function createLifeOpsScheduledTaskSimulationHarness(
     },
     setOwnerFacts: (facts) => {
       ownerFacts = facts;
+    },
+    setGlobalPause: (view) => {
+      globalPause = view;
     },
     schedulePrimitive: async (primitive, overrides = {}) =>
       runner.schedule({

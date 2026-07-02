@@ -15,7 +15,10 @@ import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
-import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
+import {
+  isIosInProcessLocalAgentBase,
+  isTerminalIosNativeAgentBootErrorMessage,
+} from "../api/ios-local-agent-transport";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
@@ -54,6 +57,15 @@ function isCapacitorNative(): boolean {
     return false;
   }
 }
+
+/**
+ * Default Capacitor-native consecutive-failure budget: after this long without
+ * a single successful backend probe, the poll surfaces the error phase with
+ * the last failure instead of sitting on the "Booting up…" splash for the full
+ * `backendTimeoutMs` (issue #11030). Native policies override it via
+ * `PlatformPolicy.nativeConsecutiveFailureBudgetMs`.
+ */
+const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS = 90_000;
 
 /**
  * Decide whether a connection-level startup failure against the persisted
@@ -320,6 +332,15 @@ export async function runPollingBackend(
   // Guards a one-shot recovery: if the saved server is unreachable we clear it
   // and re-point the client at the local origin exactly once, never in a loop.
   let fellBackToLocal = false;
+  // Capacitor-native bounded boot (issue #11030): timestamp of the FIRST
+  // failure in the current unbroken failure streak. Reset to null by any
+  // successful probe; when the streak outlives the native budget the poll
+  // exits to the error phase with the last failure instead of spinning
+  // silently until `deadline`.
+  const nativeFailureBudgetMs =
+    policy.nativeConsecutiveFailureBudgetMs ??
+    NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS;
+  let nativeFailureStreakStartedAt: number | null = null;
   let latestAuth: Awaited<ReturnType<typeof client.getAuthStatus>> = {
     required: false,
     pairingEnabled: false,
@@ -421,6 +442,10 @@ export async function runPollingBackend(
     try {
       const auth = await client.getAuthStatus();
       latestAuth = auth;
+      // A successful probe breaks the native consecutive-failure streak — the
+      // transport works; any remaining slowness is the agent booting, which
+      // the overall `deadline` already budgets for.
+      nativeFailureStreakStartedAt = null;
       if (cancelled.current) return;
       if (auth.required && !auth.authenticated && !client.hasToken()) {
         if (auth.bootstrapRequired) {
@@ -646,6 +671,33 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      // Terminal native transport / agent-config failure (issue #11030): the
+      // iOS local-agent IPC policy gate, a missing full-Bun engine, or the
+      // native Agent plugin's missing-endpoint error. These depend only on
+      // build config + the persisted runtime mode, neither of which changes
+      // while this loop runs — retrying yields the identical rejection until
+      // the deadline, which is the infinite "Booting up…" splash. Surface the
+      // REAL message in the error phase (with Retry) immediately instead.
+      const terminalMessage =
+        ae?.message ?? (err instanceof Error ? err.message : String(err));
+      if (
+        isCapacitorNative() &&
+        isTerminalIosNativeAgentBootErrorMessage(terminalMessage)
+      ) {
+        logger.warn(
+          { message: terminalMessage, path: ae?.path },
+          "[startup-phase-poll] terminal native agent/transport error during backend poll; surfacing the startup error",
+        );
+        deps.setStartupError({
+          reason: "agent-error",
+          phase: "starting-backend",
+          message: terminalMessage,
+          detail: formatStartupErrorDetail(err),
+        });
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "AGENT_ERROR", message: terminalMessage });
+        return;
+      }
       if (ae?.status === 401 && !client.hasToken()) {
         // On Capacitor native the bearer token is injected asynchronously by
         // the native Agent plugin after the WebView boots. The first poll can
@@ -788,6 +840,28 @@ export async function runPollingBackend(
         continue;
       }
       lastErr = err;
+      if (isCapacitorNative()) {
+        nativeFailureStreakStartedAt ??= Date.now();
+        const failingForMs = Date.now() - nativeFailureStreakStartedAt;
+        if (failingForMs >= nativeFailureBudgetMs) {
+          const detail = formatStartupErrorDetail(err) ?? String(err);
+          logger.warn(
+            { failingForMs, detail },
+            "[startup-phase-poll] native backend poll exceeded the consecutive-failure budget; surfacing the startup error",
+          );
+          deps.setStartupError({
+            reason: "backend-timeout",
+            phase: "starting-backend",
+            message: `Startup could not reach the agent after ${Math.round(failingForMs / 1000)}s of consecutive failures. Last failure: ${detail}`,
+            detail,
+            status: ae?.status,
+            path: ae?.path,
+          });
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_TIMEOUT" });
+          return;
+        }
+      }
       attempts++;
       const delay = Math.min(250 * 2 ** Math.min(attempts, 2), 1000);
       await new Promise<void>((r) => {

@@ -80,7 +80,6 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
       "turn-detector",
       "voice-emotion",
       "kokoro",
-      "omnivoice",
       "vad",
       "wakeword",
       "embedding",

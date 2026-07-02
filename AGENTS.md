@@ -86,7 +86,7 @@ plugins/         runtime plugins and app plugins
   plugin-<model>/      openai, anthropic, google-genai, groq, openrouter, xai, ollama, …
   plugin-<connector>/  discord, telegram, farcaster, slack, imessage, whatsapp, x, …
   plugin-native-*/     native device bridges (camera, contacts, calendar, location, …)
-  plugin-local-inference/  on-device llama.cpp / omnivoice / whisper (git submodules under native/)
+  plugin-local-inference/  on-device llama.cpp (Kokoro TTS folded in) / whisper (git submodules under native/)
   plugin-sql/ plugin-localdb/ plugin-inmemorydb/  storage adapters
   plugin-documents/ plugin-lifeops/ plugin-health/ …  app plugins
 

@@ -21,6 +21,11 @@ import {
 import type { Tab } from "../navigation";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
 import {
+  clearChatDraft,
+  readChatDraft,
+  writeChatDraft,
+} from "./ChatComposerContext.hooks";
+import {
   isConversationRecord,
   isReservedLegacyChatTitle,
   normalizeConversationList,
@@ -116,6 +121,11 @@ export interface HydrateInitialConversationDeps {
   activeConversationIdRef: MutableRefObject<string | null>;
   greetingFiredRef: MutableRefObject<boolean>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
+  /** Which conversation's messages `conversationMessagesRef` holds (owned by
+   *  useDataLoaders; null = unknown). Updated in lockstep with every
+   *  `conversationMessagesRef.current` write so the empty-draft cleanup can
+   *  never judge a conversation by another conversation's messages. */
+  loadedConversationIdRef: MutableRefObject<string | null>;
   setConversations: (conversations: Conversation[]) => void;
   setActiveConversationId: (id: string | null) => void;
   setConversationMessages: (messages: ConversationMessage[]) => void;
@@ -133,6 +143,9 @@ async function resolveRestoredConversationWithMessages(
 ): Promise<{
   conversation: Conversation;
   messages: ConversationMessage[];
+  /** False when the fetch failed: `messages` is then a placeholder `[]`, NOT
+   *  proof the conversation is empty, so it must never feed draft cleanup. */
+  messagesLoaded: boolean;
 }> {
   const savedConversationId = loadActiveConversationId();
   const restoredConversation =
@@ -145,14 +158,22 @@ async function resolveRestoredConversationWithMessages(
       (await api.getConversationMessages(restoredConversation.id)).messages,
     );
   } catch {
-    return { conversation: restoredConversation, messages: [] };
+    return {
+      conversation: restoredConversation,
+      messages: [],
+      messagesLoaded: false,
+    };
   }
 
   if (
     conversations.length <= 1 ||
     !isDraftOnlyConversationMessages(restoredMessages)
   ) {
-    return { conversation: restoredConversation, messages: restoredMessages };
+    return {
+      conversation: restoredConversation,
+      messages: restoredMessages,
+      messagesLoaded: true,
+    };
   }
 
   // Scan most-recently-updated first so we restore the user's latest real chat,
@@ -174,11 +195,19 @@ async function resolveRestoredConversationWithMessages(
       continue;
     }
     if (hasUserConversationMessage(candidateMessages)) {
-      return { conversation: candidate, messages: candidateMessages };
+      return {
+        conversation: candidate,
+        messages: candidateMessages,
+        messagesLoaded: true,
+      };
     }
   }
 
-  return { conversation: restoredConversation, messages: restoredMessages };
+  return {
+    conversation: restoredConversation,
+    messages: restoredMessages,
+    messagesLoaded: true,
+  };
 }
 
 /**
@@ -204,6 +233,7 @@ export async function hydrateInitialConversation(
     activeConversationIdRef,
     greetingFiredRef,
     conversationMessagesRef,
+    loadedConversationIdRef,
     setConversations,
     setActiveConversationId,
     setConversationMessages,
@@ -224,8 +254,11 @@ export async function hydrateInitialConversation(
     }
     setConversations(conversations);
     if (conversations.length > 0) {
-      const { conversation: restoredConversation, messages: nextMessages } =
-        await resolveRestoredConversationWithMessages(api, conversations);
+      const {
+        conversation: restoredConversation,
+        messages: nextMessages,
+        messagesLoaded,
+      } = await resolveRestoredConversationWithMessages(api, conversations);
       if (!isCurrentHydration()) {
         return null;
       }
@@ -239,6 +272,12 @@ export async function hydrateInitialConversation(
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
+        // A failed restore fetch yields a placeholder [] — leave the holder
+        // unknown so the empty-draft cleanup can never judge (and delete) the
+        // restored conversation from messages that were never actually loaded.
+        loadedConversationIdRef.current = messagesLoaded
+          ? restoredConversation.id
+          : null;
         setConversationMessages(nextMessages);
         return nextMessages.length === 0 ? restoredConversation.id : null;
       } catch {
@@ -248,6 +287,7 @@ export async function hydrateInitialConversation(
         // transient fetch failures are expected on early load; others are silent
         greetingFiredRef.current = false;
         conversationMessagesRef.current = [];
+        loadedConversationIdRef.current = null;
         setConversationMessages([]);
         return restoredConversation.id;
       }
@@ -259,6 +299,7 @@ export async function hydrateInitialConversation(
     traceGreeting("hydrate:no_conversations_on_server");
     greetingFiredRef.current = false;
     conversationMessagesRef.current = [];
+    loadedConversationIdRef.current = null;
     setConversationMessages([]);
     setActiveConversationId(null);
     activeConversationIdRef.current = null;
@@ -283,6 +324,10 @@ export async function hydrateInitialConversation(
       setConversations([conversation]);
       setActiveConversationId(conversation.id);
       activeConversationIdRef.current = conversation.id;
+      // The thread was cleared above and a fresh create is empty by
+      // construction, so the [] in conversationMessagesRef IS this
+      // conversation's content.
+      loadedConversationIdRef.current = conversation.id;
       api.sendWsMessage({
         type: "active-conversation",
         conversationId: conversation.id,
@@ -304,6 +349,7 @@ export async function hydrateInitialConversation(
         ];
         greetingFiredRef.current = true;
         conversationMessagesRef.current = nextMessages;
+        loadedConversationIdRef.current = conversation.id;
         setConversationMessages(nextMessages);
         return null;
       }
@@ -417,6 +463,13 @@ export interface UseChatCallbacksDeps {
   ) => Promise<LoadConversationMessagesResult>;
   /** Warm the message cache for adjacent conversations (smooth swipe nav). */
   prefetchConversationMessages: (ids: readonly string[]) => void;
+  /** From useDataLoaders: id of the conversation whose messages
+   *  `conversationMessagesRef` currently holds (null = unknown). The
+   *  empty-draft cleanups below may only judge a conversation by
+   *  `conversationMessagesRef` when this id matches it — during a rapid
+   *  switch the ref still holds the PREVIOUS thread until the new load
+   *  commits, and judging by those stale messages deleted real conversations. */
+  loadedConversationIdRef: MutableRefObject<string | null>;
   loadPlugins: () => Promise<unknown>;
 
   // Cloud state
@@ -529,6 +582,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     loadConversations,
     loadConversationMessages,
     prefetchConversationMessages,
+    loadedConversationIdRef,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -692,6 +746,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         activeConversationIdRef,
         greetingFiredRef,
         conversationMessagesRef,
+        loadedConversationIdRef,
         setConversations,
         setActiveConversationId,
         setConversationMessages,
@@ -702,6 +757,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       conversationHydrationEpochRef,
       conversationMessagesRef,
       greetingFiredRef,
+      loadedConversationIdRef,
       uiLanguage,
       setActiveConversationId,
       setConversationMessages,
@@ -854,18 +910,37 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     async (title?: string) => {
       const previousConversationId = activeConversationIdRef.current;
       const previousMessages = conversationMessagesRef.current;
+      const previousLoadedConversationId = loadedConversationIdRef.current;
       const previousCutoffTs = companionMessageCutoffTs;
       const hasUserMessage = previousMessages.some(
         (message) => message.role === "user",
       );
+      // Only judge the previous conversation as an empty draft when
+      // `conversationMessagesRef` is KNOWN to hold ITS messages
+      // (`loadedConversationIdRef` is written in lockstep with every commit in
+      // useDataLoaders). During a rapid switch the ref still holds the prior
+      // thread until the in-flight load commits, so without this guard a real
+      // conversation switched-to moments ago was judged by the old draft's
+      // greeting-only messages and permanently deleted below. On a mismatch we
+      // skip the replace entirely; a genuinely empty orphan is reaped
+      // server-side by the cleanupEmptyConversations({ keepId }) sweep this
+      // handler fires after every create.
       const shouldReplacePreviousDraftConversation =
         !title &&
         Boolean(previousConversationId) &&
+        previousLoadedConversationId === previousConversationId &&
         !hasUserMessage &&
         previousMessages.length <= 1;
 
-      send.interruptActiveChatPipeline();
+      // Interrupt FIRST (it restores any undelivered queued sends to the
+      // composer), then wipe the draft for the new chat — and re-apply the
+      // restore after the wipe so the user's queued words survive new-chat
+      // (#10700 "no message is lost").
+      const restoredQueuedText = send.interruptActiveChatPipeline();
       resetConversationDraftState();
+      if (restoredQueuedText) {
+        setChatInput(restoredQueuedText);
+      }
       // Snapshot the navigation epoch AFTER the draft reset — `resetConversationDraftState`
       // itself bumps this epoch, so capturing it before (the old order) made the
       // navigated-away guard below fire on EVERY call, silently abandoning the
@@ -955,10 +1030,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             },
           ];
           conversationMessagesRef.current = initMessages;
+          loadedConversationIdRef.current = conversation.id;
           setConversationMessages(initMessages);
         } else {
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
+          loadedConversationIdRef.current = conversation.id;
           setConversationMessages([]);
           // Fallback: if inline greeting wasn't returned (e.g. old server),
           // request one via the dedicated /greeting endpoint.
@@ -1001,6 +1078,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         setActiveConversationId(previousConversationId);
         activeConversationIdRef.current = previousConversationId;
         setConversationMessages(previousMessages);
+        // setConversationMessages syncs conversationMessagesRef; restore the
+        // holder id captured with `previousMessages` so they stay in lockstep.
+        loadedConversationIdRef.current = previousLoadedConversationId;
         setCompanionMessageCutoffTs(previousCutoffTs);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(previousMessages);
@@ -1021,8 +1101,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       conversationHydrationEpochRef,
       conversationMessagesRef,
       greetingFiredRef,
+      loadedConversationIdRef,
       send.interruptActiveChatPipeline,
       setActiveConversationId,
+      setChatInput,
       setCompanionMessageCutoffTs,
       setConversationMessages,
       setConversations,
@@ -1046,11 +1128,31 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       // Clean up empty conversations: if the previous conversation has only
       // system/greeting messages and no user messages, delete it silently.
       const prevId = currentActiveId;
+      let removedPreviousDraft = false;
       if (prevId && prevId !== id) {
+        // Judge the previous conversation ONLY when `conversationMessagesRef`
+        // is known to hold ITS messages (`loadedConversationIdRef` is written
+        // in lockstep with every commit in useDataLoaders). During a rapid
+        // draft → B → C switch the ref still holds the draft's greeting until
+        // B's fetch commits, so B — a REAL conversation — used to be judged
+        // empty here and permanently deleted server-side. On a mismatch skip
+        // the cleanup entirely; a genuinely empty orphan is reaped later by
+        // the server-side cleanupEmptyConversations({ keepId }) sweep that
+        // handleNewConversation fires after every create.
         const prevMessages = conversationMessagesRef.current;
+        const prevMessagesBelongToPrev =
+          loadedConversationIdRef.current === prevId;
         const hasUserMessage = prevMessages.some((m) => m.role === "user");
-        if (!hasUserMessage && prevMessages.length <= 1) {
+        if (
+          prevMessagesBelongToPrev &&
+          !hasUserMessage &&
+          prevMessages.length <= 1
+        ) {
           void client.deleteConversation(prevId).catch(() => {});
+          // The draft is gone — drop its persisted composer text too so it
+          // can't resurface or bleed into the next conversation's draft.
+          clearChatDraft(prevId);
+          removedPreviousDraft = true;
           setConversations((prev) => prev.filter((c) => c.id !== prevId));
           setUnreadConversations((prev) => {
             const next = new Set(prev);
@@ -1058,6 +1160,22 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             return next;
           });
         }
+      }
+
+      // Draft handoff (#FIX2): switching conversations must repaint the composer
+      // for the TARGET. Persist the LEAVING conversation's in-progress text
+      // under ITS OWN key first (the debounced per-conversation persister may
+      // not have flushed a fast edit), unless it was just reaped as an empty
+      // draft. Then restore the target's own saved draft — or CLEAR the composer
+      // when it has none. Without the explicit clear a draftless target keeps
+      // the previous conversation's composer text, which the persister then
+      // saves under the TARGET's key: the user's half-typed message silently
+      // reappears in — and would be sent to — the wrong conversation.
+      if (id !== currentActiveId) {
+        if (prevId && prevId !== id && !removedPreviousDraft) {
+          writeChatDraft(prevId, chatInputRef.current);
+        }
+        setChatInput(readChatDraft(id) ?? "");
       }
 
       const previousActive = currentActiveId;
@@ -1132,9 +1250,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       loadConversationMessages,
       loadConversations,
       setActionNotice,
+      setChatInput,
       activeConversationIdRef,
+      chatInputRef,
       conversationHydrationEpochRef,
       conversationMessagesRef,
+      loadedConversationIdRef,
       send.interruptActiveChatPipeline,
       setActiveConversationId,
       setConversationMessages,

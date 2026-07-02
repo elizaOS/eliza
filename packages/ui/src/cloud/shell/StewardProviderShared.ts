@@ -145,7 +145,9 @@ export function tokenIsExpired(token: string): boolean {
   // token is foreign/malformed, and since the 401 handlers keep any
   // NON-expired token, an exp-less one would otherwise be uncloseable — no
   // 401 could ever clear it and it never ages out on its own.
-  if (!payload.exp) return true;
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+    return true;
+  }
   return payload.exp * 1000 < Date.now();
 }
 
