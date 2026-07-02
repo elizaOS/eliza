@@ -88,10 +88,14 @@ node scripts/ios-device-capture.mjs --platform sim \
 node scripts/ios-device-capture.mjs --platform sim --agent-ready-timeout 0 …
 ```
 
-Per-step screenshots, the AX hierarchy snapshot, screen recordings, and
-`test-summary.json` are exported from the `.xcresult` into
-`<output>/attachments/` automatically; the curated copies for this issue live
-next to this README (`sim-run/`).
+Per-step screenshots, the AX hierarchy snapshot, and `test-summary.json` are
+exported from the `.xcresult` into `<output>/attachments/` automatically; the
+curated copies for this issue live next to this README (`sim-run/`).
+`sim-run/gesture-suite-recording.mp4` is a real-time frame capture
+(`simctl io screenshot` loop at ~2 fps, assembled with ffmpeg) of a full green
+detent + pager run — XCTest only auto-attaches native screen recordings for
+FAILED tests, and `simctl io recordVideo` was held by an orphaned host
+recording session on this machine.
 
 ## Residual
 
