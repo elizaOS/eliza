@@ -113,17 +113,17 @@ python -m benchmarks.orchestrator.code_agent_matrix \
   --adapters elizaos,opencode,pi-agent \
   --provider cerebras \
   --model gemma-4-31b \
-  --max-tasks 1 \
-  --no-docker \
-  --require-publishable-live
+  --max-tasks 1
 ```
 
-With `--require-publishable-live`, preflight rejects missing provider
-credentials for live runs, missing benchmark entrypoints, missing Docker where
-Docker is required, incomplete included benchmark coverage, and missing
-comparison adapters. It also requires at least 5GiB free on the run-root
-filesystem so trajectory and result artifacts can be written. The publishable
-comparison adapter pair is always `elizaos` target vs `opencode` baseline.
+Preflight rejects missing provider credentials for live runs, missing
+benchmark entrypoints and working directories, a missing `opencode` CLI when
+the opencode adapter is selected, and a missing Docker CLI or daemon where a
+selected benchmark requires Docker. Add `--enforce-release-readiness` together
+with `--quality-guardrail-summary /path/to/non-code-quality-guardrail.json` to
+also require a clean non-code quality-guardrail report at preflight time.
+The publishable comparison adapter pair is always `elizaos` target vs
+`opencode` baseline.
 
 ## Real Comparison Run
 
@@ -137,9 +137,13 @@ python -m benchmarks.orchestrator.code_agent_matrix \
   --provider cerebras \
   --model gemma-4-31b \
   --max-tasks 1 \
-  --no-docker \
   --timeout-seconds 3600
 ```
+
+The seven-benchmark commands run with Docker enabled: `osworld` defaults to
+Docker execution, and preflight rejects `--no-docker` for osworld unless an
+alternate provider (`OSWORLD_PROVIDER_NAME=vmware|virtualbox|aws`) is
+configured. Use `--no-docker` only on subsets that exclude osworld.
 
 Then run three independent passes:
 
@@ -151,17 +155,25 @@ for i in 1 2 3; do
     --provider cerebras \
     --model gemma-4-31b \
     --max-tasks 1 \
-    --no-docker \
     --force
 done
 ```
 
-After repeated runs, generate the longitudinal ElizaOS-vs-OpenCode trend:
+After repeated runs, attach the longitudinal ElizaOS-vs-OpenCode trend by
+re-summarizing the latest run against a previous run's `summary.json`:
 
 ```bash
 python -m benchmarks.orchestrator.code_agent_matrix \
-  --trend benchmark_results/code-agent-matrix \
-  --run-root benchmark_results/code-agent-matrix-trend/$(date -u +%Y%m%dT%H%M%SZ)
+  --summarize benchmark_results/code-agent-matrix/<latest-run> \
+  --compare-summary benchmark_results/code-agent-matrix/<previous-run>/summary.json
+```
+
+To index every run under one browsable HTML overview:
+
+```bash
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --write-run-index benchmark_results/code-agent-matrix/index \
+  --index-scan-root benchmark_results/code-agent-matrix
 ```
 
 Each run writes:
@@ -198,18 +210,18 @@ start from the highest-signal turns before reading full trajectories.
 `improvement_backlog` converts the same rows into evidence-scoped hypotheses
 and recommended next actions, so live inferior rows become concrete Eliza
 patch tasks instead of loose notes.
-The trend command writes `trend.json` and `trend.md`, showing latest
-head-to-head status, latest publishable right/wrong and usage telemetry,
-per-benchmark accuracy-delta history, and whether ElizaOS is improving, flat,
-or regressing against OpenCode. It carries source-run evidence forward and
-separates publishable-live trends from all-run validation history, so smoke,
-dry-run, or auth-blocked runs do not change the reportable benchmark line. It
-also accepts older matrix summaries that only have
-`cells[]`; in that case it rebuilds ElizaOS-vs-OpenCode comparisons from the
-legacy cell scores and marks that evidence as synthesized/non-publishable.
-Use `--require-publishable-live` on summary or trend commands before publishing
-results; it exits nonzero unless the evidence is live provider-backed and the
-latest publishable comparison is exactly `elizaos` vs `opencode`, covers all
+With `--compare-summary`, the summary gains a `previous_summary_comparison`
+section (and a trend table in `summary.md`): per-benchmark trend status
+(`improved` / `unchanged` / `regressed` / `missing`), target-accuracy deltas,
+accuracy-gap change, and target token / cached-percent / LLM-call deltas.
+Add `--enforce-no-regression` to exit nonzero if ElizaOS target accuracy
+regressed against the compared summary.
+Before publishing results, run with the enforcement stack the tool itself
+recommends in `preflight.json.next_commands` (`release_comparable`):
+`--enforce-live-report --enforce-trajectory-reviews --enforce-report
+--enforce-coverage --enforce-comparable --enforce-required-stats
+--enforce-token-evidence --enforce-efficiency --enforce-release-readiness`.
+These exit nonzero unless the evidence is live provider-backed, covers all
 included benchmark IDs, has no inferior or missing ElizaOS rows, and includes
 coherent right/wrong/total counts, accuracy values that match `right / total`,
 integer input/output/total-token and LLM-call counts,
@@ -217,21 +229,24 @@ integer input/output/total-token and LLM-call counts,
 both adapters on every compared row.
 
 If claiming code-agent improvements did not sacrifice non-code quality, also
-require a passing non-code regression artifact:
+require a clean non-code quality-guardrail artifact:
 
 ```bash
+PYTHONPATH=packages python -m benchmarks.orchestrator validate-latest-readiness \
+  --skip-runtime-gates \
+  --exclude-benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,vision_language,visualwebbench,webshop \
+  --json > /path/to/non-code-quality-guardrail.json
+
 python -m benchmarks.orchestrator.code_agent_matrix \
-  --trend benchmark_results/code-agent-matrix \
-  --run-root benchmark_results/code-agent-matrix-trend/$(date -u +%Y%m%dT%H%M%SZ) \
-  --require-publishable-live \
-  --require-non-code-regression-evidence
+  --summarize benchmark_results/code-agent-matrix/<latest-run> \
+  --quality-guardrail-summary /path/to/non-code-quality-guardrail.json \
+  --enforce-quality-guardrail
 ```
 
-For direct matrix runs, pass
-`--non-code-regression-summary /path/to/non-code-regression.json`. Accepted
-passing shapes include `{"status":"passed","failures":[]}`, `{"passed":true}`,
-or `{"non_code_regression_passed":true}`. Missing or failing non-code evidence
-keeps the code-agent run non-publishable.
+A guardrail summary is clean when it is a readiness report with `ok: true` and
+an empty `findings` list. A missing or failing guardrail summary keeps the
+code-agent run non-publishable when `--enforce-quality-guardrail` (or
+`--enforce-release-readiness`) is set.
 
 Summarize an interrupted or completed run without re-executing:
 
