@@ -26,8 +26,8 @@
  * Usage:
  *   node scripts/ios-device-capture.mjs --platform sim|device
  *     [--device <udid>] [--skip-build] [--output <dir>] [--app-path <App.app>]
- *     [--boot-timeout <sec>] [--interval <sec>] [--derived-data <dir>]
- *     [--only-testing <Target/Class/test>]
+ *     [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>]
+ *     [--derived-data <dir>] [--only-testing <Target/Class/test>]
  *
  * Exit code: non-zero when the harness fails (including "boot never reached
  * home or the error card") — attachments are still exported first.
@@ -111,7 +111,7 @@ async function main() {
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--derived-data <dir>] [--only-testing <id>]",
+      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>]",
     );
     return;
   }
@@ -311,6 +311,13 @@ async function main() {
           args.interval ??
           process.env.ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS ??
           "15",
+        // How long the gesture suite waits for the local model to come online
+        // before sending chat turns (0 = don't wait; the suite then exercises
+        // its warm-up/evicted-thread semantics instead).
+        TEST_RUNNER_ELIZA_AGENT_READY_TIMEOUT_SECONDS:
+          args["agent-ready-timeout"] ??
+          process.env.ELIZA_AGENT_READY_TIMEOUT_SECONDS ??
+          "240",
       },
     },
   );

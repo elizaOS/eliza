@@ -1,51 +1,103 @@
-# Issue #11353 - WKWebView Gesture Driver
+# Issue #11353 — real WKWebView gesture driver (XCUITest) evidence
 
-Captured on 2026-07-02 from `/home/shaw/eliza-worktrees/11353-wkwebview-gesture-driver`
-after rebasing `test/11353-wkwebview-gesture-driver` onto `origin/develop`.
+Two capture legs:
 
-## What changed
+1. **Authoring leg (Linux, 2026-07-02):** suite + probes written and DOM-e2e
+   validated (`test:home-screen-e2e`, `test:chat-sheet-e2e`); no `xcodebuild`
+   available there, so the iOS run was deferred to a Mac.
+2. **Verification leg (macOS M4 Max + Xcode, iPhone 16 / iOS 18.1 simulator,
+   2026-07-02):** the suite was run against the real WKWebView engine,
+   diagnosed, hardened, and brought to green. Everything below is from this
+   leg.
 
-- Added `GestureSemanticsUITests.swift` to the iOS `AppUITests` target.
-- The suite drives real XCUITest gestures against WKWebView for chat-sheet
-  detents, home/launcher swipe thresholds, message edit touch affordance, and
-  iOS text-selection callout suppression.
-- Added sr-only accessibility probes for native test observability:
-  `chat-detent:<pill|collapsed|half|full>` and
-  `home-launcher-page:<home|launcher>`.
-- Updated `ios-device-capture.mjs` so the default lane runs the whole
-  `AppUITests` target rather than boot-only coverage.
+## What ships
 
-## Validation run here
+- `packages/app-core/platforms/ios/App/AppUITests/GestureSemanticsUITests.swift`
+  — real XCUITest touch driving WKWebView, asserting **semantic outcomes**
+  through sr-only accessibility probes (`chat-detent:<pill|collapsed|half|full>`
+  in ContinuousChatOverlay, `home-launcher-page:<home|launcher>` in
+  HomeLauncherSurface). A renderer that is interactive but missing a probe is
+  a HARD failure, never a silent skip.
+- `packages/app/scripts/ios-device-capture.mjs` — default `-only-testing` is
+  now the whole `AppUITests` target (boot + gestures); new
+  `--agent-ready-timeout <sec>` / `ELIZA_AGENT_READY_TIMEOUT_SECONDS` knob
+  (default 240, `0` = don't wait) bounds how long the gesture tests wait for
+  the local model before sending chat turns.
 
-- PASS: `bun install`
-- PASS: `bun run --cwd packages/shared build:i18n`
-- PASS: `bun run --cwd packages/ui test:home-screen-e2e`
-- PASS: `bun run --cwd packages/ui test:chat-sheet-e2e`
-- PASS: `git diff --check origin/develop...HEAD`
+## Test design (verified against the real engine)
 
-Manual review notes:
+| Test | Coverage | Sim result (iPhone 16, iOS 18.1) |
+| --- | --- | --- |
+| `testChatSheetDetentFlickCycle` | slow-drag free-settle open → flick to FULL → flick down to half → flick down to collapsed → thread-gated flick-up (reveal at half with a thread / REFUSED on an empty thread — both real, spec'd semantics) | **PASS** |
+| `testLauncherPagerFiftyPercentSwipeThreshold` | slow sub-threshold drag snaps back; slow past-50% drag commits home→launcher (distance rule, velocity killed); edge-swipe-right returns home | **PASS** |
+| `testMessageEditAffordanceRevealsViaTouch` | tap bubble → action row reveals Edit → inline editor opens prefilled | SKIP on this sim — user turn evicted during model warm-up (#11670) |
+| `testLongPressSystemCalloutSuppression` | long-press on selectable text raises the system callout (positive control), long-press on the select-none home surface must not | SKIP on this sim — same eviction gates the positive-control bubble (#11670) |
 
-- `test:chat-sheet-e2e` initially failed after the first probe insertion because
-  the sr-only `chat-detent` span became the panel's first child, while the
-  existing fixture intentionally reads `panel.firstElementChild` as the visual
-  glass surface. I moved the probe after the glass layer and reran the full
-  chat-sheet e2e successfully.
-- `test:home-screen-e2e` passed after generating the required shared i18n data.
-- `packages/ui typecheck` was attempted after install, but it still fails on
-  existing generated-contract/type issues unrelated to this branch
-  (`@elizaos/contracts`, missing generated keyword data before generation, and
-  `AccountWithCredentialFlag` shape errors).
+The two skips are **named, evidence-backed preconditions**, not vacuous
+greens: this simulator cannot reach local-model chat-readiness (see the bug
+trail below), so turns sent during warm-up are evicted and the
+message-dependent gestures have nothing to touch. They run fully on a
+model-ready boot (physical device).
 
-## Hardware-gated evidence not captured here
+## How the flick failure was diagnosed (and why the suite is trustworthy)
 
-- N/A here: real iOS simulator/device XCUITest run. This host is Linux and
-  `xcodebuild` is unavailable, so it cannot build or run the new WKWebView
-  gesture suite.
-- Required macOS command for final closure:
+The first sim runs failed `testChatSheetDetentFlickCycle`: a flick-up on the
+collapsed sheet did nothing. A temporary document-level pointer-event recorder
+was injected into the staged `index.html` (mirroring `pointerdown/move/up/
+cancel` + `touchstart/…` into an AX-visible probe) and a matrix of injection
+styles was replayed. Result: XCUITest's synthesized touches were delivered
+**perfectly** (pd→pm×8→pu on `chat-sheet-grabber`, zero cancels) — the web
+gesture engine received the flick and *deliberately refused it*, because
+`onPullUp` from a collapsed sheet is thread-gated
+(`if (!hasRevealableThread) return settleDrag()`) and the thread had been
+emptied by the warm-up eviction. The touch pipeline itself
+(`XCUICoordinate.press(forDuration:thenDragTo:withVelocity:)` at 2000 pt/s,
+slow drags with hold-before-release, taps) round-trips into WKWebView
+correctly. The suite was then restructured to assert the real semantics on
+both sides of the gate.
+
+## Real bugs found by this suite
+
+- **#11669** — `local-inference/registry.json` stores absolute app-container
+  paths; iOS rotates the container UUID on reinstall/update, so the model
+  never loads again despite 6.5 GB of verified bundle on disk (the permanent
+  "Loading Eliza-1 2B…"). Rewriting the UUID un-wedged the load with no other
+  change.
+- **#11670** — a user message sent during model warm-up renders optimistically
+  and is then silently evicted by the post-turn history reload, contradicting
+  the send-path's "server holds the turn through the warming window" promise.
+
+## Repro (macOS + Xcode)
 
 ```bash
-bun run --cwd packages/app capture:ios-sim:boot -- --only-testing AppUITests/GestureSemanticsUITests
+# 1. Stage the web bundle + iOS project (bakes the sr-only probes into the app):
+bun run --cwd packages/app build:ios:local:sim
+
+# 2. Boot a simulator, then run the whole AppUITests target (boot + gestures):
+cd packages/app
+node scripts/ios-device-capture.mjs --platform sim \
+  --output ios/build/boot-capture/gesture-evidence
+
+# Gesture suite only:
+node scripts/ios-device-capture.mjs --platform sim \
+  --only-testing AppUITests/GestureSemanticsUITests \
+  --output ios/build/boot-capture/gesture-evidence
+
+# On a lane that cannot reach local-model readiness (see #11669/#11670),
+# skip the ready-wait explicitly:
+node scripts/ios-device-capture.mjs --platform sim --agent-ready-timeout 0 …
 ```
 
-Attach the resulting `.xcresult`, exported screenshots/accessibility snapshots,
-runner log, and a short walkthrough video before closing #11353.
+Per-step screenshots, the AX hierarchy snapshot, screen recordings, and
+`test-summary.json` are exported from the `.xcresult` into
+`<output>/attachments/` automatically; the curated copies for this issue live
+next to this README (`sim-run/`).
+
+## Residual
+
+- **Physical-device leg** (issue #11353's dependency note / #10722 row):
+  MoonCycles-class devices load the local model, so the two eviction-gated
+  tests run their full paths there. Sim coverage of those two unlocks when
+  #11670 is fixed.
+- Two-finger pinch: no pinch-bound semantic exists in the current app surface
+  to assert; revisit when one ships.

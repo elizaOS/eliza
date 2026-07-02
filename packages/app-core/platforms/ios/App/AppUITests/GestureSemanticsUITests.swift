@@ -490,10 +490,33 @@ final class GestureSemanticsUITests: XCTestCase {
         return bubbles.element(boundBy: count - 1)
     }
 
+    /// Give the local model a bounded chance to come online before sending:
+    /// while the agent is warming, the home surface shows a "Loading Eliza…"
+    /// status chip, and turns sent in that window are not persisted (the
+    /// post-turn history reload evicts the optimistic bubble — see
+    /// ensurePersistentUserMessage). On a model-ready boot this returns in one
+    /// poll; on a model-less lane the timeout (ELIZA_AGENT_READY_TIMEOUT_SECONDS,
+    /// default 240, 0 = don't wait) expires and the caller proceeds into the
+    /// suite's warm-up semantics instead.
+    private func waitForAgentReady(in app: XCUIApplication) {
+        let env = ProcessInfo.processInfo.environment
+        let timeout = Double(env["ELIZA_AGENT_READY_TIMEOUT_SECONDS"] ?? "") ?? 240
+        guard timeout > 0 else { return }
+        let loadingChips = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Loading Eliza'"))
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if loadingChips.count == 0 { return }
+            Thread.sleep(forTimeInterval: 5.0)
+        }
+        attachScreenshot(named: "agent-still-warming-at-timeout")
+    }
+
     /// Type `text` into the composer and send it (Enter submits), then wait for
     /// the user bubble to land in the transcript. Sending also opens the sheet,
     /// so the transcript is visible afterwards.
     private func ensureUserMessage(in app: XCUIApplication, text: String) throws {
+        waitForAgentReady(in: app)
         let webView = app.webViews.firstMatch
         let candidates: [XCUIElement] = [
             webView.textViews.firstMatch,
