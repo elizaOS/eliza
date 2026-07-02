@@ -44,9 +44,7 @@ const GOOD_KEYS = new Set([
 
 let pgliteReady = true;
 let provider: ReturnType<typeof Bun.serve> | undefined;
-let closeDb:
-  | typeof import("../../../db/client").closeDatabaseConnectionsForTests
-  | undefined;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let repo: typeof import("../../../db/repositories/pooled-credentials").pooledCredentialsRepository;
 let svc: typeof import("../team-credential-pool/service");
@@ -79,9 +77,7 @@ beforeAll(async () => {
     });
     process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${provider.port}/v1`;
 
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import(
-      "../../../db/client"
-    ));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ pooledCredentialsRepository: repo } = await import(
       "../../../db/repositories/pooled-credentials"
     ));
@@ -124,9 +120,7 @@ beforeAll(async () => {
     );
     await apply();
 
-    await dbWrite
-      .insert(organizations)
-      .values([{ id: ORG_A, name: "Org A", slug: "org-a" }]);
+    await dbWrite.insert(organizations).values([{ id: ORG_A, name: "Org A", slug: "org-a" }]);
     await dbWrite.insert(users).values([
       {
         id: OWNER_A,
@@ -145,10 +139,7 @@ beforeAll(async () => {
     ]);
   } catch (error) {
     pgliteReady = false;
-    console.error(
-      "[team-credential-pool.test] PGlite/pushSchema unavailable — failing.",
-      error,
-    );
+    console.error("[team-credential-pool.test] PGlite/pushSchema unavailable — failing.", error);
   }
 }, PGLITE_TIMEOUT);
 
@@ -157,9 +148,7 @@ afterAll(async () => {
   if (closeDb) await closeDb();
 });
 
-async function secretRow(
-  secretId: string,
-): Promise<{ encrypted_value: string } | undefined> {
+async function secretRow(secretId: string): Promise<{ encrypted_value: string } | undefined> {
   const rows = await dbWrite.execute(
     `SELECT encrypted_value FROM secrets WHERE id = '${secretId}';`,
   );
@@ -219,9 +208,7 @@ describe("contribution — live probe gate + ciphertext at rest", () => {
     expect(stored?.encrypted_value).not.toContain(plaintext);
     // Decrypt round-trip through the vault.
     const { secretsService } = await import("../secrets/secrets");
-    expect(await secretsService.getDecryptedValue(row.secret_id, ORG_A)).toBe(
-      plaintext,
-    );
+    expect(await secretsService.getDecryptedValue(row.secret_id, ORG_A)).toBe(plaintext);
   });
 });
 
@@ -275,9 +262,7 @@ describe("selection — real AccountPool rotation + health", () => {
     // 6 round-robin picks over 3 keys → every key used exactly twice.
     const counts = new Map<string, number>();
     for (const id of picked) counts.set(id, (counts.get(id) ?? 0) + 1);
-    expect([...counts.keys()].sort()).toEqual(
-      [credAlpha, credBeta, credGamma].sort(),
-    );
+    expect([...counts.keys()].sort()).toEqual([credAlpha, credBeta, credGamma].sort());
     for (const n of counts.values()) expect(n).toBe(2);
     // ...and each resolved to its real decrypted plaintext.
     expect([...keys].sort()).toEqual(
@@ -295,12 +280,9 @@ describe("selection — real AccountPool rotation + health", () => {
     if (!entry) throw new Error("no pool for ORG_A");
     // 429 recorded against beta with a 60s cool-off — through the REAL pool
     // brain persisting via the Drizzle deps.
-    await entry.pool.markRateLimited(
-      credBeta,
-      Date.now() + 60_000,
-      "429 from provider",
-      { providerId: "anthropic-api" },
-    );
+    await entry.pool.markRateLimited(credBeta, Date.now() + 60_000, "429 from provider", {
+      providerId: "anthropic-api",
+    });
     const betaRow = await repo.findById(credBeta);
     expect(betaRow?.health).toBe("rate-limited");
     expect(betaRow?.health_detail?.until).toBeGreaterThan(Date.now());
@@ -352,9 +334,7 @@ describe("selection — real AccountPool rotation + health", () => {
     expect(after?.health).toBe("needs-reauth");
     expect(after?.secret_id).toBe(before.secret_id);
     expect(after?.provider).toBe(before.provider);
-    expect((await secretRow(before.secret_id))?.encrypted_value).toBe(
-      cipherBefore,
-    );
+    expect((await secretRow(before.secret_id))?.encrypted_value).toBe(cipherBefore);
   });
 
   test("a stale-snapshot health write cannot revert a concurrent admin disable", async () => {

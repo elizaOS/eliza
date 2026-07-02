@@ -23,14 +23,8 @@
  * metadata records; callers resolve ciphertext via SecretsService at use time.
  */
 
-import type {
-  AccountPoolDeps,
-  PoolProviderId,
-} from "@elizaos/app-core/account-pool";
-import type {
-  LinkedAccountConfig,
-  LinkedAccountHealth,
-} from "@elizaos/contracts";
+import type { AccountPoolDeps, PoolProviderId } from "@elizaos/app-core/account-pool";
+import type { LinkedAccountConfig, LinkedAccountHealth } from "@elizaos/contracts";
 import {
   type PooledCredential,
   pooledCredentialsRepository,
@@ -69,9 +63,7 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
 
   /** Reload the org's credential rows into the in-memory snapshot. */
   async refresh(): Promise<void> {
-    const rows = await pooledCredentialsRepository.listByOrganization(
-      this.organizationId,
-    );
+    const rows = await pooledCredentialsRepository.listByOrganization(this.organizationId);
     const snapshot: Record<string, LinkedAccountConfig> = {};
     const rowsById = new Map<string, PooledCredential>();
     for (const row of rows) {
@@ -100,15 +92,12 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
     // Pool-owned columns ONLY. The pool spreads `...account` from a snapshot
     // that may be stale; persisting label/enabled/priority here would clobber
     // a concurrent admin PATCH (e.g. re-enable a just-disabled credential).
-    const updated = await pooledCredentialsRepository.updatePoolState(
-      account.id,
-      {
-        health: account.health,
-        health_detail: account.healthDetail ?? null,
-        usage: account.usage ?? null,
-        last_used_at: account.lastUsedAt ? new Date(account.lastUsedAt) : null,
-      },
-    );
+    const updated = await pooledCredentialsRepository.updatePoolState(account.id, {
+      health: account.health,
+      health_detail: account.healthDetail ?? null,
+      usage: account.usage ?? null,
+      last_used_at: account.lastUsedAt ? new Date(account.lastUsedAt) : null,
+    });
     if (!updated) {
       // Row deleted underneath us (e.g. contributor removed it) — drop it
       // from the snapshot instead of resurrecting stale state.
@@ -116,18 +105,13 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
       this.rowsById.delete(account.id);
       return;
     }
-    this.snapshot[poolRecordKey(updated.provider, updated.id)] =
-      rowToLinkedAccount(updated);
+    this.snapshot[poolRecordKey(updated.provider, updated.id)] = rowToLinkedAccount(updated);
     this.rowsById.set(updated.id, updated);
   }
 
-  async deleteAccount(
-    providerId: PoolProviderId,
-    accountId: string,
-  ): Promise<void> {
+  async deleteAccount(providerId: PoolProviderId, accountId: string): Promise<void> {
     const row =
-      this.rowsById.get(accountId) ??
-      (await pooledCredentialsRepository.findById(accountId));
+      this.rowsById.get(accountId) ?? (await pooledCredentialsRepository.findById(accountId));
     const deleted = await pooledCredentialsRepository.delete(accountId);
     delete this.snapshot[poolRecordKey(providerId, accountId)];
     this.rowsById.delete(accountId);
@@ -142,14 +126,11 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
     } catch (err) {
       // The pool row is already gone (the credential can never be selected
       // again); an orphaned vault secret is a cleanup concern, not a failure.
-      logger.warn(
-        "[DrizzleAccountPoolDeps] secret cleanup failed after credential delete",
-        {
-          organizationId: this.organizationId,
-          credentialId: accountId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-      );
+      logger.warn("[DrizzleAccountPoolDeps] secret cleanup failed after credential delete", {
+        organizationId: this.organizationId,
+        credentialId: accountId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

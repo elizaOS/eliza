@@ -47,9 +47,7 @@ async function applyMigration(): Promise<void> {
 
 beforeAll(async () => {
   try {
-    ({ dbWrite, closeDatabaseConnectionsForTests: closeDb } = await import(
-      "./client"
-    ));
+    ({ dbWrite, closeDatabaseConnectionsForTests: closeDb } = await import("./client"));
     const { organizations } = await import("./schemas/organizations");
     const { users } = await import("./schemas/users");
     const {
@@ -79,9 +77,7 @@ beforeAll(async () => {
     );
     await apply();
 
-    await dbWrite
-      .insert(organizations)
-      .values([{ id: ORG, name: "Org", slug: "org-mig" }]);
+    await dbWrite.insert(organizations).values([{ id: ORG, name: "Org", slug: "org-mig" }]);
     await dbWrite.insert(users).values([
       {
         id: USER,
@@ -99,10 +95,7 @@ beforeAll(async () => {
     }
   } catch (error) {
     pgliteReady = false;
-    console.error(
-      "[pooled-credentials-migration.test] setup failed — failing.",
-      error,
-    );
+    console.error("[pooled-credentials-migration.test] setup failed — failing.", error);
   }
 }, 120_000);
 
@@ -180,9 +173,7 @@ describe("0164_pooled_credentials migration up (#11332)", () => {
     await dbWrite.execute(
       `DELETE FROM pooled_credentials WHERE id = 'dddddddd-1111-4111-8111-111111111111';`,
     );
-    const left = await dbWrite.execute(
-      `SELECT id FROM pooled_credential_usage;`,
-    );
+    const left = await dbWrite.execute(`SELECT id FROM pooled_credential_usage;`);
     expect(left.rows).toHaveLength(0);
   });
 });

@@ -92,9 +92,7 @@ export class TeamPoolRegistry {
     try {
       let entry = this.pools.get(organizationId);
       if (!entry) {
-        const { AccountPool: AccountPoolClass } = await import(
-          "@elizaos/app-core/account-pool"
-        );
+        const { AccountPool: AccountPoolClass } = await import("@elizaos/app-core/account-pool");
         const deps = new DrizzleAccountPoolDeps(organizationId);
         entry = {
           pool: new AccountPoolClass(deps),
@@ -114,13 +112,10 @@ export class TeamPoolRegistry {
       this.pools.set(organizationId, entry);
       return entry;
     } catch (err) {
-      logger.warn(
-        "[TeamPoolRegistry] pool acquire failed — falling back to platform env",
-        {
-          organizationId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-      );
+      logger.warn("[TeamPoolRegistry] pool acquire failed — falling back to platform env", {
+        organizationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }
@@ -143,15 +138,11 @@ export class TeamPoolRegistry {
       if (!account) return null;
       const secretId = entry.deps.secretIdFor(account.id);
       if (!secretId) return null;
-      const apiKey = await secretsService.getDecryptedValue(
-        secretId,
-        params.organizationId,
-        {
-          actorType: "system",
-          actorId: "team-credential-pool",
-          source: "team-credential-pool",
-        },
-      );
+      const apiKey = await secretsService.getDecryptedValue(secretId, params.organizationId, {
+        actorType: "system",
+        actorId: "team-credential-pool",
+        source: "team-credential-pool",
+      });
       return {
         credentialId: account.id,
         providerId: params.providerId,
@@ -160,14 +151,11 @@ export class TeamPoolRegistry {
         label: account.label,
       };
     } catch (err) {
-      logger.warn(
-        "[TeamPoolRegistry] credential selection failed — falling back",
-        {
-          organizationId: params.organizationId,
-          providerId: params.providerId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-      );
+      logger.warn("[TeamPoolRegistry] credential selection failed — falling back", {
+        organizationId: params.organizationId,
+        providerId: params.providerId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }
@@ -258,15 +246,11 @@ export class TeamPoolRegistry {
           const secretId = entry.deps.secretIdFor(credentialId);
           if (!secretId) continue;
           probes += 1;
-          const apiKey = await secretsService.getDecryptedValue(
-            secretId,
-            organizationId,
-            {
-              actorType: "system",
-              actorId: "team-credential-pool",
-              source: "team-credential-pool-keep-alive",
-            },
-          );
+          const apiKey = await secretsService.getDecryptedValue(secretId, organizationId, {
+            actorType: "system",
+            actorId: "team-credential-pool",
+            source: "team-credential-pool-keep-alive",
+          });
           const result = await probePooledApiKey(account.providerId, apiKey);
           if (result.ok) {
             await entry.deps.writeAccount({

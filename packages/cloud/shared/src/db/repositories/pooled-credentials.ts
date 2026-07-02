@@ -52,9 +52,7 @@ export class PooledCredentialsRepository {
     return rows[0];
   }
 
-  async listByOrganization(
-    organizationId: string,
-  ): Promise<PooledCredential[]> {
+  async listByOrganization(organizationId: string): Promise<PooledCredential[]> {
     return await dbRead
       .select()
       .from(pooledCredentials)
@@ -84,10 +82,7 @@ export class PooledCredentialsRepository {
   }
 
   /** Today's per-credential call totals for an org (UTC day bucket). */
-  async usageTotalsForDay(
-    organizationId: string,
-    day: string,
-  ): Promise<Map<string, number>> {
+  async usageTotalsForDay(organizationId: string, day: string): Promise<Map<string, number>> {
     const rows = await dbRead
       .select({
         credential_id: pooledCredentialUsage.credential_id,
@@ -104,9 +99,7 @@ export class PooledCredentialsRepository {
     return new Map(rows.map((row) => [row.credential_id, row.calls]));
   }
 
-  async listUsageByCredential(
-    credentialId: string,
-  ): Promise<PooledCredentialUsage[]> {
+  async listUsageByCredential(credentialId: string): Promise<PooledCredentialUsage[]> {
     return await dbRead
       .select()
       .from(pooledCredentialUsage)
@@ -119,10 +112,7 @@ export class PooledCredentialsRepository {
   // ==========================================================================
 
   async create(data: NewPooledCredential): Promise<PooledCredential> {
-    const rows = await dbWrite
-      .insert(pooledCredentials)
-      .values(data)
-      .returning();
+    const rows = await dbWrite.insert(pooledCredentials).values(data).returning();
     const row = rows[0];
     if (!row) throw new Error("Failed to insert pooled credential");
     return row;
@@ -142,8 +132,7 @@ export class PooledCredentialsRepository {
     if (state.enabled !== undefined) set.enabled = state.enabled;
     if (state.priority !== undefined) set.priority = state.priority;
     if (state.health !== undefined) set.health = state.health;
-    if (state.health_detail !== undefined)
-      set.health_detail = state.health_detail;
+    if (state.health_detail !== undefined) set.health_detail = state.health_detail;
     if (state.usage !== undefined) set.usage = state.usage;
     if (state.last_used_at !== undefined) set.last_used_at = state.last_used_at;
     const rows = await dbWrite

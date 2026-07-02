@@ -15,9 +15,7 @@
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import type { PooledDirectProvider } from "./provider-map";
 
-export function pooledProviderBaseUrl(
-  providerId: PooledDirectProvider,
-): string {
+export function pooledProviderBaseUrl(providerId: PooledDirectProvider): string {
   const env = getCloudAwareEnv();
   switch (providerId) {
     case "anthropic-api":
@@ -28,15 +26,11 @@ export function pooledProviderBaseUrl(
       return env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com";
     case "zai-api":
       return (
-        env.ZAI_BASE_URL?.trim() ||
-        env.Z_AI_BASE_URL?.trim() ||
-        "https://api.z.ai/api/paas/v4"
+        env.ZAI_BASE_URL?.trim() || env.Z_AI_BASE_URL?.trim() || "https://api.z.ai/api/paas/v4"
       );
     case "moonshot-api":
       return (
-        env.MOONSHOT_BASE_URL?.trim() ||
-        env.KIMI_BASE_URL?.trim() ||
-        "https://api.moonshot.ai/v1"
+        env.MOONSHOT_BASE_URL?.trim() || env.KIMI_BASE_URL?.trim() || "https://api.moonshot.ai/v1"
       );
     case "cerebras-api":
       return env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";

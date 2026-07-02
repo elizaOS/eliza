@@ -17,10 +17,7 @@
  * deliberately not implemented.
  */
 
-import type {
-  LinkedAccountHealthDetail,
-  LinkedAccountUsage,
-} from "@elizaos/contracts";
+import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/contracts";
 import {
   type PooledCredential,
   type PooledCredentialWithContributor,
@@ -121,10 +118,7 @@ export async function contributePooledCredential(
   }
 
   // Live probe BEFORE pooling — a revoked/typo'd key never poisons rotation.
-  const probe = await probePooledApiKey(
-    provider as PooledDirectProvider,
-    apiKey,
-  );
+  const probe = await probePooledApiKey(provider as PooledDirectProvider, apiKey);
   if (!probe.ok) {
     throw new TeamCredentialPoolError(
       `Key failed live validation against ${provider} (status ${probe.status}). Not added.`,
@@ -139,8 +133,7 @@ export async function contributePooledCredential(
       value: apiKey,
       scope: "organization",
       description: `Team pool credential (${provider}, ...${last4})`,
-      provider:
-        POOLED_PROVIDER_SECRET_PROVIDER[provider as PooledDirectProvider],
+      provider: POOLED_PROVIDER_SECRET_PROVIDER[provider as PooledDirectProvider],
       providerMetadata: {
         validated: true,
         lastValidatedAt: new Date().toISOString(),
@@ -171,10 +164,7 @@ export async function contributePooledCredential(
           {
             organizationId: params.organizationId,
             secretId: secret.id,
-            error:
-              cleanupErr instanceof Error
-                ? cleanupErr.message
-                : String(cleanupErr),
+            error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
           },
         );
       });
@@ -195,23 +185,15 @@ export async function listPooledCredentials(
   organizationId: string,
 ): Promise<PooledCredentialSummary[]> {
   const [rows, todayTotals] = await Promise.all([
-    pooledCredentialsRepository.listByOrganizationWithContributor(
-      organizationId,
-    ),
+    pooledCredentialsRepository.listByOrganizationWithContributor(organizationId),
     pooledCredentialsRepository.usageTotalsForDay(organizationId, utcToday()),
   ]);
   return rows.map((row: PooledCredentialWithContributor) =>
-    toSummary(
-      row,
-      { name: row.contributor_name },
-      todayTotals.get(row.id) ?? 0,
-    ),
+    toSummary(row, { name: row.contributor_name }, todayTotals.get(row.id) ?? 0),
   );
 }
 
-export async function getPooledCredential(
-  id: string,
-): Promise<PooledCredential | undefined> {
+export async function getPooledCredential(id: string): Promise<PooledCredential | undefined> {
   return pooledCredentialsRepository.findById(id);
 }
 
@@ -226,14 +208,11 @@ export interface UpdatePooledCredentialParams {
 export async function updatePooledCredential(
   params: UpdatePooledCredentialParams,
 ): Promise<PooledCredentialSummary> {
-  const updated = await pooledCredentialsRepository.updatePoolState(
-    params.credentialId,
-    {
-      ...(params.enabled !== undefined ? { enabled: params.enabled } : {}),
-      ...(params.priority !== undefined ? { priority: params.priority } : {}),
-      ...(params.label !== undefined ? { label: params.label } : {}),
-    },
-  );
+  const updated = await pooledCredentialsRepository.updatePoolState(params.credentialId, {
+    ...(params.enabled !== undefined ? { enabled: params.enabled } : {}),
+    ...(params.priority !== undefined ? { priority: params.priority } : {}),
+    ...(params.label !== undefined ? { label: params.label } : {}),
+  });
   if (!updated) {
     throw new TeamCredentialPoolError("Credential not found", 404);
   }
@@ -252,21 +231,14 @@ export async function removePooledCredential(params: {
   }
   getTeamPoolRegistry().invalidate(params.organizationId);
   try {
-    await secretsService.delete(
-      row.secret_id,
-      params.organizationId,
-      params.audit,
-    );
+    await secretsService.delete(row.secret_id, params.organizationId, params.audit);
   } catch (err) {
     // Pool row is gone — the credential can never be selected again. An
     // orphaned vault secret is logged for cleanup, not surfaced as a failure.
-    logger.warn(
-      "[TeamCredentialPool] secret cleanup failed after credential delete",
-      {
-        organizationId: params.organizationId,
-        credentialId: params.credentialId,
-        error: err instanceof Error ? err.message : String(err),
-      },
-    );
+    logger.warn("[TeamCredentialPool] secret cleanup failed after credential delete", {
+      organizationId: params.organizationId,
+      credentialId: params.credentialId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

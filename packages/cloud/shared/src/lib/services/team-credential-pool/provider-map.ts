@@ -21,9 +21,7 @@ export const POOLED_DIRECT_PROVIDERS = [
 
 export type PooledDirectProvider = (typeof POOLED_DIRECT_PROVIDERS)[number];
 
-export function isPooledDirectProvider(
-  value: string,
-): value is PooledDirectProvider {
+export function isPooledDirectProvider(value: string): value is PooledDirectProvider {
   return (POOLED_DIRECT_PROVIDERS as readonly string[]).includes(value);
 }
 
@@ -55,10 +53,7 @@ export const POOLED_PROVIDER_ENV_KEYS: Record<PooledDirectProvider, string> = {
 };
 
 /** Secrets-vault provider enum value for each pooled provider. */
-export const POOLED_PROVIDER_SECRET_PROVIDER: Record<
-  PooledDirectProvider,
-  SecretProvider
-> = {
+export const POOLED_PROVIDER_SECRET_PROVIDER: Record<PooledDirectProvider, SecretProvider> = {
   "anthropic-api": "anthropic",
   "openai-api": "openai",
   "deepseek-api": "custom",

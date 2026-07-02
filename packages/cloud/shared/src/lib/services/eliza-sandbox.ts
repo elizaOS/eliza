@@ -41,7 +41,6 @@ import {
   planIncrementalBackup,
 } from "./agent-backup-diff";
 import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
-import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 import {
   type AIUsage,
   type BillingContext,
@@ -78,6 +77,7 @@ import {
   type SharedAgentCharacter,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
+import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 
 export interface CreateAgentParams {
   organizationId: string;

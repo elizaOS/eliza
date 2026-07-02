@@ -14,10 +14,7 @@
  */
 
 import { logger } from "../../utils/logger";
-import {
-  POOLED_DIRECT_PROVIDERS,
-  POOLED_PROVIDER_ENV_KEYS,
-} from "./provider-map";
+import { POOLED_DIRECT_PROVIDERS, POOLED_PROVIDER_ENV_KEYS } from "./provider-map";
 import { getTeamPoolRegistry } from "./registry";
 
 export interface ApplyPooledCredentialsParams {
@@ -56,23 +53,17 @@ export async function applyPooledCredentialsToBootstrapEnv(
       }
     }
     if (applied > 0) {
-      logger.info(
-        "[TeamCredentialPool] merged pooled credentials into bootstrap env",
-        {
-          organizationId: params.organizationId,
-          applied,
-        },
-      );
+      logger.info("[TeamCredentialPool] merged pooled credentials into bootstrap env", {
+        organizationId: params.organizationId,
+        applied,
+      });
     }
     return merged;
   } catch (err) {
-    logger.warn(
-      "[TeamCredentialPool] pooled-credential merge failed — using agent env as-is",
-      {
-        organizationId: params.organizationId,
-        error: err instanceof Error ? err.message : String(err),
-      },
-    );
+    logger.warn("[TeamCredentialPool] pooled-credential merge failed — using agent env as-is", {
+      organizationId: params.organizationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return params.env;
   }
 }

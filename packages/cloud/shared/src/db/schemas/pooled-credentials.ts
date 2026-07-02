@@ -15,10 +15,7 @@
  * answerable. Replaces the self-host JSONL usage log in cloud.
  */
 
-import type {
-  LinkedAccountHealthDetail,
-  LinkedAccountUsage,
-} from "@elizaos/contracts";
+import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/contracts";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
   boolean,
@@ -78,19 +75,12 @@ export const pooledCredentials = pgTable(
     usage: jsonb("usage").$type<LinkedAccountUsage>(),
 
     last_used_at: timestamp("last_used_at", { withTimezone: true }),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index("pooled_credentials_org_idx").on(table.organization_id),
-    index("pooled_credentials_org_provider_idx").on(
-      table.organization_id,
-      table.provider,
-    ),
+    index("pooled_credentials_org_provider_idx").on(table.organization_id, table.provider),
     index("pooled_credentials_contributed_by_idx").on(table.contributed_by),
     /** One pool row per vault secret. */
     uniqueIndex("pooled_credentials_secret_id_idx").on(table.secret_id),
@@ -120,12 +110,8 @@ export const pooledCredentialUsage = pgTable(
 
     calls: integer("calls").notNull().default(0),
 
-    created_at: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index("pooled_credential_usage_org_idx").on(table.organization_id),
@@ -140,9 +126,5 @@ export const pooledCredentialUsage = pgTable(
 
 export type PooledCredential = InferSelectModel<typeof pooledCredentials>;
 export type NewPooledCredential = InferInsertModel<typeof pooledCredentials>;
-export type PooledCredentialUsage = InferSelectModel<
-  typeof pooledCredentialUsage
->;
-export type NewPooledCredentialUsage = InferInsertModel<
-  typeof pooledCredentialUsage
->;
+export type PooledCredentialUsage = InferSelectModel<typeof pooledCredentialUsage>;
+export type NewPooledCredentialUsage = InferInsertModel<typeof pooledCredentialUsage>;
