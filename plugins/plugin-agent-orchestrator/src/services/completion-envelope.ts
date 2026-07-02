@@ -28,6 +28,18 @@ export interface EnvelopeCriterionStatus {
 export interface CompletionEnvelope {
   diffSummary: string;
   filesChanged: string[];
+  /** Real workdir path observed by the orchestrator/verifier, never a requested path guess. */
+  realWorkdir?: string;
+  /** Disk-verified changed files, populated by truthful completion routing/verifiers. */
+  verifiedChangedFiles?: Array<{
+    path: string;
+    exists: boolean;
+    absolutePath?: string;
+    sizeBytes?: number;
+  }>;
+  /** False when any claimed changed file/artifact was missing at completion. */
+  artifactsVerified?: boolean;
+  missingArtifacts?: string[];
   testResults: EnvelopeTestResult[];
   screenshotPaths: string[];
   trajectoryPath?: string;
@@ -48,6 +60,19 @@ export const COMPLETION_ENVELOPE_INSTRUCTION = [
     {
       diffSummary: "string — one-line summary of what changed",
       filesChanged: ["string — repo-relative paths"],
+      realWorkdir:
+        "string — optional; the actual working directory used, not the requested path",
+      verifiedChangedFiles: [
+        {
+          path: "string — repo/workdir-relative path",
+          exists: true,
+          absolutePath: "string — optional absolute path verified on disk",
+          sizeBytes: 123,
+        },
+      ],
+      artifactsVerified:
+        "boolean — optional; false if any changed file/artifact is missing",
+      missingArtifacts: ["string — optional missing claimed files/artifacts"],
       testResults: [
         {
           command: "string",
@@ -130,10 +155,46 @@ export function parseCompletionEnvelope(text: string): CompletionEnvelopeParse {
     errors.push("filesChanged must be a string[]");
   if (!isStringArray(o.residualRisks))
     errors.push("residualRisks must be a string[]");
+  if (o.realWorkdir !== undefined && typeof o.realWorkdir !== "string")
+    errors.push("realWorkdir must be a string");
+  if (
+    o.artifactsVerified !== undefined &&
+    typeof o.artifactsVerified !== "boolean"
+  ) {
+    errors.push("artifactsVerified must be a boolean");
+  }
+  if (o.missingArtifacts !== undefined && !isStringArray(o.missingArtifacts)) {
+    errors.push("missingArtifacts must be a string[]");
+  }
   if (!Array.isArray(o.screenshotPaths)) {
     // optional-ish but must be an array when present; default to [] if missing
     if (o.screenshotPaths !== undefined)
       errors.push("screenshotPaths must be a string[]");
+  }
+
+  const verifiedChangedFiles: CompletionEnvelope["verifiedChangedFiles"] = [];
+  if (o.verifiedChangedFiles !== undefined) {
+    if (!Array.isArray(o.verifiedChangedFiles)) {
+      errors.push("verifiedChangedFiles must be an array");
+    } else {
+      for (const [i, f] of o.verifiedChangedFiles.entries()) {
+        const file = f as Record<string, unknown>;
+        if (!file || typeof file.path !== "string" || typeof file.exists !== "boolean") {
+          errors.push(`verifiedChangedFiles[${i}] must be {path, exists}`);
+        } else {
+          verifiedChangedFiles.push({
+            path: file.path,
+            exists: file.exists,
+            ...(typeof file.absolutePath === "string"
+              ? { absolutePath: file.absolutePath }
+              : {}),
+            ...(typeof file.sizeBytes === "number"
+              ? { sizeBytes: file.sizeBytes }
+              : {}),
+          });
+        }
+      }
+    }
   }
 
   const testResults: EnvelopeTestResult[] = [];
@@ -192,6 +253,14 @@ export function parseCompletionEnvelope(text: string): CompletionEnvelopeParse {
     envelope: {
       diffSummary: o.diffSummary as string,
       filesChanged: o.filesChanged as string[],
+      ...(typeof o.realWorkdir === "string" ? { realWorkdir: o.realWorkdir } : {}),
+      ...(verifiedChangedFiles.length > 0 ? { verifiedChangedFiles } : {}),
+      ...(typeof o.artifactsVerified === "boolean"
+        ? { artifactsVerified: o.artifactsVerified }
+        : {}),
+      ...(isStringArray(o.missingArtifacts)
+        ? { missingArtifacts: o.missingArtifacts }
+        : {}),
       testResults,
       screenshotPaths: isStringArray(o.screenshotPaths)
         ? o.screenshotPaths
@@ -214,7 +283,14 @@ export function summarizeEnvelope(env: CompletionEnvelope): string {
     .map((c) => c.criterion);
   return [
     `diff: ${env.diffSummary}`,
+    env.realWorkdir ? `workdir: ${env.realWorkdir}` : "",
     `files: ${env.filesChanged.length}`,
+    env.verifiedChangedFiles
+      ? `verifiedFiles: ${env.verifiedChangedFiles.filter((f) => f.exists).length}/${env.verifiedChangedFiles.length}`
+      : "",
+    env.artifactsVerified === false && env.missingArtifacts?.length
+      ? `UNVERIFIED missing: ${env.missingArtifacts.join(", ")}`
+      : "",
     tests ? `tests: ${tests}` : "tests: none",
     `criteria: ${env.acceptanceCriteriaStatus.filter((c) => c.met).length}/${env.acceptanceCriteriaStatus.length} met`,
     unmet.length > 0 ? `unmet: ${unmet.join("; ")}` : "",

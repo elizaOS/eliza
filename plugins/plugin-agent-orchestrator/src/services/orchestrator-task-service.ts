@@ -1784,6 +1784,18 @@ export class OrchestratorTaskService extends Service {
             completionEnvelope: {
               diffSummary: parse.envelope.diffSummary,
               filesChanged: parse.envelope.filesChanged,
+              ...(parse.envelope.realWorkdir
+                ? { realWorkdir: parse.envelope.realWorkdir }
+                : {}),
+              ...(parse.envelope.verifiedChangedFiles
+                ? { verifiedChangedFiles: parse.envelope.verifiedChangedFiles }
+                : {}),
+              ...(typeof parse.envelope.artifactsVerified === "boolean"
+                ? { artifactsVerified: parse.envelope.artifactsVerified }
+                : {}),
+              ...(parse.envelope.missingArtifacts
+                ? { missingArtifacts: parse.envelope.missingArtifacts }
+                : {}),
               testResults: parse.envelope.testResults,
               acceptanceCriteriaStatus: parse.envelope.acceptanceCriteriaStatus,
               residualRisks: parse.envelope.residualRisks,
