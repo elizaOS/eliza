@@ -11,8 +11,22 @@
 export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	"LD_PRELOAD",
 	"LD_LIBRARY_PATH",
+	// ld.so audit hook: loads an arbitrary shared object into every spawned
+	// dynamically linked binary — same code-injection primitive as LD_PRELOAD.
+	"LD_AUDIT",
 	"DYLD_INSERT_LIBRARIES",
 	"DYLD_LIBRARY_PATH",
+	"DYLD_FRAMEWORK_PATH",
+	// Interpreter hijack vars (same class as NODE_OPTIONS/NODE_PATH above):
+	// attacker-controlled module paths / auto-run options for spawned
+	// python/perl/ruby processes. All are on sudo's default env_delete list.
+	"PYTHONPATH",
+	"PYTHONSTARTUP",
+	"PYTHONHOME",
+	"PERL5OPT",
+	"PERL5LIB",
+	"RUBYOPT",
+	"RUBYLIB",
 	"NODE_OPTIONS",
 	"NODE_EXTRA_CA_CERTS",
 	"NODE_TLS_REJECT_UNAUTHORIZED",

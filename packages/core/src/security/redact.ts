@@ -139,7 +139,12 @@ function redactMatch(match: string, groups: string[]): string {
 	if (token === match) {
 		return masked;
 	}
-	return match.replace(token, masked);
+	// Use a replacer function so `masked` is inserted literally. `masked` keeps
+	// the token's first/last characters verbatim, and String.replace treats a
+	// replacement STRING's `$&` / `$'` / "$`" / `$$` as special patterns — a
+	// secret starting with `ab$&…` would re-expand `$&` to the whole matched
+	// token, leaking the full secret back into the "redacted" output.
+	return match.replace(token, () => masked);
 }
 
 function redactText(text: string, patterns: readonly RegExp[]): string {
@@ -264,7 +269,9 @@ export function redactSecrets(
 	for (const [name, value] of sortedEntries) {
 		// Case-sensitive regex for the exact value (compiled once, then cached).
 		const regex = getSecretRegex(value);
-		result = result.replace(regex, `[REDACTED:${name}]`);
+		// Replacer function: a secret NAME containing `$&`/`$$`/etc. must be
+		// inserted literally, not expanded as a replacement pattern.
+		result = result.replace(regex, () => `[REDACTED:${name}]`);
 	}
 
 	return result;

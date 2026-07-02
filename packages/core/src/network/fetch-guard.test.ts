@@ -136,3 +136,79 @@ describe("fetchWithSsrfGuard with DNS pinning", () => {
 		await release();
 	});
 });
+
+/**
+ * Redirects are followed manually (`redirect: "manual"`), so the guard itself
+ * must reproduce standard fetch credential semantics: Authorization /
+ * Proxy-Authorization / Cookie never follow a redirect to a different origin
+ * (otherwise a malicious 302 exfiltrates the caller's bearer token), but they
+ * DO survive same-origin redirects.
+ */
+describe("credential headers across redirects", () => {
+	it("strips Authorization/Cookie on a cross-origin redirect, keeps other headers", async () => {
+		const calls: Array<{ url: string; headers: Headers }> = [];
+		const fetchImpl = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({ url: String(input), headers: new Headers(init?.headers) });
+				if (String(input).startsWith("https://api.example.com")) {
+					return new Response(null, {
+						status: 302,
+						headers: { location: "https://evil.example.net/collect" },
+					});
+				}
+				return new Response("ok", { status: 200 });
+			},
+		);
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://api.example.com/resource",
+			fetchImpl,
+			init: {
+				headers: {
+					authorization: "Bearer super-secret-token",
+					cookie: "session=abc",
+					accept: "application/json",
+				},
+			},
+		});
+		expect(response.status).toBe(200);
+		expect(calls).toHaveLength(2);
+		// First hop (original origin) carries the credentials.
+		expect(calls[0].headers.get("authorization")).toBe(
+			"Bearer super-secret-token",
+		);
+		// Cross-origin hop must not receive them — but keeps benign headers.
+		expect(calls[1].url).toBe("https://evil.example.net/collect");
+		expect(calls[1].headers.get("authorization")).toBeNull();
+		expect(calls[1].headers.get("cookie")).toBeNull();
+		expect(calls[1].headers.get("accept")).toBe("application/json");
+		await release();
+	});
+
+	it("keeps Authorization on a same-origin redirect", async () => {
+		const calls: Array<{ url: string; headers: Headers }> = [];
+		const fetchImpl = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({ url: String(input), headers: new Headers(init?.headers) });
+				if (String(input) === "https://api.example.com/old") {
+					return new Response(null, {
+						status: 301,
+						headers: { location: "/new" },
+					});
+				}
+				return new Response("ok", { status: 200 });
+			},
+		);
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://api.example.com/old",
+			fetchImpl,
+			init: { headers: { authorization: "Bearer super-secret-token" } },
+		});
+		expect(response.status).toBe(200);
+		expect(calls).toHaveLength(2);
+		expect(calls[1].url).toBe("https://api.example.com/new");
+		expect(calls[1].headers.get("authorization")).toBe(
+			"Bearer super-secret-token",
+		);
+		await release();
+	});
+});

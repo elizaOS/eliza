@@ -100,3 +100,29 @@ describe("redactWithSecrets / createSecretsRedactor / redactObjectSecrets", () =
 		expect((out.nested.b as string[])[0]).toBe("[REDACTED:TOKEN]");
 	});
 });
+
+describe("replacement-pattern safety ($-expansion)", () => {
+	it("does not re-expand $& in a masked token back into the full secret", () => {
+		// The kept prefix of the mask ("ab$&cd") contains `$&`; a string
+		// replacement would expand it to the whole matched token, leaking the
+		// full secret into the "redacted" output.
+		const secret = "ab$&cdefghijklmnopqrs";
+		const out = redactSensitiveText(`PASSWORD=${secret}`);
+		expect(out).not.toContain(secret);
+		expect(out).toBe("PASSWORD=ab$&cd…pqrs");
+	});
+
+	it("does not expand $' in a masked token into the trailing text", () => {
+		const secret = "xy$'zabcdefghijklmnop";
+		const out = redactSensitiveText(`API_KEY=${secret} trailing`);
+		expect(out).not.toContain(secret);
+	});
+
+	it("inserts a secret name containing $& literally in redactSecrets", () => {
+		const out = redactSecrets("value is supersecretvalue123", {
+			"WEIRD$&NAME": "supersecretvalue123",
+		});
+		expect(out).toBe("value is [REDACTED:WEIRD$&NAME]");
+		expect(out).not.toContain("supersecretvalue123");
+	});
+});
