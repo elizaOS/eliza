@@ -147,6 +147,25 @@ export function getTrajectoryContext(): TrajectoryContext | undefined {
 }
 
 /**
+ * Run `fn` with the ambient trajectory context preserved and only `purpose`
+ * overridden.
+ *
+ * Passing a bare `{ purpose }` object to {@link runWithTrajectoryContext}
+ * REPLACES the active context: `trajectoryStepId` is dropped, so the runtime
+ * never records the nested `useModel` call (and the purpose tag is lost with
+ * it), and the turn's secret-swap/PII sessions stop propagating. Use this
+ * helper to tag a model call with a purpose while keeping the active
+ * step/run/room identifiers and swap sessions intact.
+ */
+export function runWithTrajectoryPurpose<T>(
+	purpose: string,
+	fn: () => T | Promise<T>,
+): T | Promise<T> {
+	const manager = getOrCreateContextManager();
+	return manager.run({ ...manager.active(), purpose }, fn);
+}
+
+/**
  * Set the pipeline purpose on the current trajectory context.
  * Mutates in place so nested useModel calls pick up the correct stage.
  */
