@@ -63,16 +63,22 @@ on:
           - production
 
 concurrency:
-  # Manual deploys (workflow_dispatch) and branch deploys must run to
-  # completion: cancelling an in-progress push deploy lets a busy develop/main
-  # stream starve Cloudflare publishes indefinitely. A SHARED ref-scoped push
-  # group did exactly that under a hot push stream — GitHub cancels the older
-  # pending (and, in practice, the just-started) run on every new commit, so a
-  # rapidly-pushed develop produced zero completed deploys. Give each push/
-  # dispatch its OWN per-commit group so no deploy is ever superseded; the
-  # self-hosted runner serializes them and the latest commit always lands. PRs
-  # keep the dedupe-to-latest group + cancel-in-progress to avoid CI churn.
-  group: cloud-cf-deploy-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  # Serialize branch deploys (push + workflow_dispatch) per ref so the shared-host
+  # self-hosted robot fleet runs exactly ONE deploy at a time. The per-commit-group
+  # design this replaces assumed "the self-hosted runner serializes them", but it
+  # does NOT: the robot slots share disk, so concurrent runs saturate I/O and every
+  # run times out (checkout materialization / bun-install link phase >900s). One run
+  # alone always succeeds.
+  #
+  # A shared per-ref group with cancel-in-progress:false is the fix. The earlier
+  # shared-group attempt failed only because it cancelled IN-PROGRESS runs on every
+  # push (zero completions). Here cancel-in-progress is false for branch deploys, so
+  # GitHub PROTECTS the running deploy and just queues the next one, superseding only
+  # the stale *pending* run — the in-flight deploy always finishes and the latest
+  # commit always lands next. This also removes the need for the manual out-of-band
+  # deploy-serialization escort. PRs keep a per-PR dedupe group + cancel-in-progress
+  # to avoid preview-deploy churn. Refs #11108.
+  group: cloud-cf-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('branch-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
