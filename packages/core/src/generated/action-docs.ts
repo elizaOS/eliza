@@ -7667,7 +7667,7 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_GOALS",
 			description:
-				"Manage the owner's long-horizon life goals. Actions: create, update, delete, review. Goals carry a horizon (e.g. quarter, year, life) and feed routine + reminder generation.",
+				"Manage the owner's long-horizon life goals. Actions: create, update, delete, review, checkin. Goals carry a horizon (e.g. quarter, year, life), feed routine + reminder generation, and cadenced goals get scheduled check-ins whose responses are recorded via checkin.",
 			parameters: [
 				{
 					name: "action",
@@ -7705,9 +7705,27 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Longer goal description (create/update).",
 				},
+				{
+					name: "note",
+					description: "Owner's check-in note (checkin).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Owner's check-in note (checkin).",
+				},
+				{
+					name: "progress",
+					description: "Reported goal progress (checkin).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reported goal progress (checkin).",
+				},
 			],
 			descriptionCompressed:
-				"owner goals: create|update|delete|review; long-horizon, drives routines",
+				"owner goals: create|update|delete|review|checkin; long-horizon, drives routines",
 			similes: [
 				"GOALS",
 				"LIFE_GOALS",
@@ -7725,6 +7743,8 @@ export const allActionsSpec = {
 							id: "example",
 							title: "example",
 							description: "example",
+							note: "example",
+							progress: "example",
 						},
 					},
 				},

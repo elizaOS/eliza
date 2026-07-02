@@ -3687,7 +3687,7 @@
     },
     {
       "name": "OWNER_GOALS",
-      "description": "Manage the owner's long-horizon life goals. Actions: create, update, delete, review. Goals carry a horizon (e.g. quarter, year, life) and feed routine + reminder generation.",
+      "description": "Manage the owner's long-horizon life goals. Actions: create, update, delete, review, checkin. Goals carry a horizon (e.g. quarter, year, life), feed routine + reminder generation, and cadenced goals get scheduled check-ins whose responses are recorded via checkin.",
       "parameters": [
         {
           "name": "action",
@@ -3720,9 +3720,25 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "note",
+          "description": "Owner's check-in note (checkin).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "progress",
+          "description": "Reported goal progress (checkin).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
-      "descriptionCompressed": "owner goals: create|update|delete|review; long-horizon, drives routines",
+      "descriptionCompressed": "owner goals: create|update|delete|review|checkin; long-horizon, drives routines",
       "similes": [
         "GOALS",
         "LIFE_GOALS",
@@ -3739,7 +3755,9 @@
               "action": "example",
               "id": "example",
               "title": "example",
-              "description": "example"
+              "description": "example",
+              "note": "example",
+              "progress": "example"
             }
           }
         }

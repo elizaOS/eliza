@@ -811,7 +811,7 @@
         "repo": "plugin-raven-verify",
         "v0": null,
         "v1": null,
-        "v2": "0.1.0"
+        "v2": "0.2.0"
       },
       "supports": {
         "v0": false,
