@@ -100,7 +100,9 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
       trigger: { type: "once", at: "2026-07-03T17:00:00.000Z" },
     })) as { success: boolean; data?: Record<string, unknown> };
     expect(result.success).toBe(true);
-    const task = result.data?.task as { trigger: { kind: string; atIso: string } };
+    const task = result.data?.task as {
+      trigger: { kind: string; atIso: string };
+    };
     expect(task.trigger).toEqual({
       kind: "once",
       atIso: "2026-07-03T17:00:00.000Z",
@@ -170,6 +172,87 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     expect(second.data?.deduplicated).toBe(true);
     const secondTask = second.data?.task as { taskId: string };
     expect(secondTask.taskId).toBe(firstTask.taskId);
+  });
+
+  it("a missing trigger teaches the habit-definition redirect (live gemma retried the raw surface 5x on brush-teeth-basic)", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const result = (await create(runtime, {
+      kind: "reminder",
+      promptInstructions: "Time to brush your teeth!",
+    })) as { success: boolean; text?: string; data?: Record<string, unknown> };
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("MISSING_TRIGGER");
+    expect(result.text).toContain("OWNER_ROUTINES");
+    expect(result.text).toContain("action=create");
+  });
+
+  it("an invalid trigger also carries the habit-definition redirect", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const result = (await create(runtime, {
+      kind: "reminder",
+      promptInstructions: "Time to brush your teeth!",
+      trigger: {},
+    })) as { success: boolean; text?: string; data?: Record<string, unknown> };
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("INVALID_TRIGGER");
+    expect(result.text).toContain("OWNER_ROUTINES");
+  });
+
+  it("a retried create that reuses the same planner-supplied taskId is idempotent, even with a fresh idempotencyKey and rewritten body", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const first = (await create(runtime, {
+      kind: "reminder",
+      taskId: "brush-teeth-8am-daily",
+      promptInstructions: "Remind the user to brush their teeth.",
+      trigger: { kind: "cron", expression: "0 8 * * *", tz: "UTC" },
+      idempotencyKey: "brush-teeth-8am",
+    })) as { success: boolean; data?: Record<string, unknown> };
+    expect(first.success).toBe(true);
+    const firstTask = first.data?.task as {
+      taskId: string;
+      metadata?: Record<string, unknown>;
+    };
+    expect(firstTask.metadata?.plannerTaskId).toBe("brush-teeth-8am-daily");
+
+    // The exact live retry shape: same invented taskId, NEW idempotencyKey,
+    // slightly different instructions + trigger.
+    const second = (await create(runtime, {
+      kind: "reminder",
+      taskId: "brush-teeth-8am-daily",
+      promptInstructions: "Brush teeth reminder (8 AM).",
+      trigger: { kind: "cron", expression: "0 8 * * 1-5", tz: "UTC" },
+      idempotencyKey: "brush-teeth-8am-cron",
+    })) as { success: boolean; data?: Record<string, unknown> };
+    expect(second.success).toBe(true);
+    expect(second.data?.deduplicated).toBe(true);
+    const secondTask = second.data?.task as { taskId: string };
+    expect(secondTask.taskId).toBe(firstTask.taskId);
+  });
+
+  it("distinct planner-supplied taskIds still create distinct tasks", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const first = (await create(runtime, {
+      kind: "reminder",
+      taskId: "brush-teeth-morning",
+      promptInstructions: "Brush your teeth (morning).",
+      trigger: { kind: "cron", expression: "0 8 * * *", tz: "UTC" },
+    })) as { success: boolean; data?: Record<string, unknown> };
+    const second = (await create(runtime, {
+      kind: "reminder",
+      taskId: "brush-teeth-evening",
+      promptInstructions: "Brush your teeth (evening).",
+      trigger: { kind: "cron", expression: "0 21 * * *", tz: "UTC" },
+    })) as { success: boolean; data?: Record<string, unknown> };
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(second.data?.deduplicated).toBeUndefined();
+    const a = first.data?.task as { taskId: string };
+    const b = second.data?.task as { taskId: string };
+    expect(b.taskId).not.toBe(a.taskId);
   });
 
   it("a different trigger time is NOT deduplicated", async () => {

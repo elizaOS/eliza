@@ -22,7 +22,14 @@ export default scenario({
       kind: "message",
       name: "brush-teeth preview",
       text: "Help me brush my teeth at 8 am and 9 pm every day.",
-      responseIncludesAny: ["brush teeth", "brushing habit", "set that up"],
+      // Same phrasing latitude as brush-teeth-basic: live models say "brush
+      // your teeth" in the preview reply.
+      responseIncludesAny: [
+        "brush teeth",
+        "brush your teeth",
+        "brushing habit",
+        "set that up",
+      ],
     },
     {
       kind: "message",

@@ -273,6 +273,17 @@ function getParams(options: HandlerOptions | undefined): ScheduledTaskParams {
 const TRIGGER_KINDS =
   "once | cron | interval | relative_to_anchor | during_window | event | manual | after_task";
 
+/**
+ * Self-repair redirect appended to create-trigger failures. Observed live
+ * (gemma-4-31b, `brush-teeth-basic`): a habit-shaped ask routed here, then the
+ * model burned every planner continuation retrying `trigger: {}` against the
+ * raw scheduler instead of switching to the definition-save flow. The failure
+ * text is the only in-turn channel that can steer the retry, so it names the
+ * correct surface explicitly.
+ */
+const HABIT_REDIRECT_HINT =
+  "If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.";
+
 type TriggerNormalization =
   | { ok: true; trigger: ScheduledTaskTrigger }
   | { ok: false; message: string };
@@ -541,7 +552,7 @@ async function handleCreate(
   if (params.trigger === undefined || params.trigger === null) {
     return {
       success: false,
-      text: `I need a trigger (${TRIGGER_KINDS}) to schedule a task.`,
+      text: `I need a trigger (${TRIGGER_KINDS}) to schedule a task. ${HABIT_REDIRECT_HINT}`,
       data: { subaction: "create", error: "MISSING_TRIGGER" },
     };
   }
@@ -549,7 +560,7 @@ async function handleCreate(
   if (!normalized.ok) {
     return {
       success: false,
-      text: normalized.message,
+      text: `${normalized.message} ${HABIT_REDIRECT_HINT}`,
       data: {
         subaction: "create",
         error: "INVALID_TRIGGER",
@@ -569,7 +580,13 @@ async function handleCreate(
   // the same intent (observed live: two identical brush-teeth cron reminders
   // one minute apart under different keys). An ACTIVE task with the same
   // kind + instructions + trigger is the same intent — return it instead of
-  // stacking a duplicate reminder.
+  // stacking a duplicate reminder. Likewise a create that reuses a
+  // planner-invented `taskId` (the runner mints real ids, so it is recorded
+  // as `metadata.plannerTaskId` below) is a retry of the same intent, even
+  // when the retry rewrites the instructions or trigger (observed live:
+  // turn-2 retries reused taskId "brush-teeth-8am-daily" under fresh
+  // idempotency keys).
+  const requestedTaskId = params.taskId?.trim() || undefined;
   const activeSiblings = await scope.runner.list({
     kind,
     status: ["scheduled", "fired", "acknowledged"],
@@ -578,9 +595,12 @@ async function handleCreate(
   const triggerKey = stableTriggerKey(trigger);
   const duplicate = activeSiblings.find(
     (candidate) =>
-      candidate.promptInstructions.trim().toLowerCase() ===
+      (candidate.promptInstructions.trim().toLowerCase() ===
         normalizedInstructions &&
-      stableTriggerKey(candidate.trigger) === triggerKey,
+        stableTriggerKey(candidate.trigger) === triggerKey) ||
+      (requestedTaskId !== undefined &&
+        (candidate.taskId === requestedTaskId ||
+          candidate.metadata?.plannerTaskId === requestedTaskId)),
   );
   if (duplicate) {
     return {
@@ -591,6 +611,7 @@ async function handleCreate(
   }
   const metadata = {
     ...(params.metadata ?? {}),
+    ...(requestedTaskId ? { plannerTaskId: requestedTaskId } : {}),
     ...(scope.roomId && params.completionCheck
       ? { pendingPromptRoomId: scope.roomId }
       : {}),
@@ -870,11 +891,11 @@ export const scheduledTaskAction: Action & {
     "surface:internal",
   ],
   description:
-    "Owner scheduled-item surface backed by LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+    "Low-level admin surface over LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history. create schedules a raw task and requires an explicit structural trigger — it is NOT the flow for saving a habit/routine/recurring personal reminder the owner asks for in chat; OWNER_ROUTINES / OWNER_REMINDERS action=create own that (definition + reminder plan).",
   descriptionCompressed:
-    "LifeOps scheduled items list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
+    "low-level scheduled-item admin list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history; NOT new-habit/routine creation (-> OWNER_ROUTINES/OWNER_REMINDERS create)",
   routingHint:
-    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that reminder", "follow-ups today", "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
+    'manage EXISTING scheduled items ("snooze that reminder", "follow-ups today", "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; NEW habit/routine/recurring personal reminder ("brush my teeth at 8 am and 9 pm every day", "remind me daily at 9pm") -> OWNER_ROUTINES/OWNER_REMINDERS action=create; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
   contexts: [
     "tasks",
     "automation",
