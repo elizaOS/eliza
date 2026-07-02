@@ -296,6 +296,23 @@ app.post("/", async (c) => {
       creditsService.createAnonymousReservation();
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
 
+    // Compute the output-token ceiling BEFORE reserving so the upfront hold
+    // covers the REAL cap, not the 500-token default (#11169 part 2). CoT models
+    // grant maxOutputTokens = cotBudget + 4096; reserving for DEFAULT_OUTPUT_TOKENS
+    // (500) let a near-floor org repeatedly consume far more than it held.
+    const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
+    const cotBudget = resolveAnthropicThinkingBudgetTokens(
+      selectedModel,
+      process.env,
+    );
+    const effectiveMaxOutputTokens =
+      cotBudget != null
+        ? Math.max(
+            DEFAULT_MIN_OUTPUT_TOKENS,
+            cotBudget + DEFAULT_MIN_OUTPUT_TOKENS,
+          )
+        : undefined;
+
     if (!isAnonymous && user.organization_id) {
       const messageText = messages
         .map((m) => extractTextFromParts(m.parts))
@@ -307,6 +324,11 @@ app.post("/", async (c) => {
           model: selectedModel,
           provider,
           estimatedInputTokens,
+          // Size the hold for the actual output ceiling, not the 500 default, so
+          // a CoT completion can't consume more than was reserved (#11169).
+          ...(effectiveMaxOutputTokens != null
+            ? { estimatedOutputTokens: effectiveMaxOutputTokens }
+            : {}),
           userId: user.id,
           description: `Chat: ${selectedModel}`,
         });
@@ -323,19 +345,6 @@ app.post("/", async (c) => {
 
     settleReservation = createCreditReservationSettler(reservation);
     const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
-
-    const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
-    const cotBudget = resolveAnthropicThinkingBudgetTokens(
-      selectedModel,
-      process.env,
-    );
-    const effectiveMaxOutputTokens =
-      cotBudget != null
-        ? Math.max(
-            DEFAULT_MIN_OUTPUT_TOKENS,
-            cotBudget + DEFAULT_MIN_OUTPUT_TOKENS,
-          )
-        : undefined;
 
     const result = streamText({
       model: getLanguageModel(selectedModel),
