@@ -49,7 +49,6 @@ function ProgressChart({
       height={height}
       role="img"
       aria-labelledby="training-progress-title"
-      className="border border-border rounded-sm bg-card"
     >
       <title id="training-progress-title">
         {t("jobdetail.chart.title", { defaultValue: "Training progress" })}
@@ -117,10 +116,7 @@ function CheckpointsList({
   return (
     <div className="space-y-2">
       {checkpoints.map((cp) => (
-        <div
-          key={cp.step}
-          className="text-xs border border-border rounded-sm p-2"
-        >
+        <div key={cp.step} className="text-xs p-2">
           <div className="font-mono text-txt-strong">
             {t("jobdetail.step", {
               step: cp.step,
@@ -174,7 +170,7 @@ function JobLogs({ jobId }: { jobId: string }) {
         </div>
       )}
       {logs && (
-        <div className="text-xs bg-card border border-border rounded-sm p-2 font-mono max-h-48 overflow-auto">
+        <div className="text-xs p-2 font-mono max-h-48 overflow-auto">
           {logs.map((line) => (
             <div key={line} className="text-muted">
               {line}
@@ -231,7 +227,7 @@ export function JobDetailPanel({ jobId, onClose }: JobDetailPanelProps) {
 
   if (loading) {
     return (
-      <div className="p-4 space-y-4 border border-border rounded-sm">
+      <div className="p-4 space-y-4">
         <div className="flex items-center gap-2">
           <Loader2 className="w-4 h-4 animate-spin" />
           <span className="text-sm">
@@ -259,7 +255,8 @@ export function JobDetailPanel({ jobId, onClose }: JobDetailPanelProps) {
   }
 
   return (
-    <div className="space-y-4 border border-border rounded-sm p-4 bg-card">
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
+    <div className="space-y-4 p-4">
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div>
