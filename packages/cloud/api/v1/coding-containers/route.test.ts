@@ -49,6 +49,9 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
     getAgent: mock(async () => undefined),
     updateAgentEnvironment,
   },
+  // #11095 added this export; route.ts imports it, so the mock must provide it
+  // or the whole module (and this test file) fails to load.
+  AgentQuotaExceededError: class AgentQuotaExceededError extends Error {},
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
