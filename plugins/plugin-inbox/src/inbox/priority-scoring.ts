@@ -408,15 +408,20 @@ export async function scoreInboxMessages(
           if (next >= batches.length) return;
           const indices = batches[next];
           if (!indices) return;
-          const batchMessages = indices.map((idx) => messages[idx]!);
+          const batchItems = indices
+            .map((idx) => ({ idx, message: messages[idx] }))
+            .filter(
+              (item): item is { idx: number; message: LifeOpsInboxMessage } =>
+                item.message !== undefined,
+            );
+          const batchMessages = batchItems.map((item) => item.message);
           try {
             const scored = await scoreBatch(runtime, batchMessages, opts);
-            for (let j = 0; j < indices.length; j += 1) {
-              const idx = indices[j]!;
+            for (const [j, { idx, message }] of batchItems.entries()) {
               const score = scored[j];
               if (!score) continue;
               results[idx] = score;
-              cacheSet(cacheKey(batchMessages[j]!, modelId), score);
+              cacheSet(cacheKey(message, modelId), score);
             }
           } catch (error) {
             logger.warn(

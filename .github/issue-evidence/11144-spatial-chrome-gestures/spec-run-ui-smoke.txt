@@ -254,45 +254,45 @@ dist/views/bundle.js  592.80 kB │ gzip: 127.37 kB │ map: 1,090.72 kB
 @elizaos/core:build: 🚀 Starting dual build process for @elizaos/core
 @elizaos/core:build: 🔨 Building for Node.js...
 @elizaos/core:build: 🚀 Building @elizaos/core...
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: 🌐 Building for Browser...
 @elizaos/core:build: 🚀 Building @elizaos/core...
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: ⚡ Building for Edge...
 @elizaos/core:build: 🚀 Building @elizaos/core...
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: 🧪 Building testing module...
 @elizaos/core:build: 🚀 Building @elizaos/core...
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: ✓ Configuration prepared (0.35ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: Bundling with Bun...
 @elizaos/core:build: ✓ Configuration prepared (0.44ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: Bundling with Bun...
 @elizaos/core:build: ✓ Configuration prepared (0.45ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: Bundling with Bun...
 @elizaos/core:build: ✓ Configuration prepared (0.43ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: Bundling with Bun...
 @elizaos/core:build: ✓ Built 4 file(s) - 29.10MB (250.41ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: ✅ @elizaos/core build complete!
 @elizaos/core:build: ⏱️  Total build time: 250.82ms
 @elizaos/core:build: ✅ Node.js build complete in 0.25s
 @elizaos/core:build: ✓ Built 4 file(s) - 21.66MB (380.78ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: ✅ @elizaos/core build complete!
 @elizaos/core:build: ⏱️  Total build time: 381.27ms
 @elizaos/core:build: ✅ Browser build complete in 0.38s
 @elizaos/core:build: ✓ Built 2 file(s) - 18.84MB (509.27ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: ✅ @elizaos/core build complete!
 @elizaos/core:build: ⏱️  Total build time: 509.78ms
 @elizaos/core:build: ✅ Edge build complete in 0.51s
 @elizaos/core:build: ✓ Built 4 file(s) - 0.05MB (513.66ms)
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: ✅ @elizaos/core build complete!
 @elizaos/core:build: ⏱️  Total build time: 514.13ms
 @elizaos/core:build: ✅ Testing module build complete in 0.51s
@@ -300,7 +300,7 @@ dist/views/bundle.js  592.80 kB │ gzip: 127.37 kB │ map: 1,090.72 kB
 @elizaos/core:build:    Compiling TypeScript declarations...
 @elizaos/core:build:    Rewrote 1509 relative specifier(s) in 467 .d.ts file(s) for NodeNext ESM
 @elizaos/core:build: ✅ TypeScript declarations generated in 28.31s
-@elizaos/core:build: 
+@elizaos/core:build:
 @elizaos/core:build: 🎉 All builds complete in 28.83s
 @elizaos/registry:build: cache miss, executing fb7153bdd929bbb6
 @elizaos/registry:build: $ bun run src/generate.ts && bun run src/first-party/generate.ts
@@ -310,24 +310,23 @@ dist/views/bundle.js  592.80 kB │ gzip: 127.37 kB │ map: 1,090.72 kB
 @elizaos/shared:build: $ bun run build:i18n && bun run build:dist
 @elizaos/shared:build: $ node scripts/generate-keywords.mjs --target ts
 @elizaos/shared:build: Generating keyword code from JSON...
-@elizaos/shared:build: 
+@elizaos/shared:build:
 @elizaos/shared:build:   Loaded action-search.generated.keywords.json: 114 entries
 @elizaos/shared:build:   Loaded context-search.keywords.json: 38 entries
 @elizaos/shared:build:   Loaded shared.keywords.json: 71 entries
 @elizaos/shared:build:   Loaded typescript.keywords.json: 16 entries
 @elizaos/shared:build:   Loaded validate.keywords.json: 2 entries
-@elizaos/shared:build: 
+@elizaos/shared:build:
 @elizaos/shared:build: Total: 239 entries, 6 locales
-@elizaos/shared:build: 
+@elizaos/shared:build:
 @elizaos/shared:build:   TypeScript (shared): /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/shared/src/i18n/generated/validation-keyword-data.ts
 @elizaos/shared:build:   JavaScript (shared): /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/shared/src/i18n/generated/validation-keyword-data.js
 @elizaos/shared:build:   TypeScript (core):   /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/core/src/i18n/generated/validation-keyword-data.ts
-@elizaos/shared:build: 
+@elizaos/shared:build:
 @elizaos/shared:build: Done!
 @elizaos/shared:build: $ node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css
 @elizaos/shared:build: [rewrite-dist-relative-imports] rewrote 5 file(s)
 
  Tasks:    5 successful, 5 total
 Cached:    0 cached, 5 total
-  Time:    49.382s 
-
+  Time:    49.382s

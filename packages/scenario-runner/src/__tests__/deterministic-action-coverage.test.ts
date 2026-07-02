@@ -51,10 +51,6 @@ const scenarioDir = resolve(
   repoRoot,
   "packages/scenario-runner/test/scenarios",
 );
-const packageJsonPath = resolve(
-  repoRoot,
-  "packages/scenario-runner/package.json",
-);
 
 /** Stable core plugins whose action surface is read live by import. */
 const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {

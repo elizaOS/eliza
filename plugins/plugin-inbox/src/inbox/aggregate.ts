@@ -332,7 +332,7 @@ function buildThreadGroups(
   let mostRecentGroupTs = -Infinity;
   for (const [key, members] of buckets) {
     const latest = members[0];
-    if (!latest || latest.chatType !== "group") continue;
+    if (latest?.chatType !== "group") continue;
     const ts = Date.parse(latest.receivedAt);
     if (Number.isFinite(ts) && ts > mostRecentGroupTs) {
       mostRecentGroupTs = ts;
