@@ -158,6 +158,11 @@ export async function findOrCreateUserByWalletAddress(
       wallet_chain_type: "evm",
       wallet_verified: true,
       organization_id: org.id,
+      // The signup creates this org for the wallet — its creator manages it
+      // (matches the anonymous-migration path in session.ts). Without this the
+      // sole member of a fresh wallet org is a plain "member" and can never
+      // invite teammates or manage the org they own.
+      role: "owner",
     });
     const user: UserWithOrganization = { ...created, organization: org };
     return {
@@ -241,6 +246,8 @@ export async function findOrCreateSolanaUserByWalletAddress(
       wallet_chain_type: "solana",
       wallet_verified: true,
       organization_id: org.id,
+      // Creator of the fresh wallet org manages it — see the EVM path above.
+      role: "owner",
     });
     const user: UserWithOrganization = { ...created, organization: org };
     return {
