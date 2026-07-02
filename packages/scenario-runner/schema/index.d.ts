@@ -453,6 +453,8 @@ export type ScenarioDeferral = {
   reason: string;
   /** Self-hosted runner label that would unblock it, e.g. `eliza-e2e-macos`. */
   runner?: string;
+};
+
 /** A room a multi-room scenario message turn can target (`turns[].room`). */
 export type ScenarioRoomSpec = {
   id?: string;
@@ -499,6 +501,7 @@ export type ScenarioDefinition = {
    * platform-gated" class. (#10757)
    */
   deferred?: ScenarioDeferral;
+  /**
    * Authoring metadata: the isolation level this scenario was written for.
    * Not read by the runner — `packages/scripts/run-scenarios-isolated.mjs`
    * isolates every scenario per process regardless.
@@ -515,7 +518,7 @@ export type ScenarioDefinition = {
   axis?: string;
   /** Mockoon mock services the connector-certification lane boots for this scenario. */
   mockoon?: string[];
-  turns: ScenarioTurn[];
+  turns: readonly ScenarioTurn[];
   seed?: ScenarioSeedStep[];
   cleanup?: ScenarioCleanupStep[];
   finalChecks?: ScenarioFinalCheck[];
@@ -538,7 +541,7 @@ export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
  * `pr-deterministic` lane. (#10757)
  */
 export declare function scenarioDeferral(
-  value: ScenarioDefinition,
+  value: Omit<ScenarioDefinition, "deferred"> & { deferred?: unknown },
 ): ScenarioDeferral | null;
 
 export function scenario<const T extends ScenarioDefinition>(value: T): T;

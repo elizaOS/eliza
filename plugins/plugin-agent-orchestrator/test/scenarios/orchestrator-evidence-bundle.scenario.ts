@@ -112,11 +112,19 @@ export default scenario({
           "1 file changed, 20 insertions(+)",
           "## TEST / BUILD / TYPECHECK OUTPUT",
           "Tests 8 passed (8)",
-          "## VERIFIED URLS",
+          // #11012: a URL the sub-agent merely PASTED is surfaced as an
+          // explicit unverified claim, never as probe-verified evidence.
+          "## CLAIMED URLS",
+          "NOT probe-verified",
           "https://app.example.com/cache",
         ].filter((needle) => !prompt.includes(needle));
-        return missing.length > 0
-          ? `missing verifier evidence: ${missing.join(", ")}`
+        if (missing.length > 0) {
+          return `missing verifier evidence: ${missing.join(", ")}`;
+        }
+        // Nothing was probed in this run — a VERIFIED URLS section would
+        // mean the prose-mentioned URL got mislabeled again (#11012).
+        return prompt.includes("## VERIFIED URLS")
+          ? "unprobed pasted URL was mislabeled as probe-verified (## VERIFIED URLS present)"
           : undefined;
       },
     },
@@ -125,7 +133,7 @@ export default scenario({
       name: "judge verifies evidence bundle",
       minimumScore: 0.95,
       rubric:
-        "Pass only if the trace proves the verifier prompt included concrete changeset, passing test output, and verified URL evidence before validation passed.",
+        "Pass only if the trace proves the verifier prompt included concrete changeset evidence, passing test output, and surfaced the sub-agent's pasted URL as an explicitly unverified claim before validation passed.",
     },
   ],
 });

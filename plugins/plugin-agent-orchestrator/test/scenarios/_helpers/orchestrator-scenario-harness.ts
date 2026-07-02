@@ -473,14 +473,14 @@ class OrchestratorScenarioHarness {
 
     return {
       summary:
-        "diff, test stdout, and verified URL reached the automatic verifier prompt before validation passed: ## CHANGESET src/cache.ts (1 file changed, 20 insertions(+)); ## TEST / BUILD / TYPECHECK OUTPUT Tests 8 passed (8); ## VERIFIED URLS https://app.example.com/cache",
+        "diff, test stdout, and the pasted URL (as an explicit unverified claim, #11012) reached the automatic verifier prompt before validation passed: ## CHANGESET src/cache.ts (1 file changed, 20 insertions(+)); ## TEST / BUILD / TYPECHECK OUTPUT Tests 8 passed (8); ## CLAIMED URLS (NOT probe-verified) https://app.example.com/cache",
       taskIds: [task.id],
       sessionIds: [sessionId],
       verifierPrompts: [...this.verifierPrompts],
       events: eventTypes(finalDoc),
       finalStatuses: { [task.id]: finalDoc.task.status },
       digest:
-        "prompt included ## CHANGESET src/cache.ts, 1 file changed, 20 insertions(+), ## TEST / BUILD / TYPECHECK OUTPUT, Tests 8 passed (8), ## VERIFIED URLS, and https://app.example.com/cache",
+        "prompt included ## CHANGESET src/cache.ts, 1 file changed, 20 insertions(+), ## TEST / BUILD / TYPECHECK OUTPUT, Tests 8 passed (8), ## CLAIMED URLS (NOT probe-verified), and https://app.example.com/cache",
     };
   }
 
