@@ -22,7 +22,7 @@
  * in-process PGlite. Only the chain clients (viem) and the RPC/env helpers are
  * stubbed — the DB selectors, the lock, the recovery SQL, the broadcast-hash
  * persistence, and the per-redemption try/catch all run for real, so each test
- * fails if the real logic regresses. Self-skips if PGlite is unavailable.
+ * fails if the real logic regresses. Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -30,7 +30,8 @@ import * as realViem from "viem";
 import * as realViemAccounts from "viem/accounts";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 
@@ -222,6 +223,7 @@ beforeAll(async () => {
         eliza_price_usd numeric(18,8) NOT NULL DEFAULT '0',
         eliza_amount numeric(24,8) NOT NULL DEFAULT '0',
         price_quote_expires_at timestamp NOT NULL DEFAULT now(),
+        asset text NOT NULL DEFAULT 'usdc',
         network text NOT NULL DEFAULT 'base',
         payout_address text NOT NULL DEFAULT '0x0000000000000000000000000000000000000000',
         address_signature text,
@@ -690,4 +692,12 @@ describe("payout stale-lock recovery (#10553)", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+// early-return; this turns that silent no-op into a hard CI failure so a
+// money-path proof can never masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
 });

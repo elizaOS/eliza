@@ -15,12 +15,14 @@
  * These run the REAL confirmPayment against in-process PGlite (real SQL: the
  * SELECT … FOR UPDATE, the status transition, the WITH-CTE credit insert +
  * balance update). Only the invoice + discord side-effects are stubbed — the
- * invoice stub is armed to throw to exercise the atomic rollback. Self-skips if
- * PGlite is unavailable.
+ * invoice stub is armed to throw to exercise the atomic rollback. Fails loudly
+ * (via the `pgliteReady` guard) if PGlite ever fails to initialize — never a
+ * silent skip.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000c1";
@@ -280,4 +282,12 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+// early-return; this turns that silent no-op into a hard CI failure so a
+// money-path proof can never masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
 });
