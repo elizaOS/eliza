@@ -3,6 +3,7 @@ import {
 	CANONICAL_ROLE_RANK,
 	canModifyRole,
 	getEntityRole,
+	hasRoleAccess,
 	isAgentSelf,
 	matchEntityToConnectorAdminWhitelist,
 	normalizeRole,
@@ -72,6 +73,66 @@ describe("isAgentSelf", () => {
 		expect(isAgentSelf(undefined, { entityId: "agent-1" } as Memory)).toBe(
 			false,
 		);
+	});
+});
+
+describe("hasRoleAccess — fail-closed on unresolved role", () => {
+	// A message with a real entity/room but no resolvable world (deleted or
+	// inaccessible world, or a source that yields no world id) makes
+	// checkSenderRole return null. That path used to `return true` (fail-OPEN) —
+	// a guest whose world resolution failed cleared the OWNER gate and reached
+	// owner-gated capabilities (e.g. SHELL). It must fail closed to USER rank
+	// (matching the pre-handler default), denying ADMIN/OWNER while still
+	// allowing basic USER actions.
+	const makeRuntime = (settings: Record<string, string> = {}) =>
+		({
+			agentId: "agent-1",
+			getRoom: async () => null,
+			getWorld: async () => null,
+			getEntityById: async () => null,
+			getComponents: async () => [],
+			getMemories: async () => [],
+			getRelationships: async () => [],
+			getSetting: (key: string) => settings[key],
+			character: {},
+		}) as unknown as IAgentRuntime;
+	const guestMessage = {
+		entityId: "guest-entity-1",
+		roomId: "room-1",
+		content: { text: "run df -h on the server", source: "test" },
+	} as unknown as Memory;
+
+	it("denies OWNER and ADMIN when the sender role cannot be resolved", async () => {
+		const runtime = makeRuntime();
+		expect(await hasRoleAccess(runtime, guestMessage, "OWNER")).toBe(false);
+		expect(await hasRoleAccess(runtime, guestMessage, "ADMIN")).toBe(false);
+	});
+
+	it("still allows USER (matches the pre-handler ['USER'] default) and GUEST", async () => {
+		const runtime = makeRuntime();
+		expect(await hasRoleAccess(runtime, guestMessage, "USER")).toBe(true);
+		expect(await hasRoleAccess(runtime, guestMessage, "GUEST")).toBe(true);
+	});
+
+	it("still allows the canonical owner through the OWNER gate", async () => {
+		const runtime = makeRuntime({ ELIZA_ADMIN_ENTITY_ID: "owner-entity-1" });
+		const ownerMessage = {
+			entityId: "owner-entity-1",
+			roomId: "room-1",
+			content: { text: "run df -h on the server", source: "test" },
+		} as unknown as Memory;
+		expect(await hasRoleAccess(runtime, ownerMessage, "OWNER")).toBe(true);
+		expect(await hasRoleAccess(runtime, ownerMessage, "ADMIN")).toBe(true);
+	});
+
+	it("still allows the agent itself", async () => {
+		const runtime = makeRuntime();
+		const selfMessage = {
+			entityId: "agent-1",
+			roomId: "room-1",
+			content: { text: "internal", source: "test" },
+		} as unknown as Memory;
+		expect(await hasRoleAccess(runtime, selfMessage, "OWNER")).toBe(true);
 	});
 });
 

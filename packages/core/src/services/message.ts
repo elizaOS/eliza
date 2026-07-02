@@ -3073,7 +3073,16 @@ function isUnusableStage1Reply(reply: string | undefined): boolean {
 	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
 	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
-	if (/(.)\1{4,}/u.test(trimmed)) return true;
+	// Degenerate single-character spam: the WHOLE reply is one code point
+	// repeated 5+ times ("aaaaa", "!!!!!", "aaaaa aaaaa" across whitespace).
+	// A repeated run INSIDE a longer reply is legitimate — nested code
+	// indentation, aligned `df -h` columns, markdown "-----" dividers, an
+	// "XXXXXXXX" placeholder, pretty-printed JSON — and matching those blanked
+	// valid replies to "I'm not sure how to answer that." (#11504).
+	const nonWhitespace = [...trimmed.replace(/\s+/gu, "")];
+	if (nonWhitespace.length >= 5 && new Set(nonWhitespace).size === 1) {
+		return true;
+	}
 	if (/^[A-Z]{2,8}$/.test(trimmed)) {
 		const allowed = new Set(["OK", "YES", "NO", "STOP"]);
 		return !allowed.has(trimmed);
@@ -4931,7 +4940,13 @@ function plannerErrorLooksTransient(error: unknown): boolean {
 		error instanceof Error
 			? `${error.name} ${error.message} ${String(error.cause ?? "")}`
 			: String(error ?? "");
-	return /\b(?:429|rate[\s_-]*limit|too many requests|temporarily unavailable|overloaded|timeout|timed out|econnreset|etimedout|50[234]|failed after \d+ attempts)\b/i.test(
+	// The trailing three ("empty completion", "model emitted no decision", "no
+	// assistant message") are the CLI/SDK brains' "provider returned nothing
+	// usable" errors. They are recoverable per-turn hiccups (a cold-start blip,
+	// one bad SDK turn), so treat them as transient → a deterministic fallback
+	// tool call, instead of re-throwing and crashing the whole turn with a raw
+	// exception the user sees.
+	return /\b(?:429|rate[\s_-]*limit|too many requests|temporarily unavailable|overloaded|timeout|timed out|econnreset|etimedout|50[234]|failed after \d+ attempts|empty completion|model emitted no decision|no assistant message)\b/i.test(
 		message,
 	);
 }

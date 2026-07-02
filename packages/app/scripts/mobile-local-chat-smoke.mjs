@@ -7,6 +7,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -2214,21 +2215,22 @@ async function requireLocalInferenceReady(baseUrl, authToken) {
 
     lastSnapshot = localInferenceSummary({ hub, device, providers });
 
-    const activeStatus = String(hub?.active?.status ?? "");
-    const activeError = String(hub?.active?.error ?? "");
-    if (activeStatus === "error") {
-      throw new Error(
-        `Local inference hub is in error state: ${activeError || "unknown"}`,
-      );
+    // Three accepted serving paths (see local-inference-readiness.mjs):
+    // hub-active (desktop), device-bridge (paired cross-process device), and
+    // bionic-host (Android in-process GPU host, #11498). Anything else keeps
+    // polling and fails loudly after the attempt budget.
+    const readiness = evaluateLocalInferenceReadiness({
+      hub,
+      device,
+      providers,
+    });
+    if (readiness.error) {
+      throw new Error(readiness.error);
     }
-
-    const activeReady = activeStatus === "ready";
-    const deviceConnected = device?.connected === true;
-    const deviceModelPath =
-      typeof device?.modelPath === "string" &&
-      device.modelPath.trim().length > 0;
-
-    if (activeReady || (deviceConnected && deviceModelPath)) {
+    if (readiness.ready) {
+      console.log(
+        `[local-chat-smoke] Local inference ready via ${readiness.via}.`,
+      );
       return { hub, device, providers };
     }
 

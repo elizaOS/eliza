@@ -19,6 +19,12 @@ function freshActiveState() {
 
 function createRouteTestMocks() {
 	const state = { active: freshActiveState() };
+	const servingState = {
+		status: {
+			registeredTrigger: null as "bionic-host" | "device-bridge" | null,
+			bionicHostServing: false,
+		},
+	};
 	return {
 		bridgeMock: {
 			getMobileDeviceBridgeStatus: vi.fn(() => ({
@@ -26,6 +32,12 @@ function createRouteTestMocks() {
 				connected: false,
 				devices: [],
 			})),
+			getMobileDeviceBridgeServingStatus: vi.fn(async () => ({
+				...servingState.status,
+			})),
+			setServingStatus: (status: (typeof servingState)["status"]) => {
+				servingState.status = status;
+			},
 			loadMobileDeviceBridgeModel: vi.fn(),
 			unloadMobileDeviceBridgeModel: vi.fn(),
 		},
@@ -110,6 +122,22 @@ vi.mock("@elizaos/plugin-capacitor-bridge", () => ({
 	unloadMobileDeviceBridgeModel:
 		getRouteTestMocks().bridgeMock.unloadMobileDeviceBridgeModel,
 }));
+
+// getMobileDeviceBridgeApi imports this deep subpath (the bare entry is
+// stubbed on mobile), so the providers-route tests must mock it here.
+vi.mock(
+	"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap",
+	() => ({
+		getMobileDeviceBridgeStatus:
+			getRouteTestMocks().bridgeMock.getMobileDeviceBridgeStatus,
+		getMobileDeviceBridgeServingStatus:
+			getRouteTestMocks().bridgeMock.getMobileDeviceBridgeServingStatus,
+		loadMobileDeviceBridgeModel:
+			getRouteTestMocks().bridgeMock.loadMobileDeviceBridgeModel,
+		unloadMobileDeviceBridgeModel:
+			getRouteTestMocks().bridgeMock.unloadMobileDeviceBridgeModel,
+	}),
+);
 
 vi.mock("@elizaos/plugin-aosp-local-inference", () => ({
 	activateAospLocalInferenceModel:
@@ -341,6 +369,88 @@ describe("local inference chat status", () => {
 			loadedCacheTypeK: "qjl1_256",
 			loadedCacheTypeV: "q4_polar",
 		});
+	});
+});
+
+describe("GET /api/local-inference/providers — bionic-host serving signal (#11498)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		tempStateDir = mkdtempSync(path.join(tmpdir(), "eliza-local-routes-"));
+		process.env.ELIZA_STATE_DIR = tempStateDir;
+		bridgeMock.setServingStatus({
+			registeredTrigger: null,
+			bionicHostServing: false,
+		});
+	});
+
+	afterEach(() => {
+		if (tempStateDir) {
+			rmSync(tempStateDir, { recursive: true, force: true });
+			tempStateDir = null;
+		}
+		if (originalStateDir === undefined) {
+			delete process.env.ELIZA_STATE_DIR;
+		} else {
+			process.env.ELIZA_STATE_DIR = originalStateDir;
+		}
+	});
+
+	async function fetchCapacitorLlamaProvider() {
+		const req = makeJsonRequest("GET", "/api/local-inference/providers");
+		const res = makeJsonResponse();
+		await expect(
+			handleLocalInferenceRoutes(req, res, { current: null }),
+		).resolves.toBe(true);
+		expect(res.statusCode).toBe(200);
+		const body = res.json() as {
+			providers: Array<{ id: string } & Record<string, unknown>>;
+		};
+		const provider = body.providers.find((p) => p.id === "capacitor-llama");
+		expect(provider).toBeDefined();
+		return provider as Record<string, unknown>;
+	}
+
+	it("reports nothing serving when neither the bionic host nor a device bridge is live", async () => {
+		const provider = await fetchCapacitorLlamaProvider();
+		expect(provider.servingVia).toBeNull();
+		expect(provider.registeredTrigger).toBeNull();
+		expect(provider.enableState).toMatchObject({ enabled: false });
+	});
+
+	it("reports servingVia=bionic-host ONLY when handlers are bound via bionic-host AND the host serves", async () => {
+		bridgeMock.setServingStatus({
+			registeredTrigger: "bionic-host",
+			bionicHostServing: true,
+		});
+		const provider = await fetchCapacitorLlamaProvider();
+		expect(provider.servingVia).toBe("bionic-host");
+		expect(provider.registeredTrigger).toBe("bionic-host");
+		expect(provider.enableState).toMatchObject({
+			enabled: true,
+			reason: "In-process bionic host serving",
+		});
+	});
+
+	it("handlers bound via bionic-host with a dead host is NOT serving (no plugin-present larp)", async () => {
+		bridgeMock.setServingStatus({
+			registeredTrigger: "bionic-host",
+			bionicHostServing: false,
+		});
+		const provider = await fetchCapacitorLlamaProvider();
+		expect(provider.servingVia).toBeNull();
+		expect(provider.registeredTrigger).toBe("bionic-host");
+		expect(provider.enableState).toMatchObject({ enabled: false });
+	});
+
+	it("keeps the paired device-bridge signal when the bridge is connected", async () => {
+		bridgeMock.getMobileDeviceBridgeStatus.mockReturnValue({
+			enabled: true,
+			connected: true,
+			devices: [],
+		});
+		const provider = await fetchCapacitorLlamaProvider();
+		expect(provider.servingVia).toBe("device-bridge");
+		expect(provider.enableState).toMatchObject({ enabled: true });
 	});
 });
 

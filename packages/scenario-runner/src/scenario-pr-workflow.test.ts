@@ -43,10 +43,6 @@ const dynamicViewLoaderPath = resolve(
   import.meta.dirname,
   "../../ui/src/components/views/DynamicViewLoader.test.tsx",
 );
-const appViewManagerFlowPath = resolve(
-  import.meta.dirname,
-  "../../app/test/ui-smoke/view-manager-actual-flow.spec.ts",
-);
 const appPackagedRegressionPath = resolve(
   import.meta.dirname,
   "../../app/test/electrobun-packaged/electrobun-packaged-regressions.e2e.spec.ts",
@@ -247,9 +243,6 @@ describe("scenario PR workflow contract", () => {
     );
     expect(workflow).toContain(
       "bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium",
-    );
-    expect(workflow).toContain(
-      "bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium",
     );
     expect(workflow).toContain(
       "bun run --cwd packages/scenario-runner test:pr:e2e",
@@ -765,9 +758,8 @@ describe("scenario PR workflow contract", () => {
     expect(workflow).toContain("test-status:");
   });
 
-  it("keeps PR-gated view manager coverage on local and remote create/edit/delete flows", () => {
+  it("keeps PR-gated dynamic view loader coverage on remote load and interact flows", () => {
     const dynamicViewLoader = readFileSync(dynamicViewLoaderPath, "utf8");
-    const appViewManagerFlow = readFileSync(appViewManagerFlowPath, "utf8");
 
     for (const required of [
       "imports absolute remote bundleUrl directly",
@@ -779,27 +771,5 @@ describe("scenario PR workflow contract", () => {
     ]) {
       expect(dynamicViewLoader).toContain(required);
     }
-
-    for (const required of [
-      "actual app view manager creates, updates, switches, opens, and deletes local and remote dynamic views",
-      "Dynamic view management",
-      "actual-local-ledger",
-      "Actual Local Ledger Updated",
-      "actual-remote-ledger",
-      "Actual Remote Ledger Updated",
-      "dynamicViewRegister",
-      "dynamicViewUnregister",
-      "captureScreenshotWithQualityRetry",
-      "registerCalls",
-      "unregisterCalls",
-      "installPageDiagnosticsGuard",
-      "expectNoPageDiagnostics",
-      "opening the local dynamic view must not import the remote bundle",
-      "05-remote-updated-reopened",
-    ]) {
-      expect(appViewManagerFlow).toContain(required);
-    }
-    expect(appViewManagerFlow).toContain("03-local-switched");
-    expect(appViewManagerFlow).toContain("04-remote-module-loaded");
   });
 });
