@@ -733,6 +733,15 @@ async function augmentRequest(
     return request;
   }
   request.rawBody = rawBody;
+  // The stream is drained at this point. Route handlers that read the body
+  // through @elizaos/core's `readJsonBody`/`readRequestBody` helpers attach
+  // data/end listeners, which never fire on a consumed stream — the request
+  // would hang until the turn timeout (#10757). Populate core's global-
+  // registry body-cache symbol so those helpers resolve from cache instead
+  // of re-reading the socket.
+  (request as unknown as Record<symbol, Buffer>)[
+    Symbol.for("eliza.http.cachedRequestBody")
+  ] = Buffer.from(rawBody, "utf8");
   const contentType = request.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     try {
@@ -1734,13 +1743,20 @@ function turnUsesStatusResponse(turnKind: string): boolean {
   return turnKind === "api" || turnKind === "tick" || turnKind === "wait";
 }
 
+interface TurnAssertionResult {
+  failures: string[];
+  /** Numeric `responseJudge` score when the turn ran an LLM judge (#8795). */
+  judgeScore?: number;
+}
+
 async function runTurnAssertions(
   turn: ScenarioTurn,
   execution: ExecutedTurn,
   runtime: AgentRuntime,
   minJudgeScore: number,
-): Promise<string[]> {
+): Promise<TurnAssertionResult> {
   const failures: string[] = [];
+  let judgeScore: number | undefined;
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
 
   if (typeof turn.assertResponse === "function") {
@@ -1935,6 +1951,7 @@ async function runTurnAssertions(
         buildExecutionJudgeCandidate(turn, execution),
         rubric.rubric,
       );
+      judgeScore = judged.score;
       if (judged.score < threshold) {
         failures.push(
           `responseJudge: score ${judged.score.toFixed(2)} < ${threshold}: ${judged.reason}`,
@@ -1947,7 +1964,7 @@ async function runTurnAssertions(
     }
   }
 
-  return failures;
+  return { failures, ...(judgeScore !== undefined ? { judgeScore } : {}) };
 }
 
 async function runJudgeRubricFinalCheck(
@@ -1980,6 +1997,7 @@ async function runJudgeRubricFinalCheck(
         type: "judgeRubric",
         status: "failed",
         detail: `score ${judged.score.toFixed(2)} < ${threshold}: ${judged.reason}`,
+        score: judged.score,
       };
     }
     return {
@@ -1987,6 +2005,7 @@ async function runJudgeRubricFinalCheck(
       type: "judgeRubric",
       status: "passed",
       detail: `score ${judged.score.toFixed(2)} ≥ ${threshold}`,
+      score: judged.score,
     };
   } catch (err) {
     return {
@@ -2031,6 +2050,10 @@ export async function runScenario(
     failedAssertions: [],
     providerName: opts.providerName,
   };
+  // Every numeric LLM-judge score produced while running this scenario (turn
+  // responseJudge + judgeRubric final checks). The minimum — the binding
+  // quality constraint — is serialized as report.judgeScore (#8795).
+  const judgeScores: number[] = [];
 
   let interceptor = attachInterceptor(runtime);
   const rooms = resolveScenarioRooms(scenario);
@@ -2242,12 +2265,11 @@ export async function runScenario(
       execution.actionsCalled = actionsThisTurn;
       ctx.turns.push(execution);
 
-      const failedAssertions = await runTurnAssertions(
-        turn,
-        execution,
-        runtime,
-        opts.minJudgeScore,
-      );
+      const { failures: failedAssertions, judgeScore: turnJudgeScore } =
+        await runTurnAssertions(turn, execution, runtime, opts.minJudgeScore);
+      if (turnJudgeScore !== undefined) {
+        judgeScores.push(turnJudgeScore);
+      }
       const voiceRun =
         kind === "voice"
           ? (execution.responseBody as VoiceWorkbenchScenarioRun | undefined)
@@ -2261,6 +2283,7 @@ export async function runScenario(
         actionsCalled: actionsThisTurn,
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
+        ...(turnJudgeScore !== undefined ? { judgeScore: turnJudgeScore } : {}),
         ...(voiceRun?.audioArtifacts && voiceRun.audioArtifacts.length > 0
           ? { audioArtifacts: voiceRun.audioArtifacts }
           : {}),
@@ -2301,6 +2324,9 @@ export async function runScenario(
         result = await runFinalCheck(check, { runtime, ctx });
       }
       report.finalChecks.push(result);
+      if (typeof result.score === "number") {
+        judgeScores.push(result.score);
+      }
       if (result.status === "failed") {
         report.status = "failed";
         report.failedAssertions.push({
@@ -2342,5 +2368,8 @@ export async function runScenario(
     report.durationMs = Date.now() - startedAt;
   }
 
+  if (judgeScores.length > 0) {
+    report.judgeScore = Math.min(...judgeScores);
+  }
   return report;
 }

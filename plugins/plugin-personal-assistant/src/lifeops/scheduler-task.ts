@@ -155,6 +155,16 @@ function buildSchedulerMetadata(
     updateInterval: intervalMs,
     baseInterval: intervalMs,
     blocking: true,
+    // The heartbeat must never be auto-paused by core's maxFailures ladder
+    // (maxFailures <= 0 = never pause): a paused heartbeat kills every
+    // reminder/check-in/follow-up until an operator notices. Boot also
+    // self-heals state persisted by older builds where five consecutive
+    // failures set paused=true forever (the spread above would otherwise
+    // preserve it across restarts).
+    maxFailures: 0,
+    paused: false,
+    failureCount: 0,
+    lastError: undefined,
     lifeopsScheduler: {
       kind: "runtime_runner",
       version: 1,

@@ -8,6 +8,12 @@ export {
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
 } from "./anchors/anchor-registry.ts";
+export {
+  type DispatchFailureReason,
+  type DispatchPolicyContext,
+  type DispatchPolicyDecision,
+  decideDispatchPolicy,
+} from "./dispatch-policy.ts";
 export type { DispatchResult } from "./dispatch-types.ts";
 export { schedulingPlugin } from "./plugin.ts";
 export { buildSchedulingRoutes } from "./routes/plugin-routes.ts";

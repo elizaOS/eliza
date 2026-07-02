@@ -1,9 +1,14 @@
 /**
  * `BRIEF` umbrella action — unit tests (W2-5).
  *
- * Wave-1 scaffold. Asserts that the morning / evening / weekly briefing
- * surface exposed by the PRD §Daily Operations exists, composes structured
- * sections from the injected loaders, and dispatches via simile names.
+ * Asserts that the morning / evening / weekly briefing surface exposed by
+ * the PRD §Daily Operations exists, composes structured sections from the
+ * injected loaders, and dispatches via simile names. The narrative tests pin
+ * the compose PIPELINE around the canned model reply — the prompt must carry
+ * every aggregated section, the reply is trimmed before it lands on the
+ * briefing, and a throwing / non-string / whitespace-only model degrades to
+ * a narrative-less structured briefing — so they cannot be satisfied by
+ * echoing the stub.
  */
 
 import type {
@@ -119,7 +124,13 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("compose_morning", () => {
-    it("composes a briefing from the injected loaders", async () => {
+    it("feeds the loader payload to the model and returns the trimmed narrative", async () => {
+      // Padded model reply: the pipeline must return the TRIMMED narrative,
+      // so a straight echo of the stub cannot satisfy the assertion.
+      const useModel = vi.fn(
+        async () => "  Composed narrative from the model.\n",
+      );
+      const runtime = makeRuntime({ useModel });
       setBriefComposers({
         loadCalendar: async () => [
           {
@@ -158,7 +169,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         ],
       });
 
-      const result = await callBrief(makeRuntime(), makeMessage(), {
+      const result = await callBrief(runtime, makeMessage(), {
         subaction: "compose_morning",
       });
 
@@ -179,9 +190,25 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(data.briefing.sections.inbox).toHaveLength(1);
       expect(data.briefing.sections.life).toHaveLength(1);
       expect(data.briefing.sections.money).toHaveLength(1);
+      // Trimmed by the compose pass — not the raw model string.
       expect(data.briefing.narrative).toBe(
         "Composed narrative from the model.",
       );
+
+      // The compose prompt must carry EVERY loader section the briefing
+      // aggregated, plus the kind/period header — the model is narrating the
+      // real payload, not free-associating.
+      expect(useModel).toHaveBeenCalledTimes(1);
+      const [modelType, args] = useModel.mock.calls[0] as [
+        string,
+        { prompt: string },
+      ];
+      expect(modelType).toBe(ModelType.TEXT_LARGE);
+      expect(args.prompt).toContain("morning briefing for today");
+      expect(args.prompt).toContain("Board sync"); // calendar
+      expect(args.prompt).toContain("Approve the SOW"); // inbox
+      expect(args.prompt).toContain("Send NDA"); // life
+      expect(args.prompt).toContain("Netflix"); // money
     });
 
     it("honors include flags by suppressing whole sections", async () => {
@@ -255,6 +282,60 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       const [modelType, args] = useModel.mock.calls[0]!;
       expect(modelType).toBe(ModelType.TEXT_LARGE);
       expect(args.prompt).toContain("Standup");
+    });
+  });
+
+  describe("narrative compose pass", () => {
+    it("degrades to a narrative-less structured briefing when the model call throws", async () => {
+      const useModel = vi.fn(async (): Promise<string> => {
+        throw new Error("model unavailable");
+      });
+      const runtime = makeRuntime({ useModel });
+      setBriefComposers({
+        loadCalendar: async () => [
+          {
+            id: "evt-9",
+            title: "Investor call",
+            startAt: "2026-05-11T15:00:00.000Z",
+            endAt: "2026-05-11T15:30:00.000Z",
+          },
+        ],
+      });
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_morning",
+      });
+      expect(result.success).toBe(true);
+      expect(useModel).toHaveBeenCalledTimes(1);
+      const data = result.data as {
+        briefing: { narrative?: string; sections: { calendar: unknown[] } };
+      };
+      // The structured briefing survives; only the narrative is dropped.
+      expect(data.briefing.narrative).toBeUndefined();
+      expect(data.briefing.sections.calendar).toHaveLength(1);
+    });
+
+    it("omits the narrative when the model returns a non-string payload", async () => {
+      const useModel = vi.fn(
+        async () => ({ not: "a string" }) as unknown as string,
+      );
+      const runtime = makeRuntime({ useModel });
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_morning",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as { briefing: { narrative?: string } };
+      expect(data.briefing.narrative).toBeUndefined();
+    });
+
+    it("omits the narrative when the model returns only whitespace", async () => {
+      const useModel = vi.fn(async () => "   \n\t");
+      const runtime = makeRuntime({ useModel });
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_morning",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as { briefing: Record<string, unknown> };
+      expect(data.briefing).not.toHaveProperty("narrative");
     });
   });
 

@@ -58,6 +58,7 @@ export {
   ChannelKeyError,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  type ScheduledTaskClaimExpectation,
   type ScheduledTaskClaimResult,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,

@@ -94,6 +94,11 @@ describe("LifeOps scheduled-task simulation harness", () => {
     });
 
     const triage = await h.schedulePrimitive("message_triage", {
+      // Empty escalation ladder (priority low): the permanent failure is
+      // terminal on the first attempt. With rungs remaining the enforced
+      // dispatch policy ADVANCES the ladder instead (surface_degraded) —
+      // see plugin-scheduling's dispatch-policy-enforcement suite.
+      priority: "low",
       output: {
         destination: "channel",
         target: "slack:owner",
@@ -102,8 +107,8 @@ describe("LifeOps scheduled-task simulation harness", () => {
     });
     const fired = await h.firePrimitive(triage);
 
-    // #11041: a returned `{ ok: false }` with no retry backoff is a permanent
-    // failure — the row must NOT be recorded as a successful `fired`.
+    // #11041/#10993: a returned `{ ok: false }` with no retry step remaining
+    // is a permanent failure — the row must NOT be recorded as `fired`.
     expect(fired.state.status).toBe("failed");
     expect(fired.state.lastDecisionLog).toBe(
       "dispatch_failed: auth_expired: owner grant expired",
@@ -115,7 +120,7 @@ describe("LifeOps scheduled-task simulation harness", () => {
       userActionable: true,
     });
     expect(fired.metadata?.lastDispatchError).toEqual({
-      name: "Error",
+      name: "DispatchResultError",
       message: "auth_expired: owner grant expired",
     });
     expect(h.dispatches).toHaveLength(1);
@@ -154,20 +159,25 @@ describe("LifeOps scheduled-task simulation harness", () => {
     });
     const retried = await h.firePrimitive(triage);
 
-    // #11041: `retryAfterMinutes > 0` is a transient failure — the row goes
-    // back to `scheduled` with `firedAt` pushed past the backoff, and the
-    // escalation ladder is not advanced.
+    // #11041/#10993: `retryAfterMinutes > 0` is a transient failure — the row
+    // goes back to `scheduled` with `firedAt` pushed past the backoff, the
+    // escalation ladder is not advanced, and the enforced policy records a
+    // bounded retry continuation (attempt 1 of the per-step budget).
     expect(retried.state.status).toBe("scheduled");
     expect(retried.state.firedAt).toBe(
       new Date(new Date(h.nowIso()).getTime() + 7 * 60_000).toISOString(),
     );
     expect(retried.state.lastDecisionLog).toBe(
-      "dispatch retry (rate_limited) in 7m",
+      "dispatch retry 1/3 in 7m (rate_limited)",
     );
     expect(retried.metadata?.lastDispatchResult).toMatchObject({
       ok: false,
       reason: "rate_limited",
       retryAfterMinutes: 7,
+    });
+    expect(retried.metadata?.pendingDispatch).toEqual({
+      stepIndex: -1,
+      attempt: 1,
     });
     expect(h.dispatches).toHaveLength(1);
 
@@ -179,7 +189,7 @@ describe("LifeOps scheduled-task simulation harness", () => {
       "scheduled",
       "fire_attempt",
       "fired",
-      "snoozed",
+      "dispatch_retried",
     ]);
   });
 

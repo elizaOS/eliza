@@ -92,7 +92,9 @@ const echoFiles = SCENARIO_ROOTS.flatMap(walkScenarioFiles)
 
 // Current debt. Lower this as echo-satisfiable scenarios are rewritten to
 // assert real effects (#9310). Never raise it.
-const BASELINE = 237;
+// 237 -> 215: 30 scenarios rewritten outcome-asserting (20 PA chief-of-staff
+// flows, 5 lifeops.hygiene, 5 executive-assistant) — see #9310/#10721/#10723.
+const BASELINE = 215;
 
 describe("echo-assertion ratchet", () => {
   it(`does not grow the echo-satisfiable scenario count beyond ${BASELINE}`, () => {

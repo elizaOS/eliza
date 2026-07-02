@@ -15,6 +15,7 @@ import {
   createBasicCapabilitiesPlugin,
   createCharacter,
   logger,
+  ModelType,
 } from "@elizaos/core";
 import {
   type LiveProviderConfig,
@@ -281,7 +282,7 @@ export async function createScenarioRuntime(
   const providerConfig = resolveScenarioProviderConfig(options);
   if (!providerConfig) {
     throw new Error(
-      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.",
+      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.",
     );
   }
   const {
@@ -468,6 +469,31 @@ export async function createScenarioRuntime(
       );
     }
     await runtime.registerPlugin(providerPlugin);
+
+    if (providerConfig.name === "cli") {
+      // @elizaos/plugin-cli-inference intentionally registers large-tier
+      // handlers only (TEXT_LARGE / TEXT_MEGA / RESPONSE_HANDLER, plus
+      // ACTION_PLANNER in text-planner mode). Core's MODEL_FALLBACK_CHAINS has
+      // no TEXT_SMALL -> TEXT_LARGE edge, so the small-tier triage calls made
+      // throughout the scenario path (should-respond, extraction, evaluators)
+      // would find no handler at all. Bridge TEXT_SMALL to TEXT_LARGE: the
+      // same real subscription-served model answers, just slower. TEXT_NANO
+      // and TEXT_MEDIUM already fall back to TEXT_SMALL via core's chains.
+      const cliSmallTierBridge: Plugin = {
+        name: "scenario-runner-cli-small-tier-bridge",
+        description:
+          "Routes TEXT_SMALL to TEXT_LARGE when the large-tier-only " +
+          "CLI-subscription provider serves the scenario runtime.",
+        models: {
+          TEXT_SMALL: async (bridgeRuntime, params) =>
+            bridgeRuntime.useModel(ModelType.TEXT_LARGE, params),
+        },
+      };
+      await runtime.registerPlugin(cliSmallTierBridge);
+      logger.info(
+        "[scenario-runner] Registered TEXT_SMALL→TEXT_LARGE bridge (cli provider registers large-tier handlers only)",
+      );
+    }
   }
 
   const agentSkillsModule = (await import(

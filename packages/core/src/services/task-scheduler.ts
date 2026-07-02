@@ -65,6 +65,12 @@ async function tick(): Promise<void> {
 		} catch (_) {
 			// WHY: one agent's runTick failure must not break other agents' ticks; errors are logged inside runTick/executeTask.
 		}
+		// Non-empty queue: keep the agent dirty so the next tick re-queries. WHY: repeat tasks and
+		// not-yet-due one-shots become due purely by time passing, with no markTaskSchedulerDirty
+		// call; only agents whose queue came back empty go quiet until marked dirty again.
+		if (registry.has(agentIdKey)) {
+			dirtyAgents.add(agentIdKey);
+		}
 	}
 }
 

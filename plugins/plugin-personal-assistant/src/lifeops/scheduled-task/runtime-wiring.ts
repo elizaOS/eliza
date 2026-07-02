@@ -79,10 +79,11 @@ function makeRepositoryBackedStores(
           nextFireAtIso: options?.nextFireAtIso ?? null,
         });
       },
-      async claimForFire({ taskId, firedAtIso }) {
+      async claimForFire({ taskId, firedAtIso, expected }) {
         return repo.claimScheduledTaskForFire(agentId, {
           taskId,
           firedAtIso,
+          ...(expected ? { expected } : {}),
         });
       },
       async get(taskId: string) {
@@ -354,6 +355,13 @@ export function createProductionScheduledTaskDispatcher(opts: {
           record.channelKey === "push" ||
           record.output?.destination === "in_app_card"
         ) {
+          // Honest delivery accounting: an in_app dispatch "succeeded" only
+          // if at least one real surface accepted the payload — the live
+          // assistant event bus (transient stream) or the notification
+          // service (durable inbox). Previously this branch returned
+          // ok:true unconditionally, fabricating delivery on hosts where
+          // both surfaces were absent, so nothing ever retried/escalated.
+          let surfacesAccepted = 0;
           const eventService = getAgentEventService(opts.runtime) as {
             emit?: (event: {
               runId: string;
@@ -362,48 +370,64 @@ export function createProductionScheduledTaskDispatcher(opts: {
               agentId?: string;
             }) => void;
           } | null;
-          eventService?.emit?.({
-            runId: crypto.randomUUID(),
-            stream: "assistant",
-            agentId: opts.runtime.agentId,
-            data: {
-              text: record.promptInstructions,
-              source: "lifeops-scheduled-task",
-              taskId: record.taskId,
-              firedAtIso: record.firedAtIso,
-              channelKey: record.channelKey,
-              target: normalizeChannelTarget(
-                record.channelKey,
-                record.output?.target,
-              ),
-              ...(record.intensity ? { intensity: record.intensity } : {}),
-              ...(record.contextRequest
-                ? { contextRequest: record.contextRequest }
-                : {}),
-            },
-          });
-          const isUrgent = record.intensity === "urgent";
-          void getNotifier(opts.runtime)
-            ?.notify({
-              title: isUrgent ? "Approval needed" : "Reminder",
-              body: record.promptInstructions,
-              category: isUrgent ? "approval" : "reminder",
-              priority: isUrgent ? "urgent" : "normal",
-              source: "lifeops",
-              groupKey: `lifeops:${record.taskId}`,
-              deepLink: "/chat",
+          if (typeof eventService?.emit === "function") {
+            eventService.emit({
+              runId: crypto.randomUUID(),
+              stream: "assistant",
+              agentId: opts.runtime.agentId,
               data: {
+                text: record.promptInstructions,
+                source: "lifeops-scheduled-task",
                 taskId: record.taskId,
                 firedAtIso: record.firedAtIso,
                 channelKey: record.channelKey,
+                target: normalizeChannelTarget(
+                  record.channelKey,
+                  record.output?.target,
+                ),
+                ...(record.intensity ? { intensity: record.intensity } : {}),
+                ...(record.contextRequest
+                  ? { contextRequest: record.contextRequest }
+                  : {}),
               },
-            })
-            .catch((error: unknown) => {
-              logger.debug(
+            });
+            surfacesAccepted += 1;
+          }
+          const isUrgent = record.intensity === "urgent";
+          const notifier = getNotifier(opts.runtime);
+          if (notifier) {
+            try {
+              await notifier.notify({
+                title: isUrgent ? "Approval needed" : "Reminder",
+                body: record.promptInstructions,
+                category: isUrgent ? "approval" : "reminder",
+                priority: isUrgent ? "urgent" : "normal",
+                source: "lifeops",
+                groupKey: `lifeops:${record.taskId}`,
+                deepLink: "/chat",
+                data: {
+                  taskId: record.taskId,
+                  firedAtIso: record.firedAtIso,
+                  channelKey: record.channelKey,
+                },
+              });
+              surfacesAccepted += 1;
+            } catch (error) {
+              logger.warn(
                 { src: "lifeops:scheduled-task", error },
                 "Notification emit failed",
               );
-            });
+            }
+          }
+          if (surfacesAccepted === 0) {
+            return {
+              ok: false,
+              reason: "disconnected",
+              userActionable: false,
+              message:
+                "No in-app surface (assistant event bus or notification service) accepted the payload.",
+            };
+          }
           return {
             ok: true,
             messageId: `in_app:${record.taskId}:${record.firedAtIso}`,

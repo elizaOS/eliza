@@ -262,7 +262,7 @@ async function main(): Promise<number> {
     !shouldUseDeterministicLlmProxy()
   ) {
     process.stderr.write(
-      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY, or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.\n",
+      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY,\n  or on a subscription-only host set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk (requires the CLI's own on-disk credentials),\n  or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.\n",
     );
     return 2;
   }
@@ -373,10 +373,20 @@ async function main(): Promise<number> {
     const scenarioOutcomes = new Map(
       reports.map((report) => [report.id, report.status] as const),
     );
+    // Thread the numeric judge score (minimum across judged turns + rubric
+    // final checks) so rows carry metadata.judge_score for reward-weighted
+    // training (#8795).
+    const scenarioJudgeScores = new Map<string, number>();
+    for (const report of reports) {
+      if (typeof report.judgeScore === "number") {
+        scenarioJudgeScores.set(report.id, report.judgeScore);
+      }
+    }
     exportScenarioNativeJsonl(
       effectiveRunDir,
       parsed.exportNativePath,
       scenarioOutcomes,
+      scenarioJudgeScores,
     );
   }
   if (effectiveRunDir) {

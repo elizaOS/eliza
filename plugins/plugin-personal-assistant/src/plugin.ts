@@ -36,7 +36,11 @@ import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
-import { conflictDetectAction } from "./actions/conflict-detect.js";
+import {
+  conflictDetectAction,
+  createCalendarFeedConflictLoader,
+  setConflictDetectLoader,
+} from "./actions/conflict-detect.js";
 import { connectorAction } from "./actions/connector.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
@@ -94,7 +98,10 @@ import {
   registerDefaultPromptPack,
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
-import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
+import {
+  createOwnerSendPolicy,
+  registerOwnerSendApprovalWorker,
+} from "./lifeops/messaging/owner-send-policy.js";
 import {
   createOwnerFactStore,
   registerOwnerFactStore,
@@ -176,15 +183,6 @@ function looksLikeMissedCallRepairApproval(text: string): boolean {
     /\bcall\b/.test(normalized) &&
     /\b(?:repair|reschedul|follow\s*up|reply|respond)\b/.test(normalized) &&
     /\b(?:approval|approve|hold|confirm)\b/.test(normalized)
-  );
-}
-
-function looksLikeFlightConflictQuestion(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(normalized) &&
-    /\b(?:meeting|board|calendar|appointment|event)\b/u.test(normalized) &&
-    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(normalized)
   );
 }
 
@@ -282,13 +280,6 @@ async function queueDocumentSignatureRequest(args: {
       approvalRequestId: request.id,
     },
   };
-}
-
-function buildFlightConflictPreview(text: string): string {
-  if (/8\s*(?:am|a\.m\.)/iu.test(text) && /9\s*(?:am|a\.m\.)/iu.test(text)) {
-    return "The 8 AM JFK arrival is too tight for a 9 AM board meeting. I would treat that as a conflict unless the meeting is at the airport or remote. The concrete options are to rebook to an earlier flight or the night before, move the meeting later, or plan to join remotely while in transit.";
-  }
-  return "Your 8 AM JFK arrival is too tight for the 9 AM board meeting on that calendar day. I would treat it as a conflict and propose one of these concrete options: rebook to an arrival no later than 6:30 AM, fly in the night before, move the board meeting to 10:30 AM or later, or join remotely while in transit.";
 }
 
 function approvalChannelFromSource(source: string | null): ApprovalChannel {
@@ -406,7 +397,7 @@ async function handleLifeOpsMessageAction(
   };
 }
 
-async function handleLifeOpsDirectMessageRequest(args: {
+export async function handleLifeOpsDirectMessageRequest(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State;
@@ -419,16 +410,6 @@ async function handleLifeOpsDirectMessageRequest(args: {
       message: args.message,
       state: args.state,
     });
-  }
-  if (looksLikeFlightConflictQuestion(text)) {
-    return {
-      text: buildFlightConflictPreview(text),
-      success: true,
-      data: {
-        actionName: "CALENDAR",
-        subaction: "flight_conflict_rebooking",
-      },
-    };
   }
   if (looksLikeDocumentSignatureRequest(text)) {
     return queueDocumentSignatureRequest(args);
@@ -848,6 +829,11 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
+
+    // CONFLICT_DETECT scans read the live calendar feed through this loader.
+    // Without it the action has no data source and honestly reports the
+    // calendar as unavailable instead of "No conflicts detected".
+    setConflictDetectLoader(createCalendarFeedConflictLoader());
     await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
@@ -964,7 +950,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     );
 
     // Owner outbound-message approval policy: gmail drafts require explicit
-    // owner approval; everything else passes straight through.
+    // owner approval; everything else passes straight through. The stable
+    // OWNER_SEND_APPROVAL task worker executes the held send once the owner
+    // confirms via CHOOSE_OPTION (issue #10723).
+    registerOwnerSendApprovalWorker(runtime);
     registerSendPolicy(runtime, createOwnerSendPolicy());
     (
       runtime as IAgentRuntime & {

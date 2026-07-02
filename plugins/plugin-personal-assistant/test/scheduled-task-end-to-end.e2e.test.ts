@@ -5,10 +5,13 @@
  * Drives the W1-A `ScheduledTask` spine through the full lifecycle:
  *   create-from-chat → fire → verb → pipeline → completion → reopen.
  *
- * No LLM. No live runtime. Uses the in-memory store + runner with the
- * built-in gates / completion-checks / escalation ladders, so any future
- * regression to verb semantics, pipeline routing, terminal-state rules, or
- * idempotency surfaces here.
+ * No LLM. The verb/pipeline/idempotency tests use the in-memory store +
+ * runner with the built-in gates / completion-checks / escalation ladders,
+ * so any future regression to verb semantics, pipeline routing,
+ * terminal-state rules, or idempotency surfaces here. The global-pause test
+ * runs the REAL production tick (`processDueScheduledTasks` over a
+ * PGlite-backed runtime with an injected clock) so pause enforcement is
+ * exercised on the actual fire path, not a stub.
  */
 
 import type {
@@ -34,6 +37,11 @@ import {
   TestNoopScheduledTaskDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
+import { createGlobalPauseStore } from "../src/lifeops/global-pause/store.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.js";
+import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 interface Harness {
   runner: ScheduledTaskRunnerHandle;
@@ -227,77 +235,122 @@ describe("J3 — ScheduledTask spine end-to-end", () => {
     expect(b.priority).toBe("medium");
   });
 
-  it("respectsGlobalPause skip path: emergency tasks fire even when paused", async () => {
-    let nowIso = "2026-05-09T08:00:00.000Z";
-    const ownerFacts: OwnerFactsView = { timezone: "UTC" };
-    let pauseActive = false;
-    const pause: GlobalPauseView = {
-      current: async () => ({ active: pauseActive, reason: "vacation" }),
-    };
-    const activity: ActivitySignalBusView = { hasSignalSince: () => false };
-    const subjectStore: SubjectStoreView = { wasUpdatedSince: () => false };
+  it("global pause end-to-end: emergency fires during pause, paused occurrence skips, recurrence fires after unpause", async () => {
+    // Real DB runtime (PGlite + production wiring), injected tick clock —
+    // same pattern as src/lifeops/scheduled-task/scheduler.integration.test.ts.
+    // A previous version of this test never ticked anything: it activated a
+    // stub pause flag and then asserted `apply("complete")` works, which is
+    // true whether or not the runner honors the pause.
+    const runtimeResult = await createLifeOpsTestRuntime();
+    try {
+      const { runtime } = runtimeResult;
+      const agentId = runtime.agentId;
+      const repo = new LifeOpsRepository(runtime);
 
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const anchors = createAnchorRegistry();
-    const consolidation = createConsolidationRegistry();
-    const store = createInMemoryScheduledTaskStore();
-    const logStore = createInMemoryScheduledTaskLogStore();
-
-    let counter = 0;
-    const runner = createScheduledTaskRunner({
-      agentId: "test-agent-st-pause",
-      store,
-      logStore,
-      gates,
-      completionChecks,
-      ladders,
-      anchors,
-      consolidation,
-      ownerFacts: () => ownerFacts,
-      globalPause: pause,
-      activity,
-      subjectStore,
-      dispatcher: TestNoopScheduledTaskDispatcher,
-      newTaskId: () => {
-        counter += 1;
-        return `pst_${counter}`;
-      },
-      now: () => new Date(nowIso),
-    });
-
-    // Schedule both: one respecting pause, one ignoring.
-    const respecting = await runner.schedule(
-      baseInput({
-        promptInstructions: "respecting-pause",
+      // Create-from-chat spine: schedule through the REAL runner.
+      const scheduleAt = new Date("2026-05-09T08:00:00.000Z");
+      const runner = getScheduledTaskRunner(runtime, {
+        agentId,
+        now: () => scheduleAt,
+      });
+      // A routine recurring check-in that respects the pause. Recurring, so
+      // the paused occurrence is skipped but the row keeps a trigger-derived
+      // `next_fire_at` and refires after the pause clears.
+      const routine = await runner.schedule({
+        kind: "checkin",
+        promptInstructions: "hourly hydration check",
+        trigger: { kind: "interval", everyMinutes: 60 },
+        priority: "medium",
         respectsGlobalPause: true,
-      }),
-    );
-    const ignoring = await runner.schedule(
-      baseInput({
-        promptInstructions: "emergency-ignores-pause",
-        respectsGlobalPause: false,
+        source: "user_chat",
+        createdBy: agentId,
+        ownerVisible: true,
+      });
+      // An emergency one-shot that must cut through the pause.
+      const emergency = await runner.schedule({
+        kind: "reminder",
+        promptInstructions: "take the heart medication now",
+        trigger: { kind: "once", atIso: "2026-05-09T08:30:00.000Z" },
         priority: "high",
-      }),
-    );
-    expect(respecting.state.status).toBe("scheduled");
-    expect(ignoring.state.status).toBe("scheduled");
+        respectsGlobalPause: false,
+        source: "user_chat",
+        createdBy: agentId,
+        ownerVisible: true,
+      });
+      expect(routine.state.status).toBe("scheduled");
+      expect(emergency.state.status).toBe("scheduled");
 
-    // Activate pause; the runner consults `current()` pre-fire — but
-    // verb application isn't gated by pause, so we assert via the schedule
-    // input shape (production runner skips at fire-evaluation time).
-    pauseActive = true;
-    nowIso = "2026-05-09T09:00:00.000Z";
-    void nowIso; // satisfy lint while keeping the variable mutated above
+      // Pause globally via the SAME store the production runner consults.
+      const pause = createGlobalPauseStore(runtime);
+      await pause.set({
+        startIso: "2026-05-09T08:10:00.000Z",
+        reason: "vacation",
+      });
 
-    // Sanity: emergency task can still complete.
-    const completed = await runner.apply(ignoring.taskId, "complete", {
-      reason: "user pinged urgent",
-    });
-    expect(completed.state.status).toBe("completed");
+      // Tick inside the pause window: the emergency fires, the routine skips.
+      const pausedTick = new Date("2026-05-09T09:00:00.000Z");
+      expect((await pause.current(pausedTick)).active).toBe(true);
+      const pausedResult = await processDueScheduledTasks({
+        runtime,
+        agentId,
+        now: pausedTick,
+        limit: 10,
+      });
+      expect(pausedResult.errors).toEqual([]);
+
+      const skippedRoutine = await repo.getScheduledTask(
+        agentId,
+        routine.taskId,
+      );
+      expect(skippedRoutine?.state.status).toBe("skipped");
+      expect(skippedRoutine?.state.lastDecisionLog).toContain("global_pause");
+
+      const firedEmergency = await repo.getScheduledTask(
+        agentId,
+        emergency.taskId,
+      );
+      expect(firedEmergency?.state.status).toBe("fired");
+      expect(firedEmergency?.state.firedAt).toBeDefined();
+
+      // Unpause; the next tick refires the routine's next occurrence through
+      // the recurrence-refire claim. The settled emergency stays fired.
+      await pause.clear();
+      const resumedTick = new Date("2026-05-09T10:00:00.000Z");
+      expect((await pause.current(resumedTick)).active).toBe(false);
+      const resumedResult = await processDueScheduledTasks({
+        runtime,
+        agentId,
+        now: resumedTick,
+        limit: 10,
+      });
+      expect(resumedResult.errors).toEqual([]);
+      const routineFire = resumedResult.fires.find(
+        (f) => f.taskId === routine.taskId,
+      );
+      expect(routineFire?.status).toBe("fired");
+
+      const refiredRoutine = await repo.getScheduledTask(
+        agentId,
+        routine.taskId,
+      );
+      expect(refiredRoutine?.state.status).toBe("fired");
+      expect(refiredRoutine?.state.firedAt).toBe(resumedTick.toISOString());
+
+      // Full transition history from the real state log: skipped under
+      // pause, fired after clear.
+      const routineTransitions = (
+        await repo.listScheduledTaskLog({ agentId, taskId: routine.taskId })
+      ).map((entry) => entry.transition);
+      expect(routineTransitions).toContain("skipped");
+      expect(routineTransitions).toContain("fired");
+
+      // The emergency fired exactly once — during the pause, never again.
+      const emergencyFired = (
+        await repo.listScheduledTaskLog({ agentId, taskId: emergency.taskId })
+      ).filter((entry) => entry.transition === "fired");
+      expect(emergencyFired).toHaveLength(1);
+    } finally {
+      await runtimeResult.cleanup();
+    }
   });
 });

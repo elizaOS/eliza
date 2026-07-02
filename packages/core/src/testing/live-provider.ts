@@ -64,7 +64,8 @@ export type LiveProviderName =
 	| "openai"
 	| "anthropic"
 	| "google"
-	| "openrouter";
+	| "openrouter"
+	| "cli";
 
 export type LiveProviderConfig = {
 	name: LiveProviderName;
@@ -147,6 +148,88 @@ const PROVIDERS: Array<{
 ];
 
 // ---------------------------------------------------------------------------
+// CLI-subscription provider (@elizaos/plugin-cli-inference)
+//
+// A subscription-only host (Claude Max / ChatGPT-Codex, no API key) can serve
+// live inference through the sanctioned local CLI: ELIZA_CHAT_VIA_CLI selects
+// the backend and the CLI reads its own on-disk credentials — eliza never sees
+// the token, so there is no real apiKey. Kept LAST in preference order so any
+// real API key (or an Eliza Cloud key) always wins.
+// ---------------------------------------------------------------------------
+
+const CLI_BACKENDS = ["claude", "claude-sdk", "codex", "codex-sdk"] as const;
+type CliBackend = (typeof CLI_BACKENDS)[number];
+
+/**
+ * Sentinel used as `apiKey` for the CLI-subscription provider. The CLI backend
+ * loads its own credentials from disk (~/.claude/.credentials.json or
+ * ~/.codex/auth.json); no API key ever passes through eliza.
+ */
+export const CLI_SUBSCRIPTION_SENTINEL_API_KEY =
+	"cli-subscription:no-api-key-cli-reads-own-credentials";
+
+/** Env vars forwarded to the runtime when the cli provider is selected. */
+const CLI_PASSTHROUGH_ENV_VARS = [
+	"ELIZA_PLANNER_NATIVE_TOOLS",
+	"ELIZA_CLI_CLAUDE_MODEL",
+	"ELIZA_CLI_CLAUDE_PLANNER_MODEL",
+	"ELIZA_CLI_CLAUDE_BIN",
+	"ELIZA_CLI_SDK_RESTART_AFTER_TURNS",
+	"ELIZA_CLI_CODEX_MODEL",
+	"ELIZA_CLI_CODEX_PLANNER_MODEL",
+	"ELIZA_CLI_CODEX_REASONING_EFFORT",
+	"ELIZA_CLI_CODEX_BIN",
+	"ELIZA_CLI_TIMEOUT_MS",
+] as const;
+
+function resolveConfiguredCliBackend(): CliBackend | null {
+	const raw = process.env.ELIZA_CHAT_VIA_CLI?.trim().toLowerCase();
+	return (CLI_BACKENDS as readonly string[]).includes(raw ?? "")
+		? (raw as CliBackend)
+		: null;
+}
+
+/**
+ * The on-disk credentials file the CLI backend reads for itself. Resolved via
+ * os.homedir() (which honors $HOME on POSIX) so unit tests can point it at a
+ * temp directory instead of the real user profile.
+ */
+export function cliBackendCredentialsPath(backend: CliBackend): string {
+	return backend.startsWith("codex")
+		? path.join(os.homedir(), ".codex", "auth.json")
+		: path.join(os.homedir(), ".claude", ".credentials.json");
+}
+
+function selectCliProvider(): LiveProviderConfig | null {
+	const backend = resolveConfiguredCliBackend();
+	if (!backend) return null;
+	if (!fs.existsSync(cliBackendCredentialsPath(backend))) return null;
+
+	const isCodex = backend.startsWith("codex");
+	const model = isCodex
+		? process.env.ELIZA_CLI_CODEX_MODEL?.trim() || "gpt-5.5"
+		: process.env.ELIZA_CLI_CLAUDE_MODEL?.trim() || "claude-opus-4-7";
+
+	const env: Record<string, string> = { ELIZA_CHAT_VIA_CLI: backend };
+	for (const envVar of CLI_PASSTHROUGH_ENV_VARS) {
+		const val = process.env[envVar]?.trim();
+		if (val !== undefined && val !== "") env[envVar] = val;
+	}
+
+	return {
+		name: "cli",
+		apiKey: CLI_SUBSCRIPTION_SENTINEL_API_KEY,
+		baseUrl: `cli://${backend}`,
+		// plugin-cli-inference registers large-tier handlers only; both tiers
+		// map to the same subscription-served model.
+		smallModel: model,
+		largeModel: model,
+		pluginPackage: "@elizaos/plugin-cli-inference",
+		env,
+	};
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -154,7 +237,9 @@ const PROVIDERS: Array<{
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
  *
- * Preference order: groq (cheapest/fastest) -> openai -> anthropic -> google -> openrouter
+ * Preference order: groq (cheapest/fastest) -> openai -> anthropic -> google
+ * -> openrouter -> Eliza Cloud key -> cli subscription backend (last: real
+ * keys always win over the slow CLI-spawn route).
  */
 export function selectLiveProvider(
 	preferredProvider?: LiveProviderName,
@@ -252,6 +337,10 @@ export function selectLiveProvider(
 		};
 	}
 
+	if (!preferredProvider || preferredProvider === "cli") {
+		return selectCliProvider();
+	}
+
 	return null;
 }
 
@@ -293,6 +382,9 @@ export function availableProviderNames(): LiveProviderName[] {
 		getConfiguredCloudApiKey()
 	) {
 		providers.add("openai");
+	}
+	if (selectCliProvider()) {
+		providers.add("cli");
 	}
 	return [...providers];
 }

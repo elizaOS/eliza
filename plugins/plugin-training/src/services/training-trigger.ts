@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   type IAgentRuntime,
+  LIFEOPS_OPTIMIZED_PROMPT_TASKS,
   Service,
   type ServiceTypeName,
 } from "@elizaos/core";
@@ -41,6 +42,7 @@ import {
 } from "../core/training-orchestrator.js";
 import {
   buildTaskRecord,
+  LIFEOPS_TRAINING_TASKS,
   type TrajectoryTrainingTask,
 } from "../core/trajectory-task-datasets.js";
 
@@ -241,6 +243,16 @@ function tasksForTrajectory(
           /"viewId"\s*:/.test(call.response))
       ) {
         tasks.add("view_context");
+      }
+      // LifeOps per-capability tasks (#8795): mirror the hint matching in
+      // trajectory-task-datasets.ts (inferTasksForCall) so a LifeOps-tagged
+      // call increments its own per-task counter instead of only bumping the
+      // generic `response` bucket — otherwise the per-task LifeOps thresholds
+      // could never fire.
+      for (const lifeOpsTask of LIFEOPS_TRAINING_TASKS) {
+        if (hint.includes(lifeOpsTask)) {
+          tasks.add(lifeOpsTask);
+        }
       }
     }
   }
@@ -481,9 +493,22 @@ export function registerTrainingTriggerService(
   return service;
 }
 
-const BOOTSTRAP_TASKS: readonly TrajectoryTrainingTask[] = [
+const TRAINING_TASK_SET = new Set<string>(ALL_TRAINING_TASKS);
+
+/**
+ * Bootstrap targets: the two generic high-leverage decision tasks plus the
+ * LifeOps per-capability tasks (#8795). `LIFEOPS_OPTIMIZED_PROMPT_TASKS` in
+ * `@elizaos/core` is the source of truth for the LifeOps optimization
+ * taxonomy; the runtime Set check narrows the wider `OptimizedPromptTask`
+ * union to the trajectory training-task union (the two lists mirror each
+ * other — enforced by lifeops-optimized-prompt-consumers.test.ts).
+ */
+export const BOOTSTRAP_TASKS: readonly TrajectoryTrainingTask[] = [
   "should_respond",
   "action_planner",
+  ...LIFEOPS_OPTIMIZED_PROMPT_TASKS.filter((task) =>
+    TRAINING_TASK_SET.has(task),
+  ).map((task) => task as TrajectoryTrainingTask),
 ] as const;
 
 interface OptimizedPromptServiceLike {
@@ -521,7 +546,8 @@ export interface BootstrapOptimizationOptions {
  * One-shot bootstrap pass for default-on Hermes parity.
  *
  * Called immediately after `registerTrainingTriggerService` during runtime
- * boot. For each high-leverage task (should_respond + action_planner):
+ * boot. For each bootstrap task (should_respond + action_planner + the
+ * LifeOps per-capability tasks):
  *   - If `ELIZA_DISABLE_AUTO_BOOTSTRAP=1`, do nothing.
  *   - If the OptimizedPromptService already has an artifact for the task,
  *     do nothing (the operator's previous run wins).

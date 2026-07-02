@@ -77,6 +77,7 @@ import {
 } from "./security/secret-swap";
 import { DefaultMessageService } from "./services/message";
 import { isModelProviderFallbackError } from "./services/message/fallback-reply";
+import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -179,6 +180,7 @@ import {
 	type SendHandlerFunction,
 	type Service,
 	type ServiceClass,
+	ServiceType,
 	type ServiceTypeName,
 	type SetConnectorAccountCredentialRefParams,
 	type State,
@@ -8967,8 +8969,19 @@ ${section_end}`;
 		}).catch(() => {});
 	}
 
+	/**
+	 * Nudge the local TaskService (same process) so its dirty-gated tick re-queries the DB.
+	 * WHY: the companion POST above only reaches a REMOTE receiver; without this, in-process
+	 * task mutations never re-arm the tick and tasks created after boot are never seen.
+	 */
+	private _markLocalTasksDirty(): void {
+		const taskService = this.getService<TaskService>(ServiceType.TASK);
+		taskService?.markDirty();
+	}
+
 	async createTask(task: Task): Promise<UUID> {
 		const ids = await this.adapter.createTasks([task]);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 		return ids[0];
 	}
@@ -8980,11 +8993,13 @@ ${section_end}`;
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
 		await this.adapter.updateTasks([{ id, task }]);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
-		return this.adapter.deleteTasks([id]);
+		await this.adapter.deleteTasks([id]);
+		this._markLocalTasksDirty();
 	}
 
 	async log(params: {
@@ -9016,6 +9031,7 @@ ${section_end}`;
 	// Batch task methods
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids = await this.adapter.createTasks(tasks);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 		return ids;
 	}
@@ -9028,11 +9044,13 @@ ${section_end}`;
 		updates: Array<{ id: UUID; task: Partial<Task> }>,
 	): Promise<void> {
 		await this.adapter.updateTasks(updates);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTasks(taskIds: UUID[]): Promise<void> {
-		return this.adapter.deleteTasks(taskIds);
+		await this.adapter.deleteTasks(taskIds);
+		this._markLocalTasksDirty();
 	}
 
 	/**

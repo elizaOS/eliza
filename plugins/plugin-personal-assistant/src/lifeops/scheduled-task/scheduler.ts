@@ -114,18 +114,33 @@ export async function processDueScheduledTasks(
   // Indexed pass 1: due-to-fire candidates.
   //
   // The partial index `idx_life_scheduled_tasks_due` covers
-  // `(agent_id, next_fire_at) WHERE state_json->>'status' IN ('scheduled','fired')`,
-  // so this query touches O(# due rows + # event-driven rows with NULL)
-  // instead of every row owned by the agent. `next_fire_at IS NULL` rows are
-  // included so event / manual / after_task triggers (which deliberately
-  // have no wall-clock fire time) still get a chance at fire-time gates if
-  // they're invoked through another path. The authoritative
-  // `isScheduledTaskDue` re-evaluates per task below.
+  // `(agent_id, next_fire_at)` for every status except `dismissed`, so these
+  // queries touch O(# due rows + # event-driven rows with NULL) instead of
+  // every row owned by the agent. `next_fire_at IS NULL` rows are included
+  // in the live slice so event / manual / after_task triggers (which
+  // deliberately have no wall-clock fire time) still get a chance at
+  // fire-time gates if they're invoked through another path. The
+  // authoritative `isScheduledTaskDue` re-evaluates per task below.
   const nowIso = request.now.toISOString();
-  const dueCandidates = await repo.listScheduledTasks(request.agentId, {
+  const liveCandidates = await repo.listScheduledTasks(request.agentId, {
     status: ["scheduled", "fired"],
     dueAtOrBeforeIso: nowIso,
   });
+  // Indexed pass 1b: recurrence-refire candidates. A RECURRING task parked in
+  // `acknowledged` or a terminal-but-refirable status (`completed` /
+  // `skipped` / `expired` / `failed` — never `dismissed`) keeps a
+  // trigger-derived `next_fire_at` (see `resolveNextFireAt` in the runner);
+  // once that next occurrence is due, the tick reopens it via the CAS refire
+  // claim in `fireWithResult`. `requireNextFireAt` keeps this slice tight:
+  // settled NON-recurring rows have `next_fire_at = NULL` and stay out, so
+  // the scan does not grow with the agent's history of finished one-shots.
+  const refireCandidates = await repo.listScheduledTasks(request.agentId, {
+    status: ["acknowledged", "completed", "skipped", "expired", "failed"],
+    dueAtOrBeforeIso: nowIso,
+    requireNextFireAt: true,
+  });
+  // Status sets are disjoint, so a plain concat cannot double-list a task.
+  const dueCandidates = [...liveCandidates, ...refireCandidates];
   // Indexed pass 2: completion-timeout candidates. These are rows that have
   // already fired (`status = 'fired'`) and have a `followupAfterMinutes` on
   // the completion-check. The partial index has them too because `fired` is
@@ -235,6 +250,19 @@ async function handleFireResult(args: {
         status: fireResult.task.state.status,
         reason: fireResult.reason || decision.reason,
         occurrenceAtIso: decision.occurrenceAtIso,
+      });
+      return true;
+    }
+    case "dispatch_deferred": {
+      // Typed connector failure; the runner parked the task back in
+      // `scheduled` with a retry/escalation continuation. Recorded as a
+      // visited fire so observers see the attempt + the policy decision,
+      // without claiming anything reached the user.
+      result.fires.push({
+        taskId: fireResult.task.taskId,
+        status: fireResult.task.state.status,
+        reason: fireResult.reason,
+        occurrenceAtIso: fireResult.nextAttemptAtIso,
       });
       return true;
     }

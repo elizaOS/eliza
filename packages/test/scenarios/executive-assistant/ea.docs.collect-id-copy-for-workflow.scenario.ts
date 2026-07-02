@@ -52,12 +52,17 @@ export default scenario({
           actionName: ["DEVICE_INTENT", "VOICE_CALL", "MESSAGE", "MESSAGE"],
           includesAny: ["updated copy", "expired", "workflow", "dashboard"],
         })(turn),
+      // De-echoed (#9310): the old keywords ("ID", "expired", "updated copy",
+      // "workflow", "continue") all appeared in the user's own turn text. The
+      // reply must now actually ASK for the document through an intake verb
+      // the prompt never used.
       responseIncludesAny: [
-        "ID",
-        "expired",
-        "updated copy",
-        "workflow",
-        "continue",
+        "upload",
+        "send me",
+        "share",
+        "attach",
+        "photo",
+        "scan",
       ],
     },
   ],

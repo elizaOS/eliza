@@ -1062,7 +1062,10 @@ describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
       message: "boom",
     };
     const { runner, store, logStore } = makeDispatchRunner(async () => failure);
-    const task = await runner.schedule(baseInput());
+    // priority "low" = empty escalation ladder, so the permanent failure is
+    // terminal immediately. (With rungs remaining the policy ADVANCES the
+    // ladder instead — see the dispatch-policy-enforcement suite.)
+    const task = await runner.schedule(baseInput({ priority: "low" }));
     const result = await runner.fireWithResult(task.taskId);
 
     // The send did NOT reach the user: it must not count as delivered.
@@ -1098,7 +1101,7 @@ describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
       userActionable: true,
     };
     const { runner } = makeDispatchRunner(async () => failure);
-    const task = await runner.schedule(baseInput());
+    const task = await runner.schedule(baseInput({ priority: "low" }));
     const result = await runner.fireWithResult(task.taskId);
 
     expect(result.kind).toBe("dispatch_failed");
@@ -1118,6 +1121,7 @@ describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
     const { runner, store } = makeDispatchRunner(async () => failure);
     const parent = await runner.schedule(
       baseInput({
+        priority: "low",
         pipeline: {
           onFail: [
             {
@@ -1150,16 +1154,23 @@ describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
     const task = await runner.schedule(baseInput({ priority: "high" }));
     const result = await runner.fireWithResult(task.taskId);
 
-    // Not delivered, not failed — held for retry.
-    expect(result.kind).toBe("skipped");
-    if (result.kind !== "skipped") {
+    // Not delivered, not failed — held for a bounded retry of the SAME step.
+    expect(result.kind).toBe("dispatch_deferred");
+    if (result.kind !== "dispatch_deferred") {
       throw new Error(`unexpected fire result: ${result.kind}`);
     }
-    expect(result.reason).toBe("dispatch-retry:rate_limited");
+    expect(result.reason).toBe("retry:rate_limited");
     expect(result.task.state.status).toBe("scheduled");
     // firedAt moved forward by retryAfterMinutes → re-fires via override.
+    expect(result.nextAttemptAtIso).toBe("2026-05-09T12:05:00.000Z");
     expect(result.task.state.firedAt).toBe("2026-05-09T12:05:00.000Z");
     expect(result.task.metadata?.lastDispatchResult).toEqual(failure);
+    // Bounded continuation recorded: same step (-1 = initial channel),
+    // one attempt burned.
+    expect(result.task.metadata?.pendingDispatch).toEqual({
+      stepIndex: -1,
+      attempt: 1,
+    });
 
     // Ladder NOT advanced: the escalation cursor stays at the just-fired
     // position (-1 = fired, no ladder step dispatched).
@@ -1171,9 +1182,13 @@ describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
     expect(persisted?.state.firedAt).toBe("2026-05-09T12:05:00.000Z");
 
     const log = await logStore.list({ agentId: "t", taskId: task.taskId });
-    const snoozed = log.find((row) => row.transition === "snoozed");
-    expect(snoozed?.reason).toBe("dispatch-retry: rate_limited");
-    expect(snoozed?.detail).toMatchObject({ retryAfterMinutes: 5 });
+    const retried = log.find((row) => row.transition === "dispatch_retried");
+    expect(retried?.reason).toBe("rate_limited");
+    expect(retried?.detail).toMatchObject({
+      retryAfterMinutes: 5,
+      attempt: 1,
+      nextAttemptAtIso: "2026-05-09T12:05:00.000Z",
+    });
     // Never recorded as failed on a transient retry.
     expect(log.map((row) => row.transition)).not.toContain("failed");
   });
