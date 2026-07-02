@@ -1049,7 +1049,7 @@ export function RelationshipsGraphPanel({
         {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
         <div
           ref={containerRef}
-          className={`${compact ? "max-h-[min(34rem,calc(100vh-120px))]" : "max-h-[min(42rem,calc(100vh-120px))]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-none bg-transparent active:cursor-grabbing`}
+          className={`${compact ? "max-h-[min(34rem,calc(100vh-120px))]" : "max-h-[min(42rem,calc(100vh-120px))]"} relative w-full min-w-0 max-w-full cursor-grab touch-none overflow-auto overscroll-contain rounded-none bg-transparent active:cursor-grabbing`}
           data-graph-container
           onMouseLeave={hideTooltip}
           onPointerDown={beginPan}
