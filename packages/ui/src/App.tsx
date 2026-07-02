@@ -12,6 +12,7 @@ import { ArrowLeft, X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
+  type CSSProperties,
   type LazyExoticComponent,
   lazy,
   type ReactNode,
@@ -1499,7 +1500,15 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       ? APP_SHELL_CLASS_TRANSPARENT
       : APP_SHELL_CLASS;
   return (
-    <div key={`tab-shell-${props.tab}`} className={shellClass}>
+    // --shell-backnav-clearance reserves top space for the fixed ShellBackButton
+    // so spatial views' first row (filter chips) clears it (#11144). 0.75rem top
+    // offset + 2.25rem button = 3rem. Consumed by SpatialSurface (spatial/dom.tsx);
+    // unset elsewhere → 0px.
+    <div
+      key={`tab-shell-${props.tab}`}
+      className={shellClass}
+      style={{ "--shell-backnav-clearance": "3rem" } as CSSProperties}
+    >
       <ShellBackButton onBack={props.onNavigateBack} />
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
@@ -1523,7 +1532,11 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
  */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
-    <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+    <div
+      key={`fullbleed-shell-${props.tab}`}
+      className={APP_SHELL_CLASS}
+      style={{ "--shell-backnav-clearance": "3rem" } as CSSProperties}
+    >
       <ShellBackButton onBack={props.onNavigateBack} />
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <ViewRouter />
