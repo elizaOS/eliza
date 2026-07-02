@@ -6,8 +6,7 @@
 "use client";
 
 import { Check, Copy, Loader2, Square, Volume2 } from "lucide-react";
-import { memo, useEffect } from "react";
-import { Streamdown } from "streamdown";
+import { lazy, memo, type ReactNode, Suspense, useEffect } from "react";
 import { Button } from "../../../components/ui/button";
 import Image from "../../runtime/image";
 import { type ChatMediaAttachment, ContentType } from "../../types/chat-media";
@@ -16,6 +15,41 @@ import {
   useReasoningTypewriter,
   useTypewriterText,
 } from "./hooks/use-typewriter-text";
+
+/**
+ * Plain-text fallback used when the lazy `streamdown` chunk fails to load
+ * (#11351). Renders the raw markdown source as pre-wrapped text so a stale
+ * deploy or offline/transient chunk-load rejection degrades to the same
+ * unstyled text the Suspense pending fallback shows — never a thrown error that
+ * blanks the message.
+ */
+function StreamdownTextFallback({ children }: { children?: ReactNode }) {
+  return <span className="whitespace-pre-wrap">{children}</span>;
+}
+
+/**
+ * Lazily load the markdown/shiki/katex render stack (#11351). The `streamdown`
+ * dependency (~372 KB) previously sat on the eager boot graph via a top-level
+ * import even though it only renders once the first rich message appears. A
+ * `React.lazy` boundary defers the whole stack until a message body actually
+ * renders; the Suspense fallback below shows the raw message text immediately,
+ * preserving the existing "show content now, upgrade to markdown when ready"
+ * behavior. `streamdown` is ESM-only with a named `Streamdown` export, so it is
+ * normalized to the `default` shape `lazy()` expects. A `.catch` resolves the
+ * import to the plain-text fallback instead of rejecting, so a chunk-load
+ * failure never throws out of `Suspense` and blanks the chat message.
+ */
+const Streamdown = lazy(() =>
+  import("streamdown")
+    .then((m) => ({ default: m.Streamdown }))
+    .catch(() => ({
+      // Cast keeps the two `lazy()` resolution branches assignable: on
+      // chunk-load failure we render the raw-text fallback in place of the
+      // real component, which only ever receives `children` here.
+      default:
+        StreamdownTextFallback as unknown as typeof import("streamdown").Streamdown,
+    })),
+);
 
 /**
  * Normalize markdown list formatting.
@@ -398,11 +432,23 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                   <div
                     className={`streaming-text-wrapper text-[15px] leading-relaxed text-white/90 prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-headings:my-3 prose-pre:my-2 break-words [&_pre]:overflow-x-auto [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-words ${isStreamingMessage ? "streaming-text-content" : "message-text-complete"}`}
                   >
-                    <Streamdown>
-                      {normalizeMarkdownLists(
-                        isStreamingMessage ? displayText : message.content.text,
-                      )}
-                    </Streamdown>
+                    <Suspense
+                      fallback={
+                        <span className="whitespace-pre-wrap">
+                          {isStreamingMessage
+                            ? displayText
+                            : message.content.text}
+                        </span>
+                      }
+                    >
+                      <Streamdown>
+                        {normalizeMarkdownLists(
+                          isStreamingMessage
+                            ? displayText
+                            : message.content.text,
+                        )}
+                      </Streamdown>
+                    </Suspense>
                     {/* Elegant blinking cursor for streaming messages */}
                     {isStreamingMessage && (
                       <span

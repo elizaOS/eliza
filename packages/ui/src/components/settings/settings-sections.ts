@@ -20,30 +20,12 @@ import {
   Wallpaper,
   Webhook,
 } from "lucide-react";
-import type { ComponentType } from "react";
+import { type ComponentType, type LazyExoticComponent, lazy } from "react";
 import { registerCloudConnectorsSettingsSection } from "../../cloud/connectors";
 import {
   CLOUD_SETTINGS_GROUP_ID,
   registerSettingsGroup,
 } from "../../cloud/settings/cloud-settings-group";
-import { MyRuntimesContainer } from "../cockpit/MyRuntimesContainer";
-import { ReleaseCenterView } from "../pages/ReleaseCenterView";
-import { AdvancedSection } from "./AdvancedSection";
-import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
-import { AppPermissionsSection } from "./AppPermissionsSection";
-import { AppsManagementSection } from "./AppsManagementSection";
-import { BackgroundSettingsSection } from "./BackgroundSettingsSection";
-import { CapabilitiesSection } from "./CapabilitiesSection";
-import { CloudAgentsSection } from "./CloudAgentsSection";
-import { CloudOverviewSection } from "./CloudOverviewSection";
-import { ConnectorsSection } from "./ConnectorsSection";
-import { IdentitySettingsSection } from "./IdentitySettingsSection";
-import { PermissionsSection } from "./PermissionsSection";
-import { ProviderSwitcher } from "./ProviderSwitcher";
-import { RemotePluginHostSection } from "./RemotePluginHostSection";
-import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
-import { SecretsManagerSection } from "./SecretsManagerSection";
-import { SecuritySettingsSection } from "./SecuritySettingsSection";
 import {
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,
@@ -57,8 +39,108 @@ import {
   type SettingsSectionHue,
   type SettingsSectionTone,
 } from "./settings-section-registry";
-import { VoiceSectionMount } from "./VoiceSectionMount";
-import { WalletRpcSection } from "./WalletRpcSection";
+
+/**
+ * Section bodies are lazy-loaded (#11351): the settings-section registry used to
+ * pull ~15 section components (Identity, ProviderSwitcher, Connectors, Runtime,
+ * Advanced, ReleaseCenter, …) into the eager boot graph through the
+ * `@elizaos/ui/browser` barrel. `SettingsView` is already lazy, but the whole
+ * registry rode along on the initial chunk. Wrapping each `Component` in
+ * `React.lazy` moves those bodies onto their own on-demand chunks; the active
+ * section's `<Component/>` render in `SettingsView` sits behind a `<Suspense>`
+ * boundary so the split is transparent. Named exports are normalized to the
+ * `default` shape `lazy()` expects.
+ */
+const IdentitySettingsSection = lazy(() =>
+  import("./IdentitySettingsSection").then((m) => ({
+    default: m.IdentitySettingsSection,
+  })),
+);
+const ProviderSwitcher = lazy(() =>
+  import("./ProviderSwitcher").then((m) => ({ default: m.ProviderSwitcher })),
+);
+const VoiceSectionMount = lazy(() =>
+  import("./VoiceSectionMount").then((m) => ({ default: m.VoiceSectionMount })),
+);
+const CapabilitiesSection = lazy(() =>
+  import("./CapabilitiesSection").then((m) => ({
+    default: m.CapabilitiesSection,
+  })),
+);
+const AppsManagementSection = lazy(() =>
+  import("./AppsManagementSection").then((m) => ({
+    default: m.AppsManagementSection,
+  })),
+);
+const ConnectorsSection = lazy(() =>
+  import("./ConnectorsSection").then((m) => ({ default: m.ConnectorsSection })),
+);
+const RuntimeSettingsSection = lazy(() =>
+  import("./RuntimeSettingsSection").then((m) => ({
+    default: m.RuntimeSettingsSection,
+  })),
+);
+const AppearanceSettingsSection = lazy(() =>
+  import("./AppearanceSettingsSection").then((m) => ({
+    default: m.AppearanceSettingsSection,
+  })),
+);
+const BackgroundSettingsSection = lazy(() =>
+  import("./BackgroundSettingsSection").then((m) => ({
+    default: m.BackgroundSettingsSection,
+  })),
+);
+const RemotePluginHostSection = lazy(() =>
+  import("./RemotePluginHostSection").then((m) => ({
+    default: m.RemotePluginHostSection,
+  })),
+);
+const WalletRpcSection = lazy(() =>
+  import("./WalletRpcSection").then((m) => ({ default: m.WalletRpcSection })),
+);
+const ReleaseCenterView = lazy(() =>
+  import("../pages/ReleaseCenterView").then((m) => ({
+    default: m.ReleaseCenterView,
+  })),
+);
+const AdvancedSection = lazy(() =>
+  import("./AdvancedSection").then((m) => ({ default: m.AdvancedSection })),
+);
+const AppPermissionsSection = lazy(() =>
+  import("./AppPermissionsSection").then((m) => ({
+    default: m.AppPermissionsSection,
+  })),
+);
+const PermissionsSection = lazy(() =>
+  import("./PermissionsSection").then((m) => ({
+    default: m.PermissionsSection,
+  })),
+);
+const SecretsManagerSection = lazy(() =>
+  import("./SecretsManagerSection").then((m) => ({
+    default: m.SecretsManagerSection,
+  })),
+);
+const SecuritySettingsSection = lazy(() =>
+  import("./SecuritySettingsSection").then((m) => ({
+    default: m.SecuritySettingsSection,
+  })),
+);
+const CloudOverviewSection = lazy(() =>
+  import("./CloudOverviewSection").then((m) => ({
+    default: m.CloudOverviewSection,
+  })),
+);
+const CloudAgentsSection = lazy(() =>
+  import("./CloudAgentsSection").then((m) => ({
+    default: m.CloudAgentsSection,
+  })),
+);
+const MyRuntimesContainer = lazy(() =>
+  import("../cockpit/MyRuntimesContainer").then((m) => ({
+    default: m.MyRuntimesContainer,
+  })),
+);
 
 export {
   getSettingsSection,
@@ -106,7 +188,7 @@ interface SectionVisual {
   developerOnly?: boolean;
   /** Hide on the cloud mobile build (no host machine). */
   hideOnCloud?: boolean;
-  Component: ComponentType;
+  Component: ComponentType | LazyExoticComponent<ComponentType>;
 }
 
 const SECTION_VISUALS: Record<string, SectionVisual> = {

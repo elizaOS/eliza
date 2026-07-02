@@ -1,6 +1,6 @@
 import type { ViewKind } from "@elizaos/core";
 import type { LucideIcon } from "lucide-react";
-import type { ComponentType } from "react";
+import type { ComponentType, LazyExoticComponent } from "react";
 import type { SettingsSectionGroup } from "./settings-section-meta";
 
 /**
@@ -69,7 +69,12 @@ export interface SettingsSectionDef {
    * toggles. See `ViewKind` in `@elizaos/core`.
    */
   viewKind?: ViewKind;
-  Component: ComponentType;
+  /**
+   * The section body. Accepts a plain component or a `React.lazy` wrapper so
+   * sections can be code-split off the eager boot graph (#11351); the Settings
+   * view renders it behind a `<Suspense>` boundary either way.
+   */
+  Component: ComponentType | LazyExoticComponent<ComponentType>;
 }
 
 interface SettingsSectionRegistryStore {
