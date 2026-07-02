@@ -68,6 +68,7 @@ import {
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   dispatchAppEvent,
+  dispatchBackIntent,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
@@ -1572,6 +1573,13 @@ function initializeAppLifecycle(): void {
 
   void Promise.resolve(
     CapacitorApp.addListener("backButton", ({ canGoBack }) => {
+      // Give the shell first crack at the back press: an open chat sheet (or any
+      // future back-dismissable overlay) closes ONE layer and reports it
+      // handled, so hardware back dismisses the sheet instead of navigating the
+      // app out from under it — matching desktop/web Escape-to-close (#9148).
+      // `dispatchBackIntent` resolves synchronously; only an unhandled press
+      // falls through to the app's default back below.
+      if (dispatchBackIntent()) return;
       if (canGoBack) {
         window.history.back();
       } else {

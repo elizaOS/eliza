@@ -42,8 +42,10 @@ import {
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
+  type BackIntentEventDetail,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
+  ELIZA_BACK_INTENT_EVENT,
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
@@ -3275,6 +3277,30 @@ export function ContinuousChatOverlay({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [sheetOpen, collapse]);
+
+  // Android hardware/gesture back closes the open chat sheet FIRST — the same
+  // "dismiss the open surface" behavior desktop/web get from Escape (#9148).
+  // `main.tsx` dispatches ELIZA_BACK_INTENT on the Capacitor `backButton` press;
+  // while the sheet is open (and not pinned by onboarding) we collapse it via
+  // the shared `collapse` path and flip `detail.handled` so native does NOT ALSO
+  // run history.back()/minimizeApp() and navigate the app out from under it. At
+  // rest (input/pill) — or while first-run pins the sheet open + undismissable —
+  // we leave the intent unhandled so native falls through to its default back
+  // (backgrounding the app instead of freezing). Web/desktop never dispatch the
+  // event, so this is inert there.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onBackIntent = (event: Event) => {
+      const detail = (event as CustomEvent<BackIntentEventDetail>).detail;
+      if (!detail || detail.handled) return;
+      if (!sheetOpen || firstRunOpen) return;
+      detail.handled = true;
+      collapse();
+    };
+    window.addEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+    return () =>
+      window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+  }, [sheetOpen, firstRunOpen, collapse]);
 
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
