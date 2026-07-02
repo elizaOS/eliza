@@ -21,6 +21,7 @@ mock.module("@/lib/pricing", () => ({
     outputCost: 0.001,
     totalCost: 0.002,
   }),
+  estimateTokens: (text: string) => Math.ceil(text.length / 4),
   getProviderFromModel: () => "anthropic",
   getSafeModelParams: () => ({}),
   normalizeModelName: (model: string) => model,
