@@ -48,6 +48,15 @@ const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
+// The WebKit lane (#10104/#10722): the assertion-grade dashboard specs, the
+// core shell smoke, and the input-modality spec on a real Desktop Safari
+// engine. WebKit-only behavior differences are real (see
+// packages/ui/src/spatial/WEBXR_PLATFORMS.md — e.g. foreignObject canvas
+// uploads still taint in WebKit while current Chromium accepts them), so the
+// shipped Capacitor iOS WebView / desktop WKWebView engine must run in CI, not
+// only Chromium wearing a Safari viewport.
+const WEBKIT_SMOKE_SPECS =
+  /(browser-workspace|character-editor|wallet-inventory|workflow-editor|ui-smoke|input-modality)\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
@@ -130,12 +139,32 @@ export default defineConfig({
     {
       name: "mobile-chromium",
       // Mobile-viewport (Pixel 7, hasTouch) lane: the decomposed
-      // personal-assistant domain views plus the real-touch chat gesture specs,
+      // personal-assistant domain views plus the real-touch chat gesture specs
+      // and the input-modality spec (its real-touch tests need hasTouch + CDP),
       // so each surface is exercised at the same WebView viewport that ships on
       // Capacitor iOS/Android.
       testMatch:
-        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz)\.spec\.ts/,
+        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|input-modality)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
+    },
+    {
+      name: "desktop-webkit",
+      // Real WebKit (Desktop Safari device profile) over the dashboard +
+      // shell-smoke + input-modality specs. This is the only lane where the
+      // engine that ships in every iOS WebView and macOS WKWebView actually
+      // executes the dashboard flows; Chromium-only skips inside these specs
+      // must carry a written engine-difference justification.
+      testMatch: WEBKIT_SMOKE_SPECS,
+      use: {
+        ...devices["Desktop Safari"],
+        // Parity with the Chromium lanes, not an app change: Chromium
+        // force-bypasses the registered service worker whenever page.route
+        // interception is active; WebKit does not, so the app SW would
+        // silently serve /api/* AROUND every helpers.ts fixture stub (verified:
+        // with the SW active, a route-fulfilled /api/conversations list came
+        // back with the stub server's conversations instead of the fixture).
+        serviceWorkers: "block",
+      },
     },
     {
       // All-views aesthetic audit (#8796) — run with `audit:app`
