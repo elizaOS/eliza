@@ -52,9 +52,9 @@ describe("OxaPay payment adapter", () => {
 
   test("parseWebhook: invalid signature is rejected", async () => {
     const body = JSON.stringify({ orderId: "pr_x", status: "paid" });
-    await expect(
-      adapter.parseWebhook!({ rawBody: body, signature: "deadbeef" }),
-    ).rejects.toThrow(/signature/i);
+    await expect(adapter.parseWebhook!({ rawBody: body, signature: "deadbeef" })).rejects.toThrow(
+      /signature/i,
+    );
   });
 
   test("parseWebhook: missing signature is rejected", async () => {

@@ -677,7 +677,10 @@ export class SubAgentRouter extends Service {
     // buffer/count are only used while it streams, and a handoff suppression is
     // moot once the original session is long gone).
     pruneOldestTracked(this.parentAgentBuffers, PARENT_AGENT_TRACKING_CAP);
-    pruneOldestTracked(this.parentAgentDispatchCounts, PARENT_AGENT_TRACKING_CAP);
+    pruneOldestTracked(
+      this.parentAgentDispatchCounts,
+      PARENT_AGENT_TRACKING_CAP,
+    );
     pruneOldestTracked(
       this.verifyRetryHandedOffSessions,
       PARENT_AGENT_TRACKING_CAP,
@@ -1165,7 +1168,9 @@ export class SubAgentRouter extends Service {
       // not the relay/do-not-respawn directive. The header can now be long
       // (it carries the actual-workdir + requested-vs-actual-agent note), so a
       // naive slice(0,200) of the raw text would capture only the directive.
-      const previewSource = (deliverable ?? stripSubAgentHeaderLine(text)).trim();
+      const previewSource = (
+        deliverable ?? stripSubAgentHeaderLine(text)
+      ).trim();
       const preview = previewSource.slice(0, 200);
       void getNotifier(this.runtime)
         ?.notify({
@@ -2506,7 +2511,9 @@ function composeNarration(
     // it never leaks into the user-facing body.
     const missing = artifactVerification?.missingFiles ?? [];
     const unverifiedLine =
-      artifactVerification && !artifactVerification.verified && missing.length > 0
+      artifactVerification &&
+      !artifactVerification.verified &&
+      missing.length > 0
         ? `Artifact verification: UNVERIFIED at completion; missing ${missing.join(", ")}.`
         : undefined;
     const lines = [

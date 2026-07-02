@@ -333,7 +333,12 @@ describe("Discord channel debouncer — human multi-message cadence (#11118)", (
 		const flushed: string[][] = [];
 		const debouncer = createChannelDebouncer(
 			(messages) => flushed.push(messages.map((m) => (m as { id: string }).id)),
-			{ botUserId: "123", debounceMs: 3000, coalesceEnabled: false, ...options },
+			{
+				botUserId: "123",
+				debounceMs: 3000,
+				coalesceEnabled: false,
+				...options,
+			},
 		);
 		return { flushed, debouncer };
 	}
@@ -345,7 +350,9 @@ describe("Discord channel debouncer — human multi-message cadence (#11118)", (
 	it("folds a question sent ~40s before the bare-mention pointer (default TTL)", () => {
 		vi.useFakeTimers();
 		try {
-			const { flushed, debouncer } = setup({ shouldRespondOnlyToMentions: true });
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+			});
 			debouncer.enqueue(mockMessage("1", "what was that API error about?"));
 			vi.advanceTimersByTime(3000);
 			debouncer.enqueue(mockMessage("2", "? anyone"));
@@ -360,7 +367,9 @@ describe("Discord channel debouncer — human multi-message cadence (#11118)", (
 	it("still prunes questions older than the 90s default window", () => {
 		vi.useFakeTimers();
 		try {
-			const { flushed, debouncer } = setup({ shouldRespondOnlyToMentions: true });
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+			});
 			debouncer.enqueue(mockMessage("1", "stale question"));
 			vi.advanceTimersByTime(95_000);
 			debouncer.enqueue(mockMessage("2", "<@123>"));

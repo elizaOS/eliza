@@ -24,7 +24,11 @@ const PROTOCOL_VERSION = 1;
 // — the shape the grilling verifier accepts).
 const SCENARIOS = {
   "random-color": {
-    plan: ["Create index.html", "Add the random-color script", "Verify it renders"],
+    plan: [
+      "Create index.html",
+      "Add the random-color script",
+      "Verify it renders",
+    ],
     files: [
       {
         path: "index.html",
@@ -145,7 +149,11 @@ async function handlePrompt(sessionId) {
   for (const file of scenario.files) {
     update(sessionId, {
       sessionUpdate: "tool_call",
-      toolCall: { title: `Write ${file.path}`, kind: "edit", status: "in_progress" },
+      toolCall: {
+        title: `Write ${file.path}`,
+        kind: "edit",
+        status: "in_progress",
+      },
     });
     // The orchestrator performs the real write into the workspace.
     await requestClient("fs/write_text_file", {
@@ -155,7 +163,11 @@ async function handlePrompt(sessionId) {
     });
     update(sessionId, {
       sessionUpdate: "tool_call",
-      toolCall: { title: `Write ${file.path}`, kind: "edit", status: "completed" },
+      toolCall: {
+        title: `Write ${file.path}`,
+        kind: "edit",
+        status: "completed",
+      },
     });
   }
   update(sessionId, {
@@ -175,7 +187,11 @@ rl.on("line", async (line) => {
     return;
   }
   // A reply to one of our fs/write_text_file requests.
-  if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined) && pendingClientReplies.has(msg.id)) {
+  if (
+    msg.id !== undefined &&
+    (msg.result !== undefined || msg.error !== undefined) &&
+    pendingClientReplies.has(msg.id)
+  ) {
     const resolve = pendingClientReplies.get(msg.id);
     pendingClientReplies.delete(msg.id);
     resolve(msg.result);

@@ -39,11 +39,7 @@ function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
   const apiKey = opts.apiKey ?? "test-cloud-key";
   const baseUrl = opts.baseUrl ?? "https://cloud.test.local/api/v1";
   const enabled =
-    opts.enabled !== undefined
-      ? opts.enabled
-      : opts.connected === false
-        ? "false"
-        : "true";
+    opts.enabled !== undefined ? opts.enabled : opts.connected === false ? "false" : "true";
   const settings: Record<string, string | null> = {
     ELIZAOS_CLOUD_API_KEY: opts.connected === false ? null : apiKey,
     ELIZAOS_CLOUD_ENABLED: enabled,
@@ -160,9 +156,7 @@ describe("fetchCloudVoiceCatalog", () => {
     });
     setCloudVoiceClientFactoryForTesting(() => client);
 
-    const voices = await fetchCloudVoiceCatalog(
-      makeRuntime({ connected: false }),
-    );
+    const voices = await fetchCloudVoiceCatalog(makeRuntime({ connected: false }));
     expect(voices).toEqual([]);
     // The gate runs before the HTTP fetch, so neither endpoint is called.
     expect(calls.premade).toBe(0);
@@ -176,9 +170,7 @@ describe("fetchCloudVoiceCatalog", () => {
     });
     setCloudVoiceClientFactoryForTesting(() => client);
 
-    const voices = await fetchCloudVoiceCatalog(
-      makeRuntime({ enabled: null, useTts: "true" }),
-    );
+    const voices = await fetchCloudVoiceCatalog(makeRuntime({ enabled: null, useTts: "true" }));
     // Same availability gate as the TEXT_TO_SPEECH handler: an explicit
     // cloud-routed TTS (ELIZAOS_CLOUD_USE_TTS=true) serves the voice list
     // even though ELIZAOS_CLOUD_ENABLED is unset.
@@ -194,9 +186,7 @@ describe("fetchCloudVoiceCatalog", () => {
     });
     setCloudVoiceClientFactoryForTesting(() => client);
 
-    const voices = await fetchCloudVoiceCatalog(
-      makeRuntime({ enabled: null, useTts: null }),
-    );
+    const voices = await fetchCloudVoiceCatalog(makeRuntime({ enabled: null, useTts: null }));
     expect(voices).toEqual([]);
     expect(calls.premade).toBe(0);
     expect(calls.user).toBe(0);
@@ -291,11 +281,7 @@ describe("fetchCloudVoiceCatalog", () => {
     const voices = await fetchCloudVoiceCatalog(makeRuntime());
     // Only premade voices come back; the user endpoint failure is swallowed.
     expect(voices.map((v) => v.id).sort()).toEqual(
-      [
-        "21m00Tcm4TlvDq8ikWAM",
-        "EXAVITQu4vr4xnSDxMaL",
-        "minimal-id-voice",
-      ].sort(),
+      ["21m00Tcm4TlvDq8ikWAM", "EXAVITQu4vr4xnSDxMaL", "minimal-id-voice"].sort()
     );
   });
 

@@ -184,7 +184,7 @@ function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
     '- "ignore": chatter not meant for this agent — acknowledgements ("nice", "thanks", "lgtm"), or (in a crowded room) messages addressed to someone else or unrelated to the task.',
     "",
     'Bias: a working sub-agent keeps working. Prefer "queue" over "interrupt" unless the message is a genuine halt or a direction-invalidating redirect. Never choose "interrupt" merely because the text contains the word "stop" — judge intent.',
-    '',
+    "",
     'Respond with ONLY a JSON object: {"action":"interrupt|queue|deliver|ignore","reason":"<short>"}',
   ].join("\n");
 }

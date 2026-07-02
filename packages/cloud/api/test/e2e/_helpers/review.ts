@@ -13,7 +13,11 @@ import { eq } from "drizzle-orm";
 export async function approveAppInDb(appId: string): Promise<void> {
   await dbWrite
     .update(apps)
-    .set({ review_status: "approved", review_content_hash: null, reviewed_at: new Date() })
+    .set({
+      review_status: "approved",
+      review_content_hash: null,
+      reviewed_at: new Date(),
+    })
     .where(eq(apps.id, appId));
 }
 

@@ -7,8 +7,8 @@ import {
 } from "../actions/common.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import {
-  TERMINAL_SESSION_STATUSES,
   type SessionInfo,
+  TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 
 const MAX_RENDERED_ACTIVE_SESSIONS = 8;

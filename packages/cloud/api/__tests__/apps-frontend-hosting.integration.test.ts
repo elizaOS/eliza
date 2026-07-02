@@ -18,13 +18,13 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
+import * as realFrontendRepo from "@/db/repositories/app-frontend-deployments";
 import type { App } from "@/db/repositories/apps";
 import type {
   AppFrontendDeployment,
   FrontendManifest,
 } from "@/db/schemas/app-frontend-deployments";
 import { AuthenticationError } from "@/lib/api/cloud-worker-errors";
-import * as realFrontendRepo from "@/db/repositories/app-frontend-deployments";
 import * as realAuth from "@/lib/auth/workers-hono-auth";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import * as realApps from "@/lib/services/apps";
@@ -249,7 +249,10 @@ afterAll(() => {
   // leaked repo mock corrupts sibling real-DB suites in a combined run.
   mock.module("@/lib/auth/workers-hono-auth", () => realAuth);
   mock.module("@/lib/services/apps", () => realApps);
-  mock.module("@/db/repositories/app-frontend-deployments", () => realFrontendRepo);
+  mock.module(
+    "@/db/repositories/app-frontend-deployments",
+    () => realFrontendRepo,
+  );
   setRuntimeR2Bucket(null);
 });
 

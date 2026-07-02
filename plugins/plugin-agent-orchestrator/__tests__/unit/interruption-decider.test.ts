@@ -217,7 +217,11 @@ describe("decideInterruptionWithModel", () => {
     );
     const decision = await decideInterruptionWithModel(
       runtimeWithModel(useModel),
-      { ...base, text: "also add unit tests for the parser", sessionBusy: true },
+      {
+        ...base,
+        text: "also add unit tests for the parser",
+        sessionBusy: true,
+      },
     );
     expect(useModel).toHaveBeenCalledTimes(1);
     expect(decision.action).toBe("queue");

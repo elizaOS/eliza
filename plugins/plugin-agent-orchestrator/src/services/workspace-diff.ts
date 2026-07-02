@@ -343,7 +343,9 @@ export function verifyChangedFilesOnDisk(
       };
     }
   });
-  const missingFiles = files.filter((file) => !file.exists).map((file) => file.path);
+  const missingFiles = files
+    .filter((file) => !file.exists)
+    .map((file) => file.path);
   return {
     workdir,
     verified: missingFiles.length === 0,

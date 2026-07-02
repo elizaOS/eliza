@@ -69,6 +69,9 @@
       "@elizaos/capacitor-messages": [
         "./plugins/plugin-native-messages/dist/esm/index.d.ts"
       ],
+      "@elizaos/capacitor-mlkit-text": [
+        "./plugins/plugin-native-mlkit-text/dist/esm/index.d.ts"
+      ],
       "@elizaos/capacitor-mobile-agent-bridge": [
         "./plugins/plugin-native-mobile-agent-bridge/dist/esm/index.d.ts"
       ],
@@ -170,6 +173,9 @@
       ],
       "@elizaos/plugin-benchmarks": [
         "./plugins/plugin-benchmarks/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-birdclaw": [
+        "./plugins/plugin-birdclaw/dist/index.d.ts"
       ],
       "@elizaos/plugin-blocker": [
         "./plugins/plugin-blocker/dist/index.d.ts"
@@ -374,6 +380,9 @@
       ],
       "@elizaos/plugin-phone": [
         "./plugins/plugin-phone/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-pii-guard": [
+        "./plugins/plugin-pii-guard/dist/index.d.ts"
       ],
       "@elizaos/plugin-polymarket": [
         "./plugins/plugin-polymarket/dist/index.d.ts"

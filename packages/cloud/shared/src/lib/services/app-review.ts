@@ -408,11 +408,7 @@ export async function runAppReview(params: RunAppReviewParams): Promise<AppRevie
   // invalidate-on-mutation invariant documented at apps.ts:105-111. Best-effort:
   // a cache-eviction failure must not fail the (already-committed) review.
   try {
-    await appsService.invalidateCache(
-      app.id,
-      app.api_key_id ?? undefined,
-      app.slug ?? undefined,
-    );
+    await appsService.invalidateCache(app.id, app.api_key_id ?? undefined, app.slug ?? undefined);
   } catch (err) {
     logger.warn("[AppReview] cache invalidation after review failed", {
       appId: app.id,

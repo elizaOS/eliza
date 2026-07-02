@@ -23,7 +23,11 @@ function check(name, ok, detail = "") {
 // 1) API-side truth first.
 const views = await fetch(`${API}/api/views`).then((r) => r.json());
 const entry = (views.views || []).find((v) => v.id === "birdclaw");
-check("registry lists birdclaw view", Boolean(entry), JSON.stringify(entry?.path));
+check(
+  "registry lists birdclaw view",
+  Boolean(entry),
+  JSON.stringify(entry?.path),
+);
 const status = await fetch(`${API}/api/birdclaw/status`).then((r) => r.json());
 check(
   "birdclaw status installed",
@@ -89,15 +93,26 @@ async function drive(label, viewport) {
     .first()
     .isVisible({ timeout: 20000 })
     .catch(() => false);
-  await page.screenshot({ path: path.join(OUT, `${label}-launcher.png`), fullPage: false });
+  await page.screenshot({
+    path: path.join(OUT, `${label}-launcher.png`),
+    fullPage: false,
+  });
   check(`[${label}] launcher shows Birdclaw tile`, launcherHasTile);
 
   // Open the view directly by path (same URL the tile navigates to).
-  await page.goto(`${UI}/birdclaw`, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.goto(`${UI}/birdclaw`, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
   await page.waitForTimeout(5000);
   const timelineTab = page.getByText("Timeline", { exact: true }).first();
-  const viewLoaded = await timelineTab.isVisible({ timeout: 30000 }).catch(() => false);
-  check(`[${label}] /birdclaw renders the view (Timeline tab visible)`, viewLoaded);
+  const viewLoaded = await timelineTab
+    .isVisible({ timeout: 30000 })
+    .catch(() => false);
+  check(
+    `[${label}] /birdclaw renders the view (Timeline tab visible)`,
+    viewLoaded,
+  );
   // Wait out the loading state (a contended host can stall the first fetch
   // chain), then assert a row from the seeded archive is on screen.
   await page
@@ -110,10 +125,16 @@ async function drive(label, viewport) {
     .isVisible({ timeout: 20000 })
     .catch(() => false);
   check(`[${label}] timeline shows seeded archive rows (@sam)`, rowVisible);
-  await page.screenshot({ path: path.join(OUT, `${label}-timeline.png`), fullPage: false });
+  await page.screenshot({
+    path: path.join(OUT, `${label}-timeline.png`),
+    fullPage: false,
+  });
 
   // Tab interactions: Mentions (needs-reply nudge) and Inbox.
-  await page.getByText("Mentions", { exact: true }).first().click({ timeout: 10000 });
+  await page
+    .getByText("Mentions", { exact: true })
+    .first()
+    .click({ timeout: 10000 });
   await page.waitForTimeout(1500);
   await page
     .getByText("Loading archive")
@@ -125,11 +146,20 @@ async function drive(label, viewport) {
     .isVisible({ timeout: 20000 })
     .catch(() => false);
   check(`[${label}] mentions tab loads (needs-reply marker)`, nudge);
-  await page.screenshot({ path: path.join(OUT, `${label}-mentions.png`), fullPage: false });
+  await page.screenshot({
+    path: path.join(OUT, `${label}-mentions.png`),
+    fullPage: false,
+  });
 
-  await page.getByText("Inbox", { exact: true }).first().click({ timeout: 10000 });
+  await page
+    .getByText("Inbox", { exact: true })
+    .first()
+    .click({ timeout: 10000 });
   await page.waitForTimeout(2500);
-  await page.screenshot({ path: path.join(OUT, `${label}-inbox.png`), fullPage: false });
+  await page.screenshot({
+    path: path.join(OUT, `${label}-inbox.png`),
+    fullPage: false,
+  });
 
   const fatal = consoleErrors.filter(
     (line) =>
@@ -141,7 +171,11 @@ async function drive(label, viewport) {
       // them from the slash menu") when the agent is still warming up.
       !line.includes("useSlashCommandController"),
   );
-  check(`[${label}] no fatal console errors`, fatal.length === 0, fatal.slice(0, 3).join(" | "));
+  check(
+    `[${label}] no fatal console errors`,
+    fatal.length === 0,
+    fatal.slice(0, 3).join(" | "),
+  );
   writeFileSync(
     path.join(OUT, `${label}-console.json`),
     JSON.stringify(consoleErrors, null, 1),
@@ -157,5 +191,7 @@ writeFileSync(
   path.join(OUT, "summary.json"),
   JSON.stringify({ failures, ok: failures.length === 0 }, null, 1),
 );
-console.log(failures.length === 0 ? "ALL PASS" : `FAILURES:\n${failures.join("\n")}`);
+console.log(
+  failures.length === 0 ? "ALL PASS" : `FAILURES:\n${failures.join("\n")}`,
+);
 process.exit(failures.length === 0 ? 0 : 1);

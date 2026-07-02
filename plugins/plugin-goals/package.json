@@ -66,6 +66,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
+    "@elizaos/tui": "workspace:*",
     "@elizaos/test-harness": "workspace:*",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
