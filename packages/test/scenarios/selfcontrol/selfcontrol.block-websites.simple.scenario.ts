@@ -26,7 +26,17 @@ export default scenario({
       room: "main",
       text: "Block X and Instagram for 2 hours so I can focus.",
       expectedActions: ["WEBSITE_BLOCK"],
-      responseIncludesAny: ["block", "x", "instagram", "2 hour", "focus"],
+      // De-echoed (#9310): every old keyword was in the user's own turn text.
+      // The reply must express the derived outcome — completed state
+      // ("blocked"), the resolved domains, or the end of the window — none of
+      // which the prompt contains. The websiteAccess finalCheck asserts the
+      // persisted block itself.
+      responseIncludesAny: ["blocked", "x.com", "instagram.com", "until"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must confirm the websites are now blocked for the two-hour window, stating the duration or when access returns. Merely restating the request, or promising to do it later, fails.",
+      },
     },
   ],
   finalChecks: [

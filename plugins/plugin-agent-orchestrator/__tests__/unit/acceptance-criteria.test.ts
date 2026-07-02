@@ -59,6 +59,25 @@ describe("detectTaskType", () => {
     expect(detectTaskType("create a web app that lists todos")).toBe(
       "app-build",
     );
+    // Canonical grammatical phrasing: "an app" and up to two intervening
+    // words must classify (a bare `build\s+a\s+app` regressed these to
+    // coding, silently dropping the live-URL acceptance criterion).
+    expect(detectTaskType("build an app that tracks expenses")).toBe(
+      "app-build",
+    );
+    expect(detectTaskType("create an app for my book club")).toBe("app-build");
+    expect(detectTaskType("make an app that shows the weather")).toBe(
+      "app-build",
+    );
+    expect(detectTaskType("build a todo app with reminders")).toBe("app-build");
+    expect(detectTaskType("create an expense tracking app")).toBe("app-build");
+  });
+
+  it("keeps refactor/fix phrasing with intervening verbs as coding", () => {
+    // The verb branch must not overreach: mentioning app-ish words without a
+    // build/create/make verb (or web/site phrasing) stays coding.
+    expect(detectTaskType("build an approach for caching")).toBe("coding");
+    expect(detectTaskType("update the app manifest parser")).toBe("coding");
   });
 
   it("classifies deploy goals", () => {

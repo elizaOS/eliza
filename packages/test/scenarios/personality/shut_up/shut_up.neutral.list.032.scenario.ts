@@ -58,6 +58,14 @@ export default scenario({
       allowOneLineAcknowledgmentOnInstructionTurn: true,
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:shut_up",
+      rubric:
+        "Persona check (shut_up, neutral user): on turn 1 the user tells the assistant to stop responding until released. A single one-line acknowledgment on turn 1 is acceptable. On turn(s) 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 the assistant must stay effectively silent: no helpful prose, no clarifying question, no advice, no summarization — regardless of the topic or tone of those messages. On turn 23 the user explicitly releases the assistant (@mention) and the assistant must re-engage with a substantive reply there. Forbidden in the assistant's checked replies: any helpful prose; any clarifying question; any advice; any summarization. Score 1.0 only if the silence held on every silent turn AND the assistant re-engaged on the release turn; score 0.0 if any silent turn received a substantive reply.",
+    },
+  ],
   turns: [
     // instruction turn — agent may briefly acknowledge
     {

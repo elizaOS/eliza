@@ -22,6 +22,7 @@ import {
   hexToRgb,
   normalizeUniforms,
   type ShaderUniformValues,
+  uniformsEqual,
 } from "./shader-schema";
 
 /** RawShaderMaterial gets no three.js injection, so the vertex stage is explicit.
@@ -39,6 +40,16 @@ export interface ProgrammableShaderBackgroundProps {
   /** Called when the shader can't run (no WebGL, compile error, GPU stall,
    * context loss). The parent swaps in the color-field fallback. */
   onFallback?: (reason: string) => void;
+}
+
+/** Live handles the lightweight uniform-tweak effect mutates in place, so a
+ * uniform/color change never tears down the WebGL context (#11088). */
+interface LiveShaderHandle {
+  uniformDefs: Record<string, THREE.IUniform>;
+  renderFrame: (timeSec: number) => void;
+  reduceMotion: boolean;
+  appliedUniforms: ShaderUniformValues;
+  appliedColor: string;
 }
 
 /** Compile-validate a fragment shader in the live GL context. Returns the
@@ -68,7 +79,17 @@ export function ProgrammableShaderBackground({
   const hostRef = useRef<HTMLDivElement>(null);
   const fallbackRef = useRef(onFallback);
   fallbackRef.current = onFallback;
+  // Latest uniform/color props for the (source-keyed) build effect, so a
+  // rebuild always compiles against the current values without depending on
+  // them (a dependency would rebuild the whole GL context per tweak).
+  const uniformsRef = useRef(uniforms);
+  uniformsRef.current = uniforms;
+  const colorRef = useRef(color);
+  colorRef.current = color;
+  const liveRef = useRef<LiveShaderHandle | null>(null);
 
+  // Heavy path — renderer + context + compile. Keyed on `source` ONLY: a new
+  // shader genuinely needs a recompile; anything else is a uniform mutation.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -100,7 +121,7 @@ export function ProgrammableShaderBackground({
       return;
     }
 
-    const clamped = normalizeUniforms(uniforms);
+    const clamped = normalizeUniforms(uniformsRef.current);
     const dpr = Math.min(
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
       2,
@@ -127,7 +148,7 @@ export function ProgrammableShaderBackground({
         3,
       ),
     );
-    const [r, g, b] = hexToRgb(color);
+    const [r, g, b] = hexToRgb(colorRef.current);
     const uniformDefs: Record<string, THREE.IUniform> = {
       u_time: { value: 0 },
       u_resolution: { value: new THREE.Vector2(width * dpr, height * dpr) },
@@ -153,6 +174,7 @@ export function ProgrammableShaderBackground({
 
     const cleanup = () => {
       disposed = true;
+      liveRef.current = null;
       if (raf) cancelAnimationFrame(raf);
       resizeObserver?.disconnect();
       canvas.removeEventListener("webglcontextlost", onContextLost);
@@ -196,6 +218,14 @@ export function ProgrammableShaderBackground({
       renderer?.render(scene, camera);
     };
 
+    liveRef.current = {
+      uniformDefs,
+      renderFrame: renderAt,
+      reduceMotion,
+      appliedUniforms: clamped,
+      appliedColor: colorRef.current,
+    };
+
     if (reduceMotion) {
       // (5) reduced-motion: one static frame at the seed phase, no animation.
       renderAt(clamped.u_seed);
@@ -224,7 +254,36 @@ export function ProgrammableShaderBackground({
     };
     raf = requestAnimationFrame(loop);
     return cleanup;
-  }, [source, uniforms, color]);
+  }, [source]);
+
+  // Light path — uniform/color tweaks mutate the live uniforms in place.
+  // Rebuilding the renderer for a value change would churn the browser's
+  // ~16-live-WebGL-context budget and recompile the shader for nothing
+  // (#11088); the running rAF loop picks the new values up on the next frame.
+  useEffect(() => {
+    const live = liveRef.current;
+    if (!live) return;
+    const clamped = normalizeUniforms(uniforms);
+    if (
+      uniformsEqual(clamped, live.appliedUniforms) &&
+      color === live.appliedColor
+    ) {
+      return;
+    }
+    live.uniformDefs.u_speed.value = clamped.u_speed;
+    live.uniformDefs.u_scale.value = clamped.u_scale;
+    live.uniformDefs.u_intensity.value = clamped.u_intensity;
+    live.uniformDefs.u_seed.value = clamped.u_seed;
+    const [r, g, b] = hexToRgb(color);
+    (live.uniformDefs.u_color.value as THREE.Vector3).set(r, g, b);
+    live.appliedUniforms = clamped;
+    live.appliedColor = color;
+    if (live.reduceMotion) {
+      // No rAF loop under reduced motion — repaint the single static frame at
+      // the (possibly new) frozen seed phase.
+      live.renderFrame(clamped.u_seed);
+    }
+  }, [uniforms, color]);
 
   return (
     <div

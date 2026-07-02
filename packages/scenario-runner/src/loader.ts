@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import {
   type ScenarioDefinition,
   type ScenarioLane,
+  scenario as validateScenarioDefinition,
   scenarioLane,
 } from "@elizaos/scenario-runner/schema";
 import ts from "typescript";
@@ -397,6 +398,16 @@ export async function loadScenarioFile(file: string): Promise<LoadedScenario> {
   if (!isScenarioDefinition(candidate)) {
     throw new Error(
       `[scenario-loader] ${file}: no default export or 'scenario' export matching ScenarioDefinition (need id/title/domain/turns).`,
+    );
+  }
+  // Re-validate at load time: the `scenario()` helper already validates at
+  // definition time, but a file exporting a plain object would otherwise skip
+  // strict finalCheck/lane validation entirely.
+  try {
+    validateScenarioDefinition(candidate);
+  } catch (err) {
+    throw new Error(
+      `[scenario-loader] ${file}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   return { file, scenario: candidate };

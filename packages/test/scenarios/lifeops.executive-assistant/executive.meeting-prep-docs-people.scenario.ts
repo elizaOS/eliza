@@ -38,7 +38,10 @@ export default scenario({
         description: "meeting prep context assembly",
         includesAny: ["Dana", "docs", "threads", "decisions", "follow-ups"],
       }),
-      responseIncludesAny: ["Dana", /doc|thread|decision|follow/i],
+      // Derived brief framing: a real prep reply is structured as a
+      // brief/agenda — none of these tokens appear in the user turn, so a
+      // parroted "I'll pull docs and threads for Dana" cannot pass.
+      responseIncludesAny: ["brief", "agenda", "talking points", "summary"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

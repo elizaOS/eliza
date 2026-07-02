@@ -37,7 +37,10 @@ export default scenario({
         description: "event itinerary briefing",
         includesAny: ["itinerary", "links", "location", "time"],
       }),
-      responseIncludesAny: ["itinerary", "links", "locations", "time", "today"],
+      // Derived content: a real itinerary carries concrete clock times or
+      // actual URLs — no ":"-form time or "http" appears in any user turn,
+      // so a reply that parrots "itinerary/links/locations" cannot pass.
+      responseIncludesAny: ["http", ":00", ":15", ":30", ":45"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

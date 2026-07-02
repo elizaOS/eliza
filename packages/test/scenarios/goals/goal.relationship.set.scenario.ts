@@ -28,13 +28,24 @@ export default scenario({
       kind: "message",
       name: "relationship-goal preview",
       text: "My goal is to stay in closer touch with family this year. I want to call each parent at least once a week and text my siblings a few times a month.",
-      responseIncludesAny: ["family", "call", "closer", "touch"],
+      // Derived cadence normalization: "once a week" -> weekly and "a few
+      // times a month" -> monthly — neither token appears in any user turn,
+      // so echo cannot pass.
+      responseIncludesAny: ["weekly", "monthly"],
+      // Two-phase commit: no persistence claim before the owner confirms.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose a relationship goal with the two measurable success criteria (weekly calls to each parent, monthly texts to siblings) and ask the owner to confirm before saving. Claiming it is already saved fails.",
+      },
     },
     {
       kind: "message",
       name: "relationship-goal confirm",
       text: "Yes, save that goal.",
-      responseIncludesAny: ["saved", "goal", "family"],
+      // Save-confirmation semantics in words the prompt never used.
+      responseIncludesAny: ["saved", "created", "added", "recorded", "set up"],
     },
   ],
   finalChecks: [

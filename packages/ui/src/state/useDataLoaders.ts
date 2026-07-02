@@ -41,6 +41,7 @@ import {
   type WorkbenchOverview,
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
 import { normalizeOwnerName } from "../utils/owner-name";
 import {
@@ -166,6 +167,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     uiLanguage,
     setOwnerNameState,
   } = deps;
+
+  // Auth gate (#11084): AppProvider mounts these loaders before the auth probe
+  // resolves, so the shell one-shot fetches must stay dormant until the
+  // session is authenticated — an unauthenticated shell makes none of them.
+  const authenticated = useIsAuthenticated();
 
   // ── Autonomy ────────────────────────────────────────────────────────
 
@@ -584,7 +590,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const agentReachable = agentStatus !== null;
 
   useEffect(() => {
-    if (!agentReachable) {
+    if (!agentReachable || !authenticated) {
       return;
     }
 
@@ -611,7 +617,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     return () => {
       cancelled = true;
     };
-  }, [agentReachable, setOwnerNameState]);
+  }, [agentReachable, authenticated, setOwnerNameState]);
 
   // ── Character language sync ─────────────────────────────────────────
 
@@ -672,7 +678,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const [workbenchTodosAvailable, setWorkbenchTodosAvailable] = useState(false);
 
   const loadWorkbench = useCallback(async () => {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+    if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setWorkbench(null);
       setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
@@ -695,7 +701,20 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     } finally {
       setWorkbenchLoading(false);
     }
-  }, []);
+  }, [authenticated]);
+
+  // The workbench load normally fires on the agent-state "running" edge
+  // (useAgentGreetingEffects). When that edge lands before the auth probe
+  // resolves the load is suppressed by the gate above, so fire it once the
+  // session flips to authenticated with the agent already reachable.
+  const workbenchAuthArmedRef = useRef(authenticated);
+  useEffect(() => {
+    const was = workbenchAuthArmedRef.current;
+    workbenchAuthArmedRef.current = authenticated;
+    if (!was && authenticated && agentReachable) {
+      void loadWorkbench();
+    }
+  }, [agentReachable, authenticated, loadWorkbench]);
 
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateLoading, setUpdateLoading] = useState(false);

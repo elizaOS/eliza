@@ -417,11 +417,23 @@ async function readJsonBody<T extends object>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): Promise<T | null> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  // The scenario API server (executor augmentRequest, #10757) drains the
+  // request stream up front and caches the bytes under core's shared symbol
+  // so route handlers never re-read a consumed socket. Read the cache first;
+  // stream only when this handler receives an untouched request.
+  const cachedBody = (req as unknown as Record<symbol, Buffer | undefined>)[
+    Symbol.for("eliza.http.cachedRequestBody")
+  ];
+  let raw: string;
+  if (cachedBody !== undefined) {
+    raw = cachedBody.toString("utf8").trim();
+  } else {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    raw = Buffer.concat(chunks).toString("utf8").trim();
   }
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
   if (!raw) return {} as T;
   try {
     const parsed = JSON.parse(raw) as T;
@@ -464,6 +476,10 @@ async function scenarioRouteHandler(
     error,
     runtime,
     developerMode: true,
+    // POST /api/apps/launch is role-gated (canLaunchApps). The real host
+    // (packages/agent/src/api/server.ts) passes OWNER for authorized local
+    // requests; this scenario models that authorized dashboard session.
+    actorRole: "OWNER",
     broadcastWs: (payload: object) => viewBroadcastLedger.push(payload),
   };
 

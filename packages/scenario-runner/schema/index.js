@@ -107,7 +107,11 @@ function validateStrictFinalCheck(check, index) {
   }
   const allowed = FINAL_CHECK_KEYS.get(type);
   if (!allowed) {
-    return;
+    throw new Error(
+      `finalChecks[${index}] has unknown type "${type}". Known types: ${[
+        ...FINAL_CHECK_KEYS.keys(),
+      ].join(", ")}`,
+    );
   }
   const unknownKeys = Object.keys(check).filter((key) => !allowed.has(key));
   if (unknownKeys.length > 0) {

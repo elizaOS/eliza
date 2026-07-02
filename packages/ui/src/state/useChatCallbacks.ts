@@ -864,8 +864,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         !hasUserMessage &&
         previousMessages.length <= 1;
 
-      send.interruptActiveChatPipeline();
+      // Interrupt FIRST (it restores any undelivered queued sends to the
+      // composer), then wipe the draft for the new chat — and re-apply the
+      // restore after the wipe so the user's queued words survive new-chat
+      // (#10700 "no message is lost").
+      const restoredQueuedText = send.interruptActiveChatPipeline();
       resetConversationDraftState();
+      if (restoredQueuedText) {
+        setChatInput(restoredQueuedText);
+      }
       // Snapshot the navigation epoch AFTER the draft reset — `resetConversationDraftState`
       // itself bumps this epoch, so capturing it before (the old order) made the
       // navigated-away guard below fire on EVERY call, silently abandoning the

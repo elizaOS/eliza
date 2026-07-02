@@ -44,7 +44,10 @@ export default scenario({
         description: "multi-device meeting reminder ladder",
         includesAny: ["hour", "ten minutes", "mac", "phone", "meeting"],
       }),
-      responseIncludesAny: ["hour", "ten minutes", "Mac", "phone", "meeting"],
+      // Derived ladder semantics: the reply must surface the three-rung
+      // structure and the acknowledge-to-suppress behaviour — none of these
+      // tokens appear in any user turn, so echo cannot pass.
+      responseIncludesAny: ["three", "acknowledge", "suppress", "ladder"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
@@ -56,7 +59,9 @@ export default scenario({
       name: "acknowledge-first-rung-on-mac",
       room: "mac",
       text: "I saw the first reminder on my Mac. Clear the remaining phone reminders too.",
-      responseIncludesAny: ["Mac", "phone", "clear", "acknowledged"],
+      // Derived suppression confirmation in words the prompt never used
+      // (the prompt says "clear"; the reply must express the state change).
+      responseIncludesAny: ["cancelled", "canceled", "suppressed", "stopped", "silenced"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

@@ -19,10 +19,22 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "imessage-helper-disconnected",
-      text: "Use the iMessage bridge to read the thread and send the reply, but if the helper is disconnected, tell me that clearly and ask me to repair it instead of claiming success.",
-      responseIncludesAny: ["imessage", "helper", "disconnected", "repair"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["imessage", "helper", "disconnected", "repair"],
+      // The prompt never names the seeded failure; the agent must discover the
+      // Mac-side helper outage from the connector itself and report it.
+      text: "Use the iMessage bridge to read the thread and get my reply out. Level with me about anything standing in the way before you claim success.",
+      responseIncludesAny: [
+        "helper",
+        "disconnected",
+        "bluebubbles",
+        "reconnect",
+      ],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: [
+        "imessage",
+        "helper",
+        "disconnected",
+        "repair",
+      ],
     },
   ],
   finalChecks: [{ type: "interventionRequestExists", expected: true }],

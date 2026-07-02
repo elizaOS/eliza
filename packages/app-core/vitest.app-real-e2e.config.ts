@@ -33,6 +33,11 @@ export default defineConfig({
     include: [
       "test/app/**/*.real.e2e.test.ts",
       "test/app/**/*.live.e2e.test.ts",
+      // Keyless-but-heavyweight wire coverage: boots the full real runtime +
+      // HTTP/WS server, so it lives in this nightly full-build lane rather
+      // than the PR unit lane (which excludes live-agent e2e wholesale). It
+      // has no provider-key gate — it runs on every nightly invocation.
+      "test/live-agent/views-interact-ws-roundtrip.real.e2e.test.ts",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 600_000,

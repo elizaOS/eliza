@@ -91,6 +91,40 @@ describe("TaskService tick re-arm", () => {
 		expect(execute).toHaveBeenCalledTimes(3);
 	});
 
+	it("re-arms the tick after a transient getTasks rejection instead of going silent", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("HEARTBEAT", { name: "HEARTBEAT", execute });
+		tasks.set("t-repeat", {
+			id: "t-repeat" as UUID,
+			name: "HEARTBEAT",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 60_000, updatedAt: T0 },
+		});
+
+		// The first tick's query rejects (a transient DB blip); every later query
+		// recovers. checkTasks clears tasksDirty BEFORE awaiting getTasks, so
+		// without re-arming on failure the gate would stay disarmed forever and the
+		// heartbeat would never run again after a single hiccup.
+		let calls = 0;
+		const realGetTasks = runtime.getTasks.bind(runtime);
+		(runtime as { getTasks: IAgentRuntime["getTasks"] }).getTasks = (async (
+			params: Parameters<IAgentRuntime["getTasks"]>[0],
+		) => {
+			calls += 1;
+			if (calls === 1) throw new Error("transient db outage");
+			return realGetTasks(params);
+		}) as IAgentRuntime["getTasks"];
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await vi.advanceTimersByTimeAsync(61_000);
+		// The tick recovered (queried again after the rejection) and fired the task.
+		expect(calls).toBeGreaterThan(1);
+		expect(execute).toHaveBeenCalledTimes(1);
+	});
+
 	it("runs a task created after the tick disarmed on an empty queue once markDirty is called", async () => {
 		const { runtime, tasks, workers } = makeTaskRuntime();
 		const execute = vi.fn(async () => undefined);

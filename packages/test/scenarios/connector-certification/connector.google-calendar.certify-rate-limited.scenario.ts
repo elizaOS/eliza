@@ -20,10 +20,12 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "calendar-rate-limited",
-      text: "Check whether I'm free tomorrow at 3pm and create the meeting if possible, but if Google Calendar is rate limited right now, say that clearly and ask whether to retry instead of pretending the event exists.",
-      responseIncludesAny: ["calendar", "rate", "limited", "retry"],
-      acceptedActions: ["CALENDAR", "CALENDAR", "CALENDAR"],
-      includesAny: ["calendar", "rate", "limited", "retry"],
+      // The prompt never names the seeded throttle; the agent must discover it
+      // from the connector's own response and report it.
+      text: "Check whether I'm free tomorrow at 3pm and put the meeting on the books if possible. If Google Calendar pushes back, tell me exactly what it said and what you plan to do next, instead of pretending the event exists.",
+      responseIncludesAny: ["rate limit", "rate-limited", "throttl", "quota"],
+      expectedActions: ["CALENDAR"],
+      actionPayloadIncludesAny: ["calendar", "rate", "limited", "retry"],
     },
   ],
   finalChecks: [{ type: "clarificationRequested", expected: true }],

@@ -74,7 +74,21 @@ export default scenario({
         acceptedActions: ["CALENDAR"],
         description: "three meeting slots for Alex",
       }),
-      responseIncludesAny: ["three", "slot", "Alex", "30"],
+      // Derived scheduling: slots for "next week" must land on concrete
+      // weekdays — no weekday name appears in any user turn, so a parroted
+      // reply cannot pass. The result-shape finalCheck stays load-bearing.
+      responseIncludesAny: [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+      ],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must offer three concrete 30-minute slots on named weekdays, all within the owner's 09:30-16:30 preferred window and none overlapping the 12:00-13:00 lunch blackout. Fewer than three slots, or slots without concrete day/time, fail.",
+      },
     },
   ],
   finalChecks: [

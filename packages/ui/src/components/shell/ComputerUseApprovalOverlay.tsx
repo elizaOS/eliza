@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
+import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { useAppSelector } from "../../state";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
@@ -39,6 +40,10 @@ export function ComputerUseApprovalOverlay() {
   const appShellRoutesSupported = supportsFullAppShellRoutes(
     client.getBaseUrl(),
   );
+  // Auth gate (#11084): the shell mounts this overlay before the auth probe
+  // resolves, so without this the SSE stream / 1.5s poll fires 401s from every
+  // unauthenticated tab. Dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
   const [snapshot, setSnapshot] =
     useState<ComputerUseApprovalSnapshot>(EMPTY_SNAPSHOT);
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
@@ -48,7 +53,7 @@ export function ComputerUseApprovalOverlay() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!appShellRoutesSupported) {
+    if (!appShellRoutesSupported || !authenticated) {
       setSnapshot(EMPTY_SNAPSHOT);
       return;
     }
@@ -57,10 +62,10 @@ export function ComputerUseApprovalOverlay() {
     } catch {
       setSnapshot(EMPTY_SNAPSHOT);
     }
-  }, [appShellRoutesSupported]);
+  }, [appShellRoutesSupported, authenticated]);
 
   useEffect(() => {
-    if (!appShellRoutesSupported) {
+    if (!appShellRoutesSupported || !authenticated) {
       setSnapshot(EMPTY_SNAPSHOT);
       return undefined;
     }
@@ -131,7 +136,7 @@ export function ComputerUseApprovalOverlay() {
       }
       eventSource?.close();
     };
-  }, [appShellRoutesSupported, refresh]);
+  }, [appShellRoutesSupported, authenticated, refresh]);
 
   // Defensive: the snapshot can be partially populated during reconnect/
   // recovery windows, so `pendingApprovals` may be momentarily undefined.

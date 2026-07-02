@@ -34,7 +34,15 @@ export default scenario({
       room: "main",
       text: "Harsh mode — don't let me bypass X for 4 hours even if I ask.",
       expectedActions: ["WEBSITE_BLOCK"],
-      responseIncludesAny: ["harsh", "block", "4", "x"],
+      // De-echoed (#9310): the old keywords were echoes of the turn text
+      // ("block" even matched turn 2's "unblock"). The reply must confirm the
+      // committed, non-overridable state in derived words.
+      responseIncludesAny: ["locked", "blocked", "enforced", "no early", "committed"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must confirm a 4-hour block on X is now active and state that requests to lift it early will be refused. A reply that leaves the no-bypass commitment unstated fails.",
+      },
     },
     {
       kind: "wait",
@@ -47,13 +55,25 @@ export default scenario({
       room: "main",
       text: "Actually, please unblock X right now — I need it.",
       forbiddenActions: ["WEBSITE_BLOCK"],
+      // De-echoed (#9310): /no/i matched almost any reply ("now", "not",
+      // "know") and /harsh/ + /bypass/ echoed turn-1 text. The refusal must be
+      // explicit, and the reply must not claim the block was lifted; the
+      // forbiddenActions gate above is the hard outcome.
       responseIncludesAny: [
-        /refuse/i,
+        /refus/i,
         /cannot/i,
         /can't/i,
-        /no/i,
-        /harsh/i,
-        /bypass/i,
+        /won't/i,
+        /not able/i,
+        /stays blocked/i,
+        /remains? blocked/i,
+      ],
+      responseExcludes: [
+        "unblocked x",
+        "have unblocked",
+        "removed the block",
+        "block removed",
+        "lifted the block",
       ],
     },
   ],
@@ -61,6 +81,7 @@ export default scenario({
     {
       type: "actionCalled",
       actionName: "WEBSITE_BLOCK",
+      status: "success",
       minCount: 1,
     },
   ],

@@ -16,10 +16,13 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 
-export type FinalCheckStatus =
-  | "passed"
-  | "failed"
-  | "skipped-dependency-missing";
+/**
+ * `skipped` means the check's runtime dependency was missing (e.g. no
+ * approval-queue service registered). A skipped check FAILS the scenario in
+ * the `pr-deterministic` lane — that lane must never silently lose coverage —
+ * and is loudly counted in reports for live lanes.
+ */
+export type FinalCheckStatus = "passed" | "failed" | "skipped";
 
 export interface FinalCheckReport {
   label: string;
@@ -77,6 +80,13 @@ export interface ScenarioReport {
    * `metadata.judge_score` for reward-weighted training (#8795).
    */
   judgeScore?: number;
+  /**
+   * True when the LLM-judge scores above were produced by the model under
+   * test itself (no independent Cerebras judge configured and no
+   * deterministic judge fixtures active) — the run self-graded (#9310).
+   * `SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1` turns this into a failure.
+   */
+  judgeSelfGraded?: boolean;
 }
 
 export interface AggregateReport {
@@ -99,6 +109,13 @@ export interface AggregateReport {
     skipped: number;
     flakyPassed: number;
     costUsd: number;
+    /**
+     * finalChecks across all scenarios that reported status `skipped`
+     * (dependency missing). Non-zero means real coverage was lost — surfaced
+     * loudly in the stdout summary for live lanes; the pr-deterministic lane
+     * turns these into scenario failures instead.
+     */
+    finalChecksSkipped: number;
   };
   // Present for benchmark compatibility.
   totalCount: number;

@@ -197,6 +197,13 @@ for (const viewport of [
         timeout: 5_000,
       },
     );
+    // #10713: the "Copied" affordance flipping is necessary but not sufficient —
+    // prove the assistant text actually reached the system clipboard. The context
+    // grants clipboard-read above, so read the bytes back and compare.
+    const copiedClipboardText = await page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    expect(copiedClipboardText).toBe(ASSISTANT_TEXT);
     await screenshot(page, `${viewport.name}-assistant-copied`);
 
     await page.getByTestId("thread-line-speak").click();

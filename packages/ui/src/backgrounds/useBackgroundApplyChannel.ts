@@ -85,10 +85,11 @@ export function useBackgroundApplyChannel(): void {
     const uniformPatch = readUniformPatch(payload.uniforms);
     const presetId =
       typeof payload.presetId === "string" ? payload.presetId : undefined;
-    const explicitSource =
-      typeof payload.source === "string" ? payload.source : undefined;
-    const wantsGlsl =
-      payload.mode === "glsl" || Boolean(presetId) || Boolean(explicitSource);
+    // Raw GLSL text in the payload is deliberately NOT accepted (#11088):
+    // presets are the only source of shader code, so a crafted `source` field
+    // (e.g. a bounded-for GPU bomb that would slip past the static gate) has
+    // no path to the compiler. Payloads may only name a preset id.
+    const wantsGlsl = payload.mode === "glsl" || Boolean(presetId);
 
     // ── Programmable GLSL shader (#10694) ────────────────────────────────
     if (wantsGlsl) {
@@ -96,7 +97,6 @@ export function useBackgroundApplyChannel(): void {
       // keep the same source, merge the patch.
       const current = backgroundConfig;
       if (
-        !explicitSource &&
         !presetId &&
         uniformPatch &&
         current.mode === "glsl" &&
@@ -114,7 +114,7 @@ export function useBackgroundApplyChannel(): void {
       }
 
       const preset = presetId ? getShaderPreset(presetId) : undefined;
-      const source = explicitSource ?? preset?.source;
+      const source = preset?.source;
       if (source && isPlausibleFragmentSource(source)) {
         setBackgroundConfig(
           makeGlslConfig({

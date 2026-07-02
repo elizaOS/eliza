@@ -33,7 +33,12 @@ export default scenario({
         description: "relationship gift milestone",
         includesAny: ["Maya", "relationship", "gift", "budget", "approval"],
       }),
-      responseIncludesAny: ["Maya", /gift|budget|delivery|approval/i],
+      // Derived behaviour: no budget amount or date was given, so a real
+      // prep reply must ask for or propose one ("$", "how much", "price
+      // range" appear in no user turn). A parrot of the request cannot pass,
+      // and nothing may be purchased before the explicit approval gate.
+      responseIncludesAny: ["$", "how much", "price range", "spend"],
+      responseExcludes: ["purchased", "ordered", "bought"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

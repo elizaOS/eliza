@@ -107,10 +107,14 @@ const DEPLOY_RE =
   /\b(deploy|deployment|release\s+to\s+prod|ship\s+to\s+prod|production\s+rollout|provision\s+infra|autoscal\w*|hetzner|cloudflare\s+worker|publish\s+the\s+(?:site|app))\b/i;
 // Deliberately does NOT match a bare "app"/"application": "refactor the app" or
 // "fix the application startup" is coding, not an app-BUILD. Only web-app /
-// site / landing-page phrasing (or an explicit build/create-a-…-app) qualifies,
-// which is what gates the app-build-only "the live URL returns HTTP 200" criterion.
+// site / landing-page phrasing — or an explicit build/create/make-a(n)-…-app —
+// qualifies, which is what gates the app-build-only "the live URL returns
+// HTTP 200" criterion. The verb branch accepts "a" OR "an" plus up to two
+// intervening words so canonical phrasing like "build an app" and
+// "create a todo app" classifies correctly (a bare `build\s+a\s+app` never
+// matches grammatical English and silently regressed those to coding).
 const APP_BUILD_RE =
-  /\b(website|web\s*site|landing\s+page|web\s+app|webapp|frontend\s+app|build\s+a\s+(?:site|page|app)|create\s+a\s+(?:site|page|app))\b/i;
+  /\b(website|web\s*site|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+an?\s+(?:\w+[ -]){0,2}(?:site|page|app|application)\b)/i;
 
 /**
  * Classify a task from its goal text. Defaults to `coding` — the safest

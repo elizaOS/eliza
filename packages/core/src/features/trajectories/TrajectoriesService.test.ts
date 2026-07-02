@@ -171,4 +171,66 @@ describe("TrajectoriesService", () => {
 
 		expect(updates).toHaveLength(0);
 	});
+
+	it("includes persisted metadata on trajectory list rows", async () => {
+		const service = new TrajectoriesService({
+			adapter: { db: { execute: async () => ({ rows: [] }) } },
+			getService: () => null,
+			getServicesByType: () => [],
+		} as unknown as IAgentRuntime);
+		const serviceInternals = service as unknown as {
+			ensureStorageReady: () => Promise<void>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		serviceInternals.ensureStorageReady = async () => {};
+		const seenSql: string[] = [];
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			seenSql.push(sqlText);
+			if (sqlText.includes("count(*)")) {
+				return { rows: [{ total: 1 }], columns: ["total"] };
+			}
+			return {
+				rows: [
+					{
+						id: "00000000-0000-4000-8000-000000000030",
+						agent_id: "00000000-0000-4000-8000-000000000001",
+						source: "discord",
+						status: "completed",
+						start_time: 1000,
+						end_time: 1500,
+						duration_ms: 500,
+						step_count: 1,
+						llm_call_count: 2,
+						total_prompt_tokens: 10,
+						total_completion_tokens: 20,
+						total_cache_read_input_tokens: 0,
+						total_cache_creation_input_tokens: 0,
+						total_reward: 0,
+						scenario_id: null,
+						batch_id: null,
+						metadata_json: JSON.stringify({
+							roomId: "room-1",
+							entityId: "entity-1",
+							source: "discord",
+						}),
+						created_at: "1970-01-01T00:00:01.000Z",
+						updated_at: "1970-01-01T00:00:01.500Z",
+					},
+				],
+				columns: [],
+			};
+		};
+
+		const result = await service.listTrajectories({ limit: 1 });
+
+		expect(seenSql.some((sql) => sql.includes("metadata_json"))).toBe(true);
+		expect(result.trajectories[0]).toMatchObject({
+			source: "discord",
+			roomId: "room-1",
+			entityId: "entity-1",
+			metadata: { roomId: "room-1", entityId: "entity-1", source: "discord" },
+		});
+	});
 });

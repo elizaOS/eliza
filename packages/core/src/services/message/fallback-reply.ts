@@ -56,13 +56,15 @@ export function isRateLimitError(error: unknown): boolean {
 		haystack.includes("requests per second") ||
 		haystack.includes("requests per hour") ||
 		haystack.includes("slow down") ||
+		haystack.includes("overloaded") ||
 		// Subscription-credit exhaustion (Claude/Codex CLI-SDK brains): the SDK
 		// surfaces "you've hit your session/usage limit" when the monthly credit
 		// runs dry. Treat it as a rate limit so the graceful "temporarily
 		// unavailable" reply path handles it instead of leaking the raw string.
 		haystack.includes("session limit") ||
 		haystack.includes("usage limit") ||
-		/\b429\b/.test(haystack)
+		/\b429\b/.test(haystack) ||
+		/\b529\b/.test(haystack)
 	);
 }
 
@@ -104,7 +106,7 @@ export function isModelProviderFallbackError(error: unknown): boolean {
 	if (isRateLimitError(error)) {
 		return true;
 	}
-	if (hasHttpStatus(unwrapped, [500, 502, 503, 504])) {
+	if (hasHttpStatus(unwrapped, [500, 502, 503, 504, 529])) {
 		return true;
 	}
 	if (!(error instanceof Error)) return false;
@@ -114,6 +116,7 @@ export function isModelProviderFallbackError(error: unknown): boolean {
 		haystack.includes("timed out") ||
 		haystack.includes("temporarily unavailable") ||
 		haystack.includes("service unavailable") ||
+		haystack.includes("overloaded") ||
 		haystack.includes("bad gateway") ||
 		haystack.includes("gateway timeout") ||
 		haystack.includes("internal server error") ||
@@ -121,7 +124,7 @@ export function isModelProviderFallbackError(error: unknown): boolean {
 		haystack.includes("socket hang up") ||
 		haystack.includes("network error") ||
 		haystack.includes("fetch failed") ||
-		haystack.includes("overloaded")
+		/\b529\b/.test(haystack)
 	);
 }
 

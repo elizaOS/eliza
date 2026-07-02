@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
-import { expectNoCreatedEntityIds } from "./entity-create-assertions";
+import { expectCreatedEntityIds } from "./entity-create-assertions";
 
 describe("Base Adapter Methods Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
@@ -729,9 +729,13 @@ describe("Base Adapter Methods Integration Tests", () => {
       // Create entity
       await adapter.createEntities([entity]);
 
-      // Try to create duplicate - createEntities returns no new ids on duplicate
+      // Duplicate creation is idempotent: the existing id is reported as
+      // success and no second row appears.
       const result = await adapter.createEntities([entity]);
-      expectNoCreatedEntityIds(result);
+      expectCreatedEntityIds(result, [entity]);
+
+      const rows = await adapter.getEntitiesByIds([entity.id as UUID]);
+      expect(rows).toHaveLength(1);
     });
 
     it("should handle updating non-existent entity", async () => {

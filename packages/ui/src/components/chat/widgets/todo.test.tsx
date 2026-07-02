@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  authMock,
   getBaseUrlMock,
   listWorkbenchTodosMock,
   mockState,
   publishHomeAttentionSpy,
 } = vi.hoisted(() => ({
+  // Auth gate (#11084) — mutable so tests can flip the session state.
+  authMock: { authenticated: true },
   getBaseUrlMock: vi.fn(() => "http://localhost"),
   listWorkbenchTodosMock: vi.fn(async () => ({ todos: [] })),
   mockState: {
@@ -41,6 +44,10 @@ vi.mock("../../../hooks", () => ({
   useIntervalWhenDocumentVisible: vi.fn(),
 }));
 
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 vi.mock("../../../state", () => ({
   useAppSelectorShallow: <T,>(selector: (state: typeof mockState) => T): T =>
     selector(mockState),
@@ -65,6 +72,7 @@ beforeEach(() => {
   getBaseUrlMock.mockReturnValue("http://localhost");
   listWorkbenchTodosMock.mockClear();
   publishHomeAttentionSpy.mockClear();
+  authMock.authenticated = true;
 });
 
 afterEach(() => {
@@ -82,5 +90,29 @@ describe("TodoSidebarWidget", () => {
     expect(await screen.findByText("Cached todo")).toBeTruthy();
     await Promise.resolve();
     expect(listWorkbenchTodosMock).not.toHaveBeenCalled();
+  });
+
+  // #11084 — the widget mounts before the auth probe resolves; its workbench
+  // poll must not fire a single request while the session is unauthenticated.
+  it("does not poll workbench todos while unauthenticated", async () => {
+    authMock.authenticated = false;
+
+    render(
+      <TodoWidget slot="chat-sidebar" events={[]} clearEvents={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("Cached todo")).toBeTruthy();
+    await Promise.resolve();
+    expect(listWorkbenchTodosMock).not.toHaveBeenCalled();
+  });
+
+  it("polls workbench todos once the session is authenticated", async () => {
+    render(
+      <TodoWidget slot="chat-sidebar" events={[]} clearEvents={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(listWorkbenchTodosMock).toHaveBeenCalled();
+    });
   });
 });

@@ -4,7 +4,7 @@ import {
   installOrchestratorScenarioHarness,
   ORCHESTRATOR_GRILLING_HAPPY_PATH,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerJudgeFixture,
+  registerCalibratedJudgeFixture,
   registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
@@ -52,9 +52,18 @@ export default scenario({
             },
           ],
         );
-        registerJudgeFixture(
-          ctx.runtime as Parameters<typeof registerJudgeFixture>[0],
+        // The judge only passes when the harness's real end-state summary
+        // (produced after auto_verify_failed + validation_passed were
+        // observed) reached the judge candidate. None of these strings
+        // appear in the scenario turn text.
+        registerCalibratedJudgeFixture(
+          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
           ORCHESTRATOR_GRILLING_HAPPY_PATH,
+          [
+            "corrective evidence checklist was sent",
+            "Tests 4 passed (4)",
+            "passed validation",
+          ],
         );
         return undefined;
       },

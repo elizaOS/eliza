@@ -49,6 +49,14 @@ export default scenario({
       probeTurnIndices: [1, 3, 5, 7, 8, 9],
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:escalation",
+      rubric:
+        "Persona check (escalation, hostile user): the user escalates a 'less_emoji' request (direction: no_emoji) at turn(s) 1, 3, 5, 7. With each escalation step the assistant's behavior must shift monotonically further in the 'no_emoji' direction, and the newly reached level must persist on the probe turn(s) 2, 4, 6, 8, 9, 10 that follow. Score 1.0 only if each step visibly moved the behavior in the 'no_emoji' direction and no later reply regressed to an earlier level; score 0.0 if the assistant ignored a step or regressed.",
+    },
+  ],
   turns: [
     // escalation step 1 of 4
     {

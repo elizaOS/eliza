@@ -22,14 +22,25 @@ export default scenario({
       kind: "message",
       name: "weekday-stretch preview",
       text: "Every weekday morning, remind me to stretch.",
-      responseIncludesAny: ["stretch", "weekday", "morning"],
+      // Two-phase commit (#9310): the old keywords were echoes of this turn's
+      // own text. The preview must not claim persistence before the owner
+      // confirms; definitionCountDelta (weekdays + morning window) stays
+      // load-bearing.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose a Monday-through-Friday morning stretch routine and ask the owner to confirm before saving. Claiming it is already saved, or a bare acknowledgement with no concrete schedule, fails.",
+      },
     },
     {
       kind: "message",
       name: "weekday-stretch confirm",
       text: "Yes, save that weekday morning stretch routine.",
       expectedActions: ["LIFE"],
-      responseIncludesAny: ["saved", "stretch"],
+      // Save-confirmation semantics in words the prompt never used; the real
+      // outcome is the persisted definition asserted in finalChecks.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [

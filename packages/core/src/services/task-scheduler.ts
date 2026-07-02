@@ -42,10 +42,22 @@ async function tick(): Promise<void> {
 	if (!adp) return;
 
 	const agentIds = snapshot as UUID[];
-	const allTasks = await adp.getTasks({
-		tags: ["queue"],
-		agentIds,
-	});
+	let allTasks: Task[];
+	try {
+		allTasks = await adp.getTasks({
+			tags: ["queue"],
+			agentIds,
+		});
+	} catch (error) {
+		// A transient getTasks rejection must NOT permanently silence the cleared
+		// agents: we already drained dirtyAgents above, so re-arm the ones still
+		// registered before rethrowing. Otherwise one DB hiccup drops every repeat
+		// task (incl. the LifeOps heartbeat) until each agent is marked dirty again.
+		for (const aid of snapshot) {
+			if (registry.has(aid)) dirtyAgents.add(aid);
+		}
+		throw error;
+	}
 
 	// Group by task.agentId so each runtime only receives its own tasks. WHY: runTick expects one agent's tasks.
 	const byAgent = new Map<string, Task[]>();

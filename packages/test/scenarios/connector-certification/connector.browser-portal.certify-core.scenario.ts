@@ -44,7 +44,14 @@ export default scenario({
         description: "browser portal certification kickoff",
         includesAny: ["portal", "upload", "browser", "help"],
       }),
-      responseIncludesAny: ["portal", "upload", "browser", "help"],
+      // Blocked-state tokens the prompt never uses; parroting "ask me for
+      // help" cannot satisfy any of them.
+      responseIncludesAny: [
+        "stuck",
+        "verification",
+        "intervention",
+        "need you to",
+      ],
     },
     {
       kind: "message",
@@ -62,7 +69,9 @@ export default scenario({
         minInterventions: 1,
         minProvenance: 1,
       }),
-      responseIncludesAny: ["upload", "portal", "receipt", "url"],
+      // Completion-state tokens: a real resume reports the finished upload
+      // (with the actual receipt link), not a restatement of the request.
+      responseIncludesAny: ["uploaded", "completed", "succeeded", "https://"],
     },
   ],
   finalChecks: [

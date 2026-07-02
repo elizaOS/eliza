@@ -1,0 +1,18 @@
+{
+  "//": [
+    "Resolution override for the accounts-UI e2e API server (bun --tsconfig-override).",
+    "packages/app-core has no `bun`/`eliza-source` export condition, so the accounts",
+    "routes' dynamic import of @elizaos/app-core/account-pool would resolve to a",
+    "possibly-stale dist build. This paths mapping pins it (and @elizaos/shared) to",
+    "the current source so the e2e always tests the tree it runs from."
+  ],
+  "compilerOptions": {
+    "baseUrl": "../../../..",
+    "paths": {
+      "@elizaos/app-core/account-pool": [
+        "packages/app-core/src/services/account-pool.ts"
+      ],
+      "@elizaos/shared": ["packages/shared/src/index.ts"]
+    }
+  }
+}

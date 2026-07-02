@@ -25,7 +25,12 @@ export interface FinalCheckHandlerContext {
 type FinalCheckOutcome =
   | { status: "passed"; detail: string }
   | { status: "failed"; detail: string }
-  | { status: "skipped-dependency-missing"; detail: string };
+  /**
+   * The check's runtime dependency is missing. Never a silent pass: the
+   * executor fails the scenario in the pr-deterministic lane and reports
+   * count skips loudly in live lanes.
+   */
+  | { status: "skipped"; detail: string };
 
 type FinalCheckHandler = (
   check: ScenarioFinalCheck,
@@ -1031,8 +1036,8 @@ registerFinalCheckHandler(
 registerFinalCheckHandler("approvalRequestExists", (check, { ctx }) => {
   if (ctx.approvalRequests === undefined) {
     return {
-      status: "skipped-dependency-missing",
-      detail: "no approval queue service registered",
+      status: "skipped",
+      detail: "dependency missing: no approval queue service registered",
     };
   }
   const { expected, actionName, state } = check as {
@@ -1100,8 +1105,8 @@ registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
 registerFinalCheckHandler("pushSent", (check, { ctx }) => {
   if (ctx.connectorDispatches === undefined) {
     return {
-      status: "skipped-dependency-missing",
-      detail: "no connector dispatcher registered",
+      status: "skipped",
+      detail: "dependency missing: no connector dispatcher registered",
     };
   }
   const { channel } = check as { channel: string | string[] };
@@ -1868,8 +1873,9 @@ async function checkStoredReminderIntensity(
   const service = await createLifeOpsService(runtime);
   if (!isReminderPreferenceService(service)) {
     return {
-      status: "skipped-dependency-missing",
-      detail: "LifeOpsService does not expose reminder preference methods",
+      status: "skipped",
+      detail:
+        "dependency missing: LifeOpsService does not expose reminder preference methods",
     };
   }
   const definitions = await service.listDefinitions();

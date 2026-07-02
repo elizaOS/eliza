@@ -197,6 +197,20 @@ async function swipeLeft(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
+// Mirror of swipeLeft for the mouse drag-paging regression section (the
+// real-touch conversion dropped this helper but kept its call site — the
+// nested-pager mouse arbitration asserts genuinely need MOUSE input).
+async function swipeRight(locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("missing swipe target bounds");
+  const y = box.y + box.height * 0.45;
+  const startX = box.x + box.width * 0.22;
+  const endX = box.x + box.width * 0.78;
+  await locator.page().mouse.move(startX, y);
+  await locator.page().mouse.down();
+  await locator.page().mouse.move(endX, y, { steps: 8 });
+  await locator.page().mouse.up();
+}
 // Horizontal touch-swipes across an element, driven through Chromium's real
 // touch input path. These keep the mobile pagers honest — the inner launcher
 // pager AND the outer home↔launcher rail: hit-testing, touch-action, implicit
@@ -210,6 +224,15 @@ async function touchSwipeLeft(page, testId) {
 async function touchSwipeRight(page, testId) {
   await touchSwipe(page, `[data-testid="${testId}"]`, 280, 0, {
     steps: 10,
+    stepDelayMs: 16,
+  });
+}
+// A real downward touch drag — the home notification pull-down (#10706) is a
+// vertical gesture, so this drives it through the same CDP touch path as the
+// horizontal rail swipes.
+async function touchSwipeDown(page, testId, dy = 180) {
+  await touchSwipe(page, `[data-testid="${testId}"]`, 0, dy, {
+    steps: 12,
     stepDelayMs: 16,
   });
 }
@@ -393,6 +416,32 @@ try {
     !stability.flagged,
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
+
+  // Real touch pull-DOWN on the notification zone opens the NotificationCenter
+  // sheet (#10706) — previously only jsdom synthetic pointer events covered it.
+  assert(
+    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    "notification sheet starts closed",
+  );
+  await touchSwipeDown(mobile, "home-notification-pull-zone");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "visible", timeout: 4000 });
+  assert(
+    await mobile.getByTestId("notification-sheet-close").isVisible(),
+    "real-touch pull-down opens the notification sheet",
+  );
+  // Close it again (Escape — the sheet's documented dismiss) so the rail swipe
+  // below starts from a clean, settled home.
+  await mobile.keyboard.press("Escape");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "detached", timeout: 4000 });
+  assert(
+    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    "the notification sheet closes again (Escape)",
+  );
+  await waitForSurfacePageSettled(mobile, "home");
 
   // Real touch left-swipe on the home half pages the outer rail to the
   // launcher (the halves are `touch-pan-y`, so a horizontal touch gesture is

@@ -20,10 +20,17 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "slack-disconnected",
-      text: "Read the Slack message and send the reply in-thread, but if Slack is disconnected, tell me that clearly and ask me to reconnect it instead of claiming the message went out.",
-      responseIncludesAny: ["slack", "disconnected", "reconnect", "reply"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["slack", "disconnected", "reconnect", "reply"],
+      // The prompt never names the seeded failure; the agent must discover the
+      // dead workspace connection itself and report it in its own words.
+      text: "Read the latest Slack message and get my reply posted in-thread. Be straight with me about anything that stops it from going out.",
+      responseIncludesAny: [
+        "disconnected",
+        "not connected",
+        "reconnect",
+        "token",
+      ],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["slack", "disconnected", "reconnect", "reply"],
     },
   ],
   finalChecks: [{ type: "clarificationRequested", expected: true }],

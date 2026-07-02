@@ -37,7 +37,11 @@ export default scenario({
         description: "snooze with explicit wake time",
         includesAny: ["Monday", "9am", "snooze", "partner intro"],
       }),
-      responseIncludesAny: ["Monday", "9am", "snooze"],
+      // Derived wake semantics: the reply must express what happens at the
+      // wake time (resurface/bring it back/remind) — none of these tokens
+      // appear in the user turn, so a parroted "snoozed until Monday 9am"
+      // cannot pass. selectedActionArguments still pins Monday/9am.
+      responseIncludesAny: ["resurface", "bring it back", "wake", "remind"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
