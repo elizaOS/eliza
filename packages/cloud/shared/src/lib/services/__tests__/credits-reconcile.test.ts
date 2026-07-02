@@ -20,6 +20,7 @@ process.env.CREDIT_COST_BUFFER = "1.5";
 
 const PGLITE_TIMEOUT = 60000;
 const RESERVATION_SETTLEMENT_MARKER = "credit_reservation_v1";
+const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
 
 const ORG_ID = "00000000-0000-0000-0000-0000000000d4";
 const USER_ID = "00000000-0000-0000-0000-0000000000e5";
@@ -87,6 +88,43 @@ async function insertReservation(
       '${String(-amount)}',
       'debit',
       'Chat completion: test-model (reserved)',
+      '${JSON.stringify(metadata)}'::jsonb,
+      '${createdAt}'::timestamp
+    ) RETURNING id;`,
+  );
+  return (res.rows[0] as { id: string }).id;
+}
+
+async function insertAppChatReservation(amount: number, ageMs = 0): Promise<string> {
+  const createdAt = new Date(Date.now() - ageMs).toISOString();
+  const metadata = {
+    appId: "app-chat-test",
+    userId: USER_ID,
+    type: "app_chat_reservation",
+    settlement_marker: APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
+    model: "test-model",
+    provider: "test-provider",
+    billingSource: "test",
+    safetyMultiplier: 1.5,
+    estimated_cost: amount / 1.5,
+    reserved_amount: amount,
+    totalCost: amount,
+  };
+  const res = await dbWrite.execute(
+    `INSERT INTO credit_transactions (
+      organization_id,
+      user_id,
+      amount,
+      type,
+      description,
+      metadata,
+      created_at
+    ) VALUES (
+      '${ORG_ID}',
+      '${USER_ID}',
+      '${String(-amount)}',
+      'debit',
+      'Chat: test-model',
       '${JSON.stringify(metadata)}'::jsonb,
       '${createdAt}'::timestamp
     ) RETURNING id;`,
@@ -198,8 +236,16 @@ beforeAll(async () => {
       `CREATE INDEX IF NOT EXISTS credit_transactions_unsettled_reservations_idx
         ON credit_transactions (created_at)
         WHERE type = 'debit'
-          AND metadata->>'type' = 'reservation'
-          AND metadata->>'settlement_marker' = '${RESERVATION_SETTLEMENT_MARKER}'
+          AND (
+            (
+              metadata->>'type' = 'reservation'
+              AND metadata->>'settlement_marker' = '${RESERVATION_SETTLEMENT_MARKER}'
+            )
+            OR (
+              metadata->>'type' = 'app_chat_reservation'
+              AND metadata->>'settlement_marker' = '${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}'
+            )
+          )
           AND settled_at IS NULL`,
     ];
     for (const stmt of ddl) {
@@ -865,6 +911,46 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       expect(await getBalance()).toBeCloseTo(9, 6);
       expect(await getReservationSettledAt(reservationId)).toBeTruthy();
       expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep covers marker-aware app-chat holds and refunds only the stale buffer",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("8.5");
+      const reservationId = await insertAppChatReservation(1.5, 25 * 60 * 1000);
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(1);
+      expect(stats.refunds).toBe(1);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([
+        {
+          amount: "0.500000",
+          type: "refund",
+          stripe_payment_intent_id: `recon:${reservationId}:refund`,
+        },
+      ]);
+
+      const late = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.5,
+        actualCost: 0,
+        description: "late app-chat refund after sweep",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+
+      expect(late.adjustmentType).toBe("none");
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await countByType("refund")).toBe(1);
     },
     PGLITE_TIMEOUT,
   );

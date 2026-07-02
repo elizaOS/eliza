@@ -103,6 +103,7 @@ const refundCommits: Array<{ amount: number; description: string }> = [];
 const reconcileCalls: Array<{
   estimatedBaseCost: number;
   actualBaseCost: number;
+  reservationTransactionId?: string | null;
   metadata?: Record<string, unknown>;
 }> = [];
 let settleReverseEarningsThrows = false;
@@ -112,11 +113,13 @@ const reconcileCredits = mock(
     estimatedBaseCost: number;
     actualBaseCost: number;
     description: string;
+    reservationTransactionId?: string | null;
     metadata?: Record<string, unknown>;
   }) => {
     reconcileCalls.push({
       estimatedBaseCost: args.estimatedBaseCost,
       actualBaseCost: args.actualBaseCost,
+      reservationTransactionId: args.reservationTransactionId,
       metadata: args.metadata,
     });
     const isGuardRefund =
@@ -151,6 +154,7 @@ mock.module("@/lib/services/app-credits", () => ({
       totalCost: args.baseCost,
       creatorEarnings: 0,
       newBalance: 99,
+      transactionId: "app-chat-hold-1",
     })),
     reconcileCredits,
   },
@@ -202,6 +206,7 @@ describe("non-streaming settle double-credit guard (#11218)", () => {
     // The settle reconcile ran once, its internal refund committed once, and
     // the guard did NOT issue a second full-hold refund on top of it.
     expect(reconcileCredits).toHaveBeenCalledTimes(1);
+    expect(reconcileCalls[0].reservationTransactionId).toBe("app-chat-hold-1");
     expect(refundCommits).toHaveLength(1);
     expect(
       reconcileCalls.some(
@@ -226,6 +231,7 @@ describe("non-streaming settle double-credit guard (#11218)", () => {
     expect(reconcileCredits).toHaveBeenCalledTimes(1);
     expect(refundCommits).toHaveLength(1);
     expect(reconcileCalls[0].actualBaseCost).toBe(0);
+    expect(reconcileCalls[0].reservationTransactionId).toBe("app-chat-hold-1");
     expect(reconcileCalls[0].metadata).toMatchObject({
       streaming: false,
       refundReason: "non_streaming_settle_error",
@@ -243,6 +249,7 @@ describe("non-streaming settle double-credit guard (#11218)", () => {
     expect(reconcileCredits).toHaveBeenCalledTimes(1);
     expect(refundCommits).toHaveLength(1);
     expect(reconcileCalls[0].actualBaseCost).toBe(0);
+    expect(reconcileCalls[0].reservationTransactionId).toBe("app-chat-hold-1");
     expect(reconcileCalls[0].metadata).toMatchObject({
       refundReason: "non_streaming_settle_error",
     });
@@ -260,6 +267,7 @@ describe("non-streaming settle double-credit guard (#11218)", () => {
     };
     expect(body.choices[0].message.content).toBe("hi there");
     expect(reconcileCredits).toHaveBeenCalledTimes(1);
+    expect(reconcileCalls[0].reservationTransactionId).toBe("app-chat-hold-1");
     expect(
       reconcileCalls.some(
         (c) => c.metadata?.refundReason === "non_streaming_settle_error",

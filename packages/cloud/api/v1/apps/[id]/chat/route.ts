@@ -53,6 +53,7 @@ const ROUTE_MAX_DURATION = 800;
 // Safety multiplier for cost estimation to reduce undercharging risk
 // We charge 1.5x estimated upfront, then reconcile to actual
 const COST_SAFETY_MULTIPLIER = 1.5;
+const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
 
 function isProviderHttpError(error: unknown): error is ProviderHttpError {
   return Boolean(
@@ -321,12 +322,17 @@ async function handlePOST(
       baseCost: reservedBaseCost,
       description: `Chat: ${model}`,
       metadata: {
+        type: "app_chat_reservation",
+        settlement_marker: APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
         model,
         provider,
         billingSource,
         estimatedInputTokens,
         estimatedOutputTokens,
+        estimated_cost: estimatedBaseCost,
+        reserved_amount: reservedBaseCost,
         safetyMultiplier: COST_SAFETY_MULTIPLIER,
+        reservation_buffer: COST_SAFETY_MULTIPLIER,
       },
       app, // Pass pre-fetched app to avoid duplicate DB query
     });
@@ -356,6 +362,8 @@ async function handlePOST(
         ),
       );
     }
+    const appChatReservationTransactionId =
+      deductionResult.transactionId ?? null;
 
     logger.info("[App Chat] Credits deducted", {
       appId,
@@ -411,6 +419,7 @@ async function handlePOST(
         actualBaseCost: 0, // Full refund
         description: "Refund due to provider error",
         metadata: { error: true, providerFailure: true },
+        reservationTransactionId: appChatReservationTransactionId,
       });
 
       return withCors(Response.json(failure.body, { status: failure.status }));
@@ -479,6 +488,7 @@ async function handlePOST(
               actualBaseCost: 0, // Full refund
               description: "Refund due to empty provider response",
               metadata: { error: true, noBody: true },
+              reservationTransactionId: appChatReservationTransactionId,
               app,
             });
             return;
@@ -597,6 +607,7 @@ async function handlePOST(
             estimatedBaseCost: reservedBaseCost,
             actualBaseCost,
             description: `Chat reconciliation: ${model}`,
+            reservationTransactionId: appChatReservationTransactionId,
             metadata: {
               model,
               provider,
@@ -643,6 +654,7 @@ async function handlePOST(
               appId,
               userId: user.id,
               reservedBaseCost,
+              reservationTransactionId: appChatReservationTransactionId,
               errorMessage,
             },
             appCreditsService,
@@ -728,6 +740,7 @@ async function handlePOST(
         estimatedBaseCost: reservedBaseCost,
         actualBaseCost,
         description: `Chat reconciliation: ${model}`,
+        reservationTransactionId: appChatReservationTransactionId,
         metadata: {
           model,
           provider,
@@ -785,6 +798,7 @@ async function handlePOST(
           appId,
           userId: user.id,
           reservedBaseCost,
+          reservationTransactionId: appChatReservationTransactionId,
           errorMessage,
         },
         appCreditsService,

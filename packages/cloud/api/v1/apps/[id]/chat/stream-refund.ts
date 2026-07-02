@@ -13,6 +13,7 @@ export interface ChatSettleCredits {
     actualBaseCost: number;
     description: string;
     metadata?: Record<string, unknown>;
+    reservationTransactionId?: string | null;
   }): Promise<unknown>;
 }
 
@@ -67,6 +68,7 @@ export async function reconcileChatSettleError(
     appId: string;
     userId: string;
     reservedBaseCost: number;
+    reservationTransactionId?: string | null;
     errorMessage: string;
   },
   credits: ChatSettleCredits,
@@ -80,6 +82,7 @@ export async function reconcileChatSettleError(
     appId,
     userId,
     reservedBaseCost,
+    reservationTransactionId,
     errorMessage,
   } = params;
 
@@ -98,6 +101,7 @@ export async function reconcileChatSettleError(
     actualBaseCost: 0, // Full refund — nothing was billed.
     description: refundDescription,
     metadata: refundMetadata,
+    reservationTransactionId,
   });
   return { refunded: true };
 }

@@ -43,7 +43,7 @@ export const creditTransactions = pgTable(
     unsettled_reservations_idx: index("credit_transactions_unsettled_reservations_idx")
       .on(table.created_at)
       .where(
-        sql`${table.type} = 'debit' AND ${table.metadata}->>'type' = 'reservation' AND ${table.metadata}->>'settlement_marker' = 'credit_reservation_v1' AND ${table.settled_at} IS NULL`,
+        sql`${table.type} = 'debit' AND (( ${table.metadata}->>'type' = 'reservation' AND ${table.metadata}->>'settlement_marker' = 'credit_reservation_v1') OR (${table.metadata}->>'type' = 'app_chat_reservation' AND ${table.metadata}->>'settlement_marker' = 'app_chat_reservation_v1')) AND ${table.settled_at} IS NULL`,
       ),
     stripe_payment_intent_idx: uniqueIndex("credit_transactions_stripe_payment_intent_idx").on(
       table.stripe_payment_intent_id,

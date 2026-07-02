@@ -27,6 +27,7 @@ function makeCredits() {
     actualBaseCost: number;
     description: string;
     metadata?: Record<string, unknown>;
+    reservationTransactionId?: string | null;
   }> = [];
   const reconcileCredits = mock(
     async (args: {
@@ -34,12 +35,14 @@ function makeCredits() {
       actualBaseCost: number;
       description: string;
       metadata?: Record<string, unknown>;
+      reservationTransactionId?: string | null;
     }) => {
       calls.push({
         estimatedBaseCost: args.estimatedBaseCost,
         actualBaseCost: args.actualBaseCost,
         description: args.description,
         metadata: args.metadata,
+        reservationTransactionId: args.reservationTransactionId,
       });
       return null;
     },
@@ -68,6 +71,7 @@ function streamingSiteParams(streamCompleted: boolean, userId = base.userId) {
       "[App Chat] Stream processing failed before delivery, refunding reserved",
     refundDescription: "Refund due to stream error",
     refundMetadata: { error: true, streaming: true },
+    reservationTransactionId: "app-chat-hold-stream",
     errorMessage: "transient pg timeout",
   };
 }
@@ -91,6 +95,7 @@ function nonStreamingSiteParams(settleStarted: boolean) {
       billingSource: "openai",
       refundReason: "non_streaming_settle_error",
     },
+    reservationTransactionId: "app-chat-hold-nonstream",
     errorMessage: "provider body was not valid JSON",
   };
 }
@@ -120,6 +125,7 @@ describe("reconcileChatSettleError — streaming site (#10837)", () => {
       actualBaseCost: 0,
       description: "Refund due to stream error",
       metadata: { error: true, streaming: true },
+      reservationTransactionId: "app-chat-hold-stream",
     });
   });
 
@@ -148,6 +154,11 @@ describe("reconcileChatSettleError — streaming site (#10837)", () => {
     // 2 delivered (no refund) + 2 pre-delivery failures (refund) = exactly 2 refunds.
     expect(credits.reconcileCredits).toHaveBeenCalledTimes(2);
     expect(credits.calls.every((c) => c.actualBaseCost === 0)).toBe(true);
+    expect(
+      credits.calls.every(
+        (c) => c.reservationTransactionId === "app-chat-hold-stream",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -163,6 +174,7 @@ describe("reconcileChatSettleError — non-streaming site (#11169 part 1)", () =
     expect(credits.calls[0]).toMatchObject({
       estimatedBaseCost: 0.05,
       actualBaseCost: 0,
+      reservationTransactionId: "app-chat-hold-nonstream",
     });
   });
 
@@ -212,8 +224,12 @@ describe("reconcileChatSettleError — shared contract", () => {
       (c) => c.metadata?.streaming === false,
     );
     expect(streaming?.description).toBe("Refund due to stream error");
+    expect(streaming?.reservationTransactionId).toBe("app-chat-hold-stream");
     expect(nonStreaming?.description).toBe(
       "Chat refund (non-streaming settle failed): openai/gpt-oss-120b",
+    );
+    expect(nonStreaming?.reservationTransactionId).toBe(
+      "app-chat-hold-nonstream",
     );
     expect(nonStreaming?.metadata).toMatchObject({
       refundReason: "non_streaming_settle_error",

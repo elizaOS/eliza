@@ -708,12 +708,15 @@ export class AppCreditsService {
       actualBaseCost,
       description,
       metadata: rawMetadata,
-      app: providedApp,
       reservationTransactionId,
+      app: providedApp,
     } = params;
 
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
+    const settlementMetadata = reservationTransactionId
+      ? { ...metadata, reservation_transaction_id: reservationTransactionId }
+      : metadata;
 
     // #11512: idempotency key for the org-credit legs below, threaded as a
     // synthetic, namespaced stripePaymentIntentId. creditsService dedupes on
@@ -760,6 +763,25 @@ export class AppCreditsService {
     }
     const organizationId = user.organization_id;
 
+    const markReservationSettled = async (reason: string): Promise<void> => {
+      if (!reservationTransactionId) return;
+      try {
+        await creditsService.markReservationSettled({
+          organizationId,
+          reservationTransactionId,
+        });
+      } catch (error) {
+        logger.error("[AppCredits] Failed to mark app reservation settled", {
+          appId,
+          userId,
+          organizationId,
+          reservationTransactionId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
     const readOrgBalance = async (): Promise<number> => {
       const org = await organizationsRepository.findById(organizationId);
       return org ? Number.parseFloat(String(org.credit_balance)) : 0;
@@ -767,6 +789,7 @@ export class AppCreditsService {
 
     // Skip reconciliation for negligible differences
     if (Math.abs(baseCostDifference) < RECONCILIATION_THRESHOLD) {
+      await markReservationSettled("no_adjustment");
       return {
         reconciled: false,
         difference: 0,
@@ -819,7 +842,7 @@ export class AppCreditsService {
           estimatedBaseCost,
           actualBaseCost,
           markupPercentage,
-          ...metadata,
+          ...settlementMetadata,
         },
       });
 
@@ -838,7 +861,7 @@ export class AppCreditsService {
               estimatedBaseCost,
               actualBaseCost,
               description,
-              ...metadata,
+              ...settlementMetadata,
             },
           );
         } catch (reversalError) {
@@ -881,7 +904,7 @@ export class AppCreditsService {
                   actualBaseCost,
                   creatorEarningsReduction,
                   reason: "reconcile_refund_reversal_failed",
-                  ...metadata,
+                  ...settlementMetadata,
                 },
               });
               if (!compensation.success) {
@@ -934,6 +957,8 @@ export class AppCreditsService {
         newBalance,
       });
 
+      await markReservationSettled("refund");
+
       return {
         reconciled: true,
         difference: baseCostDifference,
@@ -963,7 +988,7 @@ export class AppCreditsService {
         actualBaseCost,
         markupPercentage,
         creatorMarkupDifference,
-        ...metadata,
+        ...settlementMetadata,
       },
     });
 
@@ -979,7 +1004,7 @@ export class AppCreditsService {
             type: "reconciliation_adjustment",
             baseCostDifference,
             description,
-            ...metadata,
+            ...settlementMetadata,
           },
           app,
         );
@@ -1007,6 +1032,8 @@ export class AppCreditsService {
         newBalance: orgDeduct.newBalance,
       });
 
+      await markReservationSettled("charge");
+
       return {
         reconciled: true,
         difference: baseCostDifference,
@@ -1029,6 +1056,8 @@ export class AppCreditsService {
         lossAmount: additionalCharge,
       },
     );
+
+    await markReservationSettled("uncollected_overage");
 
     return {
       reconciled: false,

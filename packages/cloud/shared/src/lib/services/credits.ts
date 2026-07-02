@@ -38,7 +38,8 @@ export const COST_BUFFER = Number(process.env.CREDIT_COST_BUFFER) || 1.5;
 export const MIN_RESERVATION = 0.000001;
 /** Epsilon for reconcile float comparisons — 10% of MIN_RESERVATION */
 export const EPSILON = MIN_RESERVATION * 0.1;
-const RESERVATION_SETTLEMENT_MARKER = "credit_reservation_v1";
+export const RESERVATION_SETTLEMENT_MARKER = "credit_reservation_v1";
+export const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
 /** Default estimated output tokens when not specified */
 export const DEFAULT_OUTPUT_TOKENS = 500;
 
@@ -1102,7 +1103,13 @@ export class CreditsService {
           WHERE id = ${reservationTransactionId}
             AND organization_id = ${organizationId}
             AND type = 'debit'
-            AND metadata->>'type' = 'reservation'
+            AND (
+              metadata->>'type' = 'reservation'
+              OR (
+                metadata->>'type' = 'app_chat_reservation'
+                AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
+              )
+            )
           LIMIT 1
         `,
       );
@@ -1137,7 +1144,13 @@ export class CreditsService {
             WHERE id = ${reservationTransactionId}
               AND organization_id = ${organizationId}
               AND type = 'debit'
-              AND metadata->>'type' = 'reservation'
+              AND (
+                metadata->>'type' = 'reservation'
+                OR (
+                  metadata->>'type' = 'app_chat_reservation'
+                  AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
+                )
+              )
               AND settled_at IS NULL
             RETURNING id
           `,
@@ -1166,7 +1179,13 @@ export class CreditsService {
           WHERE id = ${reservationTransactionId}
             AND organization_id = ${organizationId}
             AND type = 'debit'
-            AND metadata->>'type' = 'reservation'
+            AND (
+              metadata->>'type' = 'reservation'
+              OR (
+                metadata->>'type' = 'app_chat_reservation'
+                AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
+              )
+            )
             AND settled_at IS NULL
           RETURNING id, amount
         `,
@@ -1386,6 +1405,50 @@ export class CreditsService {
       this.notifyBalanceDecrease(organizationId, result.newBalance, result.balanceDecreaseMetadata);
     }
     return result;
+  }
+
+  async markReservationSettled(params: {
+    organizationId: string;
+    reservationTransactionId: string | null | undefined;
+  }): Promise<boolean> {
+    const { organizationId, reservationTransactionId } = params;
+    if (!reservationTransactionId) {
+      return false;
+    }
+
+    const rows = await sqlRows<{ id: string }>(
+      dbWrite,
+      sql`
+        UPDATE credit_transactions
+        SET settled_at = NOW()
+        WHERE id = ${reservationTransactionId}
+          AND organization_id = ${organizationId}
+          AND type = 'debit'
+          AND settled_at IS NULL
+          AND (
+            (
+              metadata->>'type' = 'reservation'
+              AND metadata->>'settlement_marker' = ${RESERVATION_SETTLEMENT_MARKER}
+            )
+            OR (
+              metadata->>'type' = 'app_chat_reservation'
+              AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
+            )
+          )
+        RETURNING id
+      `,
+    );
+    if (rows.length === 0) {
+      return false;
+    }
+
+    await CacheInvalidation.onCreditMutation(organizationId).catch((error) => {
+      logger.error("[CreditsService] Failed to invalidate credit mutation cache:", error);
+    });
+    invalidateOrganizationCache(organizationId).catch((error) => {
+      logger.error("[CreditsService] Failed to invalidate org cache:", error);
+    });
+    return true;
   }
 
   /**
@@ -1629,8 +1692,16 @@ export class CreditsService {
           SELECT id, organization_id, amount, description, metadata
           FROM credit_transactions
           WHERE type = 'debit'
-            AND metadata->>'type' = 'reservation'
-            AND metadata->>'settlement_marker' = ${RESERVATION_SETTLEMENT_MARKER}
+            AND (
+              (
+                metadata->>'type' = 'reservation'
+                AND metadata->>'settlement_marker' = ${RESERVATION_SETTLEMENT_MARKER}
+              )
+              OR (
+                metadata->>'type' = 'app_chat_reservation'
+                AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
+              )
+            )
             AND settled_at IS NULL
             AND created_at < NOW() - (${String(graceMs)} || ' milliseconds')::interval
           ORDER BY created_at ASC
@@ -1734,8 +1805,8 @@ export class CreditsService {
       throw new Error("reserve() amount must be non-negative");
     }
 
-    let estimatedCost: number;
     let reservedAmount: number;
+    let estimatedCost: number;
     let model: string | undefined;
 
     if (params.amount !== undefined) {

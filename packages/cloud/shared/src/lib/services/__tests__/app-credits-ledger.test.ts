@@ -55,6 +55,7 @@ mock.module("../../../db/repositories/users", () => ({
 const addCredits = mock();
 const reserveAndDeductCredits = mock();
 const refundCredits = mock();
+const markReservationSettled = mock();
 
 class MockInsufficientCreditsError extends Error {
   constructor(
@@ -78,6 +79,7 @@ mock.module("../credits", () => ({
     addCredits,
     reserveAndDeductCredits,
     refundCredits,
+    markReservationSettled,
   },
 }));
 
@@ -144,6 +146,7 @@ beforeEach(() => {
   addCredits.mockReset();
   reserveAndDeductCredits.mockReset();
   refundCredits.mockReset();
+  markReservationSettled.mockReset();
   addEarnings.mockReset();
   reduceEarnings.mockReset();
   updateMock.mockClear();
@@ -165,6 +168,7 @@ beforeEach(() => {
     transaction: { id: "tx-2" },
   });
   refundCredits.mockResolvedValue({ newBalance: 43.6 });
+  markReservationSettled.mockResolvedValue(true);
   addEarnings.mockResolvedValue({ success: true });
   reduceEarnings.mockResolvedValue({ success: true });
   trackAppUserActivity.mockResolvedValue(undefined);
@@ -403,6 +407,11 @@ describe("reserveInferenceCredits — holds app inference cost before model work
     expect(refundCredits).toHaveBeenCalledTimes(1);
     expect(refundCredits.mock.calls[0][0].organizationId).toBe(ORG_ID);
     expect(refundCredits.mock.calls[0][0].amount).toBeCloseTo(1.1, 10);
+    expect(refundCredits.mock.calls[0][0].metadata.reservation_transaction_id).toBe("tx-2");
+    expect(markReservationSettled).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      reservationTransactionId: "tx-2",
+    });
     expect(reduceEarnings).toHaveBeenCalledTimes(1);
     expect(reduceEarnings.mock.calls[0][0].amount).toBeCloseTo(0.1, 10);
   });
@@ -433,11 +442,16 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
       estimatedBaseCost: 1,
       actualBaseCost: 1,
       description: "recon",
+      reservationTransactionId: "app-hold-1",
     });
     expect(result.reconciled).toBe(false);
     expect(result.action).toBe("none");
     expect(reserveAndDeductCredits).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
+    expect(markReservationSettled).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      reservationTransactionId: "app-hold-1",
+    });
   });
 
   test("charges the markup'd delta to the org when actual exceeds estimated", async () => {
