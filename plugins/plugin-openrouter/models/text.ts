@@ -497,7 +497,13 @@ function handleStreamingGeneration(
   modelLabel: string,
   shouldReturnNativeResult: boolean
 ): TextStreamResult {
-  const streamResult = streamText(generateParams);
+  let capturedStreamError: unknown;
+  const streamResult = streamText({
+    ...(generateParams as Parameters<typeof streamText>[0]),
+    onError: ({ error }: { error: unknown }) => {
+      capturedStreamError = error;
+    },
+  });
   const usagePromise = Promise.resolve(streamResult.usage).then((usage) => {
     if (!usage) {
       return undefined;
@@ -514,6 +520,14 @@ function handleStreamingGeneration(
         yield chunk;
       }
       completed = true;
+      await Promise.resolve(streamResult.finishReason).catch((error) => {
+        capturedStreamError ??= error;
+      });
+      if (capturedStreamError) {
+        throw capturedStreamError instanceof Error
+          ? capturedStreamError
+          : new Error(`[OpenRouter] streaming provider error: ${String(capturedStreamError)}`);
+      }
     } finally {
       if (completed) {
         await usagePromise.catch(ignoreUsageError);
