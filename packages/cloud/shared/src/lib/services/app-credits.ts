@@ -697,6 +697,14 @@ export class AppCreditsService {
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
 
+    // Request-stable idempotency key threaded via withChargeIdempotencyKey.
+    // Reconcile refunds must be idempotent because callers may retry a settle
+    // after the refund transaction commits but a later write fails.
+    const reconcileIdempotencyKey =
+      typeof (metadata as Record<string, unknown> | undefined)?.idempotencyKey === "string"
+        ? ((metadata as Record<string, unknown>).idempotencyKey as string)
+        : undefined;
+
     const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
     // Resolve the user's organization once — every branch below charges or
@@ -762,6 +770,9 @@ export class AppCreditsService {
         organizationId,
         amount: refundAmount,
         description: `App reconciliation refund (${app.name ?? appId})`,
+        ...(reconcileIdempotencyKey && {
+          stripePaymentIntentId: `reconcile-refund:${reconcileIdempotencyKey}`,
+        }),
         metadata: {
           appId,
           userId,

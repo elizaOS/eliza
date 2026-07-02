@@ -357,6 +357,47 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
   );
 
   test(
+    "a repeated reconcile refund for the same reservation is idempotent",
+    async () => {
+      if (!pgliteReady) return;
+
+      const payerOrgId = await seedOrg("10.000000");
+      const consumerId = await seedUser(payerOrgId);
+      const creatorOrgId = await seedOrg("0.000000");
+      const creatorId = await seedUser(creatorOrgId);
+      const app = await seedApp({
+        organizationId: creatorOrgId,
+        createdByUserId: creatorId,
+        inferenceMarkupPercentage: 10,
+      });
+
+      // $2 estimate + 10% markup = $2.20 debited, leaving $7.80.
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId: consumerId,
+        estimatedBaseCost: 2,
+        description: "reconcile-refund idempotency",
+        idempotencyKey: "req-11512",
+        metadata: { model: "test-model" },
+        app,
+      });
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
+
+      // Actual $0.50 refunds (2 - 0.5) * 1.1 = $1.65, leaving $9.45.
+      const first = await reservation.reconcile(0.5);
+      expect(first?.adjustmentType).toBe("refund");
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+
+      // A retry for the same reservation must dedupe the refund transaction
+      // instead of minting credit above the original $10 balance.
+      await reservation.reconcile(0);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+      expect(await orgBalance(payerOrgId)).toBeLessThan(10);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "a $0 estimate opens a MIN_RESERVATION floor hold instead of throwing 'Amount must be positive' (residual of #10892)",
     async () => {
       if (!pgliteReady) return;
