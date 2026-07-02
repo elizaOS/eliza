@@ -1,18 +1,16 @@
 /**
- * Voice Workbench — multi-agent-room scenario class (#8785). A room with the
- * owner plus more than one agent participant; addressed turns get a reply while
- * an aside meant for another human is ignored. The player drives each turn
- * through the real client loop and scores the respond decisions.
+ * Voice Workbench — agent-room metadata browser wiring (#8785). A scenario with
+ * multiple agent labels drives mocked reply/no-response SSE events through the
+ * real client player and verifies the DOM/report response-state mirror.
  *
- *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-multi-agent-room.spec.ts
+ *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-agent-room-metadata.spec.ts
  */
 import { runWorkbenchScenarioSpec } from "./voice-workbench-cases";
 
 runWorkbenchScenarioSpec({
-  id: "multi-agent-room-basic",
-  description:
-    "Owner + two agents in a room; addressed turns reply, asides do not.",
-  classes: ["multi-agent-room"],
+  id: "agent-room-metadata-basic",
+  description: "Owner + two agent labels round-trip response-state metadata.",
+  classes: ["agent-room-metadata"],
   participants: [
     { label: "owner", isOwner: true },
     { label: "eliza", entityId: "agent-eliza" },

@@ -1,17 +1,16 @@
 /**
- * Voice Workbench — respond / no-respond scenario class (#8785). Mixes turns the
- * agent should answer with turns it should ignore (background chatter). The
- * player scores each turn's respond decision against ground truth — a real
- * `noResponseReason: "ignored"` resolves the reply text to "" (no response).
+ * Voice Workbench — response-state SSE browser wiring (#8785). The mocked agent
+ * stream mixes token/done replies with `noResponseReason: "ignored"` done
+ * events so the client can prove response/no-response state propagation.
  *
- *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-respond-no-respond.spec.ts
+ *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-response-state-sse.spec.ts
  */
 import { runWorkbenchScenarioSpec } from "./voice-workbench-cases";
 
 runWorkbenchScenarioSpec({
   id: "respond-decision-mix",
-  description: "Directed questions get a reply; overheard chatter does not.",
-  classes: ["respond-no-respond"],
+  description: "Mock SSE replies and no-response events map to client state.",
+  classes: ["response-state-sse"],
   participants: [{ label: "owner", isOwner: true }, { label: "bystander" }],
   turns: [
     {

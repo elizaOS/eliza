@@ -2,15 +2,16 @@
  * Shared fixtures + a parameterized driver for the Voice Workbench scenario-player
  * e2e specs (#8785).
  *
- * Each `voice-workbench-<class>.spec.ts` declares a small WorkbenchScenario for
- * its scenario class and calls {@link runWorkbenchScenarioSpec}. The driver mocks
- * the ASR / agent / TTS backends (none are provisioned in CI), navigates to the
- * `?shellMode=voice-workbench` screen, drives the REAL client player via
+ * Each `voice-workbench-*.spec.ts` declares a small WorkbenchScenario for one
+ * browser wiring case and calls {@link runWorkbenchScenarioSpec}. The driver
+ * mocks the ASR / agent / TTS backends (none are provisioned in CI), navigates
+ * to the `?shellMode=voice-workbench` screen, drives the REAL client player via
  * `window.__voiceWorkbench(scenario)`, and asserts the per-turn DOM verdicts.
  *
- * The backends are mocked but every CLIENT step is real — the same surface the
- * android/desktop lanes drive against a real on-device agent. A turn whose corpus
- * clip is genuinely absent reports `skipped`, never a faked `pass`.
+ * The backends are mocked but every CLIENT step is real: corpus WAV load,
+ * transcript propagation, streamed response/no-response handling, TTS decode,
+ * and DOM mirroring. Model-quality scoring (ASR accuracy, diarization,
+ * voice/entity recognition) belongs to the tier-2/tier-3 lanes with real signals.
  */
 import { expect, type Page, test } from "@playwright/test";
 import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
@@ -110,7 +111,7 @@ async function installScenarioMocks(
 
   // ASR returns the per-turn transcript in scenario order. The player POSTs one
   // ASR request per turn; we walk the turns with a cursor so each turn gets its
-  // own transcript (and WER stays ~0 against the expected reference).
+  // own mocked transcript. This lane proves propagation, not recognizer accuracy.
   let asrCursor = 0;
   await page.route("**/api/asr/local-inference", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
@@ -180,6 +181,7 @@ interface WorkbenchReport {
     responded: boolean;
     expectRespond: boolean;
     transcript: string;
+    expectedTranscript: string;
     reply: string;
     error?: string;
     detail?: Record<string, unknown>;
@@ -209,7 +211,7 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
     await installScenarioMocks(page, scenario);
   });
 
-  test(`voice workbench [${scenario.classes.join(",")}] scenario ${scenario.id} scores every turn`, async ({
+  test(`voice workbench browser wiring [${scenario.classes.join(",")}] case ${scenario.id} round-trips mocked backend turns`, async ({
     page,
   }) => {
     await page.goto("/?shellMode=voice-workbench", {
@@ -236,17 +238,16 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       scenario,
     );
 
-    const expectsRealDiarization = scenario.classes.includes("diarization");
-
-    // Mocked ASR / agent / TTS backends are present, so non-diarization turns
-    // must resolve cleanly. The mock lane has no real speaker-attribution model,
-    // so a scenario whose load-bearing class is diarization must report skipped
-    // rather than a fake pass.
+    // Mocked ASR / agent / TTS backends are present, so the browser wiring case
+    // must resolve cleanly. The mock lane has no real speaker-attribution model;
+    // it must keep the attribution/DER gate skipped rather than fabricating
+    // labels from scenario metadata.
     expect(
       report.overall,
       `turns: ${JSON.stringify(report.turns, null, 2)}`,
-    ).toBe(expectsRealDiarization ? "skipped" : "pass");
+    ).toBe("pass");
     expect(report.scenarioId).toBe(scenario.id);
+    expect(report.classes).toEqual(scenario.classes);
     expect(report.turns).toHaveLength(scenario.turns.length);
     expect(report.diarization.status, "mock-lane diarization status").toBe(
       "skipped",
@@ -264,15 +265,15 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       "speaker attribution is not available",
     );
 
-    // Every turn's respond decision must match ground truth and no turn failed.
-    // Speaker labels are still carried into the report, but the mock lane has
-    // no attribution model, so predicted labels stay null and cannot satisfy a
-    // diarization proof.
+    // Every turn's response-state decision must match the mocked SSE stream and
+    // no turn failed. Speaker labels and entity hints are report metadata only in
+    // this lane; predicted labels stay null because no attribution model runs.
     for (let i = 0; i < scenario.turns.length; i += 1) {
       const turn = report.turns[i];
       const expected = scenario.turns[i];
       const expectedSpeakerLabel =
         expected.expectedSpeakerLabel ?? expected.speaker;
+      const expectedTranscript = expected.asrText ?? expected.text ?? "";
       expect(turn.status, `turn ${i} (${turn.error ?? "no error"})`).toBe(
         "pass",
       );
@@ -283,6 +284,13 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
         turn.expectedSpeakerLabel,
         `turn ${i} expected speaker label`,
       ).toBe(expectedSpeakerLabel);
+      expect(turn.transcript, `turn ${i} transcript propagation`).toBe(
+        expectedTranscript,
+      );
+      expect(
+        turn.expectedTranscript,
+        `turn ${i} expected transcript metadata`,
+      ).toBe(expected.expectedTranscript ?? expected.text ?? "");
       expect(
         turn.predictedSpeakerLabel,
         `turn ${i} predicted speaker label is unavailable in the mock lane`,
@@ -291,6 +299,11 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
         turn.detail?.speakerAttributionRan,
         `turn ${i} speaker attribution ran`,
       ).toBe(false);
+      if (expected.expectedEntity) {
+        expect(turn.detail?.expectedEntity, `turn ${i} expected entity`).toBe(
+          expected.expectedEntity,
+        );
+      }
     }
 
     // DOM mirror: per-turn elements carry the verdict for a non-JS scraper.
