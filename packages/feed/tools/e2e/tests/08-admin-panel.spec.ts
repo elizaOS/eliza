@@ -60,43 +60,46 @@ test.describe("Admin Panel - Tab Switching", () => {
     await cooldownBetweenTests(page);
   });
 
+  // The real tab labels from app/admin/page.tsx. The old list named 10+
+  // tabs that never existed (Rewards, Settings, Finance, Roles, Permissions,
+  // Cache, Queue, Webhooks, API, Database) and asserted nothing either way.
   const adminTabs = [
-    "Overview",
-    "Users",
-    "Agents",
-    "Markets",
-    "Reports",
-    "Content",
-    "Moderation",
+    "Dashboard",
     "Analytics",
-    "Rewards",
-    "Game",
-    "Settings",
-    "Logs",
-    "Finance",
+    "Growth Metrics",
+    "System Health",
+    "Game Control",
+    "Markets",
+    "Fees",
+    "Trades",
+    "Escrow",
+    "Users",
+    "Admin Management",
+    "Content Moderation",
+    "Reports",
+    "Human Review",
+    "Registry",
+    "Groups",
+    "Alpha Groups",
     "Notifications",
-    "Roles",
-    "Permissions",
-    "Audit",
-    "System",
-    "Cache",
-    "Queue",
-    "Webhooks",
-    "API",
-    "Database",
-    "Performance",
+    "Whitelist",
+    "Agents",
+    "AI Models",
+    "Training Data",
+    "Audit Logs",
   ];
 
   for (const tabName of adminTabs) {
     test(`switch to ${tabName} tab`, async ({ page }) => {
       const switched = await clickTab(page, tabName);
-      if (switched) {
-        await page.waitForTimeout(500);
-        const body = await page.locator("body").textContent();
-        expect(body).toBeTruthy();
-        expect(body?.length).toBeGreaterThan(0);
-      }
-      expect(typeof switched).toBe("boolean");
+      test.skip(
+        !switched,
+        `no "${tabName}" tab rendered (requires admin permissions)`,
+      );
+      await page.waitForTimeout(500);
+      const body = await page.locator("body").textContent();
+      expect(body).toBeTruthy();
+      expect(body?.length).toBeGreaterThan(0);
     });
   }
 });
@@ -111,7 +114,8 @@ test.describe("Admin Panel - Users", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.ADMIN);
     await waitForPageLoad(page);
-    await clickTab(page, "Users");
+    const onTab = await clickTab(page, "Users");
+    test.skip(!onTab, 'no "Users" tab rendered (requires admin permissions)');
   });
 
   test.afterEach(async ({ page }) => {
@@ -126,7 +130,8 @@ test.describe("Admin Panel - Users", () => {
 
   test("user search works", async ({ page }) => {
     const result = await fillAndVerify(page, SELECTORS.SEARCH_INPUT, "test");
-    expect(result === null || typeof result === "string").toBe(true);
+    test.skip(result === null, "no search input rendered on the Users tab");
+    expect(result).toBe("test");
   });
 
   test("users table or list displays", async ({ page }) => {
@@ -136,7 +141,12 @@ test.describe("Admin Panel - Users", () => {
     const isVisible = await table
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no users table rendered on the Users tab");
+    const rows = await table
+      .locator('tr, [role="row"]')
+      .count()
+      .catch(() => 0);
+    expect(rows).toBeGreaterThan(0);
   });
 });
 
@@ -150,7 +160,8 @@ test.describe("Admin Panel - Agents", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.ADMIN);
     await waitForPageLoad(page);
-    await clickTab(page, "Agents");
+    const onTab = await clickTab(page, "Agents");
+    test.skip(!onTab, 'no "Agents" tab rendered (requires admin permissions)');
   });
 
   test.afterEach(async ({ page }) => {
@@ -172,7 +183,8 @@ test.describe("Admin Panel - Agents", () => {
     const isVisible = await pauseBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no pause control rendered (no running agents)");
+    await expect(pauseBtn).toBeEnabled();
   });
 
   test("resume agent button visible", async ({ page }) => {
@@ -184,7 +196,8 @@ test.describe("Admin Panel - Agents", () => {
     const isVisible = await resumeBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no resume control rendered (no paused agents)");
+    await expect(resumeBtn).toBeEnabled();
   });
 });
 
@@ -198,7 +211,8 @@ test.describe("Admin Panel - Reports", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.ADMIN);
     await waitForPageLoad(page);
-    await clickTab(page, "Reports");
+    const onTab = await clickTab(page, "Reports");
+    test.skip(!onTab, 'no "Reports" tab rendered (requires admin permissions)');
   });
 
   test.afterEach(async ({ page }) => {
@@ -218,7 +232,8 @@ test.describe("Admin Panel - Reports", () => {
     const isVisible = await approveBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no approve control rendered (reports queue empty)");
+    await expect(approveBtn).toBeEnabled();
   });
 
   test("reject button visible", async ({ page }) => {
@@ -230,7 +245,8 @@ test.describe("Admin Panel - Reports", () => {
     const isVisible = await rejectBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no reject control rendered (reports queue empty)");
+    await expect(rejectBtn).toBeEnabled();
   });
 });
 
@@ -244,7 +260,11 @@ test.describe("Admin Panel - Game Control", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.ADMIN);
     await waitForPageLoad(page);
-    await clickTab(page, "Game");
+    const onTab = await clickTab(page, "Game Control");
+    test.skip(
+      !onTab,
+      'no "Game Control" tab rendered (requires admin permissions)',
+    );
   });
 
   test.afterEach(async ({ page }) => {
@@ -259,7 +279,7 @@ test.describe("Admin Panel - Game Control", () => {
       "running",
       "game",
     );
-    expect(typeof hasStatus).toBe("boolean");
+    expect(hasStatus).toBe(true);
   });
 
   test("refresh button visible", async ({ page }) => {
@@ -271,6 +291,7 @@ test.describe("Admin Panel - Game Control", () => {
     const isVisible = await refreshBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no refresh control rendered on the Game Control tab");
+    await expect(refreshBtn).toBeEnabled();
   });
 });

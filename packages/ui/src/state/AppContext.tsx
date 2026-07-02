@@ -1366,7 +1366,16 @@ function AppProviderInner({
   const tabSync = useTabSync({
     onActiveConversation: (id) => {
       tabSyncActiveConvRef.current = id;
-      setActiveConversationId(id);
+      if (id === null) {
+        setActiveConversationId(null);
+        return;
+      }
+      // Apply the switch through the real selection handler so this window's
+      // thread repaints with the target conversation's messages (and its
+      // per-connection server state re-arms). A bare setActiveConversationId
+      // changed the id but left the previous conversation's messages on
+      // screen — exactly the split-brain UI the sync exists to prevent.
+      void handleSelectConversation(id);
     },
     onPrefs: (prefs) => {
       if (prefs.language) {

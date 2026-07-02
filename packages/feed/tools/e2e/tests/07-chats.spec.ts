@@ -52,7 +52,15 @@ test.describe("Chats - Layout", () => {
 
   test("tab switching works", async ({ page }) => {
     const switched = await clickTab(page, "All");
-    expect(typeof switched).toBe("boolean");
+    test.skip(!switched, 'no "All" tab rendered on the chats page');
+    const hasContent = await pageContainsText(
+      page,
+      "chat",
+      "message",
+      "conversation",
+      "direct",
+    );
+    expect(hasContent).toBe(true);
   });
 
   test("chat list renders", async ({ page }) => {
@@ -66,7 +74,8 @@ test.describe("Chats - Layout", () => {
     const isVisible = await searchInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no search input rendered on the chats page");
+    await expect(searchInput).toBeEnabled();
   });
 });
 
@@ -91,33 +100,41 @@ test.describe("Chats - Messaging", () => {
     const isVisible = await chatInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await chatInput.fill("Hello E2E test");
-      const value = await chatInput.inputValue().catch(() => "");
-      expect(value).toContain("Hello");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no chat input rendered (no chat open)");
+    await chatInput.fill("Hello E2E test");
+    const value = await chatInput.inputValue().catch(() => "");
+    expect(value).toContain("Hello");
   });
 
   test("send button present", async ({ page }) => {
-    const sendBtn = page.locator(SELECTORS.SEND_BUTTON).first();
-    const isVisible = await sendBtn
+    // The send button belongs to the composer: if a chat composer is open,
+    // its send button must render alongside it.
+    const chatInput = page.locator(SELECTORS.CHAT_INPUT).first();
+    const composerOpen = await chatInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!composerOpen, "no chat composer rendered (no chat open)");
+    await expect(page.locator(SELECTORS.SEND_BUTTON).first()).toBeVisible();
   });
 
   test("message timestamps visible", async ({ page }) => {
-    const hasTimestamps = await pageContainsText(
+    const timeElements = await page
+      .locator("time")
+      .count()
+      .catch(() => 0);
+    const hasRelativeTime = await pageContainsText(
       page,
       "ago",
       "today",
       "yesterday",
-      "am",
-      "pm",
+      "just now",
     );
-    expect(typeof hasTimestamps).toBe("boolean");
+    const hasTimestamps = timeElements > 0 || hasRelativeTime;
+    test.skip(
+      !hasTimestamps,
+      "no message timestamps rendered (no messages in any chat)",
+    );
+    expect(hasTimestamps).toBe(true);
   });
 
   test("SSE connection status indicator", async ({ page }) => {
@@ -127,7 +144,11 @@ test.describe("Chats - Messaging", () => {
       "online",
       "live",
     );
-    expect(typeof hasStatus).toBe("boolean");
+    test.skip(
+      !hasStatus,
+      "no connection-status indicator rendered on the chats page",
+    );
+    expect(hasStatus).toBe(true);
   });
 });
 
@@ -152,13 +173,12 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    if (modal) {
-      const isVisible = await modal.isVisible().catch(() => false);
-      expect(isVisible).toBe(true);
-      await closeModal(page);
-    } else {
-      expect(true).toBe(true);
+    if (modal === null) {
+      test.skip(true, "no group/chat creation button rendered on the chats page");
+      return;
     }
+    await expect(modal).toBeVisible();
+    await closeModal(page);
   });
 
   test("group creation requires name", async ({ page }) => {
@@ -166,18 +186,16 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    if (modal) {
-      const nameInput = modal
-        .locator('input[name="name"], input[placeholder*="name" i]')
-        .first();
-      const isVisible = await nameInput
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
-      expect(typeof isVisible).toBe("boolean");
-      await closeModal(page);
-    } else {
-      expect(true).toBe(true);
+    if (modal === null) {
+      test.skip(true, "no group/chat creation button rendered on the chats page");
+      return;
     }
+    const nameInput = modal
+      .locator('input[name="name"], input[placeholder*="name" i]')
+      .first();
+    // A creation form must ask for a name.
+    await expect(nameInput).toBeVisible({ timeout: 3000 });
+    await closeModal(page);
   });
 
   test("cancel closes group creation modal", async ({ page }) => {
@@ -185,16 +203,16 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    if (modal) {
-      await closeModal(page);
-      const modalGone = page.locator(SELECTORS.MODAL).first();
-      const stillVisible = await modalGone
-        .isVisible({ timeout: 1000 })
-        .catch(() => false);
-      expect(stillVisible).toBe(false);
-    } else {
-      expect(true).toBe(true);
+    if (modal === null) {
+      test.skip(true, "no group/chat creation button rendered on the chats page");
+      return;
     }
+    await closeModal(page);
+    const modalGone = page.locator(SELECTORS.MODAL).first();
+    const stillVisible = await modalGone
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+    expect(stillVisible).toBe(false);
   });
 });
 
@@ -216,7 +234,8 @@ test.describe("Chats - Search", () => {
 
   test("search filters chats", async ({ page }) => {
     const result = await fillAndVerify(page, SELECTORS.SEARCH_INPUT, "test");
-    expect(result === null || typeof result === "string").toBe(true);
+    test.skip(result === null, "no search input rendered on the chats page");
+    expect(result).toBe("test");
   });
 
   test("clear search resets list", async ({ page }) => {

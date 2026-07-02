@@ -19,10 +19,10 @@ test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
 test.describe("Security", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -42,10 +42,7 @@ test.describe("Security", () => {
     );
     const count = await textInputs.count();
 
-    if (count === 0) {
-      expect(true).toBe(true);
-      return;
-    }
+    test.skip(count === 0, "no text inputs rendered on the settings page");
 
     for (let i = 0; i < count; i++) {
       const input = textInputs.nth(i);
@@ -76,14 +73,12 @@ test.describe("Security", () => {
       .locator('input[type="search"], input[placeholder*="Search" i]')
       .first();
 
-    if (
+    test.skip(
       !(await searchInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false))
-    ) {
-      expect(true).toBe(true);
-      return;
-    }
+        .catch(() => false)),
+      "no search input rendered on the markets page",
+    );
 
     await searchInput.fill("'; DROP TABLE users; --");
     await page.waitForTimeout(1000);
@@ -95,15 +90,7 @@ test.describe("Security", () => {
   });
 
   test("API errors do not expose stack traces", async ({ page }) => {
-    const response = await page.request
-      .get("/api/nonexistent-endpoint-xyz")
-      .catch(() => null);
-
-    if (!response) {
-      expect(true).toBe(true);
-      return;
-    }
-
+    const response = await page.request.get("/api/nonexistent-endpoint-xyz");
     const text = await response.text();
     expect(text).not.toMatch(/at\s+\w+\s+\(/i);
     expect(text).not.toMatch(/Error:\s+/i);
@@ -113,10 +100,10 @@ test.describe("Security", () => {
 
 test.describe("Input Validation", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -137,14 +124,12 @@ test.describe("Input Validation", () => {
       )
       .first();
 
-    if (
+    test.skip(
       !(await createButton
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false))
-    ) {
-      expect(true).toBe(true);
-      return;
-    }
+        .catch(() => false)),
+      "no create-post affordance rendered on the feed page",
+    );
 
     await createButton.click();
     await page.waitForTimeout(1000);
@@ -158,8 +143,8 @@ test.describe("Input Validation", () => {
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      const isDisabled = await submitButton.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe("boolean");
+      // Empty composer must not be submittable.
+      await expect(submitButton).toBeDisabled();
     }
 
     await page.keyboard.press("Escape");
@@ -175,21 +160,19 @@ test.describe("Input Validation", () => {
       .locator('input[type="text"], input:not([type])')
       .first();
 
-    if (
+    test.skip(
       !(await textInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false))
-    ) {
-      expect(true).toBe(true);
-      return;
-    }
+        .catch(() => false)),
+      "no text input rendered on the settings page",
+    );
 
     const unicodeTest = "日本語テスト 🎉 émojis";
     await textInput.clear().catch(() => {});
     await textInput.fill(unicodeTest);
 
     const value = await textInput.inputValue();
-    expect(value.length).toBeGreaterThan(0);
+    expect(value).toBe(unicodeTest);
   });
 
   test("excessively long input is handled gracefully", async ({ page }) => {
@@ -200,30 +183,29 @@ test.describe("Input Validation", () => {
       .locator('input[type="text"], input:not([type])')
       .first();
 
-    if (
+    test.skip(
       !(await textInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false))
-    ) {
-      expect(true).toBe(true);
-      return;
-    }
+        .catch(() => false)),
+      "no text input rendered on the settings page",
+    );
 
     const longString = "A".repeat(5000);
     await textInput.clear().catch(() => {});
     await textInput.fill(longString);
 
     const value = await textInput.inputValue();
-    expect(typeof value).toBe("string");
+    expect(value.length).toBeGreaterThan(0);
+    expect(value.length).toBeLessThanOrEqual(longString.length);
   });
 });
 
 test.describe("Rate Limiting", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -264,10 +246,10 @@ test.describe("Rate Limiting", () => {
 
 test.describe("Markets Input Validation", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -291,62 +273,59 @@ test.describe("Markets Input Validation", () => {
 
   test("rejects negative numbers in quantity input", async ({ page }) => {
     const quantityInput = page.locator(SELECTORS.QUANTITY_INPUT).first();
-    if (
-      await quantityInput
+    test.skip(
+      !(await quantityInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false)
-    ) {
-      await quantityInput.fill("-1");
-      await page.waitForTimeout(500);
+        .catch(() => false)),
+      "no quantity input rendered on the perp trading page",
+    );
+    await quantityInput.fill("-1");
+    await page.waitForTimeout(500);
 
-      const _value = await quantityInput.inputValue();
-      // Input should reject, clear, or show validation
-      const body = await page.locator("body").textContent();
-      expect(body?.length).toBeGreaterThan(100);
-    }
+    const value = await quantityInput.inputValue();
+    // The field must not retain a negative quantity.
+    expect(value.startsWith("-")).toBe(false);
   });
 
   test("rejects non-numeric input in quantity field", async ({ page }) => {
     const quantityInput = page.locator(SELECTORS.QUANTITY_INPUT).first();
-    if (
-      await quantityInput
+    test.skip(
+      !(await quantityInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false)
-    ) {
-      await quantityInput.fill("abc");
-      await page.waitForTimeout(500);
+        .catch(() => false)),
+      "no quantity input rendered on the perp trading page",
+    );
+    await quantityInput.fill("abc");
+    await page.waitForTimeout(500);
 
-      const value = await quantityInput.inputValue();
-      // Should reject non-numeric input
-      expect(
-        value === "" || value === "0" || !Number.isNaN(Number(value)),
-      ).toBe(true);
-    }
+    const value = await quantityInput.inputValue();
+    // A quantity field must not retain a non-numeric value.
+    expect(value).not.toBe("abc");
   });
 
   test("handles decimal precision in trading inputs", async ({ page }) => {
     const quantityInput = page.locator(SELECTORS.QUANTITY_INPUT).first();
-    if (
-      await quantityInput
+    test.skip(
+      !(await quantityInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false)
-    ) {
-      await quantityInput.fill("0.001");
-      await page.waitForTimeout(500);
+        .catch(() => false)),
+      "no quantity input rendered on the perp trading page",
+    );
+    await quantityInput.fill("0.001");
+    await page.waitForTimeout(500);
 
-      const value = await quantityInput.inputValue();
-      // Should accept or round decimal input
-      expect(typeof value).toBe("string");
-    }
+    const value = await quantityInput.inputValue();
+    // Decimal input is accepted (possibly rounded), never NaN.
+    expect(Number.isNaN(Number.parseFloat(value))).toBe(false);
   });
 });
 
 test.describe("Profile Input Validation", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -368,19 +347,19 @@ test.describe("Profile Input Validation", () => {
       )
       .first();
 
-    if (
-      await usernameInput
+    test.skip(
+      !(await usernameInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false)
-    ) {
-      await usernameInput.clear().catch(() => {});
-      await usernameInput.fill("test user");
-      await page.waitForTimeout(500);
+        .catch(() => false)),
+      "no username input rendered on the profile settings tab",
+    );
+    await usernameInput.clear().catch(() => {});
+    await usernameInput.fill("test user");
+    await page.waitForTimeout(500);
 
-      // Should show validation error or reject spaces
-      const body = await page.locator("body").textContent();
-      expect(body?.length).toBeGreaterThan(50);
-    }
+    // Should show validation error or reject spaces
+    const body = await page.locator("body").textContent();
+    expect(body?.length).toBeGreaterThan(50);
   });
 
   test("enforces minimum username length", async ({ page }) => {
@@ -390,28 +369,28 @@ test.describe("Profile Input Validation", () => {
       )
       .first();
 
-    if (
-      await usernameInput
+    test.skip(
+      !(await usernameInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
-        .catch(() => false)
-    ) {
-      await usernameInput.clear().catch(() => {});
-      await usernameInput.fill("a");
-      await page.waitForTimeout(500);
+        .catch(() => false)),
+      "no username input rendered on the profile settings tab",
+    );
+    await usernameInput.clear().catch(() => {});
+    await usernameInput.fill("a");
+    await page.waitForTimeout(500);
 
-      // Should show validation error for too short
-      const body = await page.locator("body").textContent();
-      expect(body?.length).toBeGreaterThan(50);
-    }
+    // Should show validation error for too short
+    const body = await page.locator("body").textContent();
+    expect(body?.length).toBeGreaterThan(50);
   });
 });
 
 test.describe("Error Pages", () => {
   test("404 page shows for invalid routes", async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
 
     await navigateTo(page, "/definitely-not-a-page-xyz-123");
     await waitForPageLoad(page);

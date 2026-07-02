@@ -17,6 +17,7 @@ import type {
   SpawnOptions,
   SpawnResult,
 } from "../services/types.js";
+import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 
 export interface AcpActionService {
   defaultApprovalPreset?: ApprovalPreset;
@@ -306,19 +307,6 @@ export async function listSessionsWithin(
     ),
   ]);
 }
-
-// Terminal session statuses — a session in one of these is done and no
-// longer occupying a provider slot. Defined as the terminal set (not the
-// active set) so any non-terminal status — including transient ones like
-// `starting` that aren't in the documented `SessionStatus` union — counts
-// as active and the gate fails closed. Mirrors the terminal filter in
-// AcpService.enforceSessionLimit.
-const TERMINAL_SESSION_STATUSES = new Set([
-  "completed",
-  "stopped",
-  "errored",
-  "cancelled",
-]);
 
 /**
  * Block until the number of in-flight sub-agent sessions drops below the

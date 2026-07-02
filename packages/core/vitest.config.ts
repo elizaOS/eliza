@@ -41,10 +41,18 @@ export default defineConfig({
 			"**/.claude/**",
 			".claude/**",
 			"**/*.e2e.test.*",
-			"**/*.live.test.*",
 			"**/*.live.e2e.test.*",
-			"**/*.real.test.*",
 			"**/*.real.e2e.test.*",
+			// #9310 §E: the guarded live/real suites (they self-skip without
+			// creds/opt-in) are invocable only in the post-merge lane, where
+			// run-all-tests.mjs prints a named skip accounting. The unguarded
+			// live/real files stay excluded in every lane.
+			...(process.env.VITEST_LANE === "post-merge"
+				? [
+						"src/__tests__/read-attachment-action.live.test.ts",
+						"src/features/trust/should-respond-risk-gate.real.test.ts",
+					]
+				: ["**/*.live.test.*", "**/*.real.test.*"]),
 			// Playwright e2e specs must be run with `npm run test:e2e` (playwright test), not vitest
 			"e2e/**",
 		],

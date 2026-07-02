@@ -37,10 +37,7 @@ test.describe("NFT Mint Flow", () => {
   test.beforeEach(async ({ page }) => {
     // Wait for server to be ready
     const isReady = await ensureTestDataSeeded();
-    if (!isReady) {
-      test.skip();
-      return;
-    }
+    test.skip(!isReady, "feed server is not healthy at /api/health");
   });
 
   test("should display login prompt for unauthenticated user", async ({
@@ -301,10 +298,7 @@ test.describe("NFT Mint Flow - Full E2E with Transaction", () => {
 
     // Check prerequisites
     const healthCheck = await fetch(`${BASE_URL}/api/health`).catch(() => null);
-    if (!healthCheck?.ok) {
-      test.skip();
-      return;
-    }
+    test.skip(!healthCheck?.ok, "feed server is not healthy at /api/health");
 
     // Navigate and login
     await page.goto(NFT_PAGE_URL);
@@ -318,13 +312,10 @@ test.describe("NFT Mint Flow - Full E2E with Transaction", () => {
       .isVisible({ timeout: 5000 })
       .catch(() => false);
 
-    if (!isEligible) {
-      console.log(
-        "Prerequisites not met: User not in nftSnapshot or already minted",
-      );
-      test.skip();
-      return;
-    }
+    test.skip(
+      !isEligible,
+      "wallet not eligible to mint (not in nftSnapshot or already minted)",
+    );
 
     // Start mint
     await mintButton.click();

@@ -38,14 +38,16 @@ test.describe("Rewards - Tabs", () => {
     expect(hasOverview).toBe(true);
   });
 
+  // TabNavigation (rewards/v2) renders exactly: Overview, Challenges,
+  // Achievements.
   test("Achievements tab accessible", async ({ page }) => {
     const switched = await clickTab(page, "Achievements");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("Challenges tab accessible", async ({ page }) => {
     const switched = await clickTab(page, "Challenges");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("auth redirect for unauthenticated users", async ({ page }) => {
@@ -65,8 +67,10 @@ test.describe("Rewards - Tabs", () => {
       .first()
       .isVisible({ timeout: 5000 })
       .catch(() => false);
+    // rewards/page.tsx requires auth: unauthenticated visitors are redirected
+    // to the feed and shown the login modal.
     const url = newPage.url();
-    expect(hasLogin || url.includes("login") || true).toBe(true);
+    expect(hasLogin || !url.includes("/rewards")).toBe(true);
     await newPage.close();
   });
 });
@@ -98,61 +102,21 @@ test.describe("Rewards - Overview", () => {
   });
 
   test("claim button visible", async ({ page }) => {
+    // overview-tab.tsx always renders the daily-claim affordance (Claim /
+    // Claimed state).
     const claimBtn = page.locator(SELECTORS.DAILY_CLAIM_BUTTON).first();
-    const isVisible = await claimBtn
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    await expect(claimBtn).toBeVisible({ timeout: 5000 });
   });
 
   test("streak counter visible", async ({ page }) => {
+    // overview-tab.tsx renders the StreakCalendar (streak + day labels).
     const hasStreak = await pageContainsText(
       page,
       "streak",
       "day",
       "consecutive",
     );
-    expect(typeof hasStreak).toBe("boolean");
-  });
-
-  test("view links to other sections", async ({ page }) => {
-    const viewLinks = page.locator(
-      'a:has-text("View"), a:has-text("See All"), button:has-text("View")',
-    );
-    const count = await viewLinks.count().catch(() => 0);
-    expect(count).toBeGreaterThanOrEqual(0);
-  });
-});
-
-test.describe("Rewards - Social Linking", () => {
-  test.beforeEach(async ({ page, wallets }) => {
-    const healthy = await isServerHealthy();
-    test.skip(!healthy, "Server is not healthy");
-    await page.setViewportSize(VIEWPORTS.DESKTOP);
-    await navigateTo(page, ROUTES.HOME);
-    await waitForPageLoad(page);
-    await loginWithWallet(page, wallets);
-    await navigateTo(page, ROUTES.REWARDS);
-    await waitForPageLoad(page);
-  });
-
-  test.afterEach(async ({ page }) => {
-    await cooldownBetweenTests(page);
-  });
-
-  test("Twitter linking option", async ({ page }) => {
-    const hasTwitter = await pageContainsText(
-      page,
-      "twitter",
-      "x.com",
-      "connect",
-    );
-    expect(typeof hasTwitter).toBe("boolean");
-  });
-
-  test("Discord linking option", async ({ page }) => {
-    const hasDiscord = await pageContainsText(page, "discord");
-    expect(typeof hasDiscord).toBe("boolean");
+    expect(hasStreak).toBe(true);
   });
 });
 
@@ -226,15 +190,17 @@ test.describe("Rewards - Challenges", () => {
   });
 
   test("challenge progress bars", async ({ page }) => {
+    // challenges-tab.tsx renders each challenge with a progress indicator.
     const progressBars = page.locator(
       '[role="progressbar"], .progress, progress',
     );
     const count = await progressBars.count().catch(() => 0);
     const hasProgress = await pageContainsText(page, "progress", "%");
-    expect(count >= 0 || typeof hasProgress === "boolean").toBe(true);
+    expect(count > 0 || hasProgress).toBe(true);
   });
 
   test("challenge rewards shown", async ({ page }) => {
+    // Each challenge card shows its pointsReward.
     const hasRewards = await pageContainsText(
       page,
       "reward",
@@ -242,6 +208,6 @@ test.describe("Rewards - Challenges", () => {
       "earn",
       "xp",
     );
-    expect(typeof hasRewards).toBe("boolean");
+    expect(hasRewards).toBe(true);
   });
 });

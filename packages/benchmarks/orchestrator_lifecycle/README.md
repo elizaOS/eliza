@@ -5,8 +5,12 @@ scripted lifecycle scenarios: clarifying underspecified requests, reporting
 subagent status, acknowledging mid-flight scope changes, pause/resume/cancel
 interruptions, and delivering stakeholder summaries. Each scenario is a
 conversation defined in `scenarios/` with per-turn expected and forbidden
-behavior tags. The evaluator scores keyword presence against those tags to
-produce a pass rate and overall score.
+behavior tags. The evaluator scores each user turn against the typed
+lifecycle events the agent actually emitted on that turn (spawn / send /
+pause / resume / cancel / status_query / share — extracted from the planner's
+selected actions and params), never keyword substrings in the reply prose.
+Only bridge runs are scored; simulate runs are smoke-marked (`scored: false`,
+`metrics.overall_score: null`) and cannot be published as benchmark results.
 
 ## Quick Start
 

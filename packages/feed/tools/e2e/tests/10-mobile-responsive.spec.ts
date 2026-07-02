@@ -85,25 +85,10 @@ test.describe("Mobile Responsive - Navigation", () => {
   test("bottom nav visible on mobile", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
+    // BottomNav (shared/BottomNav.tsx) is `fixed bottom-0 ... md:hidden`:
+    // it must be visible at the mobile viewport.
     const bottomNav = page.locator(SELECTORS.BOTTOM_NAV).first();
-    const isVisible = await bottomNav
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
-  });
-
-  test("hamburger menu visible", async ({ page }) => {
-    await navigateTo(page, ROUTES.FEED);
-    await waitForPageLoad(page);
-    const hamburger = page
-      .locator(
-        'button[aria-label*="menu" i], button:has(svg.lucide-menu), [data-testid="hamburger"]',
-      )
-      .first();
-    const isVisible = await hamburger
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    await expect(bottomNav).toBeVisible({ timeout: 5000 });
   });
 
   test("nav links are clickable on mobile", async ({ page }) => {
@@ -113,18 +98,17 @@ test.describe("Mobile Responsive - Navigation", () => {
     const bottomVisible = await bottomNav
       .isVisible({ timeout: 3000 })
       .catch(() => false);
-    if (bottomVisible) {
-      const navLink = bottomNav.locator("a").first();
-      const linkVisible = await navLink
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
-      if (linkVisible) {
-        await navLink.click({ force: true });
-        await page.waitForTimeout(1000);
-        expect(true).toBe(true);
-      }
-    }
-    expect(true).toBe(true);
+    test.skip(!bottomVisible, "no bottom nav rendered on the mobile feed");
+    const navLink = bottomNav.locator("a").first();
+    await expect(navLink, "bottom nav has no links").toBeVisible({
+      timeout: 3000,
+    });
+    const href = await navLink.getAttribute("href");
+    expect(href, "bottom nav link has no href").toBeTruthy();
+    await navLink.click({ force: true });
+    await page.waitForTimeout(1000);
+    const target = new URL(href ?? "/", page.url());
+    expect(new URL(page.url()).pathname).toBe(target.pathname);
   });
 });
 
@@ -145,18 +129,14 @@ test.describe("Mobile Responsive - Feed", () => {
   });
 
   test("feed is touch-friendly", async ({ page }) => {
-    const buttons = page.locator("button");
-    const count = await buttons.count().catch(() => 0);
-    if (count > 0) {
-      const firstBtn = buttons.first();
-      const box = await firstBtn.boundingBox().catch(() => null);
-      if (box) {
-        // Touch-friendly targets should be at least 24px
-        expect(box.width).toBeGreaterThanOrEqual(24);
-        expect(box.height).toBeGreaterThanOrEqual(24);
-      }
-    }
-    expect(true).toBe(true);
+    const buttons = page.locator("button:visible");
+    const count = await buttons.count();
+    test.skip(count === 0, "no visible buttons rendered on the mobile feed");
+    const box = await buttons.first().boundingBox();
+    expect(box, "first visible button has no bounding box").not.toBeNull();
+    // Touch-friendly targets should be at least 24px.
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(24);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(24);
   });
 
   test("tap-friendly buttons on posts", async ({ page }) => {
@@ -164,13 +144,11 @@ test.describe("Mobile Responsive - Feed", () => {
     const isVisible = await likeBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const box = await likeBtn.boundingBox().catch(() => null);
-      if (box) {
-        expect(box.width).toBeGreaterThanOrEqual(24);
-      }
-    }
-    expect(true).toBe(true);
+    test.skip(!isVisible, "no post with a like button rendered in the feed");
+    const box = await likeBtn.boundingBox();
+    expect(box, "like button has no bounding box").not.toBeNull();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(24);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(24);
   });
 });
 
@@ -220,15 +198,11 @@ test.describe("Mobile Responsive - Wallet", () => {
     await cooldownBetweenTests(page);
   });
 
-  test("wallet tabs visible on mobile", async ({ page }) => {
-    const tabs = page.locator('[role="tab"]');
-    const count = await tabs.count().catch(() => 0);
-    expect(count).toBeGreaterThanOrEqual(0);
-  });
-
-  test("wallet tab switching on mobile", async ({ page }) => {
-    const switched = await clickTab(page, "Positions");
-    expect(typeof switched).toBe("boolean");
+  // The wallet page is a single view (P&L section + Positions sidebar) —
+  // it has no tab controls, on mobile or desktop.
+  test("wallet sections render on mobile", async ({ page }) => {
+    const hasSections = await pageContainsText(page, "p&l", "positions");
+    expect(hasSections).toBe(true);
   });
 });
 
@@ -249,8 +223,9 @@ test.describe("Mobile Responsive - Feed Tabs and Interactions", () => {
   });
 
   test("feed tabs accessible on mobile", async ({ page }) => {
+    // FeedToggle renders on all viewports; the Latest tab must be clickable.
     const switched = await clickTab(page, "Latest");
-    expect(typeof switched).toBe("boolean");
+    expect(switched).toBe(true);
   });
 
   test("feed interactions work on mobile", async ({ page }) => {
@@ -258,11 +233,17 @@ test.describe("Mobile Responsive - Feed Tabs and Interactions", () => {
     const isVisible = await likeBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await likeBtn.click({ force: true });
-      await page.waitForTimeout(500);
-    }
-    expect(true).toBe(true);
+    test.skip(!isVisible, "no post with a like button rendered in the feed");
+    // A real like tap must hit the like API (/api/posts/[id]/like).
+    const likeResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("/like") &&
+        response.request().method() !== "GET",
+      { timeout: 10_000 },
+    );
+    await likeBtn.click({ force: true });
+    const response = await likeResponse;
+    expect(response.status()).toBeLessThan(500);
   });
 });
 
@@ -282,16 +263,18 @@ test.describe("Mobile Responsive - Settings", () => {
     await cooldownBetweenTests(page);
   });
 
+  // settings/page.tsx renders Profile / Notifications / Security tab
+  // buttons.
   test("settings tabs on mobile", async ({ page }) => {
-    const tabs = page.locator('[role="tab"]');
-    const count = await tabs.count().catch(() => 0);
-    expect(count).toBeGreaterThanOrEqual(0);
+    const switched = await clickTab(page, "Notifications");
+    expect(switched).toBe(true);
   });
 
   test("settings editing on mobile", async ({ page }) => {
-    await clickTab(page, "Profile");
+    const switched = await clickTab(page, "Profile");
+    expect(switched).toBe(true);
     const hasFields = await pageContainsText(page, "name", "username", "bio");
-    expect(typeof hasFields).toBe("boolean");
+    expect(hasFields).toBe(true);
   });
 });
 

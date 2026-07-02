@@ -15,15 +15,16 @@ import {
   estimateWavDurationSec,
   isAudioNonBlank,
 } from "../runner/audio-bus.ts";
-import type {
-  EmotionEntry,
-  TranscriptEntry,
-  VerificationResult,
-} from "../runner/run-dialogue.ts";
+import type { EmotionEntry, TranscriptEntry } from "../runner/run-dialogue.ts";
+import type { RunMode, VerificationResult } from "../runner/verification.ts";
 
 export interface RunVerificationReport {
   runDir: string;
   verification: VerificationResult;
+  /** "real" (scored) or "synthetic-smoke" (structural smoke only). */
+  mode: RunMode;
+  /** True only when the run exercised real TTS + ASR on every turn. */
+  scored: boolean;
   transcriptCount: number;
   emotionEntries: number;
   turnEventCount: number;
@@ -77,6 +78,8 @@ export function verifyRun(runDir: string): RunVerificationReport {
   return {
     runDir,
     verification,
+    mode: verification.mode,
+    scored: verification.scored,
     transcriptCount: transcripts.length,
     emotionEntries: emotions.length,
     turnEventCount: turnEvents.length,
@@ -85,37 +88,6 @@ export function verifyRun(runDir: string): RunVerificationReport {
     mixWavNonBlank: mixNonBlank,
     pass: verification.pass && mixNonBlank,
   };
-}
-
-/**
- * Assert that a run report passes all required checks.
- * Throws with a descriptive message if any check fails.
- */
-function _assertRunPasses(report: RunVerificationReport): void {
-  const checks: Array<{ label: string; pass: boolean }> = [
-    { label: "verification.pass", pass: report.verification.pass },
-    { label: "mix.wav exists", pass: report.mixWavExists },
-    { label: "mix.wav non-blank", pass: report.mixWavNonBlank },
-    { label: "mix.wav duration ≥ 1s", pass: report.mixWavDurationSec >= 1.0 },
-    {
-      label: "transcripts not null",
-      pass: report.verification.transcriptNotNull,
-    },
-    {
-      label: "distinct speakers ≥ 3",
-      pass: report.verification.distinctSpeakersDetected >= 3,
-    },
-    {
-      label: "emotion fraction ≥ 80%",
-      pass: report.verification.emotionDetectedFraction >= 0.8,
-    },
-  ];
-
-  const failed = checks.filter((c) => !c.pass);
-  if (failed.length > 0) {
-    const msg = failed.map((c) => `  ✗ ${c.label}`).join("\n");
-    throw new Error(`Run verification failed:\n${msg}`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +111,8 @@ async function main(): Promise<void> {
 
   console.log("\n[verify-run] === VERIFICATION REPORT ===");
   console.log(`  Run dir:              ${report.runDir}`);
+  console.log(`  Mode:                 ${report.mode}`);
+  console.log(`  Scored:               ${report.scored}`);
   console.log(`  Transcripts:          ${report.transcriptCount}`);
   console.log(`  Emotion entries:      ${report.emotionEntries}`);
   console.log(`  Turn events:          ${report.turnEventCount}`);
@@ -152,6 +126,11 @@ async function main(): Promise<void> {
     `  Emotion fraction:     ${(report.verification.emotionDetectedFraction * 100).toFixed(0)}%`,
   );
   console.log(`  PASS:                 ${report.pass}`);
+  if (!report.scored) {
+    console.log(
+      "  NOTE: synthetic-smoke run — structural checks only, NOT a scored benchmark result",
+    );
+  }
 
   if (!report.pass) {
     console.error("\n[verify-run] FAILED");

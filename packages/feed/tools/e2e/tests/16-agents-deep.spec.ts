@@ -39,17 +39,23 @@ test.describe("Agents - List", () => {
 
   test("filter All agents", async ({ page }) => {
     const switched = await clickTab(page, "All");
-    expect(typeof switched).toBe("boolean");
+    test.skip(!switched, 'no "All" filter rendered on the agents list');
+    const body = await page.locator("body").textContent();
+    expect(body?.length).toBeGreaterThan(0);
   });
 
   test("filter Active agents", async ({ page }) => {
     const switched = await clickTab(page, "Active");
-    expect(typeof switched).toBe("boolean");
+    test.skip(!switched, 'no "Active" filter rendered on the agents list');
+    const body = await page.locator("body").textContent();
+    expect(body?.length).toBeGreaterThan(0);
   });
 
   test("filter Idle agents", async ({ page }) => {
     const switched = await clickTab(page, "Idle");
-    expect(typeof switched).toBe("boolean");
+    test.skip(!switched, 'no "Idle" filter rendered on the agents list');
+    const body = await page.locator("body").textContent();
+    expect(body?.length).toBeGreaterThan(0);
   });
 
   test("create agent button visible", async ({ page }) => {
@@ -57,7 +63,11 @@ test.describe("Agents - List", () => {
     const isVisible = await createBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(
+      !isVisible,
+      "no create-agent button rendered on the agents list",
+    );
+    await expect(createBtn).toBeEnabled();
   });
 });
 
@@ -84,14 +94,11 @@ test.describe("Agents - Create", () => {
     const isVisible = await createBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await createBtn.click({ force: true });
-      await page.waitForTimeout(2000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no create-agent button rendered on the agents list");
+    const beforeUrl = page.url();
+    await createBtn.click({ force: true });
+    await page.waitForTimeout(2000);
+    expect(page.url()).not.toBe(beforeUrl);
   });
 
   test("create form renders", async ({ page }) => {
@@ -109,14 +116,14 @@ test.describe("Agents - Create", () => {
     const isVisible = await submitBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await submitBtn.click({ force: true });
-      await page.waitForTimeout(500);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      !isVisible,
+      "no submit button rendered on the agent creation form",
+    );
+    await submitBtn.click({ force: true });
+    await page.waitForTimeout(500);
+    // Submitting an empty form must not navigate away (validation blocks it).
+    expect(page.url()).toContain("create");
   });
 
   test("name input accepts values", async ({ page }) => {
@@ -125,7 +132,11 @@ test.describe("Agents - Create", () => {
       'input[name="name"], input[placeholder*="name" i]',
       "Test Agent",
     );
-    expect(result === null || result === "Test Agent").toBe(true);
+    test.skip(
+      result === null,
+      "no name input rendered on the agent creation form",
+    );
+    expect(result).toBe("Test Agent");
   });
 
   test("model tier selection available", async ({ page }) => {
@@ -137,7 +148,11 @@ test.describe("Agents - Create", () => {
       "claude",
       "llm",
     );
-    expect(typeof hasModelTier).toBe("boolean");
+    test.skip(
+      !hasModelTier,
+      "no model selection rendered on the agent creation form",
+    );
+    expect(hasModelTier).toBe(true);
   });
 
   test("personality field available", async ({ page }) => {
@@ -148,7 +163,11 @@ test.describe("Agents - Create", () => {
       "style",
       "prompt",
     );
-    expect(typeof hasPersonality).toBe("boolean");
+    test.skip(
+      !hasPersonality,
+      "no personality field rendered on the agent creation form",
+    );
+    expect(hasPersonality).toBe(true);
   });
 });
 
@@ -175,14 +194,11 @@ test.describe("Agents - Detail", () => {
     const isVisible = await agentCard
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await agentCard.click({ force: true });
-      await page.waitForTimeout(2000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no agent cards rendered on the agents list");
+    const beforeUrl = page.url();
+    await agentCard.click({ force: true });
+    await page.waitForTimeout(2000);
+    expect(page.url()).not.toBe(beforeUrl);
   });
 
   test("agent stats visible", async ({ page }) => {
@@ -196,13 +212,17 @@ test.describe("Agents - Detail", () => {
   test("agent chat available", async ({ page }) => {
     await navigateTo(page, ROUTES.AGENTS_BY_ID("test-agent"));
     await waitForPageLoad(page);
+    const notFound = await pageContainsText(page, "not found", "404");
+    test.skip(notFound, 'agent "test-agent" does not exist in this environment');
     const hasChat = await pageContainsText(page, "chat", "message", "send");
-    expect(typeof hasChat).toBe("boolean");
+    expect(hasChat).toBe(true);
   });
 
   test("agent trade history visible", async ({ page }) => {
     await navigateTo(page, ROUTES.AGENTS_BY_ID("test-agent"));
     await waitForPageLoad(page);
+    const notFound = await pageContainsText(page, "not found", "404");
+    test.skip(notFound, 'agent "test-agent" does not exist in this environment');
     const hasTrades = await pageContainsText(
       page,
       "trade",
@@ -210,6 +230,7 @@ test.describe("Agents - Detail", () => {
       "position",
       "order",
     );
-    expect(typeof hasTrades).toBe("boolean");
+    test.skip(!hasTrades, "no trade history rendered (agent has no trades)");
+    expect(hasTrades).toBe(true);
   });
 });
