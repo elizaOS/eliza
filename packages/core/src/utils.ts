@@ -849,7 +849,12 @@ function findMatchingXmlClose(
 		if (nextOpen !== -1 && nextOpen < nextClose) {
 			const nestedTag = readXmlStartTag(input, nextOpen);
 			if (!nestedTag) return -1;
-			if (!nestedTag.selfClosing) {
+			// Only a tag whose name EXACTLY matches nests depth. `indexOf(`<${tag}`)`
+			// also matches prefix-extensions (e.g. `<textarea>` while closing
+			// `<text>`), which used to inflate depth so the real close was never
+			// found — the field was dropped and a bogus key promoted. On a mismatch
+			// just skip past this open tag and keep scanning.
+			if (nestedTag.tag === tag && !nestedTag.selfClosing) {
 				depth += 1;
 			}
 			cursor = nestedTag.end + 1;
