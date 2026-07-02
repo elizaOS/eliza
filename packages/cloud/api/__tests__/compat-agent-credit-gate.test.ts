@@ -57,6 +57,17 @@ const provision = mock(async () => ({
 
 const snapshot = mock(async () => undefined);
 
+// launch/route.ts calls launchManagedElizaAgent (which itself wraps provision),
+// not elizaSandboxService.provision directly — mock it at that seam.
+const launchManagedElizaAgent = mock(async () => ({
+  agentId: "agent-1",
+  agentName: "Agent One",
+  appUrl: "https://app.example.test/launch/agent-1",
+  launchSessionId: "sess-1",
+  issuedAt: "2026-07-02T00:00:00.000Z",
+  connection: { host: "agent-1.example.test" },
+}));
+
 mock.module("../compat/_lib/auth", () => ({
   requireCompatAuth,
 }));
@@ -87,6 +98,13 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   },
 }));
 
+mock.module("@/lib/services/eliza-managed-launch", () => ({
+  launchManagedElizaAgent,
+  ManagedElizaLaunchError: class ManagedElizaLaunchError extends Error {
+    status = 400;
+  },
+}));
+
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     info: mock(() => undefined),
@@ -101,11 +119,15 @@ const { default: resumeRoute } = await import(
 const { default: restartRoute } = await import(
   "../compat/agents/[id]/restart/route"
 );
+const { default: launchRoute } = await import(
+  "../compat/agents/[id]/launch/route"
+);
 
-describe("compat agent resume/restart credit gate", () => {
+describe("compat agent resume/restart/launch credit gate", () => {
   const app = new Hono();
   app.route("/api/compat/agents/:id/resume", resumeRoute);
   app.route("/api/compat/agents/:id/restart", restartRoute);
+  app.route("/api/compat/agents/:id/launch", launchRoute);
 
   beforeEach(() => {
     requireCompatAuth.mockClear();
@@ -128,6 +150,7 @@ describe("compat agent resume/restart credit gate", () => {
     getAgentForWrite.mockResolvedValue(defaultWritableAgent);
     provision.mockClear();
     snapshot.mockClear();
+    launchManagedElizaAgent.mockClear();
   });
 
   test("blocks compat resume before provisioning when the org has insufficient credits", async () => {
@@ -166,6 +189,22 @@ describe("compat agent resume/restart credit gate", () => {
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(snapshot).not.toHaveBeenCalled();
     expect(provision).not.toHaveBeenCalled();
+  });
+
+  test("blocks compat launch before provisioning when the org has insufficient credits (elizaOS/eliza#11152)", async () => {
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/compat/agents/agent-1/launch", {
+        method: "POST",
+      }),
+    );
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: "Insufficient credits",
+    });
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    expect(launchManagedElizaAgent).not.toHaveBeenCalled();
   });
 
   test("does not check credits when the compat agent lookup fails", async () => {
@@ -207,5 +246,27 @@ describe("compat agent resume/restart credit gate", () => {
     expect(restartResponse.status).toBe(200);
     expect(provision).toHaveBeenCalledWith("agent-1", "org-1");
     expect(snapshot).toHaveBeenCalledWith("agent-1", "org-1");
+  });
+
+  test("allows funded compat launch to reach launchManagedElizaAgent", async () => {
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/compat/agents/agent-1/launch", {
+        method: "POST",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    expect(launchManagedElizaAgent).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+    });
   });
 });
