@@ -44,6 +44,7 @@ import {
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
+import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
@@ -53,8 +54,9 @@ import {
   shouldUseSmithersTaskRunner,
 } from "../services/smithers-task-integration";
 import {
+  KNOWN_ADAPTER_TYPES,
+  normalizeTaskAgentAdapter,
   type ResolvedWorkdirRoute,
-  resolvePinnedAdapter,
   resolveSpawnWorkdir,
 } from "../services/task-agent-routing.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
@@ -223,13 +225,26 @@ function taskParts(
     .filter(Boolean);
 }
 
+/**
+ * A leading `backend:` prefix is an explicit per-subtask backend override (e.g.
+ * "claude: refactor X"). It only counts when the prefix is a KNOWN adapter —
+ * otherwise the colon is ordinary text ("Fix: the login bug", "Note: ...", a
+ * bare URL) and the whole part is the task. This keeps the prefix a structural
+ * backend selector rather than a regex that turns any leading word into a
+ * spawn target (which would crash on an unknown command and amounts to picking
+ * a backend from arbitrary message text).
+ */
 function parseAgentPrefix(
   part: string,
   fallbackAgentType: string,
 ): { task: string; agentType: string } {
   const match = part.match(/^([a-z][a-z0-9_-]{1,32})\s*:\s*(.+)$/i);
   if (!match) return { task: part, agentType: fallbackAgentType };
-  return { agentType: match[1] ?? fallbackAgentType, task: match[2] ?? part };
+  const candidate = normalizeTaskAgentAdapter(match[1]);
+  if (!candidate || !KNOWN_ADAPTER_TYPES.has(candidate)) {
+    return { task: part, agentType: fallbackAgentType };
+  }
+  return { agentType: candidate, task: match[2] ?? part };
 }
 
 function labelFrom(task: string, index: number): string {
@@ -668,13 +683,18 @@ async function runCreate(
     return errorResult("TOO_MANY_AGENTS", msg);
   }
 
-  // Operator pin wins over planner-supplied agentType — see runSpawnAgent.
-  // Per-task `framework:` prefixes set by the user (e.g. "claude: do X")
-  // still override the pin inside the parseAgentPrefix step below.
-  const pinnedAgentType = resolvePinnedAdapter(runtime);
+  // Backend routing (see resolveCodingBackend): explicit ask > character policy
+  // > operator pin > planner guess. Per-task `framework:` prefixes (e.g.
+  // "claude: do X") still override this per-part in the parseAgentPrefix step
+  // below — they are the most explicit per-subtask signal.
+  const routedBase = resolveCodingBackendLogged({
+    runtime,
+    explicit: pickString(params, content, "requestedBackend"),
+    tag: pickString(params, content, "taskComplexity"),
+    plannerGuess: pickString(params, content, "agentType"),
+  });
   const baseAgentType =
-    pinnedAgentType ??
-    pickString(params, content, "agentType") ??
+    routedBase?.agentType ??
     String(
       (await service.resolveAgentType?.({
         task: tasks[0],
@@ -1044,17 +1064,19 @@ async function runSpawnAgent(
       message,
       state,
     );
-    // Operator-pinned adapter (ELIZA_DEFAULT_AGENT_TYPE +
-    // ELIZA_AGENT_SELECTION_STRATEGY=fixed) is a deployment policy and
-    // wins over the planner's `agentType` choice. The planner only sees
-    // descriptions of available adapters and routinely guesses one based on
-    // context tokens; the operator's explicit pin is authoritative. When no
-    // pin is configured, fall back to the planner's choice and finally to
-    // the service's dynamic resolver.
-    const pinnedAgentType = resolvePinnedAdapter(runtime);
-    const explicitAgentType = pickString(params, content, "agentType");
-    const agentType = (pinnedAgentType ??
-      explicitAgentType ??
+    // Backend routing (see resolveCodingBackend): an explicit user ask wins,
+    // then declared `character.routing.coding` policy, then the operator pin
+    // (ELIZA_ACP_DEFAULT_AGENT), then the planner's heuristic `agentType` guess.
+    // The pin no longer unconditionally overrides — declaring character routing
+    // or naming a backend now takes effect, while a bare planner guess still
+    // sits below the pin (it routinely guesses from context tokens).
+    const routed = resolveCodingBackendLogged({
+      runtime,
+      explicit: pickString(params, content, "requestedBackend"),
+      tag: pickString(params, content, "taskComplexity"),
+      plannerGuess: pickString(params, content, "agentType"),
+    });
+    const agentType = (routed?.agentType ??
       (await service.resolveAgentType?.({
         task,
         workdir: pickString(params, content, "workdir"),
@@ -1217,7 +1239,7 @@ async function runSpawnAgent(
         // anchored to ONE user request across the whole loop, on every
         // transport — including connector-less dashboard/web). (#8875)
         ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
-        requestedType: explicitAgentType ?? agentType,
+        requestedType: agentType,
         messageId: message.id,
         roomId: swarmRoomMetadata.taskRoomId,
         ...swarmRoomMetadata,
@@ -3244,7 +3266,7 @@ export const tasksAction: Action & {
     {
       name: "agentType",
       description:
-        "Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
+        "Heuristic backend guess (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -3254,6 +3276,26 @@ export const tasksAction: Action & {
         "Set true when the user wants the app to EARN MONEY / charge for access — e.g. 'people pay $1 to chat with X', 'charge per message', 'a paid app', 'monetized', a paywall, or per-use pricing. Judge the user's INTENT, not specific keywords. When true the sub-agent gets the monetized Eliza Cloud contract (register for an appId, inference markup, OAuth + affiliate billing) instead of a free static page. Leave unset for a normal free app or non-app task.",
       required: false,
       schema: { type: "boolean" as const },
+    },
+    {
+      name: "requestedBackend",
+      description:
+        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, opencode, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["elizaos", "pi-agent", "opencode", "codex", "claude"],
+      },
+    },
+    {
+      name: "taskComplexity",
+      description:
+        "Your honest assessment of this coding task's difficulty: 'simple' (small/routine), 'moderate', or 'hard' (large, subtle, multi-file, or architectural). Used only to route to whichever backend the character configured for that difficulty (character.routing.coding.byTag). Judge the task itself — do not echo words from the user.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["simple", "moderate", "hard"],
+      },
     },
     {
       name: "agents",
