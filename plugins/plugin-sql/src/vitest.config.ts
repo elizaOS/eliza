@@ -8,7 +8,14 @@ export default defineConfig({
       "**/dist/**",
       "**/__tests__/e2e/**",
       "**/*.live.test.ts",
-      "**/*.real.test.ts",
+      // #9310 §E: the Postgres RLS *.real.test.ts suites (describe.skipIf
+      // without POSTGRES_URL, which run-all-tests.mjs auto-provisions when a
+      // local psql is available) run in the post-merge lane, where the runner
+      // prints a named skip accounting. They were excluded unconditionally
+      // before, so they ran in NO lane at all.
+      ...(process.env.VITEST_LANE === "post-merge"
+        ? []
+        : ["**/*.real.test.ts"]),
       "**/*.real.e2e.test.ts",
       "**/*.e2e.test.ts",
     ],
