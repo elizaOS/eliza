@@ -3,10 +3,12 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
+import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import {
   getElizaAgentDirectWebUiUrl,
   getElizaAgentPublicWebUiUrl,
 } from "@/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
@@ -29,6 +31,22 @@ const STARTING_STATUSES = new Set([
   "disconnected",
 ]);
 const RETRY_AFTER_SECONDS = 5;
+
+function agentWebUiNotReadyResponse() {
+  return applyCorsHeaders(
+    Response.json(
+      {
+        success: false,
+        code: "AGENT_WEB_UI_NOT_READY",
+        error:
+          "Agent Web UI is not configured through the managed HTTPS route yet. Retry in a moment.",
+        retryable: true,
+      },
+      { status: 503 },
+    ),
+    CORS_METHODS,
+  );
+}
 
 type PairingSandbox = NonNullable<
   Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>
@@ -151,6 +169,10 @@ async function __hono_POST(
       );
     }
 
+    if (sandbox.execution_tier === "shared") {
+      return agentWebUiNotReadyResponse();
+    }
+
     if (sandbox.status !== "running") {
       // Agent is pending/provisioning/stopped/disconnected — kick off (or
       // detect in-flight) provisioning and tell the client to retry.
@@ -172,6 +194,40 @@ async function __hono_POST(
             Response.json(provisioningWorkerFailureBody(workerHealth), {
               status: workerHealth.status,
             }),
+            CORS_METHODS,
+          );
+        }
+
+        // Credit gate before re-provisioning a DEDICATED container (#11224):
+        // pairing a stopped/reaped agent re-provisions its container, the same
+        // paid-compute wake the resume/restart/wake routes gate. Shared agents
+        // already returned early (execution_tier === "shared" above), so this
+        // only fences the dedicated case — a suspended/zero-balance org can't
+        // use pairing to get free compute the resume gate would have blocked.
+        const creditCheck = await checkAgentCreditGate(user.organization_id);
+        if (!creditCheck.allowed) {
+          logger.warn(
+            "[pairing-token] auto-resume blocked: insufficient credits",
+            {
+              agentId,
+              orgId: user.organization_id,
+              balance: creditCheck.balance,
+              required: AGENT_PRICING.MINIMUM_DEPOSIT,
+            },
+          );
+          return applyCorsHeaders(
+            Response.json(
+              {
+                success: false,
+                code: "insufficient_credits",
+                error:
+                  creditCheck.error ??
+                  "Insufficient credits to resume this agent",
+                requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+                currentBalance: creditCheck.balance,
+              },
+              { status: 402 },
+            ),
             CORS_METHODS,
           );
         }
@@ -234,19 +290,7 @@ async function __hono_POST(
 
     const webUiUrl = resolveManagedWebUiUrl(sandbox);
     if (!webUiUrl) {
-      return applyCorsHeaders(
-        Response.json(
-          {
-            success: false,
-            code: "AGENT_WEB_UI_NOT_READY",
-            error:
-              "Agent Web UI is not configured through the managed HTTPS route yet. Retry in a moment.",
-            retryable: true,
-          },
-          { status: 503 },
-        ),
-        CORS_METHODS,
-      );
+      return agentWebUiNotReadyResponse();
     }
 
     const tokenService = getPairingTokenService();
