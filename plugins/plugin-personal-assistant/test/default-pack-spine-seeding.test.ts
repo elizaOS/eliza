@@ -15,6 +15,8 @@
  *      already seeded + the catalog registered), exactly one GM task exists.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -136,6 +138,25 @@ describe("default-pack catalog reconciliation", () => {
     expect(
       keys.some((key) => key?.includes("inbox-triage")),
     ).toBe(false);
+  });
+
+  it("plugin init registers the catalog on the spine registry (production wiring)", () => {
+    // The unit tests above call registerDefaultPackCatalog directly; this
+    // pins the production caller so the catalog cannot silently regress to
+    // the pre-#10721 state where getDefaultEnabledPacks had no caller.
+    const pluginSource = readFileSync(
+      fileURLToPath(new URL("../src/plugin.ts", import.meta.url)),
+      "utf8",
+    );
+    expect(pluginSource).toContain("registerDefaultPackCatalog(runtime)");
+    // Registration lives inside the scheduler-enabled init path, ordered
+    // with the first-run boot seed that owns the gm/gn/check-in slots.
+    const registerAt = pluginSource.indexOf(
+      "registerDefaultPackCatalog(runtime)",
+    );
+    const firstRunSeedAt = pluginSource.indexOf("seedDefaultPackOnBoot");
+    expect(registerAt).toBeGreaterThan(-1);
+    expect(firstRunSeedAt).toBeGreaterThan(registerAt);
   });
 });
 
