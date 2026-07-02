@@ -91,6 +91,12 @@ export interface VoiceScenarioAssertions {
 	maxEotFalseTriggerRate?: number;
 	/** Min voice→entity match rate. */
 	minVoiceEntityMatchRate?: number;
+	/**
+	 * Min entity-extraction F1 (precision/recall over inferred names). Defaults
+	 * to the scorer's 0.8; disambiguation scenarios pin it to 1 so a single
+	 * confusable-name misbind (precision) or miss (recall) fails the gate.
+	 */
+	minEntityF1?: number;
 	/** Latency budgets (ms) — first-audio / time-to-first-token, etc. */
 	maxFirstAudioMs?: number;
 	maxTtftMs?: number;
@@ -118,6 +124,9 @@ export type VoiceScenarioClass =
 	| "echo-rejection"
 	// Security: owner vs. intruder / non-owner voice gating.
 	| "owner-security"
+	// Similar-sounding names (Jon/John/Joan, Erik/Erika, Mia/Maya) must each
+	// bind to exactly their own entity — never a near-miss neighbor.
+	| "name-disambiguation"
 	// Two voices overlapping / interrupting each other.
 	| "overlapping-speech";
 

@@ -260,6 +260,26 @@ export function resolveScenarioProviderConfig(
   return selectLiveProvider(options.preferredProvider);
 }
 
+/**
+ * Live lane: `prepareMockedTestEnvironment` boots the wire-level LLM mocks and
+ * exports their base-URL overrides (`ELIZA_MOCK_OPENAI_BASE` /
+ * `ELIZA_MOCK_ANTHROPIC_BASE`), which plugin-openai / plugin-anthropic treat as
+ * authoritative over `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL`. Left set, every
+ * "live" model call is silently answered by the mock server — Stage 1 returns
+ * empty completions and scenarios fall back to REPLY — so live-lane trajectory
+ * evidence would actually be mock traffic. Live means live: drop the LLM mock
+ * overrides when a live provider is selected; connector mocks (gmail, etc.)
+ * stay. The deterministic proxy lane keeps everything as-is.
+ */
+export function clearLlmWireMockEnvForLiveProvider(
+  providerName: RuntimeFactoryResult["providerConfig"]["name"],
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (providerName === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) return;
+  delete env.ELIZA_MOCK_OPENAI_BASE;
+  delete env.ELIZA_MOCK_ANTHROPIC_BASE;
+}
+
 export function shouldPreserveScenarioTrajectoryDb(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
@@ -299,6 +319,7 @@ export async function createScenarioRuntime(
   for (const [key, value] of Object.entries(providerConfig.env)) {
     process.env[key] = value;
   }
+  clearLlmWireMockEnvForLiveProvider(providerConfig.name);
 
   const explicitPgliteDir = scenarioPgliteDirOverride();
   const pgliteDir =

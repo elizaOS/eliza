@@ -52,7 +52,7 @@ test.describe("XR harness — pose → ray → hit → press", () => {
     expect(rightHit?.elementId).toBe("submit");
   });
 
-  test("connects an aimed controller and fires select/squeeze without error", async ({
+  test("connects an aimed controller and fires real select/squeeze session events", async ({
     xrPage,
   }) => {
     await xrPage.goto("/");
@@ -68,12 +68,29 @@ test.describe("XR harness — pose → ray → hit → press", () => {
       "submit",
     );
 
-    // Firing select/squeeze drives IWER input and resolves cleanly. The
-    // session-level select EVENT dispatch needs the immersive render loop
-    // (deferred spatial-renderer scope — see WEBXR_STATUS / #9968); getSelectLog()
-    // is wired for when that lands.
-    await expect(xrPage.pressSelect("right")).resolves.toBeUndefined();
-    await expect(xrPage.pressSqueeze("right")).resolves.toBeUndefined();
+    // pressSelect pulses the trigger across real session frames (startSession
+    // attaches an offscreen XRWebGLLayer so IWER's frame loop runs), and the
+    // session dispatches exactly one `select` from the controller source.
+    await xrPage.pressSelect("right");
+    await xrPage.page.waitForFunction(
+      () => window.__XREmulator.getSelectLog().length > 0,
+    );
+    const selects = await xrPage.getSelectLog();
+    expect(selects).toHaveLength(1);
+    expect(selects[0]).toMatchObject({
+      handedness: "right",
+      viaHand: false,
+      targetRayMode: "tracked-pointer",
+    });
+
+    // pressSqueeze pulses the grip button → exactly one session `squeeze`.
+    await xrPage.pressSqueeze("right");
+    await xrPage.page.waitForFunction(
+      () => window.__XREmulator.getSqueezeLog().length > 0,
+    );
+    const squeezes = await xrPage.getSqueezeLog();
+    expect(squeezes).toHaveLength(1);
+    expect(squeezes[0]).toMatchObject({ handedness: "right", viaHand: false });
   });
 
   test("captures a screenshot + per-frame pose/hit JSON for every element", async ({

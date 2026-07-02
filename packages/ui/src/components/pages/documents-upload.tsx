@@ -169,6 +169,10 @@ export function UploadZone({
   const handleDrop = useCallback(
     (event: DragEvent<HTMLFieldSetElement>) => {
       event.preventDefault();
+      // The DocumentsView root also accepts file drops (#10722); a drop inside
+      // this zone must keep the zone's scoped options and never bubble up into
+      // a second upload.
+      event.stopPropagation();
       setDragOver(false);
       const files = Array.from(
         event.dataTransfer.files,
