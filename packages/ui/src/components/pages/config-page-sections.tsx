@@ -403,7 +403,7 @@ export function CloudServicesSection() {
           })}
         </div>
         {needsRestart && (
-          <span className="text-xs-tight font-medium px-2.5 py-0.5 rounded-full bg-accent/8 text-accent">
+          <span className="text-xs-tight font-medium text-accent">
             {t("configpageview.RestartRequired", {
               defaultValue: "Restart required",
             })}
@@ -420,10 +420,7 @@ export function CloudServicesSection() {
             descriptionDefault,
           }) => (
             /* Flat — no card/border. The Switch is the single state signal. */
-            <div
-              key={key}
-              className="flex items-center justify-between p-3"
-            >
+            <div key={key} className="flex items-center justify-between p-3">
               <div className="flex-1 min-w-0 mr-4">
                 <div
                   id={`cloud-service-${key}`}

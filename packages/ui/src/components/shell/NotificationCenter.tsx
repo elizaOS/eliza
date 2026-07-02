@@ -130,7 +130,7 @@ function NotificationRow({
         // near-edge tap. Full opacity on hover; keyboard focus visibility is
         // the app-wide global treatment (per-component focus utilities are
         // banned by no-focus-ring-gate).
-        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-50 transition-opacity hover:bg-card hover:text-txt group-hover:opacity-100"
+        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-50 transition-opacity hover:bg-surface hover:text-txt group-hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </button>

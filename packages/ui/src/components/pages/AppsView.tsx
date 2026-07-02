@@ -202,7 +202,9 @@ function AppWindowPinButton({
     <button
       ref={ref}
       type="button"
-      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      // Flat — interactive pill keeps its shape; the hover fill (not a
+      // border) is the affordance.
+      className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
       onClick={() => onToggle(windowRecord)}
       disabled={busy}
       aria-label={

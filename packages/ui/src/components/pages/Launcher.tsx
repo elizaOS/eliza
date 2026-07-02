@@ -176,7 +176,9 @@ const IconTile = memo(function IconTile({
             // ViewTileImage renders this surface as an app icon, not as a
             // cropped catalog preview. The button stays one constant hit target
             // and owns hover/focus chrome; the inner visual owns color/glyph.
-            "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
+            // Flat — no border; a subtle glass wash is the icon plate
+            // (neutral resting → neutral-with-opacity hover).
+            "h-16 w-16 overflow-hidden rounded-2xl bg-white/10 text-white transition-colors hover:bg-white/20",
             editing && "animate-pulse",
           )}
         >
@@ -511,11 +513,13 @@ export function Launcher({
     >
       {/* Favorites bar — pinned to the TOP of the launcher (not an iOS-style
           bottom dock). There is no Edit button: long-press any icon toggles
-          edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
+          edit mode (reorder / pin / unpin), and a right-flick leaves it.
+          Flat — no border, no solid card fill; a subtle translucent wash
+          groups the dock without reading as chrome over the wallpaper. */}
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="launcher-dock"
-          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
+          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl bg-white/10 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
@@ -552,7 +556,7 @@ export function Launcher({
                       key={id}
                       className="flex flex-col items-center gap-1.5 opacity-60"
                     >
-                      <div className="h-16 w-16 rounded-2xl border border-white/10 bg-white/15" />
+                      <div className="h-16 w-16 rounded-2xl bg-white/15" />
                       <div className="h-2.5 w-12 rounded-full bg-white/25" />
                     </div>
                   ))}

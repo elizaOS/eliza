@@ -747,7 +747,7 @@ export function ConfigPageView({
         <Dialog open={secretsOpen} onOpenChange={setSecretsOpen}>
           <DialogContent
             showCloseButton={false}
-            className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0 "
+            className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0"
           >
             <div className="flex max-h-[min(88vh,48rem)] flex-col">
               <DialogHeader className="flex flex-row items-center justify-between px-5 py-4">

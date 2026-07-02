@@ -482,11 +482,9 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted">
                   {t("workflowGraph.step", { defaultValue: "Step" })}
                 </div>
-                <div className="rounded-sm bg-bg/40 px-2 py-2">
-                  <p className="text-xs leading-relaxed text-txt/80">
-                    {node.notes.trim()}
-                  </p>
-                </div>
+                <p className="text-xs leading-relaxed text-txt/80">
+                  {node.notes.trim()}
+                </p>
               </div>
             ) : null}
 
@@ -502,9 +500,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
                       <div className="text-xs font-medium text-muted/80 font-mono">
                         {key}
                       </div>
-                      <div className="rounded-sm bg-bg/40 px-2 py-1">
-                        <ParamValue value={val} />
-                      </div>
+                      <ParamValue value={val} />
                     </div>
                   ))}
                 </div>

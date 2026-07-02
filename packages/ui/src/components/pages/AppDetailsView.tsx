@@ -331,7 +331,8 @@ function WidgetRow({
             ref={previewButton.ref}
             type="button"
             onClick={onTogglePreview}
-            className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
+            /* Flat — borderless pill; hover fill is the affordance. */
+            className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:bg-surface hover:text-foreground"
             {...previewButton.agentProps}
           >
             {expanded

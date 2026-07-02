@@ -751,7 +751,7 @@ export function WorkflowEditor({
               </Button>
             </div>
             {executionError && (
-              <div className="border-b border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
+              <div className="bg-danger/10 px-3 py-2 text-xs text-danger">
                 {executionError}
               </div>
             )}
@@ -940,7 +940,7 @@ export function WorkflowEditor({
               </div>
             </div>
             {revisionsError && (
-              <div className="border-b border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
+              <div className="bg-danger/10 px-3 py-2 text-xs text-danger">
                 {revisionsError}
               </div>
             )}

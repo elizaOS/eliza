@@ -550,7 +550,7 @@ export function MediaGalleryView({
                       defaultValue: "Media item",
                     })}
                 </h2>
-                <span className="rounded-full bg-accent/12 px-3 py-1 text-xs-tight font-semibold uppercase tracking-[0.16em] text-accent">
+                <span className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-accent">
                   {mediaTypeLabel(t, selectedItem.type)}
                 </span>
               </div>
@@ -629,7 +629,8 @@ export function MediaGalleryView({
               )}
             </PagePanel>
 
-            <div className="mt-5 rounded-sm border border-border/40 bg-card/45 px-5 py-4 text-sm text-muted">
+            {/* Flat — no card/border. Whitespace separates the details block. */}
+            <div className="mt-6 text-sm text-muted">
               <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
                 {t("mediagalleryview.MediaDetails", {
                   defaultValue: "Media Details",

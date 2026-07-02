@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";
+import { Field, FieldLabel, FieldMessage } from "../ui/field";
 import { Input } from "../ui/input";
 import {
   Select,
@@ -58,16 +58,15 @@ const EMPTY_FORM: BugReportForm = {
   logs: "",
 };
 
+/* Modal surfaces keep their scrim: self-contained contrast over the wallpaper. */
 const modalContentClassName =
-  "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0 ";
+  "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0";
 
 const modalInputClassName =
-  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70 ";
+  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70";
 
 const modalTextareaClassName =
-  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70 ";
-
-const subtleMonoDescriptionClassName = "font-mono text-xs-tight text-muted";
+  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70";
 
 function environmentOptionLabel(
   t: ReturnType<typeof useApp>["t"],
@@ -385,14 +384,14 @@ export function BugReportModal() {
           if (!open) close();
         }}
       >
-        <DialogContent className="w-[min(calc(100%_-_2rem),28rem)] rounded-sm border border-border/70 bg-card/96 p-0 ">
+        <DialogContent className="w-[min(calc(100%_-_2rem),28rem)] rounded-sm border border-border/70 bg-card/96 p-0">
           <DialogHeader className="px-5 py-4 text-left">
             <DialogTitle
               ref={(node) => {
                 successHeadingRef.current = node;
               }}
               tabIndex={-1}
-              className="text-sm font-bold text-txt "
+              className="text-sm font-bold text-txt"
             >
               {t("bugreportmodal.BugReportSubmitted")}
             </DialogTitle>
@@ -401,11 +400,9 @@ export function BugReportModal() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 px-5 py-6 text-center">
-            <p className="text-sm text-txt">
-              {acceptedWithoutUrl
-                ? "Your report was received."
-                : t("bugreportmodal.YourBugReportHas")}
-            </p>
+            {acceptedWithoutUrl ? (
+              <p className="text-sm text-txt">Your report was received.</p>
+            ) : null}
             {resultUrl ? (
               <a
                 href={resultUrl}
@@ -490,12 +487,6 @@ export function BugReportModal() {
                 onChange={(e) => updateField("description", e.target.value)}
                 rows={4}
               />
-              <FieldDescription className={subtleMonoDescriptionClassName}>
-                {t("bugreportmodal.DescriptionHint", {
-                  defaultValue:
-                    "Describe what happened and why it was unexpected.",
-                })}
-              </FieldDescription>
             </Field>
 
             <Field>
@@ -515,12 +506,6 @@ export function BugReportModal() {
                 }
                 rows={4}
               />
-              <FieldDescription className={subtleMonoDescriptionClassName}>
-                {t("bugreportmodal.StepsHint", {
-                  defaultValue:
-                    "Include the shortest reliable path that reproduces the bug.",
-                })}
-              </FieldDescription>
             </Field>
 
             <Field>
@@ -612,15 +597,7 @@ export function BugReportModal() {
 
             <Field>
               <div className="flex items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
-                  <FieldDescription className={subtleMonoDescriptionClassName}>
-                    {t("bugreportmodal.LogsHint", {
-                      defaultValue:
-                        "Paste only the relevant errors, traces, or console output.",
-                    })}
-                  </FieldDescription>
-                </div>
+                <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
                 <Button
                   type="button"
                   variant="ghost"

@@ -551,7 +551,7 @@ const SecretCard = memo(function SecretCard({
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           {showRequired && (
-            <span className="rounded-sm bg-danger/10 px-1.5 py-0.5 text-2xs font-medium text-danger">
+            <span className="text-2xs font-medium text-danger">
               {t("secretsview.Required")}
             </span>
           )}
