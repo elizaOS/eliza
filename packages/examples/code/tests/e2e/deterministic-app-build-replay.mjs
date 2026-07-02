@@ -22,7 +22,13 @@
  *     tests/e2e/deterministic-app-build-replay.mjs
  */
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +42,10 @@ const acpEntry = resolve(here, "..", "..", "src", "acp.ts");
 const PORT = 8917;
 const MODE = process.env.LLM_MODE === "record" ? "record" : "replay";
 const KEY = process.env.CEREBRAS_API_KEY || process.env.LLM_KEY || "";
+// FIXED workdir (reset clean each run) — record and replay MUST share the same
+// filesystem context, or the agent's tool results diverge and replay drifts off
+// the recorded turn sequence. Path is normalized out of the match key anyway.
+const workdir = join(tmpdir(), "eliza-det-replay-workspace");
 
 // The EXACT prompt the session is recorded with — must match for replay keys.
 const PROMPT =
@@ -53,6 +63,7 @@ const proxyProc = spawn("node", [proxy], {
     ...process.env,
     MODE,
     LLM_RECORDING: fixture,
+    LLM_REPLAY_WORKDIR: workdir,
     PORT: String(PORT),
     ...(MODE === "record"
       ? { LLM_UPSTREAM: "https://api.cerebras.ai/v1", LLM_KEY: KEY }
@@ -62,14 +73,12 @@ const proxyProc = spawn("node", [proxy], {
 });
 await new Promise((r) => setTimeout(r, 1500));
 
-// FIXED workdir (reset clean each run) — record and replay MUST share the same
-// filesystem context, or the agent's tool results diverge and replay drifts off
-// the recorded turn sequence. Path is normalized out of the match key anyway.
-const workdir = join(tmpdir(), "eliza-det-replay-workspace");
 rmSync(workdir, { recursive: true, force: true });
 mkdirSync(workdir, { recursive: true });
 execFileSync("git", ["init", "-q"], { cwd: workdir });
-execFileSync("git", ["config", "user.email", "e2e@test.local"], { cwd: workdir });
+execFileSync("git", ["config", "user.email", "e2e@test.local"], {
+  cwd: workdir,
+});
 execFileSync("git", ["config", "user.name", "e2e"], { cwd: workdir });
 
 const acpCommand = `bun --conditions eliza-source --tsconfig-override ${join(repoRoot, "tsconfig.json")} ${acpEntry}`;
@@ -97,7 +106,8 @@ try {
     timeoutMs: 240_000,
     env: {
       ELIZA_CODE_PROVIDER: "openai",
-      OPENAI_API_KEY: MODE === "record" ? KEY : "no-live-llm-deterministic-replay",
+      OPENAI_API_KEY:
+        MODE === "record" ? KEY : "no-live-llm-deterministic-replay",
       OPENAI_BASE_URL: `http://127.0.0.1:${PORT}/v1`,
       OPENAI_LARGE_MODEL: "gemma-4-31b",
       OPENAI_SMALL_MODEL: "gemma-4-31b",
@@ -107,9 +117,16 @@ try {
     },
   });
   sessionId = spawned.sessionId;
-  const result = await service.sendPrompt(sessionId, PROMPT, { timeoutMs: 240_000 });
+  const result = await service.sendPrompt(sessionId, PROMPT, {
+    timeoutMs: 240_000,
+  });
   const built = existsSync(join(workdir, "index.html"));
-  console.log(`[${MODE}] stopReason:`, result.stopReason, "| index.html built:", built);
+  console.log(
+    `[${MODE}] stopReason:`,
+    result.stopReason,
+    "| index.html built:",
+    built,
+  );
   if (built) {
     const html = readFileSync(join(workdir, "index.html"), "utf8");
     const sane = /<button/i.test(html) && /random/i.test(html);

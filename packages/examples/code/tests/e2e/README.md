@@ -55,5 +55,9 @@ git state) feed back into the conversation, so a different workspace would make
 requests drift off the recorded turn sequence. The proxy additionally normalizes
 volatile tokens (paths, UUIDs, timestamps) out of the match key.
 
+The replay proxy also rewrites recorded workspace paths inside model responses
+to the current fixed workspace. That keeps a fixture recorded on macOS usable on
+Linux CI, where `/tmp/eliza-det-replay-workspace` is the real write target.
+
 Re-record whenever the agent's prompt scaffolding or the orchestrator's ACP
 event mapping changes in a way that alters the request sequence.
