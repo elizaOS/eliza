@@ -112,6 +112,18 @@ import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell"
 
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
+
+// Reserve the ShellBackButton footprint on the LEFT of routed content so the
+// top-left of a view (e.g. the first filter chip of the decomposed spatial
+// views) is never under the fixed `z-[60]` back button and stays tappable.
+// The button is `left: calc(safe-area-left + 0.75rem)` and `h-9 w-9` (2.25rem),
+// so its right edge is at `safe-area-left + 3rem`; we add a 0.5rem gap → a
+// 3.5rem + safe-area reserved column. Applied to the routed shell, which always
+// renders ShellBackButton — so there is no width-dependent layout jump (the
+// button is present on both the desktop and mobile lanes). Full-bleed pages own
+// their edge-to-edge surface and position their own content, so they are left
+// untouched. See issue #11144.
+const SHELL_BACK_INSET_CLASS = "pl-[calc(var(--safe-area-left,0px)+3.5rem)]";
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
@@ -1471,13 +1483,17 @@ function routedShellMainClass(tab: string): string {
   // One tight page gutter for every routed view: minimal top so headers sit
   // right under the chrome, a small side gutter, modest bottom. Views that own
   // their full surface (browser/apps/views/background) still get zero padding.
-  const pagePadding =
+  // The LEFT gutter reserves the ShellBackButton footprint (#11144) so the
+  // top-left of a view — e.g. the first filter chip of the decomposed spatial
+  // views — never sits under the fixed `z-[60]` back button and stays tappable.
+  const fullSurface =
     tab === "browser" ||
     tab === "apps" ||
     tab === "views" ||
-    tab === "background"
-      ? ""
-      : "px-2 sm:px-3 pt-2 pb-4";
+    tab === "background";
+  const pagePadding = fullSurface
+    ? ""
+    : `pr-2 sm:pr-3 pt-2 pb-4 ${SHELL_BACK_INSET_CLASS}`;
   const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding} ${mobilePadding}`;
 }
