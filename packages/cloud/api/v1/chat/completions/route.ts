@@ -697,6 +697,15 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
       return 402;
     }
 
+    // A provider 400 is the CALLER's fault (invalid parameters / a response
+    // schema the provider's strict validator rejects) — pass it through so
+    // the client sees 400 invalid_request_error instead of the generic 500
+    // fallback, which both mislabels the failure and (in the streaming error
+    // chunk) invites pointless retries of a request that can never succeed.
+    if (providerError.statusCode === 400) {
+      return 400;
+    }
+
     if (providerError.statusCode && providerError.statusCode >= 500) {
       return 503;
     }
@@ -1313,18 +1322,7 @@ export async function handleChatCompletionsPOST(
     const status = isInsufficientCredits
       ? 402
       : (getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error));
-    let errorType = "api_error";
-    if (status === 401) {
-      errorType = "authentication_error";
-    } else if (status === 402) {
-      errorType = "insufficient_quota";
-    } else if (status === 429) {
-      errorType = "rate_limit_error";
-    } else if (status === 503) {
-      errorType = "service_unavailable";
-    } else if (status === 400) {
-      errorType = "invalid_request_error";
-    }
+    const errorType = openAiErrorTypeForStatus(status);
 
     return addCorsHeaders(
       Response.json(
@@ -1338,6 +1336,20 @@ export async function handleChatCompletionsPOST(
       ),
     );
   }
+}
+
+/**
+ * OpenAI-compatible `error.type` for an HTTP status. Single mapping shared by
+ * the non-streaming error response and the terminal streaming error chunk so
+ * the two paths can never disagree about what a status means.
+ */
+function openAiErrorTypeForStatus(status: number): string {
+  if (status === 401) return "authentication_error";
+  if (status === 402) return "insufficient_quota";
+  if (status === 429) return "rate_limit_error";
+  if (status === 503) return "service_unavailable";
+  if (status === 400) return "invalid_request_error";
+  return "api_error";
 }
 
 // ============================================================================
@@ -1673,7 +1685,12 @@ async function handleStreamingRequest(
           const errorChunk = {
             error: {
               message: error instanceof Error ? error.message : String(error),
-              type: "rate_limit_error",
+              // Same status→type mapping as the non-streaming path — a
+              // hardcoded "rate_limit_error" here mislabeled every mid-stream
+              // provider failure (schema 400s, upstream 5xx) as rate limiting,
+              // steering OpenAI-compatible clients into pointless back-off
+              // retries.
+              type: openAiErrorTypeForStatus(status),
               code: status,
             },
           };
