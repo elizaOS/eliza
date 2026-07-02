@@ -697,6 +697,18 @@ export class AppCreditsService {
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
 
+    // Request-stable idempotency key (threaded via withChargeIdempotencyKey).
+    // The reconcile refund is otherwise NON-idempotent, and the reservation
+    // settler resets its first-call-wins guard on throw — so if a refund
+    // commits then a post-refund write throws (DB blip), the route's fallback
+    // settle re-invokes reconcile and a SECOND full refund mints credit
+    // (#11512). Keying the refund on this stable id makes the re-invoke dedupe
+    // on the credit_transactions unique index instead of double-crediting.
+    const reconcileIdempotencyKey =
+      typeof (metadata as Record<string, unknown> | undefined)?.idempotencyKey === "string"
+        ? ((metadata as Record<string, unknown>).idempotencyKey as string)
+        : undefined;
+
     const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
     // Resolve the user's organization once — every branch below charges or
@@ -762,6 +774,12 @@ export class AppCreditsService {
         organizationId,
         amount: refundAmount,
         description: `App reconciliation refund (${app.name ?? appId})`,
+        // Idempotent on the request-stable key: a second settle of the same
+        // reservation (e.g. after the settler's guard reset on a mid-settle
+        // throw) dedupes to the first refund instead of minting (#11512).
+        ...(reconcileIdempotencyKey && {
+          stripePaymentIntentId: `reconcile-refund:${reconcileIdempotencyKey}`,
+        }),
         metadata: {
           appId,
           userId,
