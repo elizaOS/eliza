@@ -911,8 +911,10 @@ async function isCanonicalOwner(
  * Check whether the sender has at least the given role in the elizaOS
  * role hierarchy (OWNER > ADMIN > USER > GUEST).
  *
- * When there is no world context (for example local API calls), allow through
- * so local-only usage follows the same lenient path as plugin role gating.
+ * When there is no access context at all (no runtime / no sender entity — for
+ * example local API calls), allow through so local-only usage follows the same
+ * lenient path as plugin role gating. But when there IS a real sender whose
+ * role simply cannot be resolved, fail CLOSED to USER rank — see below.
  */
 export async function hasRoleAccess(
 	runtime: IAgentRuntime | undefined,
@@ -939,7 +941,16 @@ export async function hasRoleAccess(
 	try {
 		const result = await checkSenderRole(context.runtime, context.message);
 		if (!result) {
-			return true;
+			// Fail CLOSED. When the sender's role cannot be resolved (missing or
+			// inaccessible world, no world id on the message), treat them as USER —
+			// the same default the pre-handler tool-call gate uses. Returning `true`
+			// here was fail-OPEN: a real sender whose world resolution failed
+			// cleared an OWNER gate and reached owner-gated capabilities (e.g.
+			// SHELL). Defaulting to USER denies privileged (ADMIN/OWNER) actions to
+			// an unresolvable sender while still allowing basic USER actions.
+			const senderRank = ROLE_RANK.USER;
+			const requiredRank = ROLE_RANK[requiredRole] ?? 0;
+			return senderRank >= requiredRank;
 		}
 
 		const senderRank = ROLE_RANK[result.role] ?? 0;

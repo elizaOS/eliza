@@ -105,16 +105,16 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 			return null;
 		},
 		// hasRoleAccess uses these
-		getSetting: () => undefined,
+		// hasRoleAccess reads the canonical-owner config here: when `owner` is set
+		// it is exposed as ELIZA_ADMIN_ENTITY_ID so a message from that entity
+		// resolves to OWNER (>= ADMIN). Correct way to grant admin now that
+		// hasRoleAccess fails CLOSED on an unresolved role (no longer treats
+		// "no world context" as admin).
+		getSetting: (key: string) =>
+			key === "ELIZA_ADMIN_ENTITY_ID" && owner ? owner : undefined,
 		_test_owner: owner,
 		_test_admins: admins,
 	} as unknown as IAgentRuntime;
-
-	// Make hasRoleAccess succeed by registering the entity as owner/admin via
-	// world state — but for unit tests we'd rather bypass entirely. The real
-	// hasRoleAccess returns true when there's no world context. Our stub has
-	// no world context so it returns true (lenient default) — which is what we
-	// want for happy-path tests. For admin-deny tests we'll override.
 
 	const store = new PersonalityStore(runtime);
 	// initialize() loads profiles; do it synchronously-ish via a hack
