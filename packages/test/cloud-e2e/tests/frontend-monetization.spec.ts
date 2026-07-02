@@ -1,12 +1,18 @@
 /**
  * Cloud-frontend monetization e2e (browser-driven).
  *
- * Boots the real cloud-frontend, logs in with the synthetic test-session
- * cookie, and visits each monetization dashboard page, asserting (a) the page
- * is reachable while authenticated (not bounced to /login) and (b) it fetches
- * authenticated data from the Cloud API (Commandment 10: every GET has a
- * consuming component). Assertions are based on observed network traffic, not
- * specific DOM selectors, to stay robust against UI churn.
+ * Boots the real cloud web app, logs in with the synthetic test-session
+ * cookie, and:
+ * (a) visits each standalone monetization dashboard page, asserting it is
+ *     reachable while authenticated (not bounced to /login) and fetches
+ *     authenticated data from the Cloud API (Commandment 10: every GET has a
+ *     consuming component). Assertions are based on observed network traffic,
+ *     not specific DOM selectors, to stay robust against UI churn.
+ * (b) asserts the account-management deep links (billing / earnings /
+ *     monetization) resolve through the CloudRouterShell compat redirects to
+ *     their canonical in-app Settings sections instead of dead-ending on the
+ *     dashboard/* 404 — those surfaces have no standalone route by design
+ *     (see packages/ui/src/cloud/register-all.test.ts).
  *
  * Uses the default `load` wait (this SPA polls, so `networkidle` never settles)
  * plus a short settle window to capture on-mount data fetches.
@@ -96,8 +102,26 @@ test.describe("cloud-frontend monetization pages", () => {
     };
 
     await visit("/dashboard/apps", "/api/v1/apps");
-    await visit("/dashboard/earnings", "/api/v1/redemptions");
-    await visit("/dashboard/billing", "/api/v1/billing");
     await visit("/dashboard/analytics", "/api/analytics");
+
+    // Account-management surfaces live in the in-app Settings sections; the
+    // legacy dashboard URLs must land there via the shell's compat redirects
+    // (query preserved before the section hash), never on the cloud 404.
+    const redirects: Array<[from: string, to: RegExp]> = [
+      ["/dashboard/billing", /\/settings#cloud-billing$/],
+      ["/dashboard/billing?canceled=true", /\/settings\?canceled=true#cloud-billing$/],
+      ["/dashboard/earnings", /\/settings#cloud-monetization$/],
+      ["/dashboard/monetization", /\/settings#cloud-monetization$/],
+      ["/dashboard/settings?tab=billing", /\/settings\?tab=billing#cloud-billing$/],
+    ];
+    for (const [from, to] of redirects) {
+      await page.goto(`${fe}${from}`, { timeout: 45_000 });
+      await expect(page, `${from} redirects to its settings home`).toHaveURL(
+        to,
+      );
+      await expect(page, `${from} stays authenticated`).not.toHaveURL(
+        /\/login(\?|$)/,
+      );
+    }
   });
 });

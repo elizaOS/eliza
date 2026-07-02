@@ -1,0 +1,60 @@
+{
+  "issue": 11341,
+  "failures": 0,
+  "screenshots": 22,
+  "redirectCases": [
+    {
+      "from": "/dashboard/billing",
+      "to": "/settings#cloud-billing"
+    },
+    {
+      "from": "/dashboard/billing?canceled=true",
+      "to": "/settings?canceled=true#cloud-billing"
+    },
+    {
+      "from": "/dashboard/earnings",
+      "to": "/settings#cloud-monetization"
+    },
+    {
+      "from": "/dashboard/monetization",
+      "to": "/settings#cloud-monetization"
+    },
+    {
+      "from": "/dashboard/affiliates",
+      "to": "/settings#cloud-monetization"
+    },
+    {
+      "from": "/dashboard/account",
+      "to": "/settings#cloud-account"
+    },
+    {
+      "from": "/dashboard/security",
+      "to": "/settings#cloud-security"
+    },
+    {
+      "from": "/dashboard/security/permissions",
+      "to": "/settings#cloud-plugin-grants"
+    },
+    {
+      "from": "/dashboard/api-keys",
+      "to": "/settings#cloud-api-keys"
+    },
+    {
+      "from": "/dashboard/settings?tab=connections",
+      "to": "/settings?tab=connections#cloud-connectors"
+    },
+    {
+      "from": "/dashboard/settings?tab=billing",
+      "to": "/settings?tab=billing#cloud-billing"
+    },
+    {
+      "from": "/settings#billing",
+      "to": "/settings#billing"
+    },
+    {
+      "from": "/settings#api-keys",
+      "to": "/settings#api-keys"
+    }
+  ],
+  "ranAt": "2026-07-02T22:52:40.379Z"
+}
