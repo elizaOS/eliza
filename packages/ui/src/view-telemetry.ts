@@ -20,8 +20,6 @@ export type ViewInteractionSource =
 
 export type ViewInteractionAction =
   | "launch"
-  | "favorite"
-  | "unfavorite"
   | "reorder"
   | "page-swipe"
   | "edit-mode-enter"
