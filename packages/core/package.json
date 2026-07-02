@@ -24,7 +24,7 @@
 	"module": "./dist/node/index.node.js",
 	"types": "./dist/index.d.ts",
 	"browser": "./dist/browser/index.browser.js",
-	"sideEffects": false,
+	"sideEffects": true,
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
