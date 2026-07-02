@@ -547,10 +547,21 @@ export class SetupService extends Service {
 						nextSetting.usageDescription || nextSetting.description,
 					);
 
+				// Parenthesize like askMessage above: without this the `.replace`
+				// binds only to the DEFAULT, so a custom `messages.settingUpdated`
+				// containing {{settingName}} shipped the raw placeholder.
+				const settingUpdatedMessage = (
+					session.config.messages?.settingUpdated ||
+					DEFAULT_SETUP_MESSAGES.settingUpdated
+				).replace("{{settingName}}", currentSetting.name);
+
 				return {
 					shouldRespond: true,
-					response: `${session.config.messages?.settingUpdated || DEFAULT_SETUP_MESSAGES.settingUpdated.replace("{{settingName}}", currentSetting.name)}\n\n${askMessage}`,
-					updatedKey: session.currentSettingKey,
+					response: `${settingUpdatedMessage}\n\n${askMessage}`,
+					// The key just answered — session.currentSettingKey was reassigned
+					// to nextKey above, so report the local captured before the ask
+					// (matches the completion branch, which returns currentSettingKey).
+					updatedKey: currentSettingKey,
 				};
 			}
 		}

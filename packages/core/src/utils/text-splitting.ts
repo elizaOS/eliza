@@ -40,11 +40,16 @@ export function extractFirstSentence(text: string): {
 				// Potential boundary. Check prior context for abbreviations.
 				// We look at the word preceding the punctuation.
 				const preText = text.substring(0, i);
-				const lastWordMatch = preText.match(/\b(\w+)$/);
+				// Include "." in the preceding word so dotted abbreviations match.
+				// \w excludes ".", so the old \b(\w+)$ extracted only "g" from
+				// "e.g" — the "e.g"/"i.e" list entries were dead and those got split
+				// mid-token (the first-sentence / TTS early-emit path chopped "e.g."
+				// into "e."). Strip a trailing dot before comparing to the list.
+				const lastWordMatch = preText.match(/(?:^|\s)([\w.]+)$/);
 
 				let isAbbreviation = false;
 				if (lastWordMatch) {
-					const lastWord = lastWordMatch[1];
+					const lastWord = lastWordMatch[1].replace(/\.$/, "");
 					// Case insensitive check
 					if (
 						abbreviations.some(
