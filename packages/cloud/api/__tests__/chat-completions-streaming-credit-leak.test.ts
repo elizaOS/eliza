@@ -19,8 +19,8 @@
  *   4. The success path settles to actual usage exactly once, and a later
  *      stray onError cannot double-refund (idempotent settler).
  *
- * `streamText` and `getLanguageModel` are mocked at the module boundary; the
- * settler and reservation math are real.
+ * `streamText`, `getLanguageModel`, and the billing-price lookup are mocked at
+ * the module boundary; the settler and reservation math are real.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -30,7 +30,9 @@ import { APICallError } from "ai";
 // stranded by the process-wide registry replacement; restore in afterAll.
 const aiActual = require("ai") as Record<string, unknown>;
 
+import { estimateTokens } from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
+import * as aiBillingActual from "@/lib/services/ai-billing";
 
 // The REAL settler — explicitly NOT mocked. This is the component under test.
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
@@ -55,6 +57,42 @@ mock.module("@/lib/providers/language-model", () => ({
   getLanguageModel: () => ({}) as never,
 }));
 
+const INPUT_TOKEN_COST = 0.001;
+const OUTPUT_TOKEN_COST = 0.01;
+const billUsage = mock(async (_context: unknown, usage: unknown) => {
+  const record =
+    usage && typeof usage === "object"
+      ? (usage as {
+          inputTokens?: number;
+          promptTokens?: number;
+          outputTokens?: number;
+          completionTokens?: number;
+          totalTokens?: number;
+        })
+      : {};
+  const inputTokens = record.inputTokens ?? record.promptTokens ?? 0;
+  const outputTokens = record.outputTokens ?? record.completionTokens ?? 0;
+  const inputCost = inputTokens * INPUT_TOKEN_COST;
+  const outputCost = outputTokens * OUTPUT_TOKEN_COST;
+  return {
+    inputCost,
+    outputCost,
+    totalCost: inputCost + outputCost,
+    baseInputCost: inputCost,
+    baseOutputCost: outputCost,
+    baseTotalCost: inputCost + outputCost,
+    platformMarkup: 0,
+    inputTokens,
+    outputTokens,
+    totalTokens: record.totalTokens ?? inputTokens + outputTokens,
+    markupApplied: true,
+  };
+});
+mock.module("@/lib/services/ai-billing", () => ({
+  ...aiBillingActual,
+  billUsage,
+}));
+
 // Import the route AFTER the mocks so it binds to the stubs.
 const { __streamingCreditTestHooks } = await import(
   "../v1/chat/completions/route"
@@ -64,6 +102,7 @@ const { handleStreamingRequest } = __streamingCreditTestHooks;
 afterAll(() => {
   mock.module("ai", () => aiActual);
   mock.module("@/lib/providers/language-model", () => languageModelActual);
+  mock.module("@/lib/services/ai-billing", () => aiBillingActual);
 });
 
 /**
@@ -74,6 +113,7 @@ afterAll(() => {
 function makeLedgerReservation(startBalance: number, hold: number) {
   let balance = startBalance - hold; // upfront hold debited
   let reconcileCalls = 0;
+  const actualCosts: number[] = [];
   return {
     startBalance,
     hold,
@@ -83,10 +123,14 @@ function makeLedgerReservation(startBalance: number, hold: number) {
     get reconcileCalls() {
       return reconcileCalls;
     },
+    get actualCosts() {
+      return actualCosts;
+    },
     reservation: {
       reservedAmount: hold,
       reconcile: async (actualCost: number) => {
         reconcileCalls++;
+        actualCosts.push(actualCost);
         balance += hold - actualCost;
         return undefined;
       },
@@ -104,8 +148,9 @@ function makeApiCallError(statusCode: number) {
   });
 }
 
+const MODEL = "openai/gpt-oss-120b";
 const REQUEST = {
-  model: "openai/gpt-oss-120b",
+  model: MODEL,
   messages: [{ role: "user", content: "hello" }],
   stream: true,
 } as never;
@@ -113,9 +158,10 @@ const REQUEST = {
 /** Invoke handleStreamingRequest with the test's settler and a fixed shape. */
 function callStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
+  options: { estimatedInputTokens?: number; signal?: AbortSignal } = {},
 ) {
   return handleStreamingRequest(
-    "openai/gpt-oss-120b",
+    MODEL,
     undefined,
     [{ role: "user", content: "hello" }] as never,
     REQUEST,
@@ -126,8 +172,9 @@ function callStreaming(
     "req-1",
     null,
     Date.now(),
-    undefined,
+    options.signal,
     30_000,
+    options.estimatedInputTokens ?? 1,
     settleReservation as never,
     {} as never,
     undefined,
@@ -138,6 +185,7 @@ function callStreaming(
 
 beforeEach(() => {
   streamText.mockClear();
+  billUsage.mockClear();
   streamTextImpl = null;
 });
 
@@ -222,6 +270,78 @@ describe("streaming chat — provider error releases the credit reservation", ()
     expect(body).toContain('"type":"service_unavailable"');
     expect(body).toContain('"code":503');
     expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
+});
+
+describe("streaming chat — client abort settles delivered usage", () => {
+  test("abort after text deltas reconciles to prompt plus delivered-output cost, not 0", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const estimatedInputTokens = 12;
+    const deliveredText = "partial response already sent";
+    const expectedCost =
+      estimatedInputTokens * INPUT_TOKEN_COST +
+      estimateTokens(deliveredText) * OUTPUT_TOKEN_COST;
+    expect(expectedCost).toBeGreaterThan(0);
+
+    let onAbortPromise: Promise<unknown> | undefined;
+    streamTextImpl = (config) => {
+      const onAbort = config.onAbort as
+        | ((event: { steps: [] }) => Promise<unknown> | unknown)
+        | undefined;
+
+      return {
+        fullStream: (async function* () {
+          yield {
+            type: "text-delta",
+            id: "text-1",
+            text: deliveredText,
+          };
+          onAbortPromise = Promise.resolve(onAbort?.({ steps: [] }));
+          yield { type: "abort", reason: "client disconnected" };
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, { estimatedInputTokens });
+    const body = await res.text();
+    expect(onAbortPromise).toBeDefined();
+    await onAbortPromise;
+
+    expect(body).toContain(deliveredText);
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts[0]).toBeGreaterThan(0);
+    expect(ledger.actualCosts[0]).toBeCloseTo(expectedCost, 10);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - expectedCost, 10);
+  });
+
+  test("abort-like stream failure after text deltas cannot win with settle(0)", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const estimatedInputTokens = 8;
+    const deliveredText = "sent before disconnect";
+    const expectedCost =
+      estimatedInputTokens * INPUT_TOKEN_COST +
+      estimateTokens(deliveredText) * OUTPUT_TOKEN_COST;
+
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield {
+          type: "text-delta",
+          id: "text-1",
+          text: deliveredText,
+        };
+        throw new DOMException("The operation was aborted.", "AbortError");
+      })(),
+    });
+
+    const res = await callStreaming(settle, { estimatedInputTokens });
+    const body = await res.text();
+
+    expect(body).toContain(deliveredText);
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts[0]).toBeCloseTo(expectedCost, 10);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - expectedCost, 10);
   });
 });
 

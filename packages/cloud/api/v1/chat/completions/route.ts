@@ -19,7 +19,9 @@ import {
   jsonSchema,
   type ModelMessage,
   RetryError,
+  type StepResult,
   streamText,
+  type ToolSet,
 } from "ai";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -31,6 +33,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   calculateCost,
+  estimateTokens,
   getProviderFromModel,
   getSafeModelParams,
   modelUsesReasoningTokens,
@@ -53,6 +56,7 @@ import {
   resolveAiProviderSource,
 } from "@/lib/providers/language-model";
 import {
+  type AIUsage,
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
@@ -1260,6 +1264,7 @@ export async function handleChatCompletionsPOST(
           startTime,
           req.signal,
           routeTimeoutMs,
+          estimatedInputTokens,
           settleReservation,
           cotOptions,
           effectiveMaxTokens,
@@ -1352,6 +1357,149 @@ function openAiErrorTypeForStatus(status: number): string {
   return "api_error";
 }
 
+function summarizeFinishedStepUsage(
+  steps: readonly StepResult<ToolSet>[],
+): AIUsage | null {
+  let sawUsage = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let cacheReadInputTokens = 0;
+  let cacheWriteInputTokens = 0;
+
+  for (const step of steps) {
+    const usage = step.usage;
+    const stepInputTokens = firstNumber(usage.inputTokens) ?? 0;
+    const stepOutputTokens = firstNumber(usage.outputTokens) ?? 0;
+    const stepTotalTokens =
+      firstNumber(usage.totalTokens) ?? stepInputTokens + stepOutputTokens;
+    const stepCacheReadTokens =
+      firstNumber(
+        usage.inputTokenDetails?.cacheReadTokens,
+        usage.cachedInputTokens,
+      ) ?? 0;
+    const stepCacheWriteTokens =
+      firstNumber(usage.inputTokenDetails?.cacheWriteTokens) ?? 0;
+
+    if (
+      stepInputTokens > 0 ||
+      stepOutputTokens > 0 ||
+      stepTotalTokens > 0 ||
+      stepCacheReadTokens > 0 ||
+      stepCacheWriteTokens > 0
+    ) {
+      sawUsage = true;
+    }
+
+    inputTokens += stepInputTokens;
+    outputTokens += stepOutputTokens;
+    totalTokens += stepTotalTokens;
+    cacheReadInputTokens += stepCacheReadTokens;
+    cacheWriteInputTokens += stepCacheWriteTokens;
+  }
+
+  if (!sawUsage) return null;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheReadInputTokens,
+    cacheWriteInputTokens,
+  };
+}
+
+function isAbortLikeStreamError(error: unknown): boolean {
+  if (error instanceof Error && error.name === "AbortError") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return message.toLowerCase().includes("aborted");
+}
+
+async function settleStreamingAbortReservation(params: {
+  model: string;
+  provider: string;
+  user: { id: string; organization_id: string };
+  apiKey: { id: string } | null;
+  affiliateCode: string | null;
+  appId: string | null;
+  requestId: string;
+  billingSource: PricingBillingSource;
+  estimatedInputTokens: number;
+  deliveredText: string;
+  steps: readonly StepResult<ToolSet>[];
+  settleReservation: (
+    actualCost: number,
+  ) => Promise<CreditReconciliationResult | null>;
+}): Promise<CreditReconciliationResult | null> {
+  const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
+  const deliveredOutputTokens = estimateTokens(params.deliveredText);
+  const inputTokens = Math.max(
+    params.estimatedInputTokens,
+    finishedStepUsage?.inputTokens ?? 0,
+  );
+  const outputTokens = Math.max(
+    deliveredOutputTokens,
+    finishedStepUsage?.outputTokens ?? 0,
+  );
+  const totalTokens = Math.max(
+    inputTokens + outputTokens,
+    finishedStepUsage?.totalTokens ?? 0,
+  );
+
+  try {
+    const billing = await billUsage(
+      {
+        organizationId: params.user.organization_id,
+        userId: params.user.id,
+        apiKeyId: params.apiKey?.id,
+        model: params.model,
+        provider: params.provider,
+        billingSource: params.billingSource,
+        requestId: params.requestId,
+        metadata: buildProviderReconciliationMetadata(
+          params.provider,
+          params.model,
+          true,
+          params.appId,
+        ),
+        affiliateCode: params.affiliateCode,
+        ...buildProviderBillingFields(params.provider, params.model),
+      },
+      {
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
+        cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
+      },
+    );
+    const reconciliation = await params.settleReservation(billing.totalCost);
+
+    logger.info(
+      "[Chat Completions] Stream aborted; reservation partially settled",
+      {
+        model: params.model,
+        inputTokens: billing.inputTokens,
+        outputTokens: billing.outputTokens,
+        totalCost: billing.totalCost,
+        deliveredChars: params.deliveredText.length,
+        finishedSteps: params.steps.length,
+      },
+    );
+
+    return reconciliation;
+  } catch (error) {
+    logger.error(
+      "[Chat Completions] Stream abort partial settlement failed; refunding reservation",
+      {
+        model: params.model,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return await params.settleReservation(0);
+  }
+}
+
 // ============================================================================
 // Streaming Handler
 // ============================================================================
@@ -1370,6 +1518,7 @@ async function handleStreamingRequest(
   startTime: number,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
+  estimatedInputTokens: number,
   settleReservation: (
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>,
@@ -1382,6 +1531,7 @@ async function handleStreamingRequest(
   const tools = convertTools(request.tools);
   const toolChoice = mapToolChoice(request.tool_choice);
   const experimentalOutput = mapResponseFormat(request.response_format);
+  let deliveredText = "";
 
   const safeParams = getSafeModelParams(model, {
     temperature: request.temperature,
@@ -1481,10 +1631,29 @@ async function handleStreamingRequest(
         });
       }
     },
-    onAbort: async () => {
-      await settleReservation(0);
+    onAbort: async ({
+      steps,
+    }: {
+      readonly steps: readonly StepResult<ToolSet>[];
+    }) => {
+      await settleStreamingAbortReservation({
+        model,
+        provider,
+        user,
+        apiKey,
+        affiliateCode,
+        appId,
+        requestId,
+        billingSource,
+        estimatedInputTokens,
+        deliveredText,
+        steps,
+        settleReservation,
+      });
       logger.info("[Chat Completions] Stream aborted before completion", {
         model,
+        estimatedInputTokens,
+        deliveredOutputTokens: estimateTokens(deliveredText),
       });
     },
     // A provider error during streaming (e.g. the cerebras 429/5xx the
@@ -1534,6 +1703,7 @@ async function handleStreamingRequest(
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
             );
+            deliveredText += part.text;
             continue;
           }
 
@@ -1678,7 +1848,27 @@ async function handleStreamingRequest(
         // does not await) onError, so settle the reservation here too. The
         // settler is idempotent, so this cannot double-refund if onError already
         // won the race.
-        await settleReservation(0);
+        const streamAborted =
+          abortSignal?.aborted === true ||
+          (deliveredText.length > 0 && isAbortLikeStreamError(error));
+        if (streamAborted) {
+          await settleStreamingAbortReservation({
+            model,
+            provider,
+            user,
+            apiKey,
+            affiliateCode,
+            appId,
+            requestId,
+            billingSource,
+            estimatedInputTokens,
+            deliveredText,
+            steps: [],
+            settleReservation,
+          });
+        } else {
+          await settleReservation(0);
+        }
         const status =
           getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error);
         try {
