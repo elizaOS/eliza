@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildRotatedSubprocessEnv,
   isSubscriptionLimitError,
   type RotationAccountSelection,
+  resetRotationStateForTests,
   rotationAgentTypeForBackend,
   rotationEnabled,
   withAccountRotation,
@@ -62,6 +64,7 @@ const enabledGetter = () => undefined;
 
 afterEach(() => {
   uninstallBridge();
+  resetRotationStateForTests();
   vi.restoreAllMocks();
 });
 
@@ -128,6 +131,45 @@ describe("rotationEnabled", () => {
   });
 });
 
+describe("buildRotatedSubprocessEnv", () => {
+  it("keeps ambient process env intact while selected account auth wins in subprocess env", () => {
+    const saved = {
+      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      CODEX_HOME: process.env.CODEX_HOME,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    };
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-claude-token";
+    process.env.ANTHROPIC_API_KEY = "ambient-anthropic-key";
+    process.env.CODEX_HOME = "/ambient/codex";
+    process.env.OPENAI_API_KEY = "ambient-openai-key";
+
+    try {
+      const claudeEnv = buildRotatedSubprocessEnv("claude", {
+        CLAUDE_CODE_OAUTH_TOKEN: "selected-claude-token",
+      });
+      expect(claudeEnv.CLAUDE_CODE_OAUTH_TOKEN).toBe("selected-claude-token");
+      expect(claudeEnv.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(claudeEnv.PATH).toBe(process.env.PATH);
+
+      const codexEnv = buildRotatedSubprocessEnv("codex", { CODEX_HOME: "/selected/codex" });
+      expect(codexEnv.CODEX_HOME).toBe("/selected/codex");
+      expect(codexEnv.OPENAI_API_KEY).toBeUndefined();
+      expect(codexEnv.PATH).toBe(process.env.PATH);
+
+      expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("ambient-claude-token");
+      expect(process.env.ANTHROPIC_API_KEY).toBe("ambient-anthropic-key");
+      expect(process.env.CODEX_HOME).toBe("/ambient/codex");
+      expect(process.env.OPENAI_API_KEY).toBe("ambient-openai-key");
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+});
+
 describe("withAccountRotation", () => {
   const ctx = (overrides: Record<string, unknown> = {}) => ({
     backend: "claude-sdk",
@@ -147,23 +189,77 @@ describe("withAccountRotation", () => {
   });
 
   it("rotates on a subscription-limit error then succeeds on the next account", async () => {
+    const savedToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    const savedKey = process.env.ANTHROPIC_API_KEY;
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-token";
+    process.env.ANTHROPIC_API_KEY = "ambient-key";
     const bridge = installFakeBridge([account("b")]);
     let calls = 0;
-    const attempt = vi.fn(async () => {
+    const seenEnv: Array<Record<string, string | undefined> | undefined> = [];
+    const attempt = vi.fn(async (env?: Record<string, string | undefined>) => {
+      seenEnv.push(env);
       calls += 1;
       if (calls === 1) throw new Error("subscription rate limit reached: session limit");
       return "answer-on-account-b";
     });
     const c = ctx();
-    await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-b");
-    expect(attempt).toHaveBeenCalledTimes(2);
-    expect(bridge.select).toHaveBeenCalledTimes(1);
-    // Selected account b's token was applied so the fresh session re-auths as it.
-    expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
-    // The warm session bound to the limited account was torn down before retry.
-    expect(c.onRotate).toHaveBeenCalledTimes(1);
-    // Usage recorded against the account we rotated INTO on success.
-    expect(bridge.recordUsage).toHaveBeenCalledWith("anthropic-subscription", "b", { ok: true });
+    try {
+      await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-b");
+      expect(attempt).toHaveBeenCalledTimes(2);
+      expect(seenEnv[0]).toBeUndefined();
+      expect(seenEnv[1]?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
+      expect(seenEnv[1]?.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(seenEnv[1]?.PATH).toBe(process.env.PATH);
+      expect(bridge.select).toHaveBeenCalledTimes(1);
+      // Selected account b's token is scoped to the subprocess env only.
+      expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("ambient-token");
+      expect(process.env.ANTHROPIC_API_KEY).toBe("ambient-key");
+      // The warm session bound to the limited account was torn down before retry.
+      expect(c.onRotate).toHaveBeenCalledTimes(1);
+      // Usage recorded against the account we rotated INTO on success.
+      expect(bridge.recordUsage).toHaveBeenCalledWith("anthropic-subscription", "b", { ok: true });
+    } finally {
+      if (savedToken === undefined) delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+      else process.env.CLAUDE_CODE_OAUTH_TOKEN = savedToken;
+      if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = savedKey;
+    }
+  });
+
+  it("reuses a selected subprocess env on later turns without reselecting or mutating process.env", async () => {
+    const savedToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-token";
+    const bridge = installFakeBridge([account("b")]);
+    try {
+      let firstCalls = 0;
+      await expect(
+        withAccountRotation(
+          async () => {
+            firstCalls += 1;
+            if (firstCalls === 1) {
+              throw new Error("subscription rate limit reached: session limit");
+            }
+            return "rotated";
+          },
+          ctx({ sessionKey: "stable-session" }) as never
+        )
+      ).resolves.toBe("rotated");
+
+      const secondAttempt = vi.fn(async (env?: Record<string, string | undefined>) => {
+        expect(env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
+        return "still-on-selected-account";
+      });
+      await expect(
+        withAccountRotation(secondAttempt, ctx({ sessionKey: "stable-session" }) as never)
+      ).resolves.toBe("still-on-selected-account");
+
+      expect(secondAttempt).toHaveBeenCalledTimes(1);
+      expect(bridge.select).toHaveBeenCalledTimes(1);
+      expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("ambient-token");
+    } finally {
+      if (savedToken === undefined) delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+      else process.env.CLAUDE_CODE_OAUTH_TOKEN = savedToken;
+    }
   });
 
   it("does NOT rotate on a non-limit error — rethrows immediately to failover", async () => {
