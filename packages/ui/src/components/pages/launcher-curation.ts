@@ -82,6 +82,12 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // Wallet sub-views — reached from inside the Wallet app, not the launcher.
   "hyperliquid",
   "polymarket",
+  // Legacy alias for the relationships/contact-graph surface: `rolodex` is a
+  // routable tab (TAB_PATHS "/rolodex") with a launcher tile but NO directViews
+  // branch in renderStaticViewRouterTab, so tapping it lands on the
+  // ViewUnavailableFallback (bounces the user back to the launcher). The real
+  // contact surface is `relationships`; hide this dead alias.
+  "rolodex",
 ]);
 
 /**
