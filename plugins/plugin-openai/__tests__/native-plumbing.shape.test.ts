@@ -301,6 +301,73 @@ describe("OpenAI native text plumbing", () => {
     expect(onStreamChunk).toHaveBeenNthCalledWith(2, "lo");
   });
 
+  it("re-throws a provider error routed to onError during live streaming (no silent empty reply)", async () => {
+    // The AI SDK routes a request failure to onError and ends textStream empty
+    // rather than throwing. The live-streaming branch must capture that error
+    // and re-throw it when the stream ends, so the runtime's `for await`
+    // consumer throws and multi-provider failover engages (instead of treating
+    // the empty stream as a successful empty reply).
+    const providerError = new Error("provider 429 after retries");
+    aiMocks.streamText.mockImplementation(
+      (params: { onError?: (e: { error: unknown }) => void }) => {
+        // Simulate the SDK invoking onError, then closing the stream empty.
+        params.onError?.({ error: providerError });
+        // Companion promises resolve empty (the SDK leaves them unresolved/
+        // rejected on a failed stream, but they are not what this test asserts
+        // — the fix surfaces the error via the captured onError + textStream
+        // re-throw, not the companions). Resolving avoids spurious unhandled
+        // rejections from companions the prompt-only path never consumes.
+        return {
+          textStream: (async function* emptyStream() {
+            // no chunks — the request failed before any text
+          })(),
+          text: Promise.resolve(""),
+          toolCalls: Promise.resolve([]),
+          finishReason: Promise.resolve(undefined),
+          usage: Promise.resolve(undefined),
+        };
+      }
+    );
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "stream",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    await expect(
+      (async () => {
+        for await (const _chunk of stream.textStream) {
+          // drain
+        }
+      })()
+    ).rejects.toThrow("provider 429 after retries");
+  });
+
+  it("does not throw when a live stream ends empty with no provider error", async () => {
+    // Control for the fix above: a genuinely empty (but successful) stream must
+    // still complete normally — the re-throw is gated on a captured error only.
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* emptyStream() {})(),
+      text: Promise.resolve(""),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 0 }),
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "stream",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    const chunks: string[] = [];
+    for await (const chunk of stream.textStream) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual([]);
+  });
+
   it("maps string responseFormat json_object into the AI SDK responseFormat", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "{}",
