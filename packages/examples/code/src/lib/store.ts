@@ -102,6 +102,8 @@ interface ElizaCodeState {
     messageId: string,
     content: string,
   ) => void;
+  /** Remove a single message (e.g. drop an empty assistant placeholder on error). No-op if not found. */
+  removeMessage: (roomId: string, messageId: string) => void;
   clearMessages: (roomId: string) => void;
 
   // Task Actions (for UI sync - actual data managed by CodeTaskService)
@@ -275,6 +277,20 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
         );
         return { ...room, messages: nextMessages };
       }),
+    }));
+    debouncedSave(get());
+  },
+
+  removeMessage: (roomId: string, messageId: string) => {
+    set((state) => ({
+      rooms: state.rooms.map((room) =>
+        room.id === roomId
+          ? {
+              ...room,
+              messages: room.messages.filter((m) => m.id !== messageId),
+            }
+          : room,
+      ),
     }));
     debouncedSave(get());
   },
