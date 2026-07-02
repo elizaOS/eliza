@@ -14,8 +14,13 @@ import { createCreditReservationSettler } from "./credit-reservation";
 
 function makeReservation(
   reconcileFn: (cost: number) => Promise<CreditReconciliationResult>,
+  reservationTransactionId?: string | null,
 ): CreditReservation {
-  return { reconcile: reconcileFn } as unknown as CreditReservation;
+  return {
+    reservedAmount: fakeResult.reservedAmount,
+    reservationTransactionId,
+    reconcile: reconcileFn,
+  } as CreditReservation;
 }
 
 const fakeResult: CreditReconciliationResult = {
@@ -80,7 +85,7 @@ describe("createCreditReservationSettler", () => {
     expect(r2).toEqual(fakeResult);
   });
 
-  test("#11512: throw does NOT reset the guard — reconcile never re-runs", async () => {
+  test("#11512: unkeyed throw does NOT reset the guard — reconcile never re-runs", async () => {
     // reconcileCredits commits the org refund BEFORE its throw-prone
     // post-refund writes. If a rejected settle reset the once-guard, the
     // route's fallback settleReservation?.(0) re-invoked reconcile and issued
@@ -99,6 +104,26 @@ describe("createCreditReservationSettler", () => {
     // The route's multi-site fallback call: same rejection, NO re-invoke.
     await expect(settle(0)).rejects.toThrow("post-refund write blip");
     expect(calls).toBe(1);
+  });
+
+  test("#11608: keyed throw may retry with the first actual cost", async () => {
+    let calls = 0;
+    const costs: number[] = [];
+    const reservation = makeReservation(async (cost) => {
+      calls++;
+      costs.push(cost);
+      if (calls === 1) throw new Error("post-refund write blip");
+      return { ...fakeResult, actualCost: cost };
+    }, "txn-1");
+
+    const settle = createCreditReservationSettler(reservation);
+
+    await expect(settle(0.0042)).rejects.toThrow("post-refund write blip");
+    const result = await settle(0);
+
+    expect(result?.actualCost).toBe(0.0042);
+    expect(calls).toBe(2);
+    expect(costs).toEqual([0.0042, 0.0042]);
   });
 
   test("#11512: concurrent call during an eventually-rejecting settle shares the rejection", async () => {

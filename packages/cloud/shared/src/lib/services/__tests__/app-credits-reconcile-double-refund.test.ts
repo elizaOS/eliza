@@ -234,19 +234,24 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
       await expect(settle(0.01)).rejects.toThrow("injected post-refund write blip");
       expect(await orgBalance(payerOrgId)).toBeCloseTo(INITIAL_ORG_BALANCE - 0.06 + 0.04, 6);
 
-      // The route's fallback catch: `await settleReservation?.(0)`. Before the
-      // fix this re-invoked reconcile(0) and issued a SECOND committed refund
-      // (0.06 — the full reservation), leaving the org at 100.04 > 100:
-      // minted, cashable credit. Now it re-awaits the same rejection.
-      await expect(settle(0)).rejects.toThrow("injected post-refund write blip");
-      // …and a third pile-on call (onAbort/onError racing) is just as inert.
-      await expect(settle(0)).rejects.toThrow("injected post-refund write blip");
+      // The route's fallback catch: `await settleReservation?.(0)`. Before
+      // #11512 this re-invoked reconcile(0) and issued a SECOND committed
+      // refund (0.06 — the full reservation), leaving the org at 100.04 > 100:
+      // minted, cashable credit. After #11608 the idempotent settler retries
+      // with the FIRST actual cost (0.01), so the refund dedupes and the
+      // creator reversal can heal.
+      const healed = await settle(0);
+      expect(healed?.adjustmentType).toBe("refund");
+      // A third pile-on call (onAbort/onError racing) reuses the healed result.
+      const repeated = await settle(0);
+      expect(repeated).toEqual(healed);
     } finally {
       blip.restore();
     }
 
-    // reconcile ran exactly once: one post-refund write attempt, no re-invoke.
-    expect(blip.calls()).toBe(1);
+    // reconcile ran twice: the failed first attempt plus the idempotent healing
+    // retry with the same first actual cost.
+    expect(blip.calls()).toBe(2);
 
     // Exactly ONE refund applied — balance is the single-refund amount, not
     // the minted 2× (100 − 0.06 + 0.04 = 99.98; the mint would be 100.04).
@@ -259,9 +264,9 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
       `reconcile-refund:${reservation.reservationTransactionId}`,
     );
 
-    // Creator earnings were NOT double-reversed: the (single) reversal attempt
-    // threw before applying, so the deduct-time 0.03 stands untouched.
-    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.03, 6);
+    // Creator earnings were reversed exactly once for the real actual cost:
+    // 0.03 deduct-time credit - 0.02 reversal = 0.01.
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.01, 6);
   });
 
   test("re-invoked reconcile after the throw dedupes the refund and completes the reversal", async () => {

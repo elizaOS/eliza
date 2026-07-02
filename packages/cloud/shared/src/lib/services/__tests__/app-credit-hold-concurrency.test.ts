@@ -86,6 +86,7 @@ import {
   redeemedEarningsTracking,
 } from "../../../db/schemas/redeemable-earnings";
 import { users } from "../../../db/schemas/users";
+import { createCreditReservationSettler } from "../../utils/credit-reservation";
 
 const PGLITE_TIMEOUT = 60_000;
 let pgliteReady = true;
@@ -550,8 +551,9 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
         inferenceMarkupPercentage: 10,
       });
 
-      // The settler shape (/v1/messages, /v1/chat/completions): the request-
-      // stable idempotencyKey is threaded into every reconcile movement.
+      // The settler shape (/v1/messages, /v1/chat/completions): the
+      // server-generated reservation transaction id is threaded into every
+      // reconcile movement.
       const reservation = await appCreditsService.reserveInferenceCredits({
         appId: app.id,
         userId: consumerId,
@@ -569,29 +571,31 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
           throw new Error("simulated transient DB error");
         },
       );
+      const settle = createCreditReservationSettler(reservation);
       try {
-        await expect(reservation.reconcile(0.5)).rejects.toThrow("simulated transient DB error");
+        await expect(settle(0.5)).rejects.toThrow("simulated transient DB error");
       } finally {
         reduceSpy.mockRestore();
       }
 
       // The keyed refund committed and must NOT be compensated here — the
-      // settler resets its first-call-wins guard on the throw and the route's
-      // fallback settle(0) is the healer (#11512 machinery).
+      // idempotent settler retry below is the healer (#11512/#11608
+      // machinery).
       expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
 
-      // Fallback settle(0): the refund dedupes on `reconcile-refund:<key>` (no
-      // double-refund) and the reversal completes — the creator's markup is no
-      // longer unbacked.
-      await reservation.reconcile(0);
+      // Fallback settle(0): the settler retries with the FIRST actual cost
+      // (0.5), the refund dedupes on
+      // `reconcile-refund:<reservationTransactionId>` (no double-refund), and
+      // the reversal completes — the creator's markup is no longer unbacked.
+      await settle(0);
       expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
-      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0, 6);
+      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.05, 6);
 
       // A further retry dedupes BOTH legs: balance unchanged, creator never
       // driven negative (no double-reverse).
-      await reservation.reconcile(0);
+      await settle(0);
       expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
-      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0, 6);
+      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.05, 6);
     },
     PGLITE_TIMEOUT,
   );
