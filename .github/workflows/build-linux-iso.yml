@@ -100,8 +100,13 @@ jobs:
               echo "have_kvm=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install just
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends just
+      - name: Install just + ripgrep
+        # ripgrep (rg) is a hard dependency of packages/os/linux/scripts/static-smoke.sh
+        # (the "Verify riscv64 contract" step). It is no longer pre-installed on the
+        # ubuntu-24.04 runner image, so the step used to build every riscv64 target
+        # successfully and then exit 1 with the opaque "ripgrep (rg) is required …"
+        # line. Install it explicitly here so the smoke check can run.
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends just ripgrep
 
       - name: Register qemu-user-static binfmt (non-amd64 only)
         if: matrix.arch != 'amd64'
