@@ -120,6 +120,38 @@ describe("CockpitInteractiveTerminal — spawn → attach wiring", () => {
     );
   });
 
+  it("spawns the experimental vendor kinds through the same surface, without a cerebras tier", async () => {
+    for (const kind of ["claude", "codex"] as const) {
+      mocks.spawnPtySession.mockResolvedValue({ sessionId: `sess-${kind}` });
+      const { unmount } = render(
+        <CockpitInteractiveTerminal tier="fast" kind={kind} />,
+      );
+      await waitFor(() =>
+        expect(mocks.spawnPtySession).toHaveBeenCalledWith({ kind }),
+      );
+      const pane = await screen.findByTestId("pty-pane");
+      expect(pane.getAttribute("data-session"), kind).toBe(`sess-${kind}`);
+      // The header names the vendor CLI, not the cerebras tier.
+      expect(
+        screen.getByText(`${kind} · interactive`),
+        kind,
+      ).toBeTruthy();
+      unmount();
+      mocks.spawnPtySession.mockClear();
+    }
+  });
+
+  it("surfaces the server's gate rejection for vendor kinds", async () => {
+    mocks.spawnPtySession.mockRejectedValueOnce(
+      new Error(
+        'Interactive "claude" CLI sessions are an experimental tier that is off by default (runs the real vendor CLI on your own subscription). Set PTY_VENDOR_CLI_ENABLED=true to enable it.',
+      ),
+    );
+    render(<CockpitInteractiveTerminal tier="fast" kind="claude" />);
+    const err = await screen.findByTestId("cockpit-terminal-error");
+    expect(err.textContent).toContain("PTY_VENDOR_CLI_ENABLED");
+  });
+
   it("surfaces a spawn error and retries", async () => {
     mocks.spawnPtySession.mockRejectedValueOnce(new Error("no cloud key"));
     render(<CockpitInteractiveTerminal tier="fast" />);

@@ -1113,11 +1113,14 @@ declare module "./client-base" {
      * Spawn an interactive PTY session (a real CLI in the web terminal) via
      * `@elizaos/plugin-pty`'s `POST /api/pty/sessions`. Default `kind`
      * (`"eliza-code"`) launches the interactive eliza-code CLI on Eliza
-     * Cloud/cerebras. Subscribe to its output with {@link subscribePtyOutput}
-     * and drive it with {@link sendPtyInput} / {@link resizePty}.
+     * Cloud/cerebras; the experimental `"claude"` / `"codex"` kinds launch the
+     * real vendor CLI on the user's own subscription and are rejected unless
+     * the server enables `PTY_VENDOR_CLI_ENABLED`. Subscribe to output with
+     * {@link subscribePtyOutput} and drive it with {@link sendPtyInput} /
+     * {@link resizePty}.
      */
     spawnPtySession(options?: {
-      kind?: "eliza-code";
+      kind?: "eliza-code" | "claude" | "codex";
       cwd?: string;
       tier?: "fast" | "smart";
       apiKey?: string;
