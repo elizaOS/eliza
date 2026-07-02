@@ -1,29 +1,36 @@
 /**
  * Launcher curation — the single source of truth for what shows in the app
- * launcher and on which page.
+ * launcher.
  *
- * The launcher renders two curated pages:
- *   - Page 1 "Apps"      — the everyday user-facing apps (curated order first,
- *                          then any other loaded plugin app).
- *   - Page 2 "Developer" — trajectory viewer, databases, runtime, logs, skills,
- *                          and plugins (plus any other developer-only view).
- *                          The ENTIRE page — curated tiles included — renders
- *                          only when the "Developer views" Settings toggle is
- *                          on. It is off by default on every build, dev builds
- *                          included, so users and developers see the same
- *                          launcher out of the box.
+ * The launcher renders ONE page of view tiles (the home dashboard is the
+ * adjacent page). Ordering: the everyday curated apps first, then developer
+ * tools (only when Developer Mode is on), then any other loaded plugin app,
+ * then — on the AOSP ElizaOS fork — the native-OS tiles.
+ *
+ * Visibility follows the view-kind taxonomy (`@elizaos/core`): `system` +
+ * `release` always show; `developer` and `preview` are hidden by default and
+ * appear only when their Settings toggle is on (both default off on every
+ * build, dev included, so users and developers see the same launcher out of the
+ * box). The curated developer TOOLS (trajectory viewer, database, runtime,
+ * logs, skills, plugins) are treated as developer-kind regardless of how each is
+ * declared, so the whole set hides together in production.
  *
  * Curation is a blocklist + canonical dedup, not a fixed allow-list: known apps
  * are ordered, removed apps are hidden, duplicate registrations collapse to one
- * tile, and everything else that is genuinely loaded still appears so installing
- * a new plugin app keeps working. Native-OS tiles (phone/messages/contacts/
- * camera/files) only appear on the AOSP ElizaOS fork.
+ * tile, and everything else that is genuinely loaded and visible still appears
+ * so installing a new plugin app keeps working. Native-OS tiles (phone/messages/
+ * contacts/camera/files) only appear on the AOSP ElizaOS fork.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import {
+  type EnabledViewKinds,
+  isViewKindEnabled,
+  resolveViewKind,
+} from "@elizaos/core";
 import type { ViewEntry } from "../../hooks/view-catalog";
 
-/** Page 1 — everyday apps, in display order. Other loaded apps append after. */
+/** Everyday apps, in display order. They lead the single launcher page; other
+ *  loaded apps append after (alphabetically). */
 export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "chat",
   "settings",
@@ -39,7 +46,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "stream",
 ];
 
-/** Page 2 — developer tools, in display order. */
+/** Developer tools, in display order. Shown on the same launcher page after the
+ *  apps, only when Developer Mode is on. */
 export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "trajectories",
   "database",
@@ -51,8 +59,8 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
 
 /**
  * Native-OS surfaces that only belong on the AOSP ElizaOS fork. Appended to the
- * end of page 1 when the AOSP shell is active; hidden on web, desktop, iOS, and
- * stock Play-Store Android.
+ * end of the launcher page when the AOSP shell is active; hidden on web,
+ * desktop, iOS, and stock Play-Store Android.
  */
 export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] = [
   "phone",
@@ -139,12 +147,16 @@ const DEVELOPER_INDEX = new Map(
 );
 const AOSP_INDEX = new Map(LAUNCHER_AOSP_ONLY_IDS.map((id, i) => [id, i]));
 
-/** True when a canonical id belongs on the Developer page. */
-function isDeveloperEntry(canonicalId: string, entry: ViewEntry): boolean {
-  if (DEVELOPER_INDEX.has(canonicalId)) return true;
-  // Uncurated developer-only views (e.g. vector-browser) join the Developer
-  // page rather than sitting among everyday apps.
-  return entry.viewKind === "developer" || entry.developerOnly === true;
+/**
+ * Effective view-kind for launcher visibility. A curated developer TOOL
+ * (DEVELOPER_INDEX) is developer-kind regardless of how its view happens to be
+ * declared, so the whole dev-tool set hides together when Developer Mode is off;
+ * everything else follows its own declared kind.
+ */
+function launcherViewKind(canonicalId: string, entry: ViewEntry) {
+  return DEVELOPER_INDEX.has(canonicalId)
+    ? "developer"
+    : resolveViewKind(entry);
 }
 
 /**
@@ -199,12 +211,12 @@ function comparator(indexes: Array<Map<string, number>>) {
 }
 
 /**
- * Curate raw launcher entries into the fixed page layout. Returns one array per
- * rendered page: `[appsPage]`, or `[appsPage, developerPage]` when the
- * "Developer views" toggle is on and a developer tool is present. Entries are
- * deduped by canonical id, hidden/removed apps are dropped, native-OS tiles are
- * AOSP-gated, and every developer view — curated or not — follows the toggle
- * (default off on all builds), while preview views follow theirs.
+ * Curate raw launcher entries into a SINGLE page of tiles. Entries are deduped
+ * by canonical id; hidden/removed apps are dropped; native-OS tiles are
+ * AOSP-gated; developer + preview views (including the curated developer TOOLS)
+ * are hidden unless their kind is enabled. Ordering: curated apps first, then
+ * developer tools (when shown), then AOSP tiles, then any other loaded app
+ * alphabetically. Returns `[page]`, or `[]` when nothing is visible.
  */
 export function curateLauncherPages(
   entries: ViewEntry[],
@@ -214,27 +226,24 @@ export function curateLauncherPages(
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
-    if (AOSP_INDEX.has(canonicalId) && !isAosp) continue;
     // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface
     // unless the user is signed into Eliza Cloud.
     if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;
 
-    // Developer tooling — curated (trajectories/database/runtime/logs/skills/
-    // plugins) and uncurated alike — is gated on the "Developer views" toggle,
-    // which is off by default on EVERY build (dev included). No tile may reach
-    // the Developer page around the toggle.
-    if (isDeveloperEntry(canonicalId, entry) && !enabledKinds.developer) {
+    if (AOSP_INDEX.has(canonicalId)) {
+      // Native-OS tiles are gated ONLY by the fork (they are OS surfaces, shown
+      // on AOSP regardless of the developer/preview toggles); hidden everywhere
+      // else — this is the "system ones that are not native" carve-out on web +
+      // the mobile app.
+      if (!isAosp) continue;
+    } else if (
+      // Every other tile follows the view-kind taxonomy: system + release always
+      // show; developer + preview are hidden unless their toggle is on. The
+      // curated developer TOOLS count as developer even if declared otherwise.
+      !isViewKindEnabled(launcherViewKind(canonicalId, entry), enabledKinds)
+    ) {
       continue;
     }
-
-    const curated =
-      APPS_INDEX.has(canonicalId) ||
-      DEVELOPER_INDEX.has(canonicalId) ||
-      AOSP_INDEX.has(canonicalId);
-    // Curated apps-page tiles always show; uncurated extras respect the
-    // visibility toggles so preview plugin views only surface when their kind
-    // is enabled.
-    if (!curated && !isViewVisible(entry, enabledKinds)) continue;
 
     const existing = byCanonical.get(canonicalId);
     if (!existing || preferenceScore(entry) > preferenceScore(existing)) {
@@ -253,18 +262,9 @@ export function curateLauncherPages(
     }
   }
 
-  const appsPage: ViewEntry[] = [];
-  const developerPage: ViewEntry[] = [];
-  for (const [canonicalId, entry] of byCanonical) {
-    if (isDeveloperEntry(canonicalId, entry)) developerPage.push(entry);
-    else appsPage.push(entry);
-  }
-
-  appsPage.sort(comparator([APPS_INDEX, AOSP_INDEX]));
-  developerPage.sort(comparator([DEVELOPER_INDEX]));
-
-  const pages: ViewEntry[][] = [];
-  if (appsPage.length > 0) pages.push(appsPage);
-  if (developerPage.length > 0) pages.push(developerPage);
-  return pages;
+  const page = [...byCanonical.values()];
+  // One combined order: curated apps, then developer tools, then AOSP tiles,
+  // then uncurated apps alphabetically (the comparator falls through to label).
+  page.sort(comparator([APPS_INDEX, DEVELOPER_INDEX, AOSP_INDEX]));
+  return page.length > 0 ? [page] : [];
 }

@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 import {
-  act,
   cleanup,
   fireEvent,
   render,
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
@@ -31,35 +30,27 @@ function imageEntry(id: string, label: string, imageUrl: string): ViewEntry {
   return { ...entry(id, label), imageUrl };
 }
 
-const FEW = [entry("chat", "Chat"), entry("settings", "Settings")];
-const LEGACY_SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
-
-/**
- * Enter edit mode the only way the launcher offers it — a long-press on a tile.
- * Self-contained: it installs fake timers just for the long-press window so
- * callers that otherwise run on real timers stay unaffected.
- */
-function longPressToEdit(label: string): void {
-  vi.useFakeTimers();
-  const tile = screen.getByRole("button", { name: label });
-  fireEvent.pointerDown(tile);
-  act(() => {
-    vi.advanceTimersByTime(450);
-  });
-  fireEvent.pointerUp(tile);
-  vi.useRealTimers();
+/** A single curated page holding every entry, in entry order. */
+function singlePage(entries: ViewEntry[]): string[][] {
+  return [entries.map((e) => e.id)];
 }
 
-beforeEach(() => window.localStorage.clear());
+const FEW = [entry("chat", "Chat"), entry("settings", "Settings")];
+
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("Launcher", () => {
-  it("renders every view as a page tile (no dock)", () => {
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+  it("renders every curated view as a page tile (no dock)", () => {
+    render(
+      <Launcher
+        entries={FEW}
+        pageGroups={singlePage(FEW)}
+        onLaunch={() => {}}
+      />,
+    );
     // The featured-views dock was removed: every view lives on the pages.
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
     const page = within(screen.getByTestId("launcher-page-0"));
@@ -69,66 +60,36 @@ describe("Launcher", () => {
     expect(screen.getByText("Chat")).toBeTruthy();
   });
 
-  it("renders all curated ids on the page in grouped mode (no dock)", () => {
+  it("renders all curated ids on the page in group order", () => {
+    const entries = [
+      entry("chat", "Chat"),
+      entry("settings", "Settings"),
+      entry("wallet", "Wallet"),
+    ];
     render(
       <Launcher
-        entries={[
-          entry("chat", "Chat"),
-          entry("settings", "Settings"),
-          entry("wallet", "Wallet"),
-        ]}
+        entries={entries}
         pageGroups={[["chat", "settings", "wallet"]]}
         onLaunch={() => {}}
       />,
     );
 
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
-    const page = within(screen.getByTestId("launcher-page-0"));
-    expect(page.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(page.getByTestId("launcher-tile-settings")).toBeTruthy();
-    expect(page.getByTestId("launcher-tile-wallet")).toBeTruthy();
-  });
-
-  it("migrates a Springboard layout onto the pages (legacy favorites flow back to the grid)", () => {
-    // A pre-removal layout carried a `favorites` array; parsing drops it, so any
-    // previously-docked id flows back onto the grid via reconcile while the
-    // manual page order is preserved.
-    window.localStorage.setItem(
-      LEGACY_SPRINGBOARD_STORAGE_KEY,
-      JSON.stringify({
-        favorites: ["chat"],
-        pages: [["settings"]],
-        manual: true,
-      }),
-    );
-
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
-
-    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    const page = screen.getByTestId("launcher-page-0");
     const tileIds = Array.from(
-      screen
-        .getByTestId("launcher-page-0")
-        .querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
+      page.querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
     ).map((node) =>
       node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
     );
-    // Manual order preserved (settings first), legacy-docked chat appended.
-    expect(tileIds).toEqual(["settings", "chat"]);
+    // Tiles render in the exact pageGroups order.
+    expect(tileIds).toEqual(["chat", "settings", "wallet"]);
   });
 
-  it("preserves the manual page order from a migrated Springboard layout", () => {
-    window.localStorage.setItem(
-      LEGACY_SPRINGBOARD_STORAGE_KEY,
-      JSON.stringify({
-        favorites: [],
-        pages: [["beta", "alpha"]],
-        manual: true,
-      }),
-    );
-
+  it("renders tiles in the curated group order the caller supplies", () => {
     render(
       <Launcher
         entries={[entry("alpha", "Alpha"), entry("beta", "Beta")]}
+        pageGroups={[["beta", "alpha"]]}
         onLaunch={() => {}}
       />,
     );
@@ -143,14 +104,29 @@ describe("Launcher", () => {
     expect(tileIds).toEqual(["beta", "alpha"]);
   });
 
-  it("marks preview and developer tiles without changing release tiles", () => {
+  it("drops curated ids with no live entry", () => {
     render(
       <Launcher
-        entries={[
-          entry("settings", "Settings"),
-          { ...entry("alpha", "Alpha"), viewKind: "preview" },
-          { ...entry("trace", "Trace"), viewKind: "developer" },
-        ]}
+        entries={[entry("chat", "Chat")]}
+        // "notes" is curated but no live entry exists for it.
+        pageGroups={[["chat", "notes"]]}
+        onLaunch={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-tile-notes")).toBeNull();
+  });
+
+  it("marks preview and developer tiles without changing release tiles", () => {
+    const entries = [
+      entry("settings", "Settings"),
+      { ...entry("alpha", "Alpha"), viewKind: "preview" } as ViewEntry,
+      { ...entry("trace", "Trace"), viewKind: "developer" } as ViewEntry,
+    ];
+    render(
+      <Launcher
+        entries={entries}
+        pageGroups={[["settings", "alpha", "trace"]]}
         onLaunch={() => {}}
       />,
     );
@@ -162,54 +138,75 @@ describe("Launcher", () => {
     expect(screen.getByTestId("launcher-kind-trace").textContent).toBe("Dev");
   });
 
-  it("launches a view on tap (not in edit mode)", () => {
+  it("launches a view on tap", () => {
     const onLaunch = vi.fn();
-    render(<Launcher entries={FEW} onLaunch={onLaunch} />);
+    render(
+      <Launcher
+        entries={FEW}
+        pageGroups={singlePage(FEW)}
+        onLaunch={onLaunch}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(onLaunch).toHaveBeenCalledTimes(1);
     expect(onLaunch.mock.calls[0][0].id).toBe("chat");
   });
 
-  it("does not launch while editing", () => {
-    const onLaunch = vi.fn();
-    render(<Launcher entries={FEW} onLaunch={onLaunch} />);
-    longPressToEdit("Settings");
-    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-    expect(onLaunch).not.toHaveBeenCalled();
-  });
-
   it("shows page dots when there is more than one page", () => {
-    const many = Array.from({ length: 49 }, (_, i) =>
-      entry(`v${i}`, `View ${i}`),
+    const entries = [entry("a", "A"), entry("b", "B"), entry("c", "C")];
+    render(
+      <Launcher
+        entries={entries}
+        pageGroups={[["a", "b"], ["c"]]}
+        onLaunch={() => {}}
+      />,
     );
-    render(<Launcher entries={many} onLaunch={() => {}} />);
     expect(screen.getByRole("button", { name: "Page 1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Page 2" })).toBeTruthy();
   });
 
-  it("navigates pages via the page dots", () => {
-    const many = Array.from({ length: 49 }, (_, i) =>
-      entry(`v${i}`, `View ${i}`),
+  it("renders no page dots for a single curated page", () => {
+    render(
+      <Launcher
+        entries={FEW}
+        pageGroups={singlePage(FEW)}
+        onLaunch={() => {}}
+      />,
     );
-    render(<Launcher entries={many} onLaunch={() => {}} />);
-    // Page 1 shows the first page's views, not the first item on page 2.
+    expect(screen.queryByRole("button", { name: "Page 1" })).toBeNull();
+  });
+
+  it("navigates pages via the page dots", () => {
+    const entries = [entry("a", "A"), entry("b", "B"), entry("c", "C")];
+    render(
+      <Launcher
+        entries={entries}
+        pageGroups={[["a", "b"], ["c"]]}
+        onLaunch={() => {}}
+      />,
+    );
+    // Page 1 shows the first page's views, not page 2's tile.
     expect(
       within(screen.getByTestId("launcher-page-0")).queryByTestId(
-        "launcher-tile-v24",
+        "launcher-tile-c",
       ),
     ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
     const secondPage = screen.getByTestId("launcher-page-1");
     expect(secondPage.getAttribute("aria-hidden")).toBe("false");
-    expect(within(secondPage).getByTestId("launcher-tile-v24")).toBeTruthy();
+    expect(within(secondPage).getByTestId("launcher-tile-c")).toBeTruthy();
   });
 
   it("slides adjacent pages with the finger before committing a page swipe", () => {
     runAnimationFramesImmediately();
-    const many = Array.from({ length: 49 }, (_, i) =>
-      entry(`v${i}`, `View ${i}`),
+    // Two curated pages so a forward swipe on page 0 has somewhere to go.
+    render(
+      <Launcher
+        entries={[entry("a", "A"), entry("b", "B")]}
+        pageGroups={[["a"], ["b"]]}
+        onLaunch={() => {}}
+      />,
     );
-    render(<Launcher entries={many} onLaunch={() => {}} />);
 
     const pageWindow = screen.getByTestId("launcher-page-window");
     Object.defineProperty(pageWindow, "clientWidth", {
@@ -250,10 +247,15 @@ describe("Launcher", () => {
 
   it("rubber-bands at the last page edge instead of dead-stopping", () => {
     runAnimationFramesImmediately();
-    const many = Array.from({ length: 49 }, (_, i) =>
-      entry(`v${i}`, `View ${i}`),
+    // Three curated pages; page index 2 is the last, so a forward swipe there
+    // rubber-bands back rather than advancing.
+    render(
+      <Launcher
+        entries={[entry("a", "A"), entry("b", "B"), entry("c", "C")]}
+        pageGroups={[["a"], ["b"], ["c"]]}
+        onLaunch={() => {}}
+      />,
     );
-    render(<Launcher entries={many} onLaunch={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Page 3" }));
     const pageWindow = screen.getByTestId("launcher-page-window");
@@ -290,22 +292,37 @@ describe("Launcher", () => {
   });
 
   it("drops views that are no longer available on re-render", () => {
-    const { rerender } = render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    const { rerender } = render(
+      <Launcher
+        entries={FEW}
+        pageGroups={singlePage(FEW)}
+        onLaunch={() => {}}
+      />,
+    );
     expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
     rerender(
-      <Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
+      <Launcher
+        entries={[entry("chat", "Chat")]}
+        pageGroups={[["chat", "settings"]]}
+        onLaunch={() => {}}
+      />,
     );
     expect(screen.queryByTestId("launcher-tile-settings")).toBeNull();
   });
 
-  it("appends a newly-available view as a tile on re-render", () => {
+  it("renders a newly-available view as a tile on re-render", () => {
     const { rerender } = render(
-      <Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
+      <Launcher
+        entries={[entry("chat", "Chat")]}
+        pageGroups={[["chat", "notes"]]}
+        onLaunch={() => {}}
+      />,
     );
     expect(screen.queryByTestId("launcher-tile-notes")).toBeNull();
     rerender(
       <Launcher
         entries={[entry("chat", "Chat"), entry("notes", "Notes")]}
+        pageGroups={[["chat", "notes"]]}
         onLaunch={() => {}}
       />,
     );
@@ -315,9 +332,11 @@ describe("Launcher", () => {
 
 describe("Launcher image tiles", () => {
   it("renders a compact image icon over a glyph fallback when imageUrl is set", () => {
+    const entries = [imageEntry("notes", "Notes", "/api/views/notes/hero")];
     const { container } = render(
       <Launcher
-        entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
+        entries={entries}
+        pageGroups={singlePage(entries)}
         onLaunch={() => {}}
       />,
     );
@@ -334,8 +353,13 @@ describe("Launcher image tiles", () => {
   });
 
   it("renders the icon glyph when imageUrl is absent", () => {
+    const entries = [entry("notes", "Notes")];
     const { container } = render(
-      <Launcher entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
+      <Launcher
+        entries={entries}
+        pageGroups={singlePage(entries)}
+        onLaunch={() => {}}
+      />,
     );
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();
     expect(container.querySelector("svg")).toBeTruthy();
@@ -346,9 +370,11 @@ describe("Launcher image tiles", () => {
       "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
     );
 
+    const entries = [imageEntry("notes", "Notes", "/api/views/notes/hero")];
     const { container } = render(
       <Launcher
-        entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
+        entries={entries}
+        pageGroups={singlePage(entries)}
         onLaunch={() => {}}
       />,
     );
@@ -361,15 +387,17 @@ describe("Launcher image tiles", () => {
   });
 
   it("falls back to a glyph for already-resolved dedicated cloud API heroes", () => {
+    const entries = [
+      imageEntry(
+        "notes",
+        "Notes",
+        "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai/api/views/notes/hero",
+      ),
+    ];
     const { container } = render(
       <Launcher
-        entries={[
-          imageEntry(
-            "notes",
-            "Notes",
-            "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai/api/views/notes/hero",
-          ),
-        ]}
+        entries={entries}
+        pageGroups={singlePage(entries)}
         onLaunch={() => {}}
       />,
     );
@@ -379,65 +407,5 @@ describe("Launcher image tiles", () => {
       '[data-view-visual="notes"]',
     );
     expect(visual?.querySelector("svg")).toBeTruthy();
-  });
-});
-
-describe("Launcher long-press to edit", () => {
-  afterEach(() => vi.useRealTimers());
-
-  it("enters edit mode after a long press on a tile", () => {
-    vi.useFakeTimers();
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    // Resting: tiles are not animated.
-    expect(
-      screen.getByRole("button", { name: "Chat" }).className,
-    ).not.toContain("animate-pulse");
-
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Chat" }));
-    act(() => {
-      vi.advanceTimersByTime(450);
-    });
-
-    // Edit mode is on: tiles animate (the iOS-style jiggle proxy).
-    expect(screen.getByRole("button", { name: "Chat" }).className).toContain(
-      "animate-pulse",
-    );
-  });
-
-  it("does not enter edit mode when the press is released early", () => {
-    vi.useFakeTimers();
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    const tile = screen.getByRole("button", { name: "Chat" });
-    fireEvent.pointerDown(tile);
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    fireEvent.pointerUp(tile);
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    // Still resting: no animation.
-    expect(
-      screen.getByRole("button", { name: "Chat" }).className,
-    ).not.toContain("animate-pulse");
-  });
-
-  it("cancels the long-press when the pointer is cancelled (touch scroll)", () => {
-    // On touch, a scroll/system gesture fires pointercancel (not pointerup); the
-    // long-press timer must be cleared so edit mode never ghost-fires.
-    vi.useFakeTimers();
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    const tile = screen.getByRole("button", { name: "Chat" });
-    fireEvent.pointerDown(tile);
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    fireEvent.pointerCancel(tile);
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    expect(
-      screen.getByRole("button", { name: "Chat" }).className,
-    ).not.toContain("animate-pulse");
   });
 });

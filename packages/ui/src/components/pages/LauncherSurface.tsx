@@ -5,7 +5,6 @@ import { isAospShellEnabled } from "../../navigation";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useAppSelectorShallow } from "../../state";
 import {
-  setLauncherEditing,
   setLauncherPage,
   setLauncherPageCount,
   useShellSurface,
@@ -31,10 +30,10 @@ export const LauncherSurface = React.memo(function LauncherSurface({
   const isAosp = React.useMemo(() => isAospShellEnabled(), []);
   // Page index comes from the single shell-surface store, so the launcher, the
   // rail, and its one indicator can never disagree.
-  const { launcherPage, launcherEditing } = useShellSurface();
+  const { launcherPage } = useShellSurface();
 
   // The launcher renders the loaded views for the active modality; the curation
-  // layer owns removal, dedup, AOSP-gating, and the apps/developer page split.
+  // layer owns removal, dedup, AOSP-gating, and developer/preview visibility.
   const modalEntries = React.useMemo(
     () =>
       views
@@ -90,8 +89,6 @@ export const LauncherSurface = React.memo(function LauncherSurface({
         page={launcherPage}
         onPageChange={setLauncherPage}
         onPageCountChange={setLauncherPageCount}
-        editing={launcherEditing}
-        onEditingChange={setLauncherEditing}
         showPageDots={false}
       />
     </div>
