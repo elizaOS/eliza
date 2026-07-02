@@ -399,6 +399,48 @@ describe("ElizaCloudClient web sign-in + app-credits affordances", () => {
     expect(requests[0].headers["x-app-id"]).toBeUndefined();
   });
 
+  it("sends X-Affiliate-Code (with X-App-Id) for affiliate revenue share", async () => {
+    const { client, requests } = createClientRecorder({
+      choices: [{ message: { role: "assistant", content: "hi" } }],
+    });
+
+    await client.createChatCompletion(
+      {
+        model: "anthropic/claude-sonnet-4.5",
+        messages: [{ role: "user", content: "hi" }],
+      },
+      { appId: "app-123", affiliateCode: "aff-xyz" },
+    );
+
+    expect(requests[0].headers["x-app-id"]).toBe("app-123");
+    expect(requests[0].headers["x-affiliate-code"]).toBe("aff-xyz");
+  });
+
+  it("sends X-Affiliate-Code without an appId", async () => {
+    const { client, requests } = createClientRecorder({ choices: [] });
+    await client.createChatCompletion(
+      {
+        model: "anthropic/claude-sonnet-4.5",
+        messages: [{ role: "user", content: "hi" }],
+      },
+      { affiliateCode: "aff-xyz" },
+    );
+    expect(requests[0].headers["x-app-id"]).toBeUndefined();
+    expect(requests[0].headers["x-affiliate-code"]).toBe("aff-xyz");
+  });
+
+  it("omits X-Affiliate-Code when no affiliateCode is given", async () => {
+    const { client, requests } = createClientRecorder({ choices: [] });
+    await client.createChatCompletion(
+      {
+        model: "anthropic/claude-sonnet-4.5",
+        messages: [{ role: "user", content: "hi" }],
+      },
+      { appId: "app-123" },
+    );
+    expect(requests[0].headers["x-affiliate-code"]).toBeUndefined();
+  });
+
   it("waitForCliLogin polls until authenticated and returns the key", async () => {
     const statuses = ["pending", "pending", "authenticated"];
     let call = 0;

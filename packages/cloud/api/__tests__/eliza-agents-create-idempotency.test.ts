@@ -31,10 +31,12 @@ const enqueueAgentProvision = mock(async () => ({
 }));
 const triggerImmediate = mock(async () => undefined);
 
-const checkAgentCreditGate = mock(async () => ({
-  allowed: true,
-  balance: 100,
-}));
+const checkAgentCreditGate = mock(
+  async (): Promise<{ allowed: boolean; balance: number; error?: string }> => ({
+    allowed: true,
+    balance: 100,
+  }),
+);
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
 const prepareManagedElizaEnvironment = mock(async () => ({
   changed: false,
@@ -191,6 +193,39 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(json.success).toBe(true);
     expect(json.data.jobId).toBe("job-1");
     expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
+  });
+
+  test("insufficient credits -> 402 with the canonical flat body (no nested details)", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits. Please add funds.",
+    });
+
+    const res = await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+    });
+
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as {
+      success: false;
+      code: "insufficient_credits";
+      error: string;
+      requiredBalance: number;
+      currentBalance: number;
+    };
+    // Exact-match on purpose: this is the one insufficient-credits wire shape
+    // shared by every credit-gated route (insufficientCredits402).
+    expect(body).toEqual({
+      success: false,
+      code: "insufficient_credits",
+      error: "Insufficient credits. Please add funds.",
+      requiredBalance: 0.1,
+      currentBalance: 0,
+    });
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
   });
 
   test("forceCreate:true bypasses the reuse guard → createAgent called with reuseExistingNonTerminal:false (mints a SEPARATE agent)", async () => {

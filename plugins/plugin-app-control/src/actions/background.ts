@@ -83,12 +83,18 @@ type BackgroundPlan =
 // three.js scene path was removed; "background"/"wallpaper" now mean THIS layer.
 const BACKGROUND_NOUN_RE = /\b(background|wallpaper|backdrop)\b/i;
 // History verbs (checked before set, so "go back" isn't read as an edit).
+// "put/switch … back" covers the surface-named forms live models produce
+// ("put the background back", "switch the wallpaper back") — #11360.
 const UNDO_RE =
-	/\b(undo|revert|go back|change it back|put it back|previous)\b/i;
+	/\b(undo|revert|go back|switch back|change it back|put (?:it|that|the (?:background|wallpaper|backdrop)) back|previous)\b/i;
 // Forward history verbs — mirror of UNDO_RE for the redo direction (#10694).
 // Matched before color resolution so "redo" can never false-match "red".
 const REDO_RE = /\b(redo|re-?do|go forward|step forward|re-?apply)\b/i;
-const RESET_RE = /\b(reset|restore (?:the )?default|default|factory)\b/i;
+// Reset also accepts "restore/back to the original" (#11360). Ops are checked
+// undo → redo → reset, and the undo/redo branches yield when RESET_RE matches,
+// so "go back to the default look" resolves to reset, not undo.
+const RESET_RE =
+	/\b(reset|restore (?:the )?(?:default|original)|back to (?:the )?(?:default|original)|default|factory)\b/i;
 // "set/make/change … background …" — a request to apply something.
 const SET_RE = /\b(set|make|change|use|turn|switch|give me|apply|put)\b/i;
 // Explicit ask for a generated image rather than a flat color.
@@ -472,23 +478,41 @@ export function createBackgroundAction(
 
 	return {
 		name: "BACKGROUND",
-		contexts: ["general", "settings"],
-		contextGate: { anyOf: ["general", "settings"] },
+		// "media": the generate-a-wallpaper path IS image generation, and live
+		// models route "generate a misty forest background" there. "code": live
+		// models classify "give me a … animated background" as a build request
+		// (observed on gemma-4-31b: contexts=["code"], candidates
+		// GENERATE_CODE/CREATE_FILE), and a context-gated BACKGROUND then never
+		// reaches the planner surface at all — the programmable-shader ask
+		// belongs to this action, so it must survive that classification (#11360).
+		contexts: ["general", "settings", "media", "code"],
+		contextGate: { anyOf: ["general", "settings", "media", "code"] },
 		roleGate: { minRole: "USER" },
 		similes: [
 			"SET_BACKGROUND",
 			"CHANGE_BACKGROUND",
+			"SET_BACKGROUND_COLOR",
+			"CHANGE_BACKGROUND_COLOR",
 			"SET_WALLPAPER",
 			"CHANGE_WALLPAPER",
 			"EDIT_BACKGROUND",
 			"UNDO_BACKGROUND",
+			"UNDO_BACKGROUND_CHANGE",
+			"UNDO_WALLPAPER",
+			"REVERT_BACKGROUND",
 			"REDO_BACKGROUND",
+			"REDO_BACKGROUND_CHANGE",
+			"REDO_WALLPAPER",
+			"RESTORE_BACKGROUND",
 			"RESET_BACKGROUND",
+			"RESET_WALLPAPER",
 		],
 		description:
-			"Change the app background from chat: set a color, run an animated programmable shader (aurora/lava/plasma/waves/nebula) and tweak it (slower/brighter/bigger), use an uploaded image, generate one from a description, undo the last change, redo it, or reset to default. Drives the unified background shared by the home and every view.",
+			"Change the app background (wallpaper/backdrop) from chat: set a color, run an animated programmable shader (aurora/lava/plasma/waves/nebula) and tweak it (slower/brighter/bigger), use an uploaded image, generate one from a description, undo/revert the last background change, redo the background change you undid, or reset/restore the default background. Drives the unified background shared by the home and every view. Undo, redo, and reset of a background or wallpaper change belong to this action, not to settings.",
 		descriptionCompressed:
-			"background set color|shader|image|generate|undo|redo|reset — recolor the app background, run an animated shader preset (aurora/lava/plasma/waves/nebula) + tweak (slower/brighter/bigger), set an uploaded/generated wallpaper, undo, redo, or reset",
+			"background set color|shader|image|generate|undo|redo|reset — recolor the app background/wallpaper, run an animated shader preset (aurora/lava/plasma/waves/nebula) + tweak (slower/brighter/bigger), set an uploaded/generated wallpaper, undo/revert the background change, redo it, or reset/restore the default background",
+		routingHint:
+			"Any request about the app background, wallpaper, or backdrop -> BACKGROUND: setting a color/image/animated shader AND the follow-ups 'undo that background change', 'revert the wallpaper', 'redo the background change', 'put the background back', 'reset the background to the default'. Background undo/redo/reset sounds like a settings tweak but is NOT settings/views navigation — do not route it to VIEWS or a settings page; BACKGROUND applies the change directly. Only opening a settings/background page to look at it is VIEWS.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -694,7 +718,10 @@ export function createBackgroundAction(
 				},
 			],
 			[
-				{ name: "{{user1}}", content: { text: "undo the background" } },
+				{
+					name: "{{user1}}",
+					content: { text: "undo that background change" },
+				},
 				{
 					name: "{{agentName}}",
 					content: {
@@ -704,7 +731,20 @@ export function createBackgroundAction(
 				},
 			],
 			[
-				{ name: "{{user1}}", content: { text: "redo the background" } },
+				{ name: "{{user1}}", content: { text: "revert the wallpaper" } },
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Reverted the background to the previous one.",
+						action: "BACKGROUND",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "redo the background change" },
+				},
 				{
 					name: "{{agentName}}",
 					content: {
@@ -714,7 +754,10 @@ export function createBackgroundAction(
 				},
 			],
 			[
-				{ name: "{{user1}}", content: { text: "reset the background" } },
+				{
+					name: "{{user1}}",
+					content: { text: "reset the background to the default look" },
+				},
 				{
 					name: "{{agentName}}",
 					content: {

@@ -45,6 +45,46 @@ describe("handleSwarmSynthesis", () => {
     expect(routed).toEqual(["https://example.com/apps/breath-ring/"]);
   });
 
+  it("strips captured tool-output envelopes from the completionSummary, preserving evidence URLs (#11578)", async () => {
+    const routed: string[] = [];
+
+    await handleSwarmSynthesis(
+      { runtime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-leak",
+            label: "app",
+            agentType: "codex",
+            originalTask: "build a small app",
+            // finalText carrying the orchestrator's own envelope block; this is
+            // the round-3 raw-transcript leak in issue elizaOS/eliza#11578.
+            completionSummary:
+              "Deployed the app.\n" +
+              "[tool output: bash]\n$ npm run build\n… raw build log …\n[/tool output]\n" +
+              "Live at https://example.com/apps/leaky/",
+            workdir: "/workspace/shared-apps",
+          },
+        ],
+        total: 1,
+        completed: 1,
+        stopped: 0,
+        errored: 0,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toHaveLength(1);
+    const text = routed[0];
+    expect(text).toContain("Deployed the app.");
+    expect(text).toContain("https://example.com/apps/leaky/");
+    expect(text).not.toContain("[tool output:");
+    expect(text).not.toContain("[/tool output]");
+    expect(text).not.toContain("npm run build");
+  });
+
   it("uses the child completion as the visible answer when validation passes", async () => {
     const routed: string[] = [];
 

@@ -3,12 +3,12 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import {
   getElizaAgentDirectWebUiUrl,
   getElizaAgentPublicWebUiUrl,
 } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
@@ -206,28 +206,13 @@ async function __hono_POST(
         // use pairing to get free compute the resume gate would have blocked.
         const creditCheck = await checkAgentCreditGate(user.organization_id);
         if (!creditCheck.allowed) {
-          logger.warn(
+          const body = insufficientCredits402(
+            creditCheck,
             "[pairing-token] auto-resume blocked: insufficient credits",
-            {
-              agentId,
-              orgId: user.organization_id,
-              balance: creditCheck.balance,
-              required: AGENT_PRICING.MINIMUM_DEPOSIT,
-            },
+            { agentId, orgId: user.organization_id },
           );
           return applyCorsHeaders(
-            Response.json(
-              {
-                success: false,
-                code: "insufficient_credits",
-                error:
-                  creditCheck.error ??
-                  "Insufficient credits to resume this agent",
-                requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-                currentBalance: creditCheck.balance,
-              },
-              { status: 402 },
-            ),
+            Response.json(body, { status: 402 }),
             CORS_METHODS,
           );
         }

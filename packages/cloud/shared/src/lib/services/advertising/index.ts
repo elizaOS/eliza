@@ -223,7 +223,12 @@ class AdvertisingService {
       account_name: input.accountName || validation.accountName || "Ad Account",
       access_token_secret_id: accessTokenSecret.id,
       refresh_token_secret_id: refreshTokenSecretId,
-      status: "active",
+      // Ad spend is money movement, so a newly-connected account starts
+      // "pending" and cannot run campaigns until a platform operator approves
+      // it (POST /api/v1/advertising/accounts/:id/approve, requireAdmin) — the
+      // same operator-executes posture as fiat payouts/redemptions. This
+      // prevents a stolen/abusive ad account from spending before review. (#11364)
+      status: "pending",
     });
 
     logger.info("[Advertising] Ad account connected", {
@@ -232,6 +237,53 @@ class AdvertisingService {
     });
 
     return account;
+  }
+
+  /**
+   * Approve a pending ad account so it can run campaigns. Platform-operator
+   * action (requireAdmin at the route) — the same operator-executes posture as
+   * fiat payouts; an org owner can never self-approve their own ad account. (#11364)
+   */
+  async approveAccount(accountId: string): Promise<AdAccount> {
+    const account = await adAccountsRepository.findById(accountId);
+    if (!account) {
+      throw new Error("Ad account not found");
+    }
+    if (account.status === "active") {
+      return account; // idempotent
+    }
+    if (account.status !== "pending") {
+      throw new Error(
+        `Ad account cannot be approved from status "${account.status}" (only "pending" accounts can be approved)`,
+      );
+    }
+    const updated = await adAccountsRepository.updateStatus(accountId, "active");
+    if (!updated) {
+      throw new Error("Ad account not found");
+    }
+    logger.info("[Advertising] Ad account approved", { accountId });
+    return updated;
+  }
+
+  /**
+   * Reject or suspend an ad account so it cannot run campaigns. Platform-operator
+   * action (requireAdmin at the route). Covers both rejecting a pending account
+   * on review and suspending an active account for ToS. (#11364)
+   */
+  async rejectAccount(accountId: string): Promise<AdAccount> {
+    const account = await adAccountsRepository.findById(accountId);
+    if (!account) {
+      throw new Error("Ad account not found");
+    }
+    if (account.status === "suspended") {
+      return account; // idempotent
+    }
+    const updated = await adAccountsRepository.updateStatus(accountId, "suspended");
+    if (!updated) {
+      throw new Error("Ad account not found");
+    }
+    logger.info("[Advertising] Ad account rejected/suspended", { accountId });
+    return updated;
   }
 
   async disconnectAccount(accountId: string, organizationId: string): Promise<void> {
@@ -449,6 +501,13 @@ class AdvertisingService {
     const account = await adAccountsRepository.findById(input.adAccountId);
     if (!account || account.organization_id !== input.organizationId) {
       throw new Error("Ad account not found");
+    }
+    // Only an approved (active) ad account may spend — a pending/suspended/
+    // disconnected account cannot create campaigns. (#11364)
+    if (account.status !== "active") {
+      throw new Error(
+        `Ad account is not active (status: ${account.status}); it must be approved before running campaigns`,
+      );
     }
 
     await contentSafetyService.assertSafeForPublicUse({
@@ -743,6 +802,14 @@ class AdvertisingService {
     if (!account) {
       throw new Error("Ad account not found");
     }
+    // Only an approved (active) ad account may spend — block starting a campaign
+    // on a pending/suspended/disconnected account (e.g. suspended for ToS after
+    // the campaign was created). (#11364)
+    if (account.status !== "active") {
+      throw new Error(
+        `Ad account is not active (status: ${account.status}); it must be approved before running campaigns`,
+      );
+    }
 
     const credentials = await this.getCredentials(account);
     const provider = this.getProvider(account.platform);
@@ -856,11 +923,21 @@ class AdvertisingService {
       }
     }
 
-    // Compute the genuinely-unused refund BEFORE the atomic claim — the spend
-    // refresh inside computeCreditsSpent needs the row to still exist. The
-    // two-column (#11151) spend logic lives in the shared helper.
-    const creditsSpent = await this.computeCreditsSpent(campaign);
-    const creditsRemaining = Math.max(0, parseFloat(campaign.credits_allocated) - creditsSpent);
+    // Best-effort external spend refresh BEFORE the atomic claim, while the
+    // row still exists — getCampaignMetrics persists the fresh total_spend
+    // onto the row (updateMetrics), so the claimed row below carries it. Keeps
+    // the #11151 protection against a never-synced campaign under-counting
+    // spend and over-refunding.
+    if (campaign.external_campaign_id) {
+      try {
+        await this.getCampaignMetrics(campaignId, organizationId);
+      } catch (metricsError) {
+        logger.warn("[Advertising] pre-delete spend refresh failed; using stored total_spend", {
+          campaignId,
+          error: metricsError instanceof Error ? metricsError.message : String(metricsError),
+        });
+      }
+    }
 
     // Atomic claim: only the caller that actually removes the row refunds, so
     // two concurrent deletes (or a delete retried after a mid-op failure) can't
@@ -873,6 +950,21 @@ class AdvertisingService {
       });
       return;
     }
+
+    // Refund from the CLAIMED row, never the pre-claim findById snapshot: a
+    // concurrent budget DECREASE commits its lower credits_allocated (and
+    // refunds the freed delta) before claimDelete removes the row, so a
+    // snapshot-based refund would pay that freed budget out a second time —
+    // and impressions served after the snapshot would be refunded too. The
+    // two-column (#11151) spend logic lives in the shared helper; external
+    // spend was already refreshed onto the row above and the row is gone now,
+    // so skip the in-helper re-refresh (it could only fail and warn) by
+    // passing external_campaign_id: null.
+    const creditsSpent = await this.computeCreditsSpent({
+      ...deleted,
+      external_campaign_id: null,
+    });
+    const creditsRemaining = Math.max(0, parseFloat(deleted.credits_allocated) - creditsSpent);
 
     if (creditsRemaining > 0) {
       await creditsService.refundCredits({

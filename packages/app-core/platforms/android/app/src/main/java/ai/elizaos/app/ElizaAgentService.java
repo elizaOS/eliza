@@ -1,5 +1,7 @@
 package ai.elizaos.app;
 
+import android.app.ActivityManager;
+import android.app.ApplicationExitInfo;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -7,6 +9,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.content.res.AssetManager;
 import android.os.Build;
@@ -92,6 +95,12 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
     private static final String BUN_BINARY = "bun";
     private static final String AGENT_LOG_NAME = "agent.log";
+    private static final String AGENT_RESTART_DIAGNOSTICS_NAME = "agent-restart-diagnostics.jsonl";
+    private static final long AGENT_RESTART_DIAGNOSTICS_MAX_BYTES = 256L * 1024L;
+    /** Serializes rotate-check + append so concurrent events can't interleave JSONL lines. */
+    private static final Object DIAGNOSTICS_LOCK = new Object();
+    private static final String EXIT_INFO_PREFS = "eliza-agent-exit-info";
+    private static final String EXIT_INFO_LAST_TIMESTAMP = "lastTimestamp";
 
     private static final int AGENT_PORT = 31337;
     private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
@@ -600,6 +609,8 @@ public class ElizaAgentService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        appendDiagnosticEvent("service-onCreate", null);
+        logRecentApplicationExitReasons("service-onCreate");
         ensureNotificationChannel();
 
         Notification notification = buildNotification("Eliza agent", "Starting…");
@@ -618,8 +629,14 @@ public class ElizaAgentService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
+        Map<String, String> details = new LinkedHashMap<>();
+        details.put("action", action == null ? "<default>" : action);
+        details.put("flags", String.valueOf(flags));
+        details.put("startId", String.valueOf(startId));
+        appendDiagnosticEvent("service-onStartCommand", details);
         if (ACTION_STOP.equals(action)) {
             shuttingDown = true;
+            appendDiagnosticEvent("service-stop-intent", details);
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -649,6 +666,11 @@ public class ElizaAgentService extends Service {
 
     @Override
     public void onDestroy() {
+        Map<String, String> details = new LinkedHashMap<>();
+        details.put("shuttingDown", String.valueOf(shuttingDown));
+        details.put("currentStatus", currentStatus);
+        details.put("detachedAgentMode", String.valueOf(detachedAgentMode));
+        appendDiagnosticEvent("service-onDestroy", details);
         shuttingDown = true;
         if (watchdog != null) {
             watchdog.interrupt();
@@ -1236,6 +1258,9 @@ public class ElizaAgentService extends Service {
                     currentStatus = "running";
                     updateNotification();
                 }
+                Map<String, String> details = new LinkedHashMap<>();
+                details.put("port", String.valueOf(AGENT_PORT));
+                appendDiagnosticEvent("detached-agent-adopted", details);
                 Log.i(TAG, "Detached agent already listening on port " + AGENT_PORT
                     + "; adopting it (no relaunch).");
                 return;
@@ -1254,6 +1279,10 @@ public class ElizaAgentService extends Service {
                     && detachedLaunchStartedAtMs > 0
                     && (System.currentTimeMillis() - detachedLaunchStartedAtMs)
                         < AGENT_BOOT_GRACE_MS) {
+                Map<String, String> details = new LinkedHashMap<>();
+                details.put("ageMs", String.valueOf(System.currentTimeMillis() - detachedLaunchStartedAtMs));
+                details.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
+                appendDiagnosticEvent("detached-agent-cold-boot-guard", details);
                 Log.i(TAG, "Detached agent still in cold boot (launched "
                     + (System.currentTimeMillis() - detachedLaunchStartedAtMs)
                     + "ms ago); not relaunching.");
@@ -1947,6 +1976,11 @@ public class ElizaAgentService extends Service {
             final long startedAtMs = System.currentTimeMillis();
             final long launchStartedAtMs = detachedLaunchStartedAtMs;
             final long pidForLog = safePid(started);
+            Map<String, String> launchDetails = new LinkedHashMap<>();
+            launchDetails.put("launcherPid", String.valueOf(pidForLog));
+            launchDetails.put("abi", abi);
+            launchDetails.put("delegateToBionicHost", String.valueOf(delegateToBionicHost));
+            appendDiagnosticEvent("agent-launcher-started", launchDetails);
             Log.i(TAG, "Agent launcher started (pid=" + pidForLog + ").");
             // Immediate-exit watcher: bun on `untrusted_app` has been
             // observed dying within ~50ms with no stderr / no tombstone /
@@ -1973,6 +2007,12 @@ public class ElizaAgentService extends Service {
                     Log.w(TAG, "Agent process exited early (pid=" + pidForLog
                             + " code=" + code + " alive=" + aliveMs + "ms).");
                 }
+                Map<String, String> exitDetails = new LinkedHashMap<>();
+                exitDetails.put("launcherPid", String.valueOf(pidForLog));
+                exitDetails.put("exitCode", String.valueOf(code));
+                exitDetails.put("aliveMs", String.valueOf(aliveMs));
+                exitDetails.put("detachedAgentMode", String.valueOf(detachedAgentMode));
+                appendDiagnosticEvent("agent-launcher-exited", exitDetails);
                 boolean stillThisProcess;
                 synchronized (processLock) {
                     stillThisProcess = (agentProcess == watched);
@@ -2012,6 +2052,7 @@ public class ElizaAgentService extends Service {
             currentTerminalRunToken = null;
         }
         if (wasDetached) {
+            appendDiagnosticEvent("stop-detached-agent", null);
             stopDetachedAgentProcess();
         }
         if (toStop == null) {
@@ -2206,6 +2247,9 @@ public class ElizaAgentService extends Service {
             if (stillCurrent && !shuttingDown) {
                 Log.w(TAG, "Detached agent did not become healthy within "
                     + STARTUP_HEALTH_GRACE_MS + "ms. Scheduling restart.");
+                Map<String, String> details = new LinkedHashMap<>();
+                details.put("startupHealthGraceMs", String.valueOf(STARTUP_HEALTH_GRACE_MS));
+                appendDiagnosticEvent("detached-agent-startup-timeout", details);
                 scheduleRestart();
             }
         }, "ElizaAgent-detached-startup-probe");
@@ -2261,14 +2305,22 @@ public class ElizaAgentService extends Service {
             // HTTP request failed (timeout / connect refused / read
             // interrupt). If the direct child process is still alive the
             // most likely cause is bun synchronously inside a native FFI
-            // call. Detached mode has no live Java child to inspect, so a
-            // closed port is treated as DEAD and the startup probe/watchdog
-            // owns retry timing.
+            // call. Detached mode has no live Java child to inspect, so use a
+            // cheap TCP connect probe: an open listener means the detached bun
+            // is alive but too busy to answer HTTP; a closed port is DEAD and
+            // the startup probe/watchdog owns retry timing.
             Process current;
+            boolean detached;
             synchronized (processLock) {
                 current = agentProcess;
+                detached = detachedAgentMode;
             }
             if (current != null && current.isAlive()) {
+                return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
+            }
+            if (detached && isLoopbackAgentListening()) {
+                appendDiagnosticEvent("detached-agent-probe-busy-port-open", null);
+                Log.i(TAG, "Detached agent HTTP probe failed but loopback port is open — likely mid-decode. No strike.");
                 return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
             return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
@@ -2330,11 +2382,20 @@ public class ElizaAgentService extends Service {
             Log.e(TAG, "Agent crashed " + restartAttempts + " times — giving up. Service stopping.");
             currentStatus = "fatal";
             updateNotification();
+            Map<String, String> details = new LinkedHashMap<>();
+            details.put("restartAttempts", String.valueOf(restartAttempts));
+            details.put("maxRestartAttempts", String.valueOf(MAX_RESTART_ATTEMPTS));
+            appendDiagnosticEvent("agent-restart-give-up", details);
             stopSelf();
             return;
         }
         long backoffMs = decision.delayMs;
         restartAttempts = decision.nextRestartAttempts;
+        Map<String, String> details = new LinkedHashMap<>();
+        details.put("attempt", String.valueOf(restartAttempts));
+        details.put("maxRestartAttempts", String.valueOf(MAX_RESTART_ATTEMPTS));
+        details.put("backoffMs", String.valueOf(backoffMs));
+        appendDiagnosticEvent("agent-restart-scheduled", details);
         Log.w(TAG, "Restarting agent in " + backoffMs + "ms (attempt " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS + ").");
         new Thread(() -> {
             try {
@@ -2346,6 +2407,145 @@ public class ElizaAgentService extends Service {
             if (shuttingDown) return;
             startAgentProcess();
         }, "ElizaAgent-restart").start();
+    }
+
+    private void appendDiagnosticEvent(String event, Map<String, String> details) {
+        try {
+            File root = agentRoot();
+            if (!root.exists() && !root.mkdirs()) {
+                Log.w(TAG, "Could not create agent diagnostics dir: " + root);
+                return;
+            }
+            File log = new File(root, AGENT_RESTART_DIAGNOSTICS_NAME);
+            JSONObject json = new JSONObject()
+                .put("ts", System.currentTimeMillis())
+                .put("event", event)
+                .put("status", currentStatus)
+                .put("detachedAgentMode", detachedAgentMode)
+                .put("restartAttempts", restartAttempts);
+            if (details != null && !details.isEmpty()) {
+                JSONObject detailJson = new JSONObject();
+                for (Map.Entry<String, String> entry : details.entrySet()) {
+                    detailJson.put(entry.getKey(), entry.getValue());
+                }
+                json.put("details", detailJson);
+            }
+            byte[] line = (json.toString() + "\n").getBytes(StandardCharsets.UTF_8);
+            synchronized (DIAGNOSTICS_LOCK) {
+                if (log.isFile() && log.length() > AGENT_RESTART_DIAGNOSTICS_MAX_BYTES) {
+                    if (!log.delete()) {
+                        Log.w(TAG, "Could not rotate agent diagnostics log: " + log);
+                    }
+                }
+                try (FileOutputStream out = new FileOutputStream(log, true)) {
+                    out.write(line);
+                }
+            }
+        } catch (IOException | JSONException error) {
+            Log.w(TAG, "Failed to write agent restart diagnostic event " + event, error);
+        }
+    }
+
+    private void logRecentApplicationExitReasons(String trigger) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return;
+        }
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (manager == null) {
+            return;
+        }
+        SharedPreferences prefs = getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE);
+        long lastSeen = prefs.getLong(EXIT_INFO_LAST_TIMESTAMP, 0L);
+        long newest = lastSeen;
+        List<ApplicationExitInfo> exits;
+        try {
+            exits = manager.getHistoricalProcessExitReasons(getPackageName(), 0, 8);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Could not read historical process exit reasons", error);
+            return;
+        }
+        for (ApplicationExitInfo info : exits) {
+            long timestamp = info.getTimestamp();
+            if (timestamp <= lastSeen) {
+                continue;
+            }
+            if (timestamp > newest) {
+                newest = timestamp;
+            }
+            Map<String, String> details = new LinkedHashMap<>();
+            details.put("trigger", trigger);
+            details.put("timestamp", String.valueOf(timestamp));
+            details.put("pid", String.valueOf(info.getPid()));
+            details.put("processName", String.valueOf(info.getProcessName()));
+            details.put("reason", exitReasonName(info.getReason()));
+            details.put("reasonCode", String.valueOf(info.getReason()));
+            details.put("status", String.valueOf(info.getStatus()));
+            details.put("importance", String.valueOf(info.getImportance()));
+            details.put("pssKb", String.valueOf(info.getPss()));
+            details.put("rssKb", String.valueOf(info.getRss()));
+            String description = info.getDescription();
+            if (description != null && !description.trim().isEmpty()) {
+                details.put("description", compactForLog(description));
+            }
+            appendDiagnosticEvent("historical-process-exit", details);
+            Log.w(TAG, "Historical process exit: pid=" + info.getPid()
+                + " process=" + info.getProcessName()
+                + " reason=" + exitReasonName(info.getReason())
+                + " status=" + info.getStatus()
+                + " importance=" + info.getImportance()
+                + " pssKb=" + info.getPss()
+                + " rssKb=" + info.getRss()
+                + (description == null || description.trim().isEmpty()
+                    ? ""
+                    : " description=" + compactForLog(description)));
+        }
+        if (newest > lastSeen) {
+            prefs.edit().putLong(EXIT_INFO_LAST_TIMESTAMP, newest).apply();
+        }
+    }
+
+    private static String exitReasonName(int reason) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return "UNAVAILABLE";
+        }
+        switch (reason) {
+            case ApplicationExitInfo.REASON_ANR:
+                return "ANR";
+            case ApplicationExitInfo.REASON_CRASH:
+                return "CRASH";
+            case ApplicationExitInfo.REASON_CRASH_NATIVE:
+                return "CRASH_NATIVE";
+            case ApplicationExitInfo.REASON_DEPENDENCY_DIED:
+                return "DEPENDENCY_DIED";
+            case ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE:
+                return "EXCESSIVE_RESOURCE_USAGE";
+            case ApplicationExitInfo.REASON_EXIT_SELF:
+                return "EXIT_SELF";
+            case ApplicationExitInfo.REASON_FREEZER:
+                return "FREEZER";
+            case ApplicationExitInfo.REASON_INITIALIZATION_FAILURE:
+                return "INITIALIZATION_FAILURE";
+            case ApplicationExitInfo.REASON_LOW_MEMORY:
+                return "LOW_MEMORY";
+            case ApplicationExitInfo.REASON_OTHER:
+                return "OTHER";
+            case ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE:
+                return "PACKAGE_STATE_CHANGE";
+            case ApplicationExitInfo.REASON_PACKAGE_UPDATED:
+                return "PACKAGE_UPDATED";
+            case ApplicationExitInfo.REASON_PERMISSION_CHANGE:
+                return "PERMISSION_CHANGE";
+            case ApplicationExitInfo.REASON_SIGNALED:
+                return "SIGNALED";
+            case ApplicationExitInfo.REASON_UNKNOWN:
+                return "UNKNOWN";
+            case ApplicationExitInfo.REASON_USER_REQUESTED:
+                return "USER_REQUESTED";
+            case ApplicationExitInfo.REASON_USER_STOPPED:
+                return "USER_STOPPED";
+            default:
+                return "REASON_" + reason;
+        }
     }
 
     // ── Watchdog ─────────────────────────────────────────────────────────

@@ -10,11 +10,13 @@
  * only after return, that throw reaches the settle catch as "never settled" and
  * the guard refunds the FULL hold a second time — double-credit.
  *
- * The helper tests (apps-chat-stream-refund.test.ts) drive
- * `reconcileNonStreamingSettleError` with a pre-computed boolean, so they stay
- * green even if the route's flag ordering regresses. This suite drives the REAL
+ * The helper tests (apps-chat-stream-refund.test.ts) drive the shared
+ * `reconcileChatSettleError` with a pre-computed boolean, so they stay green
+ * even if the route's flag ordering regresses. This suite drives the REAL
  * route with a credits seam that models the real non-transactional internals
- * (refund committed, then throw), asserting the refund COUNT end to end.
+ * (refund committed, then throw), asserting the refund COUNT end to end —
+ * plus the streaming branch, so BOTH route call sites are proven to reach the
+ * one shared helper with their own skipRefund flag and ledger tags.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -159,14 +161,14 @@ const { default: chatRoute } = await import("../v1/apps/[id]/chat/route");
 const app = new Hono();
 app.route("/api/v1/apps/:id/chat", chatRoute);
 
-async function postChat(): Promise<Response> {
+async function postChat(stream = false): Promise<Response> {
   return await app.request(`/api/v1/apps/${APP_ID}/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       model: "openai/gpt-oss-120b",
       messages: [{ role: "user", content: "hello" }],
-      stream: false,
+      stream,
     }),
   });
 }
@@ -263,5 +265,82 @@ describe("non-streaming settle double-credit guard (#11218)", () => {
         (c) => c.metadata?.refundReason === "non_streaming_settle_error",
       ),
     ).toBe(false);
+  });
+});
+
+// SSE provider body helpers for the streaming branch.
+function sseResponse(build: (c: ReadableStreamDefaultController) => void) {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        build(controller);
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+const encoder = new TextEncoder();
+
+async function waitFor(cond: () => boolean, ms = 2000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!cond() && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
+describe("streaming settle-error refund routes through the same shared helper (#10837)", () => {
+  test("stream fails MID-DELIVERY → exactly one full refund, tagged streaming:true", async () => {
+    providerResponseImpl = () =>
+      sseResponse((controller) => {
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'),
+        );
+        controller.error(new Error("provider stream reset"));
+      });
+
+    const response = await postChat(true);
+    expect(response.status).toBe(200);
+    // Body EOF = the background catch ran to completion (it closes the writer
+    // after the refund).
+    const body = await response.text();
+    expect(body).toContain("Stream interrupted. Credits refunded.");
+
+    expect(reconcileCredits).toHaveBeenCalledTimes(1);
+    expect(refundCommits).toHaveLength(1);
+    expect(reconcileCalls[0].actualBaseCost).toBe(0);
+    expect(reconcileCalls[0].metadata).toMatchObject({
+      error: true,
+      streaming: true,
+    });
+  });
+
+  test("stream COMPLETED then accounting threw → NO refund (skipRefund keeps the charge)", async () => {
+    providerResponseImpl = () =>
+      sseResponse((controller) => {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"content":"hi"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      });
+    // Post-delivery accounting (the 2nd calculateCost call) throws.
+    settleCostImpl = async () => {
+      throw new Error("pricing catalog unavailable");
+    };
+
+    const response = await postChat(true);
+    expect(response.status).toBe(200);
+    await response.text();
+
+    // The writer closes BEFORE the accounting runs — wait for the background
+    // accounting to reach calculateCost and its catch to settle.
+    await waitFor(() => calculateCostCalls === 2);
+    await new Promise((r) => setTimeout(r, 25));
+
+    expect(reconcileCredits).not.toHaveBeenCalled();
+    expect(refundCommits).toHaveLength(0);
   });
 });

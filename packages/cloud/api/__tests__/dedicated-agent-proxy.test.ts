@@ -10,6 +10,11 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 let authResult: { user: { id: string; organization_id: string } } | "throw" =
   "throw";
 let sandboxResult: Record<string, unknown> | null = null;
+let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
+  allowed: true,
+  balance: 100,
+};
+let enqueueCalls = 0;
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   runWithCloudBindingsAsync: (_b: unknown, fn: () => Promise<unknown>) => fn(),
@@ -25,14 +30,20 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
   provisioningJobService: {
-    enqueueAgentProvisionOnce: async () => ({
-      job: { id: "job-1" },
-      created: true,
-    }),
+    enqueueAgentProvisionOnce: async () => {
+      enqueueCalls++;
+      return {
+        job: { id: "job-1" },
+        created: true,
+      };
+    },
   },
 }));
 mock.module("@/lib/services/provisioning-worker-health", () => ({
   checkProvisioningWorkerHealth: async () => ({ ok: true }),
+}));
+mock.module("@/lib/services/agent-billing-gate", () => ({
+  checkAgentCreditGate: async () => creditGateResult,
 }));
 mock.module("@/lib/utils/logger", () => ({
   logger: { warn() {}, error() {}, info() {}, debug() {} },
@@ -75,6 +86,8 @@ beforeEach(() => {
   captured = null;
   authResult = "throw";
   sandboxResult = null;
+  creditGateResult = { allowed: true, balance: 100 };
+  enqueueCalls = 0;
 });
 
 describe("dedicated-agent-proxy — unified auth", () => {
@@ -132,6 +145,35 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(res.status).toBe(202);
     expect(res.headers.get("Retry-After")).toBe("5");
     expect(captured).toBeNull();
+  });
+
+  test("owner of a NON-RUNNING agent WITH sufficient credits → 202 and enqueues the resume (#11583)", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    creditGateResult = { allowed: true, balance: 100 };
+    const r = makeRequest("cloud-token");
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(202);
+    expect(enqueueCalls).toBe(1); // paying org is not blocked
+  });
+
+  test("owner of a SUSPENDED / zero-balance agent → 402 and NO re-provision (free-compute suspension bypass closed, #11583)", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    // active-billing suspends a non-paying org's agent to `stopped`; without the
+    // gate, hitting the agent subdomain would re-provision it for free.
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    creditGateResult = {
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits.",
+    };
+    const r = makeRequest("cloud-token");
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("insufficient_credits");
+    expect(enqueueCalls).toBe(0); // no free compute
+    expect(captured).toBeNull(); // nothing proxied to the container
   });
 
   // A browser `new WebSocket()` can't set headers, so the app passes the cloud

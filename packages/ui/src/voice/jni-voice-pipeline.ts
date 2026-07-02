@@ -27,10 +27,16 @@
  */
 
 import { logger } from "@elizaos/logger";
+import {
+  EchoReferenceBuffer,
+  NlmsEchoCanceller,
+  platformPlaybackDelaySamples,
+} from "@elizaos/shared/voice/aec";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
   TalkModeAudioFrameEvent,
+  TalkModePlaybackFrameEvent,
   TalkModePluginLike,
 } from "../bridge/native-plugins";
 import {
@@ -44,6 +50,11 @@ import {
 const MAX_BATCH_FRAMES = 49;
 /** Feed cadence in ms (a partial batch is fed even below the size cap). */
 const FEED_INTERVAL_MS = 250;
+const PIPELINE_SAMPLE_RATE = 16_000;
+const ANDROID_PLAYBACK_DELAY_SAMPLES = platformPlaybackDelaySamples(
+  "android",
+  PIPELINE_SAMPLE_RATE,
+);
 
 /**
  * One native-attributed turn surfaced to the ambient-gate layer. The PCM-derived
@@ -155,6 +166,75 @@ function base64ToInt8(b64: string): Int8Array {
   return out;
 }
 
+function base64Pcm16ToFloat32(b64: string, channels = 1): Float32Array {
+  if (!b64) return new Float32Array(0);
+  const bin = atob(b64);
+  const channelCount = Math.max(1, Math.floor(channels));
+  const samples = Math.floor(bin.length / (2 * channelCount));
+  const out = new Float32Array(samples);
+  for (let i = 0; i < samples; i += 1) {
+    let mixed = 0;
+    for (let ch = 0; ch < channelCount; ch += 1) {
+      const offset = (i * channelCount + ch) * 2;
+      const lo = bin.charCodeAt(offset);
+      const hi = bin.charCodeAt(offset + 1);
+      const signed = (((hi << 8) | lo) << 16) >> 16;
+      mixed += Math.max(-1, Math.min(1, signed / 32768));
+    }
+    out[i] = mixed / channelCount;
+  }
+  return out;
+}
+
+function resampleLinear(
+  input: Float32Array,
+  fromRate: number,
+  toRate: number,
+): Float32Array {
+  const sourceRate = Math.max(1, Math.floor(fromRate || toRate));
+  if (input.length === 0 || sourceRate === toRate) return input;
+  const outLength = Math.max(
+    1,
+    Math.round((input.length * toRate) / sourceRate),
+  );
+  const out = new Float32Array(outLength);
+  const ratio = sourceRate / toRate;
+  for (let i = 0; i < outLength; i += 1) {
+    const pos = i * ratio;
+    const left = Math.floor(pos);
+    const right = Math.min(input.length - 1, left + 1);
+    const frac = pos - left;
+    out[i] = (input[left] ?? 0) * (1 - frac) + (input[right] ?? 0) * frac;
+  }
+  return out;
+}
+
+function decodePcm16VoiceFrame(
+  event: Pick<
+    TalkModeAudioFrameEvent | TalkModePlaybackFrameEvent,
+    "pcm16" | "sampleRate" | "channels"
+  >,
+): Float32Array {
+  return resampleLinear(
+    base64Pcm16ToFloat32(event.pcm16, event.channels),
+    event.sampleRate,
+    PIPELINE_SAMPLE_RATE,
+  );
+}
+
+function float32ToBase64Pcm16(samples: Float32Array): string {
+  if (samples.length === 0) return "";
+  let bin = "";
+  for (let i = 0; i < samples.length; i += 1) {
+    const clamped = Math.max(-1, Math.min(1, samples[i] ?? 0));
+    const signed =
+      clamped < 0 ? Math.round(clamped * 32768) : Math.round(clamped * 32767);
+    const value = signed < 0 ? signed + 65536 : signed;
+    bin += String.fromCharCode(value & 0xff, (value >> 8) & 0xff);
+  }
+  return btoa(bin);
+}
+
 /**
  * Concatenate a batch of `audioFrame` payloads (each base64 LE-s16) into one
  * base64 LE-s16 blob for a single `pipelineProcess` call. Decoding to bytes and
@@ -201,12 +281,22 @@ export class JniVoicePipeline {
   private ctxHandle: string | null = null;
   private pipelineHandle: string | null = null;
   private removeListener: (() => void) | null = null;
+  private removePlaybackListener: (() => void) | null = null;
   private feedTimer: ReturnType<typeof setInterval> | null = null;
   private buffer: TalkModeAudioFrameEvent[] = [];
   private feeding: Promise<void> = Promise.resolve();
+  private readonly echoReference = new EchoReferenceBuffer({
+    capacitySamples: PIPELINE_SAMPLE_RATE * 3,
+    sampleRateHz: PIPELINE_SAMPLE_RATE,
+  });
+  private readonly echoCanceller = new NlmsEchoCanceller({
+    residualSuppression: true,
+  });
   private running = false;
 
   framesSent = 0;
+  playbackFramesReceived = 0;
+  lastEchoErleDb = 0;
   turnsObserved = 0;
 
   constructor(
@@ -255,12 +345,23 @@ export class JniVoicePipeline {
     this.removeListener = () => {
       void handle.remove();
     };
+    const playbackHandle = await this.talkmode.addListener(
+      "playbackFrame",
+      (event: TalkModePlaybackFrameEvent) => this.onPlaybackFrame(event),
+    );
+    this.removePlaybackListener = () => {
+      void playbackHandle.remove();
+    };
 
     const result = await this.talkmode.startAudioFrames({
-      sampleRate: 16_000,
+      sampleRate: PIPELINE_SAMPLE_RATE,
       frameMs: 20,
     });
     if (!result.started) {
+      this.removeListener?.();
+      this.removeListener = null;
+      this.removePlaybackListener?.();
+      this.removePlaybackListener = null;
       await this.teardownNative();
       return { started: false, error: result.error };
     }
@@ -284,6 +385,8 @@ export class JniVoicePipeline {
     }
     this.removeListener?.();
     this.removeListener = null;
+    this.removePlaybackListener?.();
+    this.removePlaybackListener = null;
     await this.feed();
     await this.feeding;
     if (this.pipelineHandle) {
@@ -294,6 +397,8 @@ export class JniVoicePipeline {
       await this.emitTurns(flushed.turns);
     }
     await this.teardownNative();
+    this.echoReference.reset();
+    this.echoCanceller.reset();
   }
 
   private async teardownNative(): Promise<void> {
@@ -313,6 +418,18 @@ export class JniVoicePipeline {
     if (this.buffer.length >= MAX_BATCH_FRAMES) void this.feed();
   }
 
+  private onPlaybackFrame(event: TalkModePlaybackFrameEvent): void {
+    if (!this.running) return;
+    if (event.frameIndex === 0) {
+      this.echoReference.reset();
+      this.echoCanceller.reset();
+    }
+    const playback = decodePcm16VoiceFrame(event);
+    if (playback.length === 0) return;
+    this.echoReference.pushAt(event.timestamp, playback);
+    this.playbackFramesReceived += 1;
+  }
+
   /** Feed the buffered batch into the native pipeline. Serialized + ordered. */
   private async feed(): Promise<void> {
     if (this.buffer.length === 0) return;
@@ -324,7 +441,7 @@ export class JniVoicePipeline {
 
   private async process(frames: TalkModeAudioFrameEvent[]): Promise<void> {
     if (frames.length === 0 || !this.pipelineHandle) return;
-    const pcm16 = concatFramesToBase64(frames);
+    const pcm16 = this.cancelEchoForBatch(frames);
     this.framesSent += frames.length;
     const res = await this.voice.pipelineProcess({
       handle: this.pipelineHandle,
@@ -332,6 +449,34 @@ export class JniVoicePipeline {
       includePcm: Boolean(this.options.onCompletedPcmTurn),
     });
     await this.emitTurns(res.turns);
+  }
+
+  private cancelEchoForBatch(frames: TalkModeAudioFrameEvent[]): string {
+    const rawPcm16 = concatFramesToBase64(frames);
+    if (this.playbackFramesReceived === 0) return rawPcm16;
+
+    const near = base64Pcm16ToFloat32(rawPcm16);
+    if (near.length === 0) return rawPcm16;
+    const firstTimestamp =
+      typeof frames[0]?.timestamp === "number" ? frames[0].timestamp : NaN;
+    const far = Number.isFinite(firstTimestamp)
+      ? this.echoReference.referenceAt(
+          firstTimestamp,
+          near.length,
+          ANDROID_PLAYBACK_DELAY_SAMPLES,
+        )
+      : this.echoReference.referenceFor(
+          near.length,
+          ANDROID_PLAYBACK_DELAY_SAMPLES,
+        );
+    let cleaned = near;
+    if (far.some((sample) => sample !== 0)) {
+      cleaned = this.echoCanceller.process(near, far);
+    } else {
+      this.echoCanceller.observeFarEndSilence(near);
+    }
+    this.lastEchoErleDb = this.echoCanceller.lastErleDb;
+    return float32ToBase64Pcm16(cleaned);
   }
 
   private async emitTurns(turns: ElizaVoiceTurn[]): Promise<void> {

@@ -218,6 +218,16 @@
       "import": "./dist/voice/owner-inference.js",
       "default": "./dist/voice/owner-inference.js"
     },
+    "./voice/aec": {
+      "types": "./dist/voice/aec/index.d.ts",
+      "eliza-source": {
+        "types": "./src/voice/aec/index.ts",
+        "import": "./src/voice/aec/index.ts",
+        "default": "./src/voice/aec/index.ts"
+      },
+      "import": "./dist/voice/aec/index.js",
+      "default": "./dist/voice/aec/index.js"
+    },
     "./transcripts": {
       "types": "./dist/transcripts.d.ts",
       "eliza-source": {

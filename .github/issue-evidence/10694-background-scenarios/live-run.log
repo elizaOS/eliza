@@ -1,6 +1,5 @@
- Info       [eliza-scenarios] discovered 2 scenario(s) under /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/plugins/plugin-app-control/test/scenarios
- Info       [eliza-scenarios] run-dir: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/.github/issue-evidence/10694-background-scenarios/run (trajectories → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/.github/issue-evidence/10694-background-scenarios/run/trajectories, runId=6d837edf-c366-4d8e-bac6-1fe471da5549)
-◇ injected env (28) from ../../../../../.env // tip: ⌘ suppress logs { quiet: true }
+ Info       [eliza-scenarios] discovered 2 scenario(s) under /private/tmp/fix-11360/plugins/plugin-app-control/test/scenarios
+ Info       [eliza-scenarios] run-dir: /private/tmp/fix-11360/reports/live-bg/evidence (trajectories → /private/tmp/fix-11360/reports/live-bg/evidence/trajectories, runId=d75473c8-1498-479d-a188-51126c958f58)
  Info       [scenario-runner] Registered zero-vector TEXT_EMBEDDING fallback (dim=1024); set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.
  Warn       [CORE:SETTINGS] SECRET_SALT is not set or using default value (event=core.settings.default_secret_salt)
  Info       [OpenAI] Not registering IMAGE: the Cerebras endpoint does not serve it
@@ -31,56 +30,56 @@
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-sql, statementCount=167)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-sql, tag=0000_@elizaos/plugin-sql_mr2x7ljd)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-sql, tag=0000_@elizaos/plugin-sql_mr4097vc)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-sql)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=scenario-runner-knowledge-graph)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=scenario-runner-knowledge-graph, statementCount=14)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=scenario-runner-knowledge-graph, tag=0000_scenario-runner-knowledge-graph_mr2x7lk7)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=scenario-runner-knowledge-graph, tag=0000_scenario-runner-knowledge-graph_mr4097x0)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=scenario-runner-knowledge-graph)
  Info       [PLUGIN:SQL] Migration completed (pluginName=scenario-runner-knowledge-graph)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-personal-assistant)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-personal-assistant, statementCount=97)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-personal-assistant, tag=0000_@elizaos/plugin-personal-assistant_mr2x7lnk)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-personal-assistant, tag=0000_@elizaos/plugin-personal-assistant_mr40985j)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-personal-assistant)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-personal-assistant)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=calendar)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=calendar, statementCount=3)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=calendar, tag=0000_calendar_mr2x7lo6)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=calendar, tag=0000_calendar_mr40986t)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=calendar)
  Info       [PLUGIN:SQL] Migration completed (pluginName=calendar)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-finances)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-finances, statementCount=6)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-finances, tag=0000_@elizaos/plugin-finances_mr2x7lom)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-finances, tag=0000_@elizaos/plugin-finances_mr40988u)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-finances)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-finances)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-reminders)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-reminders, statementCount=8)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-reminders, tag=0000_@elizaos/plugin-reminders_mr2x7loz)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-reminders, tag=0000_@elizaos/plugin-reminders_mr40989n)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-reminders)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-reminders)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-goals)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-goals, statementCount=7)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-goals, tag=0000_@elizaos/plugin-goals_mr2x7lp9)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-goals, tag=0000_@elizaos/plugin-goals_mr4098b1)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-goals)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-goals)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-inbox, statementCount=4)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-inbox, tag=0000_@elizaos/plugin-inbox_mr2x7lph)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-inbox, tag=0000_@elizaos/plugin-inbox_mr4098bg)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] All migrations completed successfully (successCount=8)
@@ -93,6 +92,7 @@
  Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=10, dryRun=false)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
  Info       [PLUGIN:SQL] Initializing migration system
+ Info       [plugin-goals] [GoalsCheckinService] boot reconcile complete for 0 goal(s)
  Info       [ExperienceService] Loaded 0 experiences from memory
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [RelationshipsService] Loaded 0 contacts from components
@@ -106,8 +106,8 @@
  Info       [Calendar] copied 2 calendar table(s) from app_lifeops to app_calendar (tables=["life_calendar_events","life_calendar_sync_states"])
  Info       [Goals] copied 2 goal table(s) from app_lifeops to app_goals (tables=["life_goal_definitions","life_goal_links"])
  Info       [Reminders] copied 3 reminder table(s) from app_lifeops to app_reminders (tables=["life_reminder_plans","life_reminder_attempts","life_escalation_states"])
- Info       [Inbox] copied 3 inbox table(s) from app_lifeops to app_inbox (tables=["life_inbox_triage_entries","life_inbox_triage_examples","life_email_unsubscribes"])
  Info       [PLUGIN:SQL] Migration system initialized
+ Info       [Inbox] copied 3 inbox table(s) from app_lifeops to app_inbox (tables=["life_inbox_triage_entries","life_inbox_triage_examples","life_email_unsubscribes"])
  Info       [trajectories] Trajectories service initialized
  Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=scenario-runner-knowledge-graph, hash=cef4135176ab6f7be83b37cdab193435)
  Info       [PLUGIN:SQL] Migration completed (pluginName=scenario-runner-knowledge-graph)
@@ -139,20 +139,20 @@
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
- Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a5bd236f679e4705f03903f39d9f15cb)
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-browser, statementCount=8)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-browser, tag=0000_@elizaos/plugin-browser_mr2x7lsr)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-browser, tag=0000_@elizaos/plugin-browser_mr4098hn)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-browser)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-browser)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=eliza)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
  Info       [PLUGIN:SQL] Executing SQL statements (pluginName=eliza, statementCount=14)
- Info       [PLUGIN:SQL] Recorded migration (pluginName=eliza, tag=0000_eliza_mr2x7lsw)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=eliza, tag=0000_eliza_mr4098ht)
  Info       [PLUGIN:SQL] Migration completed successfully (pluginName=eliza)
  Info       [PLUGIN:SQL] Migration completed (pluginName=eliza)
  Info       [PLUGIN:SQL] All migrations completed successfully (successCount=10)
@@ -196,7 +196,7 @@
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
- Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a5bd236f679e4705f03903f39d9f15cb)
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
  Info       [PLUGIN:SQL] Initializing migration system
@@ -249,7 +249,7 @@
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
- Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a5bd236f679e4705f03903f39d9f15cb)
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
  Info       [PLUGIN:SQL] Initializing migration system
@@ -302,7 +302,7 @@
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Initializing migration system
  Info       [PLUGIN:SQL] Migration system initialized
- Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a5bd236f679e4705f03903f39d9f15cb)
+ Info       [PLUGIN:SQL] No changes detected, skipping migration (pluginName=@elizaos/plugin-inbox, hash=a1e5b90412cbc4aefdfb0f98b5fa3a60)
  Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-inbox)
  Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-browser)
  Info       [PLUGIN:SQL] Initializing migration system
@@ -316,30 +316,26 @@
  Info       [PLUGIN:SQL] Migration completed (pluginName=eliza)
  Info       [PLUGIN:SQL] All migrations completed successfully (successCount=10)
  Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
- Warn       [imessage] Failed to open chat.db at /Users/shawwalters/Library/Messages/chat.db: authorization denied. Ensure the path is correct and the host process has Full Disk Access (macOS → System Settings → Privacy & Security → Full Disk Access). Open it directly with x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles. Plugin will continue in send-only mode. Further identical startup failures will log at debug.
  Info       [eliza-scenarios] provider: openai
  Info       [eliza-scenarios] ▶ background-set-color
- Info       [FollowupTracker] Wrote overdue digest memory 29a677a0-3aad-071e-a70f-ebf6bb33fa67 with 0 entries
+ Info       [FollowupTracker] Wrote overdue digest memory 4f598d5a-9535-0034-9551-170d71561dc6 with 0 entries
  Warn       #agent:ScenarioAgent  [pricing] no price entry — cost_usd defaulted to 0 (modelName=(undefined), provider=default, priceTableId=eliza-v1-2026-07-01)
+ Warn       [PLUGIN:ADVANCED-CAPABILITIES:PROVIDER:SETTINGS] No world found for user during setup -- settings provider will be skipped
  Info       [plugin-app-control] BACKGROUND op=set mode=shader
- Info       [eliza-scenarios] ✓ background-set-color passed (2166ms)
+ Info       [eliza-scenarios] ✓ background-set-color passed (1869ms)
  Info       [eliza-scenarios] ▶ background-shader-undo-redo
  Warn       #agent:ScenarioAgent  [pricing] no price entry — cost_usd defaulted to 0 (modelName=(undefined), provider=default, priceTableId=eliza-v1-2026-07-01)
+ Info       [plugin-app-control] BACKGROUND op=set mode=glsl
  Warn       #agent:ScenarioAgent  [pricing] no price entry — cost_usd defaulted to 0 (modelName=(undefined), provider=default, priceTableId=eliza-v1-2026-07-01)
+ Warn       [PLUGIN:ADVANCED-CAPABILITIES:PROVIDER:SETTINGS] No world found for user during setup -- settings provider will be skipped
+ Info       [plugin-app-control] BACKGROUND op=undo
  Warn       #agent:ScenarioAgent  [pricing] no price entry — cost_usd defaulted to 0 (modelName=(undefined), provider=default, priceTableId=eliza-v1-2026-07-01)
+ Warn       [PLUGIN:ADVANCED-CAPABILITIES:PROVIDER:SETTINGS] No world found for user during setup -- settings provider will be skipped
+ Info       [plugin-app-control] BACKGROUND op=redo
  Warn       #agent:ScenarioAgent  [pricing] no price entry — cost_usd defaulted to 0 (modelName=(undefined), provider=default, priceTableId=eliza-v1-2026-07-01)
+ Warn       [PLUGIN:ADVANCED-CAPABILITIES:PROVIDER:SETTINGS] No world found for user during setup -- settings provider will be skipped
  Info       [plugin-app-control] BACKGROUND op=reset
- Warn       #agent:ScenarioAgent  Evaluator requested NEXT_RECOMMENDED without a valid queued tool after terminal planner output; replanning (queuedToolCallIds=[])
- Warn       #agent:ScenarioAgent  [SERVICE:MESSAGE] v5 message runtime failed; returning structured failure reply (error=Trajectory limit exceeded: terminal_only_continuations (3/2), stack=TrajectoryLimitExceeded: Trajectory limit exceeded: terminal_only_continuations (3/2)
-    at assertTrajectoryLimit (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/packages/core/src/runtime/limits.ts:158:13)
-    at runPlannerLoop (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/packages/core/src/runtime/planner-loop.ts:445:6)
-    at processTicksAndRejections (native:7:39))
-[v5-runtime-failed] agentId=546ac3ab-0468-01a2-9d5b-52dfa34bf9cc error=Trajectory limit exceeded: terminal_only_continuations (3/2)
-TrajectoryLimitExceeded: Trajectory limit exceeded: terminal_only_continuations (3/2)
-    at assertTrajectoryLimit (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/packages/core/src/runtime/limits.ts:158:13)
-    at runPlannerLoop (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/packages/core/src/runtime/planner-loop.ts:445:6)
-    at processTicksAndRejections (native:7:39)
- Info       [eliza-scenarios] ✗ background-shader-undo-redo failed (7112ms)
+ Info       [eliza-scenarios] ✓ background-shader-undo-redo passed (7098ms)
  Info       Stopping Google Workspace plugin
  Info       [plugin-goals] stopping GoalsCheckinService
  Info       [ExperienceService] Stopping...
@@ -349,16 +345,15 @@ TrajectoryLimitExceeded: Trajectory limit exceeded: terminal_only_continuations 
  Info       [FollowUpService] Stopped successfully
  Warn       #agent:ScenarioAgent  [AGENT] Service instance is missing stop(); skipping (serviceType=connector_credential_store, reason=shutdown)
  Info       CharacterFileManager stopped
- Info       [scenario-runner] preserved scenario PGLite trajectory DB at /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/scenario-runner-pglite-l14Bcg
- Info       [scenario-runner] wrote run viewer → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/.github/issue-evidence/10694-background-scenarios/run/viewer/index.html
- Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/.github/issue-evidence/10694-background-scenarios/report.json
- Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/.github/issue-evidence/10694-background-scenarios/run/matrix.json
+ Info       [scenario-runner] wrote run viewer → /private/tmp/fix-11360/reports/live-bg/evidence/viewer/index.html
+ Info       [scenario-runner] wrote report bundle → /private/tmp/fix-11360/reports/live-bg/evidence
+ Info       [scenario-runner] wrote report → /private/tmp/fix-11360/reports/live-bg/evidence/matrix.json
 
-Scenario run 6d837edf-c366-4d8e-bac6-1fe471da5549 | provider=openai | 2026-07-02T03:04:02.349Z → 2026-07-02T03:04:17.603Z
+Scenario run d75473c8-1498-479d-a188-51126c958f58 | provider=openai | 2026-07-02T21:17:01.571Z → 2026-07-02T21:17:18.806Z
 | id | status | duration | failures |
 | --- | --- | --- | --- |
-| background-set-color | passed | 2166ms |  |
-| background-shader-undo-redo | failed | 7112ms | actionCalled: expected 4 successful BACKGROUND call(s) with result.success=true, saw 1. Calls: {"actionName":"BACKGROUND","parameters":{"par |
+| background-set-color | passed | 1869ms |  |
+| background-shader-undo-redo | passed | 7098ms |  |
 
-Totals: 1 passed, 1 failed, 0 skipped of 2
-Internal error: directory mismatch for directory "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/tsconfig.json", fd 3. You don't need to do anything, but this indicates a bug.
+Totals: 2 passed, 0 failed, 0 skipped of 2
+Internal error: directory mismatch for directory "/private/tmp/fix-11360/tsconfig.json", fd 3. You don't need to do anything, but this indicates a bug.

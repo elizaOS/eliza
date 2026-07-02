@@ -1,0 +1,38 @@
+published tensor count: 35
+missing from published: []
+extra in published: []
+classifier.bias              best=IFGO     IFGO=0 IOFC=0
+classifier.weight            best=IFGO     IFGO=0.009656 IFGO.T=3.246 IOFC=0.009656 IOFC.T=3.246
+linear0.bias                 best=IFGO     IFGO=0 IOFC=0
+linear0.weight               best=IFGO     IFGO=0.03775 IFGO.T=9.892 IOFC=0.03775 IOFC.T=9.892
+linear1.bias                 best=IFGO     IFGO=0 IOFC=0
+linear1.weight               best=IFGO     IFGO=0.02557 IFGO.T=6.598 IOFC=0.02557 IOFC.T=6.598
+lstm.0.W_hh                  best=IOFC     IFGO=8.236 IOFC=0.02652
+lstm.0.W_ih                  best=IOFC     IFGO=12.4 IOFC=0.03869
+lstm.0.b_hh                  best=IOFC     IFGO=2.103 IFGO.T=2.25 IOFC=0 IOFC.T=2.681
+lstm.0.b_ih                  best=IOFC     IFGO=2.151 IFGO.T=2.184 IOFC=0 IOFC.T=2.642
+lstm.1.W_hh                  best=IOFC     IFGO=7.504 IOFC=0.02181
+lstm.1.W_ih                  best=IOFC     IFGO=10.29 IOFC=0.02811
+lstm.1.b_hh                  best=IOFC     IFGO=2.745 IFGO.T=2.911 IOFC=0 IOFC.T=3.352
+lstm.1.b_ih                  best=IOFC     IFGO=2.755 IFGO.T=3.037 IOFC=0 IOFC.T=3.115
+lstm.2.W_hh                  best=IOFC     IFGO=8.844 IOFC=0.02627
+lstm.2.W_ih                  best=IOFC     IFGO=8.819 IOFC=0.03139
+lstm.2.b_hh                  best=IOFC     IFGO=2.409 IFGO.T=3.275 IOFC=0 IOFC.T=3.09
+lstm.2.b_ih                  best=IOFC     IFGO=2.371 IFGO.T=3.295 IOFC=0 IOFC.T=3.023
+lstm.3.W_hh                  best=IOFC     IFGO=10.05 IOFC=0.03284
+lstm.3.W_ih                  best=IOFC     IFGO=10.16 IOFC=0.03865
+lstm.3.b_hh                  best=IOFC     IFGO=4.207 IFGO.T=3.877 IOFC=0 IOFC.T=4.28
+lstm.3.b_ih                  best=IOFC     IFGO=4.232 IFGO.T=3.929 IOFC=0 IOFC.T=4.42
+sincnet.conv0.weight         best=IFGO     IFGO=0.003936 IOFC=0.003936
+sincnet.conv1.bias           best=IFGO     IFGO=0 IOFC=0
+sincnet.conv1.weight         best=IFGO     IFGO=0.03117 IOFC=0.03117
+sincnet.conv2.bias           best=IFGO     IFGO=0 IOFC=0
+sincnet.conv2.weight         best=IFGO     IFGO=0.03945 IOFC=0.03945
+sincnet.norm0.bias           best=IFGO     IFGO=0 IOFC=0
+sincnet.norm0.weight         best=IFGO     IFGO=0 IOFC=0
+sincnet.norm1.bias           best=IFGO     IFGO=0 IOFC=0
+sincnet.norm1.weight         best=IFGO     IFGO=0 IOFC=0
+sincnet.norm2.bias           best=IFGO     IFGO=0 IOFC=0
+sincnet.norm2.weight         best=IFGO     IFGO=0 IOFC=0
+sincnet.norm_in.bias         best=IFGO     IFGO=0 IOFC=0
+sincnet.norm_in.weight       best=IFGO     IFGO=0 IOFC=0

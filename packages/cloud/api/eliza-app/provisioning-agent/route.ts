@@ -13,8 +13,8 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { containersEnv } from "@/lib/config/containers-env";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -104,23 +104,12 @@ app.post("/", async (c) => {
     // returned above are unaffected — this only fences the first provision.)
     const creditCheck = await checkAgentCreditGate(session.organizationId);
     if (!creditCheck.allowed) {
-      logger.warn(
-        "[eliza-app provisioning-agent] provision blocked: insufficient credits",
-        {
-          orgId: session.organizationId,
-          balance: creditCheck.balance,
-          required: AGENT_PRICING.MINIMUM_DEPOSIT,
-        },
-      );
       return c.json(
-        {
-          success: false,
-          code: "insufficient_credits",
-          error:
-            creditCheck.error ?? "Insufficient credits to provision an agent",
-          requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-          currentBalance: creditCheck.balance,
-        },
+        insufficientCredits402(
+          creditCheck,
+          "[eliza-app provisioning-agent] provision blocked: insufficient credits",
+          { orgId: session.organizationId },
+        ),
         402,
       );
     }

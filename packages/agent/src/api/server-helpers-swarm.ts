@@ -16,6 +16,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import { beginDelivery } from "./delivery-dedupe.ts";
@@ -486,6 +487,13 @@ async function buildTaskResultLine(task: {
   workdir?: string;
 }): Promise<string> {
   const validationSummary = task.validationSummary?.trim();
+  // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
+  // `[tool output: …]` envelope blocks from the completionSummary before it is
+  // relayed VERBATIM to the connector. The coordinator now sanitizes at the
+  // source, but payloads can arrive from other coordinator builds, so we strip
+  // again here. sanitizeCompletionRelay preserves prose and plain URLs, and
+  // preserveEvidenceUrls still re-appends any evidence URL below.
+  const completionSummary = sanitizeCompletionRelay(task.completionSummary);
   // Claude Code persists final assistant messages in per-workdir jsonl. That
   // path is Claude-specific; for Codex and other agents the coordinator's
   // completionSummary is already the captured user-facing output.
@@ -497,10 +505,10 @@ async function buildTaskResultLine(task: {
         : finalText;
     }
   }
-  if (task.completionSummary) {
+  if (completionSummary) {
     return validationSummary
-      ? preserveEvidenceUrls(task.completionSummary, validationSummary)
-      : task.completionSummary;
+      ? preserveEvidenceUrls(completionSummary, validationSummary)
+      : completionSummary;
   }
   if (validationSummary) return validationSummary;
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);

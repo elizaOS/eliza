@@ -67,6 +67,7 @@ import {
 import { applyManagedAgentInferenceEnvDefaults } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { JOB_TYPES } from "./provisioning-job-types";
+import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
@@ -267,22 +268,6 @@ type RuntimeAgentListResult = {
 };
 
 const DEFAULT_CENTRAL_SERVER_ID = "00000000-0000-0000-0000-000000000000";
-const RUNTIME_AGENT_SECRET_KEYS = [
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-  "OPENAI_SMALL_MODEL",
-  "OPENAI_LARGE_MODEL",
-  "OPENAI_EMBEDDING_MODEL",
-  "OPENAI_EMBEDDING_API_KEY",
-  "OPENAI_EMBEDDING_URL",
-  "OPENAI_EMBEDDING_DIMENSIONS",
-  "SMALL_MODEL",
-  "LARGE_MODEL",
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_BASE_URL",
-  "AI_GATEWAY_API_KEY",
-  "VERCEL_AI_GATEWAY_API_KEY",
-] as const;
 
 class BridgeRouteUnavailableError extends Error {
   constructor(
@@ -471,14 +456,7 @@ export class ElizaSandboxService {
       rec.environment_vars && typeof rec.environment_vars === "object"
         ? (rec.environment_vars as Record<string, string>)
         : {};
-    const secrets: Record<string, unknown> = { ...rawSecrets };
-    for (const key of RUNTIME_AGENT_SECRET_KEYS) {
-      const current = typeof secrets[key] === "string" ? secrets[key].trim() : "";
-      const next = environmentVars[key]?.trim();
-      if (!current && next) {
-        secrets[key] = next;
-      }
-    }
+    const secrets = mergeRuntimeAgentSecretsFromEnv({ rawSecrets, environmentVars });
     const settings = {
       ...rawSettings,
       secrets,

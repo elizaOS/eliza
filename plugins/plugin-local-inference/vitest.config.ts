@@ -65,6 +65,12 @@ export default defineConfig({
 					import.meta.url,
 				),
 			),
+			"@elizaos/shared/voice/aec": fileURLToPath(
+				new URL(
+					"../../packages/shared/src/voice/aec/index.ts",
+					import.meta.url,
+				),
+			),
 			"@elizaos/shared/voice-wer": fileURLToPath(
 				new URL("../../packages/shared/src/voice-wer.ts", import.meta.url),
 			),

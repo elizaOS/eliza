@@ -21,8 +21,8 @@ import {
 } from "@/lib/api/cloud-worker-errors";
 import { toCompatStatus } from "@/lib/api/compat-envelope";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { charactersService } from "@/lib/services/characters/characters";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -320,29 +320,18 @@ app.post("/", async (c) => {
       }
 
       const creditCheck = await checkAgentCreditGate(ownerOrganizationId);
-      const creditError =
-        typeof (creditCheck as { error?: unknown }).error === "string"
-          ? (creditCheck as { error: string }).error
-          : "insufficient credits";
       if (!creditCheck.allowed) {
-        logger.warn(
-          "[service-api] Provisioning blocked: insufficient credits",
-          {
-            orgId: ownerOrganizationId,
-            serviceOrgId: identity.organizationId,
-            walletOwned: Boolean(walletAccount),
-            balance: creditCheck.balance,
-            required: AGENT_PRICING.MINIMUM_DEPOSIT,
-          },
-        );
         await charactersService.delete(character.id);
         return c.json(
-          {
-            success: false,
-            error: creditError,
-            requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-            currentBalance: creditCheck.balance,
-          },
+          insufficientCredits402(
+            creditCheck,
+            "[service-api] Provisioning blocked: insufficient credits",
+            {
+              orgId: ownerOrganizationId,
+              serviceOrgId: identity.organizationId,
+              walletOwned: Boolean(walletAccount),
+            },
+          ),
           402,
         );
       }

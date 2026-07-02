@@ -459,6 +459,62 @@ describe("SwarmCoordinatorService", () => {
     });
     await coordinator.stop();
   });
+
+  it("sanitizes captured tool-output envelopes out of completionSummary (#11578)", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: { label: "leaky-task", originRoomId: "origin-room-leak" },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // The ACP turn finalText carries the orchestrator's own captured
+    // `[tool output: …]` envelope blocks; they must NOT reach the payload.
+    const leakyResponse =
+      "Deployed the site.\n" +
+      "[tool output: bash]\n$ npm run build\n… lots of raw log …\n[/tool output]\n" +
+      "Live at https://example.com/app/";
+    acp.emit("sess-leak", "task_complete", { response: leakyResponse });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    const summary = fired.mock.calls[0][0].tasks[0].completionSummary;
+    expect(summary).toContain("Deployed the site.");
+    expect(summary).toContain("https://example.com/app/");
+    expect(summary).not.toContain("[tool output:");
+    expect(summary).not.toContain("[/tool output]");
+    expect(summary).not.toContain("npm run build");
+    await coordinator.stop();
+  });
+
+  it("falls back to the default summary when the response was ONLY tool output (#11578)", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: { label: "dump-only", originRoomId: "origin-room-dump" },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-dump", "task_complete", {
+      response: "[tool output: bash]\nonly a raw dump\n[/tool output]",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0].tasks[0].completionSummary).toBe(
+      "Task completed.",
+    );
+    await coordinator.stop();
+  });
+
   it("caches session metadata per session so streaming events do not re-hit getSession", async () => {
     const acp = makeAcpStub({
       agentType: "codex",

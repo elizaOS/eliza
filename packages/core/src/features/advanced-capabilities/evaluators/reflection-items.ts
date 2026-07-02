@@ -900,10 +900,11 @@ ${formatKnownLines(current.slice(0, MAX_KNOWN_PER_KIND), "current")}`;
 	},
 	parse(output) {
 		// Tolerant, op-by-op: a single malformed op must not discard the whole
-		// turn's valid fact ops (see parseExtractorOutputTolerant). Returns null
-		// only when the envelope itself isn't `{ ops: [...] }`.
-		const result = parseExtractorOutputTolerant(output);
-		return result ? result.value : null;
+		// turn's valid fact ops. Drops are logged inside
+		// parseExtractorOutputTolerant — this parse contract has no
+		// runtime/logger, so it could never report them. Returns null only when
+		// the envelope itself isn't `{ ops: [...] }`.
+		return parseExtractorOutputTolerant(output);
 	},
 	processors: [
 		{

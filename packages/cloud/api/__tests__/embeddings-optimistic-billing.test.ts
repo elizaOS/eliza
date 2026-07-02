@@ -43,6 +43,9 @@ const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 const EMBEDDING = [0.0125, -0.5, 0.333333];
+const CLIENT_REQUEST_ID = "req-emb-optimistic";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 // The fixed total the mocked calculateCost returns — what the backstop must
 // record (proving the route no longer writes estimatedCostUsd: 0).
 const BACKSTOP_COST = 0.0123;
@@ -56,8 +59,10 @@ let backstopPersists = true;
 
 // --- spies on the two terminal billing paths --------------------------------
 const writePendingInferenceCharge = mock(
-  (_charge: { estimatedCostUsd: number }, _now: number): Promise<boolean> =>
-    Promise.resolve(backstopPersists),
+  (
+    _charge: { requestId: string; estimatedCostUsd: number },
+    _now: number,
+  ): Promise<boolean> => Promise.resolve(backstopPersists),
 );
 const reserveCredits = mock(async () => ({
   reservedAmount: 0,
@@ -190,7 +195,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
       headers: {
         Authorization: "Bearer eliza_test_key",
         "Content-Type": "application/json",
-        "x-request-id": "req-emb-optimistic",
+        "x-request-id": CLIENT_REQUEST_ID,
       },
       body: JSON.stringify(body),
     },
@@ -222,6 +227,30 @@ describe("POST /api/v1/embeddings optimistic-billing route decision (#9899/#1010
     expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
     expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
     expect(reserveCredits).not.toHaveBeenCalled();
+  });
+
+  test("billing requestId is server-generated, not copied from x-request-id", async () => {
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
+    await Promise.all(scheduled);
+
+    expect(res.status).toBe(200);
+    const pendingCalls = writePendingInferenceCharge.mock
+      .calls as unknown as Array<[{ requestId: string }, number]>;
+    const settlerCalls = createOptimisticDebitSettler.mock
+      .calls as unknown as Array<[{ requestId: string }]>;
+    const pending = pendingCalls[0]?.[0];
+    const settler = settlerCalls[0]?.[0];
+    expect(pending).toBeDefined();
+    expect(settler).toBeDefined();
+    if (!pending || !settler) throw new Error("billing path was not reached");
+
+    expect(pending.requestId).toMatch(UUID_RE);
+    expect(pending.requestId).not.toBe(CLIENT_REQUEST_ID);
+    expect(settler.requestId).toBe(pending.requestId);
   });
 
   test("backstop records the REAL input-token cost estimate (not 0) so a dropped settle is recoverable", async () => {

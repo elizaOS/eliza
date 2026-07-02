@@ -255,6 +255,18 @@ export interface AppCreditReconciliationParams {
   metadata?: Record<string, unknown>;
   /** Optional: pass pre-fetched app to avoid N+1 query */
   app?: App;
+  /**
+   * SERVER-GENERATED id of the reservation's deduct transaction
+   * (credit_transactions.id, a DB UUID). When present, the reconcile
+   * refund/charge legs are made idempotent by keying their synthetic
+   * stripePaymentIntentId on it (`reconcile-refund:<id>` /
+   * `reconcile-charge:<id>`), so a re-invoked settle of the SAME reservation
+   * dedupes on the credit_transactions unique index instead of moving money
+   * twice (#11512). MUST never be a client-supplied value: that unique index
+   * is global (not org-scoped), so a client-controlled key would let one
+   * org's settle dedupe away another org's refund or overage charge.
+   */
+  reservationTransactionId?: string | null;
 }
 
 /**
@@ -456,6 +468,11 @@ export class AppCreditsService {
           description,
           metadata: withChargeIdempotencyKey(metadata, idempotencyKey),
           app,
+          // Server-generated key for the reconcile legs' idempotent ledger
+          // writes (#11512) — the deduct row's own transaction id, never the
+          // client idempotencyKey (globally-unique index ⇒ a client key would
+          // collide across orgs).
+          reservationTransactionId,
         });
 
         return mapAppReconciliationToCreditResult(
@@ -692,10 +709,39 @@ export class AppCreditsService {
       description,
       metadata: rawMetadata,
       app: providedApp,
+      reservationTransactionId,
     } = params;
 
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
+
+    // #11512: idempotency key for the org-credit legs below, threaded as a
+    // synthetic, namespaced stripePaymentIntentId. creditsService dedupes on
+    // the credit_transactions.stripe_payment_intent_id unique index, so a
+    // re-invoked reconcile (a settle retry after a mid-reconcile throw, where
+    // the org refund already COMMITTED before reverseCreatorEarnings / the
+    // apps-counter update threw) returns the first transaction as a no-op
+    // instead of refunding or charging the org a second time.
+    //
+    // The key MUST be SERVER-GENERATED. That unique index is GLOBAL — not
+    // org-scoped — so a client-controlled key (Idempotency-Key header,
+    // x-request-id, metadata.idempotencyKey) would let Org A's reconcile
+    // dedupe away Org B's refund or overage charge when both send the same
+    // key: a cross-tenant collision where the user silently loses a legit
+    // refund and the platform silently skips an overage charge. We therefore
+    // key on the reservation's own deduct-transaction id
+    // (credit_transactions.id, a DB-generated UUID): stable across
+    // re-settles of the SAME reservation, globally unique across
+    // reservations and orgs. Same pattern as the org-credits path's
+    // `recon:<txid>:<phase>` keys (#10846). The `reconcile-refund:` /
+    // `reconcile-charge:` prefixes keep the synthetic keys disjoint from
+    // real Stripe intent ids (`pi_…`) and those `recon:` keys. When no
+    // reservation transaction id is available (the apps/[id]/chat
+    // direct-reconcile paths), we pass NO key — the prior non-idempotent
+    // behavior, backstopped by those routes' settle-started flags and the
+    // settler's first-call-wins guard (createCreditReservationSettler) — and
+    // NEVER fall back to a client-supplied value.
+    const chargeKey = reservationTransactionId || null;
 
     const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
@@ -762,6 +808,10 @@ export class AppCreditsService {
         organizationId,
         amount: refundAmount,
         description: `App reconciliation refund (${app.name ?? appId})`,
+        // Idempotent per reservation (#11512): a re-invoked reconcile must not
+        // credit the org a second refund (2×reserved − actual = minted,
+        // cashable credit).
+        stripePaymentIntentId: chargeKey ? `reconcile-refund:${chargeKey}` : undefined,
         metadata: {
           appId,
           userId,
@@ -775,24 +825,93 @@ export class AppCreditsService {
 
       // Reverse creator earnings if monetization is enabled and there was markup
       if (app.monetization_enabled && creatorEarningsReduction > 0) {
-        const { deduplicated } = await this.reverseCreatorEarnings(
-          appId,
-          userId,
-          creatorEarningsReduction,
-          "reconcile_refund",
-          {
-            type: "reconciliation_refund",
-            baseCostDifference,
-            estimatedBaseCost,
-            actualBaseCost,
-            description,
-            ...metadata,
-          },
-        );
+        let reversal: { deduplicated: boolean };
+        try {
+          reversal = await this.reverseCreatorEarnings(
+            appId,
+            userId,
+            creatorEarningsReduction,
+            "reconcile_refund",
+            {
+              type: "reconciliation_refund",
+              baseCostDifference,
+              estimatedBaseCost,
+              actualBaseCost,
+              description,
+              ...metadata,
+            },
+          );
+        } catch (reversalError) {
+          logger.error(
+            "[AppCredits] Creator-earnings reversal failed after the reconcile refund committed",
+            {
+              appId,
+              userId,
+              organizationId,
+              refundAmount,
+              creatorEarningsReduction,
+              error: reversalError instanceof Error ? reversalError.message : String(reversalError),
+            },
+          );
+          // #10846 mirror for the refund branch: the refund above has already
+          // committed, and the reversal is not co-transactional with it. On the
+          // KEYED path (reserveInferenceCredits has the server-generated
+          // reservation transaction id) retries through the settler with the
+          // first actual cost: the refund dedupes on
+          // `reconcile-refund:<reservationTransactionId>` (#11512) and this
+          // reversal then completes, so the retry heals the pair. Compensating
+          // there would strand the org overcharged after the retry. On the
+          // UNKEYED path (the app-chat and generate-image routes settle once
+          // and never re-invoke) there is NO retry: without compensation the org
+          // keeps the refund while the creator keeps the matching markup as
+          // unbacked REDEEMABLE earnings. Undo the refund (best-effort + logged,
+          // like the #10846 reversal) so the creator's markup stays backed by a
+          // real charge, then rethrow.
+          if (!chargeKey) {
+            try {
+              const compensation = await creditsService.reserveAndDeductCredits({
+                organizationId,
+                amount: refundAmount,
+                description: `Compensation charge for failed reconciliation refund (${app.name ?? appId})`,
+                metadata: {
+                  appId,
+                  userId,
+                  baseCostDifference,
+                  estimatedBaseCost,
+                  actualBaseCost,
+                  creatorEarningsReduction,
+                  reason: "reconcile_refund_reversal_failed",
+                  ...metadata,
+                },
+              });
+              if (!compensation.success) {
+                logger.error(
+                  "[AppCredits] Failed to compensate reconcile refund after reversal failure — manual reconciliation may be needed",
+                  { appId, userId, organizationId, refundAmount },
+                );
+              }
+            } catch (compensationError) {
+              logger.error(
+                "[AppCredits] Failed to compensate reconcile refund after reversal failure — manual reconciliation may be needed",
+                {
+                  appId,
+                  userId,
+                  organizationId,
+                  refundAmount,
+                  error:
+                    compensationError instanceof Error
+                      ? compensationError.message
+                      : String(compensationError),
+                },
+              );
+            }
+          }
+          throw reversalError;
+        }
 
         // A dedup retry already applied this reduction — decrementing again
         // would drift the apps aggregate below the redeemable ledger (#10847).
-        if (!deduplicated) {
+        if (!reversal.deduplicated) {
           await dbWrite
             .update(apps)
             .set({
@@ -833,6 +952,9 @@ export class AppCreditsService {
       organizationId,
       amount: additionalCharge,
       description: `App reconciliation charge (${app.name ?? appId})`,
+      // Symmetric idempotency (#11512): a re-invoked reconcile must not debit
+      // the overage from the org twice.
+      stripePaymentIntentId: chargeKey ? `reconcile-charge:${chargeKey}` : undefined,
       metadata: {
         appId,
         userId,

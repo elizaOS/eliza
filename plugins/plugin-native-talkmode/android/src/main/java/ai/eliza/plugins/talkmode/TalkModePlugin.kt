@@ -105,6 +105,7 @@ class TalkModePlugin : Plugin() {
     private var systemTtsPending: CompletableDeferred<Unit>? = null
     private var pcmTrack: AudioTrack? = null
     private val pcmStopRequested = AtomicBoolean(false)
+    private var playbackFrameIndex = 0L
     private var speakingJob: Job? = null
     private var isSpeaking = false
     private var usedSystemTts = false
@@ -1271,7 +1272,12 @@ class TalkModePlugin : Plugin() {
                     put("sampleRate", format.sampleRate)
                     put("channels", format.channels)
                 })
-                val framesWritten = writePcmStreamToTrack(input, track, format)
+                val framesWritten = writePcmStreamToTrack(
+                    input,
+                    track,
+                    format,
+                    "local-inference"
+                )
                 drainPcmTrack(track, framesWritten, format.sampleRate)
                 if (!pcmStopRequested.get()) {
                     track.stop()
@@ -1359,7 +1365,10 @@ class TalkModePlugin : Plugin() {
                 put("channels", 1)
             })
             val framesWritten = writePcmStreamToTrack(
-                BufferedInputStream(ByteArrayInputStream(pcm16)), track, format
+                BufferedInputStream(ByteArrayInputStream(pcm16)),
+                track,
+                format,
+                "local-inference"
             )
             drainPcmTrack(track, framesWritten, sampleRate)
             if (!pcmStopRequested.get()) track.stop()
@@ -1536,12 +1545,14 @@ class TalkModePlugin : Plugin() {
     private fun writePcmStreamToTrack(
         input: BufferedInputStream,
         track: AudioTrack,
-        format: PcmStreamFormat
+        format: PcmStreamFormat,
+        provider: String
     ): Long {
         val bytesPerFrame = format.channels * (format.bitsPerSample / 8)
         var bytesWrittenTotal = 0L
         var remainingBytes = format.dataBytes
         val buffer = ByteArray(8 * 1024)
+        playbackFrameIndex = 0L
         while (remainingBytes > 0) {
             if (pcmStopRequested.get()) break
             val requestBytes = if (remainingBytes < buffer.size) remainingBytes else buffer.size
@@ -1556,11 +1567,37 @@ class TalkModePlugin : Plugin() {
                 if (wrote <= 0) {
                     throw IllegalStateException("AudioTrack write failed: $wrote")
                 }
+                emitPlaybackFrame(provider, buffer, offset, wrote, format, bytesPerFrame)
                 offset += wrote
                 bytesWrittenTotal += wrote.toLong()
             }
         }
         return if (bytesPerFrame > 0) bytesWrittenTotal / bytesPerFrame else 0L
+    }
+
+    private fun emitPlaybackFrame(
+        provider: String,
+        source: ByteArray,
+        offset: Int,
+        length: Int,
+        format: PcmStreamFormat,
+        bytesPerFrame: Int
+    ) {
+        if (format.bitsPerSample != 16 || bytesPerFrame <= 0 || length <= 0) return
+        val samples = length / bytesPerFrame
+        if (samples <= 0) return
+        val pcmBase64 = Base64.encodeToString(source, offset, length, Base64.NO_WRAP)
+        val idx = playbackFrameIndex
+        playbackFrameIndex += 1
+        notifyListeners("playbackFrame", JSObject().apply {
+            put("provider", provider)
+            put("pcm16", pcmBase64)
+            put("sampleRate", format.sampleRate)
+            put("channels", format.channels)
+            put("samples", samples)
+            put("timestamp", SystemClock.elapsedRealtime())
+            put("frameIndex", idx)
+        })
     }
 
     private fun drainPcmTrack(track: AudioTrack, framesWritten: Long, sampleRate: Int) {
@@ -1617,6 +1654,9 @@ class TalkModePlugin : Plugin() {
         }
         pcmTrack = track
         track.play()
+        val format = PcmStreamFormat(sampleRate, 1, 16, Int.MAX_VALUE)
+        val bytesPerFrame = format.channels * (format.bitsPerSample / 8)
+        playbackFrameIndex = 0L
 
         Log.d(TAG, "PCM play start sampleRate=$sampleRate bufferSize=$bufferSize")
         val conn = openTtsConnection(voiceId, apiKey, request)
@@ -1652,6 +1692,14 @@ class TalkModePlugin : Plugin() {
                             if (pcmStopRequested.get()) return@withContext
                             throw IllegalStateException("AudioTrack write failed: $wrote")
                         }
+                        emitPlaybackFrame(
+                            "elevenlabs",
+                            buffer,
+                            offset,
+                            wrote,
+                            format,
+                            bytesPerFrame
+                        )
                         offset += wrote
                     }
                 }

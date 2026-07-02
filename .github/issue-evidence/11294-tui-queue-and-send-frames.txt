@@ -1,0 +1,120 @@
+# 11294 — eliza-code TUI queue-and-send + Ctrl+C fallthrough: rendered frames
+
+Produced by driving the REAL App handlers (handleSendMessage / consumeGlobalInput)
+against a deferred-turn runtime stub and rendering the REAL MainScreen through
+@elizaos/tui's VirtualTerminal at 80 cols (chalk off-TTY -> plain text; ANSI
+stripped with node:util stripVTControlCharacters). Capture script:
+11294-tui-queue-and-send-capture.ts (run from packages/examples/code with
+`bun <script>`). Each line is prefixed with `|` to preserve leading whitespace.
+
+===== Frame 1 — Enter during a running turn queues the message (loading row shows the count) =====
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ Demo (1/1) | .../tmp/fix-11294/packages/examples/codeTasks r0 c0 f0 x0 … | ? │
+|└────────────────────────────────────────────────────────────────────────────┘
+| Chat: Demo (3)
+| You 17:08
+|   refactor the session store                                                
+| Eliza 17:08
+|   
+| Queued (1): also add tests for the edge cases please — sends when the
+| current turn finishes. Esc/Ctrl+C aborts and discards the queue.
+|  ⠋ Processing (Esc/Ctrl+C abort)                                            
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ Processing... Esc/Ctrl+C abort • 1 queued                                  │
+|└────────────────────────────────────────────────────────────────────────────┘
+|Enter: queue • Esc/Ctrl+C: abort • PgUp/PgDn: scroll
+
+===== Frame 2 — typing ahead mid-turn keeps the composer visible (footer: Enter queues) =====
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ Demo (1/1) | .../tmp/fix-11294/packages/examples/codeTasks r0 c0 f0 x0 … | ? │
+|└────────────────────────────────────────────────────────────────────────────┘
+| Chat: Demo (3)
+| You 17:08
+|   refactor the session store                                                
+| Eliza 17:08
+|   
+| Queued (1): also add tests for the edge cases please — sends when the
+| current turn finishes. Esc/Ctrl+C aborts and discards the queue.
+|  ⠋ Processing (Esc/Ctrl+C abort)                                            
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ >  and update the README
+|└────────────────────────────────────────────────────────────────────────────┘
+|Enter: queue • Esc/Ctrl+C: abort • PgUp/PgDn: scroll
+
+===== Frame 3 — Esc/Ctrl+C aborts the turn and discards the queued message =====
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ Demo (1/1) | ...te/tmp/fix-11294/packages/examples/codeTasks r0 c0 f0 x0 | ? │
+|└────────────────────────────────────────────────────────────────────────────┘
+| Chat: Demo (4)
+| You 17:08
+|   refactor the session store                                                
+| Queued (1): also add tests for the edge cases please — sends when the
+| current turn finishes. Esc/Ctrl+C aborts and discards the queue.
+| Turn aborted.
+| Discarded 1 queued message.
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ >  
+|└────────────────────────────────────────────────────────────────────────────┘
+|Enter: send • PgUp/PgDn: scroll • Esc: clear • ?: help
+
+===== Frame 4 — queued submission fires as its own turn after the first completes (markdown-rendered replies) =====
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ Demo 2 (1/1) | .../tmp/fix-11294/packages/examples/codeTasks r0 c0 f0 x0 | ? │
+|└────────────────────────────────────────────────────────────────────────────┘
+| Chat: Demo 2 (5)
+| You 17:08
+|   first task                                                                
+| Eliza 17:08
+|   Done. Here's the summary for first task.                                  
+| Queued (1): second task, queued — sends when the current turn finishes.
+| Esc/Ctrl+C aborts and discards the queue.
+| You 17:08
+|   second task, queued                                                       
+| Eliza 17:08
+|   Done. Here's the summary for second task, queued.                         
+|
+|
+|
+|
+|
+|
+|
+|
+|┌────────────────────────────────────────────────────────────────────────────┐
+|│ >  
+|└────────────────────────────────────────────────────────────────────────────┘
+|Enter: send • PgUp/PgDn: scroll • Esc: clear • ?: help

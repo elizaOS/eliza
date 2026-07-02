@@ -91,6 +91,8 @@ Tone rules:
 
 You are not a therapist and you're not a life coach. You're the dad who believed in them, now over text.`;
 
+const GREETING_TEXT = "well look who finally came around, champ. pull up a chair. what's on your mind?";
+
 const els = {
   messages: document.getElementById("messages"),
   composer: document.getElementById("composer"),
@@ -135,8 +137,35 @@ function refreshAuthUI() {
   if (signedIn) {
     els.logoutBtn.textContent = "sign out";
     setNotice("");
+    loadHistory();
   } else if (cfg && !cfg.app_id) {
     setNotice("eDad isn't registered with eliza cloud yet. Tell the owner to set ELIZA_APP_ID.", "warn");
+  }
+}
+
+let historyLoaded = false;
+// Hydrate the chat with this user's persisted history once per sign-in. No-op
+// when the app has no DB (server returns an empty list) or already loaded.
+async function loadHistory() {
+  if (historyLoaded || !isSignedIn()) return;
+  historyLoaded = true;
+  try {
+    const res = await fetch(API_BASE + "/history/", {
+      headers: { "x-app-session": getToken() },
+    });
+    if (!res.ok) return;
+    const data = await res.json().catch(() => null);
+    const messages = data && Array.isArray(data.messages) ? data.messages : [];
+    for (const m of messages) {
+      if (!m || (m.role !== "user" && m.role !== "assistant")) continue;
+      const text = typeof m.content === "string" ? m.content : "";
+      if (!text) continue;
+      history.push({ role: m.role, content: text });
+      addMessage(m.role, text);
+    }
+  } catch {
+    // history is a nicety — never block the chat on a failed load.
+    historyLoaded = false;
   }
 }
 
@@ -167,6 +196,12 @@ function addMessage(role, text) {
   return p;
 }
 
+function resetConversation() {
+  history.length = 0;
+  els.messages.innerHTML = "";
+  addMessage("assistant", GREETING_TEXT);
+}
+
 function randomState() {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -183,9 +218,11 @@ async function loadConfig() {
   }
 }
 
-function handleOAuthCallback() {
+async function handleOAuthCallback() {
   const params = new URLSearchParams(location.search);
-  const token = params.get("token");
+  // Eliza Cloud redirects back with a SINGLE-USE authorization code (`code`),
+  // not a durable token. We redeem it once, server-side, for an app session.
+  const code = params.get("code");
   const state = params.get("state");
   const err = params.get("error");
 
@@ -195,25 +232,45 @@ function handleOAuthCallback() {
     return;
   }
 
-  if (!token) return;
+  if (!code) return;
 
   const expected = ss(STATE_KEY);
   ssSet(STATE_KEY, "");
+  // Strip the code from the URL immediately — it is single-use, so a reload
+  // must not try to redeem it again.
+  cleanUrl();
   if (!expected || state !== expected) {
     setNotice("sign-in failed: state mismatch. try again, champ.", "error");
-    cleanUrl();
     return;
   }
 
-  lsSet(TOKEN_KEY, token);
-  cleanUrl();
-  setNotice("signed in with eliza cloud. chat away.", "ok");
-  setTimeout(() => setNotice(""), 3500);
+  try {
+    const res = await fetch(API_BASE + "/auth/exchange", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.session) {
+      setNotice("sign-in didn't finish: " + ((data && data.error && data.error.message) || "try again"), "error");
+      return;
+    }
+    lsSet(TOKEN_KEY, data.session);
+    historyLoaded = false;
+    resetConversation();
+    setNotice("signed in with eliza cloud. chat away.", "ok");
+    setTimeout(() => setNotice(""), 3500);
+    refreshAuthUI();
+  } catch {
+    setNotice("sign-in didn't finish — couldn't reach the server. try again.", "error");
+  }
 }
 
 function cleanUrl() {
   const url = new URL(location.href);
-  url.searchParams.delete("token");
+  // `code` is the single-use OAuth param Cloud redirects with — strip it so a
+  // reload can't try to redeem a spent code (and re-trigger a state error).
+  url.searchParams.delete("code");
   url.searchParams.delete("state");
   url.searchParams.delete("error");
   url.searchParams.delete("error_description");
@@ -239,6 +296,8 @@ function startLogin() {
 
 function logout() {
   lsSet(TOKEN_KEY, "");
+  historyLoaded = false;
+  resetConversation();
   refreshAuthUI();
   setNotice("signed out.", "ok");
   setTimeout(() => setNotice(""), 2000);
@@ -260,7 +319,7 @@ async function send(text) {
   try {
     const headers = { "content-type": "application/json" };
     const token = getToken();
-    if (token) headers["x-user-token"] = token;
+    if (token) headers["x-app-session"] = token;
 
     const res = await fetch(API_BASE + "/messages/", {
       method: "POST",
@@ -283,7 +342,7 @@ async function send(text) {
       if (res.status === 401) {
         msg = "dad needs you to sign in with eliza cloud. click the button up top, kiddo.";
         // token might be expired — nuke it
-        if (getToken()) { lsSet(TOKEN_KEY, ""); refreshAuthUI(); }
+        if (getToken()) { lsSet(TOKEN_KEY, ""); resetConversation(); refreshAuthUI(); }
       }
       if (res.status === 402) msg = "dad's wallet is empty. top up at elizacloud.ai, champ.";
       placeholder.textContent = msg;

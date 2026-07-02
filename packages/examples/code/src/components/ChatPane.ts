@@ -384,10 +384,15 @@ export class ChatPane implements Focusable {
         height - headerHeight - helpHeight - inputChromeHeight - 1,
       ),
     );
-    const composerLines = state.isLoading
-      ? []
-      : this.renderComposerLines(editorWidth, composerMaxLines);
-    const inputBodyHeight = state.isLoading ? 1 : composerLines.length;
+    // While a turn is running the input row shows a loading notice — unless
+    // the user is typing ahead (queue-and-send), in which case the composer
+    // stays visible so they can see what they're about to queue.
+    const composerVisible =
+      !state.isLoading || this.editor.getText().length > 0;
+    const composerLines = composerVisible
+      ? this.renderComposerLines(editorWidth, composerMaxLines)
+      : [];
+    const inputBodyHeight = composerVisible ? composerLines.length : 1;
     const inputHeight = inputChromeHeight + inputBodyHeight;
     const messageAreaHeight = Math.max(
       1,
@@ -465,8 +470,10 @@ export class ChatPane implements Focusable {
 
     output.push(topBorder);
 
-    if (state.isLoading) {
-      const loadingText = "Processing... Esc/Ctrl+C abort";
+    if (!composerVisible) {
+      const queuedCount = state.pendingSubmissions.length;
+      const queuedSuffix = queuedCount > 0 ? ` • ${queuedCount} queued` : "";
+      const loadingText = `Processing... Esc/Ctrl+C abort${queuedSuffix}`;
       const available = Math.max(1, innerWidth - 1);
       const visibleText =
         loadingText.length > available
@@ -492,9 +499,11 @@ export class ChatPane implements Focusable {
 
     const helpText = !this.focused
       ? "Tab: focus"
-      : state.inputValue.startsWith("/")
-        ? "Enter: run • Tab: complete • Esc: clear • ?: help"
-        : "Enter: send • PgUp/PgDn: scroll • Esc: clear • ?: help";
+      : state.isLoading
+        ? "Enter: queue • Esc/Ctrl+C: abort • PgUp/PgDn: scroll"
+        : state.inputValue.startsWith("/")
+          ? "Enter: run • Tab: complete • Esc: clear • ?: help"
+          : "Enter: send • PgUp/PgDn: scroll • Esc: clear • ?: help";
     output.push(truncateToWidth(chalk.dim(helpText), width));
 
     return output;

@@ -30,6 +30,8 @@ const checkAgentCreditGate = mock(async () => ({
   error: "Insufficient credits",
 }));
 
+class AgentQuotaExceededError extends Error {}
+
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey,
   validateServiceKey,
@@ -53,6 +55,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
+  AgentQuotaExceededError,
   elizaSandboxService: {
     getAgentById,
     getAgentForWrite,

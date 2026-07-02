@@ -67,6 +67,12 @@ const launchManagedElizaAgent = mock(async () => ({
   issuedAt: "2026-07-02T00:00:00.000Z",
   connection: { host: "agent-1.example.test" },
 }));
+const prepareManagedElizaEnvironment = mock(async () => ({
+  changed: false,
+  environmentVars: {},
+}));
+
+class AgentQuotaExceededError extends Error {}
 
 mock.module("../compat/_lib/auth", () => ({
   requireCompatAuth,
@@ -90,6 +96,7 @@ mock.module("@/lib/services/agent-billing-gate", () => ({
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
+  AgentQuotaExceededError,
   elizaSandboxService: {
     getAgent,
     getAgentForWrite,
@@ -100,6 +107,7 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
 
 mock.module("@/lib/services/eliza-managed-launch", () => ({
   launchManagedElizaAgent,
+  prepareManagedElizaEnvironment,
   ManagedElizaLaunchError: class ManagedElizaLaunchError extends Error {
     status = 400;
   },
@@ -151,6 +159,7 @@ describe("compat agent resume/restart/launch credit gate", () => {
     provision.mockClear();
     snapshot.mockClear();
     launchManagedElizaAgent.mockClear();
+    prepareManagedElizaEnvironment.mockClear();
   });
 
   test("blocks compat resume before provisioning when the org has insufficient credits", async () => {

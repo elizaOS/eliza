@@ -1,80 +1,97 @@
-# #10694 — BACKGROUND action real-LLM scenario evidence
+# #10694 / #11360 — BACKGROUND action real-LLM scenario evidence
 
-Live-model scenario runs for the new BACKGROUND coverage
+Live-model scenario runs for the BACKGROUND coverage
 (`plugins/plugin-app-control/test/scenarios/background-set-color.scenario.ts`,
 `background-shader-undo-redo.scenario.ts`), captured against a **live**
-Cerebras endpoint (provider `openai` in first-class Cerebras mode,
-`OPENAI_LARGE_MODEL=gpt-oss-120b`, key sourced from the repo `.env`, never
-logged — artifacts swept for `csk-`).
+Cerebras endpoint (provider `openai` in first-class Cerebras mode, model
+**gemma-4-31b** — the live-provider default when only `CEREBRAS_API_KEY` is
+set; key sourced from the environment, never logged — artifacts swept for
+`csk-`).
+
+This directory previously held a **failing** run (undo/redo/reset misrouted to
+non-BACKGROUND actions — the #11360 gap). It now holds a clean **passing** run
+captured after the #11360 routing fix.
 
 ## Artifacts
 
-- `report.json` — final run (run 4): per-turn text, responseText, every action
-  call with parameters and results, per-check verdicts. This IS the trajectory.
+- `report.json` — the passing evidence run: per-turn text, every action call
+  with parameters and results, per-check verdicts. This IS the trajectory.
 - `run/trajectories/<agent>/tj-*.json` — per-message trajectory files (Stage-1
-  RESPONSE_HANDLER prompt+raw output, toolSearch, planner stages with the full
-  offered tool list, model provider/latency/token metrics).
+  RESPONSE_HANDLER prompt+raw output, toolSearch ranking with per-stage scores
+  and tiering, planner stages, model provider/latency/token metrics).
 - `run/viewer/index.html` — run viewer.
 - `live-run.log` — full key-free CLI log (server `[ClassName]` lines included).
 
 Deterministic-lane twin (zero-key, runs on every PR):
 `packages/scenario-runner/test/scenarios/deterministic-background-actions.scenario.ts`
 — 8 asserted action turns + an exact ordered `background:apply` broadcast
-ledger. Green in `--lane pr-deterministic` (36/36 scenarios).
+ledger. Green in `--lane pr-deterministic` (36/36 scenarios, re-run with the
+#11360 fix applied).
 
-## Final live results (run 4)
+## Command
+
+```bash
+cd packages/scenario-runner && CEREBRAS_API_KEY=$CEREBRAS_API_KEY \
+  bun --conditions eliza-source --tsconfig-override ../../tsconfig.json \
+  src/cli.ts run ../../plugins/plugin-app-control/test/scenarios \
+  --scenario background-set-color,background-shader-undo-redo \
+  --report-dir <out> --run-dir <out>
+```
+
+## Final live results (evidence run, gemma-4-31b)
 
 | scenario | result |
 | --- | --- |
-| `background-set-color` | **PASSED** — model selected `BACKGROUND {op:"set", color:"teal"}` from "change the app background to teal"; handler broadcast exactly `{op:"set", mode:"shader", color:"#0891b2"}` (curated teal hex); exact-ledger custom check green. |
-| `background-shader-undo-redo` | **FAILED (real finding, kept red)** — Stage-1 REPLY-larp: turns 1–3 answered in prose ("Here's a quick way to add a slow lava-lamp-style animated background using CSS…", "Reverting the background to its previous state." — claimed, no action). Only the reset turn routed `BACKGROUND {op:"reset"}` (succeeded, broadcast went out). Judge score 0.00. |
+| `background-set-color` | **PASSED** — model selected `BACKGROUND {op:"set", color:"teal"}` (with planner-stuffed `preset:"nebula"` that the explicit-preset-vs-color precedence correctly ignored); handler broadcast exactly `{op:"set", mode:"shader", color:"#0891b2"}` (curated teal hex); exact-ledger check green. |
+| `background-shader-undo-redo` | **PASSED** — all four turns routed `BACKGROUND` with the correct op: `set` (glsl lava from "give me a slow lava-lamp style animated background"), `undo`, `redo`, `reset`; exact broadcast ledger `set(glsl lava) → undo → redo → reset`; judge score 1.0. |
+
+## Reliability (the #11360 core ask)
+
+`background-shader-undo-redo` passed **8 consecutive live runs** on
+gemma-4-31b after the routing fix, plus this evidence capture (9 total); the
+run *before* the fix's context-gate half failed turn 1 (see below). The
+scenario pair (`background-set-color` + `background-shader-undo-redo`) passed
+4 consecutive combined runs including this capture.
 
 ## Hand-read of the trajectories (what the model actually did)
 
-Four live runs were executed while iterating; all were read by hand.
+Every `tj-*.json` in `run/trajectories/` was read by hand:
 
-1. **Run 1 (pre-fix)** — every model stage returned empty output in ~90 ms with
-   0 tokens. Root cause found in the trajectory: `prepareMockedTestEnvironment`
-   exports `ELIZA_MOCK_OPENAI_BASE`, which is authoritative inside
-   plugin-openai and silently rerouted "live" calls to the wire mock. Fixed in
-   `packages/scenario-runner/src/runtime-factory.ts`
-   (`clearLlmWireMockEnvForLiveProvider` — clears the mock LLM bases whenever a
-   real provider is selected; the deterministic proxy lane keeps them).
-2. **Run 2 (live wire, original phrasing)** — Stage-1 raw output read from
-   `tj-*.json`: `{"processMessage":"RESPOND","plan":{"contexts":["simple"],
-   "reply":"Here's a quick CSS snippet to set a teal background…",
-   "requiresTool":false}}` — the model classified "make the background teal" as
-   a generic coding question and answered with CSS; the planner never ran. On
-   the reset turn it emitted `candidateActions:["SET_BACKGROUND"]` →
-   planner (20 tools, BACKGROUND offered) → `BACKGROUND {op:"reset"}` executed.
-   Also observed: the planner attempted `BACKGROUND {preset: ""}` on the
-   lava-lamp turn and was rejected by enum validation — strict tool schemas
-   force the model to emit every key, so `""` is its only "unset". Fixed in
-   core (`dropEmptyOptionalArgs` in
-   `packages/core/src/runtime/execute-planned-tool-call.ts`): empty-string
-   values on declared OPTIONAL parameters are treated as omitted; required
-   params still fail loudly. Unit-tested.
-3. **Run 3 (app-anchored phrasing)** — "change the app background to teal" now
-   routed BACKGROUND, but the planner stuffed `{op:"set", color:"teal",
-   preset:"aurora"}` and the handler's explicit-preset precedence turned a teal
-   color request into the aurora shader. Fixed in
-   `plugins/plugin-app-control/src/actions/background.ts`: an explicit preset
-   only outranks a resolvable color when the text itself asks for a shader
-   (shader noun / preset vocabulary). Unit-tested both directions.
-4. **Run 4 (all fixes)** — `background-set-color` passed end to end with a
-   clean `{op:"set", color:"teal"}` tool call and the exact `#0891b2`
-   broadcast. `background-shader-undo-redo` stayed red: gpt-oss-120b's Stage-1
-   is run-to-run inconsistent on this multi-turn flow (routed BACKGROUND on
-   3/4 turns in run 1, 2/4 in run 3, 1/4 in run 4), REPLY-larping "Reverting
-   the background to its previous state." without calling the action.
+1. **set turn** — gemma Stage-1 *still* classifies "give me a slow lava-lamp
+   style animated background" as a build request
+   (`contexts:["code"], candidateActions:["GENERATE_CODE","CREATE_FILE"]` —
+   varied per run: `CREATE_SVG_ANIMATION`, `CREATE_HTML_FILE`). Pre-fix this
+   gated BACKGROUND off the planner surface entirely (its contextGate was
+   `general|settings` only) and the planner created a "lava-lamp-background"
+   APP. Post-fix BACKGROUND declares `code`/`media` contexts and its curated
+   keyword entry ranks it 1.0, so tier-A = `[BACKGROUND, VIEWS]` and the
+   planner picks `BACKGROUND {preset:"lava"}` every run.
+2. **undo turn** — Stage-1 emits settings-flavored candidates
+   (`UNDO_LAST_ACTION`, `RESET_SETTINGS`) or background-scoped ones
+   (`SET_BACKGROUND`, `UNDO_BACKGROUND_CHANGE`). Both shapes now keep
+   BACKGROUND in tier-A: the widened similes exact-match the background-scoped
+   names, and the keyword stage (`"undo the background"`, `"background
+   change"`, `"background"`) scores 1.0 ≥ the 0.97 retrieval-override keep for
+   the settings-flavored narrow that previously demoted BACKGROUND to tier-C
+   at 0.9675 (the committed misroute trajectory in
+   `../10694-gemma4-live-scenarios/trajectory-variance-undo-misroute.json`).
+3. **redo turn** — candidates like `SET_BACKGROUND`/`UPDATE_THEME`/
+   `APPLY_THEME`; BACKGROUND ranks 1.0, planner emits `{op:"redo"}`.
+4. **reset turn** — candidates `RESET_BACKGROUND`/`SET_BACKGROUND_DEFAULT`;
+   `RESET_BACKGROUND` exact-matches a BACKGROUND simile, tier-A =
+   `[BACKGROUND]` alone; planner emits `{op:"reset"}`.
 
-## Honest residual (kept as a red live scenario, not papered over)
+Across the final three captured sessions (14 turn trajectories) **every turn's
+tool stage is BACKGROUND** — zero misroutes.
 
-gpt-oss-120b's Stage-1 message handler intermittently classifies app-background
-requests as `contexts:["simple"], requiresTool:false` and answers in prose —
-including *claiming* the background was changed ("Reverting the background to
-its previous state.") when no action fired. The scenario keeps asserting the
-correct expectation (4 routed BACKGROUND calls + exact
-glsl-lava/undo/redo/reset broadcast ledger); its red is a routing-quality
-signal, not a harness defect. The deterministic lane pins the handler contract
-itself, so this red isolates exactly the model-routing gap.
+## Honest notes
+
+- Stage-1's *classification* of the animated-background ask as a coding task
+  is unchanged (that is the model's judgement); the fix makes the action
+  surface robust to it rather than pretending it away.
+- `background-set-color`'s `selectedActionArguments` check previously required
+  the curated `#0891b2` hex to appear in the MODEL's own tool-call arguments —
+  it only passed when the model happened to emit the resolved hex itself. It
+  now accepts the color reference the model actually controls
+  (`/teal|#0891b2/i`); the exact `#0891b2` resolution stays pinned by the
+  broadcast-ledger check (the handler contract).

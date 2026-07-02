@@ -796,7 +796,16 @@ export async function handleChatCompletionsPOST(
   options: ChatCompletionsHandlerOptions = {},
 ) {
   const startTime = Date.now();
-  const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
+  // #11588: the billing requestId feeds the affiliate-earnings dedupe sourceId
+  // (getAffiliateEarningsSourceId → `ai_billing:<op>:<requestId>`, deduped on
+  // addEarnings) while the org charge is unconditional. It MUST NOT be
+  // client-controllable, or a caller pinning `x-request-id` across two billed
+  // requests could suppress the second affiliate credit while still being
+  // charged the markup. Server-generate it (stable for this request, so the
+  // #11460/#11472 abort-vs-finish single-flight dedupe is preserved). The
+  // client's retry-idempotency mechanism stays the explicit `idempotency-key`
+  // header.
+  const requestId = crypto.randomUUID();
   const idempotencyKey = req.headers.get("idempotency-key") || requestId;
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
   let settleReservation:
@@ -1594,14 +1603,17 @@ async function handleStreamingRequest(
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
 
+  // First-call-wins EVEN on throw (#11512): the settlement promise is cached
+  // unconditionally, so a rejected settlement can never be re-run by a later
+  // callback (onAbort/onError racing a thrown onFinish). Resetting on throw
+  // let a second call re-invoke reconcile after its org refund had already
+  // committed — a second full refund, i.e. minted cashable credit. Subsequent
+  // callers observe the same resolution or the same rejection.
   const settleStreamingOnce = (
     factory: () => Promise<CreditReconciliationResult | null>,
   ): Promise<CreditReconciliationResult | null> => {
     if (!streamingSettlementPromise) {
-      streamingSettlementPromise = factory().catch((error) => {
-        streamingSettlementPromise = null;
-        throw error;
-      });
+      streamingSettlementPromise = factory();
     }
     return streamingSettlementPromise;
   };

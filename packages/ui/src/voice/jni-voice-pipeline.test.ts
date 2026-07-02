@@ -3,6 +3,7 @@ import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
   TalkModeAudioFrameEvent,
+  TalkModePlaybackFrameEvent,
   TalkModePluginLike,
 } from "../bridge/native-plugins";
 import { type JniAttributedTurn, JniVoicePipeline } from "./jni-voice-pipeline";
@@ -38,6 +39,67 @@ function makeFrame(samples: number): TalkModeAudioFrameEvent {
     timestamp: 0,
     frameIndex: 0,
   };
+}
+
+function makePcm16Frame(
+  values: readonly number[],
+  timestamp = 0,
+): TalkModeAudioFrameEvent {
+  return {
+    pcm16: encodePcm16(values),
+    sampleRate: 16000,
+    channels: 1,
+    samples: values.length,
+    rms: Math.sqrt(
+      values.reduce((sum, value) => sum + value * value, 0) /
+        Math.max(1, values.length),
+    ),
+    timestamp,
+    frameIndex: 0,
+  };
+}
+
+function makePlaybackFrame(
+  values: readonly number[],
+  timestamp = 0,
+  frameIndex = 0,
+): TalkModePlaybackFrameEvent {
+  return {
+    provider: "local-inference",
+    pcm16: encodePcm16(values),
+    sampleRate: 16000,
+    channels: 1,
+    samples: values.length,
+    timestamp,
+    frameIndex,
+  };
+}
+
+function encodePcm16(values: readonly number[]): string {
+  const buf = Buffer.alloc(values.length * 2);
+  values.forEach((value, index) => {
+    const clamped = Math.max(-1, Math.min(1, value));
+    const signed =
+      clamped < 0 ? Math.round(clamped * 32768) : Math.round(clamped * 32767);
+    buf.writeInt16LE(signed, index * 2);
+  });
+  return buf.toString("base64");
+}
+
+function decodePcm16(b64: string): Float32Array {
+  const buf = Buffer.from(b64, "base64");
+  const out = new Float32Array(Math.floor(buf.length / 2));
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] = buf.readInt16LE(i * 2) / 32768;
+  }
+  return out;
+}
+
+function rms(values: Float32Array): number {
+  if (values.length === 0) return 0;
+  let sum = 0;
+  for (const value of values) sum += value * value;
+  return Math.sqrt(sum / values.length);
 }
 
 function encodePcm(values: readonly number[]): string {
@@ -103,13 +165,27 @@ function fakeVoice(state: FakeVoiceState): ElizaVoicePluginLike {
 
 function fakeTalkmode(
   onFrame: (cb: (e: TalkModeAudioFrameEvent) => void) => void,
+  onPlaybackFrame: (
+    cb: (e: TalkModePlaybackFrameEvent) => void,
+  ) => void = () => {},
 ): TalkModePluginLike {
   let listener: ((e: TalkModeAudioFrameEvent) => void) | null = null;
+  let playbackListener: ((e: TalkModePlaybackFrameEvent) => void) | null = null;
   onFrame((e) => listener?.(e));
+  onPlaybackFrame((e) => playbackListener?.(e));
   return {
     addListener: vi.fn(
-      async (_name: string, cb: (e: TalkModeAudioFrameEvent) => void) => {
-        listener = cb;
+      async (
+        name: string,
+        cb:
+          | ((e: TalkModeAudioFrameEvent) => void)
+          | ((e: TalkModePlaybackFrameEvent) => void),
+      ) => {
+        if (name === "playbackFrame") {
+          playbackListener = cb as (e: TalkModePlaybackFrameEvent) => void;
+        } else {
+          listener = cb as (e: TalkModeAudioFrameEvent) => void;
+        }
         return { remove: vi.fn(async () => {}) };
       },
     ),
@@ -121,6 +197,7 @@ function fakeTalkmode(
 describe("JniVoicePipeline", () => {
   let state: FakeVoiceState;
   let emit: (e: TalkModeAudioFrameEvent) => void = () => {};
+  let emitPlayback: (e: TalkModePlaybackFrameEvent) => void = () => {};
 
   beforeEach(() => {
     state = {
@@ -132,6 +209,8 @@ describe("JniVoicePipeline", () => {
       includePcmRequests: [],
       nextTurns: [],
     };
+    emit = () => {};
+    emitPlayback = () => {};
   });
 
   it("opens a native context + pipeline on start and frees them on stop", async () => {
@@ -183,6 +262,41 @@ describe("JniVoicePipeline", () => {
     await (p as unknown as { feeding: Promise<void> }).feeding;
     expect(state.processed.length).toBe(1);
     expect(p.framesSent).toBe(49);
+    await p.stop();
+  });
+
+  it("subtracts native playbackFrame echo before the JNI VAD pipeline sees the mic batch", async () => {
+    const voice = fakeVoice(state);
+    const tm = fakeTalkmode(
+      (cb) => {
+        emit = cb;
+      },
+      (cb) => {
+        emitPlayback = cb;
+      },
+    );
+    const p = new JniVoicePipeline(tm, voice);
+    await p.start();
+
+    const samples = 49 * 320;
+    const far = Array.from({ length: samples }, (_, i) =>
+      Math.sin((2 * Math.PI * i) / 53),
+    );
+    // Android's default seed is 45 ms, so the rendered far-end starts 45 ms
+    // before the mic observes the echo in this synthetic loop.
+    emitPlayback(makePlaybackFrame(far, -45, 0));
+    const echoedMic = far.map((sample) => sample * 0.45);
+    for (let i = 0; i < 49; i += 1) {
+      emit(makePcm16Frame(echoedMic.slice(i * 320, (i + 1) * 320), i * 20));
+    }
+
+    await new Promise((r) => setTimeout(r, 0));
+    await (p as unknown as { feeding: Promise<void> }).feeding;
+
+    expect(state.processed.length).toBe(1);
+    const cleaned = decodePcm16(state.processed[0]);
+    expect(rms(cleaned)).toBeLessThan(rms(new Float32Array(echoedMic)) * 0.75);
+    expect(p.playbackFramesReceived).toBe(1);
     await p.stop();
   });
 

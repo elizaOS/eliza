@@ -33,7 +33,7 @@
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
@@ -86,6 +86,7 @@ import {
   redeemedEarningsTracking,
 } from "../../../db/schemas/redeemable-earnings";
 import { users } from "../../../db/schemas/users";
+import { createCreditReservationSettler } from "../../utils/credit-reservation";
 
 const PGLITE_TIMEOUT = 60_000;
 let pgliteReady = true;
@@ -93,6 +94,7 @@ let pgliteReady = true;
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let appCreditsService: typeof import("../app-credits").appCreditsService;
+let redeemableEarningsService: typeof import("../redeemable-earnings").redeemableEarningsService;
 let InsufficientCreditsError: typeof import("../credits").InsufficientCreditsError;
 let MIN_RESERVATION: typeof import("../credits").MIN_RESERVATION;
 
@@ -181,6 +183,7 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ appCreditsService } = await import("../app-credits"));
+    ({ redeemableEarningsService } = await import("../redeemable-earnings"));
     ({ InsufficientCreditsError, MIN_RESERVATION } = await import("../credits"));
 
     const schema = {
@@ -357,6 +360,52 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
   );
 
   test(
+    "a repeated reconcile REFUND for the same reservation is idempotent — no double-refund mint (#11512)",
+    async () => {
+      if (!pgliteReady) return;
+
+      const payerOrgId = await seedOrg("10.000000");
+      const consumerId = await seedUser(payerOrgId);
+      const creatorOrgId = await seedOrg("0.000000");
+      const creatorId = await seedUser(creatorOrgId);
+      const app = await seedApp({
+        organizationId: creatorOrgId,
+        createdByUserId: creatorId,
+        inferenceMarkupPercentage: 10,
+      });
+
+      // $2 estimate + 10% markup = $2.20 debited → org 7.80.
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId: consumerId,
+        estimatedBaseCost: 2,
+        description: "reconcile-refund idempotency",
+        idempotencyKey: "req-11512",
+        metadata: { model: "test-model" },
+        app,
+      });
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
+
+      // First settle: actual $0.5 → refund (2 − 0.5) × 1.1 = $1.65 → org 9.45.
+      const first = await reservation.reconcile(0.5);
+      expect(first?.adjustmentType).toBe("refund");
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+
+      // Second settle of the SAME reservation (the #11512 shape: the settler's
+      // first-call-wins guard reset on a mid-settle throw, so the route's
+      // fallback settleReservation(0) re-invokes reconcile). WITHOUT the
+      // idempotency key this commits a SECOND, larger refund → org 11.65
+      // (minted above its $10 start). WITH the key the refund dedupes on
+      // stripe_payment_intent_id (ON CONFLICT DO NOTHING) → balance unchanged.
+      await reservation.reconcile(0);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+      // Hard invariant: never minted above the debited amount.
+      expect(await orgBalance(payerOrgId)).toBeLessThan(10);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "a $0 estimate opens a MIN_RESERVATION floor hold instead of throwing 'Amount must be positive' (residual of #10892)",
     async () => {
       if (!pgliteReady) return;
@@ -409,6 +458,144 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
       const overage = await second.reconcile(0.05);
       expect(overage?.adjustmentType).toBe("overage");
       expect(await orgBalance(payerOrgId)).toBeCloseTo(0.95, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10846 mirror)", () => {
+  test(
+    "UNKEYED reconcile refund: a reversal throw after the refund committed compensates (re-charges) the refund so the creator's markup stays backed — no unbacked mint",
+    async () => {
+      if (!pgliteReady) return;
+
+      const payerOrgId = await seedOrg("10.000000");
+      const consumerId = await seedUser(payerOrgId);
+      const creatorOrgId = await seedOrg("0.000000");
+      const creatorId = await seedUser(creatorOrgId);
+      const app = await seedApp({
+        organizationId: creatorOrgId,
+        createdByUserId: creatorId,
+        inferenceMarkupPercentage: 10,
+      });
+
+      // The direct-path shape (apps chat / generate-image routes): deductCredits
+      // then a single reconcileCredits with NO idempotencyKey and NO retry.
+      // $2 base + 10% markup = $2.20 debited → org 7.80, creator +$0.20.
+      const deduction = await appCreditsService.deductCredits({
+        appId: app.id,
+        userId: consumerId,
+        baseCost: 2,
+        description: "direct-path charge",
+        metadata: { model: "test-model" },
+        app,
+      });
+      expect(deduction.success).toBe(true);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
+      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.2, 6);
+
+      // Blip the reversal exactly once: the reconcile refund below commits
+      // FIRST, then reverseCreatorEarnings → reduceEarnings throws.
+      const reduceSpy = spyOn(redeemableEarningsService, "reduceEarnings").mockImplementationOnce(
+        async () => {
+          throw new Error("simulated transient DB error");
+        },
+      );
+      try {
+        // Actual $0.5 → refund (2 − 0.5) × 1.1 = $1.65 commits, reversal throws.
+        await expect(
+          appCreditsService.reconcileCredits({
+            appId: app.id,
+            userId: consumerId,
+            estimatedBaseCost: 2,
+            actualBaseCost: 0.5,
+            description: "direct-path settle",
+            metadata: { model: "test-model" },
+            app,
+          }),
+        ).rejects.toThrow("simulated transient DB error");
+      } finally {
+        reduceSpy.mockRestore();
+      }
+
+      // The refund really committed before the throw (the window is real)…
+      const refunds = await orgTransactions(payerOrgId, "refund");
+      expect(refunds).toHaveLength(1);
+      expect(refunds[0].amount).toBeCloseTo(1.65, 6);
+
+      // …so with nothing on this path ever retrying the reconcile, the refund
+      // must be compensated (re-charged). Without the compensation the org
+      // keeps the $1.65 (balance 9.45) while the creator's untouched $0.20
+      // redeemable is backed by only the $0.05 markup the org actually paid —
+      // $0.15 of unbacked, redeemable mint.
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
+      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.2, 6);
+      const debits = await orgTransactions(payerOrgId, "debit");
+      expect(debits).toHaveLength(2); // the $2.20 charge + the $1.65 compensation
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "KEYED reconcile refund: a reversal blip is NOT compensated (the settler's fallback settle heals it) and the retry completes the reversal without double-refund or double-reverse",
+    async () => {
+      if (!pgliteReady) return;
+
+      const payerOrgId = await seedOrg("10.000000");
+      const consumerId = await seedUser(payerOrgId);
+      const creatorOrgId = await seedOrg("0.000000");
+      const creatorId = await seedUser(creatorOrgId);
+      const app = await seedApp({
+        organizationId: creatorOrgId,
+        createdByUserId: creatorId,
+        inferenceMarkupPercentage: 10,
+      });
+
+      // The settler shape (/v1/messages, /v1/chat/completions): the
+      // server-generated reservation transaction id is threaded into every
+      // reconcile movement.
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId: consumerId,
+        estimatedBaseCost: 2,
+        description: "keyed settle",
+        idempotencyKey: "req-f4-keyed",
+        metadata: { model: "test-model" },
+        app,
+      });
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
+      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.2, 6);
+
+      const reduceSpy = spyOn(redeemableEarningsService, "reduceEarnings").mockImplementationOnce(
+        async () => {
+          throw new Error("simulated transient DB error");
+        },
+      );
+      const settle = createCreditReservationSettler(reservation);
+      try {
+        await expect(settle(0.5)).rejects.toThrow("simulated transient DB error");
+      } finally {
+        reduceSpy.mockRestore();
+      }
+
+      // The keyed refund committed and must NOT be compensated here — the
+      // idempotent settler retry below is the healer (#11512/#11608
+      // machinery).
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+
+      // Fallback settle(0): the settler retries with the FIRST actual cost
+      // (0.5), the refund dedupes on
+      // `reconcile-refund:<reservationTransactionId>` (no double-refund), and
+      // the reversal completes — the creator's markup is no longer unbacked.
+      await settle(0);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.05, 6);
+
+      // A further retry dedupes BOTH legs: balance unchanged, creator never
+      // driven negative (no double-reverse).
+      await settle(0);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(9.45, 6);
+      expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.05, 6);
     },
     PGLITE_TIMEOUT,
   );

@@ -2958,15 +2958,66 @@ function captureTerminalToolOutput(
   return `[tool output: ${title}]\n${truncated}\n${TOOL_OUTPUT_END_MARKER}`;
 }
 
-function normalizeToolOutput(rawOutput: unknown): string {
+// Exported for unit coverage of the exec-record one-liner path (issue #11578).
+export function normalizeToolOutput(rawOutput: unknown): string {
   if (typeof rawOutput === "string") {
     const trimmed = rawOutput.trim();
     const parsed = parseJsonRecord(trimmed);
+    // A stringified exec record (Codex) parsed back to an object: render the
+    // one-liner instead of echoing the raw JSON string (issue #11578 FIX B).
+    const execLine = execRecordOneLiner(parsed);
+    if (execLine) return execLine;
     return extractToolOutputText(parsed)?.trim() || trimmed;
   }
   if (rawOutput === undefined || rawOutput === null) return "";
+  // Codex exec records (keys: call_id, command, exit_code, …) reached this
+  // fallback and got JSON.stringify'd into the envelope, leaking the raw record
+  // to the user (issue elizaOS/eliza#11578 FIX B). Detect the shape and render
+  // a compact `$ <command> → exit <code>` one-liner instead; NEVER stringify a
+  // record carrying call_id.
+  const execLine = execRecordOneLiner(rawOutput);
+  if (execLine) return execLine;
   const extracted = extractToolOutputText(rawOutput);
   return extracted?.trim() || JSON.stringify(rawOutput).trim();
+}
+
+/**
+ * Render a Codex exec record (`{ call_id, command, exit_code, … }`) as a compact
+ * one-liner: `$ <command joined> → exit <exit_code>` plus a capped stdout/stderr
+ * tail when present. Returns undefined for anything that is not an exec record
+ * (must have BOTH call_id AND command), so non-record output is unaffected.
+ */
+function execRecordOneLiner(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const hasCallId = "call_id" in record && record.call_id != null;
+  const rawCommand = record.command;
+  if (!hasCallId || rawCommand == null) return undefined;
+
+  const command = Array.isArray(rawCommand)
+    ? rawCommand.map((part) => String(part)).join(" ")
+    : String(rawCommand);
+  const exitCode =
+    typeof record.exit_code === "number" || typeof record.exit_code === "string"
+      ? String(record.exit_code)
+      : "?";
+  let line = `$ ${command.trim()} → exit ${exitCode}`;
+
+  const tail = execRecordOutputTail(record);
+  if (tail) line = `${line}\n${tail}`;
+  return line;
+}
+
+/** Extract a capped (≤200 char) stdout/stderr tail from an exec record. */
+function execRecordOutputTail(record: Record<string, unknown>): string {
+  const candidates = [record.stdout, record.stderr, record.output]
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0);
+  if (candidates.length === 0) return "";
+  const joined = candidates.join("\n").trim();
+  return joined.length > 200 ? `${joined.slice(0, 200)}…` : joined;
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {

@@ -1,0 +1,7 @@
+file: kokoro-82m-v1_0.remote.gguf (published HF bytes)
+n_tensors: 457
+kokoro.bert.embd_proj.bias -> ('F32', [768])
+kokoro.bert.embd_proj.weight -> ('F16', [128, 768])
+kokoro.bert.embd.tok.weight -> MISSING
+dtypes: {'F16': 252, 'F32': 205}
+architecture: kokoro
