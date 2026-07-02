@@ -57,6 +57,17 @@ function internalHeaders(): Record<string, string> {
   };
 }
 
+/**
+ * True when the e2e target is a LOCAL dev Worker (shares our `.env`, so
+ * INTERNAL_SECRET lines up). A DEPLOYED target's INTERNAL_SECRET is a
+ * server-side secret we can't supply, so internal-bearer-authenticated
+ * happy-path/validation tests must skip rather than 401-fail there. The
+ * unauthenticated 401 auth-gate assertions still run everywhere.
+ */
+function isLocalTarget(): boolean {
+  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/.test(getBaseUrl());
+}
+
 beforeAll(async () => {
   hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
   serverReachable = await isServerReachable();
@@ -605,7 +616,9 @@ for (const {
     });
 
     test("happy path: with INTERNAL_SECRET Bearer, handler is live", async () => {
-      if (!reachableOnly()) return;
+      // internalHeaders() must match the target Worker's INTERNAL_SECRET —
+      // only guaranteed for a local dev Worker; skip against deployed targets.
+      if (!reachableOnly() || !isLocalTarget()) return;
       const res =
         method === "GET"
           ? await api.get(validPath ?? path, { headers: internalHeaders() })
@@ -617,7 +630,9 @@ for (const {
     });
 
     test("validation: bad input → 400", async () => {
-      if (!reachableOnly()) return;
+      // Reaches input validation only after the internal-bearer check passes,
+      // which needs the matching secret → local-target only.
+      if (!reachableOnly() || !isLocalTarget()) return;
       const res =
         method === "GET"
           ? await api.get(invalidPath ?? `${path}?pod=`, {
