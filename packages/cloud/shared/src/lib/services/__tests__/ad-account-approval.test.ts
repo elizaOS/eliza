@@ -148,5 +148,14 @@ describe("campaign spend requires an approved (active) account (#11364)", () => 
         /not active/,
       );
     });
+
+    test(`updateCampaign is blocked when account is ${status} (no budget-increase spend)`, async () => {
+      track(spyOn(adCampaignsRepository, "findById").mockResolvedValue(makeCampaign()));
+      track(spyOn(adAccountsRepository, "findById").mockResolvedValue(makeAccount(status)));
+
+      await expect(
+        advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, { budgetAmount: 10_000 }),
+      ).rejects.toThrow(/not active/);
+    });
   }
 });

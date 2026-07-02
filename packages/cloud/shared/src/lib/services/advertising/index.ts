@@ -686,6 +686,12 @@ class AdvertisingService {
       throw new Error("Ad account not found");
     }
 
+    if (account.status !== "active") {
+      throw new Error(
+        `Ad account is not active (status: ${account.status}); it must be approved before running campaigns`,
+      );
+    }
+
     const credentials = await this.getCredentials(account);
     const provider = this.getProvider(account.platform);
 
