@@ -183,6 +183,9 @@ export interface Bindings {
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
   TWILIO_SMS_COST_PER_SEGMENT_USD?: string;
+  // #11058: reclaim TTL (ms) for the reclaim-stale-domains cron — external
+  // managed-domain rows still unverified after this age are released. 48h default.
+  MANAGED_DOMAIN_UNVERIFIED_TTL_MS?: string;
 
   // Allow overflow — handlers can read any env var via c.env.
   [key: string]: unknown;
