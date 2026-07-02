@@ -73,6 +73,13 @@ jobs:
             --jq '.[] | "\(.databaseId)\t\(.createdAt)\t\(.workflowName)"' |
           while IFS=$'\t' read -r id created name; do
             [ "$id" = "$SELF_RUN_ID" ] && continue
+            # The list endpoint serves STALE entries for force-killed runs —
+            # re-verify each candidate individually before judging it.
+            live_status=$(gh run view "$id" --repo "$GH_REPO" --json status --jq .status 2>/dev/null || echo "")
+            if [ "$live_status" != "in_progress" ]; then
+              echo "skip (list-stale, actually '$live_status'): $id $name"
+              continue
+            fi
             created_s=$(date -u -d "$created" +%s)
             age_h=$(( (now - created_s) / 3600 ))
             if [ "$age_h" -lt "$MAX_AGE_HOURS" ]; then
@@ -99,8 +106,15 @@ jobs:
               echo "| $id | $name | $age_h | $idle_min | would cancel (dry run) |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
-            # Best-effort: a run finishing between list and cancel is fine.
-            if gh run cancel "$id" --repo "$GH_REPO"; then
+            # FORCE-cancel: a plain `gh run cancel` silently fails to reap runs
+            # whose runner died (they sit in cancel-requested limbo until the
+            # 6h timeout — exactly the runs this janitor exists for). The
+            # force-cancel endpoint kills them immediately; fall back to the
+            # polite cancel for anything the force path rejects.
+            if gh api -X POST "repos/$GH_REPO/actions/runs/$id/force-cancel" >/dev/null 2>&1; then
+              echo "force-cancelled zombie: $id $name (age ${age_h}h, idle ${idle_min}m)"
+              echo "| $id | $name | $age_h | $idle_min | force-cancelled |" >> "$GITHUB_STEP_SUMMARY"
+            elif gh run cancel "$id" --repo "$GH_REPO"; then
               echo "cancelled zombie: $id $name (age ${age_h}h, idle ${idle_min}m)"
               echo "| $id | $name | $age_h | $idle_min | cancelled |" >> "$GITHUB_STEP_SUMMARY"
             else
