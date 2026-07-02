@@ -3073,13 +3073,16 @@ function isUnusableStage1Reply(reply: string | undefined): boolean {
 	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
 	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
-	// A reply that is ENTIRELY 5+ of the same glyph = a model-glitch reply
-	// ("aaaaaa", "......"). ANCHORED (like the siblings above): the run must be
-	// the whole reply, not merely present inside it — a real answer that happens
-	// to contain a run (a "XXXXXXXX" placeholder, a "--------" divider, aligned
-	// `df -h` columns) is legitimate and must not be blanked to "I'm not sure how
-	// to answer that." `\S` also keeps a pure-whitespace string from matching.
-	if (/^(\S)\1{4,}$/u.test(trimmed)) return true;
+	// Degenerate single-character spam: the WHOLE reply is one code point
+	// repeated 5+ times ("aaaaa", "!!!!!", "aaaaa aaaaa" across whitespace).
+	// A repeated run INSIDE a longer reply is legitimate — nested code
+	// indentation, aligned `df -h` columns, markdown "-----" dividers, an
+	// "XXXXXXXX" placeholder, pretty-printed JSON — and matching those blanked
+	// valid replies to "I'm not sure how to answer that." (#11504).
+	const nonWhitespace = [...trimmed.replace(/\s+/gu, "")];
+	if (nonWhitespace.length >= 5 && new Set(nonWhitespace).size === 1) {
+		return true;
+	}
 	if (/^[A-Z]{2,8}$/.test(trimmed)) {
 		const allowed = new Set(["OK", "YES", "NO", "STOP"]);
 		return !allowed.has(trimmed);
