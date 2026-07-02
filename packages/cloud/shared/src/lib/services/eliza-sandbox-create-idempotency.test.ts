@@ -29,9 +29,19 @@ let executeCalls: number = 0;
 // these count rows. The reuse guard instead ends in `.limit()` (returns
 // existingRows), so it never hits the thenable.
 let countRows: Array<{ count: number }> = [{ count: 0 }];
+// Ordered second-key of every advisory lock the tx took ("agent-create" or
+// "coding-container:<image>") — lets the coding-container tests assert the
+// org lock is acquired BEFORE the per-image lock (#11023 lock ordering).
+let lockKeys: string[] = [];
 
-const txExecute = mock(async (_sql: SQL) => {
+const txExecute = mock(async (sql: SQL) => {
   executeCalls += 1;
+  try {
+    const { params } = new PgDialect().sqlToQuery(sql);
+    if (params.length > 1) lockKeys.push(String(params[1] ?? ""));
+  } catch {
+    // non-advisory-lock execute (none today) — ignore for ordering capture
+  }
   return { rows: [] };
 });
 
@@ -47,8 +57,7 @@ const txSelect = mock(() => {
     orderBy: () => chain,
     for: () => chain,
     limit: () => existingRows,
-    then: (resolve: (rows: Array<{ count: number }>) => unknown) =>
-      resolve(countRows),
+    then: (resolve: (rows: Array<{ count: number }>) => unknown) => resolve(countRows),
   } as Record<string, unknown>;
   return chain;
 });
@@ -143,6 +152,7 @@ function resetTx(): void {
   capturedSelectWhere = undefined;
   executeCalls = 0;
   countRows = [{ count: 0 }];
+  lockKeys = [];
   txExecute.mockClear();
   txSelect.mockClear();
   txInsert.mockClear();
@@ -343,5 +353,97 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
     } finally {
       repoCreate.mockRestore();
     }
+  });
+});
+
+describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota (#11023)", () => {
+  test("acquires the ORG lock BEFORE the per-image lock, then count→insert (lock ordering + atomicity)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+
+    // No same-image row exists (reuse guard misses) and org is under cap.
+    existingRows = [];
+    countRows = [{ count: 2 }];
+    const res = await svc.createCodingContainerAgent({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "cc-under-cap",
+      dockerImage: "ghcr.io/elizaos/tool:v1",
+      maxNonTerminalAgents: 5,
+    });
+
+    expect(res.idempotent).toBe(false);
+    expect(insertedRows.length).toBe(1);
+    // Org lock FIRST, then the per-image lock — the image lock alone can't
+    // serialize creates with DIFFERENT images against one org's quota, and the
+    // strict org→image order keeps this path deadlock-free vs createAgent.
+    expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v1"]);
+    // The quota count scoped to the org + non-terminal statuses ran under the lock.
+    expect(capturedSelectWhere).toBeDefined();
+    const sql = new PgDialect().sqlToQuery(capturedSelectWhere as SQL).sql;
+    expect(sql).toContain("organization_id");
+    expect(sql).toContain("'pending'");
+    expect(sql).toContain("'provisioning'");
+    expect(sql).toContain("'running'");
+  });
+
+  test("a distinct-image create AT the cap is refused with AgentQuotaExceededError and NO insert", async () => {
+    const { ElizaSandboxService, AgentQuotaExceededError } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const svc = new ElizaSandboxService();
+
+    existingRows = []; // distinct image → reuse guard misses → would insert
+    countRows = [{ count: 5 }]; // ...but the org is at its cap
+    await expect(
+      svc.createCodingContainerAgent({
+        organizationId: ORG_A,
+        userId: USER,
+        agentName: "cc-at-cap",
+        dockerImage: "ghcr.io/elizaos/tool:v6",
+        maxNonTerminalAgents: 5,
+      }),
+    ).rejects.toBeInstanceOf(AgentQuotaExceededError);
+    expect(insertedRows.length).toBe(0);
+    // Both locks were still taken (ordering preserved) before the refusal.
+    expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v6"]);
+  });
+
+  test("a same-image retry at the cap still returns the existing row (idempotent) — never 429", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+
+    existingRows = [{ ...baseRow(), id: "existing-cc", docker_image: "ghcr.io/elizaos/tool:v1" }];
+    countRows = [{ count: 5 }]; // at cap — must NOT be consulted on a reuse hit
+    const res = await svc.createCodingContainerAgent({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "cc-retry",
+      dockerImage: "ghcr.io/elizaos/tool:v1",
+      maxNonTerminalAgents: 5,
+    });
+    expect(res.idempotent).toBe(true);
+    expect(res.agent.id).toBe("existing-cc");
+    expect(insertedRows.length).toBe(0);
+  });
+
+  test("an unset cap keeps the coding-container create uncapped (trusted internal callers)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+
+    existingRows = [];
+    countRows = [{ count: 999 }]; // would exceed any cap — but none is set
+    const res = await svc.createCodingContainerAgent({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "cc-uncapped",
+      dockerImage: "ghcr.io/elizaos/tool:v9",
+      // maxNonTerminalAgents intentionally unset
+    });
+    expect(res.idempotent).toBe(false);
+    expect(insertedRows.length).toBe(1);
+    // Coding containers ALWAYS run in the transaction (per-image idempotency),
+    // so both locks are taken even uncapped — but no count gates the insert.
+    expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v9"]);
   });
 });

@@ -670,9 +670,7 @@ export class ElizaSandboxService {
     if (!params.reuseExistingNonTerminal) {
       // Uncapped fast path for trusted internal multi-agent callers.
       if (params.maxNonTerminalAgents === undefined) {
-        const created = await agentSandboxesRepository.create(
-          this.buildAgentInsertData(params),
-        );
+        const created = await agentSandboxesRepository.create(this.buildAgentInsertData(params));
         return { agent: created, idempotent: false };
       }
 
@@ -759,6 +757,13 @@ export class ElizaSandboxService {
     });
 
     return dbWrite.transaction(async (tx) => {
+      // Acquire the per-ORG agent-create lock BEFORE the per-image lock. The
+      // image lock alone (keyed on the exact docker_image) does NOT serialize
+      // two concurrent creates for DIFFERENT images against one org, so the
+      // quota count below would not be atomic without the org lock. Taking the
+      // org lock first everywhere gives a strict org→image lock order, so this
+      // path and createAgent (org lock only) can never deadlock. (#11023)
+      await tx.execute(elizaAgentCreateAdvisoryLockSql(createParams.organizationId));
       await tx.execute(
         elizaCodingContainerImageAdvisoryLockSql(
           createParams.organizationId,
@@ -783,6 +788,29 @@ export class ElizaSandboxService {
 
       if (existing) {
         return { agent: existing, idempotent: true };
+      }
+
+      // Per-org quota (#11023): the per-image reuse guard collapses only
+      // same-image retries, so a distinct-image loop (`:v1`/`:v2`/`@sha256…`
+      // under an allowlisted namespace) would otherwise mint unbounded custom
+      // containers on the shared fleet. #11042 capped createAgent's plain-insert
+      // branch but not this route; enforce the SAME per-org ceiling here, under
+      // the org lock so the count→insert is atomic against concurrent creates.
+      // Trusted internal callers pass no cap and stay uncapped.
+      if (createParams.maxNonTerminalAgents !== undefined) {
+        const [{ count } = { count: 0 }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.organization_id, createParams.organizationId),
+              sql`${agentSandboxes.pool_status} IS NULL`,
+              sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
+            ),
+          );
+        if (count >= createParams.maxNonTerminalAgents) {
+          throw new AgentQuotaExceededError(count, createParams.maxNonTerminalAgents);
+        }
       }
 
       const [created] = await tx
