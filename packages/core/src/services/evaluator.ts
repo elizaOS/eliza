@@ -504,6 +504,21 @@ export class EvaluatorService extends BaseService {
 				? evaluator.parse(rawSection)
 				: (rawSection as JsonValue);
 			if (parsed === null || parsed === undefined) {
+				// Every sibling failure path (shouldRun/prepare/processor) logs, but
+				// this one did not — and no caller reads the returned `errors`, so a
+				// parse failure (e.g. a fact/relationship/memory evaluator's zod
+				// safeParse rejecting the model output) vanished with zero trace.
+				// That made silent-drop bugs like #11239/#11253 undiagnosable in the
+				// field. Match the sibling logger shape.
+				this.runtime.logger.warn(
+					{
+						src: "service:evaluator",
+						agentId: this.runtime.agentId,
+						evaluator: evaluator.name,
+						rawSection: JSON.stringify(rawSection).slice(0, 500),
+					},
+					"Evaluator output section did not validate",
+				);
 				errors.push({
 					evaluatorName: evaluator.name,
 					error: "Evaluator output section did not validate",
