@@ -90,6 +90,14 @@ describe("InboxSpatialView one source, three modalities", () => {
     }
   });
 
+  it("GUI: keeps the wrapped channel filter row from shrinking into the body", () => {
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">{view}</SpatialSurface>,
+    );
+    expect(html).toContain("flex-shrink:0");
+    expect(html).toContain("1 thread still needs a reply.");
+  });
+
   it("error state renders the message and a Retry action", () => {
     const error: InboxSnapshot = {
       status: "error",
