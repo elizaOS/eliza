@@ -2,25 +2,33 @@
 // always-mounted AppBackground (which installs the real `background:apply`
 // chat→background bridge) and drives it through real controls — preset swatches,
 // a real file input fed through the real `fileToBackgroundDataUrl`, and
-// undo/redo buttons — all wired to one store with the real push/pop history
-// semantics (undo pushes onto the redo stack; a new edit clears it — #10694).
+// undo/redo buttons.
 //
-// Kept to a browser-safe import graph on purpose (no `client`/`persistence`),
-// so esbuild can bundle it for the browser. The real BackgroundView DOM is
-// covered by BackgroundView.test.tsx; the real history math by
-// useDisplayPreferences.background.test.tsx. This proves the rendered pipeline:
-// store → AppBackground (shader/image), agent event → bridge → store, undo,
-// and redo.
+// The set/undo/redo history uses the SAME pure reducer production does
+// (state/background-history: applyBackgroundSet/Undo/Redo) — it no longer
+// hand-mirrors the semantics, so mirror-vs-real drift is impossible (#10694).
+// That reducer is deliberately persistence-free, so this stays a browser-safe
+// import graph esbuild can bundle (no `client`/`persistence`). The real
+// BackgroundView DOM is covered by BackgroundView.test.tsx; the reducer math by
+// state/__tests__/background-history.test.ts; the persisted round-trip by
+// useDisplayPreferences.background.test.tsx. This fixture proves the rendered
+// pipeline: store → AppBackground (shader/image), agent event → bridge → store,
+// undo, and redo.
 
 import * as React from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AppBackground } from "../../../backgrounds/AppBackground";
+import {
+  applyBackgroundRedo,
+  applyBackgroundSet,
+  applyBackgroundUndo,
+  type BackgroundHistoryState,
+} from "../../../state/background-history";
 import { __setAppValueForTests } from "../../../state/app-store";
 import {
   BACKGROUND_PRESETS,
   type BackgroundConfig,
-  backgroundConfigsEqual,
   DEFAULT_BACKGROUND_CONFIG,
 } from "../../../state/ui-preferences";
 import { emitViewEvent } from "../../../views/view-event-bus";
@@ -29,8 +37,6 @@ import { fileToBackgroundDataUrl } from "../background-image";
 type Win = typeof window & {
   __emitBgApply?: (payload: Record<string, unknown>) => void;
 };
-
-const MAX_HISTORY = 10;
 
 function seed(
   config: BackgroundConfig,
@@ -62,8 +68,8 @@ function Harness(): React.JSX.Element {
   const [history, setHistory] = useState<BackgroundConfig[]>([]);
   const [redoStack, setRedoStack] = useState<BackgroundConfig[]>([]);
 
-  // Refs mirror the latest values (like useDisplayPreferences) so the
-  // callbacks stay identity-stable without reading stale state.
+  // Refs mirror the latest values so the callbacks stay identity-stable without
+  // reading stale state.
   const configRef = useRef(config);
   configRef.current = config;
   const historyRef = useRef(history);
@@ -71,29 +77,34 @@ function Harness(): React.JSX.Element {
   const redoRef = useRef(redoStack);
   redoRef.current = redoStack;
 
-  // Real push-on-change history, mirroring useDisplayPreferences: a new edit
-  // pushes the outgoing config onto undo and clears the redo future.
-  const setBackgroundConfig = useCallback((next: BackgroundConfig) => {
-    const prev = configRef.current;
-    if (backgroundConfigsEqual(prev, next)) return;
-    setHistory((h) => [...h, prev].slice(-MAX_HISTORY));
-    setRedoStack((r) => (r.length ? [] : r));
-    setConfig(next);
+  // set / undo / redo delegate to the SAME pure reducer production uses
+  // (state/background-history), so this e2e can no longer drift from the real
+  // history semantics by hand-mirroring them (#10694).
+  const snapshot = useCallback(
+    (): BackgroundHistoryState => ({
+      config: configRef.current,
+      history: historyRef.current,
+      redo: redoRef.current,
+    }),
+    [],
+  );
+  const applyState = useCallback((s: BackgroundHistoryState) => {
+    setConfig(s.config);
+    setHistory(s.history);
+    setRedoStack(s.redo);
   }, []);
-  const undoBackgroundConfig = useCallback(() => {
-    const h = historyRef.current;
-    if (h.length === 0) return;
-    setRedoStack((r) => [...r, configRef.current].slice(-MAX_HISTORY));
-    setConfig(h[h.length - 1]);
-    setHistory(h.slice(0, -1));
-  }, []);
-  const redoBackgroundConfig = useCallback(() => {
-    const r = redoRef.current;
-    if (r.length === 0) return;
-    setHistory((h) => [...h, configRef.current].slice(-MAX_HISTORY));
-    setConfig(r[r.length - 1]);
-    setRedoStack(r.slice(0, -1));
-  }, []);
+  const setBackgroundConfig = useCallback(
+    (next: BackgroundConfig) => applyState(applyBackgroundSet(snapshot(), next)),
+    [applyState, snapshot],
+  );
+  const undoBackgroundConfig = useCallback(
+    () => applyState(applyBackgroundUndo(snapshot())),
+    [applyState, snapshot],
+  );
+  const redoBackgroundConfig = useCallback(
+    () => applyState(applyBackgroundRedo(snapshot())),
+    [applyState, snapshot],
+  );
 
   // Mirror into the store every render so AppBackground + its bridge resolve to
   // this one source of truth (the production wiring).

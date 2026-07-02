@@ -5,6 +5,12 @@ import {
   isPlausibleFragmentSource,
   normalizeUniforms,
 } from "../backgrounds/shader-schema";
+import { MAX_BACKGROUND_HISTORY } from "./background-history";
+
+// Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
+// sites keep working; the single source is the pure reducer module.
+export { MAX_BACKGROUND_HISTORY } from "./background-history";
+
 import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
@@ -238,7 +244,6 @@ export function saveBackgroundConfig(config: BackgroundConfig): void {
  * configs carry a data/media URL so the cap is deliberately small.
  */
 const UI_BACKGROUND_HISTORY_STORAGE_KEY = "eliza:ui-background-history";
-export const MAX_BACKGROUND_HISTORY = 10;
 /**
  * Data-URL image entries are the quota hazard: one downscaled photo is 1–4 MB
  * against localStorage's ~5 MB total, and `tryLocalStorage` swallows
