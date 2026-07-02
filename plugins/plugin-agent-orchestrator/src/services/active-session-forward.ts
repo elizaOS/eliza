@@ -10,7 +10,7 @@
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
-import { decideInterruption } from "./interruption-decider.js";
+import { decideInterruptionWithModel } from "./interruption-decider.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
 import { requireTaskAgentAccess } from "./task-policy.js";
 import { type SessionInfo, TERMINAL_SESSION_STATUSES } from "./types.js";
@@ -109,12 +109,22 @@ export function createActiveSessionForwardHandler(
       // "Crowded room": more than one live sub-agent bound to this room.
       const multiParty = sessions.filter(boundToRoom).length > 1;
       const busy = isSessionBusy(active.status);
-      const decision = decideInterruption({
+      // What the sub-agent is working on, for the model classifier's relevance
+      // judgement — best-effort from session metadata (all optional).
+      const meta = (active.metadata ?? {}) as Record<string, unknown>;
+      const taskContext = [
+        meta.originalTask,
+        meta.task,
+        meta.goal,
+        meta.taskTitle,
+      ].find((v): v is string => typeof v === "string" && v.trim().length > 0);
+      const decision = await decideInterruptionWithModel(runtime, {
         text,
         agentType: active.agentType,
         sessionBusy: busy,
         multiParty,
         ...(label ? { agentLabel: label } : {}),
+        ...(taskContext ? { taskContext } : {}),
       });
       runtime.logger?.debug?.(
         {
