@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AppContext } from "../../../types/cloud-worker-env";
+import type { AppContext } from "../../types/cloud-worker-env";
 import { getDefaultKey } from "./rate-limit-hono-cloudflare";
 
 /**
