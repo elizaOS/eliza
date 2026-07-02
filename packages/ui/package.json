@@ -329,6 +329,7 @@
     "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/tui": "workspace:*",
     "@fontsource/poppins": "^5.2.7",

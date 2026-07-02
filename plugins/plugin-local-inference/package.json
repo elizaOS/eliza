@@ -26,6 +26,16 @@
 			"import": "./dist/voice-wake.js",
 			"default": "./dist/voice-wake.js"
 		},
+		"./voice-dsp": {
+			"types": "./src/voice-dsp.ts",
+			"eliza-source": {
+				"types": "./src/voice-dsp.ts",
+				"import": "./src/voice-dsp.ts",
+				"default": "./src/voice-dsp.ts"
+			},
+			"import": "./dist/voice-dsp.js",
+			"default": "./dist/voice-dsp.js"
+		},
 		"./runtime": {
 			"types": "./src/runtime/index.ts",
 			"eliza-source": {

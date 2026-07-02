@@ -271,6 +271,29 @@ export interface TalkModeAudioFrameEvent {
   frameIndex: number;
 }
 
+/**
+ * One frame of PCM actually written to native playback.
+ *
+ * Native AudioTrack output is invisible to Web Audio, so Android mirrors the
+ * rendered far-end samples through this event for JNI ambient-path AEC.
+ */
+export interface TalkModePlaybackFrameEvent {
+  /** Playback provider that produced the audio. */
+  provider: "elevenlabs" | "local-inference" | "system";
+  /** Base64-encoded little-endian signed 16-bit PCM. */
+  pcm16: string;
+  /** Sample rate of this playback chunk in Hz. */
+  sampleRate: number;
+  /** Channel count in this playback chunk. */
+  channels: number;
+  /** Samples per channel in this playback chunk. */
+  samples: number;
+  /** Monotonic render timestamp for this chunk, ms. */
+  timestamp: number;
+  /** Running frame index within this utterance. */
+  frameIndex: number;
+}
+
 /** Options for {@link TalkModePlugin.startAudioFrames}. */
 export interface AudioFrameOptions {
   /**
@@ -468,6 +491,14 @@ export interface TalkModePlugin {
   addListener(
     eventName: "audioFrame",
     listenerFunc: (event: TalkModeAudioFrameEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * Add listener for native playback PCM frames used as echo reference.
+   */
+  addListener(
+    eventName: "playbackFrame",
+    listenerFunc: (event: TalkModePlaybackFrameEvent) => void,
   ): Promise<PluginListenerHandle>;
 
   /**

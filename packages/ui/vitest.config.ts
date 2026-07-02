@@ -114,6 +114,13 @@ export default defineConfig({
         replacement: hostExternalStub,
       },
       {
+        find: /^@elizaos\/plugin-local-inference\/voice-dsp$/,
+        replacement: resolve(
+          monorepoRoot,
+          "plugins/plugin-local-inference/src/voice-dsp.ts",
+        ),
+      },
+      {
         // Dynamically loaded by DynamicViewLoader as a host-external plugin;
         // alias it so the ui test build doesn't require its built dist.
         find: /^@elizaos\/plugin-training$/,

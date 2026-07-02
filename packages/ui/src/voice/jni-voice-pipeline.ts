@@ -27,10 +27,16 @@
  */
 
 import { logger } from "@elizaos/logger";
+import {
+  EchoReferenceBuffer,
+  NlmsEchoCanceller,
+  platformPlaybackDelaySamples,
+} from "@elizaos/plugin-local-inference/voice-dsp";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
   TalkModeAudioFrameEvent,
+  TalkModePlaybackFrameEvent,
   TalkModePluginLike,
 } from "../bridge/native-plugins";
 import {
@@ -44,6 +50,7 @@ import {
 const MAX_BATCH_FRAMES = 49;
 /** Feed cadence in ms (a partial batch is fed even below the size cap). */
 const FEED_INTERVAL_MS = 250;
+const PIPELINE_SAMPLE_RATE = 16_000;
 
 /**
  * One native-attributed turn surfaced to the ambient-gate layer. The PCM-derived
@@ -115,6 +122,13 @@ export type SelfVoiceContextProvider =
           >
         >);
 
+export interface JniEchoCancellationOptions {
+  /** Default true. Disable only for diagnostic A/B capture. */
+  enabled?: boolean;
+  /** Override the playback-to-mic seed delay. Defaults to Android's measured seed. */
+  delaySamples?: number;
+}
+
 export interface JniVoicePipelineOptions {
   /** Override the on-device bundle dir (else the app's eliza-1/bundle default). */
   bundleDir?: string;
@@ -132,6 +146,8 @@ export interface JniVoicePipelineOptions {
    * can queue it through the fused ASR → text → TTS device voice path.
    */
   onCompletedPcmTurn?: JniCompletedPcmTurnListener;
+  /** Acoustic echo cancellation for native AudioTrack playback leaking into mic. */
+  echoCancellation?: JniEchoCancellationOptions;
 }
 
 function base64ToFloat32(b64: string): Float32Array {
@@ -188,6 +204,69 @@ function concatFramesToBase64(frames: TalkModeAudioFrameEvent[]): string {
   return btoa(out);
 }
 
+function pcm16Base64ToFloat32(
+  b64: string,
+  channels = 1,
+  targetSampleRate = PIPELINE_SAMPLE_RATE,
+  sourceSampleRate = PIPELINE_SAMPLE_RATE,
+): Float32Array {
+  if (!b64) return new Float32Array(0);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const safeChannels = Math.max(1, Math.floor(channels || 1));
+  const sampleCount = Math.floor(bytes.byteLength / 2 / safeChannels);
+  const mono = new Float32Array(sampleCount);
+  for (let i = 0; i < sampleCount; i += 1) {
+    let sum = 0;
+    for (let ch = 0; ch < safeChannels; ch += 1) {
+      sum += view.getInt16((i * safeChannels + ch) * 2, true) / 32768;
+    }
+    mono[i] = sum / safeChannels;
+  }
+  return resampleLinear(mono, sourceSampleRate, targetSampleRate);
+}
+
+function float32ToPcm16Base64(pcm: Float32Array): string {
+  const bytes = new Uint8Array(pcm.length * 2);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < pcm.length; i += 1) {
+    const s = Math.max(-1, Math.min(1, pcm[i] ?? 0));
+    view.setInt16(i * 2, Math.round(s * 32767), true);
+  }
+  let out = "";
+  const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    out += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + CHUNK)),
+    );
+  }
+  return btoa(out);
+}
+
+function resampleLinear(
+  input: Float32Array,
+  sourceSampleRate: number,
+  targetSampleRate: number,
+): Float32Array {
+  const srcRate = Math.max(1, Math.floor(sourceSampleRate || targetSampleRate));
+  const dstRate = Math.max(1, Math.floor(targetSampleRate));
+  if (input.length === 0 || srcRate === dstRate) return input;
+  const outLength = Math.max(1, Math.round((input.length * dstRate) / srcRate));
+  const out = new Float32Array(outLength);
+  const ratio = srcRate / dstRate;
+  for (let i = 0; i < out.length; i += 1) {
+    const pos = i * ratio;
+    const left = Math.floor(pos);
+    const right = Math.min(input.length - 1, left + 1);
+    const frac = pos - left;
+    out[i] = (input[left] ?? 0) * (1 - frac) + (input[right] ?? 0) * frac;
+  }
+  return out;
+}
+
 /**
  * Drives the Android `audioFrame` → in-process JNI voice pipeline. One instance
  * per capture session.
@@ -201,13 +280,23 @@ export class JniVoicePipeline {
   private ctxHandle: string | null = null;
   private pipelineHandle: string | null = null;
   private removeListener: (() => void) | null = null;
+  private removePlaybackListener: (() => void) | null = null;
   private feedTimer: ReturnType<typeof setInterval> | null = null;
   private buffer: TalkModeAudioFrameEvent[] = [];
   private feeding: Promise<void> = Promise.resolve();
   private running = false;
+  private readonly echoReference = new EchoReferenceBuffer({
+    sampleRateHz: PIPELINE_SAMPLE_RATE,
+  });
+  private readonly echoCanceller = new NlmsEchoCanceller({
+    residualSuppression: true,
+  });
+  private readonly echoDelaySamples: number;
+  private readonly echoCancellationEnabled: boolean;
 
   framesSent = 0;
   turnsObserved = 0;
+  playbackFramesReceived = 0;
 
   constructor(
     talkmode: TalkModePluginLike,
@@ -217,6 +306,10 @@ export class JniVoicePipeline {
     this.talkmode = talkmode;
     this.voice = voice;
     this.options = options;
+    this.echoCancellationEnabled = options.echoCancellation?.enabled !== false;
+    this.echoDelaySamples =
+      options.echoCancellation?.delaySamples ??
+      platformPlaybackDelaySamples("android", PIPELINE_SAMPLE_RATE);
   }
 
   get isRunning(): boolean {
@@ -255,9 +348,18 @@ export class JniVoicePipeline {
     this.removeListener = () => {
       void handle.remove();
     };
+    if (this.echoCancellationEnabled) {
+      const playbackHandle = await this.talkmode.addListener(
+        "playbackFrame",
+        (event: TalkModePlaybackFrameEvent) => this.onPlaybackFrame(event),
+      );
+      this.removePlaybackListener = () => {
+        void playbackHandle.remove();
+      };
+    }
 
     const result = await this.talkmode.startAudioFrames({
-      sampleRate: 16_000,
+      sampleRate: PIPELINE_SAMPLE_RATE,
       frameMs: 20,
     });
     if (!result.started) {
@@ -284,6 +386,8 @@ export class JniVoicePipeline {
     }
     this.removeListener?.();
     this.removeListener = null;
+    this.removePlaybackListener?.();
+    this.removePlaybackListener = null;
     await this.feed();
     await this.feeding;
     if (this.pipelineHandle) {
@@ -313,6 +417,19 @@ export class JniVoicePipeline {
     if (this.buffer.length >= MAX_BATCH_FRAMES) void this.feed();
   }
 
+  private onPlaybackFrame(event: TalkModePlaybackFrameEvent): void {
+    if (!this.echoCancellationEnabled) return;
+    const playback = pcm16Base64ToFloat32(
+      event.pcm16,
+      event.channels,
+      PIPELINE_SAMPLE_RATE,
+      event.sampleRate,
+    );
+    if (playback.length === 0) return;
+    this.echoReference.pushAt(event.timestamp, playback);
+    this.playbackFramesReceived += 1;
+  }
+
   /** Feed the buffered batch into the native pipeline. Serialized + ordered. */
   private async feed(): Promise<void> {
     if (this.buffer.length === 0) return;
@@ -324,7 +441,9 @@ export class JniVoicePipeline {
 
   private async process(frames: TalkModeAudioFrameEvent[]): Promise<void> {
     if (frames.length === 0 || !this.pipelineHandle) return;
-    const pcm16 = concatFramesToBase64(frames);
+    const pcm16 = this.echoCancellationEnabled
+      ? this.cancelEcho(frames)
+      : concatFramesToBase64(frames);
     this.framesSent += frames.length;
     const res = await this.voice.pipelineProcess({
       handle: this.pipelineHandle,
@@ -332,6 +451,30 @@ export class JniVoicePipeline {
       includePcm: Boolean(this.options.onCompletedPcmTurn),
     });
     await this.emitTurns(res.turns);
+  }
+
+  private cancelEcho(frames: TalkModeAudioFrameEvent[]): string {
+    const first = frames[0];
+    if (!first) return "";
+    const near = pcm16Base64ToFloat32(
+      concatFramesToBase64(frames),
+      first.channels,
+      PIPELINE_SAMPLE_RATE,
+      first.sampleRate,
+    );
+    const far =
+      this.playbackFramesReceived > 0
+        ? this.echoReference.referenceAt(
+            first.timestamp,
+            near.length,
+            this.echoDelaySamples,
+          )
+        : new Float32Array(near.length);
+    const cleaned =
+      this.playbackFramesReceived > 0
+        ? this.echoCanceller.process(near, far)
+        : near;
+    return float32ToPcm16Base64(cleaned);
   }
 
   private async emitTurns(turns: ElizaVoiceTurn[]): Promise<void> {

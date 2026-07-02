@@ -3,6 +3,7 @@ import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
   TalkModeAudioFrameEvent,
+  TalkModePlaybackFrameEvent,
   TalkModePluginLike,
 } from "../bridge/native-plugins";
 import { type JniAttributedTurn, JniVoicePipeline } from "./jni-voice-pipeline";
@@ -38,6 +39,62 @@ function makeFrame(samples: number): TalkModeAudioFrameEvent {
     timestamp: 0,
     frameIndex: 0,
   };
+}
+
+function makePcm16Frame(
+  values: readonly number[],
+  timestamp = 0,
+): TalkModeAudioFrameEvent {
+  return {
+    pcm16: encodePcm16(values),
+    sampleRate: 16000,
+    channels: 1,
+    samples: values.length,
+    rms: Math.sqrt(
+      values.reduce((sum, v) => sum + v * v, 0) / Math.max(1, values.length),
+    ),
+    timestamp,
+    frameIndex: 0,
+  };
+}
+
+function makePlaybackFrame(
+  values: readonly number[],
+  timestamp = 0,
+): TalkModePlaybackFrameEvent {
+  return {
+    provider: "local-inference",
+    pcm16: encodePcm16(values),
+    sampleRate: 16000,
+    channels: 1,
+    samples: values.length,
+    timestamp,
+    frameIndex: 0,
+  };
+}
+
+function encodePcm16(values: readonly number[]): string {
+  const bytes = Buffer.alloc(values.length * 2);
+  values.forEach((value, index) => {
+    const clamped = Math.max(-1, Math.min(1, value));
+    bytes.writeInt16LE(Math.round(clamped * 32767), index * 2);
+  });
+  return bytes.toString("base64");
+}
+
+function decodePcm16(b64: string): Float32Array {
+  const bytes = Buffer.from(b64, "base64");
+  const out = new Float32Array(Math.floor(bytes.length / 2));
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] = bytes.readInt16LE(i * 2) / 32768;
+  }
+  return out;
+}
+
+function rms(values: Float32Array | readonly number[]): number {
+  let sum = 0;
+  for (const value of values) sum += value * value;
+  return Math.sqrt(sum / Math.max(1, values.length));
 }
 
 function encodePcm(values: readonly number[]): string {
@@ -103,13 +160,25 @@ function fakeVoice(state: FakeVoiceState): ElizaVoicePluginLike {
 
 function fakeTalkmode(
   onFrame: (cb: (e: TalkModeAudioFrameEvent) => void) => void,
+  onPlaybackFrame?: (cb: (e: TalkModePlaybackFrameEvent) => void) => void,
 ): TalkModePluginLike {
   let listener: ((e: TalkModeAudioFrameEvent) => void) | null = null;
+  let playbackListener: ((e: TalkModePlaybackFrameEvent) => void) | null = null;
   onFrame((e) => listener?.(e));
+  onPlaybackFrame?.((e) => playbackListener?.(e));
   return {
     addListener: vi.fn(
-      async (_name: string, cb: (e: TalkModeAudioFrameEvent) => void) => {
-        listener = cb;
+      async (
+        name: string,
+        cb:
+          | ((e: TalkModeAudioFrameEvent) => void)
+          | ((e: TalkModePlaybackFrameEvent) => void),
+      ) => {
+        if (name === "playbackFrame") {
+          playbackListener = cb as (e: TalkModePlaybackFrameEvent) => void;
+        } else {
+          listener = cb as (e: TalkModeAudioFrameEvent) => void;
+        }
         return { remove: vi.fn(async () => {}) };
       },
     ),
@@ -121,6 +190,7 @@ function fakeTalkmode(
 describe("JniVoicePipeline", () => {
   let state: FakeVoiceState;
   let emit: (e: TalkModeAudioFrameEvent) => void = () => {};
+  let emitPlayback: (e: TalkModePlaybackFrameEvent) => void = () => {};
 
   beforeEach(() => {
     state = {
@@ -346,6 +416,37 @@ describe("JniVoicePipeline", () => {
     expect(forwarded.audio.sampleRate).toBe(16_000);
     expect(Array.from(forwarded.audio.pcm)).toEqual(pcm);
     expect(forwarded.signal).toBeDefined();
+    await p.stop();
+  });
+
+  it("cancels native playback echo before feeding the JNI pipeline", async () => {
+    const voice = fakeVoice(state);
+    const tm = fakeTalkmode(
+      (cb) => {
+        emit = cb;
+      },
+      (cb) => {
+        emitPlayback = cb;
+      },
+    );
+    const p = new JniVoicePipeline(tm, voice, {
+      echoCancellation: { delaySamples: 0 },
+    });
+    await p.start();
+
+    const far = Array.from({ length: 320 }, (_, i) =>
+      Math.sin((2 * Math.PI * i) / 32) * 0.6,
+    );
+    const micEcho = far.map((sample) => sample * 0.45);
+    emitPlayback(makePlaybackFrame(far, 0));
+    emit(makePcm16Frame(micEcho, 0));
+    await (p as unknown as { feed: () => Promise<void> }).feed();
+    await (p as unknown as { feeding: Promise<void> }).feeding;
+
+    expect(p.playbackFramesReceived).toBe(1);
+    expect(state.processed).toHaveLength(1);
+    const cleaned = decodePcm16(state.processed[0]);
+    expect(rms(cleaned)).toBeLessThan(rms(micEcho) * 0.4);
     await p.stop();
   });
 });

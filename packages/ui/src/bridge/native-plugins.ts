@@ -111,6 +111,19 @@ export interface TalkModeAudioFrameEvent {
   frameIndex: number;
 }
 
+export interface TalkModePlaybackFrameEvent {
+  provider: "elevenlabs" | "local-inference" | "system";
+  pcm16: string;
+  sampleRate: number;
+  channels: number;
+  /** Samples per channel. */
+  samples: number;
+  /** Monotonic render timestamp, ms. */
+  timestamp: number;
+  /** Running frame index within this utterance. */
+  frameIndex: number;
+}
+
 export interface TalkModeAudioFrameResult {
   started: boolean;
   sampleRate?: number;
@@ -747,6 +760,10 @@ export interface TalkModePluginLike extends NativePlugin {
   addListener(
     eventName: "audioFrame",
     listenerFunc: (event: TalkModeAudioFrameEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "playbackFrame",
+    listenerFunc: (event: TalkModePlaybackFrameEvent) => void,
   ): Promise<PluginListenerHandle>;
   /** Start raw 16 kHz mono PCM frame capture (Android diarization source). */
   startAudioFrames?(options?: {

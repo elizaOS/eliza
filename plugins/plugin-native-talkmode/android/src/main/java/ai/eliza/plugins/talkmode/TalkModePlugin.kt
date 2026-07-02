@@ -1271,7 +1271,7 @@ class TalkModePlugin : Plugin() {
                     put("sampleRate", format.sampleRate)
                     put("channels", format.channels)
                 })
-                val framesWritten = writePcmStreamToTrack(input, track, format)
+                val framesWritten = writePcmStreamToTrack(input, track, format, "local-inference")
                 drainPcmTrack(track, framesWritten, format.sampleRate)
                 if (!pcmStopRequested.get()) {
                     track.stop()
@@ -1359,7 +1359,10 @@ class TalkModePlugin : Plugin() {
                 put("channels", 1)
             })
             val framesWritten = writePcmStreamToTrack(
-                BufferedInputStream(ByteArrayInputStream(pcm16)), track, format
+                BufferedInputStream(ByteArrayInputStream(pcm16)),
+                track,
+                format,
+                "local-inference"
             )
             drainPcmTrack(track, framesWritten, sampleRate)
             if (!pcmStopRequested.get()) track.stop()
@@ -1536,10 +1539,12 @@ class TalkModePlugin : Plugin() {
     private fun writePcmStreamToTrack(
         input: BufferedInputStream,
         track: AudioTrack,
-        format: PcmStreamFormat
+        format: PcmStreamFormat,
+        provider: String
     ): Long {
         val bytesPerFrame = format.channels * (format.bitsPerSample / 8)
         var bytesWrittenTotal = 0L
+        var playbackFrameIndex = 0L
         var remainingBytes = format.dataBytes
         val buffer = ByteArray(8 * 1024)
         while (remainingBytes > 0) {
@@ -1558,9 +1563,32 @@ class TalkModePlugin : Plugin() {
                 }
                 offset += wrote
                 bytesWrittenTotal += wrote.toLong()
+                emitPlaybackFrame(provider, format, buffer, offset - wrote, wrote, playbackFrameIndex)
+                playbackFrameIndex += 1
             }
         }
         return if (bytesPerFrame > 0) bytesWrittenTotal / bytesPerFrame else 0L
+    }
+
+    private fun emitPlaybackFrame(
+        provider: String,
+        format: PcmStreamFormat,
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+        frameIndex: Long
+    ) {
+        val bytesPerFrame = format.channels * (format.bitsPerSample / 8)
+        if (length <= 0 || bytesPerFrame <= 0 || format.bitsPerSample != 16) return
+        notifyListeners("playbackFrame", JSObject().apply {
+            put("provider", provider)
+            put("pcm16", Base64.encodeToString(bytes, offset, length, Base64.NO_WRAP))
+            put("sampleRate", format.sampleRate)
+            put("channels", format.channels)
+            put("samples", length / bytesPerFrame)
+            put("timestamp", SystemClock.elapsedRealtime())
+            put("frameIndex", frameIndex)
+        })
     }
 
     private fun drainPcmTrack(track: AudioTrack, framesWritten: Long, sampleRate: Int) {
@@ -1621,6 +1649,8 @@ class TalkModePlugin : Plugin() {
         Log.d(TAG, "PCM play start sampleRate=$sampleRate bufferSize=$bufferSize")
         val conn = openTtsConnection(voiceId, apiKey, request)
         activePcmConnection = conn
+        val playbackFormat = PcmStreamFormat(sampleRate, 1, 16, Int.MAX_VALUE)
+        var playbackFrameIndex = 0L
         try {
             val payload = ElevenLabsPayload.buildRequestPayload(request)
             conn.outputStream.use { it.write(payload.toByteArray()) }
@@ -1653,6 +1683,15 @@ class TalkModePlugin : Plugin() {
                             throw IllegalStateException("AudioTrack write failed: $wrote")
                         }
                         offset += wrote
+                        emitPlaybackFrame(
+                            "elevenlabs",
+                            playbackFormat,
+                            buffer,
+                            offset - wrote,
+                            wrote,
+                            playbackFrameIndex
+                        )
+                        playbackFrameIndex += 1
                     }
                 }
             }

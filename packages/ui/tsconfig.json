@@ -26,6 +26,9 @@
       "@elizaos/plugin-vector-browser": [
         "./src/types/host-external-modules.ts"
       ],
+      "@elizaos/plugin-local-inference/voice-dsp": [
+        "../../plugins/plugin-local-inference/src/voice-dsp.ts"
+      ],
       "@elizaos/plugin-personal-assistant-browser": [
         "../../plugins/plugin-personal-assistant-browser/src/index.ts"
       ],
