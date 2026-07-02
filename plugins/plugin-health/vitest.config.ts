@@ -12,6 +12,9 @@ import {
 // root so subpath imports still resolve normally.
 const aliases = {
   ...providerSdkAliases,
+  "@elizaos/tui": fileURLToPath(
+    new URL("../../packages/tui/src/index.ts", import.meta.url),
+  ),
   "@elizaos/plugin-scheduling": fileURLToPath(
     new URL("../plugin-scheduling/src/index.ts", import.meta.url),
   ),

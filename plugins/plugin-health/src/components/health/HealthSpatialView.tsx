@@ -216,13 +216,9 @@ const readyGridStyle: CSSProperties = {
 };
 
 const domSectionStyle: CSSProperties = {
-  background:
-    "color-mix(in srgb, var(--background, #fff) 96%, var(--muted, #888))",
-  border: "1px solid var(--border, rgba(128,128,128,0.28))",
-  borderRadius: "0.5rem",
   boxSizing: "border-box",
   minWidth: 0,
-  padding: "0.45rem",
+  padding: "0.25rem 0.125rem",
 };
 
 const domSectionTitleStyle: CSSProperties = {
