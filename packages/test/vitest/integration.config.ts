@@ -22,6 +22,35 @@ import {
 } from "./workspace-aliases";
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
+const elizaCoreEntryDir = elizaCoreEntry
+  ? path.dirname(elizaCoreEntry)
+  : undefined;
+// Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
+// module graph imports (`./node` from plugin dists, `./testing` from the test
+// harness, `./connectors` from connector plugins). Each candidate list covers
+// the source layout (entry at src/) first, then the built layout (entry at
+// dist/node/), so every subpath resolves inside the same core tree as
+// `elizaCoreEntry` — mixing source and dist would boot two copies of core.
+const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
+  ? [
+      { subpath: "node", candidates: ["index.node.ts", "index.node.js"] },
+      {
+        subpath: "testing",
+        candidates: ["testing/index.ts", "../testing/index.js"],
+      },
+      {
+        subpath: "connectors",
+        candidates: ["connectors.ts", "../connectors.js"],
+      },
+    ].flatMap(({ subpath, candidates }) => {
+      const replacement = candidates
+        .map((candidate) => path.join(elizaCoreEntryDir, candidate))
+        .find((candidate) => existsSync(candidate));
+      return replacement
+        ? [{ find: new RegExp(`^@elizaos/core/${subpath}$`), replacement }]
+        : [];
+    })
+  : [];
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
@@ -39,25 +68,17 @@ const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
     ? [
-        // The string alias below prefix-matches subpath imports, so
-        // "@elizaos/core/node" would otherwise rewrite to
-        // "<core entry file>/node" (ENOTDIR). Pin the /node subpath to the
-        // node entry first — same fix plugin-personal-assistant's own
-        // vitest.config.ts carries. Without it this lane cannot load the
-        // personal-assistant plugin graph (plugin-calendly's dist imports
-        // "@elizaos/core/node").
+        // Subpath aliases must precede the bare specifier. A bare-string
+        // `find` is prefix-matched by Vite/rollup, so a string
+        // "@elizaos/core" alias rewrites "@elizaos/core/node" (and
+        // "/testing", "/connectors") into "<core entry file>/<subpath>" — a
+        // path under a *file* (ENOTDIR) — which killed every plugin
+        // integration test in this lane (#11047). The bare specifier is
+        // exact-matched so any other subpath falls through to normal
+        // package-exports resolution instead of being rewritten.
+        ...elizaCoreSubpathAliases,
         {
-          find: /^@elizaos\/core\/node$/,
-          replacement: path.join(
-            elizaWorkspaceRoot,
-            "packages",
-            "core",
-            "src",
-            "index.node.ts",
-          ),
-        },
-        {
-          find: "@elizaos/core",
+          find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },
       ]
