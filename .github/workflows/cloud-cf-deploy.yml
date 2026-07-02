@@ -87,6 +87,82 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Database migrations — the schema gate for every deploy job below (#11208).
+  #
+  # Prod refreshes via a workflow_dispatch of THIS workflow, but migrate-db
+  # used to live only in cloud-deploy-backend.yml — the two were decoupled, so
+  # a refresh shipped new Worker/Pages code against whatever schema prod
+  # happened to have. Every deploy job below now `needs: migrate-db`, which
+  # guarantees migrations run AND succeed before any new code serves traffic:
+  #   - no pending migrations -> the journal-based migrator is a no-op that
+  #     exits 0, so migration-free deploys still ship;
+  #   - failed migration      -> migrate-db fails -> every deploy job is
+  #     skipped (fail-closed; there is no path that deploys on failure);
+  #   - pull_request          -> migrate-db is skipped; the Pages preview jobs
+  #     explicitly allow that one case (previews are frontend-only builds
+  #     pointed at the staging API and run without repo secrets anyway).
+  # ---------------------------------------------------------------------------
+  migrate-db:
+    name: Run Database Migrations
+    if: github.event_name != 'pull_request'
+    # GitHub-hosted on purpose: migrations must not inherit the shared
+    # self-hosted deploy fleet's failure modes (mirrors cloud-deploy-backend).
+    runs-on: ubuntu-latest
+    # Job-level concurrency groups are repo-wide, so this serializes against
+    # cloud-deploy-backend's migrate-db too: overlapping triggers (a develop
+    # push fires both workflows) can never run the migrator concurrently
+    # against the same database.
+    concurrency:
+      group: cloud-db-migrate-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      cancel-in-progress: false
+    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+    timeout-minutes: 10
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if [ "$attempt" -eq 3 ]; then
+              bun install --no-save --ignore-scripts --verbose && exit 0
+            else
+              bun install --no-save --ignore-scripts && exit 0
+            fi
+
+            echo "bun install attempt $attempt failed; retrying in 10s..."
+            sleep 10
+          done
+
+          exit 1
+
+      - name: Fail fast when database secret is missing
+        if: ${{ env.MIGRATION_DATABASE_URL == '' }}
+        run: |
+          # A missing secret must fail the deploy, not silently skip the
+          # migration — otherwise new code ships against a stale schema
+          # (the exact #11208 landmine, and the pre-2026-05-20 silent-skip
+          # regression in cloud-deploy-backend before it).
+          echo "::error::DATABASE_URL / RAILWAY_DATABASE_URL / NEON_DATABASE_URL secret is missing on this environment. The schema cannot be migrated, so the Worker would deploy against a stale DB."
+          echo "Add the secret in: Settings → Environments → Environment secrets."
+          exit 1
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+        run: |
+          # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
+          # gitignored generated keyword data. Source-mode (eliza-source) migrate
+          # never builds core, so generate the file first (mirrors core's prebuild).
+          node packages/shared/scripts/generate-keywords.mjs --target ts
+          bun run db:cloud:migrate
+
+  # ---------------------------------------------------------------------------
   # API Worker
   # ---------------------------------------------------------------------------
   deploy-api:
@@ -96,7 +172,11 @@ jobs:
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
     # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
     runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
-    if: github.event_name != 'pull_request'
+    # Schema gate (#11208): the Worker talks to the database, so it only
+    # deploys after migrate-db succeeded for this same commit. A failed or
+    # cancelled migrate-db skips this job — fail-closed.
+    needs: migrate-db
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -398,6 +478,15 @@ jobs:
     # previews always use GitHub-hosted runners because the shared deploy robot
     # can fail before any cleanup step while staging downloaded setup actions.
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Schema gate (#11208): real (non-PR) deploys only run after migrate-db
+    # succeeded, so the frontend never goes live ahead of the schema its API
+    # features expect. PR previews are the ONE allowed skip: migrate-db is
+    # skipped on pull_request, and previews build against the staging API
+    # without repo secrets. `!cancelled()` overrides the implicit success()
+    # so the skipped-dependency preview case can run; everything else is
+    # fail-closed (failed/cancelled migrate-db -> this job is skipped).
+    needs: migrate-db
+    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -732,6 +821,11 @@ jobs:
     # previews always use GitHub-hosted runners because the shared deploy robot
     # can fail before any cleanup step while staging downloaded setup actions.
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Schema gate (#11208): same contract as deploy-console — non-PR deploys
+    # require a successful migrate-db; PR previews (migrate-db skipped) still
+    # run; failed/cancelled migrate-db skips this job (fail-closed).
+    needs: migrate-db
+    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
