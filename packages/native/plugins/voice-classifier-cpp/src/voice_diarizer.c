@@ -70,6 +70,8 @@
 #define DIAR_LINEAR0_OUT 128
 #define DIAR_LINEAR1_OUT 128
 #define DIAR_LEAKY_ALPHA 0.01f
+#define DIAR_GGUF_CONVERTER_EPOCH 2
+#define DIAR_LSTM_GATE_ORDER "IFGO"
 
 /* Cached pointers + buffer struct for one diarizer session. */
 struct voice_diarizer_session {
@@ -392,6 +394,33 @@ int voice_diarizer_open(const char *gguf, voice_diarizer_handle *out) {
         meta.sample_rate != VOICE_CLASSIFIER_SAMPLE_RATE_HZ) return -EINVAL;
     if (meta.num_classes != 0 &&
         meta.num_classes != VOICE_DIARIZER_NUM_CLASSES) return -EINVAL;
+    if (meta.window_samples != 0 &&
+        meta.window_samples != DIAR_WINDOW_SAMPLES) return -EINVAL;
+    if (meta.frames_per_window != 0 &&
+        meta.frames_per_window != DIAR_FRAMES_PER_WINDOW) return -EINVAL;
+    if (meta.lstm_layers != 0 &&
+        meta.lstm_layers != DIAR_LSTM_LAYERS) return -EINVAL;
+    if (meta.lstm_hidden != 0 &&
+        meta.lstm_hidden != DIAR_LSTM_HIDDEN) return -EINVAL;
+    if (meta.linear0_out != 0 &&
+        meta.linear0_out != DIAR_LINEAR0_OUT) return -EINVAL;
+    if (meta.linear1_out != 0 &&
+        meta.linear1_out != DIAR_LINEAR1_OUT) return -EINVAL;
+    if (meta.converter_epoch < DIAR_GGUF_CONVERTER_EPOCH) {
+        fprintf(stderr,
+                "[voice_diarizer] stale GGUF converter epoch %d; need >= %d with LSTM gates packed as %s\n",
+                meta.converter_epoch,
+                DIAR_GGUF_CONVERTER_EPOCH,
+                DIAR_LSTM_GATE_ORDER);
+        return -EINVAL;
+    }
+    if (strcmp(meta.lstm_gate_order, DIAR_LSTM_GATE_ORDER) != 0) {
+        fprintf(stderr,
+                "[voice_diarizer] unsupported LSTM gate order '%s'; expected %s\n",
+                meta.lstm_gate_order[0] ? meta.lstm_gate_order : "<missing>",
+                DIAR_LSTM_GATE_ORDER);
+        return -EINVAL;
+    }
 
     struct voice_diarizer_session *s =
         (struct voice_diarizer_session *)calloc(1, sizeof(*s));

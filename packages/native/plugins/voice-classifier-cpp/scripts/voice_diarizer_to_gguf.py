@@ -46,6 +46,8 @@ Output GGUF metadata
 - voice_diarizer.frames_per_window = 293
 - voice_diarizer.license           = "MIT"
 - voice_diarizer.upstream_commit   = pinned at conversion time
+- voice_diarizer.converter_epoch   = 2 (post-#9460 gate-order epoch)
+- voice_diarizer.lstm_gate_order   = "IFGO"
 - voice_diarizer.lstm_layers       = 4
 - voice_diarizer.lstm_hidden       = 128
 - voice_diarizer.linear0_out       = 128
@@ -62,11 +64,11 @@ The C-side forward pass (`voice_diarizer.c`) hardcodes these names:
   sincnet.norm1.weight, sincnet.norm1.bias                 # [60]
   sincnet.conv2.weight, sincnet.conv2.bias                 # [60, 60, 5]
   sincnet.norm2.weight, sincnet.norm2.bias                 # [60]
-  lstm.{L}.W_ih                                            # [4, 4*128, in_size]  (gates concatenated)
-  lstm.{L}.W_hh                                            # [4, 4*128, 128]
-  lstm.{L}.b_ih                                            # [4, 4*128]
-  lstm.{L}.b_hh                                            # [4, 4*128]
-   ↑ direction split: dir 0 = forward, dir 1 = backward; gates ordered IOFG (ONNX) → C re-packs as ICFO for cell math
+  lstm.{L}.W_ih                                            # [2, 4*128, in_size]  (directions, gates, input)
+  lstm.{L}.W_hh                                            # [2, 4*128, 128]
+  lstm.{L}.b_ih                                            # [2, 4*128]
+  lstm.{L}.b_hh                                            # [2, 4*128]
+   ↑ direction split: dir 0 = forward, dir 1 = backward; ONNX IOFC gates are re-packed at conversion time to IFGO, which the C cell reads directly.
   linear0.weight   [256, 128] (we store row-major: out_features × in_features)
   linear0.bias     [128]
   linear1.weight   [128, 128]
@@ -100,6 +102,8 @@ LSTM_LAYERS = 4
 LSTM_HIDDEN = 128
 LINEAR0_OUT = 128
 LINEAR1_OUT = 128
+CONVERTER_EPOCH = 2
+LSTM_GATE_ORDER = "IFGO"
 
 # Default upstream commit pinned to the onnx-community export used here.
 DEFAULT_UPSTREAM_COMMIT = "733a93b6473d019a773298e08cefa686894b1854"
@@ -294,6 +298,7 @@ def write_gguf(*, tensors: dict[str, np.ndarray], output_path: Path,
     writer.add_uint32("voice_diarizer.num_classes", NUM_CLASSES)
     writer.add_uint32("voice_diarizer.window_samples", WINDOW_SAMPLES)
     writer.add_uint32("voice_diarizer.frames_per_window", FRAMES_PER_WINDOW)
+    writer.add_uint32("voice_diarizer.converter_epoch", CONVERTER_EPOCH)
     writer.add_uint32("voice_diarizer.lstm_layers", LSTM_LAYERS)
     writer.add_uint32("voice_diarizer.lstm_hidden", LSTM_HIDDEN)
     writer.add_uint32("voice_diarizer.linear0_out", LINEAR0_OUT)
@@ -301,6 +306,7 @@ def write_gguf(*, tensors: dict[str, np.ndarray], output_path: Path,
     writer.add_string("voice_diarizer.variant", VOICE_DIARIZER_VARIANT)
     writer.add_string("voice_diarizer.license", LICENSE)
     writer.add_string("voice_diarizer.upstream_commit", upstream_commit)
+    writer.add_string("voice_diarizer.lstm_gate_order", LSTM_GATE_ORDER)
 
     # Powerset label table — surfaced by the C side as a 7-element string
     # array so the JS side can render labels without a hardcoded table.
@@ -324,6 +330,8 @@ def write_gguf(*, tensors: dict[str, np.ndarray], output_path: Path,
         "variant": VOICE_DIARIZER_VARIANT,
         "window_samples": WINDOW_SAMPLES,
         "frames_per_window": FRAMES_PER_WINDOW,
+        "converter_epoch": CONVERTER_EPOCH,
+        "lstm_gate_order": LSTM_GATE_ORDER,
     }
     return stats
 
