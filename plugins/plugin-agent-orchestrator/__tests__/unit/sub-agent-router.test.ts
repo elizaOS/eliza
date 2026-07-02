@@ -11,7 +11,9 @@ import {
 import {
   extractShortToolDeliverable,
   extractSubResources,
+  hasRouterOriginMetadata,
   normalizeUrlsInText,
+  readOrigin,
   redactLoopbackUrls,
   SubAgentRouter,
 } from "../../src/services/sub-agent-router.js";
@@ -2649,6 +2651,83 @@ describe("SubAgentRouter parent-agent dispatch", () => {
         string,
       ];
       expect(second[1]).toContain("round-trip cap");
+    } finally {
+      await router.stop();
+    }
+  });
+});
+
+/**
+ * #11634: swarm synthesis skips sessions the router owns, using
+ * hasRouterOriginMetadata as the skip predicate. If the predicate ever
+ * diverges from readOrigin's null-decision, a session could get two
+ * completion posters (predicate false, readOrigin non-null) or NONE
+ * (predicate true, readOrigin null). Pin the lockstep over the metadata
+ * shapes spawn paths actually produce.
+ */
+describe("hasRouterOriginMetadata / readOrigin lockstep (#11634)", () => {
+  const metadataCases: Array<Record<string, unknown> | undefined> = [
+    undefined,
+    {},
+    { roomId: ROOM },
+    { taskRoomId: ROOM },
+    { taskRoomId: ROOM, originRoomId: WORKTREE_ROOM },
+    { taskRoomId: ROOM, sourceRoomId: WORKTREE_ROOM, source: "discord" },
+    // originRoomId/sourceRoomId alone never satisfy readOrigin (it requires a
+    // resolvable taskRoomId), so the predicate must reject them too.
+    { originRoomId: ROOM },
+    { sourceRoomId: ROOM },
+    // Non-UUID room ids are rejected by the router's pickUuid.
+    { roomId: "task-room-7" },
+    { roomId: "task-room-7", originRoomId: "origin-room-7" },
+    { taskRoomId: ROOM, originRoomId: "not-a-uuid" },
+    { label: "dashboard-task", source: "api" },
+  ];
+
+  it("returns true exactly when readOrigin resolves an origin", () => {
+    for (const meta of metadataCases) {
+      const session = makeSession({
+        metadata: meta as SessionInfo["metadata"],
+      });
+      expect(hasRouterOriginMetadata(meta), JSON.stringify(meta)).toBe(
+        readOrigin(session) !== null,
+      );
+    }
+  });
+
+  it("rejects null/undefined metadata", () => {
+    expect(hasRouterOriginMetadata(undefined)).toBe(false);
+    expect(hasRouterOriginMetadata(null)).toBe(false);
+  });
+});
+
+/**
+ * #11634: the coordinator consults isBoundToAcp() before skipping an
+ * origin-routed session, so a disabled or unbound router hands completion
+ * posting back to swarm synthesis instead of silencing the session.
+ */
+describe("SubAgentRouter.isBoundToAcp (#11634)", () => {
+  it("reports bound after start and unbound after stop", async () => {
+    const acp = makeAcpService(makeSession());
+    const { runtime } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+    try {
+      expect(router.isBoundToAcp()).toBe(true);
+    } finally {
+      await router.stop();
+    }
+    expect(router.isBoundToAcp()).toBe(false);
+  });
+
+  it("reports unbound when disabled via ACPX_SUB_AGENT_ROUTER_DISABLED", async () => {
+    const acp = makeAcpService(makeSession());
+    const { runtime } = makeRuntime({
+      acp: acp.service,
+      setting: { ACPX_SUB_AGENT_ROUTER_DISABLED: "1" },
+    });
+    const router = await SubAgentRouter.start(runtime);
+    try {
+      expect(router.isBoundToAcp()).toBe(false);
     } finally {
       await router.stop();
     }

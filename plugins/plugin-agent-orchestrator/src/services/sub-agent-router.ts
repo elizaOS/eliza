@@ -663,6 +663,18 @@ export class SubAgentRouter extends Service {
     );
   }
 
+  /**
+   * Whether the router is live on the ACP session-event stream and will post
+   * terminal events for origin-routed sessions. Swarm synthesis
+   * (SwarmCoordinatorService.maybeFireSwarmComplete) consults this before
+   * skipping an origin-routed session, so a disabled router
+   * (ACPX_SUB_AGENT_ROUTER_DISABLED) or a failed bind restores synthesis as
+   * the completion poster instead of silencing those sessions (#11634).
+   */
+  isBoundToAcp(): boolean {
+    return !!this.unsubscribe;
+  }
+
   async stop(): Promise<void> {
     this.stopped = true;
     if (this.bindRetryTimer) {
@@ -1979,9 +1991,27 @@ export function spawnRootIdFromMeta(
   );
 }
 
+/**
+ * Whether session metadata carries the router's origin routing (stamped at
+ * spawn by tasks.ts) — i.e. this router will own origin-channel posting for
+ * the session's terminal events. True exactly when {@link readOrigin} returns
+ * non-null for the same metadata (readOrigin's guard delegates here, and the
+ * equivalence is pinned by unit tests). Swarm synthesis uses this to skip
+ * origin-routed sessions so one session never gets two parallel completion
+ * posters (#11634).
+ */
+export function hasRouterOriginMetadata(
+  meta: Record<string, unknown> | undefined | null,
+): boolean {
+  if (!meta) return false;
+  // readOrigin resolves roomId with a fallback to taskRoomId, so a resolvable
+  // taskRoomId is necessary AND sufficient for it to return non-null.
+  return Boolean(pickUuid(meta.taskRoomId) ?? pickUuid(meta.roomId));
+}
+
 export function readOrigin(session: SessionInfo): OriginInfo | null {
   const meta = session.metadata as Record<string, unknown> | undefined;
-  if (!meta) return null;
+  if (!meta || !hasRouterOriginMetadata(meta)) return null;
   const taskRoomId = pickUuid(meta.taskRoomId) ?? pickUuid(meta.roomId);
   const roomId =
     pickUuid(meta.originRoomId) ?? pickUuid(meta.sourceRoomId) ?? taskRoomId;

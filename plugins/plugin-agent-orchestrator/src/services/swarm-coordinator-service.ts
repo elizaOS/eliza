@@ -56,6 +56,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
+import { hasRouterOriginMetadata, SubAgentRouter } from "./sub-agent-router.js";
 import { sanitizeCompletionRelay } from "./transcript-sanitizer.js";
 import { TERMINAL_SESSION_STATUSES } from "./types.js";
 
@@ -680,6 +681,24 @@ export class SwarmCoordinatorService extends Service {
       sessionMeta = { metadata: {} };
     }
     const meta = sessionMeta.metadata;
+    // Ownership rule (#11634): a session spawned with chat-origin routing is
+    // posted to its origin channel by the SubAgentRouter — origin-aware,
+    // loop-capped, dedupe-keyed, respawn-aware. Firing synthesis for it too
+    // gave one session two parallel completion posters (double-post) and
+    // leaked transient errors the router deliberately suppresses (e.g. a
+    // session_state_lost it already respawned). Skip origin-routed sessions
+    // while a live router owns them; synthesis stays the sole completion
+    // poster for sessions with no origin routing (dashboard/API-spawned) and
+    // for every session when the router is disabled or unbound. The predicate
+    // reads the SAME input the router's readOrigin decision does — the
+    // session metadata, not the event payload — so the two posters cannot
+    // disagree about ownership and drop a completion between them.
+    if (hasRouterOriginMetadata(meta) && this.routerOwnsOriginSessions()) {
+      logger.debug(
+        `[SwarmCoordinator] skipping swarm-complete synthesis for router-owned session ${sessionId} (${event})`,
+      );
+      return;
+    }
     const label =
       readString(record, "label") ?? readString(meta, "label") ?? sessionId;
     const agentType =
@@ -759,6 +778,22 @@ export class SwarmCoordinatorService extends Service {
         }`,
       );
     }
+  }
+
+  /**
+   * Whether a live SubAgentRouter owns origin-channel posting for
+   * origin-routed sessions. False when the router service is absent, disabled
+   * via ACPX_SUB_AGENT_ROUTER_DISABLED, or not (yet) bound to the ACP event
+   * stream — in all of those cases synthesis must keep posting so terminal
+   * events still reach the user.
+   */
+  private routerOwnsOriginSessions(): boolean {
+    const router = this.runtime.getService?.(SubAgentRouter.serviceType) as {
+      isBoundToAcp?: () => boolean;
+    } | null;
+    return typeof router?.isBoundToAcp === "function"
+      ? router.isBoundToAcp()
+      : false;
   }
 
   private completionStatusForEvent(

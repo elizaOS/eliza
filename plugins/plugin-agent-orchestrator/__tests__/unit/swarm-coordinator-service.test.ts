@@ -18,6 +18,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../src/services/acp-service.ts";
+import { SubAgentRouter } from "../../src/services/sub-agent-router.ts";
 import {
   SWARM_COORDINATOR_SERVICE_TYPE,
   SwarmCoordinatorService,
@@ -735,5 +736,168 @@ describe("SwarmCoordinatorService", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+});
+
+/**
+ * Ownership rule for completion posting (#11634): a session spawned with
+ * chat-origin routing (router origin metadata stamped at spawn — UUID
+ * taskRoomId/roomId) is posted to its origin channel by the SubAgentRouter.
+ * Swarm synthesis must SKIP those sessions while a live router owns them —
+ * otherwise one session gets two parallel completion posters (double-post)
+ * and synthesis leaks transient errors the router deliberately suppresses
+ * (e.g. a session_state_lost it already respawned). Synthesis remains the
+ * sole poster for sessions with no origin routing (dashboard/API-spawned)
+ * and for every session when the router is disabled or unbound.
+ */
+describe("swarm-synthesis ownership rule (#11634)", () => {
+  const TASK_ROOM = "11111111-2222-3333-4444-555555555555";
+  const ORIGIN_ROOM = "22222222-3333-4444-5555-666666666666";
+  const originMetadata = {
+    label: "build-site",
+    initialTask: "build the landing page",
+    roomId: TASK_ROOM,
+    originRoomId: ORIGIN_ROOM,
+    originConnectorMessageId: "discord-msg-42",
+    source: "discord",
+  };
+  const boundRouter = { isBoundToAcp: () => true };
+  const unboundRouter = { isBoundToAcp: () => false };
+
+  it("skips synthesis for an origin-routed session when the router is live", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: originMetadata,
+    });
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        [SubAgentRouter.serviceType]: boundRouter,
+      }),
+    );
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((e) => received.push(e));
+
+    acp.emit("sess-owned", "task_complete", { response: "built it: url" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The router is the sole completion poster for this session.
+    expect(fired).not.toHaveBeenCalled();
+    // The dashboard/ws event stream and legacy task context are unaffected.
+    expect(received.at(-1)).toMatchObject({
+      type: "task_complete",
+      sessionId: "sess-owned",
+    });
+    expect(coordinator.tasks.get("sess-owned")).toMatchObject({
+      status: "completed",
+    });
+    await coordinator.stop();
+  });
+
+  it("does not leak router-suppressed state-lost errors to the origin channel", async () => {
+    // The live trajectory in #11634: the dead session's transient error was
+    // posted to the channel by synthesis even though the router had already
+    // respawned the session and suppresses the stale event.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: originMetadata,
+    });
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        [SubAgentRouter.serviceType]: boundRouter,
+      }),
+    );
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-lost", "error", {
+      message:
+        "Sub-agent state was lost (process exited without persisting). No automatic action taken.",
+      failureKind: "session_state_lost",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
+  it("still posts synthesis for sessions with no origin routing (dashboard/API-spawned)", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      // No UUID roomId/taskRoomId: the router skips this session
+      // ("session has no origin metadata"), so synthesis must post.
+      metadata: { label: "swarm-task", initialTask: "run the batch" },
+    });
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        [SubAgentRouter.serviceType]: boundRouter,
+      }),
+    );
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-dashboard", "task_complete", { response: "done" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      completed: 1,
+      tasks: [{ sessionId: "sess-dashboard", status: "completed" }],
+    });
+    await coordinator.stop();
+  });
+
+  it("keeps synthesis as the poster when the router is unbound or disabled", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: originMetadata,
+    });
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        [SubAgentRouter.serviceType]: unboundRouter,
+      }),
+    );
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-no-router", "task_complete", { response: "done" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0].tasks[0]).toMatchObject({
+      sessionId: "sess-no-router",
+      roomId: ORIGIN_ROOM,
+      replyToExternalMessageId: "discord-msg-42",
+    });
+    await coordinator.stop();
+  });
+
+  it("keeps synthesis as the poster when no router service is registered", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: originMetadata,
+    });
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({ [AcpService.serviceType]: acp }),
+    );
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-absent-router", "task_complete", { response: "done" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
   });
 });
