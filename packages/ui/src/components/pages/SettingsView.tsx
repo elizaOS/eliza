@@ -1,7 +1,7 @@
 import { isViewVisible } from "@elizaos/core";
 import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { listExtraSettingsGroups } from "../../cloud/settings/cloud-settings-group";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -188,6 +188,20 @@ function SectionBackButton({ onBack }: { onBack: () => void }) {
   );
 }
 
+/**
+ * Loading placeholder for a lazily-loaded section body (#11351). Deliberately
+ * minimal — a single muted, `aria-busy` line so the split is visually quiet and
+ * never shifts the section header or nav rail while the chunk resolves.
+ */
+function SettingsSectionLoading() {
+  return (
+    <div
+      aria-busy="true"
+      className="flex min-h-[6rem] items-center text-sm text-muted"
+    />
+  );
+}
+
 /** The active section's body: optional back, header (icon + title), content. */
 function SettingsSectionContent({
   section,
@@ -227,7 +241,11 @@ function SettingsSectionContent({
             />
           )}
         >
-          <Component />
+          {/* Section bodies are `React.lazy` (#11351); the boundary keeps the
+              split transparent with a minimal, unobtrusive loading state. */}
+          <Suspense fallback={<SettingsSectionLoading />}>
+            <Component />
+          </Suspense>
         </ErrorBoundary>
       </div>
     </div>
