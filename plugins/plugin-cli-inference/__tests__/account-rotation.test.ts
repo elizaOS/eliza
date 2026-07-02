@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildRotatedSubprocessEnv,
   isSubscriptionLimitError,
   type RotationAccountSelection,
   rotationAgentTypeForBackend,
@@ -21,6 +22,7 @@ import { ProviderApiError } from "../src/provider-errors";
  */
 
 const BRIDGE_SYMBOL = Symbol.for("eliza.account-pool.coding-agent.v1");
+const ORIGINAL_ENV = { ...process.env };
 
 interface FakeBridge {
   select: ReturnType<typeof vi.fn>;
@@ -63,6 +65,10 @@ const enabledGetter = () => undefined;
 afterEach(() => {
   uninstallBridge();
   vi.restoreAllMocks();
+  for (const key of Object.keys(process.env)) {
+    if (!(key in ORIGINAL_ENV)) delete process.env[key];
+  }
+  Object.assign(process.env, ORIGINAL_ENV);
 });
 
 describe("isSubscriptionLimitError", () => {
@@ -128,6 +134,26 @@ describe("rotationEnabled", () => {
   });
 });
 
+describe("buildRotatedSubprocessEnv", () => {
+  it("copies process env for SDK child basics, strips competing auth, then applies the selected account patch", () => {
+    process.env.PATH = "/bin:/usr/bin";
+    process.env.HOME = "/home/test";
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-claude";
+    process.env.ANTHROPIC_API_KEY = "ambient-anthropic";
+    process.env.CODEX_HOME = "/ambient/codex";
+    process.env.OPENAI_API_KEY = "ambient-openai";
+
+    const env = buildRotatedSubprocessEnv({ CLAUDE_CODE_OAUTH_TOKEN: "selected-claude" });
+
+    expect(env.PATH).toBe("/bin:/usr/bin");
+    expect(env.HOME).toBe("/home/test");
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("selected-claude");
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.CODEX_HOME).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+  });
+});
+
 describe("withAccountRotation", () => {
   const ctx = (overrides: Record<string, unknown> = {}) => ({
     backend: "claude-sdk",
@@ -147,6 +173,7 @@ describe("withAccountRotation", () => {
   });
 
   it("rotates on a subscription-limit error then succeeds on the next account", async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-parent-token";
     const bridge = installFakeBridge([account("b")]);
     let calls = 0;
     const attempt = vi.fn(async () => {
@@ -158,8 +185,12 @@ describe("withAccountRotation", () => {
     await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-b");
     expect(attempt).toHaveBeenCalledTimes(2);
     expect(bridge.select).toHaveBeenCalledTimes(1);
-    // Selected account b's token was applied so the fresh session re-auths as it.
-    expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
+    // Selected account b's token is scoped to the SDK subprocess env only.
+    expect(c.onRotate).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "b" }),
+      expect.objectContaining({ CLAUDE_CODE_OAUTH_TOKEN: "tok-b" })
+    );
+    expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("ambient-parent-token");
     // The warm session bound to the limited account was torn down before retry.
     expect(c.onRotate).toHaveBeenCalledTimes(1);
     // Usage recorded against the account we rotated INTO on success.

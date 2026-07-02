@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { rotationEnabled, withAccountRotation } from "./src/account-rotation";
+import {
+  type RotationSubprocessEnv,
+  rotationEnabled,
+  withAccountRotation,
+} from "./src/account-rotation";
 import { ClaudeCli } from "./src/claude-cli";
 import { ClaudeSdkSession } from "./src/claude-sdk-session";
 import {
@@ -109,6 +113,7 @@ export function resolveCliBackend(source: { ELIZA_CHAT_VIA_CLI?: string }): CliB
 // intermittently returning empty turns. Lives for the plugin's lifetime; torn
 // down in dispose().
 const sdkSessions = new Map<string, ClaudeSdkSession>();
+const sdkSessionEnvs = new Map<string, RotationSubprocessEnv>();
 
 /**
  * Upper bound on concurrently-cached warm sessions. Each session is a live
@@ -155,6 +160,11 @@ function evictSdkSession(key: string): void {
   void existing.dispose();
 }
 
+function rotateSdkSessionEnv(key: string, env: RotationSubprocessEnv): void {
+  sdkSessionEnvs.set(key, env);
+  evictSdkSession(key);
+}
+
 function getSdkSession(
   runtime: IAgentRuntime,
   model: string,
@@ -178,6 +188,7 @@ function getSdkSession(
     turnTimeoutMs:
       parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
       parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
+    subprocessEnv: sdkSessionEnvs.get(key),
   });
   sdkSessions.set(key, session);
   // Evict least-recently-used past the cap (each session is a live process).
@@ -197,9 +208,11 @@ function getSdkSession(
 export async function disposeSdkSessions(): Promise<void> {
   const all = [...sdkSessions.values()];
   sdkSessions.clear();
+  sdkSessionEnvs.clear();
   await Promise.all(all.map((s) => s.dispose()));
   const codex = [...codexSdkSessions.values()];
   codexSdkSessions.clear();
+  codexSdkSessionEnvs.clear();
   for (const s of codex) s.dispose();
 }
 
@@ -207,6 +220,7 @@ export async function disposeSdkSessions(): Promise<void> {
 // system prompt (it's folded into the body), so ONE warm thread per (model, mode)
 // serves every system prompt — simpler than the claude cache.
 const codexSdkSessions = new Map<string, CodexSdkSession>();
+const codexSdkSessionEnvs = new Map<string, RotationSubprocessEnv>();
 
 /** The codex model for a given tier (planner/small can differ from large). */
 function resolveCodexModel(runtime: IAgentRuntime, modelType: string): string {
@@ -232,6 +246,11 @@ function evictCodexSdkSession(key: string): void {
   existing.dispose();
 }
 
+function rotateCodexSdkSessionEnv(key: string, env: RotationSubprocessEnv): void {
+  codexSdkSessionEnvs.set(key, env);
+  evictCodexSdkSession(key);
+}
+
 /** Lazily create + cache a warm Codex SDK thread for a (model, mode). */
 function getCodexSdkSession(
   runtime: IAgentRuntime,
@@ -247,6 +266,7 @@ function getCodexSdkSession(
       reasoningEffort: getSetting(runtime, "ELIZA_CLI_CODEX_REASONING_EFFORT"),
       codexBinPath: getSetting(runtime, "ELIZA_CLI_CODEX_BIN"),
       restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
+      subprocessEnv: codexSdkSessionEnvs.get(key),
     });
     codexSdkSessions.set(key, session);
   }
@@ -318,7 +338,7 @@ async function generateViaCli(
         backend,
         getValue: (k) => getSetting(runtime, k),
         sessionKey: `cli-inference:${key}`,
-        onRotate: () => evictSdkSession(key),
+        onRotate: (_selection, env) => rotateSdkSessionEnv(key, env),
       }
     );
   }
@@ -335,7 +355,7 @@ async function generateViaCli(
         backend,
         getValue: (k) => getSetting(runtime, k),
         sessionKey: `cli-inference:${key}`,
-        onRotate: () => evictCodexSdkSession(key),
+        onRotate: (_selection, env) => rotateCodexSdkSessionEnv(key, env),
       }
     );
   }
@@ -378,7 +398,7 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
         backend,
         getValue: (k) => getSetting(runtime, k),
         sessionKey: `cli-inference:${key}`,
-        onRotate: () => evictSdkSession(key),
+        onRotate: (_selection, env) => rotateSdkSessionEnv(key, env),
       }
     );
   }
@@ -395,7 +415,7 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
       backend,
       getValue: (k) => getSetting(runtime, k),
       sessionKey: `cli-inference:${key}`,
-      onRotate: () => evictCodexSdkSession(key),
+      onRotate: (_selection, env) => rotateCodexSdkSessionEnv(key, env),
     });
   }
   return generateViaCli(runtime, buildCleanRoutingParams(params), ModelType.ACTION_PLANNER);

@@ -17,11 +17,16 @@ interface TurnScript {
 function makeFakeCodex(scripts: TurnScript[]): {
   codexModule: CodexModule;
   starts: () => number;
+  constructorOptions: () => Array<Record<string, unknown> | undefined>;
 } {
   let startCount = 0;
   let turn = 0;
+  const seenConstructorOptions: Array<Record<string, unknown> | undefined> = [];
   const codexModule = {
     Codex: class {
+      constructor(options?: Record<string, unknown>) {
+        seenConstructorOptions.push(options);
+      }
       startThread() {
         startCount += 1;
         return {
@@ -35,18 +40,27 @@ function makeFakeCodex(scripts: TurnScript[]): {
       }
     },
   } as unknown as CodexModule;
-  return { codexModule, starts: () => startCount };
+  return {
+    codexModule,
+    starts: () => startCount,
+    constructorOptions: () => seenConstructorOptions,
+  };
 }
 
 function makeSession(
   scripts: TurnScript[],
-  opts: { router?: boolean; restartAfterTurns?: number } = {}
+  opts: {
+    router?: boolean;
+    restartAfterTurns?: number;
+    subprocessEnv?: Record<string, string>;
+  } = {}
 ) {
   const fake = makeFakeCodex(scripts);
   const session = new CodexSdkSession({
     model: "gpt-test",
     router: opts.router ?? false,
     restartAfterTurns: opts.restartAfterTurns,
+    subprocessEnv: opts.subprocessEnv,
     codexModule: fake.codexModule,
   });
   return { session, ...fake };
@@ -56,6 +70,16 @@ describe("CodexSdkSession — TEXT mode", () => {
   it("returns the turn finalResponse", async () => {
     const { session } = makeSession([{ finalResponse: "hello" }]);
     expect(await session.generate("hi")).toBe("hello");
+    session.dispose();
+  });
+
+  it("passes a scoped subprocess env to the Codex constructor", async () => {
+    const subprocessEnv = { PATH: "/bin", CODEX_HOME: "/tmp/codex-account" };
+    const { session, constructorOptions } = makeSession([{ finalResponse: "hello" }], {
+      subprocessEnv,
+    });
+    expect(await session.generate("hi")).toBe("hello");
+    expect(constructorOptions()[0]?.env).toEqual(subprocessEnv);
     session.dispose();
   });
 

@@ -11,33 +11,21 @@ import {
 describe("isClaudeSubscriptionLimitMessage", () => {
   it("matches the real leaked subscription-limit strings", () => {
     expect(
-      isClaudeSubscriptionLimitMessage(
-        "You've hit your session limit · resets 9:30pm (UTC)",
-      ),
+      isClaudeSubscriptionLimitMessage("You've hit your session limit · resets 9:30pm (UTC)")
     ).toBe(true);
     expect(
-      isClaudeSubscriptionLimitMessage(
-        "You've hit your session limit · resets 11:30am (UTC)",
-      ),
+      isClaudeSubscriptionLimitMessage("You've hit your session limit · resets 11:30am (UTC)")
     ).toBe(true);
     expect(
-      isClaudeSubscriptionLimitMessage(
-        "You've reached your usage limit for this month.",
-      ),
+      isClaudeSubscriptionLimitMessage("You've reached your usage limit for this month.")
     ).toBe(true);
   });
 
   it("matches known envelope variants (CLI epoch form, non-UTC interpunct)", () => {
     // The classic Claude CLI limit string: "Claude AI usage limit reached|<epoch>".
-    expect(
-      isClaudeSubscriptionLimitMessage(
-        "Claude AI usage limit reached|1735689600",
-      ),
-    ).toBe(true);
+    expect(isClaudeSubscriptionLimitMessage("Claude AI usage limit reached|1735689600")).toBe(true);
     // Interpunct separator variants without a "(UTC)" suffix.
-    expect(
-      isClaudeSubscriptionLimitMessage("5-hour limit reached ∙ resets 3am"),
-    ).toBe(true);
+    expect(isClaudeSubscriptionLimitMessage("5-hour limit reached ∙ resets 3am")).toBe(true);
   });
 
   it("does not match genuine model answers, even ones discussing limits", () => {

@@ -17,13 +17,12 @@
  * rotate through — it maps backend → provider, pool-selects the next healthy
  * account, and MATERIALIZES the exact env the subprocess needs:
  * `CLAUDE_CODE_OAUTH_TOKEN` for claude, a per-account `CODEX_HOME` for codex).
- * We apply that env patch to `process.env` (the SDK reads its creds from there /
- * from the materialized `CODEX_HOME`), dispose the warm session so it re-auths as
- * the new account on its next start, and retry the turn transparently. Only when
- * the pool returns null (all accounts limited / no pool / single account) do we
- * rethrow so the caller's existing provider-failover chain runs. Rotation
- * (account A → account B, same provider) therefore composes with — and runs
- * BEFORE — failover (claude → cloud → api).
+ * We pass that env to the SDK subprocess/thread only, dispose the warm session so
+ * it re-auths as the new account on its next start, and retry the turn
+ * transparently. Only when the pool returns null (all accounts limited / no pool
+ * / single account) do we rethrow so the caller's existing provider-failover
+ * chain runs. Rotation (account A → account B, same provider) therefore composes
+ * with — and runs BEFORE — failover (claude → cloud → api).
  *
  * Design notes:
  *  - **Bridge over `globalThis`, not an app-core import.** The pool + credential
@@ -33,11 +32,9 @@
  *    configured the bridge is absent and this module is a pass-through no-op
  *    (single-account behavior is byte-for-byte unchanged).
  *  - **TOS invariant preserved.** The subscription token materialized by the
- *    bridge only ever lands in `process.env` (which the first-party claude/codex
- *    SDK subprocess reads for its own auth) — the same place the ambient
- *    credential already lives for the claude-sdk path — never logged, never
- *    forwarded to a third-party API. `CODEX_HOME` is a directory path, not a
- *    secret.
+ *    bridge is scoped to the first-party SDK subprocess env only — never the
+ *    runtime's shared `process.env`, never logged, never forwarded to a
+ *    third-party API. `CODEX_HOME` is a directory path, not a secret.
  *  - **Rotation is opt-out-able**, gated like the rest of the plugin's env
  *    conventions: `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION` (default ON when a pool
  *    is present; set `0`/`false`/`off` to disable and go straight to failover).
@@ -65,6 +62,8 @@ export interface RotationAccountSelection {
   /** Secrets / paths injected into the process env, never persisted or logged. */
   envPatch: Record<string, string>;
 }
+
+export type RotationSubprocessEnv = Record<string, string>;
 
 /** The narrow slice of the coding-agent bridge this module consumes. */
 interface CodingAgentSelectorBridge {
@@ -150,12 +149,31 @@ export function rotationEnabled(getValue: (key: string) => string | undefined): 
   return true;
 }
 
-/** Apply an env patch to `process.env` (secrets/paths the SDK subprocess reads). */
-function applyEnvPatch(envPatch: Record<string, string>): void {
-  if (typeof process === "undefined") return;
-  for (const [key, value] of Object.entries(envPatch)) {
-    process.env[key] = value;
+const COMPETING_AUTH_ENV_KEYS = [
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_API_KEY",
+  "CODEX_HOME",
+  "OPENAI_API_KEY",
+] as const;
+
+/**
+ * Build a complete SDK subprocess env for a selected pooled account.
+ *
+ * The Agent SDKs replace the child env when an explicit env is supplied, so we
+ * copy the parent process env to preserve PATH/HOME/etc., then strip ambient auth
+ * keys that could beat the selected pooled account.
+ */
+export function buildRotatedSubprocessEnv(envPatch: Record<string, string>): RotationSubprocessEnv {
+  const env: RotationSubprocessEnv = {};
+  if (typeof process !== "undefined") {
+    for (const [key, value] of Object.entries(process.env)) {
+      if (typeof value === "string") env[key] = value;
+    }
   }
+  for (const key of COMPETING_AUTH_ENV_KEYS) {
+    delete env[key];
+  }
+  return { ...env, ...envPatch };
 }
 
 /** A description safe to log about a selection (label + provider, NEVER the token). */
@@ -175,7 +193,10 @@ export interface RotationContext {
    * down the warm SDK session bound to the old account's credential — the fresh
    * session then re-auths as the newly-selected account on its next start.
    */
-  onRotate: () => void | Promise<void>;
+  onRotate: (
+    selection: RotationAccountSelection,
+    subprocessEnv: RotationSubprocessEnv
+  ) => void | Promise<void>;
   /** Selection strategy override (else the pool's default). */
   strategy?: string;
 }
@@ -290,10 +311,10 @@ export async function withAccountRotation(
 
       tried.push(selection.accountId);
       current = selection;
-      applyEnvPatch(selection.envPatch);
+      const subprocessEnv = buildRotatedSubprocessEnv(selection.envPatch);
       // Tear down the warm session so it re-auths as the newly-selected account.
       try {
-        await ctx.onRotate();
+        await ctx.onRotate(selection, subprocessEnv);
       } catch {
         // Session teardown is best-effort; the fresh start will re-init anyway.
       }

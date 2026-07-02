@@ -167,6 +167,8 @@ export interface ClaudeSdkSessionConfig {
   restartAfterTurns?: number;
   /** Hard wall-clock budget for one SDK turn. Defaults below common 120s connector timeouts. */
   turnTimeoutMs?: number;
+  /** Complete env for the SDK subprocess. Omit to use the SDK's ambient default. */
+  subprocessEnv?: Record<string, string>;
   /** Injected for tests; defaults to the real SDK + zod. */
   sdkModule?: SdkModule;
   zodModule?: ZodModule;
@@ -229,6 +231,7 @@ export class ClaudeSdkSession {
   private readonly claudeExecutablePath: string | null;
   private readonly restartAfterTurns: number;
   private readonly turnTimeoutMs: number;
+  private readonly subprocessEnv?: Record<string, string>;
   private readonly sdkOverride?: SdkModule;
   private readonly zodOverride?: ZodModule;
 
@@ -256,6 +259,7 @@ export class ClaudeSdkSession {
       config.turnTimeoutMs && config.turnTimeoutMs > 0
         ? config.turnTimeoutMs
         : DEFAULT_TURN_TIMEOUT_MS;
+    this.subprocessEnv = config.subprocessEnv;
     this.sdkOverride = config.sdkModule;
     this.zodOverride = config.zodModule;
   }
@@ -345,6 +349,9 @@ export class ClaudeSdkSession {
     if (this.systemPrompt) options.systemPrompt = this.systemPrompt;
     if (this.claudeExecutablePath) {
       options.pathToClaudeCodeExecutable = this.claudeExecutablePath;
+    }
+    if (this.subprocessEnv) {
+      options.env = this.subprocessEnv;
     }
     if (this.router) {
       const { z } = this.zodOverride ?? (await loadZod());
