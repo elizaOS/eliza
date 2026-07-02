@@ -9,6 +9,7 @@ Branch: `fix/11586-credential-pool-followups`
 - Wired Worker chat completions to select org pooled direct-provider keys for supported direct models, with strict fallback to platform env on pool miss.
 - Added 401/403/429 provider outcome writeback to pooled credential health.
 - Suppressed affiliate markup/earnings on zero-rated pooled BYO-key completions while still recording pool usage.
+- Kept monetized app-credit billing ahead of pooled BYO-key no-op reservations so contributed provider keys cannot bypass app-owner pricing.
 - Added source-condition package exports/imports needed for cloud source typechecks to resolve `@elizaos/app-core/account-pool` and `@elizaos/agent/utils/atomic-json`.
 - Applied `RATE_LIMIT_MULTIPLIER` to the Hono/Cloudflare limiter in non-production only.
 - Mapped `pooled_credential` audit denials to `secret.access`.
@@ -30,7 +31,7 @@ Branch: `fix/11586-credential-pool-followups`
 - `bun run --cwd packages/cloud/api typecheck`
   - Passed.
 - `bun test --coverage-reporter=lcov --conditions eliza-source packages/cloud/api/__tests__/chat-completions-streaming-credit-leak.test.ts`
-  - Passed: 10 tests, 74 assertions, including pooled BYO-key success suppressing affiliate markup while recording pool use.
+  - Passed: 11 tests, 76 assertions, including pooled BYO-key success suppressing affiliate markup while recording pool use and pooled BYO-key not bypassing monetized app billing.
 - `git diff --check`
   - Passed.
 - `bun install`

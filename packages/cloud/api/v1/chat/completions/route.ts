@@ -841,6 +841,13 @@ async function recordPooledInferenceFailure(
   });
 }
 
+function shouldUsePooledNoopReservation(params: {
+  pooledCredential: PooledInferenceCredential | null;
+  useMonetizedAppBilling: boolean;
+}): boolean {
+  return Boolean(params.pooledCredential && !params.useMonetizedAppBilling);
+}
+
 // ============================================================================
 // Main Handler
 // ============================================================================
@@ -1130,9 +1137,10 @@ export async function handleChatCompletionsPOST(
       | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
       | null = null;
 
-    if (pooledCredential) {
-      reservation = creditsService.createAnonymousReservation();
-    } else if (useAppCredits && appId && monetizedApp) {
+    const useMonetizedAppBilling = Boolean(
+      useAppCredits && appId && monetizedApp,
+    );
+    if (useAppCredits && appId && monetizedApp) {
       const { totalCost } = await calculateCost(
         normalizedModel,
         provider,
@@ -1177,6 +1185,13 @@ export async function handleChatCompletionsPOST(
         }
         throw error;
       }
+    } else if (
+      shouldUsePooledNoopReservation({
+        pooledCredential,
+        useMonetizedAppBilling,
+      })
+    ) {
+      reservation = creditsService.createAnonymousReservation();
     } else {
       // Organization credits path. #9899 Tier-2: when optimistic billing is
       // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
@@ -1332,7 +1347,12 @@ export async function handleChatCompletionsPOST(
 
     // Optimistic path debits the actual cost off the response path; otherwise the
     // reservation settler reconciles the upfront hold. Same (actualCost) shape.
-    if (pooledCredential) {
+    if (
+      shouldUsePooledNoopReservation({
+        pooledCredential,
+        useMonetizedAppBilling,
+      })
+    ) {
       settleReservation = async () => null;
     } else if (optimisticSettler) {
       settleReservation = optimisticSettler;
@@ -2372,4 +2392,8 @@ export const __nativeToolingTestHooks = {
  */
 export const __streamingCreditTestHooks = {
   handleStreamingRequest,
+} as const;
+
+export const __billingBranchTestHooks = {
+  shouldUsePooledNoopReservation,
 } as const;

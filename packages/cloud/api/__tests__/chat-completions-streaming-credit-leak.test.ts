@@ -117,10 +117,11 @@ mock.module("@/lib/services/team-credential-pool", () => ({
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
-const { __streamingCreditTestHooks } = await import(
+const { __billingBranchTestHooks, __streamingCreditTestHooks } = await import(
   "../v1/chat/completions/route"
 );
 const { handleStreamingRequest } = __streamingCreditTestHooks;
+const { shouldUsePooledNoopReservation } = __billingBranchTestHooks;
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
@@ -472,6 +473,29 @@ describe("streaming chat — client abort settles delivered usage", () => {
 });
 
 describe("streaming chat — success settles once, no double-refund", () => {
+  test("pooled BYO key does not bypass monetized app billing reservation", () => {
+    const pooledCredential = {
+      organizationId: ORG,
+      credentialId: "pooled-credential-1",
+      providerId: "openai-api" as const,
+      apiKey: "sk-pooled",
+      label: "Team OpenAI key",
+    };
+
+    expect(
+      shouldUsePooledNoopReservation({
+        pooledCredential,
+        useMonetizedAppBilling: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldUsePooledNoopReservation({
+        pooledCredential,
+        useMonetizedAppBilling: true,
+      }),
+    ).toBe(false);
+  });
+
   test("pooled BYO-key success suppresses affiliate markup while recording pool use", async () => {
     const settle = mock(async () => null);
     let onFinishPromise: Promise<unknown> | undefined;
