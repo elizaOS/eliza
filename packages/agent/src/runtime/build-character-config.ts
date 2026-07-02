@@ -1,5 +1,6 @@
 import {
   type Character,
+  type CharacterInput,
   defaultCharacterSystemTemplate,
   mergeCharacterDefaults,
 } from "@elizaos/core";
@@ -70,6 +71,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     agentEntry?.advancedMemory ??
     config.agents?.defaults?.advancedMemory ??
     true;
+  const knowledge = agentEntry?.knowledge as
+    | CharacterInput["knowledge"]
+    | undefined;
   // Lean cloud chat agents (ELIZA_PLUGIN_SET=lean-chat) skip advanced
   // capabilities. The reflection/fact/relationship/identity evaluators they
   // register fan out a SERIAL cloud-embedding call per extracted item every
@@ -255,6 +259,10 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     capabilityHints.length > 0
       ? `${systemPrompt}\n\n${capabilityHints.join("\n")}`
       : systemPrompt;
+  const mergedSettings = {
+    ...(agentEntry?.settings ?? {}),
+    ...settings,
+  };
 
   return mergeCharacterDefaults({
     name,
@@ -266,8 +274,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     ...(adjectives ? { adjectives } : {}),
     ...(postExamples ? { postExamples } : {}),
     ...(mappedExamples ? { messageExamples: mappedExamples } : {}),
+    ...(knowledge ? { knowledge } : {}),
     advancedMemory,
-    settings,
+    settings: mergedSettings,
     secrets,
   });
 }

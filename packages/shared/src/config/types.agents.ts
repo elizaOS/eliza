@@ -1,4 +1,6 @@
 import type {
+  CharacterSettings,
+  DocumentSourceItem,
   GroupChatConfig,
   HumanDelayConfig,
   IdentityConfig,
@@ -10,6 +12,12 @@ import type {
   SandboxPruneSettings,
 } from "./types.agent-defaults.js";
 import type { AgentToolsConfig, MemorySearchConfig } from "./types.tools.js";
+
+export type AgentKnowledgeSource =
+  | DocumentSourceItem
+  | string
+  | { path: string; shared?: boolean }
+  | { directory: string; shared?: boolean };
 
 export type AgentModelConfig =
   | string
@@ -63,6 +71,10 @@ export type AgentConfig = {
   /** Example social media posts in Chinese (zh-CN) demonstrating the agent's voice. */
   postExamples_zhCN?: string[];
   messageExamples?: Array<Array<{ user: string; content: { text: string } }>>;
+  /** Per-character runtime settings passed through to @elizaos/core Character. */
+  settings?: CharacterSettings;
+  /** Per-character knowledge sources passed through for document ingestion. */
+  knowledge?: AgentKnowledgeSource[];
   subagents?: {
     /** Allow spawning sub-agents under other agent ids. Use "*" to allow any. */
     allowAgents?: string[];
