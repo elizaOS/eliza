@@ -938,11 +938,7 @@ export async function hasRoleAccess(
 
 	try {
 		const result = await checkSenderRole(context.runtime, context.message);
-		if (!result) {
-			return true;
-		}
-
-		const senderRank = ROLE_RANK[result.role] ?? 0;
+		const senderRank = result ? (ROLE_RANK[result.role] ?? 0) : ROLE_RANK.USER;
 		const requiredRank = ROLE_RANK[requiredRole] ?? 0;
 		return senderRank >= requiredRank;
 	} catch {

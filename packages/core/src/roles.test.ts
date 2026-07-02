@@ -3,6 +3,7 @@ import {
 	CANONICAL_ROLE_RANK,
 	canModifyRole,
 	getEntityRole,
+	hasRoleAccess,
 	isAgentSelf,
 	matchEntityToConnectorAdminWhitelist,
 	normalizeRole,
@@ -71,6 +72,31 @@ describe("isAgentSelf", () => {
 		);
 		expect(isAgentSelf(undefined, { entityId: "agent-1" } as Memory)).toBe(
 			false,
+		);
+	});
+});
+
+describe("hasRoleAccess", () => {
+	it("fails closed to USER rank when a real sender role cannot be resolved", async () => {
+		const runtime = {
+			agentId: "agent-1",
+			getRoom: async () => null,
+			getWorld: async () => null,
+		} as unknown as IAgentRuntime;
+		const message = {
+			entityId: "guest-1",
+			roomId: "missing-room",
+			content: {},
+		} as Memory;
+
+		await expect(hasRoleAccess(runtime, message, "OWNER")).resolves.toBe(false);
+		await expect(hasRoleAccess(runtime, message, "ADMIN")).resolves.toBe(false);
+		await expect(hasRoleAccess(runtime, message, "USER")).resolves.toBe(true);
+	});
+
+	it("keeps local no-context calls lenient", async () => {
+		await expect(hasRoleAccess(undefined, undefined, "OWNER")).resolves.toBe(
+			true,
 		);
 	});
 });
