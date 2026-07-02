@@ -49,8 +49,31 @@ export const SETTINGS_OPS = [
   "toggle_training",
   "set_owner_name",
   "set",
+  "show_backends",
+  "set_backend",
 ] as const;
 export type SettingsOp = (typeof SETTINGS_OPS)[number];
+
+// Coding sub-agent adapters the orchestrator can route to. Mirrors
+// KNOWN_ADAPTER_TYPES in plugin-agent-orchestrator (kept as a literal here so
+// @elizaos/agent does not depend on the orchestrator plugin).
+const CODING_BACKENDS = [
+  "elizaos",
+  "pi-agent",
+  "claude",
+  "codex",
+  "opencode",
+] as const;
+const CODING_BACKEND_ALIASES: Record<string, string> = {
+  "eliza-os": "elizaos",
+  eliza: "elizaos",
+  pi: "pi-agent",
+  "open-code": "opencode",
+  "claude-code": "claude",
+  openai: "codex",
+  "openai-codex": "codex",
+};
+const DIFFICULTY_TAGS = ["simple", "moderate", "hard"] as const;
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -515,6 +538,145 @@ async function handleSet(
   );
 }
 
+// ── op: show_backends / set_backend ──────────────────────────────────────
+//
+// Owner-facing control over which backend handles coding sub-agents (per
+// difficulty) and the chat brain — the "driver agent" routing surface. Coding
+// routing is persisted as the `ELIZA_BACKEND_ROUTING` config-env JSON the
+// orchestrator reads fresh per spawn; the brain provider is `ELIZA_BRAIN_PROVIDER`
+// (read by the runtime's useModel override). Both take effect with no restart.
+
+interface CodingAxisRouting {
+  default?: string;
+  byTag?: Record<string, string>;
+}
+
+export function normalizeCodingBackend(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const v = value.trim().toLowerCase().replace(/_/g, "-");
+  if (!v) return undefined;
+  const resolved = CODING_BACKEND_ALIASES[v] ?? v;
+  return (CODING_BACKENDS as readonly string[]).includes(resolved)
+    ? resolved
+    : undefined;
+}
+
+export function readBackendRouting(config: {
+  env?: Record<string, unknown>;
+}): CodingAxisRouting {
+  const raw = config.env?.ELIZA_BACKEND_ROUTING;
+  let parsed: unknown;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = undefined;
+    }
+  } else {
+    parsed = raw;
+  }
+  const coding =
+    isRecord(parsed) && isRecord(parsed.coding) ? parsed.coding : {};
+  const out: CodingAxisRouting = {};
+  if (typeof coding.default === "string") out.default = coding.default;
+  if (isRecord(coding.byTag)) {
+    const byTag: Record<string, string> = {};
+    for (const [k, val] of Object.entries(coding.byTag)) {
+      if (typeof val === "string") byTag[k.toLowerCase()] = val;
+    }
+    if (Object.keys(byTag).length > 0) out.byTag = byTag;
+  }
+  return out;
+}
+
+function handleShowBackends(runtime: IAgentRuntime): ActionResult {
+  const config = loadElizaConfig() as { env?: Record<string, unknown> };
+  const coding = readBackendRouting(config);
+  const brain =
+    (typeof runtime.getSetting === "function"
+      ? (runtime.getSetting("ELIZA_BRAIN_PROVIDER") as string | null)
+      : null) ?? null;
+  const codingLines = [
+    `- coding default: ${coding.default ?? "(operator pin / planner choice)"}`,
+  ];
+  if (coding.byTag && Object.keys(coding.byTag).length > 0) {
+    for (const [tag, backend] of Object.entries(coding.byTag)) {
+      codingLines.push(`- coding when ${tag}: ${backend}`);
+    }
+  }
+  const text = [
+    "Current backend routing:",
+    ...codingLines,
+    `- chat brain: ${brain || "(boot default)"}`,
+  ].join("\n");
+  return ok(text, {
+    op: "show_backends",
+    coding,
+    brain,
+  });
+}
+
+function handleSetBackend(
+  runtime: IAgentRuntime,
+  params: Record<string, unknown>,
+): ActionResult {
+  const axisRaw =
+    typeof params.axis === "string" ? params.axis.trim().toLowerCase() : "";
+  const axis = axisRaw === "brain" ? "brain" : "coding";
+
+  if (axis === "brain") {
+    const provider = trimToString(params.backend, 64);
+    if (!provider) {
+      return fail(
+        "SETTINGS_BACKEND_INVALID",
+        "set_backend for the brain needs a `backend` provider id (e.g. anthropic, openai, cerebras).",
+      );
+    }
+    const config = loadElizaConfig() as { env?: Record<string, unknown> };
+    config.env = { ...(config.env ?? {}), ELIZA_BRAIN_PROVIDER: provider };
+    saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+    // Immediate effect: the runtime's useModel override reads this via getSetting.
+    runtime.setSetting?.("ELIZA_BRAIN_PROVIDER", provider);
+    return ok(
+      `Chat brain provider set to \`${provider}\`. It takes effect on the next message (it falls back to the default if that provider has no loaded handler).`,
+      { op: "set_backend", axis: "brain", provider },
+    );
+  }
+
+  const backend = normalizeCodingBackend(params.backend);
+  if (!backend) {
+    return fail(
+      "SETTINGS_BACKEND_INVALID",
+      `set_backend for coding needs a known \`backend\`. One of: ${CODING_BACKENDS.join(", ")}.`,
+      { provided: params.backend ?? null },
+    );
+  }
+  const tagRaw =
+    typeof params.tag === "string" ? params.tag.trim().toLowerCase() : "";
+  const tag = (DIFFICULTY_TAGS as readonly string[]).includes(tagRaw)
+    ? tagRaw
+    : "";
+
+  const config = loadElizaConfig() as { env?: Record<string, unknown> };
+  const coding = readBackendRouting(config);
+  if (tag) {
+    coding.byTag = { ...(coding.byTag ?? {}), [tag]: backend };
+  } else {
+    coding.default = backend;
+  }
+  const routing = { coding };
+  config.env = {
+    ...(config.env ?? {}),
+    ELIZA_BACKEND_ROUTING: JSON.stringify(routing),
+  };
+  saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+  const scope = tag ? `${tag} coding tasks` : "coding tasks (default)";
+  return ok(
+    `Routing ${scope} to \`${backend}\`. Takes effect on the next sub-agent spawn — no restart.`,
+    { op: "set_backend", axis: "coding", backend, tag: tag || null },
+  );
+}
+
 // ── Action ───────────────────────────────────────────────────────────────
 
 export const settingsAction: Action = {
@@ -533,13 +695,22 @@ export const settingsAction: Action = {
     "REMEMBER_NAME",
     "SAVE_NAME",
     "SET_NAME",
+    // Backend routing control
+    "SET_BACKEND",
+    "SET_CODING_BACKEND",
+    "SET_BRAIN_BACKEND",
+    "SHOW_BACKENDS",
+    "ROUTE_BACKEND",
   ],
   description:
     "Owner-only polymorphic settings mutation. Dispatches on `action` to update " +
     "AI provider, toggle a capability, toggle/configure auto-training, set " +
-    "the owner display name, or write to the world's settings registry.",
+    "the owner display name, write to the world's settings registry, show the " +
+    "current backend routing (show_backends), or change which backend handles " +
+    "coding sub-agents / the chat brain (set_backend) — e.g. 'use codex for " +
+    "simple tasks and claude for hard ones', 'switch the brain to cerebras'.",
   descriptionCompressed:
-    "owner settings action: AI provider|capability|auto-train|display name|world registry",
+    "owner settings action: AI provider|capability|auto-train|display name|world registry|backend routing",
 
   validate: async () => true,
 
@@ -603,6 +774,27 @@ export const settingsAction: Action = {
       schema: { type: "string" as const },
     },
     {
+      name: "axis",
+      description:
+        "[set_backend] Which backend to change: 'coding' (the coding sub-agent, default) or 'brain' (the chat/planner model).",
+      required: false,
+      schema: { type: "string" as const, enum: ["coding", "brain"] },
+    },
+    {
+      name: "backend",
+      description:
+        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, codex, or opencode. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "tag",
+      description:
+        "[set_backend, coding only] Optional difficulty this routing applies to: 'simple', 'moderate', or 'hard'. Omit to set the default coding backend for all difficulties.",
+      required: false,
+      schema: { type: "string" as const, enum: [...DIFFICULTY_TAGS] },
+    },
+    {
       name: "key",
       description: "[set] Setting registry key.",
       required: false,
@@ -637,6 +829,10 @@ export const settingsAction: Action = {
         return handleSetOwnerName(params);
       case "set":
         return handleSet(runtime, message.entityId, params);
+      case "show_backends":
+        return handleShowBackends(runtime);
+      case "set_backend":
+        return handleSetBackend(runtime, params);
       default:
         return fail(
           "SETTINGS_INVALID",
