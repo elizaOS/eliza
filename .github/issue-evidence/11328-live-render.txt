@@ -1,0 +1,363 @@
+# before-live-deltas-loader-visible at 4ms (0 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   
+  ⠋ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-1 at 287ms (1 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1                                                                         
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-2 at 292ms (40 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta                                  
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-3 at 293ms (41 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-4 at 293ms (42 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-5 at 293ms (54 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line                                                              
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-6 at 298ms (71 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-7 at 298ms (72 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-8 at 298ms (73 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+   3                                                                         
+  ⠸ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-9 at 461ms (101 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+   3. Watch the live delta flow.                                             
+  ⠴ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-10 at 463ms (102 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+   3. Watch the live delta flow.                                             
+  ⠴ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-11 at 463ms (132 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+   3. Watch the live delta flow.                                             
+   4. The live delta updates fast                                            
+  ⠴ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# delta-12 at 463ms (133 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+   3. Watch the live delta flow.                                             
+   4. The live delta updates fast.                                           
+  ⠴ Processing (Esc/Ctrl+C abort)                                            
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Processing... Esc/Ctrl+C abort                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help
+
+# final-response at 482ms (258 assistant chars)
+ Chat: Issue 11328 live streaming evidence (2)
+ You 08:27
+   Do not call tools. Reply in plain text with eight numbered sentences about
+   terminal streaming. Keep each sentence short and include the phrase live  
+   delta in every sentence.                                                  
+ Eliza 08:27
+   1. Terminal streaming shows a live delta.                                 
+   2. Each line is a live delta.                                             
+   3. Watch the live delta flow.                                             
+   4. The live delta updates fast.                                           
+   5. Log files show a live delta.                                           
+   6. A live delta tracks changes.                                           
+   7. Stream the live delta now.                                             
+   8. Every byte is a live delta.                                            
+
+
+
+
+
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ > ─────────────────────────────────────────────────────────────────────────│
+└────────────────────────────────────────────────────────────────────────────┘
+Enter: send • Tab: tasks • Esc: clear • ?: help

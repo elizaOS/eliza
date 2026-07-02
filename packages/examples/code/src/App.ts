@@ -1165,7 +1165,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       const agentClient = getAgentClient();
       const placeholder = state.addMessage(roomId, "assistant", "", undefined);
       placeholderId = placeholder.id;
-      await agentClient.sendMessage({
+      const response = await agentClient.sendMessage({
         room,
         text,
         identity: state.identity,
@@ -1176,6 +1176,11 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
           this.tui.requestRender();
         },
       });
+
+      if (response && !turnAbortController.signal.aborted) {
+        state.setMessageContent(roomId, placeholder.id, response);
+        this.tui.requestRender();
+      }
 
       if (turnAbortController.signal.aborted) {
         if (placeholderId) {
