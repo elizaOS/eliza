@@ -799,10 +799,12 @@ class AdvertisingService {
    *     credit units at the same markup applied at allocation). Best-effort
    *     refreshed from the provider first so a never-synced campaign can't
    *     under-count spend and over-refund.
-   * Takes the MAX of the two measures (never double-count) and clamps to the
-   * allocation, so a refund derived from `allocated - spent` can never return
-   * credits already spent on real impressions. Shared by deleteCampaign and the
-   * updateCampaign budget-decrease refund (#11292).
+   * SUMS the two measures and clamps to the allocation (restoring merged
+   * #11255 semantics): the streams are additive, not alternative —
+   * findEligibleAd serves EXTERNAL campaigns through the internal SSP too, so
+   * credits_spent and total_spend accrue independently on one campaign, and
+   * MAX would under-count dual-stream spend and over-refund. Shared by
+   * deleteCampaign and the updateCampaign budget-decrease refund (#11292).
    */
   private async computeCreditsSpent(campaign: {
     id: string;
@@ -832,7 +834,7 @@ class AdvertisingService {
     const markup = budgetAmountUsd > 0 ? creditsAllocated / budgetAmountUsd : 1;
     const internalSpentCredits = Math.max(0, parseFloat(campaign.credits_spent));
     const externalSpentCredits = Math.max(0, totalSpendUsd) * markup;
-    return Math.min(creditsAllocated, Math.max(internalSpentCredits, externalSpentCredits));
+    return Math.min(creditsAllocated, internalSpentCredits + externalSpentCredits);
   }
 
   async deleteCampaign(campaignId: string, organizationId: string): Promise<void> {
@@ -880,9 +882,16 @@ class AdvertisingService {
         metadata: { campaignId, campaignName: campaign.name },
       });
 
+      // The campaign row is already deleted by claimDelete, so a campaign_id
+      // here would violate the ad_transactions FK (23503) and 500 every
+      // refunding delete AFTER the refund committed — dropping the ledger row
+      // (onDelete:'set null' rewrites existing rows; it does not permit a
+      // dangling insert). Keep the deleted id in external_reference, matching
+      // the merged #11255 fix this branch predates.
       await adTransactionsRepository.create({
         organization_id: organizationId,
-        campaign_id: campaignId,
+        campaign_id: null,
+        external_reference: campaignId,
         type: "refund",
         amount: String(creditsRemaining),
         currency: campaign.budget_currency,
