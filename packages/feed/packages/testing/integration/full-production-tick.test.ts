@@ -457,7 +457,15 @@ describe("Full Production Tick Integration Test", () => {
           windowsGenerated: genResult.windowsGenerated,
         });
 
-        expect(true).toBe(true);
+        expect(typeof genResult.generated).toBe("boolean");
+        expect(genResult.windowsGenerated).toBeGreaterThanOrEqual(0);
+        expect(statusAfter.minutesAhead).toBeGreaterThanOrEqual(
+          genResult.generated ? statusBefore.minutesAhead : 0,
+        );
+        if (genResult.generated) {
+          expect(genResult.windowsGenerated).toBeGreaterThan(0);
+          expect(statusAfter.minutesAhead).toBeGreaterThanOrEqual(5);
+        }
       },
     );
   });

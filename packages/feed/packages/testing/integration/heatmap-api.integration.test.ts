@@ -461,7 +461,7 @@ describe("Heatmap API", () => {
         `/api/admin/stats/heatmap?type=${longValue}`,
       );
 
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(400);
     });
   });
 

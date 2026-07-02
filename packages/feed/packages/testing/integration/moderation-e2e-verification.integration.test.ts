@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { User } from "@feed/db";
 import {
   db,
+  filterPostsByModeration,
   getBlockedByUserIds,
   getBlockedUserIds,
   getMutedUserIds,
@@ -336,9 +337,7 @@ describe("Feed Filtering - Integration", () => {
       { id: post2.id, authorId: testUser3.id },
     ];
 
-    const filteredPosts = allPosts.filter(
-      (post) => !allExcludedIds.includes(post.authorId),
-    );
+    const filteredPosts = filterPostsByModeration(allPosts, allExcludedIds);
 
     // Both should be filtered out
     expect(filteredPosts.length).toBe(0);

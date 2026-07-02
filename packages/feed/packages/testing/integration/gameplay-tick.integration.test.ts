@@ -384,9 +384,7 @@ describe("Gameplay Tick Integration", () => {
 
       clearTimeout(timeoutId);
 
-      // Should return 200 or handle gracefully
-      expect(response.status).toBeGreaterThanOrEqual(200);
-      expect(response.status).toBeLessThan(500);
+      expect(response.status).toBe(200);
 
       if (response.ok) {
         const data = await response.json();

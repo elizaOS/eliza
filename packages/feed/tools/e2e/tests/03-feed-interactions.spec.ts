@@ -172,7 +172,7 @@ test.describe("Feed Interactions", () => {
     );
     await likeBtn.click({ force: true });
     const response = await likeResponse;
-    expect(response.status()).toBeLessThan(500);
+    expect(response.status()).toBe(200);
   });
 
   test("comment section opens on post", async ({ page }) => {

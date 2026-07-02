@@ -19,10 +19,10 @@ const BASE_URL =
   "http://127.0.0.1:3400";
 
 test.describe("Admin Registry Panel", () => {
-  // Skip: Registry tab has an RSC rendering error ("Event handlers cannot be passed to
-  // Client Component props") that prevents content from loading. This is a pre-existing
-  // UI issue unrelated to test infrastructure.
-  test.skip();
+  test.skip(
+    true,
+    'Registry tab has a pre-existing RSC rendering error: "Event handlers cannot be passed to Client Component props".',
+  );
 
   test.beforeEach(async ({ page }) => {
     // Navigate to admin panel (assumes admin authentication is handled)
@@ -175,8 +175,10 @@ test.describe("Admin Registry Panel", () => {
         page.keyboard.press("Escape");
       });
     } else {
-      // Skip test if no feedback buttons available
-      test.skip();
+      test.skip(
+        true,
+        "Registry fixture has no agent feedback buttons to open a feedback modal.",
+      );
     }
   });
 
@@ -208,8 +210,10 @@ test.describe("Admin Registry Panel", () => {
       // Close modal
       await page.click('button:has-text("Cancel")');
     } else {
-      // Skip test if no ban buttons available
-      test.skip();
+      test.skip(
+        true,
+        "Registry fixture has no bannable users to open a ban modal.",
+      );
     }
   });
 

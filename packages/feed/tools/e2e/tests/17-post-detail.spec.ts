@@ -123,7 +123,7 @@ test.describe("Post Detail - Interactions", () => {
     );
     await likeBtn.click({ force: true });
     const response = await likeResponse;
-    expect(response.status()).toBeLessThan(500);
+    expect(response.status()).toBe(200);
   });
 
   test("share button on post detail", async ({ page }) => {
@@ -183,9 +183,7 @@ test.describe("Post Detail - Comments", () => {
 
   test("reply button on comments", async ({ page }) => {
     // Reply affordances exist only when the post already has comments.
-    const comment = page
-      .locator('[data-testid*="comment"], .comment')
-      .first();
+    const comment = page.locator('[data-testid*="comment"], .comment').first();
     const hasComments = await comment
       .isVisible({ timeout: 5000 })
       .catch(() => false);

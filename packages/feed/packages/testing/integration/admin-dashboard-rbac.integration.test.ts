@@ -663,7 +663,7 @@ describe("Admin Dashboard RBAC Integration Tests", () => {
       });
       expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.error.message).toContain("expected one of");
+      expect(data.error.message).toBe("Invalid input");
     });
 
     test("POST /api/admin/roles - rejects invalid action", async () => {
@@ -759,15 +759,11 @@ describe("Admin Dashboard RBAC Integration Tests", () => {
     test("invalid JSON body returns 400", async () => {
       requireAuth();
 
-      const res = await fetch(`${BASE_URL}/api/admin/roles`, {
+      const res = await adminRequest("/api/admin/roles", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-dev-admin-token": devAdminToken!,
-        },
         body: "not valid json {{{",
       });
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(400);
     });
 
     test("error responses do not expose stack traces", async () => {
@@ -849,7 +845,7 @@ describe("Admin Dashboard RBAC Integration Tests", () => {
         "/api/admin/stats/users?userType='; DROP TABLE users; --",
       );
 
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
 
     test("very long query params handled gracefully", async () => {
@@ -860,7 +856,7 @@ describe("Admin Dashboard RBAC Integration Tests", () => {
         `/api/admin/stats/users?userType=${longValue}`,
       );
 
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(200);
     });
   });
 

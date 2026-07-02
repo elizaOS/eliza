@@ -31,9 +31,23 @@ import {
 
 // ─── Helper: check if embeddings are available ──────────────────────────────
 
+const embeddingProviderConfigured = Boolean(
+  process.env.ELIZACLOUD_API_KEY || process.env.OPENAI_API_KEY,
+);
+
 async function embeddingsAvailable(): Promise<boolean> {
   const emb = await getEmbedding("test");
   return emb !== null;
+}
+
+function requireEmbedding(
+  embedding: number[] | null,
+  label: string,
+): asserts embedding is number[] {
+  expect(
+    embedding,
+    `${label} embedding must be available; configure the embedding provider instead of green-passing this semantic grounding test.`,
+  ).not.toBeNull();
 }
 
 // ─── Layer 1: Quality Gate Blocks Contaminated Content ──────────────────────
@@ -210,58 +224,60 @@ describe("Layer 2 — generationDepth prevents recursive amplification", () => {
 // ─── Layer 3: Embedding Grounding Catches Semantic Drift ────────────────────
 
 describe("Layer 3 — [EMBEDDING] semantic grounding catches drift", () => {
-  test("[EMBEDDING] topically related content has high cosine similarity", async () => {
-    const source =
-      "Bitcoin price reaches new all-time high as cryptocurrency adoption accelerates globally";
-    const related =
-      "The cryptocurrency market rallied with Bitcoin hitting record prices amid growing global adoption.";
+  test.skipIf(!embeddingProviderConfigured)(
+    "[EMBEDDING] topically related content has high cosine similarity",
+    async () => {
+      const source =
+        "Bitcoin price reaches new all-time high as cryptocurrency adoption accelerates globally";
+      const related =
+        "The cryptocurrency market rallied with Bitcoin hitting record prices amid growing global adoption.";
 
-    const sourceEmb = await getEmbedding(source);
-    const relatedEmb = await getEmbedding(related);
+      const sourceEmb = await getEmbedding(source);
+      const relatedEmb = await getEmbedding(related);
 
-    if (!sourceEmb || !relatedEmb) {
-      // Graceful skip when embeddings unavailable
-      expect(true).toBe(true);
-      return;
-    }
+      requireEmbedding(sourceEmb, "source");
+      requireEmbedding(relatedEmb, "related");
 
-    const similarity = cosineSimilarity(sourceEmb, relatedEmb);
-    expect(similarity).toBeGreaterThan(0.7);
-  });
+      const similarity = cosineSimilarity(sourceEmb, relatedEmb);
+      expect(similarity).toBeGreaterThan(0.7);
+    },
+  );
 
-  test("[EMBEDDING] completely unrelated content has low cosine similarity", async () => {
-    const source =
-      "Federal Reserve announces interest rate decision after reviewing inflation data";
-    const unrelated =
-      "The ancient art of origami requires precise paper folding techniques passed down through generations";
+  test.skipIf(!embeddingProviderConfigured)(
+    "[EMBEDDING] completely unrelated content has low cosine similarity",
+    async () => {
+      const source =
+        "Federal Reserve announces interest rate decision after reviewing inflation data";
+      const unrelated =
+        "The ancient art of origami requires precise paper folding techniques passed down through generations";
 
-    const sourceEmb = await getEmbedding(source);
-    const unrelatedEmb = await getEmbedding(unrelated);
+      const sourceEmb = await getEmbedding(source);
+      const unrelatedEmb = await getEmbedding(unrelated);
 
-    if (!sourceEmb || !unrelatedEmb) {
-      expect(true).toBe(true);
-      return;
-    }
+      requireEmbedding(sourceEmb, "source");
+      requireEmbedding(unrelatedEmb, "unrelated");
 
-    const similarity = cosineSimilarity(sourceEmb, unrelatedEmb);
-    expect(similarity).toBeLessThan(0.3);
-  });
+      const similarity = cosineSimilarity(sourceEmb, unrelatedEmb);
+      expect(similarity).toBeLessThan(0.3);
+    },
+  );
 
-  test("[EMBEDDING] verbatim copy detected by near-1.0 similarity", async () => {
-    const text =
-      "Market analysts predict continued growth in the technology sector driven by AI advancement";
+  test.skipIf(!embeddingProviderConfigured)(
+    "[EMBEDDING] verbatim copy detected by near-1.0 similarity",
+    async () => {
+      const text =
+        "Market analysts predict continued growth in the technology sector driven by AI advancement";
 
-    const emb1 = await getEmbedding(text);
-    const emb2 = await getEmbedding(text);
+      const emb1 = await getEmbedding(text);
+      const emb2 = await getEmbedding(text);
 
-    if (!emb1 || !emb2) {
-      expect(true).toBe(true);
-      return;
-    }
+      requireEmbedding(emb1, "first copy");
+      requireEmbedding(emb2, "second copy");
 
-    const similarity = cosineSimilarity(emb1, emb2);
-    expect(similarity).toBeGreaterThan(0.98);
-  });
+      const similarity = cosineSimilarity(emb1, emb2);
+      expect(similarity).toBeGreaterThan(0.98);
+    },
+  );
 
   test("[EMBEDDING] grounding rejects content that drifts semantically even with keyword overlap", async () => {
     // Keywords overlap ("market", "technology", "growth") but meaning drifts

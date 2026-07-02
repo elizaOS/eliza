@@ -73,9 +73,12 @@ type PredictionMarket = {
   resolved: boolean;
 };
 
-function skipUnless<T>(value: T | null | undefined): asserts value is T {
+function skipUnless<T>(
+  value: T | null | undefined,
+  reason: string,
+): asserts value is T {
   if (value == null) {
-    test.skip();
+    test.skip(true, reason);
   }
 }
 
@@ -153,7 +156,7 @@ test.describe("Prediction Market Trading (Simulation)", () => {
     );
 
     const market = questions.find((q) => !q.resolved && q.status === "active");
-    skipUnless(market);
+    skipUnless(market, "No active unresolved prediction market fixture.");
 
     const result = await apiPost<PredictionBuyResponse>(
       `/api/markets/predictions/${market.id}/buy`,
@@ -177,7 +180,7 @@ test.describe("Prediction Market Trading (Simulation)", () => {
     );
 
     const market = questions.find((q) => !q.resolved && q.status === "active");
-    skipUnless(market);
+    skipUnless(market, "No active unresolved prediction market fixture.");
 
     const result = await apiPost<PredictionBuyResponse>(
       `/api/markets/predictions/${market.id}/buy`,
