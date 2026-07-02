@@ -363,15 +363,22 @@ export function storedMediaContentMatchesName(
   return actual === expected;
 }
 
-const DATA_URL_RE = /^data:([^;,]*)(;base64)?,([\s\S]*)$/;
+// Header (everything between `data:` and the first comma) + payload. The
+// header is parsed token-wise below because RFC 2397 allows media-type
+// parameters before the `;base64` flag (`data:text/plain;charset=utf-8;base64,…`)
+// — a regex that only accepted `mime(;base64)?,` silently rejected those
+// valid URLs, so their raw base64 stayed inline in the message record.
+const DATA_URL_RE = /^data:([^,]*),([\s\S]*)$/;
 
 /** Persist a `data:` URL's bytes to the store; returns null for non-data URLs. */
 export function persistDataUrl(dataUrl: string): PersistedMedia | null {
   const match = DATA_URL_RE.exec(dataUrl.trim());
   if (!match) return null;
-  const mimeType = match[1] || "application/octet-stream";
-  const isBase64 = Boolean(match[2]);
-  const payload = match[3] ?? "";
+  const header = match[1] ?? "";
+  const payload = match[2] ?? "";
+  const tokens = header.split(";");
+  const mimeType = (tokens.shift() ?? "").trim() || "application/octet-stream";
+  const isBase64 = tokens.some((token) => token.trim() === "base64");
   let buffer: Buffer;
   try {
     buffer = isBase64

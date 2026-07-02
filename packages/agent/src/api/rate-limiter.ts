@@ -24,6 +24,8 @@ export interface RateLimitResult {
 
 interface RateLimitEntry {
   timestamps: number[];
+  /** The window this key was last checked with — used by the sweep. */
+  windowMs: number;
 }
 
 const buckets = new Map<string, RateLimitEntry>();
@@ -32,12 +34,18 @@ const buckets = new Map<string, RateLimitEntry>();
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1_000;
 let lastCleanup = Date.now();
 
-function cleanup(windowMs: number): void {
+/**
+ * Prune every bucket by ITS OWN window. The sweep used to reuse the calling
+ * endpoint's `windowMs` for the whole map, so any check with a short window
+ * would wipe still-valid history from keys tracked with a longer window —
+ * silently resetting those limits.
+ */
+function cleanup(): void {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
   lastCleanup = now;
-  const cutoff = now - windowMs;
   for (const [key, entry] of buckets) {
+    const cutoff = now - entry.windowMs;
     entry.timestamps = entry.timestamps.filter((t) => t > cutoff);
     if (entry.timestamps.length === 0) buckets.delete(key);
   }
@@ -52,13 +60,15 @@ export function checkRateLimit(
   config: RateLimitConfig,
 ): RateLimitResult {
   const now = Date.now();
-  cleanup(config.windowMs);
+  cleanup();
 
   let entry = buckets.get(key);
   if (!entry) {
-    entry = { timestamps: [] };
+    entry = { timestamps: [], windowMs: config.windowMs };
     buckets.set(key, entry);
   }
+  // Keep the sweep window in sync if a key's config ever changes.
+  entry.windowMs = config.windowMs;
 
   // Evict timestamps outside the sliding window.
   const cutoff = now - config.windowMs;
@@ -77,7 +87,8 @@ export function checkRateLimit(
   return { allowed: true, retryAfterMs: 0 };
 }
 
-/** Clear all rate limit state. Useful in tests. */
+/** Clear all rate limit state (buckets + sweep clock). Useful in tests. */
 export function resetRateLimits(): void {
   buckets.clear();
+  lastCleanup = Date.now();
 }

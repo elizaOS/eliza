@@ -146,6 +146,38 @@ describe("media-store", () => {
     expect(persistDataUrl("https://example.com/x.png")).toBeNull();
   });
 
+  it("persists a base64 data URL with media-type parameters (RFC 2397)", () => {
+    // `;charset=utf-8` before `;base64` is valid — a parser that only accepts
+    // `mime(;base64)?,` rejects it and the raw base64 stays inline.
+    const payload = Buffer.from("hello params").toString("base64");
+    const out = persistDataUrl(
+      `data:text/plain;charset=utf-8;base64,${payload}`,
+    );
+    expect(out).not.toBeNull();
+    expect(out?.url).toMatch(/^\/api\/media\/[a-f0-9]{64}\.txt$/);
+    expect(fs.readFileSync(mediaPath(out?.fileName ?? "")).toString()).toBe(
+      "hello params",
+    );
+  });
+
+  it("decodes a parameterized non-base64 data URL as percent-encoded text", () => {
+    const out = persistDataUrl("data:text/plain;charset=utf-8,hi%20there");
+    expect(out).not.toBeNull();
+    expect(fs.readFileSync(mediaPath(out?.fileName ?? "")).toString()).toBe(
+      "hi there",
+    );
+  });
+
+  it("still routes parameterized SVG data URLs through the markup path (stored as .svg, not inline-safe)", () => {
+    const svg =
+      "<svg xmlns='http://www.w3.org/2000/svg'><script>1</script></svg>";
+    const out = persistDataUrl(
+      `data:image/svg+xml;charset=utf-8;base64,${Buffer.from(svg).toString("base64")}`,
+    );
+    expect(out).not.toBeNull();
+    expect(out?.fileName.endsWith(".svg")).toBe(true);
+  });
+
   it("recognizes stored media URLs", () => {
     expect(isStoredMediaUrl("/api/media/abc.png")).toBe(true);
     expect(isStoredMediaUrl("https://example.com/x.png")).toBe(false);

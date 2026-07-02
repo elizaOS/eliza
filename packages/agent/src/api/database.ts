@@ -27,6 +27,7 @@ import {
   type ColumnInfo,
   type ConnectionTestResult,
   type DatabaseStatus,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
   type QueryResult,
   resolveApiBindHost,
@@ -766,6 +767,32 @@ async function handleGetTables(
   sendJson(res, { tables });
 }
 
+const ROWS_DEFAULT_LIMIT = 50;
+const ROWS_MAX_LIMIT = 500;
+
+/**
+ * Parse + clamp the `offset`/`limit` query params for row pagination. The
+ * values are interpolated into the SQL `LIMIT ... OFFSET ...` clause, so they
+ * MUST come out as safe non-negative integers: `Math.max(0, Number("abc"))` is
+ * `NaN` (Math.max propagates NaN), and a raw `Number()` also lets through
+ * floats ("1.5") and "Infinity" — all of which previously reached the query
+ * text and made the whole request 500. Non-numeric/unsafe input falls back to
+ * the defaults; out-of-range integers clamp. Exported for unit tests.
+ */
+export function parseRowsPagination(
+  offsetRaw: string | null,
+  limitRaw: string | null,
+): { offset: number; limit: number } {
+  return {
+    offset: parseClampedInteger(offsetRaw, { fallback: 0, min: 0 }),
+    limit: parseClampedInteger(limitRaw, {
+      fallback: ROWS_DEFAULT_LIMIT,
+      min: 1,
+      max: ROWS_MAX_LIMIT,
+    }),
+  };
+}
+
 /**
  * GET /api/database/tables/:table/rows?offset=0&limit=50&sort=col&order=asc&search=term
  * Paginated row retrieval for a specific table.
@@ -780,10 +807,9 @@ async function handleGetRows(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   );
-  const offset = Math.max(0, Number(url.searchParams.get("offset") ?? "0"));
-  const limit = Math.min(
-    500,
-    Math.max(1, Number(url.searchParams.get("limit") ?? "50")),
+  const { offset, limit } = parseRowsPagination(
+    url.searchParams.get("offset"),
+    url.searchParams.get("limit"),
   );
   const sortCol = url.searchParams.get("sort") ?? "";
   const sortOrder = url.searchParams.get("order") === "desc" ? "DESC" : "ASC";
