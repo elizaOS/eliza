@@ -18,9 +18,9 @@ import {
   test,
 } from "bun:test";
 import { Hono } from "hono";
+import * as realFrontendRepo from "@/db/repositories/app-frontend-deployments";
 import type { AppFrontendDeployment } from "@/db/schemas/app-frontend-deployments";
 import { sha256Hex } from "@/lib/services/app-frontend-hosting";
-import * as realFrontendRepo from "@/db/repositories/app-frontend-deployments";
 import * as realApps from "@/lib/services/apps";
 import * as realManaged from "@/lib/services/managed-domains";
 import {
@@ -136,7 +136,10 @@ beforeAll(async () => {
 afterAll(() => {
   mock.module("@/lib/services/apps", () => realApps);
   mock.module("@/lib/services/managed-domains", () => realManaged);
-  mock.module("@/db/repositories/app-frontend-deployments", () => realFrontendRepo);
+  mock.module(
+    "@/db/repositories/app-frontend-deployments",
+    () => realFrontendRepo,
+  );
   setRuntimeR2Bucket(null);
 });
 
@@ -188,7 +191,9 @@ describe("public hosted-frontend serve", () => {
     expect(res.headers.get("content-type")).toContain("text/plain");
     const body = await res.text();
     expect(body).toContain("User-agent: *");
-    expect(body).toContain("Sitemap: https://cool.sites.elizacloud.ai/sitemap.xml");
+    expect(body).toContain(
+      "Sitemap: https://cool.sites.elizacloud.ai/sitemap.xml",
+    );
   });
 
   test("synthesizes sitemap.xml for a hosted frontend", async () => {

@@ -27,13 +27,13 @@ import { tokenMatches } from "./auth/tokens.js";
 import { isTrustedLocalRequest } from "./compat-route-shared.js";
 import { sendJsonError } from "./response.js";
 
-export { tokenMatches } from "./auth/tokens.js";
 export {
   type AuthContextSource,
   type EnsureSessionOptions,
   ensureSessionForRequest,
   type ResolvedAuthContext,
 } from "./auth/auth-context.js";
+export { tokenMatches } from "./auth/tokens.js";
 
 interface CompatStateLike {
   current:

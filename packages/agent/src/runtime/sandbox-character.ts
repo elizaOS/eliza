@@ -15,7 +15,7 @@
  * so it is inert for every non-provisioned runtime.
  */
 
-import { logger, type CharacterSettings } from "@elizaos/core";
+import { type CharacterSettings, logger } from "@elizaos/core";
 import type { AgentConfig } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 

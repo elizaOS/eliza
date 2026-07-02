@@ -274,10 +274,7 @@ describe("AppFrontendHosting — DB invariants + GC + failure cleanup (#10690 re
       .select({ version: appFrontendDeployments.version })
       .from(appFrontendDeployments)
       .where(
-        and(
-          eq(appFrontendDeployments.app_id, appId),
-          eq(appFrontendDeployments.status, "active"),
-        ),
+        and(eq(appFrontendDeployments.app_id, appId), eq(appFrontendDeployments.status, "active")),
       );
     expect(activeRows).toHaveLength(1);
     expect(activeRows[0]?.version).toBe(1);

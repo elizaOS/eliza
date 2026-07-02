@@ -42,16 +42,16 @@ import {
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import {
+  isUsdcPayoutNetwork,
+  type PayoutAsset,
+  USDC_PAYOUT_NETWORKS,
+} from "../config/payout-assets";
+import {
   checkKnownAddress,
   FRAUD_THRESHOLDS,
   getNonEOAWarning,
   getWalletRecommendation,
 } from "../config/redemption-addresses";
-import {
-  isUsdcPayoutNetwork,
-  type PayoutAsset,
-  USDC_PAYOUT_NETWORKS,
-} from "../config/payout-assets";
 import { ARBITRAGE_PROTECTION } from "../config/redemption-security";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";

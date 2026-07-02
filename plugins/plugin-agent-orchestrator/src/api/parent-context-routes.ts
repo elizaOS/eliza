@@ -13,8 +13,8 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
 import {
-  TERMINAL_SESSION_STATUSES,
   type SessionInfo,
+  TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import { sendJson } from "./route-utils.js";

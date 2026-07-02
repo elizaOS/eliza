@@ -15,16 +15,7 @@
  * asserts the exact bytes that would land in Postgres.
  */
 
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  spyOn,
-  test,
-} from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 
 import * as realHelpersNs from "../../db/helpers";
@@ -98,10 +89,9 @@ function sandboxRow(env: Record<string, string>): AgentSandbox {
 let storedRow: AgentSandbox;
 let capturedUpdate: Record<string, unknown> | undefined;
 
-const findSpy = spyOn(
-  agentSandboxesRepository,
-  "findByIdAndOrg",
-).mockImplementation(async () => storedRow);
+const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+  async () => storedRow,
+);
 const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
   async (_id, data) => {
     capturedUpdate = data as Record<string, unknown>;
@@ -129,19 +119,12 @@ afterAll(() => {
   updateSpy.mockRestore();
 });
 
-async function patchEnv(
-  env: Record<string, string>,
-): Promise<Record<string, string>> {
+async function patchEnv(env: Record<string, string>): Promise<Record<string, string>> {
   const { elizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-  const updated = await elizaSandboxService.updateAgentEnvironment(
-    AGENT_ID,
-    ORG_ID,
-    env,
-  );
+  const updated = await elizaSandboxService.updateAgentEnvironment(AGENT_ID, ORG_ID, env);
   expect(updated).toBeDefined();
   expect(capturedUpdate).toBeDefined();
-  return (capturedUpdate as { environment_vars: Record<string, string> })
-    .environment_vars;
+  return (capturedUpdate as { environment_vars: Record<string, string> }).environment_vars;
 }
 
 describe("agent environment secrets are encrypted at rest (#11332)", () => {
@@ -160,18 +143,14 @@ describe("agent environment secrets are encrypted at rest (#11332)", () => {
     expect(stored.ELIZA_PLUGIN_SET).toBe("lean-chat");
 
     // Round-trip: materialization returns the real value to the container.
-    const { decryptAgentEnvVars } = await import(
-      "./agent-env-crypto.ts?actual"
-    );
+    const { decryptAgentEnvVars } = await import("./agent-env-crypto.ts?actual");
     const materialized = await decryptAgentEnvVars(stored);
     expect(materialized.ANTHROPIC_API_KEY).toBe(SECRET);
     expect(materialized.ELIZA_PLUGIN_SET).toBe("lean-chat");
   });
 
   test("a legacy plaintext row materializes unchanged (no backfill required)", async () => {
-    const { decryptAgentEnvVars } = await import(
-      "./agent-env-crypto.ts?actual"
-    );
+    const { decryptAgentEnvVars } = await import("./agent-env-crypto.ts?actual");
     const legacy = {
       OPENAI_API_KEY: "sk-legacy-plaintext-row",
       ELIZA_UI_ENABLE: "true",
@@ -210,9 +189,7 @@ describe("agent environment secrets are encrypted at rest (#11332)", () => {
     expect(second.OPENAI_API_KEY).toBe(firstCiphertext);
     expect(second.GITHUB_TOKEN.startsWith("enc:v1:")).toBe(true);
 
-    const { decryptAgentEnvVars } = await import(
-      "./agent-env-crypto.ts?actual"
-    );
+    const { decryptAgentEnvVars } = await import("./agent-env-crypto.ts?actual");
     const materialized = await decryptAgentEnvVars(second);
     expect(materialized.OPENAI_API_KEY).toBe("sk-first-secret");
     expect(materialized.GITHUB_TOKEN).toBe("ghp_new_secret");
@@ -225,20 +202,16 @@ describe("agent environment secrets are encrypted at rest (#11332)", () => {
   });
 
   test("decrypt failure fails closed with the key name — never ships ciphertext as a secret", async () => {
-    const { decryptAgentEnvVars } = await import(
-      "./agent-env-crypto.ts?actual"
-    );
+    const { decryptAgentEnvVars } = await import("./agent-env-crypto.ts?actual");
     const stored = await patchEnv({ ANTHROPIC_API_KEY: SECRET });
     const corrupted = `${stored.ANTHROPIC_API_KEY.slice(0, -6)}AAAAAA`;
-    expect(
-      decryptAgentEnvVars({ ANTHROPIC_API_KEY: corrupted }),
-    ).rejects.toThrow(/ANTHROPIC_API_KEY/);
+    expect(decryptAgentEnvVars({ ANTHROPIC_API_KEY: corrupted })).rejects.toThrow(
+      /ANTHROPIC_API_KEY/,
+    );
   });
 
   test("sensitivity classifier: BYO secrets in, platform tokens and plain config out", async () => {
-    const { isSensitiveAgentEnvKey } = await import(
-      "./agent-env-crypto.ts?actual"
-    );
+    const { isSensitiveAgentEnvKey } = await import("./agent-env-crypto.ts?actual");
     // user BYO secrets — encrypted
     expect(isSensitiveAgentEnvKey("ANTHROPIC_API_KEY")).toBe(true);
     expect(isSensitiveAgentEnvKey("OPENAI_API_KEY")).toBe(true);

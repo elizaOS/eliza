@@ -2,7 +2,12 @@ import type http from "node:http";
 import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import { handleModelTesterRoute } from "./routes.js";
 
-function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
+type NodeRouteRequest = RouteRequest & http.IncomingMessage;
+type NodeRouteResponse = RouteResponse & http.ServerResponse;
+
+function assertHttpIncomingMessage(
+  req: RouteRequest,
+): asserts req is NodeRouteRequest {
   if (
     typeof req !== "object" ||
     req === null ||
@@ -11,10 +16,11 @@ function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
   ) {
     throw new TypeError("Model tester routes require a Node HTTP request");
   }
-  return req as unknown as http.IncomingMessage;
 }
 
-function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
+function assertHttpServerResponse(
+  res: RouteResponse,
+): asserts res is NodeRouteResponse {
   if (
     typeof res !== "object" ||
     res === null ||
@@ -23,7 +29,16 @@ function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
   ) {
     throw new TypeError("Model tester routes require a Node HTTP response");
   }
-  return res as unknown as http.ServerResponse;
+}
+
+function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
+  assertHttpIncomingMessage(req);
+  return req;
+}
+
+function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
+  assertHttpServerResponse(res);
+  return res;
 }
 
 const modelTesterRoutes: Route[] = [

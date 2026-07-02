@@ -37,23 +37,24 @@ class FinalizationRegistryPolyfill {
   unregister(_unregisterToken: object): void {}
 }
 
-const root: typeof globalThis & {
+const root = globalThis as Omit<
+  typeof globalThis,
+  "MessagePort" | "MessageChannel" | "FinalizationRegistry"
+> & {
   MessagePort?: unknown;
   MessageChannel?: unknown;
   FinalizationRegistry?: unknown;
-} = globalThis;
+};
 
 // These casts assign minimal polyfill classes to the global slots normally
 // occupied by Web IDL builtins. The polyfills are structurally compatible
 // enough for the transitive dependencies that reference them during init.
 if (root.MessagePort === undefined) {
-  root.MessagePort = MessagePortPolyfill as typeof MessagePort;
+  root.MessagePort = MessagePortPolyfill;
 }
 if (root.MessageChannel === undefined) {
-  root.MessageChannel =
-    MessageChannelPolyfill as unknown as typeof MessageChannel;
+  root.MessageChannel = MessageChannelPolyfill;
 }
 if (root.FinalizationRegistry === undefined) {
-  root.FinalizationRegistry =
-    FinalizationRegistryPolyfill as unknown as typeof FinalizationRegistry;
+  root.FinalizationRegistry = FinalizationRegistryPolyfill;
 }

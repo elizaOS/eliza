@@ -111,10 +111,7 @@ describe("decodeMonoPcm16Wav — committed fixture corpus (real WAV files)", () 
 });
 
 const FREEMAN_WAV = fileURLToPath(
-	new URL(
-		"../../../native/audio-fixtures/freeman.wav",
-		import.meta.url,
-	),
+	new URL("../../../native/audio-fixtures/freeman.wav", import.meta.url),
 );
 const hasFreeman = existsSync(FREEMAN_WAV);
 const describeFreeman = hasFreeman ? describe : describe.skip;

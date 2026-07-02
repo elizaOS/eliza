@@ -679,13 +679,21 @@ describe("splitCommandLine", () => {
       },
     });
     expect(() =>
-      emitJson(p, { jsonrpc: "2.0", method: "session/update", params: { x: 1 } }),
+      emitJson(p, {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: { x: 1 },
+      }),
     ).not.toThrow();
     // The client is still healthy: a fresh request round-trips.
     const created = client.createSession("/tmp/native-acp/work");
     await waitForWrites(p, 2);
     const call = writeAt(p, p.stdinWrites.length - 1);
-    emitJson(p, { jsonrpc: "2.0", id: call.id as number, result: { sessionId: "s1" } });
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: call.id as number,
+      result: { sessionId: "s1" },
+    });
     await expect(created).resolves.toMatchObject({ sessionId: "s1" });
     expect(seen.length).toBeGreaterThan(0);
   });
@@ -696,6 +704,8 @@ describe("splitCommandLine", () => {
         throw new Error("stderr observer boom");
       },
     });
-    expect(() => p.stderr.emit("data", Buffer.from("a log line"))).not.toThrow();
+    expect(() =>
+      p.stderr.emit("data", Buffer.from("a log line")),
+    ).not.toThrow();
   });
 });

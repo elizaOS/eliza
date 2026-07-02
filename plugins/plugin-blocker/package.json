@@ -80,9 +80,11 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
+    "@elizaos/tui": "workspace:*",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.28.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
