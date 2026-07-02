@@ -4100,13 +4100,6 @@ export function ContinuousChatOverlay({
             "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
           )}
         >
-          {/* AX-tree mirror of data-detent: the native gesture e2e suites
-              (XCUITest) can only observe web state through the accessibility
-              tree, and data attributes never surface there. sr-only text does.
-              Not aria-live — it never announces on its own. */}
-          <span className="sr-only" data-testid="chat-detent-probe">
-            {`chat-detent:${detentLabel}`}
-          </span>
           {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
               corner radius. Crossfades in by openProgress (compositor opacity). */}
           <motion.div
@@ -4150,6 +4143,15 @@ export function ContinuousChatOverlay({
                 : null),
             }}
           />
+          {/* AX-tree mirror of data-detent: the native gesture e2e suites
+              (XCUITest) can only observe web state through the accessibility
+              tree, and data attributes never surface there. sr-only text does.
+              Not aria-live — it never announces on its own. Keep it after the
+              visual surface so DOM e2e helpers that inspect the first child
+              still read the glass layer. */}
+          <span className="sr-only" data-testid="chat-detent-probe">
+            {`chat-detent:${detentLabel}`}
+          </span>
           {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass
               and goes fully inert while pilled (opacity 0 + `inert` removes it
               from pointer, tab order, and the a11y tree) so it can't be reached
