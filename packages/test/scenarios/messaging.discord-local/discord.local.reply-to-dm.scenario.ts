@@ -34,7 +34,17 @@ export default scenario({
         description: "discord DM draft reply",
         includesAny: ["discord", "Bob", "draft", "reply"],
       }),
-      responseIncludesAny: ["draft", "bob", "reply"],
+      // De-echoed (#9310): the old keywords ("draft", "bob", "reply") all
+      // appeared in the user's own turn text. The draft-and-hold contract is
+      // enforced by excluding premature send claims here, the judge, and the
+      // two-step action-ledger gate in finalChecks.
+      responseExcludes: [
+        "already sent",
+        "has been sent",
+        "i've sent",
+        "i have sent",
+        "sent it",
+      ],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
@@ -51,7 +61,9 @@ export default scenario({
         description: "discord DM send after confirmation",
         includesAny: ["send", "discord", "reply"],
       }),
-      responseIncludesAny: ["sent", "sending", "send"],
+      // "send" was an echo of this turn's own text ("Send it."); the reply
+      // must claim completed/in-flight delivery, not merely repeat the verb.
+      responseIncludesAny: ["sent", "sending", "delivered", "on its way"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

@@ -68,7 +68,18 @@ export default scenario({
           "cross-platform conversation lookup for one canonical person",
         includesAny: ["priya", "gmail", "signal", "telegram", "whatsapp"],
       }),
-      responseIncludesAny: ["Priya", "Gmail", "Signal", "Telegram", "WhatsApp"],
+      // De-echoed (#9310): the old keywords ("Priya", "Gmail", "Signal",
+      // "Telegram", "WhatsApp") all appeared in the user's own turn text
+      // (which also says "same person", so that phrase is excluded too). The
+      // reply must express the canonical-identity outcome in derived words.
+      responseIncludesAny: [
+        "single",
+        "merged",
+        "unified",
+        "consolidated",
+        "one contact",
+        "one thread",
+      ],
       responseJudge: {
         minimumScore: 0.75,
         rubric:
