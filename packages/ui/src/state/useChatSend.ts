@@ -169,6 +169,45 @@ export function buildSendFailureNotice(err: unknown): string {
   return "That message didn't go through — please resend.";
 }
 
+/**
+ * Assistant-bubble copy for a user turn the server never accepted — e.g. sent
+ * while the local model was still warming up and the runtime-ready hold
+ * expired (503), or the runtime produced nothing and persisted nothing.
+ * Stamped with a retryable `provider_issue` failureKind so the thread shows a
+ * Retry chip instead of silently evicting the message (#11670).
+ */
+export const UNDELIVERED_TURN_NOTICE =
+  "That message didn't reach the agent — it may still be starting up. Retry in a moment.";
+
+/**
+ * Clock-skew slack for matching a just-sent user turn against the server's
+ * reloaded history. The persisted turn's server timestamp lands at-or-after
+ * the client's send time on the same clock; the slack tolerates a cloud
+ * server clock trailing the device's.
+ */
+const SENT_TURN_MATCH_SLACK_MS = 60_000;
+
+/**
+ * Whether the just-sent user turn survived the post-turn history reload —
+ * i.e. the server persisted it and the reload carries it (or the reload never
+ * replaced local state, leaving the optimistic bubble in place). Matches by
+ * text among user turns no older than the send minus clock-skew slack, so an
+ * identical message from an earlier exchange can't mask an eviction.
+ */
+function sentUserTurnPresent(
+  messages: readonly ConversationMessage[],
+  sentText: string,
+  sentAt: number,
+): boolean {
+  const text = sentText.trim();
+  return messages.some(
+    (message) =>
+      message.role === "user" &&
+      message.timestamp >= sentAt - SENT_TURN_MATCH_SLACK_MS &&
+      message.text.trim() === text,
+  );
+}
+
 function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
@@ -902,6 +941,52 @@ export function useChatSend(deps: UseChatSendDeps) {
     [setConversationMessages],
   );
 
+  // Re-attach a user turn the post-turn history reload evicted. The reload
+  // full-replaces the thread with server truth; when the server never
+  // persisted the turn — a send during local-model warm-up where the
+  // runtime-ready hold expired (503), or a runtime that answered with nothing
+  // and stored nothing — the reload returns a thread WITHOUT the user's
+  // message and the optimistic bubble the user just watched render silently
+  // vanishes (#11670). Restore the bubble together with a retryable failed
+  // assistant turn so the send fails loudly and one tap re-delivers it once
+  // the model is ready. No-op when the reload carries the turn (server
+  // persisted it) or never replaced local state (transient reload failure).
+  const restoreEvictedUserTurn = useCallback(
+    (turn: {
+      userMsgId: string;
+      assistantMsgId: string;
+      text: string;
+      timestamp: number;
+      attachments?: ConversationMessage["attachments"];
+    }) => {
+      const sentText = turn.text.trim();
+      if (!sentText) return;
+      setConversationMessages((prev) => {
+        if (sentUserTurnPresent(prev, sentText, turn.timestamp)) return prev;
+        return [
+          ...prev,
+          {
+            id: turn.userMsgId,
+            role: "user",
+            text: turn.text,
+            timestamp: turn.timestamp,
+            ...(turn.attachments?.length
+              ? { attachments: turn.attachments }
+              : {}),
+          },
+          {
+            id: `${turn.assistantMsgId}-undelivered`,
+            role: "assistant",
+            text: UNDELIVERED_TURN_NOTICE,
+            timestamp: Date.now(),
+            failureKind: "provider_issue",
+          },
+        ];
+      });
+    },
+    [setConversationMessages],
+  );
+
   const runQueuedChatSend = useCallback(
     async (turn: Omit<QueuedChatSend, "resolve" | "reject">) => {
       const hasAttachedImages = Boolean(turn.images?.length);
@@ -1174,6 +1259,19 @@ export function useChatSend(deps: UseChatSendDeps) {
           if (interruptedPartial) {
             reattachInterruptedPartial(interruptedPartial);
           }
+          // Same full-replace hazard for the USER turn: a send during agent
+          // warm-up can complete with nothing persisted, and the reload then
+          // evicts the user's bubble (#11670). Restore it with a retryable
+          // failed turn; no-op when the server persisted it.
+          restoreEvictedUserTurn({
+            userMsgId,
+            assistantMsgId,
+            text,
+            timestamp: now,
+            ...(optimisticAttachments
+              ? { attachments: optimisticAttachments }
+              : {}),
+          });
         }
 
         const userMessageCount = conversationMessagesRef.current.filter(
@@ -1400,6 +1498,26 @@ export function useChatSend(deps: UseChatSendDeps) {
           // this is safe; skip on auth where the reload would just fail again.
           if (!isAuth) {
             await loadConversationMessages(convId);
+            // When the server refused the turn before persisting it (e.g. the
+            // 503 warm-up gate), the reconcile just evicted the user's bubble —
+            // the "KEEP the user's message" promise above becomes a lie
+            // (#11670). Restore it with a retryable failed turn. Validation
+            // rejects are excluded: their draft went back to the composer
+            // above, so re-attaching the bubble would duplicate it.
+            if (
+              getSendValidationFailureMessage(err) === null &&
+              activeConversationIdRef.current === convId
+            ) {
+              restoreEvictedUserTurn({
+                userMsgId,
+                assistantMsgId,
+                text,
+                timestamp: now,
+                ...(optimisticAttachments
+                  ? { attachments: optimisticAttachments }
+                  : {}),
+              });
+            }
           }
         }
       } finally {
@@ -1439,6 +1557,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setConversationMessages,
       dropEmptyAssistantPlaceholder,
       reattachInterruptedPartial,
+      restoreEvictedUserTurn,
       setConversations,
       setActionNotice,
       setChatInput,
@@ -1794,6 +1913,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             if (interruptedPartial) {
               reattachInterruptedPartial(interruptedPartial);
             }
+            // The reload full-replaces the thread; when the server never
+            // persisted this turn (agent warm-up), re-attach the user's
+            // bubble instead of letting it silently vanish (#11670).
+            restoreEvictedUserTurn({
+              userMsgId,
+              assistantMsgId,
+              text: trimmed,
+              timestamp: now,
+            });
           }
 
           void loadConversations();
@@ -1814,6 +1942,17 @@ export function useChatSend(deps: UseChatSendDeps) {
           // main-chat send path already does this; this one did not (#10231).
           setActionNotice(buildSendFailureNotice(err), "error", 8_000);
           await loadConversationMessages(convId);
+          // The reconcile evicts a turn the server never persisted (e.g. the
+          // 503 warm-up gate) — restore it with a retryable failed turn
+          // (#11670).
+          if (activeConversationIdRef.current === convId) {
+            restoreEvictedUserTurn({
+              userMsgId,
+              assistantMsgId,
+              text: trimmed,
+              timestamp: now,
+            });
+          }
         } finally {
           // Belt-and-braces: cancel any frame still pending (idempotent).
           flushStreamingText();
@@ -1853,6 +1992,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       loadConversationMessages,
       loadConversations,
       pollCloudCredits,
+      restoreEvictedUserTurn,
       tab,
       uiLanguage,
       scheduleStreamingText,
@@ -1923,9 +2063,15 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
 
       // Fallback (no conversation id yet, optimistic/local user turn): drop the
-      // failed assistant bubble in memory and resend.
+      // failed assistant bubble — and the optimistic (temp-) user turn it
+      // retried, which the resend re-renders as a fresh optimistic bubble, so
+      // the thread doesn't show the message twice while the retry streams.
       setConversationMessages((prev) =>
-        prev.filter((m) => m.id !== assistantMsgId),
+        prev.filter(
+          (m) =>
+            m.id !== assistantMsgId &&
+            !(m.id === userMsg.id && m.id.startsWith("temp-")),
+        ),
       );
       void sendChatText(retryText);
     },

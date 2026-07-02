@@ -15,6 +15,7 @@ import type { LoadConversationMessagesResult } from "./internal";
 import {
   buildSendFailureNotice,
   getSendValidationFailureMessage,
+  UNDELIVERED_TURN_NOTICE,
   type UseChatSendDeps,
   useChatSend,
 } from "./useChatSend";
@@ -312,10 +313,17 @@ describe("useChatSend stop handling", () => {
       conversations: [conversation("conv-1", "room-1")],
     });
     // Server full-replace reload: only the persisted user turn survives (the
-    // stopped assistant reply was never written server-side).
+    // stopped assistant reply was never written server-side). A real persisted
+    // turn carries an epoch-ms timestamp at ~send time — required for the
+    // #11670 eviction guard to recognize it as this send.
     vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
       deps.setConversationMessages([
-        { id: "server-user-1", role: "user", text: "hello", timestamp: 1 },
+        {
+          id: "server-user-1",
+          role: "user",
+          text: "hello",
+          timestamp: Date.now(),
+        },
       ]);
       return { ok: true };
     });
@@ -349,15 +357,21 @@ describe("useChatSend stop handling", () => {
       conversations: [conversation("conv-1", "room-1")],
     });
     // Server DID persist the (truncated) reply — the reload carries it, so the
-    // partial must not be re-attached a second time.
+    // partial must not be re-attached a second time. Realistic epoch-ms
+    // timestamps (see above).
     vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
       deps.setConversationMessages([
-        { id: "server-user-1", role: "user", text: "hello", timestamp: 1 },
+        {
+          id: "server-user-1",
+          role: "user",
+          text: "hello",
+          timestamp: Date.now(),
+        },
         {
           id: "server-asst-1",
           role: "assistant",
           text: "Here is the par",
-          timestamp: 2,
+          timestamp: Date.now(),
           interrupted: true,
         },
       ]);
@@ -1221,6 +1235,333 @@ describe("useChatSend 4xx validation reject — honest notice + no-loss restore"
     expect(deps.setChatInput).not.toHaveBeenCalled();
     expect(deps.setChatPendingImages).not.toHaveBeenCalled();
     expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useChatSend — user turn sent during agent warm-up is never evicted (#11670)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  /**
+   * Make the mocked reload behave like the REAL loadConversationMessages: it
+   * full-replaces local state with server truth. The default `{ ok: true }`
+   * no-op mock is exactly why the eviction never showed up in this suite —
+   * the production reload wipes the optimistic bubble when the server never
+   * persisted the turn.
+   */
+  function mockServerTruthReload(
+    deps: UseChatSendDeps,
+    serverThread: { current: ConversationMessage[] },
+  ): void {
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([...serverThread.current]);
+      return { ok: true };
+    });
+  }
+
+  function undeliveredTurns(deps: UseChatSendDeps): ConversationMessage[] {
+    return deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant" && m.text === UNDELIVERED_TURN_NOTICE,
+    );
+  }
+
+  it("restores the user bubble + a retryable failed turn when the warm-up 503 gate drops the send (the #11670 repro)", async () => {
+    // The issue's exact path: the runtime-ready hold expires while the local
+    // model warms up, the server 503s WITHOUT persisting the user message, and
+    // the reconcile reload full-replaces the thread with an empty server truth
+    // — on develop the user's bubble silently vanishes.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Agent is not running"),
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const serverThread = { current: [] as ConversationMessage[] };
+    mockServerTruthReload(deps, serverThread);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello while warming", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const remaining = deps.conversationMessagesRef.current;
+    // The user's message is still visibly in the thread…
+    expect(
+      remaining.some(
+        (m) => m.role === "user" && m.text === "hello while warming",
+      ),
+    ).toBe(true);
+    // …followed by a retryable failed assistant turn (Retry chip), not dead air.
+    const failed = undeliveredTurns(deps);
+    expect(failed).toHaveLength(1);
+    expect(failed[0].failureKind).toBe("provider_issue");
+    // The status-specific notice still fires.
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("waking up"),
+      "error",
+      expect.any(Number),
+    );
+  });
+
+  it("restores the user bubble when the stream completes empty and the server persisted nothing", async () => {
+    // The quieter variant: the send "succeeds" (no throw, no failureKind) but
+    // the runtime processed nothing and stored nothing — the reload wipes the
+    // bubble with NO notice at all on develop.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "",
+      completed: true,
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const serverThread = { current: [] as ConversationMessage[] };
+    mockServerTruthReload(deps, serverThread);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello while warming", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const remaining = deps.conversationMessagesRef.current;
+    expect(
+      remaining.some(
+        (m) => m.role === "user" && m.text === "hello while warming",
+      ),
+    ).toBe(true);
+    expect(undeliveredTurns(deps)).toHaveLength(1);
+  });
+
+  it("keeps optimistic attachments on the restored bubble", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Agent is not running"),
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    mockServerTruthReload(deps, { current: [] });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("look at this", {
+        conversationId: "conv-1",
+        images: [{ data: "AAAA", mimeType: "image/png", name: "shot.png" }],
+      });
+    });
+
+    const restored = deps.conversationMessagesRef.current.find(
+      (m) => m.role === "user" && m.text === "look at this",
+    );
+    expect(restored?.attachments).toHaveLength(1);
+    expect(restored?.attachments?.[0].mimeType).toBe("image/png");
+  });
+
+  it("does NOT duplicate the turn when the server persisted it (silent agent turn stays as-is)", async () => {
+    // A legitimately silent reply (agent chose not to answer): the user turn
+    // IS in server truth, so the restore must no-op — no duplicate bubble, no
+    // spurious failed turn.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "",
+      completed: true,
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const serverThread = {
+      current: [
+        {
+          id: "server-user-1",
+          role: "user",
+          text: "hello while warming",
+          timestamp: Date.now(),
+        } as ConversationMessage,
+      ],
+    };
+    mockServerTruthReload(deps, serverThread);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello while warming", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const users = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "user" && m.text === "hello while warming",
+    );
+    expect(users).toHaveLength(1);
+    expect(users[0].id).toBe("server-user-1");
+    expect(undeliveredTurns(deps)).toHaveLength(0);
+  });
+
+  it("an identical user turn from an EARLIER exchange does not mask the eviction", async () => {
+    // The user said "hi" five minutes ago (persisted), then says "hi" again
+    // during warm-up. Matching by text alone would treat the old turn as this
+    // send and silently drop the new one — the timestamp guard prevents that.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Agent is not running"),
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const serverThread = {
+      current: [
+        {
+          id: "server-user-old",
+          role: "user",
+          text: "hi",
+          timestamp: Date.now() - 300_000,
+        } as ConversationMessage,
+        {
+          id: "server-asst-old",
+          role: "assistant",
+          text: "hey!",
+          timestamp: Date.now() - 299_000,
+        } as ConversationMessage,
+      ],
+    };
+    mockServerTruthReload(deps, serverThread);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const users = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "user" && m.text === "hi",
+    );
+    expect(users).toHaveLength(2);
+    expect(undeliveredTurns(deps)).toHaveLength(1);
+  });
+
+  it("does NOT re-attach the bubble on a validation reject (the draft went back to the composer)", async () => {
+    // 4xx validation rejects restore the draft to the composer; re-attaching
+    // the bubble too would duplicate the content.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("text is too long"), {
+        status: 400,
+        kind: "http",
+      }),
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    mockServerTruthReload(deps, { current: [] });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("a very long message", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setChatInput).toHaveBeenCalledWith("a very long message");
+    expect(
+      deps.conversationMessagesRef.current.some((m) => m.role === "user"),
+    ).toBe(false);
+    expect(undeliveredTurns(deps)).toHaveLength(0);
+  });
+
+  it("Retry on the restored turn re-delivers the message once the model is ready, without duplicating it", async () => {
+    // Full loop: warm-up 503 → restored bubble + failed turn → model comes
+    // online → one tap on Retry delivers the message and the thread settles to
+    // exactly one copy of the turn.
+    mocks.client.sendConversationMessageStream.mockRejectedValueOnce(
+      httpStatusError(503, "Agent is not running"),
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const serverThread = { current: [] as ConversationMessage[] };
+    mockServerTruthReload(deps, serverThread);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello while warming", {
+        conversationId: "conv-1",
+      });
+    });
+    const failedTurn = undeliveredTurns(deps)[0];
+    expect(failedTurn).toBeDefined();
+
+    // The model is ready now: the next send succeeds and the server persists
+    // the turn, so the post-retry reload carries it.
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      serverThread.current = [
+        {
+          id: "server-user-1",
+          role: "user",
+          text: "hello while warming",
+          timestamp: Date.now(),
+        } as ConversationMessage,
+        {
+          id: "server-asst-1",
+          role: "assistant",
+          text: "hi! I'm awake now.",
+          timestamp: Date.now(),
+        } as ConversationMessage,
+      ];
+      return { text: "hi! I'm awake now.", completed: true };
+    });
+
+    await act(async () => {
+      await result.current.handleChatRetry(failedTurn.id);
+      // The fallback retry fires the resend without awaiting it — flush it.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);
+    const [, retriedText] =
+      mocks.client.sendConversationMessageStream.mock.calls[1];
+    expect(retriedText).toBe("hello while warming");
+    const remaining = deps.conversationMessagesRef.current;
+    expect(
+      remaining.filter(
+        (m) => m.role === "user" && m.text === "hello while warming",
+      ),
+    ).toHaveLength(1);
+    expect(
+      remaining.some(
+        (m) => m.role === "assistant" && m.text === "hi! I'm awake now.",
+      ),
+    ).toBe(true);
+    expect(undeliveredTurns(deps)).toHaveLength(0);
+  });
+
+  it("sendActionMessage restores an evicted user turn the same way", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Agent is not running"),
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    mockServerTruthReload(deps, { current: [] });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("run the report");
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (m) => m.role === "user" && m.text === "run the report",
+      ),
+    ).toBe(true);
+    expect(undeliveredTurns(deps)).toHaveLength(1);
   });
 });
 

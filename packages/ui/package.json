@@ -41,6 +41,7 @@
     "test:chat-perf-gate": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-perf-gate.mjs",
     "test:perf-gate-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-perf-gate-e2e.mjs",
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
+    "test:warmup-eviction-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-warmup-eviction-e2e.mjs",
     "test:tutorial-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/tutorial/__e2e__/run-tutorial-e2e.mjs",
     "test:immersive-e2e": "bun run --cwd ../.. packages/ui/src/spatial/__e2e__/run-immersive-e2e.mjs",
     "test:chat-ambient-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-ambient-e2e.mjs",
