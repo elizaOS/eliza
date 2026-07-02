@@ -112,6 +112,60 @@ injected into CALENDAR tool descriptions, not `SCHEDULED_TASK_CREATE`.
 Known accounting gap (pre-existing): `Total cost: $0.0000` — the ledger has
 no gemma-4-31b price entry, so per-turn `cost_usd` is null.
 
+## Leg 5 — 4th structured capability seeded + run: `health_checkin` (2026-07-02)
+
+The prior legs seeded only the 3 tasks that shipped in `SEED_TASKS`
+(`calendar_extract`, `schedule_plan`, `inbox_triage`). Auditing the other 5
+LifeOps tasks against the seed harness's scorer showed exactly one more is a
+clean structured JSON planner and therefore runnable via `lifeops:gepa-seed`
+with a discriminative exact-match scorer: **`health_checkin`** (its live
+consumer `resolveHealthPlanWithLlm` emits `{subaction,metric,days,shouldAct}`,
+the same shape as `schedule_plan`). Added a 10-row seed dataset for it
+(`plugins/plugin-training/scripts/lifeops-gepa-seed.ts`, covering every
+subaction `today/trend/by_metric/status`, the `by_metric` metric enum, day-window
+inference, the vague-guard `shouldAct=false`, and multilingual ES/FR phrasing)
+and ran GEPA on gemma-4-31b:
+
+```
+TRAIN_MODEL_PROVIDER=cerebras CEREBRAS_API_KEY=$CEREBRAS_API_KEY \
+  bun --conditions=eliza-source \
+  plugins/plugin-training/scripts/lifeops-gepa-seed.ts \
+  --task health_checkin --generations 3 --population 4 --apply \
+  --state-dir /tmp/claude-1000/gepa8-health_checkin
+```
+
+| task | dataset | baseline | optimized | delta | artifact persisted |
+|---|---|---|---|---|---|
+| health_checkin | 10 | 0.925 | **0.975** | **+0.050** | yes — `v1.json` (copy: `leg5-health_checkin-artifact-v1.json`) |
+
+The optimized prompt tightened output formatting ("Return raw JSON only ...
+Omit any fields with null values"), lifting field-match on the multilingual /
+metric rows. Persist passed both gates: delta ≥ 0.0001 and the
+`validateOptimizedPromptForTask` fragment check for `health_checkin`. Unit
+coverage updated: `src/scripts/lifeops-gepa-seed.test.ts` now asserts the 4-task
+key set + a health-planner shape test — **9/9 pass**.
+
+### Per-capability runnability audit (which of the 8 are seed-runnable)
+
+| task | live consumer output | seed-runnable? | why |
+|---|---|---|---|
+| calendar_extract | structured JSON plan | ✅ ran (leg 2) | exact-field scorer discriminative |
+| schedule_plan | structured JSON plan | ✅ ran (leg 2) | exact-field scorer discriminative |
+| inbox_triage | structured JSON class | ✅ ran (leg 2) | exact-field scorer discriminative |
+| health_checkin | structured JSON plan | ✅ ran (leg 5) | exact-field scorer discriminative |
+| reminder_dispatch | free-text nudge | ❌ | scored as structured, but expected is prose → `parseStructuredFieldsLoose` fails → always 0; needs a judge scorer |
+| meeting_prep | free-text narrative | ❌ | same: prose output, exact-match not meaningful |
+| morning_brief | free-text narrative | ❌ | token-overlap scorer, but "expected narrative" is arbitrary → no crisp target |
+| screentime_recap | JSON `{recap,topApps,suggestion}` | ❌ | recap/suggestion are prose → exact-match ~0; only `topApps` structured |
+
+**Conclusion:** all 4 structured-planner LifeOps tasks now have real
+gemma-4-31b before/after GEPA runs (3 in leg 2, `health_checkin` here). The
+remaining 4 emit natural language, so the seed harness's structured/exact-match
+scorer cannot optimize them — they are *not* mechanically runnable now and need
+either (a) a judge-based scorer wired into the seed loop or (b) captured live
+per-task trajectories fed through `lifeops:gepa` (the trajectory loop). That is
+successor #11384's scope, not a gap in the closed parent.
+
 ## File index
 
 | file | leg |
@@ -123,3 +177,6 @@ no gemma-4-31b price entry, so per-turn `cost_usd` is null.
 | `leg4-lifeops-bench-broken-manifest-20260702.log` | 4 — pre-fix 0.000 run |
 | `leg4-lifeops-bench-smoke-20260702.log` | 4 — post-fix smoke run |
 | `leg4-results-20260702.json` | 4 — full result JSON |
+| `leg5-gepa8-health_checkin-20260702.log` | 5 — health_checkin dry run |
+| `leg5-gepa8-health_checkin-apply-20260702.log` | 5 — health_checkin --apply |
+| `leg5-health_checkin-artifact-v1.json` | 5 — persisted artifact |
