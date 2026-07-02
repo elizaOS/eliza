@@ -14,6 +14,7 @@
     "test:hmr": "node scripts/run-ui-playwright.mjs --config playwright.hmr.config.ts",
     "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
     "test:e2e:record": "E2E_RECORD=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
+    "test:e2e:accounts-ui": "node e2e/accounts-ui/run-accounts-ui-e2e.mjs",
     "test:e2e:walkthrough": "node scripts/walkthrough-e2e.mjs",
     "test:e2e:walkthrough:live": "node scripts/walkthrough-e2e.mjs --live",
     "test:e2e:walkthrough:ios": "node scripts/walkthrough-e2e.mjs --platform ios",
