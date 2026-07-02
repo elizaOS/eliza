@@ -16,8 +16,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
+process.env.CREDIT_COST_BUFFER = "1.5";
 
 const PGLITE_TIMEOUT = 60000;
+const RESERVATION_SETTLEMENT_MARKER = "credit_reservation_v1";
 
 const ORG_ID = "00000000-0000-0000-0000-0000000000d4";
 const USER_ID = "00000000-0000-0000-0000-0000000000e5";
@@ -54,6 +56,84 @@ async function countByType(type: string): Promise<number> {
     `SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = '${type}';`,
   );
   return (res.rows[0] as { n: number }).n;
+}
+
+async function insertReservation(amount: number, ageMs = 0, markerAware = true): Promise<string> {
+  const createdAt = new Date(Date.now() - ageMs).toISOString();
+  const metadata = {
+    user_id: USER_ID,
+    type: "reservation",
+    model: "test-model",
+    ...(markerAware && { settlement_marker: RESERVATION_SETTLEMENT_MARKER }),
+  };
+  const res = await dbWrite.execute(
+    `INSERT INTO credit_transactions (
+      organization_id,
+      user_id,
+      amount,
+      type,
+      description,
+      metadata,
+      created_at
+    ) VALUES (
+      '${ORG_ID}',
+      '${USER_ID}',
+      '${String(-amount)}',
+      'debit',
+      'Chat completion: test-model (reserved)',
+      '${JSON.stringify(metadata)}'::jsonb,
+      '${createdAt}'::timestamp
+    ) RETURNING id;`,
+  );
+  return (res.rows[0] as { id: string }).id;
+}
+
+async function getReservationSettledAt(id: string): Promise<string | null> {
+  const res = await dbWrite.execute(
+    `SELECT settled_at FROM credit_transactions WHERE id = '${id}';`,
+  );
+  return (res.rows[0] as { settled_at: string | null }).settled_at;
+}
+
+async function settlementRowsForReservation(
+  id: string,
+): Promise<Array<{ amount: string; type: string; stripe_payment_intent_id: string | null }>> {
+  const res = await dbWrite.execute(
+    `SELECT amount, type, stripe_payment_intent_id
+     FROM credit_transactions
+     WHERE metadata->>'reservation_transaction_id' = '${id}'
+     ORDER BY created_at ASC;`,
+  );
+  return res.rows as Array<{
+    amount: string;
+    type: string;
+    stripe_payment_intent_id: string | null;
+  }>;
+}
+
+async function insertLegacySettlementForReservation(id: string, amount: number): Promise<string> {
+  const res = await dbWrite.execute(
+    `INSERT INTO credit_transactions (
+      organization_id,
+      user_id,
+      amount,
+      type,
+      description,
+      metadata,
+      stripe_payment_intent_id,
+      created_at
+    ) VALUES (
+      '${ORG_ID}',
+      '${USER_ID}',
+      '${String(amount)}',
+      'refund',
+      'legacy keyed reconciliation',
+      '{"user_id":"${USER_ID}","reservation_transaction_id":"${id}","type":"reconciliation_refund"}'::jsonb,
+      'recon:${id}:refund',
+      NOW()
+    ) RETURNING id;`,
+  );
+  return (res.rows[0] as { id: string }).id;
 }
 
 beforeAll(async () => {
@@ -100,7 +180,8 @@ beforeAll(async () => {
         description text,
         metadata jsonb NOT NULL DEFAULT '{}',
         stripe_payment_intent_id text,
-        created_at timestamp NOT NULL DEFAULT now()
+        created_at timestamp NOT NULL DEFAULT now(),
+        settled_at timestamp
       )`,
       // applyCreditIncrease (the refund path) uses
       // `ON CONFLICT (stripe_payment_intent_id) DO NOTHING`, which requires this
@@ -108,6 +189,12 @@ beforeAll(async () => {
       // standard unique index, so non-stripe refund/reservation rows don't collide.
       `CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_stripe_payment_intent_idx
         ON credit_transactions (stripe_payment_intent_id)`,
+      `CREATE INDEX IF NOT EXISTS credit_transactions_unsettled_reservations_idx
+        ON credit_transactions (created_at)
+        WHERE type = 'debit'
+          AND metadata->>'type' = 'reservation'
+          AND metadata->>'settlement_marker' = '${RESERVATION_SETTLEMENT_MARKER}'
+          AND settled_at IS NULL`,
     ];
     for (const stmt of ddl) {
       await dbWrite.execute(stmt);
@@ -493,6 +580,204 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
 
       expect(await getBalance()).toBeCloseTo(11.2, 6);
       expect(await countByType("refund")).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("CreditsService reservation settlement marker (#11169)", () => {
+  test(
+    "real reservation rows are claimed and refunded once",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0);
+
+      const first = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.4,
+        description: "chat completion settle",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+      const second = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0,
+        description: "late duplicate refund attempt",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+
+      expect(first.adjustmentType).toBe("refund");
+      expect(second.adjustmentType).toBe("none");
+      expect(await getBalance()).toBeCloseTo(9.6, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await countByType("refund")).toBe(1);
+      expect(await settlementRowsForReservation(reservationId)).toEqual([
+        {
+          amount: "0.600000",
+          type: "refund",
+          stripe_payment_intent_id: `recon:${reservationId}:refund`,
+        },
+      ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "exact-cost settlement marks the reservation settled without a money row",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0);
+
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 1.0,
+        description: "chat completion exact settle",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+
+      expect(result.adjustmentType).toBe("none");
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "real reservation overage is charged once and duplicate settle is ignored",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("19.6");
+      const reservationId = await insertReservation(0.4);
+
+      const first = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 0.4,
+        actualCost: 1.0,
+        description: "chat completion overage settle",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+      const second = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 0.4,
+        actualCost: 1.0,
+        description: "duplicate overage settle",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+
+      expect(first.adjustmentType).toBe("overage");
+      expect(second.adjustmentType).toBe("none");
+      expect(await getBalance()).toBeCloseTo(19, 6);
+      expect(await countByType("debit")).toBe(2); // reservation + overage
+      expect(await settlementRowsForReservation(reservationId)).toEqual([
+        {
+          amount: "-0.600000",
+          type: "debit",
+          stripe_payment_intent_id: `recon:${reservationId}:overage`,
+        },
+      ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep ignores ambiguous pre-marker reservations",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000, false);
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(0);
+      expect(stats.settled).toBe(0);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeNull();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep marks legacy-keyed settlements without minting another refund",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9.6");
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000);
+      const legacySettlementId = await insertLegacySettlementForReservation(reservationId, 0.6);
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(1);
+      expect(stats.noops).toBe(1);
+      expect(stats.refunds).toBe(0);
+      expect(await getBalance()).toBeCloseTo(9.6, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await countByType("refund")).toBe(1);
+      expect(await settlementRowsForReservation(reservationId)).toEqual([
+        {
+          amount: "0.600000",
+          type: "refund",
+          stripe_payment_intent_id: `recon:${reservationId}:refund`,
+        },
+      ]);
+
+      const late = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.2,
+        description: "late waitUntil settle after legacy keyed settle",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+
+      expect(late.adjustmentType).toBe("none");
+      expect(late.settlementTransactionIds).toEqual([legacySettlementId]);
+      expect(await getBalance()).toBeCloseTo(9.6, 6);
+      expect(await countByType("refund")).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep settles stale reservations to the estimated cost and blocks late double-settle",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000);
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(1);
+      expect(stats.refunds).toBe(1);
+      expect(await getBalance()).toBeCloseTo(9.333333, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+
+      const late = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.2,
+        description: "late waitUntil settle after sweep",
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+      });
+
+      expect(late.adjustmentType).toBe("none");
+      expect(await getBalance()).toBeCloseTo(9.333333, 6);
+      expect(await countByType("refund")).toBe(1);
     },
     PGLITE_TIMEOUT,
   );

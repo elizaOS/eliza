@@ -68,6 +68,8 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/pool-replenish",
     // #9899 Tier-2 optimistic-billing backstop (no-op when the flag is off).
     "/api/cron/sweep-inference-charges",
+    // #11169 synchronous-reservation backstop for dropped waitUntil settles.
+    "/api/cron/sweep-credit-reservations",
   ],
   "0 */6 * * *": [
     "/api/cron/cleanup-anonymous-sessions",
