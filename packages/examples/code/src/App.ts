@@ -15,6 +15,7 @@ import { MainScreen } from "./components/MainScreen.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { TaskPane } from "./components/TaskPane.js";
 import { getAgentClient } from "./lib/agent-client.js";
+import { osc52 } from "./lib/clipboard.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { FilteringTerminal } from "./lib/filtering-terminal.js";
 import { getCodeTaskService } from "./lib/get-code-task-service.js";
@@ -307,6 +308,11 @@ function formatTaskDetails(task: CodeTask): string {
 
 // Slash command autocomplete items
 const SLASH_COMMANDS: AutocompleteItem[] = [
+  {
+    label: "/copy",
+    description: "Copy the last response to the clipboard",
+    value: "/copy",
+  },
   { label: "/new", description: "Start new conversation", value: "/new " },
   {
     label: "/reset",
@@ -1043,6 +1049,29 @@ export class App {
         return true;
       }
 
+      case "copy": {
+        // Copy the last assistant reply to the system clipboard via OSC 52
+        // (works over SSH / inside the cockpit PTY, where there's no direct
+        // clipboard access).
+        const room = rooms.find((r) => r.id === currentRoomId);
+        const lastAssistant = [...(room?.messages ?? [])]
+          .reverse()
+          .find((m) => m.role === "assistant" && m.content.trim().length > 0);
+        if (!lastAssistant) {
+          addMessage(currentRoomId, "system", "Nothing to copy yet.");
+          this.tui.requestRender();
+          return true;
+        }
+        this.terminal.write(osc52(lastAssistant.content));
+        addMessage(
+          currentRoomId,
+          "system",
+          "Copied the last response to the clipboard.",
+        );
+        this.tui.requestRender();
+        return true;
+      }
+
       case "help": {
         addMessage(
           currentRoomId,
@@ -1052,7 +1081,7 @@ Conversations: /new [name], /conversations, /switch <n|name>, /rename <name>, /d
 Agent: /agent <type>
 Tasks: /task, /tasks
 Dir: /cd [path], /pwd
-UI: /clear
+UI: /clear, /copy
 Help: /help, ?
 
 Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
