@@ -80,21 +80,41 @@ describe("createCreditReservationSettler", () => {
     expect(r2).toEqual(fakeResult);
   });
 
-  test("allows retry after reconcile throws", async () => {
+  test("#11512: throw does NOT reset the guard — reconcile never re-runs", async () => {
+    // reconcileCredits commits the org refund BEFORE its throw-prone
+    // post-refund writes. If a rejected settle reset the once-guard, the
+    // route's fallback settleReservation?.(0) re-invoked reconcile and issued
+    // a SECOND committed refund (2×reserved − actual = minted cashable
+    // credit). First-call-wins must hold across rejection too.
     let calls = 0;
-    const reservation = makeReservation(async (cost) => {
+    const reservation = makeReservation(async () => {
       calls++;
-      if (calls === 1) throw new Error("transient");
-      return fakeResult;
+      if (calls === 1) throw new Error("post-refund write blip");
+      return fakeResult; // would be a second refund — must be unreachable
     });
 
     const settle = createCreditReservationSettler(reservation);
 
-    await expect(settle(0.001)).rejects.toThrow("transient");
-    // After failure the once-guard resets, so a second call retries
-    const result = await settle(0.001);
-    expect(calls).toBe(2);
-    expect(result).toEqual(fakeResult);
+    await expect(settle(0.001)).rejects.toThrow("post-refund write blip");
+    // The route's multi-site fallback call: same rejection, NO re-invoke.
+    await expect(settle(0)).rejects.toThrow("post-refund write blip");
+    expect(calls).toBe(1);
+  });
+
+  test("#11512: concurrent call during an eventually-rejecting settle shares the rejection", async () => {
+    let calls = 0;
+    const reservation = makeReservation(async () => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 10));
+      throw new Error("late failure");
+    });
+
+    const settle = createCreditReservationSettler(reservation);
+    const [r1, r2] = await Promise.allSettled([settle(0.001), settle(0)]);
+
+    expect(calls).toBe(1);
+    expect(r1.status).toBe("rejected");
+    expect(r2.status).toBe("rejected");
   });
 
   // Streaming-path invariants (cloud-api v1/chat/completions/route.ts).

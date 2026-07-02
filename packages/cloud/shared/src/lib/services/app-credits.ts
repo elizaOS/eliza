@@ -255,6 +255,18 @@ export interface AppCreditReconciliationParams {
   metadata?: Record<string, unknown>;
   /** Optional: pass pre-fetched app to avoid N+1 query */
   app?: App;
+  /**
+   * SERVER-GENERATED id of the reservation's deduct transaction
+   * (credit_transactions.id, a DB UUID). When present, the reconcile
+   * refund/charge legs are made idempotent by keying their synthetic
+   * stripePaymentIntentId on it (`reconcile-refund:<id>` /
+   * `reconcile-charge:<id>`), so a re-invoked settle of the SAME reservation
+   * dedupes on the credit_transactions unique index instead of moving money
+   * twice (#11512). MUST never be a client-supplied value: that unique index
+   * is global (not org-scoped), so a client-controlled key would let one
+   * org's settle dedupe away another org's refund or overage charge.
+   */
+  reservationTransactionId?: string | null;
 }
 
 /**
@@ -456,6 +468,11 @@ export class AppCreditsService {
           description,
           metadata: withChargeIdempotencyKey(metadata, idempotencyKey),
           app,
+          // Server-generated key for the reconcile legs' idempotent ledger
+          // writes (#11512) — the deduct row's own transaction id, never the
+          // client idempotencyKey (globally-unique index ⇒ a client key would
+          // collide across orgs).
+          reservationTransactionId,
         });
 
         return mapAppReconciliationToCreditResult(
@@ -692,22 +709,39 @@ export class AppCreditsService {
       description,
       metadata: rawMetadata,
       app: providedApp,
+      reservationTransactionId,
     } = params;
 
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
 
-    // Request-stable idempotency key (threaded via withChargeIdempotencyKey).
-    // The reconcile refund is otherwise NON-idempotent, and the reservation
-    // settler resets its first-call-wins guard on throw — so if a refund
-    // commits then a post-refund write throws (DB blip), the route's fallback
-    // settle re-invokes reconcile and a SECOND full refund mints credit
-    // (#11512). Keying the refund on this stable id makes the re-invoke dedupe
-    // on the credit_transactions unique index instead of double-crediting.
-    const reconcileIdempotencyKey =
-      typeof (metadata as Record<string, unknown> | undefined)?.idempotencyKey === "string"
-        ? ((metadata as Record<string, unknown>).idempotencyKey as string)
-        : undefined;
+    // #11512: idempotency key for the org-credit legs below, threaded as a
+    // synthetic, namespaced stripePaymentIntentId. creditsService dedupes on
+    // the credit_transactions.stripe_payment_intent_id unique index, so a
+    // re-invoked reconcile (a settle retry after a mid-reconcile throw, where
+    // the org refund already COMMITTED before reverseCreatorEarnings / the
+    // apps-counter update threw) returns the first transaction as a no-op
+    // instead of refunding or charging the org a second time.
+    //
+    // The key MUST be SERVER-GENERATED. That unique index is GLOBAL — not
+    // org-scoped — so a client-controlled key (Idempotency-Key header,
+    // x-request-id, metadata.idempotencyKey) would let Org A's reconcile
+    // dedupe away Org B's refund or overage charge when both send the same
+    // key: a cross-tenant collision where the user silently loses a legit
+    // refund and the platform silently skips an overage charge. We therefore
+    // key on the reservation's own deduct-transaction id
+    // (credit_transactions.id, a DB-generated UUID): stable across
+    // re-settles of the SAME reservation, globally unique across
+    // reservations and orgs. Same pattern as the org-credits path's
+    // `recon:<txid>:<phase>` keys (#10846). The `reconcile-refund:` /
+    // `reconcile-charge:` prefixes keep the synthetic keys disjoint from
+    // real Stripe intent ids (`pi_…`) and those `recon:` keys. When no
+    // reservation transaction id is available (the apps/[id]/chat
+    // direct-reconcile paths), we pass NO key — the prior non-idempotent
+    // behavior, backstopped by those routes' settle-started flags and the
+    // settler's first-call-wins guard (createCreditReservationSettler) — and
+    // NEVER fall back to a client-supplied value.
+    const chargeKey = reservationTransactionId || null;
 
     const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
@@ -774,12 +808,10 @@ export class AppCreditsService {
         organizationId,
         amount: refundAmount,
         description: `App reconciliation refund (${app.name ?? appId})`,
-        // Idempotent on the request-stable key: a second settle of the same
-        // reservation (e.g. after the settler's guard reset on a mid-settle
-        // throw) dedupes to the first refund instead of minting (#11512).
-        ...(reconcileIdempotencyKey && {
-          stripePaymentIntentId: `reconcile-refund:${reconcileIdempotencyKey}`,
-        }),
+        // Idempotent per reservation (#11512): a re-invoked reconcile must not
+        // credit the org a second refund (2×reserved − actual = minted,
+        // cashable credit).
+        stripePaymentIntentId: chargeKey ? `reconcile-refund:${chargeKey}` : undefined,
         metadata: {
           appId,
           userId,
@@ -851,6 +883,9 @@ export class AppCreditsService {
       organizationId,
       amount: additionalCharge,
       description: `App reconciliation charge (${app.name ?? appId})`,
+      // Symmetric idempotency (#11512): a re-invoked reconcile must not debit
+      // the overage from the org twice.
+      stripePaymentIntentId: chargeKey ? `reconcile-charge:${chargeKey}` : undefined,
       metadata: {
         appId,
         userId,
