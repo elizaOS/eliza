@@ -11,31 +11,15 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
-import { appsService } from "@/lib/services/apps";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
+import { loadOwnedApp } from "./guards";
 import { domainBodySchema as DomainSchema } from "./schemas";
 
 const app = new Hono<AppEnv>();
-
-async function loadOwnedApp(c: AppContext) {
-  const user = await requireUserOrApiKeyWithOrg(c);
-  const appId = c.req.param("id");
-  if (!appId) return { error: "missing path params", status: 400 as const };
-  const appRow = await appsService.getById(appId);
-  if (!appRow || appRow.organization_id !== user.organization_id) {
-    return { error: "App not found", status: 404 as const };
-  }
-  if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
-    return { error: "Access denied", status: 403 as const };
-  }
-  return { user, app: appRow, appId };
-}
 
 app.get("/", async (c) => {
   try {
@@ -182,15 +166,12 @@ app.delete("/", async (c) => {
     }
     const { domain } = parsed.data;
 
+    // getOwnDomainRow is already scoped to the caller's organization.
     const md = await managedDomainsService.getOwnDomainRow(
       ctx.user.organization_id,
       domain,
     );
-    if (
-      !md ||
-      md.organizationId !== ctx.user.organization_id ||
-      md.appId !== ctx.appId
-    ) {
+    if (!md || md.appId !== ctx.appId) {
       return c.json(
         { success: false, error: "Domain not attached to this app" },
         404,

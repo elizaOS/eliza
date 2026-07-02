@@ -22,17 +22,6 @@ import {
 } from "../../db/schemas/managed-domains";
 import { logger } from "../utils/logger";
 
-export interface InsertCloudflareDomainInput {
-  organizationId: string;
-  domain: string;
-  cloudflareZoneId: string;
-  cloudflareRegistrationId: string;
-  purchasePriceCents: number;
-  renewalPriceCents: number;
-  expiresAt: Date | null;
-  registrantInfo: DomainRegistrantInfo | null;
-}
-
 export interface UpsertCloudflareDomainInput {
   organizationId: string;
   domain: string;
@@ -45,46 +34,6 @@ export interface UpsertCloudflareDomainInput {
   status?: ManagedDomain["status"];
   verified?: boolean;
   autoRenew?: boolean;
-}
-
-/**
- * Insert a freshly-registered cloudflare domain. Sets registrar='cloudflare',
- * nameserver_mode='cloudflare' (cloudflare manages our DNS too), and
- * status='active' since cloudflare register-status was already polled to
- * active before this call.
- */
-export async function insertCloudflareRegisteredDomain(
-  input: InsertCloudflareDomainInput,
-): Promise<ManagedDomain> {
-  const row: NewManagedDomain = {
-    organizationId: input.organizationId,
-    domain: input.domain.toLowerCase().trim(),
-    registrar: "cloudflare",
-    nameserverMode: "cloudflare",
-    status: "active",
-    registeredAt: new Date(),
-    expiresAt: input.expiresAt,
-    autoRenew: true,
-    cloudflareZoneId: input.cloudflareZoneId,
-    cloudflareRegistrationId: input.cloudflareRegistrationId,
-    registrantInfo: input.registrantInfo,
-    purchasePrice: String(input.purchasePriceCents),
-    renewalPrice: String(input.renewalPriceCents),
-    paymentMethod: "credits",
-    verified: true,
-    verifiedAt: new Date(),
-  };
-
-  const [created] = await dbWrite.insert(managedDomains).values(row).returning();
-  if (!created) {
-    throw new Error("managed_domains insert returned no rows");
-  }
-  logger.info("[Managed Domains] inserted cloudflare-registered domain", {
-    domainId: created.id,
-    domain: created.domain,
-    zoneId: created.cloudflareZoneId,
-  });
-  return created;
 }
 
 /**
@@ -250,16 +199,6 @@ export async function getOwnDomainRow(
     ),
   });
   return row ?? null;
-}
-
-/**
- * Hard-delete a managed-domain row (the reclaim primitive #11024's expiry cron
- * needs — `unassignFromResource` only nulls resource FKs and keeps the row, so
- * before this there was no way to release a stale unverified pending row). Only
- * ever call for rows the caller owns or for expired unverified externals.
- */
-export async function releaseDomain(domainId: string): Promise<void> {
-  await dbWrite.delete(managedDomains).where(eq(managedDomains.id, domainId));
 }
 
 /**
@@ -471,7 +410,6 @@ export async function unassignFromResource(domainId: string): Promise<ManagedDom
 }
 
 export const managedDomainsService = {
-  insertCloudflareRegisteredDomain,
   upsertCloudflareRegisteredDomain,
   insertExternalDomain,
   assignToResource,
@@ -480,7 +418,6 @@ export const managedDomainsService = {
   getDomainById,
   getDomainByName,
   getOwnDomainRow,
-  releaseDomain,
   releaseStaleUnverifiedExternals,
   listForOrganization,
   listForApp,

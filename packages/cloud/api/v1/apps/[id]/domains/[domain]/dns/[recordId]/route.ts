@@ -7,14 +7,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { cloudflareDnsService } from "@/lib/services/cloudflare-dns";
-import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { loadCloudflareManagedDomain } from "../../../guards";
 
 const RecordTypes = ["A", "AAAA", "CNAME", "TXT", "MX", "SRV", "CAA"] as const;
 
@@ -34,40 +31,17 @@ const PatchRecordSchema = z
 
 const app = new Hono<AppEnv>();
 
-async function loadCloudflareManagedDomain(c: AppContext) {
-  const user = await requireUserOrApiKeyWithOrg(c);
-  const appId = c.req.param("id");
-  const domainParam = c.req.param("domain");
+async function loadDnsRecordContext(c: AppContext) {
+  const ctx = await loadCloudflareManagedDomain(c);
+  if ("error" in ctx) return ctx;
   const recordId = c.req.param("recordId");
-  if (!appId || !domainParam || !recordId) {
-    return { error: "missing path params", status: 400 as const };
-  }
-
-  const appRow = await appsService.getById(appId);
-  if (!appRow || appRow.organization_id !== user.organization_id) {
-    return { error: "App not found", status: 404 as const };
-  }
-  if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
-    return { error: "Access denied", status: 403 as const };
-  }
-
-  const md = await managedDomainsService.getOwnDomainRow(user.organization_id, decodeURIComponent(domainParam));
-  if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
-    return { error: "Domain not attached to this app", status: 404 as const };
-  }
-  if (md.registrar !== "cloudflare" || !md.cloudflareZoneId) {
-    return {
-      error:
-        "DNS records on external domains must be edited at your existing DNS provider",
-      status: 409 as const,
-    };
-  }
-  return { user, appId, domain: md, recordId };
+  if (!recordId) return { error: "missing path params", status: 400 as const };
+  return { ...ctx, recordId };
 }
 
 app.get("/", async (c) => {
   try {
-    const ctx = await loadCloudflareManagedDomain(c);
+    const ctx = await loadDnsRecordContext(c);
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 
@@ -86,7 +60,7 @@ app.get("/", async (c) => {
 
 app.patch("/", async (c) => {
   try {
-    const ctx = await loadCloudflareManagedDomain(c);
+    const ctx = await loadDnsRecordContext(c);
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 
@@ -122,7 +96,7 @@ app.patch("/", async (c) => {
 
 app.delete("/", async (c) => {
   try {
-    const ctx = await loadCloudflareManagedDomain(c);
+    const ctx = await loadDnsRecordContext(c);
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 

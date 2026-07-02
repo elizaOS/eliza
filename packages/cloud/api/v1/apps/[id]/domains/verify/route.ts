@@ -12,30 +12,21 @@
 import { promises as dns } from "node:dns";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { loadOwnedApp } from "../guards";
 import { domainBodySchema as VerifySchema } from "../schemas";
 
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    const appId = c.req.param("id");
-    if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
-
-    const appRow = await appsService.getById(appId);
-    if (!appRow || appRow.organization_id !== user.organization_id) {
-      return c.json({ success: false, error: "App not found" }, 404);
-    }
-    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
-      return c.json({ success: false, error: "Access denied" }, 403);
-    }
+    const ctx = await loadOwnedApp(c);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
+    const { user, appId } = ctx;
 
     const parsed = VerifySchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -48,12 +39,12 @@ app.post("/", async (c) => {
       );
     }
 
-    const md = await managedDomainsService.getOwnDomainRow(user.organization_id, parsed.data.domain);
-    if (
-      !md ||
-      md.organizationId !== user.organization_id ||
-      md.appId !== appId
-    ) {
+    // getOwnDomainRow is already scoped to the caller's organization.
+    const md = await managedDomainsService.getOwnDomainRow(
+      user.organization_id,
+      parsed.data.domain,
+    );
+    if (!md || md.appId !== appId) {
       return c.json(
         { success: false, error: "Domain not attached to this app" },
         404,
