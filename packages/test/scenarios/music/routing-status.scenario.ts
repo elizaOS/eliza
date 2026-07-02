@@ -12,6 +12,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const MUSIC = "MUSIC";
 type R = AgentRuntime & {
@@ -130,6 +135,36 @@ export default scenario({
       actionName: MUSIC,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the set_routing/status subaction really read
+      // the AudioRouter state off the in-memory MusicService — the result must
+      // carry the router's status object (mode + empty active routes on a
+      // fresh runtime), not just handler success.
+      type: "custom",
+      name: "music-routing-status-effect",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, MUSIC);
+        if (!data) {
+          return `no successful ${MUSIC} result data; calls: ${describeCalls(ctx)}`;
+        }
+        const status = toRecord(data.status);
+        if (!status) {
+          return `expected result.data.status from MusicService.getRoutingStatus(); saw ${JSON.stringify(data).slice(0, 300)}`;
+        }
+        if (typeof status.mode !== "string" || status.mode.length === 0) {
+          return `expected a routing mode string in status.mode, saw ${JSON.stringify(status.mode ?? null)}`;
+        }
+        if (!Array.isArray(status.activeRoutes)) {
+          return `expected status.activeRoutes array, saw ${JSON.stringify(status.activeRoutes ?? null)}`;
+        }
+        if (status.activeRoutes.length !== 0) {
+          return `fresh AudioRouter must report zero active routes; saw ${status.activeRoutes.length}`;
+        }
+        if (typeof status.zoneCount !== "number") {
+          return `expected numeric status.zoneCount, saw ${JSON.stringify(status.zoneCount ?? null)}`;
+        }
+      },
     },
   ],
 });

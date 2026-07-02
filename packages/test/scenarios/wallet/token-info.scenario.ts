@@ -24,6 +24,8 @@ type R = AgentRuntime & {
 };
 
 let restoreFetch: (() => void) | undefined;
+/** URLs of DexScreener token-pair lookups the mock actually served. */
+let dexMockHits: string[] = [];
 
 const MOCK_PAIR = {
   chainId: "ethereum",
@@ -77,6 +79,7 @@ export default scenario({
       name: "wallet-mock-and-config",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
+        dexMockHits = [];
 
         // Pin the DexScreener base URL so the interceptor target is stable,
         // regardless of any Eliza Cloud routing defaults.
@@ -109,6 +112,7 @@ export default scenario({
             url.includes("api.dexscreener.com") &&
             url.includes("/latest/dex/tokens/")
           ) {
+            dexMockHits.push(url);
             return new Response(JSON.stringify({ pairs: [MOCK_PAIR] }), {
               headers: { "Content-Type": "application/json" },
             });
@@ -229,6 +233,51 @@ export default scenario({
       actionName: WALLET,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the token-info pipeline really fetched the
+      // DexScreener pairs for the requested address and surfaced the mock's
+      // market data in the action result — not just "the handler returned
+      // success".
+      type: "custom",
+      name: "dexscreener-token-info-effect",
+      predicate: (ctx) => {
+        const hit = dexMockHits.find((url) =>
+          url.toLowerCase().includes(TOKEN_ADDRESS.toLowerCase()),
+        );
+        if (!hit) {
+          return `DexScreener mock never served a token-pair lookup for ${TOKEN_ADDRESS}; served: ${
+            dexMockHits.join(", ") || "(none)"
+          }`;
+        }
+        const call = ctx.actionsCalled.find(
+          (a) => a.actionName === WALLET && a.result?.success === true,
+        );
+        const data =
+          call?.result?.data && typeof call.result.data === "object"
+            ? (call.result.data as Record<string, unknown>)
+            : null;
+        if (!data) {
+          return "successful WALLET call carried no result.data";
+        }
+        if (data.subaction !== "token_info") {
+          return `expected result.data.subaction "token_info", saw ${String(data.subaction ?? "(missing)")}`;
+        }
+        const pairs = Array.isArray(data.pairs) ? data.pairs : [];
+        const pair =
+          pairs[0] && typeof pairs[0] === "object"
+            ? (pairs[0] as Record<string, unknown>)
+            : null;
+        const baseToken =
+          pair?.baseToken && typeof pair.baseToken === "object"
+            ? (pair.baseToken as Record<string, unknown>)
+            : null;
+        if (baseToken?.symbol !== "USDC" || pair?.priceUsd !== "1.00") {
+          return `expected result.data.pairs[0] to carry the mock's USDC pair (symbol USDC, priceUsd 1.00); saw ${JSON.stringify(
+            pair ?? "(no pairs)",
+          ).slice(0, 300)}`;
+        }
+      },
     },
   ],
 });

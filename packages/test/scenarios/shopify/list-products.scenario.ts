@@ -11,8 +11,16 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulCalls,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const SHOPIFY = "SHOPIFY";
+
+/** GraphQL request bodies the Admin API mock actually served. */
+let adminApiRequests: string[] = [];
 
 type R = AgentRuntime & {
   setSetting?: (k: string, v: string) => void;
@@ -39,10 +47,12 @@ export default scenario({
       name: "shopify-mock-and-config",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
+        adminApiRequests = [];
         // 1. In-process mock of the Shopify Admin GraphQL endpoint.
         const server = Bun.serve({
           port: 0,
-          async fetch() {
+          async fetch(request) {
+            adminApiRequests.push(await request.text());
             return new Response(
               JSON.stringify({
                 data: {
@@ -158,6 +168,32 @@ export default scenario({
       actionName: SHOPIFY,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the SHOPIFY products op really queried the
+      // Admin GraphQL mock (a products query hit the wire) and surfaced the
+      // mock's empty-store answer — not just "the handler returned success".
+      type: "custom",
+      name: "shopify-list-products-effect",
+      predicate: (ctx) => {
+        const productsQuery = adminApiRequests.find((body) =>
+          body.toLowerCase().includes("products"),
+        );
+        if (!productsQuery) {
+          return `Admin API mock never received a products query; served ${adminApiRequests.length} request(s): ${adminApiRequests
+            .map((body) => body.slice(0, 120))
+            .join(" | ")}`;
+        }
+        const call = successfulCalls(ctx, SHOPIFY).find(
+          (candidate) => toRecord(candidate.result?.data)?.op === "products",
+        );
+        if (!call) {
+          return `no successful SHOPIFY call routed the products op; calls: ${describeCalls(ctx)}`;
+        }
+        if (call.result?.text !== "No products found") {
+          return `expected the empty-store read ("No products found") in the action result, saw ${JSON.stringify(call.result?.text ?? null)}`;
+        }
+      },
     },
   ],
 });
