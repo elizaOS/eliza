@@ -1,21 +1,18 @@
 // Self-contained fixture for the Launcher e2e: mounts the real Launcher
 // (the iOS-like view-launcher) with 27 deterministic mock ViewEntry items.
-// Two of them (chat + settings) land in the seeded default dock (#10800), so
-// 25 undocked tiles overflow the 24-per-page grid onto 2 pages — exercising
-// the production first-run UX (seeded dock AND overflow pagination) together.
-// A couple carry an `imageUrl` data-URI so an image tile renders; the rest
-// fall back to the Lucide glyph. Launch / edit / delete are wired to stubs and
-// surfaced on `window.__launcherCalls` so the runner can assert the real
-// interaction handlers fired. No app server, no network — fully self-contained
-// (mirrors background-fixture's self-containment). Paired with run-launcher-e2e.mjs.
+// The launcher has no dock, so all 27 tiles flow onto the 24-per-page grid and
+// overflow onto 2 pages — exercising the production first-run UX (overflow
+// pagination). A couple carry an `imageUrl` data-URI so an image tile renders;
+// the rest fall back to the Lucide glyph. Launch / edit / delete are wired to
+// stubs and surfaced on `window.__launcherCalls` so the runner can assert the
+// real interaction handlers fired. No app server, no network — fully
+// self-contained (mirrors background-fixture's self-containment). Paired with
+// run-launcher-e2e.mjs.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import type { ViewEntry } from "../../../hooks/view-catalog";
-import {
-  DEFAULT_LAUNCHER_FAVORITES,
-  LAUNCHER_PAGE_SIZE,
-} from "../../../state/launcher-layout";
+import { LAUNCHER_PAGE_SIZE } from "../../../state/launcher-layout";
 import { Launcher } from "../Launcher";
 
 type Win = typeof window & {
@@ -73,12 +70,12 @@ const SPECS: Array<{ id: string; label: string; icon?: string; image?: boolean }
     { id: "camera", label: "Camera", icon: "Camera" },
   ];
 
-// The paging assertions need the undocked tiles to overflow one page. Fail at
-// bundle time — not as a misleading "no Page 2 dot" e2e failure — if a future
-// page-size or default-dock change silently collapses the fixture to one page.
-if (SPECS.length - DEFAULT_LAUNCHER_FAVORITES.length <= LAUNCHER_PAGE_SIZE) {
+// The paging assertions need the tiles to overflow one page. Fail at bundle
+// time — not as a misleading "no Page 2 dot" e2e failure — if a future
+// page-size change silently collapses the fixture to one page.
+if (SPECS.length <= LAUNCHER_PAGE_SIZE) {
   throw new Error(
-    `launcher-fixture: ${SPECS.length} specs minus ${DEFAULT_LAUNCHER_FAVORITES.length} seeded dock ids must exceed LAUNCHER_PAGE_SIZE=${LAUNCHER_PAGE_SIZE} for the multi-page assertions`,
+    `launcher-fixture: ${SPECS.length} specs must exceed LAUNCHER_PAGE_SIZE=${LAUNCHER_PAGE_SIZE} for the multi-page assertions`,
   );
 }
 

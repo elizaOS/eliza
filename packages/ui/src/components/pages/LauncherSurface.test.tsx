@@ -93,15 +93,14 @@ describe("LauncherSurface", () => {
   it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
     render(<LauncherSurface />);
 
-    const dock = within(screen.getByTestId("launcher-dock"));
-    expect(dock.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(dock.getByTestId("launcher-tile-settings")).toBeTruthy();
+    // No dock: chat/settings tile on the apps page alongside everything else.
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
 
     const appsPage = within(screen.getByTestId("launcher-page-0"));
+    expect(appsPage.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(appsPage.getByTestId("launcher-tile-settings")).toBeTruthy();
     expect(appsPage.getByTestId("launcher-tile-wallet")).toBeTruthy();
     expect(appsPage.getByTestId("launcher-tile-browser")).toBeTruthy();
-    expect(appsPage.queryByTestId("launcher-tile-chat")).toBeNull();
-    expect(appsPage.queryByTestId("launcher-tile-settings")).toBeNull();
 
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();

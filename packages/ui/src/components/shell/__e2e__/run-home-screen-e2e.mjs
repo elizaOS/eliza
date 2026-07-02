@@ -170,6 +170,11 @@ const result = await build({
 });
 const js = result.outputFiles[0].text;
 const html = stripTrailingLineWhitespace(`<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
+<!-- Match the real app's viewport (packages/app/index.html): without it a
+     mobile page falls back to the 980px layout viewport, so CSS \`vw\` units
+     (the sheet's \`w-[min(440px,100vw-1rem)]\`) mis-measure and the overlay
+     mis-centers — a test-only artifact that hid the real overlay geometry. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}
 :root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
@@ -438,6 +443,25 @@ try {
     await mobile.getByTestId("notification-sheet-close").isVisible(),
     "real-touch pull-down opens the notification sheet",
   );
+  // On-screen + horizontally centered: the sheet must sit within the viewport,
+  // not clipped to one side. (A `position: fixed` sheet trapped in the
+  // transformed home↔launcher rail anchors to the 2×-wide rail and renders
+  // half-off-screen to the right — this catches that regression.)
+  {
+    const sheetBox = await mobile.getByTestId("notification-sheet").boundingBox();
+    const vw = mobile.viewportSize().width;
+    const center = (sheetBox?.x ?? 0) + (sheetBox?.width ?? 0) / 2;
+    assert(
+      sheetBox != null &&
+        sheetBox.x >= -2 &&
+        sheetBox.x + sheetBox.width <= vw + 2 &&
+        Math.abs(center - vw / 2) < 24,
+      `notification sheet is on-screen + centered (x ${Math.round(sheetBox?.x ?? -1)}, w ${Math.round(sheetBox?.width ?? -1)}, vw ${vw})`,
+    );
+  }
+  // Visual evidence of the mobile pull-down sheet shell (flat, full-width,
+  // safe-area aware) while it is open.
+  await snap(mobile, "mobile-notification-sheet");
   // Close it again (Escape — the sheet's documented dismiss) so the rail swipe
   // below starts from a clean, settled home.
   await mobile.keyboard.press("Escape");
@@ -470,17 +494,15 @@ try {
       `curated app "${id}" renders on the launcher apps page`,
     );
   }
-  // ── Default favorites stay in the dock and out of the page grid.
+  // ── No dock: every view (Chat included) tiles on the page grid. The
+  // featured-views dock was removed, so there is no `launcher-dock` element.
   assert(
-    await mobile.getByTestId("launcher-dock").getByText("Chat").isVisible(),
-    "default favorite Chat renders in the launcher dock",
+    (await mobile.getByTestId("launcher-dock").count()) === 0,
+    "the launcher renders no dock (featured-views header removed)",
   );
   assert(
-    (await mobile
-      .getByTestId("launcher-page-0")
-      .getByTestId("launcher-tile-chat")
-      .count()) === 0,
-    "default favorite Chat is absent from the page grid (docked instead)",
+    await mobile.getByTestId("launcher-tile-chat").isVisible(),
+    "Chat renders as a page tile on the launcher (no dock)",
   );
   // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
   // and the deduped duplicate registrations.
@@ -560,11 +582,15 @@ try {
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
-  // (fixed placement, no reorder/pin affordances). #3
+  // (fixed placement, no reorder). Edit mode animates tiles with `animate-pulse`,
+  // so its absence after a stationary hold is the real read-only signal. #3
   await longPressHold(mobile, "launcher-tile-wallet");
   await mobile.waitForTimeout(150);
   assert(
-    (await mobile.getByTestId("launcher-fav-wallet").count()) === 0,
+    (await mobile
+      .getByTestId("launcher-tile-wallet")
+      .locator("button.animate-pulse")
+      .count()) === 0,
     "a stationary long-press does NOT enter edit mode (curated launcher is read-only)",
   );
   // A REAL touch right-swipe still returns HOME cleanly (at the launcher's
@@ -739,6 +765,48 @@ try {
     "desktop fine-pointer: `<` edge button (→ home) present on the launcher",
   );
   await snap(finePointer, "desktop-edge-buttons-launcher");
+
+  // Desktop notification PANEL (#10706 / per-surface shells): page back to home
+  // and open the home notification affordance. On a fine-pointer wide surface
+  // HomeScreen's `variant="auto"` NotificationCenter must render the top-RIGHT
+  // anchored PANEL — not the mobile pull-down sheet. Assert the shell + its
+  // right anchoring, capture it, then dismiss via the transparent backdrop.
+  await finePointer.getByTestId("rail-pager-edge-prev").click();
+  await waitForSurfacePageSettled(finePointer, "home");
+  await finePointer.getByTestId("home-notification-pull-zone").click();
+  await finePointer
+    .getByTestId("notification-panel")
+    .waitFor({ state: "visible", timeout: 4000 });
+  assert(
+    (await finePointer.getByTestId("notification-panel").count()) === 1 &&
+      (await finePointer.getByTestId("notification-sheet").count()) === 0,
+    "desktop fine-pointer opens the PANEL shell (not the mobile sheet)",
+  );
+  {
+    const panelBox = await finePointer
+      .getByTestId("notification-panel")
+      .boundingBox();
+    const vw = finePointer.viewportSize().width;
+    const rightEdge = (panelBox?.x ?? 0) + (panelBox?.width ?? 0);
+    // Right-anchored AND on-screen: the panel's right edge hugs the viewport's
+    // right edge WITHOUT overshooting it. (A `position: fixed` panel trapped in
+    // the transformed home↔launcher rail would anchor to the 2×-wide rail and
+    // land at ~2×vw — off-screen right; this catches that regression.)
+    assert(
+      panelBox != null && rightEdge > vw - 40 && rightEdge <= vw + 2,
+      `desktop notification panel is right-anchored on-screen (right edge ${Math.round(rightEdge)}, vw ${vw})`,
+    );
+  }
+  await snap(finePointer, "desktop-notification-panel");
+  await finePointer.getByTestId("notification-panel-backdrop").click();
+  await finePointer
+    .getByTestId("notification-panel")
+    .waitFor({ state: "detached", timeout: 4000 });
+  assert(
+    (await finePointer.getByTestId("notification-panel").count()) === 0,
+    "desktop notification panel dismisses on outside click (backdrop)",
+  );
+
   await finePointer.close();
 } finally {
   await browser.close();

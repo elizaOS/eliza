@@ -133,7 +133,12 @@ function flick(testid: string, dx: number, dy = 4): void {
 }
 
 const openLauncher = () => flick("home-launcher-home-page", -140);
-const swipeBackHome = () => flick("home-launcher-launcher-page", 140);
+// A real finger on the launcher lands on the inner page window (it fills the
+// launcher half), so the swipe-back-home gesture is owned by the inner Launcher
+// pager (edge-swipe-right → goHome), not the outer rail. Firing on the inner
+// window matches that hit-test; the event still bubbles to the (gesture-
+// disabled) rail div, which correctly ignores it.
+const swipeBackHome = () => flick("launcher-page-window", 140);
 
 describe("Home ↔ Launcher composed surface", () => {
   it("tracks the rail with the finger before committing a home ↔ launcher swipe", () => {
@@ -203,15 +208,16 @@ describe("Home ↔ Launcher composed surface", () => {
     renderComposed();
     openLauncher();
 
-    // A stationary hold past the long-press threshold must NOT surface pin/edit
-    // affordances — the curated launcher has a fixed placement, no reordering.
+    // A stationary hold past the long-press threshold must NOT enter edit mode —
+    // the curated launcher has a fixed placement, no reordering. Edit mode
+    // animates tiles with `animate-pulse`, so its absence is the read-only proof.
     const tile = screen
       .getByTestId("launcher-tile-settings")
       .querySelector("button");
     if (!tile) throw new Error("settings tile button missing");
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
-    expect(screen.queryByTestId("launcher-fav-settings")).toBeNull();
+    expect(tile.className).not.toContain("animate-pulse");
     vi.useRealTimers();
   });
 
@@ -321,7 +327,7 @@ describe("Home ↔ Launcher composed surface", () => {
     expect(outerRail.style.transform).toBe(outerResting);
   });
 
-  it("a swipe right on a tile at inner page 0 still returns HOME (the rail owns the back gesture)", () => {
+  it("a swipe right on a tile at inner page 0 returns HOME (the inner launcher owns the edge-swipe-back)", () => {
     const { surface, tile } = renderComposedOnLauncher();
     const opts = {
       isPrimary: true,
@@ -335,8 +341,9 @@ describe("Home ↔ Launcher composed surface", () => {
     fireEvent.pointerMove(tile, { ...opts, clientX: 300 });
     fireEvent.pointerUp(tile, { ...opts, clientX: 300 });
 
-    // The inner pager cannot move right at page 0, so the outer rail claims
-    // the gesture and pages back home.
+    // The inner launcher pager owns the swipe-right-back-to-home gesture
+    // (onEdgeSwipeRight → goHome); the outer rail is gesture-disabled on the
+    // launcher, so exactly one pager handles the finger.
     expect(surface.getAttribute("data-page")).toBe("home");
     expect(getShellSurface().page).toBe("home");
   });

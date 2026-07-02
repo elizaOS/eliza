@@ -356,17 +356,6 @@ describe("Launcher interaction telemetry", () => {
     expect(launch?.viewId).toBe("chat");
   });
 
-  it("emits favorite then unfavorite as metadata is toggled", () => {
-    render(
-      <Launcher entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
-    );
-    longPressTile("Notes");
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    expect(actions()).toContain("favorite");
-    expect(actions()).toContain("unfavorite");
-  });
-
   it("emits edit-mode enter/exit via long-press toggle", () => {
     render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />);
     // First long-press enters edit mode, the second exits it.

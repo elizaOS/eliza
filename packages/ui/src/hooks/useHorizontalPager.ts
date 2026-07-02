@@ -3,7 +3,12 @@ import * as React from "react";
 const AXIS_COMMIT_SLOP = 6;
 const AXIS_DOMINANCE_RATIO = 1.15;
 const MIN_DISTANCE_THRESHOLD = 64;
-const DISTANCE_THRESHOLD_RATIO = 0.24;
+// A slow drag commits the page only once the finger has crossed the halfway
+// point of the viewport; short of that it springs back. This is the iOS
+// carousel feel the user asked for ("past the 50% point if I let go it will
+// animate over"). A fast flick still commits early via the velocity path below,
+// so a quick swipe never has to travel the full 50%.
+const DISTANCE_THRESHOLD_RATIO = 0.5;
 const MIN_FLICK_DISTANCE = 48;
 const FLICK_VELOCITY = 0.45;
 const SETTLE_MS = 360;

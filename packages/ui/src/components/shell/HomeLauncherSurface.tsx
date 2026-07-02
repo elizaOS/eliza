@@ -44,15 +44,27 @@ export function HomeLauncherSurface({
   // A committed flick must swallow the click that the browser synthesizes from
   // the same press, so the flick doesn't also tap-launch the tile underneath.
   const suppressClickRef = React.useRef(false);
-  // The rail owns the gesture on the home half, and on the launcher's first app
-  // page / while editing. Deeper in the launcher pages the inner Launcher owns
-  // swipes (and its own edge buttons), so the rail's `< >` buttons hide there to
-  // avoid stacking two arrow sets on one edge.
-  const railEnabled = page === "home" || launcherPage === 0 || launcherEditing;
+  // ONE pager owns the touch gesture per surface — the fix for the "two swipe
+  // actions stacked on top of each other" the user reported. The rail owns the
+  // gesture on the HOME half (swipe left → launcher) and while EDITING (the
+  // inner launcher pager is disabled in edit mode, so the rail can safely own
+  // the back gesture without competing). On the launcher itself the inner
+  // Launcher owns everything — inter-page paging AND swipe-right-back-to-home
+  // (its `onEdgeSwipeRight` → goHome) — so the rail stands its gesture down and
+  // the two pagers never track the same finger.
+  const railGestureEnabled = page === "home" || launcherEditing;
+  // The desktop `< >` rail buttons stay available wherever a rail move is
+  // meaningful (home, the launcher's first page, editing). They route through
+  // goPrev/goNext, which work regardless of the gesture gate, so desktop keeps a
+  // click-to-home affordance at launcher page 0 even though the rail no longer
+  // tracks touch there. Deeper launcher pages hide them (the inner pager owns
+  // those), so two arrow sets never stack on one edge. Hidden on touch anyway.
+  const railButtonsEnabled =
+    page === "home" || launcherPage === 0 || launcherEditing;
   const pager = useHorizontalPager<HTMLElement>({
     page: page === "launcher" ? 1 : 0,
     pageCount: 2,
-    enabled: railEnabled,
+    enabled: railGestureEnabled,
     onPageChange: (nextPage) => {
       suppressClickRef.current = true;
       window.setTimeout(() => {
@@ -133,9 +145,11 @@ export function HomeLauncherSurface({
         </div>
       </div>
       {/* Web/desktop `< >` edge buttons for the home↔launcher rail (hidden on
-          touch). Only while the rail owns the gesture: right → launcher on the
-          home half, left → home on the launcher's first page. */}
-      {railEnabled ? (
+          touch). Shown where a rail move is meaningful: right → launcher on the
+          home half, left → home on the launcher's first page. These drive
+          goPrev/goNext directly, so they work even where the rail no longer
+          tracks touch swipes (launcher page 0). */}
+      {railButtonsEnabled ? (
         <PagerEdgeButtons
           idPrefix="rail"
           canPrev={pager.canPrev}
