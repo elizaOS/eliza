@@ -97,6 +97,10 @@ describe("tokenIsExpired", () => {
     expect(tokenIsExpired(makeJwt({ sub: "u1" }))).toBe(true);
   });
 
+  it("treats a token with a non-numeric exp as expired", () => {
+    expect(tokenIsExpired(makeJwt({ sub: "u1", exp: "soon" }))).toBe(true);
+  });
+
   it("treats an undecodable token as expired", () => {
     expect(tokenIsExpired("not-a-jwt")).toBe(true);
   });
