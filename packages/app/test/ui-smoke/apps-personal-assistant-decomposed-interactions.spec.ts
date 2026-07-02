@@ -80,19 +80,19 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   // and the rendered list: the active chip is renamed "* <Channel>", its
   // thread stays, and the other channel's thread disappears.
   //
-  // KNOWN BUG (documented, not accepted): the first chip in the row ("Email")
-  // sits under the shell's floating "Go back" button (fixed, z-60, top-left),
-  // which intercepts pointer events on BOTH the desktop and Pixel-7 lanes, so
-  // the Email chip is untappable. Drive the same filter semantics through the
-  // "Discord" chip (clear of the overlay) until the shell occlusion is fixed.
-  await page.getByRole("button", { name: "Discord", exact: true }).click();
+  // "Email" is the FIRST chip in the row — #11144 (fixed: SpatialSurface's
+  // --shell-backnav-clearance seam + its safe-area term) used to leave it under
+  // the shell's floating "Go back" button. Clicking it directly IS the
+  // occlusion regression check: Playwright's actionability check fails the
+  // click if the button intercepts the chip's center again.
+  await page.getByRole("button", { name: "Email", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "* Discord", exact: true }),
+    page.getByRole("button", { name: "* Email", exact: true }),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(
-    page.getByText("gm everyone — standup in 10").first(),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Invoice #42 overdue")).toHaveCount(0, {
+  await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("gm everyone — standup in 10")).toHaveCount(0, {
     timeout: 15_000,
   });
 });
@@ -240,11 +240,14 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   });
 
   // Clicking the active kind chip again deselects it (back to every kind).
-  // KNOWN BUG (documented, not accepted): the dedicated "All" chip is the
-  // first chip in the row and sits under the shell's floating "Go back"
-  // button (fixed, z-60, top-left) on both lanes, so it is untappable — same
-  // occlusion as the inbox "Email" chip. The toggle-off path exercises the
-  // same restore semantics.
+  // The "All" first-chip occlusion is fixed by the same clearance seam as the
+  // inbox "Email" chip (verified there), but this test cannot exercise the
+  // direct "All" click yet: a separate, pre-existing failure — the #11145
+  // `[data-graph-container]` boundingBox guard added above (line ~223) times
+  // out under the force-stub e2e, before this chip interaction is reached, and
+  // reproduces on develop independent of the clearance change. Drive
+  // "Organizations" (clear of the overlay) until that boundingBox failure is
+  // resolved on the relationships lane.
   await page
     .getByRole("button", { name: "Organizations", exact: true })
     .click();

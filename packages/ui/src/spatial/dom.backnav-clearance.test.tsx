@@ -90,39 +90,112 @@ describe("shell back-button clearance seam (#11144)", () => {
     // height (n * 0.25rem). The clearance each wrapper reserves must be at
     // least offset + height, or the padded chip row still starts under the
     // button's bottom edge.
-    const btnIdx = APP_SRC.indexOf('data-testid="shell-back-button"');
-    expect(btnIdx).toBeGreaterThan(-1);
-    const btnTag = APP_SRC.slice(btnIdx, APP_SRC.indexOf(">", btnIdx));
-
-    const topMatch = btnTag.match(
-      /top-\[calc\(var\(--safe-area-top,0px\)\+([\d.]+)rem\)\]/,
-    );
-    expect(
-      topMatch,
-      "back button lost its rem top offset class",
-    ).not.toBeNull();
-    const heightMatch = btnTag.match(/\bh-(\d+(?:\.\d+)?)\b/);
-    expect(
-      heightMatch,
-      "back button lost its Tailwind height class",
-    ).not.toBeNull();
-    const bottomEdgeRem =
-      Number((topMatch as RegExpMatchArray)[1]) +
-      Number((heightMatch as RegExpMatchArray)[1]) * 0.25;
-
-    const clearanceMatches = [
-      ...APP_SRC.matchAll(
-        new RegExp(`"${CLEARANCE_VAR}":\\s*"([\\d.]+)rem"`, "g"),
-      ),
-    ];
+    const bottomEdgeRem = buttonBottomEdgeRem(0);
+    const evaluators = parseClearanceEvaluators();
     // Per-wrapper coverage is the previous test's job; this one just must not
     // pass vacuously.
-    expect(clearanceMatches.length).toBeGreaterThanOrEqual(1);
-    for (const match of clearanceMatches) {
+    expect(evaluators.length).toBeGreaterThanOrEqual(1);
+    for (const clearanceRem of evaluators) {
       expect(
-        Number(match[1]),
-        `${CLEARANCE_VAR} (${match[1]}rem) no longer clears the back button's bottom edge (${bottomEdgeRem}rem)`,
+        clearanceRem(0),
+        `${CLEARANCE_VAR} (${clearanceRem(0)}rem at safe-area-top 0) no longer clears the back button's bottom edge (${bottomEdgeRem}rem)`,
       ).toBeGreaterThanOrEqual(bottomEdgeRem);
     }
   });
+
+  it("the clearance still clears the button on notched devices (safe-area-top > 1.25rem)", () => {
+    // The clearance padding stacks INSIDE the root content column, which
+    // absorbs only max(safe-area-top - shaveRem, floorRem) of the safe area,
+    // while the fixed button sits at the FULL safe-area-top + offset in
+    // viewport coords. So the chip's viewport top is rootPad + clearance and
+    // must reach the button's bottom (safe-area-top + offset + height) at
+    // EVERY inset — a flat 3rem clearance passes at safe-area-top 0 (the
+    // Playwright lanes) but leaves up to a 1.25rem overlap on notched phones.
+    const rootPadMatch = APP_SRC.match(
+      /"max\(calc\(var\(--safe-area-top, 0px\) - ([\d.]+)rem\), ([\d.]+)rem\)"/,
+    );
+    expect(
+      rootPadMatch,
+      "root content column lost its shaved safe-area paddingTop (App.tsx)",
+    ).not.toBeNull();
+    const [, shave, floor] = rootPadMatch as RegExpMatchArray;
+    const rootPadRem = (satRem: number) =>
+      Math.max(satRem - Number(shave), Number(floor));
+
+    const evaluators = parseClearanceEvaluators();
+    expect(evaluators.length).toBeGreaterThanOrEqual(1);
+    // 24px (just past the 1.25rem floor crossover), 40px (the worst-case
+    // boundary where the deficit peaks), 44px (iPhone notch), 59px (Dynamic
+    // Island) — all at the 16px root font size.
+    for (const satRem of [1.5, 2.5, 2.75, 3.6875]) {
+      const buttonBottom = buttonBottomEdgeRem(satRem);
+      for (const clearanceRem of evaluators) {
+        const chipTop = rootPadRem(satRem) + clearanceRem(satRem);
+        expect(
+          chipTop,
+          `at --safe-area-top ${satRem}rem the first chip row's top (${chipTop}rem) sits above the back button's bottom edge (${buttonBottom}rem) — the button occludes the chip (#11144)`,
+        ).toBeGreaterThanOrEqual(buttonBottom);
+      }
+    }
+  });
 });
+
+/**
+ * The back button's bottom edge in viewport rem at a given --safe-area-top,
+ * parsed from ShellBackButton's className: fixed at
+ * top-[calc(var(--safe-area-top,0px)+<offset>rem)] with a Tailwind h-<n>
+ * height (n * 0.25rem).
+ */
+function buttonBottomEdgeRem(satRem: number): number {
+  const btnIdx = APP_SRC.indexOf('data-testid="shell-back-button"');
+  expect(btnIdx).toBeGreaterThan(-1);
+  const btnTag = APP_SRC.slice(btnIdx, APP_SRC.indexOf(">", btnIdx));
+
+  const topMatch = btnTag.match(
+    /top-\[calc\(var\(--safe-area-top,0px\)\+([\d.]+)rem\)\]/,
+  );
+  expect(topMatch, "back button lost its rem top offset class").not.toBeNull();
+  const heightMatch = btnTag.match(/\bh-(\d+(?:\.\d+)?)\b/);
+  expect(
+    heightMatch,
+    "back button lost its Tailwind height class",
+  ).not.toBeNull();
+  return (
+    satRem +
+    Number((topMatch as RegExpMatchArray)[1]) +
+    Number((heightMatch as RegExpMatchArray)[1]) * 0.25
+  );
+}
+
+/**
+ * Every --shell-backnav-clearance value App.tsx sets, as an evaluator from
+ * --safe-area-top (rem) to the resolved clearance (rem). Understands the two
+ * shapes the seam has shipped: a flat `<n>rem` and
+ * `calc(<n>rem + min(var(--safe-area-top, 0px), <m>rem))`. Every set-site must
+ * parse — an unparseable value is a geometry we cannot verify, so it fails
+ * loudly instead of being skipped.
+ */
+function parseClearanceEvaluators(): Array<(satRem: number) => number> {
+  const evaluators: Array<(satRem: number) => number> = [];
+  for (const match of APP_SRC.matchAll(
+    new RegExp(`"${CLEARANCE_VAR}":\\s*"([^"]+)"`, "g"),
+  )) {
+    const value = match[1];
+    const flat = value.match(/^([\d.]+)rem$/);
+    if (flat) {
+      const rem = Number(flat[1]);
+      evaluators.push(() => rem);
+      continue;
+    }
+    const calc = value.match(
+      /^calc\(([\d.]+)rem \+ min\(var\(--safe-area-top, 0px\), ([\d.]+)rem\)\)$/,
+    );
+    expect(
+      calc,
+      `unparseable ${CLEARANCE_VAR} value "${value}" — teach parseClearanceEvaluators its shape so the geometry stays verified`,
+    ).not.toBeNull();
+    const [, base, cap] = calc as RegExpMatchArray;
+    evaluators.push((satRem) => Number(base) + Math.min(satRem, Number(cap)));
+  }
+  return evaluators;
+}

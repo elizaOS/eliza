@@ -1501,13 +1501,23 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       : APP_SHELL_CLASS;
   return (
     // --shell-backnav-clearance reserves top space for the fixed ShellBackButton
-    // so spatial views' first row (filter chips) clears it (#11144). 0.75rem top
-    // offset + 2.25rem button = 3rem. Consumed by SpatialSurface (spatial/dom.tsx);
-    // unset elsewhere → 0px.
+    // so spatial views' first row (filter chips) clears it (#11144). The button
+    // bottom sits at safe-area-top + 3rem (0.75rem offset + 2.25rem button) in
+    // VIEWPORT coords, but this wrapper lives inside the root content column,
+    // which absorbs only max(safe-area-top - 1.25rem, 1.25rem) of the safe area
+    // — up to 1.25rem less than the button's full safe-area offset on notched
+    // devices. min(safe-area-top, 1.25rem) adds back exactly that deficit: 3rem
+    // at safe-area-top 0 (unchanged), tight at real notch insets (≥ 2.5rem).
+    // Consumed by SpatialSurface (spatial/dom.tsx); unset elsewhere → 0px.
     <div
       key={`tab-shell-${props.tab}`}
       className={shellClass}
-      style={{ "--shell-backnav-clearance": "3rem" } as CSSProperties}
+      style={
+        {
+          "--shell-backnav-clearance":
+            "calc(3rem + min(var(--safe-area-top, 0px), 1.25rem))",
+        } as CSSProperties
+      }
     >
       <ShellBackButton onBack={props.onNavigateBack} />
       {props.desktopTabBar}
@@ -1535,7 +1545,15 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
     <div
       key={`fullbleed-shell-${props.tab}`}
       className={APP_SHELL_CLASS}
-      style={{ "--shell-backnav-clearance": "3rem" } as CSSProperties}
+      // Same clearance contract as RoutedShellContent (see the derivation
+      // there): 3rem button clearance + the ≤1.25rem safe-area deficit the
+      // root content column does not absorb (#11144).
+      style={
+        {
+          "--shell-backnav-clearance":
+            "calc(3rem + min(var(--safe-area-top, 0px), 1.25rem))",
+        } as CSSProperties
+      }
     >
       <ShellBackButton onBack={props.onNavigateBack} />
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
