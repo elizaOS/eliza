@@ -72,8 +72,10 @@ const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
   ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
 const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
   ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
@@ -281,6 +283,19 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
     return resolveDirectCloudAuthApiBase(
       getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
     );
+  }
+  // Web SPA served from a cloud host with no agent baseUrl yet — exactly the
+  // /join flow's state (selectOrProvisionCloudAgent runs BEFORE any agent
+  // connection exists). Resolve the control plane from the page host so the
+  // direct /api/v1 path works. Returning null here sent these calls down the
+  // agent-proxy fallback (/api/cloud/compat/*), a route only agent servers
+  // mount — the cloud worker 404s it, so every web sign-in dead-ended on
+  // "Couldn't connect to your agent".
+  if (typeof window !== "undefined") {
+    const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+      window.location.hostname.toLowerCase(),
+    );
+    if (byHost) return byHost;
   }
   return null;
 }
