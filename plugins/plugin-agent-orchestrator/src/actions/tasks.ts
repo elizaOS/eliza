@@ -40,8 +40,8 @@ import type {
 import { ChannelType, logger as coreLogger, stringToUuid } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
-  type OrchestratorTaskType,
   detectTaskType,
+  type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
@@ -163,16 +163,6 @@ function formatDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function requestsDeferredUserReply(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:reply|respond)\s+only\s+after\b/.test(normalized) ||
-    /\b(?:reply|respond)\s+only\s+when\b/.test(normalized) ||
-    /\bdo\s+not\s+(?:reply|respond)\s+until\b/.test(normalized) ||
-    /\bdon't\s+(?:reply|respond)\s+until\b/.test(normalized)
-  );
 }
 
 function readOp(params: Record<string, unknown>): TaskOp | null {
@@ -521,9 +511,8 @@ function taskWithResolvedRoute(
 
 // Specialized (non-default) task types detectTaskType only returns for
 // unambiguous build/deploy/view signals — a bare personal to-do never trips them.
-const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> = new Set(
-  ["view-create", "app-build", "deploy"],
-);
+const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> =
+  new Set(["view-create", "app-build", "deploy"]);
 
 function looksLikePersonalLifeOpsTask(text: string): boolean {
   if (
@@ -1067,9 +1056,10 @@ async function runSpawnAgent(
       "keepAliveAfterComplete",
     );
     const extraMetadata = additionalSessionMetadata(params, content);
+    // Structural only: the planner emits deferUserReply when the user asked for
+    // no interim reply. Do not infer behavior by regex-scanning task text.
     const deferUserReply =
-      pickBoolean(params, content, "deferUserReply") === true ||
-      requestsDeferredUserReply(task);
+      pickBoolean(params, content, "deferUserReply") === true;
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,

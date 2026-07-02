@@ -199,7 +199,10 @@ describe("TASKS:spawn_agent", () => {
     ]);
   });
 
-  it("suppresses the spawn acknowledgement when the user requested a deferred reply", async () => {
+  it("does NOT defer from task text alone — deferral is structural, not regex", async () => {
+    // The planner emits the structured `deferUserReply` flag when the user asks
+    // for no interim reply; the orchestrator must not regex-scan task text for
+    // "reply only after" phrasings.
     const svc = serviceMock();
     const cb = callback();
     const result = await spawnAgentAction.handler(
@@ -215,7 +218,7 @@ describe("TASKS:spawn_agent", () => {
 
     expect(result?.success).toBe(true);
     expect(result?.text).toBe("");
-    expect(result?.data).toMatchObject({ deferredUserReply: true });
+    expect(result?.data).toMatchObject({ deferredUserReply: false });
     expect(cb).not.toHaveBeenCalled();
   });
 
