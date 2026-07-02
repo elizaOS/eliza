@@ -57,11 +57,13 @@ const mcpRoute = (await import("../mcp/proxy/[mcpId]/route")).default;
 const app = new Hono();
 app.route("/:mcpId", mcpRoute);
 
-function post() {
+function post(
+  body = JSON.stringify({ method: "tools/call", params: { name: "t" } }),
+) {
   return app.request("/test-mcp", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ method: "tools/call", params: { name: "t" } }),
+    body,
   });
 }
 
@@ -81,6 +83,7 @@ beforeEach(() => {
     organization_id: "org1",
   });
   getById.mockResolvedValue({ ...EXTERNAL_MCP });
+  reserveAndDeductCredits.mockClear();
   reserveAndDeductCredits.mockResolvedValue({
     success: true,
     transaction: { id: "tx1" },
@@ -123,6 +126,13 @@ test("container-unavailable (503) refunds (#11637)", async () => {
   containersGetById.mockResolvedValue(null); // no load_balancer_url
   const res = await post();
   expect(res.status).toBe(503);
+  expect(refundCredits).toHaveBeenCalledTimes(1);
+});
+
+test("invalid JSON body (400) refunds after the upfront debit (#11637)", async () => {
+  const res = await post("{not json");
+  expect(res.status).toBe(400);
+  expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
   expect(refundCredits).toHaveBeenCalledTimes(1);
 });
 

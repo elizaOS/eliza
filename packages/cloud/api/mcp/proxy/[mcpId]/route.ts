@@ -286,7 +286,17 @@ app.post("/", async (c) => {
     return c.json({ error: "MCP endpoint not configured" }, 500);
   }
 
-  const proxyBody = await parseJsonBody(c.req.raw);
+  let proxyBody: McpProxyJson;
+  try {
+    proxyBody = await parseJsonBody(c.req.raw);
+  } catch (error) {
+    logger.warn("[MCP Proxy] Invalid JSON request body", {
+      mcpId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await refundPrecharge("invalid_json");
+    return c.json({ error: "Invalid MCP request body" }, 400);
+  }
   const toolName = toolNameFromRpcBody(proxyBody);
 
   const proxyRequestInit: RequestInit = {
