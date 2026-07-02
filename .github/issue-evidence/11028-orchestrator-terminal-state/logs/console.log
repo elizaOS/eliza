@@ -1,0 +1,76 @@
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=20 p95Commit=91.9ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=20 p95Commit=91.9ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=11 p95Commit=54.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=11 p95Commit=54.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=17 p95Commit=85.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=17 p95Commit=85.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[info] [RenderTelemetry] "AppRoot" committed 60 profiler updates within 1000ms {source: ReactProfiler, name: AppRoot, severity: info, phase: update, actualDuration: 5.299999997019768}
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=16 p95Commit=57.4ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=16 p95Commit=57.4ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[settle] networkidle timeout
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=42 p95Commit=50.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=42 p95Commit=50.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[settle] networkidle timeout
+[settle] networkidle timeout
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=43 p95Commit=33.8ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=43 p95Commit=33.8ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[settle] networkidle timeout
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=31 p95Commit=45.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=31 p95Commit=45.0ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[settle] networkidle timeout
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=17 p95Commit=33.9ms heap=214.6MiB subs=0 timers=0 heavy=0
+[info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=17 p95Commit=33.9ms heap=214.6MiB subs=0 timers=0 heavy=0
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[settle] networkidle timeout

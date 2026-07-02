@@ -1,0 +1,444 @@
+{
+  "taskId": "3e3729ce-213c-4ba1-8811-a63a555c84fd",
+  "title": "Write hello.txt",
+  "goal": "Create a file named hello.txt containing exactly the text 'hi' in the workspace. Nothing else.",
+  "status": "done",
+  "closedAt": "2026-07-02T23:42:17.053Z",
+  "acceptanceCriteria": [
+    "hello.txt exists in the workspace root",
+    "hello.txt's content is exactly 'hi' (optionally with a single trailing newline) and nothing else",
+    "no other files in the workspace were created or modified"
+  ],
+  "latestWorkdir": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12",
+  "usage": {
+    "inputTokens": 14,
+    "outputTokens": 1725,
+    "reasoningTokens": 0,
+    "cacheTokens": 0,
+    "costUsd": 0,
+    "totalTokens": 1739,
+    "state": "measured",
+    "byProvider": [
+      {
+        "provider": "user-claude",
+        "inputTokens": 14,
+        "outputTokens": 1725,
+        "reasoningTokens": 0,
+        "cacheTokens": 0,
+        "totalTokens": 1739,
+        "costUsd": 0,
+        "state": "measured"
+      }
+    ]
+  },
+  "events": [
+    {
+      "eventType": "reasoning",
+      "summary": "Sub-agent reasoning",
+      "data": {
+        "text": ""
+      }
+    },
+    {
+      "eventType": "tool_running",
+      "summary": "Running Write",
+      "data": {
+        "toolCall": {
+          "id": "toolu_01FbubVnqMyCsgMBgbZNPN1L",
+          "title": "Write",
+          "status": "pending",
+          "output": "[]",
+          "kind": "edit",
+          "rawInput": {},
+          "locations": []
+        }
+      }
+    },
+    {
+      "eventType": "tool_running",
+      "summary": "Running Write hello.txt",
+      "data": {
+        "toolCall": {
+          "id": "toolu_01FbubVnqMyCsgMBgbZNPN1L",
+          "title": "Write hello.txt",
+          "status": "\"\"",
+          "output": "[{\"type\":\"diff\",\"path\":\"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\",\"oldText\":null,\"newText\":\"hi\\n\"}]",
+          "kind": "edit",
+          "rawInput": {
+            "file_path": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt",
+            "content": "hi\n"
+          },
+          "locations": [
+            {
+              "path": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "eventType": "tool_running",
+      "summary": "Running \"\"",
+      "data": {
+        "toolCall": {
+          "id": "toolu_01FbubVnqMyCsgMBgbZNPN1L",
+          "title": "\"\"",
+          "status": "completed",
+          "output": "File created successfully at: /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt (file state is current in your context \u2014 no need to Read it back)",
+          "kind": "\"\""
+        }
+      }
+    },
+    {
+      "eventType": "tool_running",
+      "summary": "Running Terminal",
+      "data": {
+        "toolCall": {
+          "id": "toolu_01FiksCFJvmpvFmhPn58WJ5z",
+          "title": "Terminal",
+          "status": "pending",
+          "output": "[]",
+          "kind": "execute",
+          "rawInput": {}
+        }
+      }
+    },
+    {
+      "eventType": "tool_running",
+      "summary": "Running ls -la /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt && wc -c /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt && cat /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt",
+      "data": {
+        "toolCall": {
+          "id": "toolu_01FiksCFJvmpvFmhPn58WJ5z",
+          "title": "ls -la /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt && wc -c /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt && cat /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt",
+          "status": "\"\"",
+          "output": "[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":\"Verify hello.txt exists with correct content\"}}]",
+          "kind": "execute",
+          "rawInput": {
+            "command": "ls -la /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt && wc -c /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt && cat /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt",
+            "description": "Verify hello.txt exists with correct content"
+          }
+        }
+      }
+    },
+    {
+      "eventType": "tool_running",
+      "summary": "Running \"\"",
+      "data": {
+        "toolCall": {
+          "id": "toolu_01FiksCFJvmpvFmhPn58WJ5z",
+          "title": "\"\"",
+          "status": "completed",
+          "output": "-rw-rw-r-- 1 shaw shaw 3 Jul  2 16:41 /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\n3 /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\nhi",
+          "kind": "\"\""
+        }
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "Sub-agent message",
+      "data": {
+        "text": ""
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "Created `hello.txt`",
+      "data": {
+        "text": "Created `hello.txt`"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " with content `hi\\n` (3 bytes) in the workspace root.\n\n```json\n{\n  \"diffSummary\": \"Created hello.txt containing 'hi' with a trailing newline\",",
+      "data": {
+        "text": " with content `hi\\n` (3 bytes) in the workspace root.\n\n```json\n{\n  \"diffSummary\": \"Created hello.txt containing 'hi' with a trailing newline\","
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "\n  \"filesChanged\": [\"hello.txt\"],\n  \"realWorkdir\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f",
+      "data": {
+        "text": "\n  \"filesChanged\": [\"hello.txt\"],\n  \"realWorkdir\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "-85bc-153433577b12\",\n  \"verifiedChangedFiles\": [\n    {\n      \"path\": \"hello.txt\",\n      \"exists\": true,\n      \"",
+      "data": {
+        "text": "-85bc-153433577b12\",\n  \"verifiedChangedFiles\": [\n    {\n      \"path\": \"hello.txt\",\n      \"exists\": true,\n      \""
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "absolutePath\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\",\n      \"sizeBytes\": ",
+      "data": {
+        "text": "absolutePath\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\",\n      \"sizeBytes\": "
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "3\n    }\n  ],\n  \"artifactsVerified\": true,\n  \"missingArtifacts\": [],\n  \"testResults\": [\n    {\n      \"command\": \"wc -c hello.txt &&",
+      "data": {
+        "text": "3\n    }\n  ],\n  \"artifactsVerified\": true,\n  \"missingArtifacts\": [],\n  \"testResults\": [\n    {\n      \"command\": \"wc -c hello.txt &&"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " cat hello.txt\",\n      \"exitCode\": 0,\n      \"summary\": \"3 bytes; content is 'hi\\\\n'\"\n    }\n  ],\n  \"screenshotPaths\": [],",
+      "data": {
+        "text": " cat hello.txt\",\n      \"exitCode\": 0,\n      \"summary\": \"3 bytes; content is 'hi\\\\n'\"\n    }\n  ],\n  \"screenshotPaths\": [],"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "\n  \"acceptanceCriteriaStatus\": [\n    {\n      \"criterion\": \"hello.txt exists in the workspace root\",\n      \"met\": true,\n      \"evidence\": \"ls -la",
+      "data": {
+        "text": "\n  \"acceptanceCriteriaStatus\": [\n    {\n      \"criterion\": \"hello.txt exists in the workspace root\",\n      \"met\": true,\n      \"evidence\": \"ls -la"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " confirmed the file at workspace root\"\n    },\n    {\n      \"criterion\": \"hello.txt's content is exactly 'hi' (opt",
+      "data": {
+        "text": " confirmed the file at workspace root\"\n    },\n    {\n      \"criterion\": \"hello.txt's content is exactly 'hi' (opt"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "ionally with a single trailing newline)\",\n      \"met\": true,\n      \"evidence\": \"wc -c reports 3 bytes; cat shows 'hi'",
+      "data": {
+        "text": "ionally with a single trailing newline)\",\n      \"met\": true,\n      \"evidence\": \"wc -c reports 3 bytes; cat shows 'hi'"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " followed by newline\"\n    },\n    {\n      \"criterion\": \"no other files in the workspace were created or modified\",\n      \"met\": true,\n      \"evidence\": \"Only",
+      "data": {
+        "text": " followed by newline\"\n    },\n    {\n      \"criterion\": \"no other files in the workspace were created or modified\",\n      \"met\": true,\n      \"evidence\": \"Only"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " Write to hello.txt was performed in the workspace\"\n    }\n  ],\n  \"residualRisks\": []\n}\n```",
+      "data": {
+        "text": " Write to hello.txt was performed in the workspace\"\n    }\n  ],\n  \"residualRisks\": []\n}\n```"
+      }
+    },
+    {
+      "eventType": "usage_update",
+      "summary": "Token usage update",
+      "data": {
+        "provider": "unknown",
+        "inputTokens": 8,
+        "outputTokens": 1031,
+        "reasoningTokens": 0,
+        "cacheTokens": 0,
+        "state": "measured",
+        "sourceEventId": "2cbf22c4-ffcd-461f-85bc-153433577b12:1783035669650"
+      }
+    },
+    {
+      "eventType": "task_complete",
+      "summary": "Sub-agent reported completion (pending validation)",
+      "data": {
+        "response": "[tool output: \"\"]\nFile created successfully at: /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt (file state is current in your context \u2014 no need to Read it back)\n[/tool output]\n[tool output: \"\"]\n-rw-rw-r-- 1 shaw shaw 3 Jul  2 16:41 /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\n3 /tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\nhi\n[/tool output]Created `hello.txt` with content `hi\\n` (3 bytes) in the workspace root.\n\n```json\n{\n  \"diffSummary\": \"Created hello.txt containing 'hi' with a trailing newline\",\n  \"filesChanged\": [\"hello.txt\"],\n  \"realWorkdir\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12\",\n  \"verifiedChangedFiles\": [\n    {\n      \"path\": \"hello.txt\",\n      \"exists\": true,\n      \"absolutePath\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\",\n      \"sizeBytes\": 3\n    }\n  ],\n  \"artifactsVerified\": true,\n  \"missingArtifacts\": [],\n  \"testResults\": [\n    {\n      \"command\": \"wc -c hello.txt && cat hello.txt\",\n      \"exitCode\": 0,\n      \"summary\": \"3 bytes; content is 'hi\\\\n'\"\n    }\n  ],\n  \"screenshotPaths\": [],\n  \"acceptanceCriteriaStatus\": [\n    {\n      \"criterion\": \"hello.txt exists in the workspace root\",\n      \"met\": true,\n      \"evidence\": \"ls -la confirmed the file at workspace root\"\n    },\n    {\n      \"criterion\": \"hello.txt's content is exactly 'hi' (optionally with a single trailing newline)\",\n      \"met\": true,\n      \"evidence\": \"wc -c reports 3 bytes; cat shows 'hi' followed by newline\"\n    },\n    {\n      \"criterion\": \"no other files in the workspace were created or modified\",\n      \"met\": true,\n      \"evidence\": \"Only Write to hello.txt was performed in the workspace\"\n    }\n  ],\n  \"residualRisks\": []\n}\n```",
+        "durationMs": 14675,
+        "stopReason": "end_turn"
+      }
+    },
+    {
+      "eventType": "completion_evidence_persisted",
+      "summary": "Persisted completion-evidence bundle to trajectory artifact.",
+      "data": {
+        "trajectoryPath": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/.eliza/trajectories/completion-evidence.jsonl"
+      }
+    },
+    {
+      "eventType": "independent_verify_inconclusive",
+      "summary": "Independent verifier returned no usable CompletionEnvelope \u2014 treat as unverified.",
+      "data": {
+        "verifier": "independent-acp-verifier",
+        "unmet": [],
+        "failedCommands": []
+      }
+    },
+    {
+      "eventType": "validation_passed",
+      "summary": "Human approved in the orchestrator UI.",
+      "data": {
+        "evidence": "Human approved in the orchestrator UI.",
+        "verifier": "orchestrator",
+        "humanOverride": true
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "Sub-agent message",
+      "data": {
+        "text": ""
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "Done. Created",
+      "data": {
+        "text": "Done. Created"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " `/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt` containing `hi\\n` (",
+      "data": {
+        "text": " `/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt` containing `hi\\n` ("
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "3 bytes). Verified via `ls`, `wc -c`, and `cat`. All acceptance criteria met.",
+      "data": {
+        "text": "3 bytes). Verified via `ls`, `wc -c`, and `cat`. All acceptance criteria met."
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " Not blocked, no further work pending.\n\n```json\n{\n  \"diffSummary\": \"Created hello.txt containing 'hi' with a trailing newline\",",
+      "data": {
+        "text": " Not blocked, no further work pending.\n\n```json\n{\n  \"diffSummary\": \"Created hello.txt containing 'hi' with a trailing newline\","
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "\n  \"filesChanged\": [\"hello.txt\"],\n  \"realWorkdir\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433",
+      "data": {
+        "text": "\n  \"filesChanged\": [\"hello.txt\"],\n  \"realWorkdir\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "577b12\",\n  \"verifiedChangedFiles\": [\n    {\n      \"path\": \"hello.txt\",\n      \"exists\": true,\n      \"absolutePath\": \"/tmp/eliza-acp/",
+      "data": {
+        "text": "577b12\",\n  \"verifiedChangedFiles\": [\n    {\n      \"path\": \"hello.txt\",\n      \"exists\": true,\n      \"absolutePath\": \"/tmp/eliza-acp/"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\",\n      \"sizeBytes\": 3\n    }\n  ],\n  \"artifactsVerified\":",
+      "data": {
+        "text": "task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\",\n      \"sizeBytes\": 3\n    }\n  ],\n  \"artifactsVerified\":"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " true,\n  \"missingArtifacts\": [],\n  \"testResults\": [\n    {\n      \"command\": \"wc -c hello.txt && cat hello.txt\",\n      \"exitCode\": 0,\n      \"",
+      "data": {
+        "text": " true,\n  \"missingArtifacts\": [],\n  \"testResults\": [\n    {\n      \"command\": \"wc -c hello.txt && cat hello.txt\",\n      \"exitCode\": 0,\n      \""
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "summary\": \"3 bytes; content is 'hi\\\\n'\"\n    }\n  ],\n  \"screenshotPaths\": [],\n  \"acceptanceCriteriaStatus\": [\n    {\n      ",
+      "data": {
+        "text": "summary\": \"3 bytes; content is 'hi\\\\n'\"\n    }\n  ],\n  \"screenshotPaths\": [],\n  \"acceptanceCriteriaStatus\": [\n    {\n      "
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": "\"criterion\": \"hello.txt exists in the workspace root\",\n      \"met\": true,\n      \"evidence\": \"ls -la confirmed the file at workspace root\"\n    },\n    {\n      \"cr\u2026",
+      "data": {
+        "text": "\"criterion\": \"hello.txt exists in the workspace root\",\n      \"met\": true,\n      \"evidence\": \"ls -la confirmed the file at workspace root\"\n    },\n    {\n      \"criterion\":"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " \"hello.txt's content is exactly 'hi' (optionally with a single trailing newline)\",\n      \"met\": true,\n      \"evidence\": \"wc -c reports 3 bytes; cat shows",
+      "data": {
+        "text": " \"hello.txt's content is exactly 'hi' (optionally with a single trailing newline)\",\n      \"met\": true,\n      \"evidence\": \"wc -c reports 3 bytes; cat shows"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": " 'hi' followed by newline\"\n    },\n    {\n      \"criterion\": \"no other files in the workspace were created or modified\",\n      \"met\": true,\n      \"evidence\": \"Onl\u2026",
+      "data": {
+        "text": " 'hi' followed by newline\"\n    },\n    {\n      \"criterion\": \"no other files in the workspace were created or modified\",\n      \"met\": true,\n      \"evidence\": \"Only Write to hello"
+      }
+    },
+    {
+      "eventType": "message",
+      "summary": ".txt was performed in the workspace\"\n    }\n  ],\n  \"residualRisks\": []\n}\n```",
+      "data": {
+        "text": ".txt was performed in the workspace\"\n    }\n  ],\n  \"residualRisks\": []\n}\n```"
+      }
+    },
+    {
+      "eventType": "usage_update",
+      "summary": "Token usage update",
+      "data": {
+        "provider": "unknown",
+        "inputTokens": 6,
+        "outputTokens": 694,
+        "reasoningTokens": 0,
+        "cacheTokens": 0,
+        "state": "measured",
+        "sourceEventId": "2cbf22c4-ffcd-461f-85bc-153433577b12:1783035890226"
+      }
+    },
+    {
+      "eventType": "task_complete",
+      "summary": "Sub-agent reported completion (pending validation)",
+      "data": {
+        "response": "Done. Created `/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt` containing `hi\\n` (3 bytes). Verified via `ls`, `wc -c`, and `cat`. All acceptance criteria met. Not blocked, no further work pending.\n\n```json\n{\n  \"diffSummary\": \"Created hello.txt containing 'hi' with a trailing newline\",\n  \"filesChanged\": [\"hello.txt\"],\n  \"realWorkdir\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12\",\n  \"verifiedChangedFiles\": [\n    {\n      \"path\": \"hello.txt\",\n      \"exists\": true,\n      \"absolutePath\": \"/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt\",\n      \"sizeBytes\": 3\n    }\n  ],\n  \"artifactsVerified\": true,\n  \"missingArtifacts\": [],\n  \"testResults\": [\n    {\n      \"command\": \"wc -c hello.txt && cat hello.txt\",\n      \"exitCode\": 0,\n      \"summary\": \"3 bytes; content is 'hi\\\\n'\"\n    }\n  ],\n  \"screenshotPaths\": [],\n  \"acceptanceCriteriaStatus\": [\n    {\n      \"criterion\": \"hello.txt exists in the workspace root\",\n      \"met\": true,\n      \"evidence\": \"ls -la confirmed the file at workspace root\"\n    },\n    {\n      \"criterion\": \"hello.txt's content is exactly 'hi' (optionally with a single trailing newline)\",\n      \"met\": true,\n      \"evidence\": \"wc -c reports 3 bytes; cat shows 'hi' followed by newline\"\n    },\n    {\n      \"criterion\": \"no other files in the workspace were created or modified\",\n      \"met\": true,\n      \"evidence\": \"Only Write to hello.txt was performed in the workspace\"\n    }\n  ],\n  \"residualRisks\": []\n}\n```",
+        "durationMs": 7830,
+        "stopReason": "end_turn"
+      }
+    },
+    {
+      "eventType": "completion_evidence_persisted",
+      "summary": "Persisted completion-evidence bundle to trajectory artifact.",
+      "data": {
+        "trajectoryPath": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/.eliza/trajectories/completion-evidence.jsonl"
+      }
+    }
+  ],
+  "completionEnvelope": {
+    "diffSummary": "Created hello.txt containing 'hi' with a trailing newline",
+    "filesChanged": [
+      "hello.txt"
+    ],
+    "realWorkdir": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12",
+    "verifiedChangedFiles": [
+      {
+        "path": "hello.txt",
+        "exists": true,
+        "absolutePath": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt",
+        "sizeBytes": 3
+      }
+    ],
+    "artifactsVerified": true,
+    "missingArtifacts": [],
+    "testResults": [
+      {
+        "command": "wc -c hello.txt && cat hello.txt",
+        "exitCode": 0,
+        "summary": "3 bytes; content is 'hi\\n'"
+      }
+    ],
+    "acceptanceCriteriaStatus": [
+      {
+        "criterion": "hello.txt exists in the workspace root",
+        "met": true,
+        "evidence": "ls -la confirmed the file at workspace root"
+      },
+      {
+        "criterion": "hello.txt's content is exactly 'hi' (optionally with a single trailing newline)",
+        "met": true,
+        "evidence": "wc -c reports 3 bytes; cat shows 'hi' followed by newline"
+      },
+      {
+        "criterion": "no other files in the workspace were created or modified",
+        "met": true,
+        "evidence": "Only Write to hello.txt was performed in the workspace"
+      }
+    ],
+    "residualRisks": []
+  }
+}

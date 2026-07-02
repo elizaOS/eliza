@@ -1,0 +1,50 @@
+{
+  "taskId": "3e3729ce-213c-4ba1-8811-a63a555c84fd",
+  "finalStatus": "done",
+  "latestWorkdir": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12",
+  "newWorkdirs": [
+    "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12"
+  ],
+  "envelope": {
+    "diffSummary": "Created hello.txt containing 'hi' with a trailing newline",
+    "filesChanged": [
+      "hello.txt"
+    ],
+    "realWorkdir": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12",
+    "verifiedChangedFiles": [
+      {
+        "path": "hello.txt",
+        "exists": true,
+        "absolutePath": "/tmp/eliza-acp/task-2cbf22c4-ffcd-461f-85bc-153433577b12/hello.txt",
+        "sizeBytes": 3
+      }
+    ],
+    "artifactsVerified": true,
+    "missingArtifacts": [],
+    "testResults": [
+      {
+        "command": "wc -c hello.txt && cat hello.txt",
+        "exitCode": 0,
+        "summary": "3 bytes; content is 'hi\\n'"
+      }
+    ],
+    "acceptanceCriteriaStatus": [
+      {
+        "criterion": "hello.txt exists in the workspace root",
+        "met": true,
+        "evidence": "ls -la confirmed the file at workspace root"
+      },
+      {
+        "criterion": "hello.txt's content is exactly 'hi' (optionally with a single trailing newline)",
+        "met": true,
+        "evidence": "wc -c reports 3 bytes; cat shows 'hi' followed by newline"
+      },
+      {
+        "criterion": "no other files in the workspace were created or modified",
+        "met": true,
+        "evidence": "Only Write to hello.txt was performed in the workspace"
+      }
+    ],
+    "residualRisks": []
+  }
+}
