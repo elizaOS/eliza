@@ -25,6 +25,11 @@ import {
 } from "./coding-account-selection.js";
 import { readConfigMcpServers } from "./config-env.js";
 import {
+  applyModelGatewayEnv,
+  MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
+  resolveModelGatewayConfig,
+} from "./model-gateway.js";
+import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
@@ -2406,6 +2411,19 @@ export class AcpService extends Service {
           vendored: Boolean(opencode.vendoredShimDir),
         });
       }
+    }
+    // Gateway mode runs LAST so no earlier merge step (host forwarding,
+    // customCredentials, spawn extras, account selection) can reintroduce a
+    // raw provider key into the child env. Never log the token.
+    const gateway = resolveModelGatewayConfig();
+    if (gateway) {
+      applyModelGatewayEnv(env, gateway);
+      this.log("info", "model-gateway mode engaged for sub-agent env", {
+        gatewayUrl: gateway.url,
+        agentType,
+        sessionId: childSessionId,
+        excludedProviderKeys: [...MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS],
+      });
     }
     return env;
   }
