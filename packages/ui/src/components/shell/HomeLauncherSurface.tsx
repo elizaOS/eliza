@@ -32,7 +32,7 @@ export function HomeLauncherSurface({
   initialPage = "home",
   className,
 }: HomeLauncherSurfaceProps): React.JSX.Element {
-  const { page, launcherPage, launcherEditing } = useShellSurface();
+  const { page, launcherPage } = useShellSurface();
 
   // The mounting route decides which half shows first. Re-runs only when the
   // route actually changes `initialPage`, so an in-session swipe is never
@@ -42,22 +42,17 @@ export function HomeLauncherSurface({
   }, [initialPage]);
 
   // ONE pager owns the touch gesture per surface — the fix for the "two swipe
-  // actions stacked on top of each other" the user reported. The rail owns the
-  // gesture on the HOME half (swipe left → launcher) and while EDITING (the
-  // inner launcher pager is disabled in edit mode, so the rail can safely own
-  // the back gesture without competing). On the launcher itself the inner
-  // Launcher owns everything — inter-page paging AND swipe-right-back-to-home
-  // (its `onEdgeSwipeRight` → goHome) — so the rail stands its gesture down and
-  // the two pagers never track the same finger.
-  const railGestureEnabled = page === "home" || launcherEditing;
+  // actions stacked on top of each other". The rail owns the gesture on the HOME
+  // half (swipe left → launcher); on the launcher the read-only Launcher owns the
+  // swipe-right-back-to-home (its `onEdgeSwipeRight` → goHome), so the rail stands
+  // its gesture down there and the two never track the same finger.
+  const railGestureEnabled = page === "home";
   // The desktop `< >` rail buttons stay available wherever a rail move is
-  // meaningful (home, the launcher's first page, editing). They route through
-  // goPrev/goNext, which work regardless of the gesture gate, so desktop keeps a
-  // click-to-home affordance at launcher page 0 even though the rail no longer
-  // tracks touch there. Deeper launcher pages hide them (the inner pager owns
-  // those), so two arrow sets never stack on one edge. Hidden on touch anyway.
-  const railButtonsEnabled =
-    page === "home" || launcherPage === 0 || launcherEditing;
+  // meaningful. They route through goPrev/goNext, which work regardless of the
+  // gesture gate, so desktop keeps a click-to-home affordance on the launcher
+  // (single page → launcherPage is 0) even though the rail no longer tracks touch
+  // there. Hidden on touch anyway.
+  const railButtonsEnabled = page === "home" || launcherPage === 0;
   const pager = useHorizontalPager<HTMLElement>({
     page: page === "launcher" ? 1 : 0,
     pageCount: 2,

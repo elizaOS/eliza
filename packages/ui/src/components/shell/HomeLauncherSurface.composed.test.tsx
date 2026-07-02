@@ -280,7 +280,7 @@ describe("Home ↔ Launcher composed surface", () => {
     };
   }
 
-  it("a MOUSE drag left on a tile advances the INNER grid pager — the rail no longer steals the gesture", () => {
+  it("a left drag on the launcher does NOT page anywhere — single read-only page, no inter-page view paging", () => {
     const { surface, outerRail, tile } = renderComposedOnLauncher();
     const outerResting = outerRail.style.transform;
     const opts = {
@@ -295,14 +295,15 @@ describe("Home ↔ Launcher composed surface", () => {
     fireEvent.pointerMove(tile, { ...opts, clientX: 100 });
     fireEvent.pointerUp(tile, { ...opts, clientX: 100 });
 
-    // The inner pager advanced to the second grid page (e.g. Developer) …
-    expect(getShellSurface().launcherPage).toBe(1);
-    // … and the outer rail neither paged home nor moved at all.
+    // There is exactly one curated page, so a left-drag has nowhere to go: the
+    // inner page index stays 0 and the outer rail never moves (it does not own
+    // the gesture on the launcher).
+    expect(getShellSurface().launcherPage).toBe(0);
     expect(surface.getAttribute("data-page")).toBe("launcher");
     expect(outerRail.style.transform).toBe(outerResting);
   });
 
-  it("a touch drag left claimed by the inner grid never moves the OUTER rail (no double-paint)", () => {
+  it("a left drag on the launcher rubber-bands the inner rail without moving the OUTER rail", () => {
     const { outerRail, innerRail, tile } = renderComposedOnLauncher();
     const outerResting = outerRail.style.transform;
     const opts = {
@@ -316,14 +317,15 @@ describe("Home ↔ Launcher composed surface", () => {
     fireEvent.pointerMove(tile, { ...opts, clientX: 280 });
     fireEvent.pointerMove(tile, { ...opts, clientX: 180 });
 
-    // Mid-drag: the inner rail follows the finger 1:1 …
-    expect(innerRail.style.transform).toContain("-120px");
-    // … while the outer rail stays parked (it used to add its own dx·0.35
-    // rubber-band on top — ~1.35× finger motion and a gap at the edge).
+    // At the single page's edge a left-drag paints only the damped rubber-band
+    // (dx·EDGE_RESISTANCE = -120·0.35 = -42px) on the inner rail …
+    expect(innerRail.style.transform).toContain("-42px");
+    // … while the outer rail stays parked.
     expect(outerRail.style.transform).toBe(outerResting);
 
     fireEvent.pointerUp(tile, { ...opts, clientX: 180 });
-    expect(getShellSurface().launcherPage).toBe(1);
+    // No commit: still on the launcher, still page 0.
+    expect(getShellSurface().launcherPage).toBe(0);
     expect(outerRail.style.transform).toBe(outerResting);
   });
 

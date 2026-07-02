@@ -1,43 +1,25 @@
 /**
  * Launcher — iOS-like app/view launcher.
  *
- * Renders every available view as a names-only icon on swipeable pages. Tap
- * launches; in the free-form (non-curated) mode a long-press enters edit mode
- * where icons can be reordered (drag) and — for manageable (dynamic developer)
- * views — edited or deleted, with the order persisted via the pure
- * `launcher-layout` model. (The production mount via LauncherSurface always
- * passes `pageGroups`, so it renders read-only curated pages; edit mode is
- * exercised by the standalone stories / launcher-e2e.)
+ * Renders the curated view tiles as names-only icons on a single page (the home
+ * dashboard is the adjacent page on the rail). Tap launches. The launcher is
+ * READ-ONLY: page composition + visibility are owned by `curateLauncherPages`
+ * (system + release always; developer + preview gated by their Settings
+ * toggles), so there is no reorder, no edit mode, and no persisted free-form
+ * layout. The only gesture the launcher itself owns is a right-swipe back to the
+ * home dashboard (`onEdgeSwipeRight`); the outer home↔launcher rail owns the
+ * left-swipe into the launcher.
  *
- * The springboard renders no background of its own — the shared root
- * `AppBackground` shows through, matching the home screen. Tiles, labels, the
- * skeleton, and the pager chevrons deliberately use a FIXED white-on-wallpaper
- * treatment (theme-independent, kept legible by a text-shadow/scrim over the
- * ambient field) rather than light/dark theme tokens.
+ * Renders no background of its own — the shared root `AppBackground` shows
+ * through, matching the home screen. Tiles, labels, and the skeleton use a FIXED
+ * white-on-wallpaper treatment (theme-independent, kept legible by a text-shadow
+ * over the ambient field) rather than light/dark theme tokens.
  */
 
-import { Pencil, Trash2 } from "lucide-react";
-import { Reorder } from "motion/react";
-import {
-  type MutableRefObject,
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
-import {
-  LAUNCHER_PAGE_SIZE,
-  type LauncherLayout,
-  moveIcon,
-  readLauncherLayout,
-  reconcileLayout,
-  writeLauncherLayout,
-} from "../../state/launcher-layout";
 import { emitViewInteraction } from "../../view-telemetry";
 import { PagerEdgeButtons } from "../shell/PagerEdgeButtons";
 import { ViewTileImage } from "../views/ViewTileImage";
@@ -45,37 +27,28 @@ import { ViewTileImage } from "../views/ViewTileImage";
 export interface LauncherProps {
   entries: ViewEntry[];
   /**
-   * Explicit, curated pages as ordered id lists (page 1 = apps, page 2 =
-   * developer). When supplied the launcher renders these fixed pages read-only
-   * (no reorder / edit mode) instead of the persisted free-form layout; a group
-   * longer than one page paginates but never merges into the next group. Omit
-   * for the standalone/free-form launcher (stories, tests).
+   * Curated pages as ordered id lists (already deduped + visibility-filtered by
+   * `curateLauncherPages`). Normally a single page; each group renders as its
+   * own page and never merges into the next. Omitted → one page of every entry
+   * (the standalone/story default).
    */
   pageGroups?: string[][];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
+  /** Right-swipe back to the home dashboard. */
   onEdgeSwipeRight?: () => void;
-  /** Per-tile management for dynamic views, shown in edit mode when allowed. */
-  canManageView?: (id: string) => boolean;
-  onEditView?: (id: string) => void;
-  onDeleteView?: (id: string) => void;
   /**
-   * Controlled active page index. When provided the page is owned by the caller
-   * (the shell-surface store, via LauncherSurface); when omitted it is local
-   * state so the component stays usable standalone (stories / isolated tests).
+   * Controlled active page index (owned by the shell-surface store via
+   * LauncherSurface); local state otherwise so the component stays usable
+   * standalone (stories / isolated tests).
    */
   page?: number;
   onPageChange?: (page: number) => void;
-  /** Fires with the rendered page count whenever it changes, so an outer surface
-   *  can size the unified page indicator. */
+  /** Fires with the rendered page count whenever it changes. */
   onPageCountChange?: (count: number) => void;
-  /** Controlled edit mode. When omitted, edit mode is local state. */
-  editing?: boolean;
-  onEditingChange?: (editing: boolean) => void;
   /**
-   * Render the inner per-page dots. Off when an outer surface (the rail) owns
-   * the single unified indicator — this is what prevents two stacked dot strips
-   * (#4). Defaults to true for standalone usage.
+   * Render the inner per-page dots. Off when an outer surface owns the single
+   * unified indicator. Defaults to true for standalone usage.
    */
   showPageDots?: boolean;
   className?: string;
@@ -83,23 +56,8 @@ export interface LauncherProps {
 
 interface IconTileProps {
   entry: ViewEntry;
-  editing: boolean;
-  manageable: boolean;
   onLaunch: (entry: ViewEntry) => void;
-  onEdit?: (id: string) => void;
-  onDelete?: (id: string) => void;
-  onLongPress: () => void;
-  /** Parent-owned "a long-press just fired" flag. Lives on the Launcher (not
-   *  the tile) because toggling edit mode switches which JSX branch renders
-   *  the tile — the remount would wipe a tile-local ref and the click the
-   *  browser synthesizes from the SAME press would ghost-launch the tile. */
-  longPressClickGuard: MutableRefObject<boolean>;
 }
-
-const LONG_PRESS_MS = 450;
-/** Finger travel (px) that aborts a long-press — a pan/swipe is not a press, so
- *  a horizontal swipe-back can never ghost-fire edit mode mid-gesture. */
-const LONG_PRESS_MOVE_SLOP = 10;
 
 function viewKindBadge(entry: ViewEntry): {
   label: string;
@@ -120,38 +78,10 @@ function viewKindBadge(entry: ViewEntry): {
   return null;
 }
 
-// Memoized so a layout reconcile (install/uninstall/sort) re-renders only the
-// tiles whose props actually changed, not all ~20 on a page.
-const IconTile = memo(function IconTile({
-  entry,
-  editing,
-  manageable,
-  onLaunch,
-  onEdit,
-  onDelete,
-  onLongPress,
-  longPressClickGuard,
-}: IconTileProps) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pressStart = useRef<{ x: number; y: number } | null>(null);
-  // A fired long-press must swallow the click the browser synthesizes from the
-  // SAME press on release. Without this, a long-press while ALREADY in edit
-  // mode toggled edit OFF and the trailing click then passed the `!editing`
-  // guard — the tile ghost-launched. The flag is the parent-owned
-  // `longPressClickGuard` (see IconTileProps): exiting edit mode remounts the
-  // tile into a different JSX branch, so a tile-local ref would be wiped
-  // before the synthesized click arrives.
-  const longPressFired = longPressClickGuard;
+// Memoized so a catalog change (install/uninstall/sort) re-renders only the
+// tiles whose props actually changed, not the whole page.
+const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
   const badge = viewKindBadge(entry);
-
-  const clear = () => {
-    if (timer.current !== null) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-    pressStart.current = null;
-  };
-
   return (
     <div
       className="flex flex-col items-center gap-1.5 select-none"
@@ -161,50 +91,14 @@ const IconTile = memo(function IconTile({
         <button
           type="button"
           aria-label={entry.label}
-          onClick={() => {
-            if (longPressFired.current) {
-              longPressFired.current = false;
-              return;
-            }
-            if (!editing) onLaunch(entry);
-          }}
-          onPointerDown={(event) => {
-            clear();
-            longPressFired.current = false;
-            pressStart.current = { x: event.clientX, y: event.clientY };
-            timer.current = setTimeout(() => {
-              longPressFired.current = true;
-              onLongPress();
-            }, LONG_PRESS_MS);
-          }}
-          // A long-press requires a near-stationary finger: once movement passes
-          // LONG_PRESS_MOVE_SLOP the press is a pan/swipe, so cancel the timer.
-          // This is what stops a horizontal swipe-back (which keeps the pointer
-          // over the translating tile) from ghost-firing edit mode (#3).
-          onPointerMove={(event) => {
-            const start = pressStart.current;
-            if (!start) return;
-            if (
-              Math.hypot(event.clientX - start.x, event.clientY - start.y) >
-              LONG_PRESS_MOVE_SLOP
-            ) {
-              clear();
-            }
-          }}
-          onPointerUp={clear}
-          onPointerLeave={clear}
-          // pointercancel (not pointerup) fires when a touch scroll or system
-          // gesture interrupts the press — clear the timer so a long-press never
-          // ghost-fires edit mode after the user finishes scrolling.
-          onPointerCancel={clear}
+          onClick={() => onLaunch(entry)}
           className={cn(
             // ViewTileImage renders this surface as an app icon, not as a
-            // cropped catalog preview. The button stays one constant hit target
-            // and owns hover/focus chrome; the inner visual owns color/glyph.
-            // Flat — no border; a subtle glass wash is the icon plate
-            // (neutral resting → neutral-with-opacity hover).
+            // cropped catalog preview. The button is one constant hit target and
+            // owns hover/focus chrome; the inner visual owns color/glyph. Flat —
+            // no border; a subtle glass wash is the icon plate (neutral resting →
+            // neutral-with-opacity hover).
             "h-16 w-16 overflow-hidden rounded-2xl bg-white/10 text-white transition-colors hover:bg-white/20",
-            editing && "animate-pulse",
           )}
         >
           <ViewTileImage
@@ -224,38 +118,6 @@ const IconTile = memo(function IconTile({
             {badge.label}
           </span>
         ) : null}
-        {editing && manageable ? (
-          <div className="absolute -left-1.5 -top-1.5 flex gap-1">
-            {onEdit ? (
-              <button
-                type="button"
-                aria-label={`Edit ${entry.label}`}
-                data-testid={`launcher-edit-${entry.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(entry.id);
-                }}
-                className="grid h-5 w-5 place-items-center rounded-full bg-bg-accent text-foreground"
-              >
-                <Pencil className="h-3 w-3" aria-hidden="true" />
-              </button>
-            ) : null}
-            {onDelete ? (
-              <button
-                type="button"
-                aria-label={`Delete ${entry.label}`}
-                data-testid={`launcher-delete-${entry.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(entry.id);
-                }}
-                className="grid h-5 w-5 place-items-center rounded-full bg-destructive/80 text-destructive-foreground"
-              >
-                <Trash2 className="h-3 w-3" aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-        ) : null}
       </div>
       <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
         {entry.label}
@@ -270,33 +132,16 @@ export function Launcher({
   loading = false,
   onLaunch,
   onEdgeSwipeRight,
-  canManageView,
-  onEditView,
-  onDeleteView,
   page: pageProp,
   onPageChange,
   onPageCountChange,
-  editing: editingProp,
-  onEditingChange,
   showPageDots = true,
   className,
 }: LauncherProps) {
-  // Curated mode: the caller owns page composition, so the launcher renders
-  // those fixed pages and disables the free-form layout / edit affordances.
-  const grouped = pageGroups != null;
-  const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
-  const [layout, setLayout] = useState<LauncherLayout>(() => {
-    const stored = readLauncherLayout();
-    return reconcileLayout(stored, availableIds);
-  });
-
-  // Active page index + edit mode are CONTROLLED when the caller (the
-  // shell-surface store, via LauncherSurface) supplies them, and local
-  // otherwise — so the app has one source of truth (the store enforces the
-  // "leaving the launcher clears edit mode + page" invariant) while the
-  // component stays usable standalone (stories / isolated tests).
+  // Active page index is CONTROLLED when the shell-surface store supplies it
+  // (via LauncherSurface), local otherwise (stories / isolated tests).
   const pageControlled = pageProp !== undefined;
   const [localPage, setLocalPage] = useState(0);
   const activePage = pageProp ?? localPage;
@@ -308,27 +153,31 @@ export function Launcher({
     [pageControlled, onPageChange],
   );
 
-  const editingControlled = editingProp !== undefined;
-  const [localEditing, setLocalEditing] = useState(false);
-  // Curated pages are read-only: never enter reorder edit mode.
-  const editing = grouped ? false : (editingProp ?? localEditing);
-  const setEditingState = useCallback(
-    (next: boolean) => {
-      if (editingControlled) onEditingChange?.(next);
-      else setLocalEditing(next);
-    },
-    [editingControlled, onEditingChange],
+  // Each curated group is one page; drop ids with no live entry, drop empty
+  // pages. Never chunk — the launcher is a single scrolling page of views. When
+  // no groups are supplied (standalone / stories), default to one page of every
+  // entry in catalog order.
+  const groups = useMemo(
+    () => pageGroups ?? [entries.map((e) => e.id)],
+    [pageGroups, entries],
   );
+  const pages = useMemo(() => {
+    const filtered = groups
+      .map((group) => group.filter((id) => byId.has(id)))
+      .filter((group) => group.length > 0);
+    return filtered.length > 0 ? filtered : [[]];
+  }, [groups, byId]);
 
-  // Re-reconcile when the available views change (install/uninstall/sort).
+  // Keep the LOCAL active page index in range when the page count shrinks.
   useEffect(() => {
-    setLayout((prev) => reconcileLayout(prev, availableIds));
-  }, [availableIds]);
+    if (pageControlled) return;
+    setLocalPage((p) => Math.min(p, pages.length - 1));
+  }, [pages.length, pageControlled]);
 
-  const commit = useCallback((next: LauncherLayout) => {
-    setLayout(next);
-    writeLauncherLayout(next);
-  }, []);
+  useEffect(() => {
+    onPageCountChange?.(pages.length);
+  }, [pages.length, onPageCountChange]);
+  const clampedPage = Math.min(activePage, pages.length - 1);
 
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
@@ -342,110 +191,14 @@ export function Launcher({
     [onLaunch],
   );
 
-  const toggleEditMode = useCallback(() => {
-    if (grouped) return; // Curated pages never enter edit mode.
-    emitViewInteraction({
-      source: "launcher",
-      action: editing ? "edit-mode-exit" : "edit-mode-enter",
-    });
-    setEditingState(!editing);
-  }, [grouped, editing, setEditingState]);
-
-  // Curated mode chunks each supplied group onto its own page(s) so a group
-  // boundary always starts a fresh page (page 1 = apps, page 2 = developer),
-  // never merging two groups even when the first is short.
-  const curatedPages = useMemo(() => {
-    if (!pageGroups) return null;
-    const result: string[][] = [];
-    for (const group of pageGroups) {
-      const present = group.filter((id) => byId.has(id));
-      for (let i = 0; i < present.length; i += LAUNCHER_PAGE_SIZE) {
-        result.push(present.slice(i, i + LAUNCHER_PAGE_SIZE));
-      }
-    }
-    return result.length > 0 ? result : [[]];
-  }, [pageGroups, byId]);
-
-  const pages = useMemo(() => {
-    const sourcePages =
-      curatedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]);
-    const filtered = sourcePages.filter((page) => page.length > 0);
-    return filtered.length > 0 ? filtered : [[]];
-  }, [curatedPages, layout.pages]);
-
-  // Keep the LOCAL active page index in range when the RENDERED page count
-  // shrinks. Must clamp against `pages` (the actually-rendered list — curated in
-  // grouped mode, free-form otherwise), not `layout.pages`, which in grouped
-  // mode is a different, unrendered list. `pages` is always non-empty. When
-  // controlled, the store owns the clamp, so this only guards the standalone path.
-  useEffect(() => {
-    if (pageControlled) return;
-    setLocalPage((p) => Math.min(p, pages.length - 1));
-  }, [pages.length, pageControlled]);
-
-  // Report the page count up so an outer surface (the rail) can size the single
-  // unified page indicator. Fires only on an actual count change.
-  useEffect(() => {
-    onPageCountChange?.(pages.length);
-  }, [pages.length, onPageCountChange]);
-  const clampedPage = Math.min(activePage, pages.length - 1);
-
-  const handleReorder = useCallback(
-    (pageIndex: number, nextIds: string[]) => {
-      // Rebuild the layout for this page from the reordered id list.
-      let next = layout;
-      nextIds.forEach((id, index) => {
-        next = moveIcon(next, id, pageIndex, index);
-      });
-      emitViewInteraction({
-        source: "launcher",
-        action: "reorder",
-        count: pageIndex,
-      });
-      commit(next);
-    },
-    [layout, commit],
-  );
-
-  // Parent-owned so it survives the tile remount when edit mode toggles
-  // switch render branches (see IconTileProps.longPressClickGuard).
-  const longPressClickGuard = useRef(false);
-
-  const renderTile = useCallback(
-    (entry: ViewEntry) => (
-      <IconTile
-        entry={entry}
-        editing={editing}
-        manageable={canManageView?.(entry.id) ?? false}
-        onLaunch={handleLaunch}
-        onEdit={onEditView}
-        onDelete={onDeleteView}
-        onLongPress={toggleEditMode}
-        longPressClickGuard={longPressClickGuard}
-      />
-    ),
-    [
-      editing,
-      canManageView,
-      handleLaunch,
-      onEditView,
-      onDeleteView,
-      toggleEditMode,
-    ],
-  );
-
-  // The launcher owns EVERY horizontal gesture on its surface — inter-page
-  // paging AND the swipe-right-back-to-home (via onEdgeSwipeRight). Decoupling
-  // the edge-swipe from `showPageDots` is what lets the outer home↔launcher rail
-  // stand down entirely while the launcher is showing, so a swipe is tracked by
-  // exactly one pager instead of two stacked ones. The pager stays enabled for a
-  // single-page launcher too when the edge-swipe-home is available (otherwise a
-  // one-page launcher would have no way back).
+  // The launcher owns only the right-swipe back to home (`onEdgeSwipeRight`);
+  // there is no inter-page view paging (a single curated page), so a left-swipe
+  // just rubber-bands. The outer rail owns the home→launcher direction.
   const edgeSwipeRightEnabled = onEdgeSwipeRight != null;
   const pager = useHorizontalPager({
     page: clampedPage,
     pageCount: pages.length,
-    enabled: !editing && (pages.length > 1 || edgeSwipeRightEnabled),
+    enabled: pages.length > 1 || edgeSwipeRightEnabled,
     edgeSwipeRightEnabled,
     onEdgeSwipeRight,
     onPageChange: (nextPage) => {
@@ -463,10 +216,6 @@ export function Launcher({
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="launcher"
     >
-      {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
-          never fights the in-tile drag-to-reorder gesture. A real rail is
-          rendered so adjacent pages move with the finger, instead of swapping
-          page contents after release. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           ref={pager.viewportRef}
@@ -478,8 +227,8 @@ export function Launcher({
           onPointerUp={pager.handlers.onPointerUp}
           onPointerCancel={pager.handlers.onPointerCancel}
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
-          // Swallow the click a committed inter-page swipe synthesizes so it
-          // can't tap-launch the tile that just slid under the finger.
+          // Swallow the click a committed swipe-back synthesizes so it can't
+          // also tap-launch the tile under the finger.
           onClickCapture={pager.handlers.onClickCapture}
         >
           <div
@@ -489,7 +238,7 @@ export function Launcher({
           >
             {loading && entries.length === 0 ? (
               <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
-                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5">
+                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
                   {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                     <div
                       key={id}
@@ -506,7 +255,7 @@ export function Launcher({
                 const active = pageIndex === clampedPage;
                 return (
                   <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: page index is the persisted page identity.
+                    // biome-ignore lint/suspicious/noArrayIndexKey: page index is the page identity.
                     key={`launcher-page-${pageIndex}`}
                     data-testid={`launcher-page-${pageIndex}`}
                     aria-hidden={!active}
@@ -517,44 +266,17 @@ export function Launcher({
                       !active && "pointer-events-none",
                     )}
                   >
-                    {editing && active ? (
-                      <Reorder.Group
-                        axis="y"
-                        values={pageIds}
-                        onReorder={(next) =>
-                          handleReorder(pageIndex, next as string[])
-                        }
-                        className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5"
-                      >
-                        {pageIds.map((id) => {
-                          const entry = byId.get(id);
-                          if (!entry) return null;
-                          return (
-                            <Reorder.Item
-                              key={id}
-                              value={id}
-                              drag={editing}
-                              dragListener={editing}
-                              className="flex justify-center"
-                            >
-                              {renderTile(entry)}
-                            </Reorder.Item>
-                          );
-                        })}
-                      </Reorder.Group>
-                    ) : (
-                      <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5">
-                        {pageIds.map((id) => {
-                          const entry = byId.get(id);
-                          if (!entry) return null;
-                          return (
-                            <div key={id} className="flex justify-center">
-                              {renderTile(entry)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
+                      {pageIds.map((id) => {
+                        const entry = byId.get(id);
+                        if (!entry) return null;
+                        return (
+                          <div key={id} className="flex justify-center">
+                            <IconTile entry={entry} onLaunch={handleLaunch} />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })
@@ -562,24 +284,19 @@ export function Launcher({
           </div>
         </div>
 
-        {/* Web/desktop `< >` edge buttons (hidden on touch, and while editing so
-            they never fight the reorder gesture). Self-hide at the first/last
-            page via canPrev/canNext. */}
-        {!editing ? (
-          <PagerEdgeButtons
-            idPrefix="launcher"
-            canPrev={pager.canPrev}
-            canNext={pager.canNext}
-            goPrev={pager.goPrev}
-            goNext={pager.goNext}
-            prevLabel="Previous page"
-            nextLabel="Next page"
-          />
-        ) : null}
+        {/* Web/desktop `< >` edge buttons (hidden on touch). Self-hide at the
+            first/last page — with a single curated page they render nothing. */}
+        <PagerEdgeButtons
+          idPrefix="launcher"
+          canPrev={pager.canPrev}
+          canNext={pager.canNext}
+          goPrev={pager.goPrev}
+          goNext={pager.goNext}
+          prevLabel="Previous page"
+          nextLabel="Next page"
+        />
 
-        {/* Page dots — rendered only for STANDALONE usage. When nested in the
-            home/launcher rail, `showPageDots` is false and the rail owns the
-            single unified indicator, so two dot strips never stack (#4). */}
+        {/* Page dots — standalone usage only; a single page renders none. */}
         {showPageDots && pages.length > 1 ? (
           <div className="flex items-center justify-center gap-2 pb-3">
             {pages.map((pageIds, index) => (

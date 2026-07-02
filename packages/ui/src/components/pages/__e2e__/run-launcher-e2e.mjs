@@ -3,11 +3,12 @@
  * no app server. Bundles launcher-fixture.tsx with esbuild, loads it in
  * headless chromium via Playwright, and:
  *
- *   - asserts the launcher + tiles render (≥1 tile, ≥1 image tile),
- *   - captures REST + EDIT screenshots at desktop (1180×900) and mobile
- *     (402×874),
+ *   - asserts the read-only launcher renders (≥1 tile, ≥1 image tile, no
+ *     edit/pin/delete affordances, exactly one page),
+ *   - captures REST screenshots at desktop (1180×900) and mobile (402×874),
  *   - records a .webm walkthrough driving REAL interactions: tap-launch a tile,
- *     long-press-to-edit (pointerdown + wait), page-nav,
+ *     a stationary long-press (which must NOT enter any edit mode), and a
+ *     right-swipe that requests a return to the home dashboard,
  *   - reads window.__ELIZA_VIEW_INTERACTION_TELEMETRY__ and asserts a `launch`
  *     action fired — proving the client telemetry stream emits on real
  *     interactions (closing the telemetry-reader loop).
@@ -135,60 +136,16 @@ async function snap(p, name) {
   assert(false, `screenshot ${file} failed after retries: ${lastErr}`);
 }
 
-/** Dispatch a real touch-pointer press at an element's centre, held `ms`. */
-async function longPress(p, testid, ms) {
-  const box = await p.getByTestId(testid).boundingBox();
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await p.evaluate(
-    ({ cx, cy }) => {
-      const el = document.elementFromPoint(cx, cy);
-      window.__lp = el;
-      el?.dispatchEvent(
-        new PointerEvent("pointerdown", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: cx,
-          clientY: cy,
-          bubbles: true,
-        }),
-      );
-    },
-    { cx, cy },
-  );
-  await p.waitForTimeout(ms);
-  await p.evaluate(
-    ({ cx, cy }) =>
-      window.__lp?.dispatchEvent(
-        new PointerEvent("pointerup", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: cx,
-          clientY: cy,
-          bubbles: true,
-        }),
-      ),
-    { cx, cy },
-  );
-}
-
 const readTelemetry = (p) =>
   p.evaluate(() => window.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? []);
 const readCalls = (p) => p.evaluate(() => window.__launcherCalls ?? {});
 
-/** Edit mode pulses every tile (no pin badge anymore) — the editing signal. */
-const editingTileCount = (p) =>
-  p.evaluate(
-    () =>
-      document.querySelectorAll(
-        '[data-testid^="launcher-tile-"] button.animate-pulse',
-      ).length,
-  );
-
 const errors = [];
 const browser = await chromium.launch();
 
-// ── Screenshots: desktop + mobile, REST + EDIT ─────────────────────────────
+// ── Screenshots: desktop + mobile ──────────────────────────────────────────
+// The launcher is a read-only single scrolling page of tiles (no edit mode, no
+// pagination), so there is one "rest" capture per viewport.
 async function captureViewport(name, viewport, deviceScaleFactor) {
   const page = await browser.newPage({ viewport, deviceScaleFactor });
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -202,17 +159,24 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
     .locator('[data-testid^="launcher-image-"]')
     .count();
   assert(images >= 1, `${name}: ≥1 image tile renders (${images})`);
-  await snap(page, `${name}-rest`);
-
-  // Enter edit mode via a long-press on a tile (the Edit button was removed —
-  // long-press is the sole entry point now).
-  await longPress(page, "launcher-tile-wallet", 500);
-  await page.waitForTimeout(300);
+  // Read-only: no per-tile edit/pin/delete affordances anywhere.
+  const editAffordances = await page
+    .locator(
+      '[data-testid^="launcher-fav-"], [data-testid^="launcher-edit-"], [data-testid^="launcher-delete-"]',
+    )
+    .count();
   assert(
-    (await editingTileCount(page)) > 0,
-    `${name}: long-press enters edit mode (tiles pulse, no Edit button)`,
+    editAffordances === 0,
+    `${name}: read-only launcher renders no edit/pin/delete affordances (${editAffordances})`,
   );
-  await snap(page, `${name}-edit`);
+  // Single page: page-0 exists, page-1 does not (no inter-page view paging).
+  const firstPage = await page.getByTestId("launcher-page-0").count();
+  const secondPage = await page.getByTestId("launcher-page-1").count();
+  assert(
+    firstPage === 1 && secondPage === 0,
+    `${name}: exactly one launcher page (page-0=${firstPage}, page-1=${secondPage})`,
+  );
+  await snap(page, `${name}-rest`);
   await page.close();
 }
 
@@ -237,7 +201,7 @@ await page.goto(url);
 await page.waitForSelector('[data-testid="launcher"]');
 await page.waitForTimeout(400);
 
-// 1. Tap-launch a tile from the uniform page grid.
+// 1. Tap-launch a tile from the read-only grid.
 const launchTarget = "calendar";
 await page.getByTestId(`launcher-tile-${launchTarget}`).getByRole("button").first().click();
 await page.waitForTimeout(250);
@@ -247,189 +211,52 @@ assert(
     callsAfterLaunch.launch.includes(launchTarget),
   `tap launches the tile (onLaunch fired with "${launchTarget}")`,
 );
-// Capture the `launch` telemetry NOW, before the reorder step below emits a
-// burst of `reorder` events. The interaction telemetry is a bounded ring, so a
-// heavy reorder drag can evict this early launch — asserting it here keeps the
-// launch check independent of the later reorder volume.
-const launchInRingEarly = (await readTelemetry(page)).some(
+const launchInRing = (await readTelemetry(page)).some(
   (e) => e.action === "launch",
 );
+assert(launchInRing, "telemetry ring recorded the tap launch");
 
-// 2. Long-press a tile (450ms threshold) → enters edit mode.
-await longPress(page, `launcher-tile-wallet`, 500);
-await page.waitForTimeout(250);
-assert(
-  (await editingTileCount(page)) > 0,
-  "long-press (500ms) enters edit mode (tiles pulse)",
-);
-
-// 2b. Real drag-to-reorder (#10722): a GENUINE pointer drag on a Reorder.Item
-//     must reorder the active page, PERSIST it to LAUNCHER_STORAGE_KEY, and emit
-//     `reorder` telemetry — the mock-based Launcher.gestures.test only drives the
-//     onReorder BRIDGE, never the drag physics. Here we drive Framer's real drag
-//     via the browser's own mouse pointer pipeline.
-const LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
-const activePageTileOrder = (p) =>
-  p
-    .getByTestId("launcher-page-0")
-    .locator('[data-testid^="launcher-tile-"]')
-    .evaluateAll((nodes) =>
-      nodes.map((n) => n.getAttribute("data-testid") ?? ""),
-    );
-const persistedPages = (p) =>
-  p.evaluate((key) => {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed?.pages) ? parsed.pages : null;
-    } catch {
-      return null;
-    }
-  }, LAUNCHER_STORAGE_KEY);
-
-const orderBefore = await activePageTileOrder(page);
-const persistedBefore = JSON.stringify((await persistedPages(page))?.[0] ?? []);
-assert(
-  orderBefore.length >= 4,
-  `reorder: active page has enough tiles to drag (${orderBefore.length})`,
-);
-const reorderCountBefore = (await readTelemetry(page)).filter(
-  (e) => e.action === "reorder",
-).length;
-
-// Drag the FIRST tile downward. axis="y" over a multi-column grid means a
-// whole row shares one y-centre, so a fixed-endpoint fling thrashes onReorder
-// while crossing a row boundary and can round-trip back to the original order
-// by release time (timing-dependent). Deterministic protocol instead: nudge
-// down in small steps with a dwell, poll the LIVE order after each step, and
-// release only once a swap has been observed AND re-confirmed stable with the
-// pointer held still (onReorder only fires on pointer movement, so a stable
-// stationary order cannot thrash back before mouse.up).
+// 2. A stationary long-press does NOT enter any edit mode (read-only launcher):
+//    the tile never animates and no edit/pin/delete affordance ever appears.
 {
-  const firstId = orderBefore[0];
-  const from = await page.getByTestId(firstId).boundingBox();
-  const fx = from.x + from.width / 2;
-  const fy = from.y + from.height / 2;
-  await page.mouse.move(fx, fy);
+  const tile = page.getByTestId("launcher-tile-wallet").getByRole("button");
+  const box = await tile.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  // A small initial nudge to engage Framer's drag.
-  await page.mouse.move(fx, fy + 8, { steps: 4 });
-  let y = fy + 8;
-  // Bounded travel: about three grid rows below the start (a little extra so a
-  // straight-down drag reliably clears a full 4-column row and swaps).
-  const maxY = fy + from.height * 4;
-  while (y < maxY) {
-    y += 12;
-    await page.mouse.move(fx, y, { steps: 2 });
-    await page.waitForTimeout(70);
-    const live = await activePageTileOrder(page);
-    if (live[0] !== orderBefore[0]) {
-      // Hold the pointer still and confirm the swap did not thrash back.
-      await page.waitForTimeout(300);
-      const settled = await activePageTileOrder(page);
-      if (settled[0] !== orderBefore[0]) break;
-    }
-  }
-  await page.mouse.up();
-  // Let the Reorder settle animation finish before reading the final order.
   await page.waitForTimeout(600);
-}
-
-const orderAfter = await activePageTileOrder(page);
-const persistedAfter = JSON.stringify((await persistedPages(page))?.[0] ?? []);
-const reorderCountAfter = (await readTelemetry(page)).filter(
-  (e) => e.action === "reorder",
-).length;
-assert(
-  reorderCountAfter > reorderCountBefore,
-  `reorder: a real drag fires reorder telemetry (${reorderCountBefore}→${reorderCountAfter})`,
-);
-// The reorder committed if EITHER the live DOM order changed OR the persisted
-// page-0 order changed — a straight-down grid drag can settle back to the same
-// DOM order[0] while still having committed a different persisted arrangement,
-// so accept both signals rather than only the DOM head.
-assert(
-  JSON.stringify(orderAfter) !== JSON.stringify(orderBefore) ||
-    persistedAfter !== persistedBefore,
-  `reorder: the drag changed the tile order (domHead ${orderBefore[0]}→${orderAfter[0]}; persisted changed=${persistedAfter !== persistedBefore})`,
-);
-// Persistence + integrity: the new order is written to LAUNCHER_STORAGE_KEY, and
-// no tile id was dropped or duplicated by the reorder.
-const pagesAfter = await persistedPages(page);
-assert(
-  Array.isArray(pagesAfter) && pagesAfter.length > 0,
-  "reorder: the new layout persisted to LAUNCHER_STORAGE_KEY",
-);
-{
-  const flat = pagesAfter.flat();
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const affordances = await page
+    .locator(
+      '[data-testid^="launcher-fav-"], [data-testid^="launcher-edit-"], [data-testid^="launcher-delete-"], button.animate-pulse',
+    )
+    .count();
   assert(
-    new Set(flat).size === flat.length,
-    `reorder: persisted layout has no duplicate ids (${flat.length} ids, ${new Set(flat).size} unique)`,
+    affordances === 0,
+    `a long-press never enters edit mode (read-only launcher; ${affordances} affordances)`,
   );
 }
 
-// 3. Page navigation — click the "Page 2" dot. Exit edit first (a second
-//    long-press toggles it off) so the walkthrough ends on a clean grid.
-await longPress(page, `launcher-tile-wallet`, 500);
-await page.waitForTimeout(250);
-assert(
-  (await editingTileCount(page)) === 0,
-  "a second long-press exits edit mode",
-);
-const page2 = page.getByRole("button", { name: "Page 2" });
-if ((await page2.count()) > 0) {
-  await page2.click();
-  await page.waitForTimeout(300);
-  assert(true, "page navigation: clicked the Page 2 dot");
-} else {
-  assert(false, "page navigation: expected a Page 2 dot (multi-page layout)");
+// 3. A right-swipe on the launcher requests a return to the home dashboard
+//    (onEdgeSwipeRight). This is the ONLY horizontal gesture the launcher owns;
+//    there is no inter-page view paging to swipe to.
+{
+  const win = page.getByTestId("launcher-page-window");
+  const box = await win.boundingBox();
+  const y = box.y + box.height * 0.5;
+  const startX = box.x + box.width * 0.25;
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(startX + box.width * 0.55, y, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(350);
+  const calls = await readCalls(page);
+  assert(
+    (calls.edgeSwipeHome ?? 0) >= 1,
+    `right-swipe requests home (edgeSwipeHome=${calls.edgeSwipeHome ?? 0})`,
+  );
+  await snap(page, "mobile-after-swipe-home");
 }
-
-// 5. Real swipe-drag paging — the iOS-style gesture (not the dot), driving the
-//    Framer drag="x" rail past SWIPE_THRESHOLD so onDragEnd commits a page flip.
-//    Assert via the deterministic `page-swipe` telemetry the component emits on
-//    a committed flick (the user reported left/right swipe felt broken). We're
-//    on page 2 from the dot-nav above; swipe RIGHT → page 1, then LEFT → page 2.
-async function swipeDrag(p, dx) {
-  const box = await p.getByTestId("launcher").boundingBox();
-  const y = box.y + box.height / 2;
-  // Start off-centre so the drag has room to travel within the surface.
-  const startX = box.x + box.width / 2 - Math.sign(dx) * box.width * 0.2;
-  await p.mouse.move(startX, y);
-  await p.mouse.down();
-  await p.mouse.move(startX + dx, y, { steps: 12 });
-  await p.mouse.up();
-  await p.waitForTimeout(350);
-}
-const swipeCountBefore = (await readTelemetry(page)).filter(
-  (e) => e.action === "page-swipe",
-).length;
-await swipeDrag(page, 220); // drag right → previous page
-await swipeDrag(page, -220); // drag left → next page
-const swipeCountAfter = (await readTelemetry(page)).filter(
-  (e) => e.action === "page-swipe",
-).length;
-assert(
-  swipeCountAfter > swipeCountBefore,
-  `swipe-drag gesture commits a page flip (page-swipe telemetry ${swipeCountBefore}→${swipeCountAfter})`,
-);
-
-// ── Telemetry assertion — the real interaction stream fired ────────────────
-// Use the launch captured right after the tap (above): the reorder step emits a
-// burst that can evict the early launch from the bounded telemetry ring, so
-// re-reading the ring here would be flaky. The current ring must still carry the
-// later actions, proving the stream is live.
-const telemetry = await readTelemetry(page);
-const actions = new Set(telemetry.map((e) => e.action));
-assert(
-  launchInRingEarly,
-  "telemetry ring recorded the tap launch (captured before the reorder burst)",
-);
-assert(
-  actions.has("page-swipe"),
-  `telemetry stream stays live through paging (${[...actions].join(", ")})`,
-);
 
 assert(errors.length === 0, `no page errors (saw ${errors.length})`);
 for (const e of errors) console.error(`  ⚠ ${e}`);

@@ -834,6 +834,22 @@ export function useHorizontalPager<
     [finish],
   );
 
+  // `lostpointercapture` BUBBLES: a child of the bound element (e.g. the home
+  // notification pull-strip button, which takes implicit touch capture on
+  // pointerdown) releasing its capture fires this on the child and bubbles up to
+  // the pager's bound half div — turning a rail swipe that merely STARTED over
+  // that child into an instant self-cancel. Only a capture loss on the bound
+  // element ITSELF (target === currentTarget — OS takeover / rotation, the case
+  // this handler exists for) should abort. The pager captures onto the bound div
+  // for mouse/pen only, so a genuine loss still has target === currentTarget.
+  const onLostPointerCapture = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) return;
+      finish(event, true);
+    },
+    [finish],
+  );
+
   // Swallow the click a committed swipe/flick synthesizes (armed in finish() for
   // both page-change and edge-swipe commits) so it can't tap-launch the element
   // under the release point. One mechanism for every consumer — inner launcher
@@ -858,7 +874,7 @@ export function useHorizontalPager<
       onPointerMove,
       onPointerUp,
       onPointerCancel,
-      onLostPointerCapture: onPointerCancel,
+      onLostPointerCapture,
       onClickCapture,
     },
     canPrev: clampedPage > 0,

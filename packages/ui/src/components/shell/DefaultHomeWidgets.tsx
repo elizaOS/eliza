@@ -127,8 +127,13 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
   // we never flash the epoch (1970) — but only when the time tile is shown; a
   // hidden clock must not gate the weather tile.
   const now = useNow(60_000);
-  const showTime = !timeHidden && now > 0;
-  if (!timeHidden && !now) return null;
+  // Reserve the time tile's footprint whenever it's shown (not hidden by the
+  // user), even on the first render when `now` is still 0 — only the time TEXT
+  // waits for the live clock. Returning null on frame 1 popped the whole base
+  // grid (incl. weather) in a frame later: a guaranteed layout shift on every
+  // home mount.
+  const showTime = !timeHidden;
+  const timeReady = now > 0;
 
   const d = new Date(now);
   const hours = d.getHours();
@@ -152,16 +157,26 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
             FLOAT_SHADOW,
           )}
         >
-          <div className="text-[3.25rem] font-semibold leading-none tabular-nums tracking-tight">
-            {time}
-            <span className="ml-1.5 align-top text-base font-medium text-white/70">
-              {ampm}
-            </span>
+          {/* The tile footprint is reserved immediately; the time text stays
+              invisible (not unmounted) until the live clock ticks, so nothing
+              reflows when it appears. */}
+          <div
+            className={cn(
+              "flex flex-col items-center gap-1",
+              !timeReady && "invisible",
+            )}
+          >
+            <div className="text-[3.25rem] font-semibold leading-none tabular-nums tracking-tight">
+              {time}
+              <span className="ml-1.5 align-top text-base font-medium text-white/70">
+                {ampm}
+              </span>
+            </div>
+            <div className="mt-1 text-sm font-medium text-white/85">
+              {dateLabel}
+            </div>
+            <div className="text-xs text-white/65">{greeting(hours)}</div>
           </div>
-          <div className="mt-1 text-sm font-medium text-white/85">
-            {dateLabel}
-          </div>
-          <div className="text-xs text-white/65">{greeting(hours)}</div>
         </div>
       ) : null}
 

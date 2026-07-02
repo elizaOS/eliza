@@ -112,7 +112,7 @@ import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
 const MOBILE_NAV_PADDING_CLASS =
-  "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
+  "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem))]";
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 

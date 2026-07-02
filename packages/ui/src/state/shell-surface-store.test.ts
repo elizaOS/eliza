@@ -1,28 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchHomeLauncherNavigation } from "../components/shell/home-launcher-events";
 import {
-  enterLauncherEdit,
   getShellSurface,
   goHome,
   goLauncher,
   resetShellSurfaceForTests,
-  setLauncherEditing,
   setLauncherPage,
   setLauncherPageCount,
   setShellSurfacePage,
-  toggleLauncherEdit,
 } from "./shell-surface-store";
 
 beforeEach(() => resetShellSurfaceForTests());
 afterEach(() => resetShellSurfaceForTests());
 
 describe("shell-surface-store", () => {
-  it("starts on home, page 0, not editing", () => {
+  it("starts on home, page 0", () => {
     expect(getShellSurface()).toEqual({
       page: "home",
       launcherPage: 0,
       launcherPageCount: 1,
-      launcherEditing: false,
     });
   });
 
@@ -33,35 +29,26 @@ describe("shell-surface-store", () => {
     expect(getShellSurface().page).toBe("home");
   });
 
-  // THE invariant that makes the 'swipe-back lands in edit mode / re-entering is
-  // still jiggling' class of bug structurally impossible: leaving the
-  // launcher ALWAYS resets the transient sub-state, no matter how it is left.
-  it("resets edit mode AND page index whenever the surface leaves the launcher", () => {
+  // THE invariant that makes the 'swipe-back re-enters a stale inner page' class
+  // of bug structurally impossible: leaving the launcher ALWAYS resets the
+  // transient sub-state, no matter how it is left.
+  it("resets the page index whenever the surface leaves the launcher", () => {
     goLauncher();
     setLauncherPageCount(3);
     setLauncherPage(2);
-    enterLauncherEdit();
     expect(getShellSurface()).toMatchObject({
       launcherPage: 2,
-      launcherEditing: true,
     });
 
     goHome();
     expect(getShellSurface()).toMatchObject({
       page: "home",
       launcherPage: 0,
-      launcherEditing: false,
     });
 
-    // Re-entering the launcher starts clean — never in stale jiggle mode.
+    // Re-entering the launcher starts clean — never on a stale inner page.
     goLauncher();
-    expect(getShellSurface().launcherEditing).toBe(false);
     expect(getShellSurface().launcherPage).toBe(0);
-  });
-
-  it("never lets edit mode be true while off the launcher", () => {
-    setLauncherEditing(true); // off the launcher (page === 'home')
-    expect(getShellSurface().launcherEditing).toBe(false);
   });
 
   it("clamps the active page into [0, pageCount)", () => {
@@ -80,14 +67,6 @@ describe("shell-surface-store", () => {
     expect(getShellSurface().launcherPage).toBe(3);
     setLauncherPageCount(2);
     expect(getShellSurface().launcherPage).toBe(1);
-  });
-
-  it("toggles edit mode only while on the launcher", () => {
-    goLauncher();
-    toggleLauncherEdit();
-    expect(getShellSurface().launcherEditing).toBe(true);
-    toggleLauncherEdit();
-    expect(getShellSurface().launcherEditing).toBe(false);
   });
 
   // The legacy window event is the bridge the chat controller still uses to
@@ -129,12 +108,10 @@ describe("shell-surface-store", () => {
     goLauncher();
     setLauncherPageCount(3);
     setLauncherPage(2);
-    enterLauncherEdit();
     setShellSurfacePage("home");
     expect(getShellSurface()).toMatchObject({
       page: "home",
       launcherPage: 0,
-      launcherEditing: false,
     });
   });
 });

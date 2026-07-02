@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 //
-// SCOPE (honest labelling, #10722): this is the Launcher's BRIDGE-LOGIC unit
-// suite — it verifies what the Launcher DOES with a gesture result (the
-// Reorder.Group `onReorder` → moveIcon → persist + telemetry bridge, and the
-// swipe-paging `onDragEnd` → page-advance + threshold/clamp/edit-gate bridge).
-// motion/react is mocked so those callbacks can be invoked directly; jsdom
-// cannot perform a real pointer drag, so this does NOT prove the drag/reorder
-// physics or long-press engagement. The REAL long-press-drag reorder (a genuine
-// CDP pointer drag → onReorder → persisted LAUNCHER_STORAGE_KEY order + reorder
-// telemetry + no duplicate ids) is section 2b of the isolated-browser runner
-// __e2e__/run-launcher-e2e.mjs (`bun run --cwd packages/ui test:launcher-e2e`,
-// gated in ui-e2e-gate.yml). The real-motion render path (page dots,
-// favorites, image tiles) is covered by the sibling Launcher.test.tsx.
+// SCOPE (honest labelling, #10722): this is the Launcher's SWIPE-PAGING unit
+// suite. The Launcher is READ-ONLY (no reorder, no edit mode, no persisted
+// layout — page composition is owned by `curateLauncherPages`), so the only
+// gestures it owns are the horizontal page swipe (via `useHorizontalPager`) and
+// the tap-to-launch. This suite drives the REAL pointer handlers on
+// `launcher-page-window` — there is no motion/react mock — so it exercises the
+// actual swipe threshold / flick / clamp / touch-capture-guard bridge. jsdom
+// cannot run the settle animation to completion, so the assertions read the
+// committed page's `aria-hidden` + the emitted telemetry, not the tween. The
+// real-motion render path (page dots, image tiles) is covered by the sibling
+// Launcher.test.tsx; the genuine CDP pointer-drag swipe is section of the
+// isolated-browser runner (`bun run --cwd packages/ui test:launcher-e2e`).
 
 import {
   act,
@@ -20,71 +20,15 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { LAUNCHER_STORAGE_KEY } from "../../state/launcher-layout";
 import {
   readViewInteractions,
   type ViewInteractionAction,
 } from "../../view-telemetry";
-
-// Captures the latest gesture callbacks the Launcher hands to motion/react.
-const bus = vi.hoisted(() => ({
-  onDragEnd: null as
-    | null
-    | ((e: unknown, info: { offset: { x: number; y: number } }) => void),
-  onReorder: null as null | ((next: string[]) => void),
-  values: [] as string[],
-}));
-
-vi.mock("motion/react", () => ({
-  // Any motion.* element renders its children and records onDragEnd.
-  motion: new Proxy(
-    {},
-    {
-      get: () => (props: { children?: ReactNode; onDragEnd?: unknown }) => {
-        if (props.onDragEnd) {
-          bus.onDragEnd = props.onDragEnd as typeof bus.onDragEnd;
-        }
-        return props.children ?? null;
-      },
-    },
-  ),
-  Reorder: {
-    Group: (props: {
-      children?: ReactNode;
-      onReorder?: (next: string[]) => void;
-      values?: string[];
-    }) => {
-      bus.onReorder = props.onReorder ?? null;
-      bus.values = props.values ?? [];
-      return props.children ?? null;
-    },
-    Item: (props: { children?: ReactNode }) => props.children ?? null,
-  },
-}));
-
-// Import AFTER the mock is registered.
 import { Launcher } from "./Launcher";
 
 const originalMatchMedia = window.matchMedia;
-
-/**
- * Edit mode is entered via a long-press on a tile (the visible Edit button was
- * removed per product). Self-contained fake-timer window so non-timer tests stay
- * on real timers.
- */
-function longPressTile(label: string): void {
-  vi.useFakeTimers();
-  const tile = screen.getByRole("button", { name: label });
-  fireEvent.pointerDown(tile);
-  act(() => {
-    vi.advanceTimersByTime(450);
-  });
-  fireEvent.pointerUp(tile);
-  vi.useRealTimers();
-}
 
 function entry(id: string, label: string): ViewEntry {
   return {
@@ -152,15 +96,19 @@ function horizontalSwipe(dx: number): void {
   });
 }
 
+// Two curated pages: page 0 holds v0..v19, page 1 holds v20..v24. Each group is
+// its own page (the launcher never chunks a single group across pages), so a
+// two-group `pageGroups` is what produces a swipeable two-page launcher.
 const PAGE2 = Array.from({ length: 25 }, (_, i) => entry(`v${i}`, `View ${i}`));
+const PAGE2_GROUPS: string[][] = [
+  Array.from({ length: 20 }, (_, i) => `v${i}`),
+  Array.from({ length: 5 }, (_, i) => `v${20 + i}`),
+];
 
 beforeEach(() => {
   mockDesktopPagingMedia({ finePointer: false });
   window.localStorage.clear();
   clearTelemetry();
-  bus.onDragEnd = null;
-  bus.onReorder = null;
-  bus.values = [];
 });
 afterEach(() => {
   cleanup();
@@ -171,33 +119,15 @@ afterEach(() => {
   });
 });
 
-describe("Launcher drag-reorder bridge", () => {
-  it("persists a reordered page through moveIcon and emits a reorder event", () => {
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
-    longPressTile("View 0");
-    // Page 0 holds the first 20 ids; move the first to the end.
-    expect(bus.values.slice(0, 3)).toEqual(["v0", "v1", "v2"]);
-    const reordered = [...bus.values.slice(1), bus.values[0]];
-    act(() => {
-      bus.onReorder?.(reordered);
-    });
-
-    const stored = JSON.parse(
-      window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
-    );
-    expect(stored.manual).toBe(true);
-    expect(stored.pages[0][0]).toBe("v1");
-    expect(stored.pages[0]).not.toContain(undefined);
-    // No duplicates introduced by the repack.
-    const flat = stored.pages.flat();
-    expect(new Set(flat).size).toBe(flat.length);
-    expect(actions()).toContain("reorder");
-  }, 15_000);
-});
-
-describe("Launcher swipe paging (onDragEnd)", () => {
+describe("Launcher swipe paging", () => {
   it("advances a page past the swipe threshold and emits page-swipe", () => {
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    render(
+      <Launcher
+        entries={PAGE2}
+        pageGroups={PAGE2_GROUPS}
+        onLaunch={() => {}}
+      />,
+    );
     expect(
       screen.getByTestId("launcher-page-0").getAttribute("aria-hidden"),
     ).toBe("false");
@@ -215,7 +145,13 @@ describe("Launcher swipe paging (onDragEnd)", () => {
   });
 
   it("ignores a drag below the threshold", () => {
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    render(
+      <Launcher
+        entries={PAGE2}
+        pageGroups={PAGE2_GROUPS}
+        onLaunch={() => {}}
+      />,
+    );
     act(() => {
       horizontalSwipe(-30);
     });
@@ -226,7 +162,13 @@ describe("Launcher swipe paging (onDragEnd)", () => {
   });
 
   it("clamps at the first page (no underflow)", () => {
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    render(
+      <Launcher
+        entries={PAGE2}
+        pageGroups={PAGE2_GROUPS}
+        onLaunch={() => {}}
+      />,
+    );
     // Already on page 0; a rightward swipe would go to -1 → clamped, no event.
     act(() => {
       horizontalSwipe(300);
@@ -234,21 +176,15 @@ describe("Launcher swipe paging (onDragEnd)", () => {
     expect(actions()).not.toContain("page-swipe");
   });
 
-  it("does not page while in edit mode", () => {
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
-    longPressTile("View 0");
-    act(() => {
-      horizontalSwipe(-300);
-    });
-    expect(
-      screen.getByTestId("launcher-page-1").getAttribute("aria-hidden"),
-    ).toBe("true");
-    expect(actions()).not.toContain("page-swipe");
-  });
-
   it("hides pager edge buttons when the pointer is coarse", () => {
     mockDesktopPagingMedia({ finePointer: false });
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    render(
+      <Launcher
+        entries={PAGE2}
+        pageGroups={PAGE2_GROUPS}
+        onLaunch={() => {}}
+      />,
+    );
 
     expect(screen.queryByTestId("launcher-pager-edge-prev")).toBeNull();
     expect(screen.queryByTestId("launcher-pager-edge-next")).toBeNull();
@@ -256,7 +192,13 @@ describe("Launcher swipe paging (onDragEnd)", () => {
 
   it("shows pager edge buttons on any fine-pointer window — the gate has no min-width clause", () => {
     mockDesktopPagingMedia({ finePointer: true });
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    render(
+      <Launcher
+        entries={PAGE2}
+        pageGroups={PAGE2_GROUPS}
+        onLaunch={() => {}}
+      />,
+    );
 
     // Fine pointer + hover is sufficient: a sub-1024px window still gets the
     // `>` control (production renders no page dots, so without it a narrow
@@ -269,7 +211,13 @@ describe("Launcher swipe paging (onDragEnd)", () => {
 
   it("shows desktop edge buttons and pages exactly one step per click", () => {
     mockDesktopPagingMedia({ finePointer: true });
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    render(
+      <Launcher
+        entries={PAGE2}
+        pageGroups={PAGE2_GROUPS}
+        onLaunch={() => {}}
+      />,
+    );
 
     expect(screen.queryByTestId("launcher-pager-edge-prev")).toBeNull();
     fireEvent.click(screen.getByTestId("launcher-pager-edge-next"));
@@ -334,7 +282,13 @@ describe("Launcher touch swipe (Android WebView pointer-capture guard)", () => {
   }
 
   it("advances a page on a touch swipe without taking pointer capture", () => {
-    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    render(
+      <Launcher
+        entries={PAGE2}
+        pageGroups={PAGE2_GROUPS}
+        onLaunch={() => {}}
+      />,
+    );
     let result: { captureCalls: number } = { captureCalls: -1 };
     act(() => {
       result = touchSwipeWithCaptureCancel(-300);
@@ -349,63 +303,16 @@ describe("Launcher touch swipe (Android WebView pointer-capture guard)", () => {
 describe("Launcher interaction telemetry", () => {
   it("emits launch on tap", () => {
     const onLaunch = vi.fn();
-    render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={onLaunch} />);
+    render(
+      <Launcher
+        entries={[entry("chat", "Chat")]}
+        pageGroups={[["chat"]]}
+        onLaunch={onLaunch}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(onLaunch).toHaveBeenCalledTimes(1);
     const launch = readViewInteractions().find((e) => e.action === "launch");
     expect(launch?.viewId).toBe("chat");
-  });
-
-  it("emits edit-mode enter/exit via long-press toggle", () => {
-    render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />);
-    // First long-press enters edit mode, the second exits it.
-    longPressTile("Chat");
-    longPressTile("Chat");
-    expect(actions()).toContain("edit-mode-enter");
-    expect(actions()).toContain("edit-mode-exit");
-  });
-});
-
-describe("Launcher long-press ghost-click suppression", () => {
-  // A real browser synthesizes a `click` from the SAME press once the finger
-  // lifts after a long-press (jsdom does not, so these tests fire it
-  // explicitly). That trailing click must never activate the tile.
-
-  it("does not launch from the click synthesized after a long-press that ENTERS edit mode", () => {
-    const onLaunch = vi.fn();
-    render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={onLaunch} />);
-    longPressTile("Chat");
-    // The browser's compat click lands after pointerup.
-    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-    expect(actions()).toContain("edit-mode-enter");
-    expect(onLaunch).not.toHaveBeenCalled();
-  });
-
-  it("does not ghost-launch from the click after a long-press that EXITS edit mode", () => {
-    // Regression: exiting edit mode via long-press flips `editing` back to
-    // false BEFORE the synthesized click arrives, so the `!editing` guard
-    // alone let the click launch the tile the user was merely long-pressing.
-    const onLaunch = vi.fn();
-    render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={onLaunch} />);
-    longPressTile("Chat"); // enter edit mode
-    longPressTile("Chat"); // exit edit mode — same gesture, second press
-    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-    expect(actions()).toContain("edit-mode-exit");
-    expect(onLaunch).not.toHaveBeenCalled();
-  });
-
-  it("a plain tap after an aborted long-press sequence still launches", () => {
-    // The suppression flag is scoped to the press whose timer FIRED — it must
-    // reset on the next pointerdown so an ordinary follow-up tap works.
-    const onLaunch = vi.fn();
-    render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={onLaunch} />);
-    longPressTile("Chat"); // enter edit mode (long-press fired)
-    longPressTile("Chat"); // exit edit mode (long-press fired)
-    const tile = screen.getByRole("button", { name: "Chat" });
-    // A quick tap: down → up well under LONG_PRESS_MS, then the compat click.
-    fireEvent.pointerDown(tile, { clientX: 10, clientY: 10 });
-    fireEvent.pointerUp(tile);
-    fireEvent.click(tile);
-    expect(onLaunch).toHaveBeenCalledTimes(1);
   });
 });

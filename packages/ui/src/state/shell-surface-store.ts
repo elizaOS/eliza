@@ -20,9 +20,9 @@ import {
  *
  * The non-negotiable invariant lives here, not in a component: leaving the
  * launcher (page !== "launcher") ALWAYS resets the transient sub-state
- * (`launcherEditing` → false, `launcherPage` → 0). That makes the
- * "swipe-back lands in edit mode / re-entering is still jiggling" class of bug
- * structurally impossible regardless of how the user left the surface.
+ * (`launcherPage` → 0), so re-entering never lands on a stale inner page. The
+ * launcher itself is read-only (no edit/jiggle mode), so there is no editing
+ * sub-state to reset.
  *
  * Module-level store shared via globalThis (survives HMR + reachable from the
  * gesture handlers and the chat controller outside any one React subtree) +
@@ -38,15 +38,12 @@ export interface ShellSurfaceState {
   readonly launcherPage: number;
   /** Total launcher icon-grid pages, reported by the launcher surface. */
   readonly launcherPageCount: number;
-  /** Whether the launcher is in edit/jiggle mode. */
-  readonly launcherEditing: boolean;
 }
 
 const INITIAL_STATE: ShellSurfaceState = {
   page: "home",
   launcherPage: 0,
   launcherPageCount: 1,
-  launcherEditing: false,
 };
 
 interface SurfaceStore {
@@ -58,7 +55,7 @@ interface SurfaceStore {
 /**
  * Enforce the cross-field invariants on every transition so no caller can
  * produce an inconsistent surface state:
- *  - off the launcher ⇒ never editing, always page 0;
+ *  - off the launcher ⇒ always page 0;
  *  - the active page is always clamped into [0, pageCount).
  */
 function normalize(next: ShellSurfaceState): ShellSurfaceState {
@@ -68,7 +65,6 @@ function normalize(next: ShellSurfaceState): ShellSurfaceState {
       page: next.page,
       launcherPage: 0,
       launcherPageCount: pageCount,
-      launcherEditing: false,
     };
   }
   const launcherPage = Math.min(
@@ -79,7 +75,6 @@ function normalize(next: ShellSurfaceState): ShellSurfaceState {
     page: "launcher",
     launcherPage,
     launcherPageCount: pageCount,
-    launcherEditing: next.launcherEditing,
   };
 }
 
@@ -87,8 +82,7 @@ function statesEqual(a: ShellSurfaceState, b: ShellSurfaceState): boolean {
   return (
     a.page === b.page &&
     a.launcherPage === b.launcherPage &&
-    a.launcherPageCount === b.launcherPageCount &&
-    a.launcherEditing === b.launcherEditing
+    a.launcherPageCount === b.launcherPageCount
   );
 }
 
@@ -157,23 +151,6 @@ export function setLauncherPage(index: number): void {
 
 export function setLauncherPageCount(count: number): void {
   update({ launcherPageCount: count });
-}
-
-export function setLauncherEditing(editing: boolean): void {
-  update({ launcherEditing: editing });
-}
-
-export function enterLauncherEdit(): void {
-  update({ launcherEditing: true });
-}
-
-export function exitLauncherEdit(): void {
-  update({ launcherEditing: false });
-}
-
-export function toggleLauncherEdit(): void {
-  const s = store();
-  update({ launcherEditing: !s.state.launcherEditing });
 }
 
 /** Read the surface state imperatively (tests / non-React callers). */
