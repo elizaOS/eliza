@@ -81,6 +81,13 @@ export interface SpawnOptions {
    */
   isolateWorkdir?: boolean;
   initialTask?: string;
+  /**
+   * The planner judged this an app the user wants to MONETIZE (charge for use).
+   * Threaded into the deploy-guidance injection so the sub-agent gets the
+   * monetized Eliza Cloud contract rather than a free static page. Model intent,
+   * not a keyword match — see app-deploy-guidance.augmentTaskWithDeployGuidance.
+   */
+  monetized?: boolean;
   env?: Record<string, string>;
   metadata?: Record<string, unknown>;
   credentials?: unknown;

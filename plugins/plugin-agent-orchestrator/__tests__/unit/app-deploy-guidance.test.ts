@@ -7,6 +7,79 @@ import {
 } from "../../src/services/app-deploy-guidance.js";
 
 describe("app-deploy-guidance", () => {
+  // The planner's `monetized` signal is the STRUCTURAL fix for the normie
+  // phrasings the keyword regex misses ("people pay $1 to chat with X"). It must
+  // produce the monetized Eliza Cloud contract regardless of target, and even
+  // when the build-verb gate (isAppBuildTask) would otherwise drop the task.
+  describe("monetized signal (structural, not keyword)", () => {
+    const cloud = { target: "eliza-cloud" as const };
+    const home = {
+      target: "agent-home" as const,
+      agentHomeAppsDir: "/data/apps",
+      agentHomeBaseUrl: "https://example.test",
+    };
+    // The two flagship normie phrasings the regex does NOT catch.
+    const NORMIE = [
+      "build me an app where people pay $1 to chat with a grimes-style AI",
+      "an app spending $1 to talk to a drake style ai",
+    ];
+
+    it("regex alone misses these normie phrasings (documents the gap)", () => {
+      for (const p of NORMIE) expect(isMonetizedAppTask(p)).toBe(false);
+    });
+
+    it("eliza-cloud: signal forces the edad/register monetized contract", () => {
+      for (const p of NORMIE) {
+        const out = augmentTaskWithDeployGuidance(p, cloud, {
+          monetized: true,
+        });
+        expect(out).toContain("App Deployment (Eliza Cloud)");
+        expect(out).toContain("packages/examples/cloud/edad");
+        expect(out).toContain("POST /api/v1/apps");
+        expect(out).toContain("x-affiliate-code");
+      }
+    });
+
+    it("eliza-cloud: signal forces the contract even when the build-verb gate misses", () => {
+      // "an app spending $1 …" has no build verb → isAppBuildTask is false.
+      expect(isAppBuildTask(NORMIE[1])).toBe(false);
+      const out = augmentTaskWithDeployGuidance(NORMIE[1], cloud, {
+        monetized: true,
+      });
+      expect(out).toContain("packages/examples/cloud/edad");
+    });
+
+    it("agent-home: signal turns the weak conditional into a firm directive", () => {
+      const plain = augmentTaskWithDeployGuidance(NORMIE[0], home);
+      expect(plain).toContain("If the app must earn money");
+      expect(plain).not.toContain("THIS APP IS MONETIZED");
+
+      const monetized = augmentTaskWithDeployGuidance(NORMIE[0], home, {
+        monetized: true,
+      });
+      expect(monetized).toContain("THIS APP IS MONETIZED");
+      expect(monetized).toContain("packages/examples/cloud/edad");
+      expect(monetized).toContain("x-app-id");
+    });
+
+    it("no signal + no keyword → free-app contract, NOT monetized (no regression)", () => {
+      const out = augmentTaskWithDeployGuidance(
+        "build me a free web app tip calculator",
+        cloud,
+      );
+      expect(out).toContain("App Deployment (Eliza Cloud)");
+      expect(out).not.toContain("packages/examples/cloud/edad");
+    });
+
+    it("signal only ADDS detection — a keyword match still works without it", () => {
+      const out = buildAppDeployGuidance(
+        cloud,
+        "build a monetized app that charges $2 per use",
+      );
+      expect(out).toContain("packages/examples/cloud/edad");
+    });
+  });
+
   describe("isAppBuildTask", () => {
     it("matches hosted web-surface builds", () => {
       expect(isAppBuildTask("build me a website about cats")).toBe(true);
