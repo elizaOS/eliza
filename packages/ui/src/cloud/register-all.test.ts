@@ -14,6 +14,10 @@ describe("registerAllCloudSurfaces", () => {
     for (const p of [
       "join",
       "dashboard/agents",
+      // Analytics registers as an import side effect — this entry is the guard
+      // that the register-all import stays wired (it shipped forgotten once:
+      // page fully built, route 404ing on the dashboard/* catch-all).
+      "dashboard/analytics",
       "dashboard/billing",
       "dashboard/account",
       "dashboard/security",

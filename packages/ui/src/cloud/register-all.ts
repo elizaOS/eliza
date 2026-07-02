@@ -18,6 +18,10 @@
 // `registerCloudRoute(...)` / `registerSettingsSection(...)` calls.
 import "./instances";
 import "./account-security";
+// Analytics registers dashboard/analytics as an import side effect; this
+// import was missing since the cloud→app collapse, so its KEEP surface
+// silently 404'd on the dashboard/* CloudNotFound catch-all.
+import "./analytics";
 import "./billing/routes";
 import "./organization/routes";
 
