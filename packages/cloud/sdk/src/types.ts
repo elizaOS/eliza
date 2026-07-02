@@ -1350,6 +1350,58 @@ export interface ListAdSlotsResponse {
   slots: AdSlotDto[];
 }
 
+// ---- Advertising campaign management (#11599) ----
+
+export interface CampaignDaypartingWindow {
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
+}
+
+export interface CampaignDaypartingSchedule {
+  timezone: string;
+  windows: CampaignDaypartingWindow[];
+}
+
+export interface AdCampaignDto {
+  id: string;
+  name: string;
+  platform: string;
+  objective: string;
+  status: string;
+  budgetType: string;
+  budgetAmount: string;
+  budgetCurrency?: string;
+  creditsAllocated?: string;
+  externalCampaignId?: string | null;
+  dayparting?: CampaignDaypartingSchedule | null;
+  sourceCampaignId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CampaignDaypartingResponse {
+  success: boolean;
+  campaignId: string;
+  status?: string;
+  dayparting: CampaignDaypartingSchedule | null;
+  updatedAt?: string;
+}
+
+export interface UpdateCampaignDaypartingInput {
+  dayparting: CampaignDaypartingSchedule | null;
+}
+
+export interface DuplicateAdCampaignInput {
+  name?: string;
+}
+
+export interface DuplicateAdCampaignResponse {
+  success: boolean;
+  campaign: AdCampaignDto;
+  creativesCopied: number;
+}
+
 // ---- Influencer marketplace (#10687) ----
 
 export interface InfluencerProfileDto {

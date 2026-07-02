@@ -69,6 +69,17 @@ export interface CampaignTargeting {
   languages?: string[];
 }
 
+export interface CampaignDaypartingWindow {
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
+}
+
+export interface CampaignDaypartingSchedule {
+  timezone: string;
+  windows: CampaignDaypartingWindow[];
+}
+
 export interface CreateCampaignInput {
   organizationId: string;
   adAccountId: string;
@@ -80,6 +91,7 @@ export interface CreateCampaignInput {
   startDate?: Date;
   endDate?: Date;
   targeting?: CampaignTargeting;
+  dayparting?: CampaignDaypartingSchedule;
   appId?: string;
 }
 
@@ -89,6 +101,11 @@ export interface UpdateCampaignInput {
   startDate?: Date;
   endDate?: Date;
   targeting?: CampaignTargeting;
+  dayparting?: CampaignDaypartingSchedule | null;
+}
+
+export interface DuplicateCampaignInput {
+  name?: string;
 }
 
 export interface CampaignMetrics {

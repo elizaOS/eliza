@@ -41,6 +41,7 @@ app.get("/", async (c) => {
       startDate: campaign.start_date?.toISOString(),
       endDate: campaign.end_date?.toISOString(),
       targeting: campaign.targeting,
+      dayparting: campaign.metadata.dayparting ?? null,
       totalSpend: campaign.total_spend,
       totalImpressions: campaign.total_impressions,
       totalClicks: campaign.total_clicks,
@@ -83,6 +84,7 @@ app.patch("/", async (c) => {
           ? new Date(parsed.data.endDate)
           : undefined,
         targeting: parsed.data.targeting,
+        dayparting: parsed.data.dayparting,
       },
     );
 
@@ -92,6 +94,7 @@ app.patch("/", async (c) => {
       id: campaign.id,
       name: campaign.name,
       status: campaign.status,
+      dayparting: campaign.metadata.dayparting ?? null,
       updatedAt: campaign.updated_at.toISOString(),
     });
   } catch (error) {

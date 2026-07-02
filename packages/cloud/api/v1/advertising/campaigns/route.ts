@@ -49,6 +49,7 @@ app.get("/", async (c) => {
         creditsSpent: c.credits_spent,
         startDate: c.start_date?.toISOString(),
         endDate: c.end_date?.toISOString(),
+        dayparting: c.metadata.dayparting ?? null,
         totalSpend: c.total_spend,
         totalImpressions: c.total_impressions,
         totalClicks: c.total_clicks,
@@ -89,6 +90,7 @@ app.post("/", async (c) => {
         : undefined,
       endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined,
       targeting: parsed.data.targeting,
+      dayparting: parsed.data.dayparting,
       appId: parsed.data.appId,
     });
 
@@ -107,6 +109,7 @@ app.post("/", async (c) => {
         budgetType: campaign.budget_type,
         budgetAmount: campaign.budget_amount,
         creditsAllocated: campaign.credits_allocated,
+        dayparting: campaign.metadata.dayparting ?? null,
         createdAt: campaign.created_at.toISOString(),
       },
       201,

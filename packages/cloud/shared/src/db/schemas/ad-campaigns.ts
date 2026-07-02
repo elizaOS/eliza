@@ -118,8 +118,18 @@ export const adCampaigns = pgTable(
         external_ad_ids?: string[];
         optimization_goal?: string;
         bid_strategy?: string;
+        dayparting?: {
+          timezone: string;
+          windows: Array<{
+            daysOfWeek: number[];
+            startTime: string;
+            endTime: string;
+          }>;
+        };
+        dayparting_provider_synced_at?: string;
         last_sync_at?: string;
         error_message?: string;
+        source_campaign_id?: string;
       }>()
       .notNull()
       .default({}),

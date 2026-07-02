@@ -14,17 +14,20 @@ import { secretsService } from "../secrets";
 import { googleAdsProvider } from "./providers/google";
 import { metaAdsProvider } from "./providers/meta";
 import { tiktokAdsProvider } from "./providers/tiktok";
+import { DaypartingScheduleSchema } from "./schemas";
 import type {
   AdAccountCredentials,
   AdPlatform,
   AdProvider,
   AdProviderMediaStatusResult,
   AdProviderMediaUploadResult,
+  CampaignDaypartingSchedule,
   CampaignMetrics,
   ConnectAccountInput,
   CreateCampaignInput,
   CreateCreativeInput,
   CreativeMedia,
+  DuplicateCampaignInput,
   UpdateCampaignInput,
   UpdateCreativeInput,
   UploadMediaInput,
@@ -106,6 +109,32 @@ class AdvertisingService {
     if (review.model) metadata.model = review.model;
     if (review.moderationId) metadata.moderationId = review.moderationId;
     return metadata;
+  }
+
+  private normalizeDayparting(
+    schedule: CampaignDaypartingSchedule | null | undefined,
+  ): CampaignDaypartingSchedule | undefined {
+    if (schedule === null || schedule === undefined) {
+      return undefined;
+    }
+    const parsed = DaypartingScheduleSchema.safeParse(schedule);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      throw new Error(first?.message || "Invalid campaign dayparting schedule");
+    }
+    return {
+      timezone: parsed.data.timezone,
+      windows: parsed.data.windows.map((window) => ({
+        daysOfWeek: [...new Set(window.daysOfWeek)].sort((a, b) => a - b),
+        startTime: window.startTime,
+        endTime: window.endTime,
+      })),
+    };
+  }
+
+  private campaignDayparting(campaign: AdCampaign): CampaignDaypartingSchedule | null {
+    const parsed = DaypartingScheduleSchema.safeParse(campaign.metadata.dayparting);
+    return parsed.success ? parsed.data : null;
   }
 
   getProvider(platform: AdPlatform): AdProvider {
@@ -492,11 +521,23 @@ class AdvertisingService {
     return await adCampaignsRepository.findById(id);
   }
 
+  async getCampaignDayparting(
+    campaignId: string,
+    organizationId: string,
+  ): Promise<CampaignDaypartingSchedule | null> {
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Campaign not found");
+    }
+    return this.campaignDayparting(campaign);
+  }
+
   async createCampaign(input: CreateCampaignInput): Promise<AdCampaign> {
     logger.info("[Advertising] Creating campaign", {
       organizationId: input.organizationId,
       name: input.name,
     });
+    const dayparting = this.normalizeDayparting(input.dayparting);
 
     const account = await adAccountsRepository.findById(input.adAccountId);
     if (!account || account.organization_id !== input.organizationId) {
@@ -576,7 +617,10 @@ class AdvertisingService {
     const credentials = await this.getCredentials(account);
     const provider = this.getProvider(account.platform);
 
-    const result = await provider.createCampaign(credentials, account.external_account_id, input);
+    const result = await provider.createCampaign(credentials, account.external_account_id, {
+      ...input,
+      dayparting,
+    });
 
     if (!result.success) {
       // Refund all credits
@@ -608,6 +652,7 @@ class AdvertisingService {
         end_date: input.endDate,
         targeting: input.targeting || {},
         app_id: input.appId,
+        metadata: dayparting ? { dayparting } : {},
       });
 
       // Record budget allocation transaction
@@ -678,7 +723,29 @@ class AdvertisingService {
     }
 
     if (!campaign.external_campaign_id) {
-      throw new Error("Campaign not synced with platform");
+      if (input.dayparting === undefined) {
+        throw new Error("Campaign not synced with platform");
+      }
+    }
+    const dayparting =
+      input.dayparting === undefined ? undefined : this.normalizeDayparting(input.dayparting);
+
+    if (!campaign.external_campaign_id) {
+      const metadata = {
+        ...campaign.metadata,
+        ...(dayparting ? { dayparting } : {}),
+        dayparting_provider_synced_at: undefined,
+      };
+      if (input.dayparting === null) {
+        delete metadata.dayparting;
+        delete metadata.dayparting_provider_synced_at;
+      }
+      const updated = await adCampaignsRepository.update(campaignId, { metadata });
+      if (!updated) {
+        throw new Error("Campaign not found");
+      }
+      logger.info("[Advertising] Campaign dayparting updated locally", { campaignId });
+      return updated;
     }
 
     const account = await adAccountsRepository.findById(campaign.ad_account_id);
@@ -692,8 +759,8 @@ class AdvertisingService {
       );
     }
 
-    const credentials = await this.getCredentials(account);
     const provider = this.getProvider(account.platform);
+    const credentials = await this.getCredentials(account);
 
     // Reconcile the credit hold when the budget changes. createCampaign charged
     // budget*markup up front (stored as credits_allocated); a budget change here
@@ -720,7 +787,10 @@ class AdvertisingService {
       }
     }
 
-    const result = await provider.updateCampaign(credentials, campaign.external_campaign_id, input);
+    const result = await provider.updateCampaign(credentials, campaign.external_campaign_id, {
+      ...input,
+      dayparting,
+    });
 
     if (!result.success) {
       // Platform rejected the change — undo any increase charge we just made.
@@ -744,7 +814,23 @@ class AdvertisingService {
       start_date: input.startDate,
       end_date: input.endDate,
       targeting: input.targeting,
+      ...(input.dayparting !== undefined
+        ? {
+            metadata: {
+              ...campaign.metadata,
+              ...(dayparting ? { dayparting } : {}),
+              ...(dayparting && campaign.external_campaign_id
+                ? { dayparting_provider_synced_at: new Date().toISOString() }
+                : {}),
+              ...(dayparting ? {} : { dayparting_provider_synced_at: undefined }),
+            },
+          }
+        : {}),
     };
+    if (input.dayparting === null) {
+      delete updateData.metadata?.dayparting;
+      delete updateData.metadata?.dayparting_provider_synced_at;
+    }
 
     let updated: AdCampaign | undefined;
     if (budgetCreditDelta < 0 && newCreditsAllocated !== undefined) {
@@ -792,6 +878,83 @@ class AdvertisingService {
     logger.info("[Advertising] Campaign updated", { campaignId });
 
     return updated!;
+  }
+
+  async updateCampaignDayparting(
+    campaignId: string,
+    organizationId: string,
+    schedule: CampaignDaypartingSchedule | null,
+  ): Promise<AdCampaign> {
+    return await this.updateCampaign(campaignId, organizationId, { dayparting: schedule });
+  }
+
+  async duplicateCampaign(
+    campaignId: string,
+    organizationId: string,
+    input: DuplicateCampaignInput = {},
+  ): Promise<{ campaign: AdCampaign; creativesCopied: number }> {
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Campaign not found");
+    }
+
+    const duplicate = await adCampaignsRepository.create({
+      organization_id: organizationId,
+      ad_account_id: campaign.ad_account_id,
+      name: input.name ?? `${campaign.name} Copy`,
+      platform: campaign.platform,
+      objective: campaign.objective,
+      status: "draft",
+      budget_type: campaign.budget_type,
+      budget_amount: campaign.budget_amount,
+      budget_currency: campaign.budget_currency,
+      credits_allocated: "0.00",
+      credits_spent: "0.00",
+      total_spend: "0.00",
+      total_impressions: 0,
+      total_clicks: 0,
+      total_conversions: 0,
+      start_date: campaign.start_date,
+      end_date: campaign.end_date,
+      targeting: campaign.targeting,
+      app_id: campaign.app_id,
+      metadata: {
+        ...campaign.metadata,
+        source_campaign_id: campaign.id,
+        external_ad_set_ids: undefined,
+        external_ad_ids: undefined,
+        dayparting_provider_synced_at: undefined,
+        error_message: undefined,
+        last_sync_at: undefined,
+      },
+    });
+
+    const creatives = await adCreativesRepository.listByCampaign(campaign.id);
+    for (const creative of creatives) {
+      await adCreativesRepository.create({
+        campaign_id: duplicate.id,
+        name: creative.name,
+        type: creative.type,
+        status: "draft",
+        headline: creative.headline,
+        primary_text: creative.primary_text,
+        description: creative.description,
+        call_to_action: creative.call_to_action,
+        destination_url: creative.destination_url,
+        media: creative.media.map(({ providerAssetId: _providerAssetId, ...media }) => media),
+        metadata: creative.metadata.content_safety
+          ? { content_safety: creative.metadata.content_safety }
+          : {},
+      });
+    }
+
+    logger.info("[Advertising] Campaign duplicated", {
+      sourceCampaignId: campaign.id,
+      campaignId: duplicate.id,
+      creativesCopied: creatives.length,
+    });
+
+    return { campaign: duplicate, creativesCopied: creatives.length };
   }
 
   async startCampaign(campaignId: string, organizationId: string): Promise<AdCampaign> {

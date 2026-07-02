@@ -8,6 +8,7 @@ import type {
   AdProviderCreativeResult,
   AdProviderMetricsResult,
   AdProviderValidationResult,
+  CampaignDaypartingSchedule,
   CampaignMetrics,
   CreateCampaignInput,
   CreateCreativeInput,
@@ -155,6 +156,23 @@ function mapObjectiveToMeta(objective: string): string {
   return mapping[objective] || "OUTCOME_AWARENESS";
 }
 
+function localTimeToMinute(value: string): number {
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+export function mapDaypartingToMetaAdSetSchedule(schedule: CampaignDaypartingSchedule): Array<{
+  days: number[];
+  start_minute: number;
+  end_minute: number;
+}> {
+  return schedule.windows.map((window) => ({
+    days: window.daysOfWeek,
+    start_minute: localTimeToMinute(window.startTime),
+    end_minute: localTimeToMinute(window.endTime),
+  }));
+}
+
 function mapCtaToMeta(cta?: string): string {
   const mapping: Record<string, string> = {
     learn_more: "LEARN_MORE",
@@ -296,6 +314,12 @@ export const metaAdsProvider: AdProvider = {
       }
       if (input.endDate) {
         adSetParams.end_time = input.endDate.toISOString();
+      }
+      if (input.dayparting?.windows.length) {
+        adSetParams.adset_schedule = JSON.stringify(
+          mapDaypartingToMetaAdSetSchedule(input.dayparting),
+        );
+        adSetParams.timezone_type = "advertiser";
       }
 
       // Build targeting

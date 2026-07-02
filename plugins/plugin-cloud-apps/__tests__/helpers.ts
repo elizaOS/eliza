@@ -18,6 +18,7 @@ import type {
   AppResponse,
   BuyAppDomainInput,
   BuyAppDomainResponse,
+  CampaignDaypartingResponse,
   CheckAppDomainInput,
   CheckAppDomainResponse,
   CreateAdSlotInput,
@@ -33,6 +34,8 @@ import type {
   DeployAppFrontendResponse,
   DeployAppInput,
   DeployAppResponse,
+  DuplicateAdCampaignInput,
+  DuplicateAdCampaignResponse,
   ExportAppBackupResponse,
   ListAdSlotsResponse,
   ListAppDomainsResponse,
@@ -42,6 +45,7 @@ import type {
   RegenerateAppApiKeyResponse,
   UpdateAppInput,
   UpdateAppMonetizationInput,
+  UpdateCampaignDaypartingInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
 } from "@elizaos/cloud-sdk";
@@ -54,6 +58,14 @@ type CreateAdSlotFn = (
   input: CreateAdSlotInput,
 ) => Promise<CreateAdSlotResponse>;
 type ListAdSlotsFn = () => Promise<ListAdSlotsResponse>;
+type UpdateAdCampaignDaypartingFn = (
+  campaignId: string,
+  input: UpdateCampaignDaypartingInput,
+) => Promise<CampaignDaypartingResponse>;
+type DuplicateAdCampaignFn = (
+  campaignId: string,
+  input?: DuplicateAdCampaignInput,
+) => Promise<DuplicateAdCampaignResponse>;
 type ListFrontendDeploymentsFn = (
   appId: string,
 ) => Promise<ListAppFrontendDeploymentsResponse>;
@@ -117,6 +129,8 @@ interface SdkState {
   deployApp: DeployAppFn;
   createAdSlot: CreateAdSlotFn;
   listAdSlots: ListAdSlotsFn;
+  updateAdCampaignDayparting: UpdateAdCampaignDaypartingFn;
+  duplicateAdCampaign: DuplicateAdCampaignFn;
   deployAppFrontend: DeployAppFrontendFn;
   listAppFrontendDeployments: ListFrontendDeploymentsFn;
   activateAppFrontend: ActivateFrontendFn;
@@ -173,6 +187,34 @@ function defaultState(): SdkState {
         adTagToken: "v1.9999999999.deadbeef",
       }),
     listAdSlots: () => Promise.resolve({ success: true, slots: [] }),
+    updateAdCampaignDayparting: (_campaignId, input) =>
+      Promise.resolve({
+        success: true,
+        campaignId: "campaign_1",
+        status: "draft",
+        dayparting: input.dayparting,
+        updatedAt: "2026-07-02T00:00:00.000Z",
+      }),
+    duplicateAdCampaign: (_campaignId, input) =>
+      Promise.resolve({
+        success: true,
+        campaign: {
+          id: "campaign_copy",
+          name: input?.name ?? "Campaign Copy",
+          platform: "meta",
+          objective: "traffic",
+          status: "draft",
+          budgetType: "daily",
+          budgetAmount: "100.00",
+          budgetCurrency: "USD",
+          creditsAllocated: "0.00",
+          externalCampaignId: null,
+          dayparting: null,
+          sourceCampaignId: "campaign_1",
+          createdAt: "2026-07-02T00:00:00.000Z",
+        },
+        creativesCopied: 1,
+      }),
     deployAppFrontend: () =>
       Promise.resolve({
         success: true,
@@ -332,6 +374,14 @@ export function setCreateAdSlot(fn: CreateAdSlotFn): void {
 export function setListAdSlots(fn: ListAdSlotsFn): void {
   state.listAdSlots = fn;
 }
+export function setUpdateAdCampaignDayparting(
+  fn: UpdateAdCampaignDaypartingFn,
+): void {
+  state.updateAdCampaignDayparting = fn;
+}
+export function setDuplicateAdCampaign(fn: DuplicateAdCampaignFn): void {
+  state.duplicateAdCampaign = fn;
+}
 export function setDeployAppFrontend(fn: DeployAppFrontendFn): void {
   state.deployAppFrontend = fn;
 }
@@ -412,6 +462,18 @@ export class FakeElizaCloudClient {
   }
   listAdSlots(): Promise<ListAdSlotsResponse> {
     return state.listAdSlots();
+  }
+  updateAdCampaignDayparting(
+    campaignId: string,
+    input: UpdateCampaignDaypartingInput,
+  ): Promise<CampaignDaypartingResponse> {
+    return state.updateAdCampaignDayparting(campaignId, input);
+  }
+  duplicateAdCampaign(
+    campaignId: string,
+    input?: DuplicateAdCampaignInput,
+  ): Promise<DuplicateAdCampaignResponse> {
+    return state.duplicateAdCampaign(campaignId, input);
   }
   deployAppFrontend(
     id: string,
