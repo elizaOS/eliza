@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseActionParams } from "../actions";
-import type { Action, ActionResult, IAgentRuntime } from "../index";
+import type { Action, ActionResult, IAgentRuntime, Memory } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	applyDirectCurrentCandidateBackstopToMessageHandler,
+	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	extractPlannerActionNames,
 	findWebLookupActionName,
 	findWebLookupActionNames,
@@ -21,6 +22,71 @@ const logger = {
 	warn: vi.fn(),
 	error: vi.fn(),
 };
+
+describe("sub-agent completion relay — never promoted to tooling (false 'hit a snag')", () => {
+	// Live regression: a coding sub-agent's completion relay echoes the original
+	// task text ("[sub-agent: Build and deploy a simple dice roller web app] …
+	// live at <url>"). The core.simple_registered_action_request promotion ran
+	// inferDirectCurrentRequest on that text, read it as fresh coding work, and
+	// promoted the turn to requiresTool — forcing a TASKS tool the relay can't
+	// satisfy → required_tool_misses exhaustion → a SUCCESSFUL build reported a
+	// false "hit a snag" instead of relaying the live URL. The relay is owned by
+	// the sub-agent-completion evaluator and must only deliver the result.
+	const gate = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+		(evaluator) => evaluator.name === "core.simple_registered_action_request",
+	);
+	const actions = [
+		{ name: "REPLY" },
+		{
+			name: "TASKS",
+			tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+		},
+	] as unknown as Action[];
+	const contextFor = (message: Memory) =>
+		({
+			message,
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: { requiresTool: false, contexts: [] },
+			},
+			runtime: { actions },
+		}) as never;
+	const relayText =
+		"[sub-agent: Build and deploy a simple dice roller web app] Done — it's live at https://example.test/apps/dice-roller/";
+
+	it("does not promote a successful completion relay (metadata.subAgent)", () => {
+		expect(gate).toBeDefined();
+		const relay = {
+			content: {
+				text: relayText,
+				source: "sub_agent",
+				metadata: { subAgent: true },
+			},
+		} as unknown as Memory;
+		expect(gate?.shouldRun(contextFor(relay))).toBe(false);
+	});
+
+	it("does not promote a relay identified only by source or text prefix", () => {
+		const bySource = {
+			content: { text: relayText, source: "acpx:sub-agent-router" },
+		} as unknown as Memory;
+		expect(gate?.shouldRun(contextFor(bySource))).toBe(false);
+		const byPrefix = {
+			content: { text: relayText, source: "discord" },
+		} as unknown as Memory;
+		expect(gate?.shouldRun(contextFor(byPrefix))).toBe(false);
+	});
+
+	it("still promotes a genuine fresh coding request to tooling", () => {
+		const fresh = {
+			content: {
+				text: "Build and deploy a simple dice roller web app",
+				source: "discord",
+			},
+		} as unknown as Memory;
+		expect(gate?.shouldRun(contextFor(fresh))).toBe(true);
+	});
+});
 
 describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () => {
 	// Live regression: the Stage-1 model sometimes answers in plain prose instead
