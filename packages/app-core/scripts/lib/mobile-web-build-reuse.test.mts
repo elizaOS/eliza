@@ -36,7 +36,11 @@ afterEach(() => {
 });
 
 function makeAppDist(
-  meta: { variant?: string; capacitorTarget?: string } = {},
+  meta: {
+    variant?: string;
+    capacitorTarget?: string;
+    runtimeMode?: string;
+  } = {},
 ) {
   const appDir = path.join(tmp, "app");
   const distDir = path.join(appDir, "dist");
@@ -127,6 +131,69 @@ describe("mobileWebDistReuseStatus", () => {
 
     expect(status.reusable).toBe(false);
     expect(status.problems).toContain("dist manifest is missing buildId");
+  });
+
+  it("does not auto-reuse a dist baked for another runtime mode (#11030)", () => {
+    // The exact pollution class from issue #11030: a cloud sideload left a
+    // store/cloud-hybrid dist; the local release lane shares variant=store and
+    // target=ios, so only the runtime mode distinguishes them.
+    const { appDir } = makeAppDist({
+      variant: "store",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud-hybrid",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "store",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "local",
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toEqual([
+      "dist built for runtime mode 'cloud-hybrid' but this build targets 'local'",
+    ]);
+  });
+
+  it("does not auto-reuse a dist whose manifest lacks a runtime mode stamp", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "local",
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist manifest is missing runtime mode; this build targets 'local'",
+    );
+  });
+
+  it("reuses a dist whose runtime mode matches", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "local",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "local",
+    });
+
+    expect(status.reusable).toBe(true);
+    expect(status.problems).toEqual([]);
   });
 
   it("reports stale dist using the existing Vite staleness check", () => {

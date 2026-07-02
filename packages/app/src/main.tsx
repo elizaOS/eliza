@@ -135,6 +135,7 @@ import {
   APP_NAMESPACE,
   APP_URL_SCHEME,
 } from "./app-config";
+import { startBootSplashWatchdog } from "./boot-splash-watchdog";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
@@ -145,6 +146,7 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
+import { reconcileIosLocalBuildRuntimeMode } from "./ios-runtime-mode-reconcile";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
@@ -2720,6 +2722,15 @@ async function main(): Promise<void> {
   // requested it takes over the WebView and returns.
   if (isIOS) {
     await initializeStorageBridge();
+    // Heal the #11030 poisoned state BEFORE any transport reads the runtime
+    // mode: a persisted `cloud` mode left behind by an earlier cloud/store
+    // install blocks every local-agent IPC request on a local build and hangs
+    // the boot on "Booting up…" forever. Requires the storage bridge to have
+    // hydrated localStorage from Capacitor Preferences first.
+    reconcileIosLocalBuildRuntimeMode({
+      isNativeIos: isNative,
+      bakedRuntimeMode: IOS_RUNTIME_ENV_CONFIG.mode,
+    });
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
     installIosLocalAgentFetchBridge();
@@ -2788,6 +2799,10 @@ async function main(): Promise<void> {
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
+  // Boot-failure fallback (#11030): if the startup shell stays on the same
+  // "Booting up…" phase past its deadline, surface a visible error state with
+  // Retry instead of an infinite spinner. No-ops once boot progresses.
+  startBootSplashWatchdog();
   scheduleDeferredAppModuleLoadsAfterPaint();
   await initializePlatform();
 }

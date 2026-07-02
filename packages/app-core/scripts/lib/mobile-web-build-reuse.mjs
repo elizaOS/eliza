@@ -16,6 +16,7 @@ export function mobileWebDistReuseStatus({
   repoRoot,
   expectedVariant,
   expectedTarget,
+  expectedRuntimeMode,
   readManifest = readRendererBuildManifest,
   buildNeeded = viteRendererBuildNeeded,
 } = {}) {
@@ -55,6 +56,21 @@ export function mobileWebDistReuseStatus({
         manifest.capacitorTarget == null
           ? `dist manifest is missing capacitor target; this build targets ${targetLabel(expectedTarget)}`
           : `dist built for capacitor target '${manifest.capacitorTarget}' but this build targets ${targetLabel(expectedTarget)}`,
+      );
+    }
+    // Never reuse a dist baked for a different runtime mode. `ios` (store,
+    // cloud-hybrid) and `build:ios:local:device:full-bun:release` (store,
+    // local) share variant+target, so without this check a cloud sideload's
+    // dist was silently reused by a local device lane and the phone hung on
+    // "Booting up…" with no Agent.apiBase (issue #11030).
+    if (
+      expectedRuntimeMode !== undefined &&
+      manifest.runtimeMode !== expectedRuntimeMode
+    ) {
+      problems.push(
+        manifest.runtimeMode == null
+          ? `dist manifest is missing runtime mode; this build targets '${expectedRuntimeMode}'`
+          : `dist built for runtime mode '${manifest.runtimeMode}' but this build targets '${expectedRuntimeMode}'`,
       );
     }
   }

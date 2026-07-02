@@ -77,12 +77,19 @@ import {
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
 import {
+  expectedRendererRuntimeMode,
+  formatStagedRendererLaneError,
+  iosLaneRuntimeModeProblem,
+  stagedRendererLaneProblems,
+} from "./lib/mobile-lane-guard.mjs";
+import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "./lib/mobile-web-build-reuse.mjs";
 import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
+  readRendererBuildManifest,
 } from "./lib/renderer-build-manifest.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
@@ -1016,6 +1023,7 @@ async function buildWeb(platform) {
       expectedVariant:
         process.env.ELIZA_BUILD_VARIANT || autoPolicy.buildVariant,
       expectedTarget: autoPolicy.capacitorTarget,
+      expectedRuntimeMode: expectedRendererRuntimeMode(autoPolicy),
     });
     if (autoStatus.reusable) {
       console.log(
@@ -1032,6 +1040,7 @@ async function buildWeb(platform) {
       repoRoot,
       expectedVariant: process.env.ELIZA_BUILD_VARIANT || policy.buildVariant,
       expectedTarget: policy.capacitorTarget,
+      expectedRuntimeMode: expectedRendererRuntimeMode(policy),
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(
@@ -6981,6 +6990,23 @@ async function buildIos({ local = false } = {}) {
     iosBuildPolicy.releaseAuthority,
   );
 
+  // Build-lane pollution guard (issue #11030): fail loudly BEFORE any
+  // expensive work when the ios-local lane resolves a non-local renderer
+  // runtime mode (a lingering `--cloud` env export or .env entry would
+  // otherwise silently bake a cloud bundle into a sideload device build).
+  const iosLane = local ? "ios-local" : "ios";
+  const resolvedRendererRuntimeMode = expectedRendererRuntimeMode(
+    iosBuildPolicy,
+    process.env,
+  );
+  const laneProblem = iosLaneRuntimeModeProblem({
+    lane: iosLane,
+    resolvedRuntimeMode: resolvedRendererRuntimeMode,
+  });
+  if (laneProblem) {
+    throw new Error(laneProblem);
+  }
+
   const buildTarget = resolveIosBuildTarget();
   const includesFullBunRuntime = shouldIncludeIosFullBunEngine();
   const includesLocalAgentPayload = local || includesFullBunRuntime;
@@ -7030,6 +7056,27 @@ async function buildIos({ local = false } = {}) {
   // left old hashed assets behind (issue #9309). Runs before the post-sync agent
   // re-stage so the agent payload remains the final authority on public/agent.
   mirrorCapacitorWebPayloadIntoIosDir();
+  // Lane-conformance guard (issue #11030): the renderer staged into the Xcode
+  // project must carry exactly the variant/runtimeMode/target THIS invocation
+  // resolved. A bundle left behind by an earlier `--cloud` sync (or steered in
+  // by lingering env) hard-fails here instead of shipping a device build that
+  // hangs on "Booting up…".
+  const stagedIosManifest = readRendererBuildManifest(
+    path.join(iosDir, "App", "public"),
+  );
+  const stagedLaneProblems = stagedRendererLaneProblems({
+    manifest: stagedIosManifest,
+    expectedVariant: process.env.ELIZA_BUILD_VARIANT,
+    expectedRuntimeMode: resolvedRendererRuntimeMode,
+    expectedTarget: "ios",
+  });
+  if (stagedLaneProblems.length > 0) {
+    throw new Error(formatStagedRendererLaneError(iosLane, stagedLaneProblems));
+  }
+  console.log(
+    `[mobile-build] Lane guard: staged renderer matches ${iosLane} ` +
+      `(variant=${stagedIosManifest.variant}, runtimeMode=${stagedIosManifest.runtimeMode}, target=${stagedIosManifest.capacitorTarget}).`,
+  );
   if (includesLocalAgentPayload) {
     stageIosAgentRuntime({
       appStoreBuild: isIosAppStoreBuild() && !local,
