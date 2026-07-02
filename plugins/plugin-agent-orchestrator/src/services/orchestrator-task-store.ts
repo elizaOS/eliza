@@ -703,7 +703,20 @@ export class FileTaskStore extends InMemoryTaskStore {
       } catch (error) {
         const code =
           isRecord(error) && typeof error.code === "string" ? error.code : "";
-        if (code !== "ENOENT") throw error;
+        if (code !== "ENOENT") {
+          // A corrupt state file (e.g. a JSON.parse SyntaxError, which carries
+          // no .code) must not brick every subsequent mutation — ensureLoaded
+          // warns and continues for the same condition. The file is unreadable,
+          // so the only surviving state is this process's in-memory doc set:
+          // seed the merge from it (an empty seed would drop every non-dirty
+          // task from memory AND the rewrite below). The atomic write then
+          // replaces the corrupt file with a readable one.
+          this.logger?.warn?.(
+            "[OrchestratorTaskStore] task file unreadable during persist; rewriting from in-memory state",
+            error,
+          );
+          for (const doc of this.docs.values()) merged.set(doc.task.id, doc);
+        }
       }
       for (const id of this.tombstones) merged.delete(id);
       for (const id of this.dirty) {
