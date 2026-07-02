@@ -68,3 +68,69 @@ export async function reconcileStreamProcessingError(
   });
   return { refunded: true };
 }
+
+/**
+ * Money-critical (#11169 part 1): the NON-streaming app-chat path debits the
+ * upfront hold, then reads the provider body + runs `calculateCost` +
+ * `reconcileCredits`. If any of those throw AFTER the debit, the route's outer
+ * catch returns 500 WITHOUT refunding — stranding the reserved hold. Unlike the
+ * streaming case there is no "already delivered" ambiguity: a non-streaming
+ * settle failure means the caller received no billable answer, so refund the
+ * hold whenever the settle did NOT complete.
+ *
+ * `settled` is true once `reconcileCredits` has charged the actual cost; a throw
+ * after that point must NOT refund (it would double-credit the org).
+ */
+export async function reconcileNonStreamingSettleError(
+  params: {
+    settled: boolean;
+    appId: string;
+    userId: string;
+    reservedBaseCost: number;
+    model: string;
+    provider: string;
+    billingSource: string;
+    errorMessage: string;
+  },
+  credits: StreamRefundCredits,
+): Promise<{ refunded: boolean }> {
+  const {
+    settled,
+    appId,
+    userId,
+    reservedBaseCost,
+    model,
+    provider,
+    billingSource,
+    errorMessage,
+  } = params;
+
+  if (settled) {
+    logger.error(
+      "[App Chat] Non-streaming post-settle threw AFTER reconcile; keeping charge (NOT refunding)",
+      { appId, userId, reservedBaseCost, error: errorMessage },
+    );
+    return { refunded: false };
+  }
+
+  logger.error(
+    "[App Chat] Non-streaming settle failed after debit; refunding reserved hold (#11169)",
+    { appId, userId, reservedBaseCost, error: errorMessage },
+  );
+  await credits.reconcileCredits({
+    appId,
+    userId,
+    estimatedBaseCost: reservedBaseCost,
+    actualBaseCost: 0, // Full refund — nothing was billed.
+    description: `Chat refund (non-streaming settle failed): ${model}`,
+    metadata: {
+      error: true,
+      streaming: false,
+      model,
+      provider,
+      billingSource,
+      refundReason: "non_streaming_settle_error",
+    },
+  });
+  return { refunded: true };
+}
