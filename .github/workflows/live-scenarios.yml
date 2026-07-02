@@ -145,6 +145,16 @@ jobs:
           bun run --cwd packages/skills build
           echo "::endgroup::"
 
+          echo "::group::Build plugins/plugin-commands"
+          # plugin-telegram's command-registration.ts imports @elizaos/plugin-commands
+          # via its dist exports (ConnectorCommand, getConnectorCommands,
+          # resolveCommand, …). Because installs run with --ignore-scripts this
+          # workspace dependency is never built implicitly, so plugin-telegram's
+          # `tsc` declaration emit fails with TS2307 "Cannot find module
+          # '@elizaos/plugin-commands'". Build it before the connector loop below.
+          bun run --cwd plugins/plugin-commands build
+          echo "::endgroup::"
+
           provider_package=""
           if [ -n "${GROQ_API_KEY:-}" ]; then
             provider_package="plugins/plugin-groq"
