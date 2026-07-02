@@ -161,7 +161,12 @@ describe("handleLiveDiarizationRoute", () => {
 			models: { dir: string };
 			framesReceived: number;
 			turnsObserved: number;
-			aec: { echoReferenceWired: boolean };
+			aec: {
+				echoReferenceWired: boolean;
+				playbackFramesReceived: number;
+				playbackSamplesReceived: number;
+				lastPlaybackFrameAt: number | null;
+			};
 			error?: string;
 		};
 		// On CI/host there is no fused libelizainference, so readiness fails with
@@ -173,6 +178,9 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(status.framesReceived).toBe(0);
 		expect(status.turnsObserved).toBe(0);
 		expect(status.aec.echoReferenceWired).toBe(false);
+		expect(status.aec.playbackFramesReceived).toBe(0);
+		expect(status.aec.playbackSamplesReceived).toBe(0);
+		expect(status.aec.lastPlaybackFrameAt).toBeNull();
 		if (!status.ready) {
 			expect(status.error).toMatch(
 				/fused libelizainference|ABI|FFI|libelizainference/i,
@@ -196,9 +204,67 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(handled).toBe(true);
 		expect(res.statusCode).toBe(200);
 		const status = res.json() as {
-			aec: { echoReferenceWired: boolean };
+			aec: { echoReferenceWired: boolean; playbackFramesReceived: number };
 		};
+		// Provider-based wiring is truthful with zero playback frames: the host
+		// owns the far-end capture, so no /api/voice/playback-frames traffic is
+		// expected on this path.
 		expect(status.aec.echoReferenceWired).toBe(true);
+		expect(status.aec.playbackFramesReceived).toBe(0);
+	});
+
+	it("reports echoReferenceWired only after playback frames are actually delivered (#9583)", async () => {
+		// Before any playback delivery the status must NOT claim a wired far-end.
+		const statusBefore = new FakeRes();
+		await handleLiveDiarizationRoute(
+			makeReq({ method: "GET", url: "/api/voice/audio-frames/status" }),
+			statusBefore as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(statusBefore.statusCode).toBe(200);
+		const before = statusBefore.json() as {
+			aec: {
+				echoReferenceWired: boolean;
+				playbackFramesReceived: number;
+				lastPlaybackFrameAt: number | null;
+			};
+		};
+		expect(before.aec.echoReferenceWired).toBe(false);
+		expect(before.aec.playbackFramesReceived).toBe(0);
+		expect(before.aec.lastPlaybackFrameAt).toBeNull();
+
+		const push = new FakeRes();
+		await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [silentFrame(0), silentFrame(1)] },
+			}),
+			push as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(push.statusCode).toBe(200);
+		expect(push.json()).toMatchObject({ ok: true, framesPushed: 2 });
+
+		const statusAfter = new FakeRes();
+		await handleLiveDiarizationRoute(
+			makeReq({ method: "GET", url: "/api/voice/audio-frames/status" }),
+			statusAfter as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(statusAfter.statusCode).toBe(200);
+		const after = statusAfter.json() as {
+			aec: {
+				echoReferenceWired: boolean;
+				playbackFramesReceived: number;
+				playbackSamplesReceived: number;
+				lastPlaybackFrameAt: number | null;
+			};
+		};
+		expect(after.aec.echoReferenceWired).toBe(true);
+		expect(after.aec.playbackFramesReceived).toBe(2);
+		expect(after.aec.playbackSamplesReceived).toBe(640);
+		expect(typeof after.aec.lastPlaybackFrameAt).toBe("number");
 	});
 
 	it("rejects a malformed frame batch with 400", async () => {
