@@ -1941,6 +1941,21 @@ async function runControl(
     return runTaskLifecycleControl(runtime, params, content, callback, action);
   }
 
+  // Resume is durable too whenever it names a task: pauseTask stops the
+  // task's active sessions AND sets paused:true, so a session-scoped resume
+  // after a pause dead-ends in SESSION_NOT_FOUND while the task stays paused.
+  // Route task-addressed resumes to the service's resumeTask (clears the
+  // pause, mirroring the /tasks/:id/resume route). Session-scoped resumes
+  // (approval-style follow-ups to a live session, no taskId) keep the ACP
+  // path below.
+  if (
+    action === "resume" &&
+    (pickString(params, content, "taskId") ??
+      pickString(params, content, "threadId"))
+  ) {
+    return runTaskLifecycleControl(runtime, params, content, callback, action);
+  }
+
   const instruction =
     textValue(params.instruction) ??
     textValue(content.instruction) ??
@@ -2709,17 +2724,18 @@ async function runManageIssues(
 
 // ── action: archive / reopen (ARCHIVE_CODING_TASK / REOPEN_CODING_TASK) ────
 
-type TaskLifecycleOp = "archive" | "reopen" | "pause";
+type TaskLifecycleOp = "archive" | "reopen" | "pause" | "resume";
 
 /**
- * Archive / reopen / pause a durable task via OrchestratorTaskService. These are
- * first-class operations on the durable task store — the
- * `/api/orchestrator/tasks/:id/{archive,reopen}` routes already expose them, and
- * `archiveTask`/`reopenTask`/`pauseTask` all exist. The old action paths returned
- * `UNSUPPORTED_OPERATION` ("ACP-only mode") from before the task service existed,
- * which then failed the very calls the archive/reopen similes train the planner
- * to make. Only a genuinely ACP-only runtime (no task service registered) still
- * reports the operation as unavailable.
+ * Archive / reopen / pause / resume a durable task via OrchestratorTaskService.
+ * These are first-class operations on the durable task store — the
+ * `/api/orchestrator/tasks/:id/{archive,reopen,pause,resume}` routes already
+ * expose them, and `archiveTask`/`reopenTask`/`pauseTask`/`resumeTask` all
+ * exist. The old action paths returned `UNSUPPORTED_OPERATION` ("ACP-only
+ * mode") from before the task service existed, which then failed the very
+ * calls the archive/reopen similes train the planner to make. Only a genuinely
+ * ACP-only runtime (no task service registered) still reports the operation as
+ * unavailable.
  */
 async function runTaskLifecycleControl(
   runtime: IAgentRuntime,
@@ -2756,7 +2772,9 @@ async function runTaskLifecycleControl(
         ? await taskService.archiveTask(taskId)
         : op === "reopen"
           ? await taskService.reopenTask(taskId)
-          : await taskService.pauseTask(taskId);
+          : op === "pause"
+            ? await taskService.pauseTask(taskId)
+            : await taskService.resumeTask(taskId);
     if (!result) {
       const msg = `Task ${taskId} not found.`;
       await callbackText(callback, msg);
@@ -2766,7 +2784,13 @@ async function runTaskLifecycleControl(
       });
     }
     const verb =
-      op === "archive" ? "Archived" : op === "reopen" ? "Reopened" : "Paused";
+      op === "archive"
+        ? "Archived"
+        : op === "reopen"
+          ? "Reopened"
+          : op === "pause"
+            ? "Paused"
+            : "Resumed";
     const out = `${verb} coding task ${taskId}.`;
     await callbackText(callback, out);
     return {
