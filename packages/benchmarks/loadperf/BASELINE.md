@@ -44,17 +44,26 @@ via `SecretsManagerModalRoot`. Both are now lazy (the vault modal loads on
 first open; its open/close event subscription stays eager so no dispatch is
 missed).
 
-Measured on this branch's rebase base vs the change (clean `build:web`, same
-machine, macOS arm64 — TBD-REMEASURE):
+Measured on this branch's rebase base (`0140a4fcb9e`) vs the change — clean
+`build:web` both sides, same machine (macOS arm64):
 
 | Metric | Before (develop base) | After (#11351 residuals) | Gate budget | Status |
 | --- | --- | --- | --- | --- |
-| eager (first-paint) brotli | TBD | TBD | 3330.0 KB | TBD |
-| initial entry brotli | TBD | TBD | 3260.0 KB | TBD |
+| eager (first-paint) brotli | 3,210,097 B (3135.0 KB / 39 chunks) | **3,142,732 B** (3069.1 KB / 57 chunks) | 3,330,000 B | PASS |
+| initial entry brotli | 3,024,127 B (2953.2 KB) | **2,937,470 B** (2868.6 KB) | 3,260,000 B | PASS |
+| total brotli | 5,233,041 B | 5,268,874 B (+35 KB chunk-split overhead) | 6,000,000 B | PASS |
 
-Budgets ratcheted down by the realized saving:
-`eagerGraphBrotliBytes` 3,400,000 → **3,330,000**, `initialEntryBrotliBytes`
-3,350,000 → **3,260,000**.
+Delta: **eager −67,365 B (−65.8 KB), entry −86,657 B (−84.6 KB)**; 29 new
+on-demand chunks (379 → 408 assets). Budgets ratcheted down by (slightly more
+than) the realized saving: `eagerGraphBrotliBytes` 3,400,000 → **3,330,000**,
+`initialEntryBrotliBytes` 3,350,000 → **3,260,000**. Against the CI-measured
+base (3,320,289 B eager), the expected CI after ≈ 3,252,900 B keeps ~2.3%
+headroom under the new gate. (Local absolute values sit ~110 KB under CI's —
+machine variance; the delta is the trustworthy number.) Note for local runs:
+`maxDuplicateLibBytes` can FAIL on a dev machine whose worktree carries extra
+postinstall plugin dirs (each adds an app-window HTML entry → more per-entry
+`index-*` copies, 364.3 KB waste measured locally vs CI's 219.8 KB); that
+failure pre-exists this change and does not occur on a clean CI checkout.
 
 ## CORRECTIONS (2026-06-02) — the original numbers below were wrong
 

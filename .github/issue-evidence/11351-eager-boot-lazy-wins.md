@@ -1,37 +1,36 @@
 # 11351 — eager-boot lazy-load wins: residuals + measured delta
 
-Branch `perf/11351-eager-boot-lazy-wins` (base `2a856dde86b`). The two core
-wins (settings-section registry `lazy()` + Streamdown lazy stack) shipped in
-merged PR #11471; this change lands the two residual eager paths its review
-found, plus the broken budget ratchet fix.
+Branch `perf/11351-eager-boot-lazy-wins`, rebased onto `develop` `0140a4fcb9e`
+(post #11467, whose `test:client -> check:loadperf-bundle` gate is live). The
+two core wins (settings-section registry `lazy()` + Streamdown lazy stack)
+shipped in merged PR #11471; this change lands the two residual eager paths its
+review found, and ratchets the live gate by the realized saving.
 
 ## Bundle KPI — before/after (`node packages/benchmarks/loadperf/bundle-kpi.mjs`)
 
 Both runs: clean `bun run --cwd packages/app build:web`, same machine
-(macOS arm64, M4 Max), same config, stable dist.
+(macOS arm64, M4 Max), same config, stable dist. Before = rebase base
+`0140a4fcb9e`; after = this branch.
 
-| Metric | Before (2a856dde86b) | After | Delta |
+| Metric | Before | After | Delta |
 | --- | --- | --- | --- |
-| **eager first-paint graph (brotli)** | 3,211,887 B (3136.6 KB / 39 chunks) | 3,144,115 B (3070.4 KB / 57 chunks) | **−67,772 B (−66.2 KB)** |
-| initial entry (brotli) | 3,025,994 B (2955.1 KB) | 2,938,909 B (2870.0 KB) | −87,085 B (−85.0 KB) |
-| total assets (brotli) | 5,230,367 B | 5,266,611 B | +36,244 B (chunk-split overhead) |
+| **eager first-paint graph (brotli)** | 3,210,097 B (3135.0 KB / 39 chunks) | 3,142,732 B (3069.1 KB / 57 chunks) | **-67,365 B (-65.8 KB)** |
+| initial entry (brotli) | 3,024,127 B (2953.2 KB) | 2,937,470 B (2868.6 KB) | -86,657 B (-84.6 KB) |
+| total assets (brotli) | 5,233,041 B | 5,268,874 B | +35,833 B (chunk-split overhead) |
 | assets | 379 | 408 | +29 lazy chunks |
 
-Budget checks after the ratchet fix (`bundle-kpi.mjs` exit 0):
+Budget checks after the ratchet (`eagerGraphBrotliBytes` 3,400,000 -> 3,330,000;
+`initialEntryBrotliBytes` 3,350,000 -> 3,260,000): `eagerGraphBrotli` PASS
+(3,142,732 / 3,330,000) and `initialEntryBrotli` PASS (2,937,470 / 3,260,000).
+`maxDuplicateLibBytes` FAILS locally on BOTH before (364,286 B) and after
+(369,293 B) builds — environmental: this worktree's postinstall-added plugin
+dirs create extra app-window HTML entries, each duplicating the per-entry
+`index-*` stub; CI's clean checkout measures 219.8 KB max vs the 350,000 B
+budget (see BASELINE.md note). Pre-existing, not introduced here.
 
-```
-PASS  initialEntryBrotli: 2870.0 KB / budget 2929.7 KB
-PASS  totalAssetsBrotli: 5143.2 KB / budget 15625.0 KB
-PASS  largestChunkBrotli: 1248.2 KB / budget 2246.1 KB
-PASS  maxDuplicateLibBytes: 351.7 KB / budget 1171.9 KB
-PASS  eagerGraphBrotli: 3070.4 KB / budget 3125.0 KB
-```
-
-`eagerGraphBrotliBytes` 1,374,505 → 3,200,000 and `initialEntryBrotliBytes`
-2,300,000 → 3,000,000: both old values sat *below* the actual measurement
-(stale 2026-06-02-era baselines + the broken #11471 ratchet), i.e. gates that
-could only fail once #11467 wires them into CI. The new values sit below the
-pre-change measurements, so reverting the lazy-loads fails the gate.
+An earlier pre-rebase measurement against base `2a856dde86b` showed the same
+delta (eager -67,772 B, entry -87,085 B), so the saving is stable across the
+53-commit rebase.
 
 ## Runtime proof (production dist via the ui-smoke live stack)
 
