@@ -11,13 +11,28 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { scanExternalModels } from "./external-scanner";
-import { isWithinElizaRoot, localInferenceRoot, registryPath } from "./paths";
+import {
+	isWithinElizaRoot,
+	localInferenceRoot,
+	registryPath,
+	resolveLocalInferenceStoredPath,
+	toLocalInferenceStoredPath,
+} from "./paths";
 import { type InstalledModel, withRuntimeClass } from "./types";
 
 interface RegistryFile {
 	version: 1;
-	models: InstalledModel[];
+	models: StoredInstalledModel[];
 }
+
+type StoredInstalledModel = Omit<
+	InstalledModel,
+	"path" | "bundleRoot" | "manifestPath"
+> & {
+	path: string;
+	bundleRoot?: string;
+	manifestPath?: string;
+};
 
 const EXTERNAL_SCAN_CACHE_TTL_MS = 5_000;
 
@@ -38,10 +53,9 @@ async function readElizaOwned(): Promise<InstalledModel[]> {
 		if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
 			return [];
 		}
-		return parsed.models.filter(
-			(m): m is InstalledModel =>
-				m && typeof m === "object" && m.source === "eliza-download",
-		);
+		return parsed.models
+			.map(hydrateStoredElizaModel)
+			.filter((model): model is InstalledModel => Boolean(model));
 	} catch {
 		return [];
 	}
@@ -50,9 +64,74 @@ async function readElizaOwned(): Promise<InstalledModel[]> {
 async function writeElizaOwned(models: InstalledModel[]): Promise<void> {
 	await ensureRootDir();
 	const tmp = `${registryPath()}.tmp`;
-	const payload: RegistryFile = { version: 1, models };
+	const payload: RegistryFile = {
+		version: 1,
+		models: models.map(serializeElizaOwnedModel),
+	};
 	await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
 	await fs.rename(tmp, registryPath());
+}
+
+function hydrateStoredElizaModel(
+	model: StoredInstalledModel,
+): InstalledModel | null {
+	if (
+		!model ||
+		typeof model !== "object" ||
+		model.source !== "eliza-download"
+	) {
+		return null;
+	}
+	if (typeof model.path !== "string") return null;
+	const modelPath = resolveLocalInferenceStoredPath(model.path);
+	if (!modelPath) return null;
+
+	const bundleRoot =
+		typeof model.bundleRoot === "string"
+			? resolveLocalInferenceStoredPath(model.bundleRoot)
+			: null;
+	const manifestPath =
+		typeof model.manifestPath === "string"
+			? resolveLocalInferenceStoredPath(model.manifestPath)
+			: null;
+
+	return {
+		...model,
+		path: modelPath,
+		...(bundleRoot ? { bundleRoot } : {}),
+		...(manifestPath ? { manifestPath } : {}),
+	};
+}
+
+function serializeElizaOwnedModel(model: InstalledModel): StoredInstalledModel {
+	const storedPath = toLocalInferenceStoredPath(model.path);
+	if (!storedPath) {
+		throw new Error(
+			"[local-inference] Eliza-owned model path must live under the local-inference root",
+		);
+	}
+	const storedBundleRoot = model.bundleRoot
+		? toLocalInferenceStoredPath(model.bundleRoot)
+		: null;
+	if (model.bundleRoot && !storedBundleRoot) {
+		throw new Error(
+			"[local-inference] Eliza-owned bundle root must live under the local-inference root",
+		);
+	}
+	const storedManifestPath = model.manifestPath
+		? toLocalInferenceStoredPath(model.manifestPath)
+		: null;
+	if (model.manifestPath && !storedManifestPath) {
+		throw new Error(
+			"[local-inference] Eliza-owned manifest path must live under the local-inference root",
+		);
+	}
+	return {
+		...model,
+		path: storedPath,
+		...(storedBundleRoot ? { bundleRoot: storedBundleRoot } : {}),
+		...(storedManifestPath ? { manifestPath: storedManifestPath } : {}),
+	};
 }
 
 function externalScanEnabled(): boolean {
