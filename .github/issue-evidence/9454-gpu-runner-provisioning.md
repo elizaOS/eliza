@@ -13,6 +13,51 @@ metrics. The PR that ships these config fixes references #9454 but does **not**
 
 ---
 
+## 0. Update (#11184) — CI health: install fix + provisioning preflight
+
+Two more checked-in config bugs kept the nightly lane red *before it ever
+reached provisioning* (latest failing run 28548736294). Both are fixed in the
+#11184 PR; neither changes the provisioning recipe below — they just stop the
+lane burning ~90 min to a confusing mid-run red on an unprovisioned runner.
+
+1. **Frozen-lockfile install failure (hard-failed every run).** All six jobs
+   used a hand-rolled `bun install --frozen-lockfile`. This repo tracks
+   `bun-version: canary`, and canary reserializes `bun.lock` byte-for-byte
+   between builds, so the frozen install reds with `lockfile had changes, but
+   lockfile is frozen` even when the resolved graph is identical. Replaced with
+   the repo's `./.github/actions/setup-bun-workspace` composite
+   (`install-command: bun install --ignore-scripts --no-frozen-lockfile`), which
+   does the non-frozen fallback and restores the committed lockfile — the exact
+   pattern already merged for Browser Benchmark Lanes (#11231) and used
+   throughout `scenario-pr.yml`. `install-native-deps`/`install-protoc` are set
+   `false` for the self-hosted jobs: they build no Rust plugins and a `sudo
+   apt-get` would introduce a new failure mode on the fleet.
+
+2. **Missing `nvcc`/`nvidia-smi`/`ffmpeg` → confusing deep red.** The two
+   self-hosted jobs now run a **provisioning preflight** first (before install
+   and before any GGUF download). It probes for the fused
+   `libelizainference.so` + the `eliza-1-2b` ASR bundle (`asr/` region):
+
+   - **Provisioned** (both present) → `VOICE_RUNNER_PROVISIONED=1`; the
+     require-real matrix runs **exactly as before**. A provisioned-but-broken
+     runner still **hard-fails** — no fake green.
+   - **Not provisioned** → `VOICE_RUNNER_PROVISIONED=0`; the install + every
+     real step is skipped via `if:`, and the job self-skips **LOUDLY** to a
+     neutral (green) result: a `::warning::` annotation plus a `SKIPPED.md`
+     marker in the `voice-real-acoustic-matrix` artifact, both pointing back to
+     this runbook. This stops the nightly non-required lane from being a
+     permanent unexplained red on the board.
+
+   > **Reading a green run:** green now means *either* "the real matrix ran and
+   > passed" *or* "the runner was not provisioned and the lane skipped" — check
+   > the job's annotations / the `SKIPPED.md` artifact to tell them apart. A
+   > green skip does **NOT** satisfy the §7 close criteria for #9454; producing
+   > real DER/WER/echo/owner/impostor numbers still requires staging §3.3 + §3.4
+   > on the runner. `nvcc`/`nvidia-smi`/`ffmpeg` remain informational only (the
+   > fused lib carries `GGML_CPU`, so the acoustic passes run CPU-only).
+
+---
+
 ## 1. What changed in this PR (config side)
 
 The lane previously could not go green **even on a fully provisioned runner**,

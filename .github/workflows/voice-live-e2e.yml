@@ -118,25 +118,49 @@ jobs:
           submodules: recursive
           show-progress: false
 
-      - name: Probe CUDA toolchain
+      - name: Preflight — GPU/voice tooling probe
         run: |
           set -euo pipefail
-          nvcc --version || true
-          nvidia-smi || true
-          ffmpeg -version | head -1 || echo "ffmpeg missing — round-trip resample step will skip"
+          # Informational probe. This job is continue-on-error + self-skipping
+          # (the real steps gate on ELIZA_ROUNDTRIP_REAL_READY), so a bare runner
+          # never red-Xs the branch — but surface the gap LOUDLY instead of a
+          # silent `|| true` so the nightly board shows *why* real coverage
+          # did not run.
+          missing=""
+          for tool in nvcc nvidia-smi ffmpeg; do
+            if command -v "$tool" >/dev/null 2>&1; then
+              echo "found: $tool ($(command -v "$tool"))"
+            else
+              missing="$missing $tool"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning title=Voice runner not fully provisioned::Absent GPU/media tools:${missing}. Real round-trip coverage needs the GPU runner from #9454 — see .github/issue-evidence/9454-gpu-runner-provisioning.md"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
+      # this repo tracks bun canary, and canary rebuilds reserialize bun.lock
+      # between builds, so a bare frozen install reds with "lockfile had changes,
+      # but lockfile is frozen" on the nightly self-hosted runs (run 28548736294).
+      # The composite handles the drift fallback and restores the committed
+      # lockfile — same invocation as browser-real-bench.yml (#11231) and
+      # scenario-pr.yml. Native apt + protoc are disabled: these self-hosted
+      # runners build no Rust plugins, the install is --ignore-scripts, and a
+      # sudo apt-get would introduce a new failure mode on the fleet.
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Probe preprovisioned fused ASR bundle
         run: |
@@ -196,19 +220,57 @@ jobs:
           submodules: recursive
           show-progress: false
 
-      - name: Probe provisioned voice runner
+      # Fail-fast provisioning gate. Before this, the job burned the full
+      # install + GGUF download only to hard-fail deep in "Stage published
+      # acoustic GGUFs" when the fused lib was absent (run 28548736294). Detect
+      # the required assets up front: if the runner is truly provisioned, the
+      # require-real matrix runs exactly as before (a provisioned-but-broken
+      # runner still hard-fails — no fake green). If it is not provisioned at
+      # all — the pure ops gap tracked by #9454 — self-skip LOUDLY to a neutral
+      # result (a ::warning:: annotation + a SKIPPED.md artifact) instead of a
+      # confusing mid-run red, so this nightly non-required lane stops being a
+      # permanent unexplained red on the board.
+      - name: Preflight — detect provisioned voice runner (GPU / fused lib / ASR bundle)
         run: |
           set -euo pipefail
           VOICE_REAL_MATRIX_OUT="$RUNNER_TEMP/voice-real-matrix"
           echo "VOICE_REAL_MATRIX_OUT=$VOICE_REAL_MATRIX_OUT" >> "$GITHUB_ENV"
           mkdir -p "$VOICE_REAL_MATRIX_OUT"
+
+          first_existing_file() {
+            for path in "$@"; do
+              if [ -n "$path" ] && [ -f "$path" ]; then
+                printf '%s\n' "$path"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          BUNDLE="${ELIZA_ASR_BUNDLE:-$HOME/.eliza/local-inference/models/eliza-1-2b.bundle}"
+          FUSED_LIB="$(first_existing_file \
+            "${ELIZA_INFERENCE_LIBRARY:-}" \
+            "$BUNDLE/lib/libelizainference.so" \
+            "$HOME/.eliza/local-inference/lib/libelizainference.so" \
+            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
+            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so" \
+            || true)"
+
+          missing_tools=""
+          for tool in nvcc nvidia-smi ffmpeg; do
+            command -v "$tool" >/dev/null 2>&1 || missing_tools="$missing_tools $tool"
+          done
+
           {
             echo "runner=$(hostname)"
             echo "workspace=$GITHUB_WORKSPACE"
             echo "runnerTemp=$RUNNER_TEMP"
-            nvcc --version || true
-            nvidia-smi || true
-            ffmpeg -version | head -1 || true
+            echo "bundle=$BUNDLE"
+            echo "fusedLib=${FUSED_LIB:-missing}"
+            echo "missingTools=${missing_tools:-none}"
+            command -v nvcc       >/dev/null 2>&1 && nvcc --version        || echo "nvcc absent"
+            command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi            || echo "nvidia-smi absent"
+            command -v ffmpeg     >/dev/null 2>&1 && ffmpeg -version | head -1 || echo "ffmpeg absent"
             # Keyless by design (#9577): the owner/impostor corpus is synthesized
             # locally with distinct fused Kokoro presets, so no ElevenLabs secret
             # is required. The key only upgrades the human-turn rows to real voices.
@@ -219,20 +281,57 @@ jobs:
             fi
           } 2>&1 | tee "$VOICE_REAL_MATRIX_OUT/probe.log"
 
+          # A provisioned runner needs BOTH the fused libelizainference.so and the
+          # eliza-1-2b ASR bundle staged (per the #9454 runbook). nvcc/nvidia-smi
+          # are informational only — the fused lib carries GGML_CPU, so the acoustic
+          # forward passes run CPU-only when there is no GPU.
+          if [ -n "$FUSED_LIB" ] && [ -d "$BUNDLE/asr" ]; then
+            echo "VOICE_RUNNER_PROVISIONED=1" >> "$GITHUB_ENV"
+            echo "voice runner provisioned — running the require-real matrix"
+          else
+            echo "VOICE_RUNNER_PROVISIONED=0" >> "$GITHUB_ENV"
+            {
+              echo "# Voice acoustic matrix SKIPPED — runner not provisioned"
+              echo
+              echo "This self-hosted runner is missing staged voice assets, so the"
+              echo "require-real acoustic matrix cannot run. This is runner"
+              echo "provisioning (elizaOS/eliza#9454), NOT a code defect."
+              echo
+              echo "- fusedLib: ${FUSED_LIB:-MISSING (need libelizainference.so)}"
+              echo "- asrBundle: $BUNDLE/asr ($( [ -d "$BUNDLE/asr" ] && echo present || echo MISSING ))"
+              echo "- missingTools:${missing_tools:-none}"
+              echo
+              echo "Provision per .github/issue-evidence/9454-gpu-runner-provisioning.md"
+              echo "(stage the fused libelizainference.so + the eliza-1-2b ASR"
+              echo "bundle), then re-dispatch:"
+              echo "  gh workflow run voice-live-e2e.yml --ref develop"
+            } | tee "$VOICE_REAL_MATRIX_OUT/SKIPPED.md"
+            echo "::warning title=Voice acoustic matrix skipped (runner not provisioned)::Missing fused libelizainference.so and/or the eliza-1-2b ASR bundle on this self-hosted runner. This lane needs the GPU runner staged per #9454 (.github/issue-evidence/9454-gpu-runner-provisioning.md). Skipping to a neutral result instead of a mid-run hard fail."
+          fi
+
       - name: Setup Node.js
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`
+      # (bun-canary reserializes bun.lock → "lockfile had changes, but lockfile is
+      # frozen"; see run 28548736294). Gated on the provisioning preflight so an
+      # unprovisioned runner skips the install too and lands green in seconds.
+      - name: Setup workspace dependencies
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Stage published acoustic GGUFs into a real bundle overlay
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
 
@@ -362,12 +461,14 @@ jobs:
           } | tee "$VOICE_REAL_MATRIX_OUT/provisioning.txt"
 
       - name: Real Kokoro GGUF synth smoke
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference test:kokoro:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/kokoro-real-smoke.log"
 
       - name: Real fused attribution smoke
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun packages/app-core/scripts/voice-attribution-smoke.ts \
@@ -376,6 +477,7 @@ jobs:
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-attribution-smoke.log"
 
       - name: Real plugin voice stack matrix
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference voicestack:real \
@@ -386,6 +488,7 @@ jobs:
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
 
       - name: Real voice workbench scenario matrix
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference voice:workbench --real \
@@ -393,12 +496,14 @@ jobs:
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-workbench-real.log"
 
       - name: Real packages/benchmarks/voice matrix
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun packages/benchmarks/voice/voice-real-ci-matrix.mjs \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/benchmarks-voice-real-ci-matrix.log"
 
       - name: Real fused FFI vitest lanes
+        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bunx vitest run --config packages/test/vitest/real.config.ts \
@@ -437,13 +542,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
+      # bun-canary reserializes bun.lock between builds, so a bare frozen install
+      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
+      # The composite handles the drift fallback and restores the committed
+      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Run macOS Electrobun matrix
         run: |
@@ -479,13 +591,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
+      # bun-canary reserializes bun.lock between builds, so a bare frozen install
+      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
+      # The composite handles the drift fallback and restores the committed
+      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Run Windows Electrobun matrix
         shell: bash
@@ -522,13 +641,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
+      # bun-canary reserializes bun.lock between builds, so a bare frozen install
+      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
+      # The composite handles the drift fallback and restores the committed
+      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Run iOS matrix
         run: |
@@ -565,13 +691,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
+      # bun-canary reserializes bun.lock between builds, so a bare frozen install
+      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
+      # The composite handles the drift fallback and restores the committed
+      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Generate Android project for native unit tests
         run: bun run --cwd packages/app cap:sync:android
