@@ -1644,11 +1644,16 @@ export class DirectWalletPaymentsService {
         stats.confirmed += 1;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        // Heuristic: receipt-not-yet-found means we should keep waiting.
-        // Anything else (wrong recipient, low value, reverted) is terminal
-        // — record it so the user sees a clear failure.
-        const transient =
-          /not found|not yet|pending|TransactionReceiptNotFoundError|could not be found/i.test(msg);
+        // Classify by a TERMINAL allowlist, not a transient one. Only a genuine
+        // payment-validity failure should burn a broadcast row to `failed_chain`;
+        // everything else — RPC 5xx / timeouts / "HTTP request failed" / a
+        // receipt not yet mined — is transient infra and must be retried, or a
+        // real paid deposit is lost the first time the RPC hiccups (#11154).
+        const terminal =
+          /Transaction failed|is below the expected floor|is above the expected ceiling|amount is lower than the expected|recipient does not match|sender does not match the proven payer|was not confirmed successfully|ATA owner does not match|LEGACY_PAYMENT_MISSING_PAYER_PROOF|not a direct wallet payment|invalid direct network metadata/i.test(
+            msg,
+          );
+        const transient = !terminal;
 
         const attempts =
           Number((metadataOf(payment) as Record<string, unknown>).verify_attempts ?? 0) + 1;
