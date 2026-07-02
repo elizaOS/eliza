@@ -133,7 +133,7 @@ const flagged = SCENARIO_ROOTS.flatMap(walkScenarioFiles)
 // Current debt (theme 3 of #9310 — down from the 104 the issue reported as the
 // corpus has been de-larped). Lower this as actionCalled-only scenarios are given
 // a real effect finalCheck (custom predicate / memory / connector). Never raise.
-const BASELINE = 60;
+const BASELINE = 42;
 
 describe("action-effect ratchet (#9310)", () => {
   it("finds the scenario corpus (guard is actually scanning)", () => {
