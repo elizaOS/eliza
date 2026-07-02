@@ -13,12 +13,13 @@
  *
  * The DB-backed cases run against in-process PGlite so the real SQL (FOR UPDATE,
  * the JSONB-keyed lookup, and the partial unique indexes from migration 0139)
- * executes. They self-skip if PGlite is unavailable.
+ * executes. They fail loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 import { computeContainerBillingPeriod } from "../container-billing-policy";
@@ -443,4 +444,12 @@ describe("container billing gate + row-lock guard", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+// early-return; this turns that silent no-op into a hard CI failure so a
+// money-path proof can never masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
 });

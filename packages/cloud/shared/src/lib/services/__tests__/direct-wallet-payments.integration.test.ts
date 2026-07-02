@@ -43,7 +43,10 @@ const d = SUPPORTS_VITEST_MOCK_API ? describe : describe.skip;
 // PGlite in-process; receive addresses for all three networks so config is
 // `enabled`. RPC URLs go through the mocked viem transport, so values don't
 // matter beyond being non-empty.
+// resolveDatabaseUrl prefers TEST_DATABASE_URL — pin BOTH so this proof owns its
+// in-memory PGlite even when the CI lane exports a real `postgresql://` URL.
 process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 process.env.CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS = "0x000000000000000000000000000000000000ba5e";
 process.env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = "0x0000000000000000000000000000000000000b5c";

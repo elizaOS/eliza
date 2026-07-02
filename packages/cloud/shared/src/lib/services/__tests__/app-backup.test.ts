@@ -2,16 +2,20 @@
  * App config backup/restore (#10204 "backing up") — real Drizzle schema, PGlite.
  *
  * Exports a secret-free config snapshot of an app and restores it as a NEW app
- * (new slug + new API key) with monetization reapplied. Self-skips LOUDLY if
- * PGlite/pushSchema is unavailable.
+ * (new slug + new API key) with monetization reapplied. Fails loudly (via the
+ * `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a
+ * silent skip.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
-process.env.DATABASE_URL ||= "pglite://memory";
+// This proof owns its DB: force an isolated in-memory PGlite regardless of the
+// ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
+// prefers TEST_DATABASE_URL, so BOTH are pinned — otherwise the suite is steered
+// to a Postgres that isn't up under the unit lane and self-skips to a vacuous
+// green (a money-path proof shipping unproven).
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
@@ -50,10 +54,6 @@ async function seed(): Promise<{ orgId: string; userId: string }> {
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    return;
-  }
   try {
     ({ appBackupService } = await import("../app-backup"));
     ({ appsService } = await import("../apps"));

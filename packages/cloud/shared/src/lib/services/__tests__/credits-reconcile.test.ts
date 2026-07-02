@@ -8,12 +8,13 @@
  * PGlite DB so the real refundCredits / deductCredits SQL (the FOR UPDATE
  * row-lock, the atomic credit_balance movement, and the credit_transactions
  * insert) actually executes; balances are read back from the DB and asserted to
- * the cent. They self-skip if PGlite is unavailable.
+ * the cent. They fail loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 const PGLITE_TIMEOUT = 60000;
@@ -592,4 +593,12 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+// early-return; this turns that silent no-op into a hard CI failure so a
+// money-path proof can never masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
 });

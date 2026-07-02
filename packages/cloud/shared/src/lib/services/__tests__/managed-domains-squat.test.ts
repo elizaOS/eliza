@@ -8,15 +8,18 @@
  * as strings) with exactly the migration's two indexes, so the test exercises the
  * real uniqueness semantics without pulling the full FK closure.
  *
- * Self-skips LOUDLY if PGlite is unavailable (never a silent pass).
+ * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
-const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
-process.env.DATABASE_URL ||= "pglite://memory";
+// This proof owns its DB: force an isolated in-memory PGlite regardless of the
+// ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
+// prefers TEST_DATABASE_URL, so BOTH are pinned — otherwise the suite is steered
+// to a Postgres that isn't up under the unit lane and self-skips to a vacuous
+// green (a money-path proof shipping unproven).
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
@@ -57,10 +60,6 @@ async function insertRow(row: {
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    return;
-  }
   try {
     ({ managedDomainsService: svc } = await import("../managed-domains"));
     // Raw table + the exact indexes migration 0163 creates. Enum columns are
@@ -169,10 +168,7 @@ describe("managed-domains squat fix (#11024)", () => {
           .update(managedDomains)
           .set({ verified: true })
           .where(
-            and(
-              eq(managedDomains.organizationId, orgA),
-              eq(managedDomains.domain, "shared.com"),
-            ),
+            and(eq(managedDomains.organizationId, orgA), eq(managedDomains.domain, "shared.com")),
           );
       })(),
     ).rejects.toThrow();
@@ -181,7 +177,12 @@ describe("managed-domains squat fix (#11024)", () => {
   test("a cloudflare row is exclusive on its own (registrar-based exclusivity)", async () => {
     if (!pgliteReady) return;
     const orgA = orgId();
-    await insertRow({ organizationId: orgA, domain: "cf.com", registrar: "cloudflare", verified: false });
+    await insertRow({
+      organizationId: orgA,
+      domain: "cf.com",
+      registrar: "cloudflare",
+      verified: false,
+    });
     // Even unverified, a cloudflare row holds the exclusive slot.
     expect((await svc.getDomainByName("cf.com"))?.organizationId).toBe(orgA);
     // A second cloudflare row for the same domain (different org) is refused.
@@ -206,7 +207,12 @@ describe("managed-domains squat fix (#11024)", () => {
 
     await insertRow({ organizationId: orgStale, domain: "stale.com", createdAt: old });
     await insertRow({ organizationId: orgFresh, domain: "fresh.com" }); // now
-    await insertRow({ organizationId: orgVerified, domain: "verified.com", verified: true, createdAt: old });
+    await insertRow({
+      organizationId: orgVerified,
+      domain: "verified.com",
+      verified: true,
+      createdAt: old,
+    });
 
     const released = await svc.releaseStaleUnverifiedExternals(1000 * 60 * 60 * 24); // 24h TTL
     expect(released).toBe(1); // only the stale unverified external
