@@ -543,9 +543,10 @@ function WakeWordSection({
 
   useEffect(() => {
     let handle: { remove: () => Promise<void> } | null = null;
+    let cancelled = false;
     void (async () => {
       try {
-        handle = await getSwabblePlugin().addListener(
+        const nextHandle = await getSwabblePlugin().addListener(
           "audioLevel",
           (evt: { level: number }) => {
             // Write the meter directly to the DOM to avoid a React re-render of
@@ -557,11 +558,14 @@ function WakeWordSection({
             }
           },
         );
+        if (cancelled) void nextHandle.remove();
+        else handle = nextHandle;
       } catch {
         // Not available
       }
     })();
     return () => {
+      cancelled = true;
       if (handle) void handle.remove();
     };
   }, []);

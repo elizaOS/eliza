@@ -267,6 +267,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     "browser" | "local-inference" | "talkmode" | null
   >(null);
   const talkModeHandlesRef = useRef<PluginListenerHandle[]>([]);
+  const ensureTalkModeListenersPromiseRef = useRef<Promise<void> | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const playbackFrameTapRef = useRef<PlaybackFrameTap | null>(null);
@@ -691,60 +692,90 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const ensureTalkModeListeners = useCallback(async () => {
     if (talkModeHandlesRef.current.length > 0) return;
+    if (ensureTalkModeListenersPromiseRef.current) {
+      return ensureTalkModeListenersPromiseRef.current;
+    }
 
-    const talkMode = getTalkModePlugin();
+    const promise = (async () => {
+      if (talkModeHandlesRef.current.length > 0) return;
 
-    const transcriptHandle = await talkMode.addListener(
-      "transcript",
-      (event: TalkModeTranscriptEvent) => {
-        const typedEvent = event as TalkModeTranscriptEvent & {
-          mode?: unknown;
-          speaker?: VoiceSpeakerMetadata;
-          turn?: Partial<VoiceTurn>;
-          source?: string;
-          confidence?: number;
-          metadata?: Record<string, unknown>;
-        };
-        applyTranscriptUpdate(event.transcript ?? "", event.isFinal === true, {
-          mode: normalizeActiveVoiceSessionMode(typedEvent.mode) ?? undefined,
-          speaker: typedEvent.speaker,
-          source: typedEvent.source,
-          confidence: typedEvent.confidence,
-          turn: typedEvent.turn,
-          metadata: typedEvent.metadata,
-        });
-      },
-    );
-    const errorHandle = await talkMode.addListener(
-      "error",
-      (event: TalkModeErrorEvent) => {
-        if (
-          sttBackendRef.current === "talkmode" ||
-          event.code === "not-allowed" ||
-          event.code === "service-not-allowed"
-        ) {
-          resetListeningState();
-          if (
-            event.code === "not-allowed" ||
-            event.code === "service-not-allowed"
-          ) {
-            setSupported(false);
-          }
-        }
-      },
-    );
-    const stateHandle = await talkMode.addListener(
-      "stateChange",
-      (event: TalkModeStateEvent) => {
-        if (
-          (event.state === "error" || event.state === "idle") &&
-          sttBackendRef.current === "talkmode"
-        ) {
-          resetListeningState();
-        }
-      },
-    );
-    talkModeHandlesRef.current = [transcriptHandle, errorHandle, stateHandle];
+      const talkMode = getTalkModePlugin();
+      const handles: PluginListenerHandle[] = [];
+
+      try {
+        const transcriptHandle = await talkMode.addListener(
+          "transcript",
+          (event: TalkModeTranscriptEvent) => {
+            const typedEvent = event as TalkModeTranscriptEvent & {
+              mode?: unknown;
+              speaker?: VoiceSpeakerMetadata;
+              turn?: Partial<VoiceTurn>;
+              source?: string;
+              confidence?: number;
+              metadata?: Record<string, unknown>;
+            };
+            applyTranscriptUpdate(
+              event.transcript ?? "",
+              event.isFinal === true,
+              {
+                mode:
+                  normalizeActiveVoiceSessionMode(typedEvent.mode) ?? undefined,
+                speaker: typedEvent.speaker,
+                source: typedEvent.source,
+                confidence: typedEvent.confidence,
+                turn: typedEvent.turn,
+                metadata: typedEvent.metadata,
+              },
+            );
+          },
+        );
+        handles.push(transcriptHandle);
+        const errorHandle = await talkMode.addListener(
+          "error",
+          (event: TalkModeErrorEvent) => {
+            if (
+              sttBackendRef.current === "talkmode" ||
+              event.code === "not-allowed" ||
+              event.code === "service-not-allowed"
+            ) {
+              resetListeningState();
+              if (
+                event.code === "not-allowed" ||
+                event.code === "service-not-allowed"
+              ) {
+                setSupported(false);
+              }
+            }
+          },
+        );
+        handles.push(errorHandle);
+        const stateHandle = await talkMode.addListener(
+          "stateChange",
+          (event: TalkModeStateEvent) => {
+            if (
+              (event.state === "error" || event.state === "idle") &&
+              sttBackendRef.current === "talkmode"
+            ) {
+              resetListeningState();
+            }
+          },
+        );
+        handles.push(stateHandle);
+        talkModeHandlesRef.current = handles;
+      } catch (error) {
+        await Promise.allSettled(handles.map((handle) => handle.remove()));
+        throw error;
+      }
+    })();
+
+    ensureTalkModeListenersPromiseRef.current = promise;
+    try {
+      await promise;
+    } finally {
+      if (ensureTalkModeListenersPromiseRef.current === promise) {
+        ensureTalkModeListenersPromiseRef.current = null;
+      }
+    }
   }, [applyTranscriptUpdate, resetListeningState]);
 
   const transcribeLocalInferenceAudio = useCallback(

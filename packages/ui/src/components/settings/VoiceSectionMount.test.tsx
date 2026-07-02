@@ -148,4 +148,28 @@ describe("VoiceSectionMount — continuous-chat localStorage mirror", () => {
       expect(window.localStorage.getItem(CONTINUOUS_KEY)).toBe("vad-gated"),
     );
   });
+
+  it("renders defaults and keeps local mirrors coherent when boot reads fail", async () => {
+    const unhandledRejection = vi.fn();
+    window.addEventListener("unhandledrejection", unhandledRejection);
+    clientMock.getConfig.mockRejectedValue(new Error("config unavailable"));
+    clientMock.getLocalInferenceDeviceTier.mockRejectedValue(
+      new Error("tier unavailable"),
+    );
+
+    render(<VoiceSectionMount />);
+
+    const toggle = (await screen.findByTestId(
+      "voice-section-wake-toggle",
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    await waitFor(() => expect(clientMock.getConfig).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(clientMock.getLocalInferenceDeviceTier).toHaveBeenCalled(),
+    );
+    expect(window.localStorage.getItem(CONTINUOUS_KEY)).toBe("off");
+    expect(unhandledRejection).not.toHaveBeenCalled();
+
+    window.removeEventListener("unhandledrejection", unhandledRejection);
+  });
 });
