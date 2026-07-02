@@ -1,0 +1,1702 @@
+[
+  {
+    "slug": "dashboard-agents",
+    "viewport": "desktop",
+    "path": "/dashboard/agents",
+    "route": "dashboard/agents",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 207,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 64,
+      "dominantRatio": 0.5652777777777778
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-agents",
+    "viewport": "mobile",
+    "path": "/dashboard/agents",
+    "route": "dashboard/agents",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 270,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 93,
+      "dominantRatio": 0.24597537878787878
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-agents-detail",
+    "viewport": "desktop",
+    "path": "/dashboard/agents/agent-smoke-1",
+    "route": "dashboard/agents/:id",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 710,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 55,
+      "dominantRatio": 0.5335069444444445
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-agents-detail",
+    "viewport": "mobile",
+    "path": "/dashboard/agents/agent-smoke-1",
+    "route": "dashboard/agents/:id",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 710,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 85,
+      "dominantRatio": 0.30303030303030304
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-my-agents",
+    "viewport": "desktop",
+    "path": "/dashboard/my-agents",
+    "route": "dashboard/my-agents",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 672,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 65,
+      "dominantRatio": 0.4288194444444444
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-my-agents",
+    "viewport": "mobile",
+    "path": "/dashboard/my-agents",
+    "route": "dashboard/my-agents",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 672,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 38,
+      "dominantRatio": 0.6837121212121212
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-account",
+    "viewport": "desktop",
+    "path": "/dashboard/account",
+    "route": "dashboard/account",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 950,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 57,
+      "dominantRatio": 0.41180555555555554
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-account",
+    "viewport": "mobile",
+    "path": "/dashboard/account",
+    "route": "dashboard/account",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 950,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 44,
+      "dominantRatio": 0.6441761363636364
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-security",
+    "viewport": "desktop",
+    "path": "/dashboard/security",
+    "route": "dashboard/security",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 1359,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 60,
+      "dominantRatio": 0.36770833333333336
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-security",
+    "viewport": "mobile",
+    "path": "/dashboard/security",
+    "route": "dashboard/security",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 1359,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 62,
+      "dominantRatio": 0.48792613636363635
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-security-permissions",
+    "viewport": "desktop",
+    "path": "/dashboard/security/permissions",
+    "route": "dashboard/security/permissions",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 67,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 14,
+      "dominantRatio": 0.8503472222222223
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-security-permissions",
+    "viewport": "mobile",
+    "path": "/dashboard/security/permissions",
+    "route": "dashboard/security/permissions",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 67,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 20,
+      "dominantRatio": 0.84375
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-analytics",
+    "viewport": "desktop",
+    "path": "/dashboard/analytics",
+    "route": "dashboard/analytics",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 736,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 75,
+      "dominantRatio": 0.371875
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-analytics",
+    "viewport": "mobile",
+    "path": "/dashboard/analytics",
+    "route": "dashboard/analytics",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 736,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 46,
+      "dominantRatio": 0.5279356060606061
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-billing",
+    "viewport": "desktop",
+    "path": "/dashboard/billing",
+    "route": "dashboard/billing",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [
+      "\"Buy credits\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
+      "\"Save\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
+    ],
+    "readableChars": 972,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 52,
+      "dominantRatio": 0.4204861111111111
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-billing",
+    "viewport": "mobile",
+    "path": "/dashboard/billing",
+    "route": "dashboard/billing",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [
+      "\"Buy credits\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
+      "\"Save\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
+    ],
+    "readableChars": 972,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 59,
+      "dominantRatio": 0.4424715909090909
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-billing-success",
+    "viewport": "desktop",
+    "path": "/dashboard/billing/success",
+    "route": "dashboard/billing/success",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 220,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 58,
+      "dominantRatio": 0.8072916666666666
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-billing-success",
+    "viewport": "mobile",
+    "path": "/dashboard/billing/success",
+    "route": "dashboard/billing/success",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 220,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 76,
+      "dominantRatio": 0.3229166666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-invoice-detail",
+    "viewport": "desktop",
+    "path": "/dashboard/invoices/invoice-smoke-1",
+    "route": "dashboard/invoices/:id",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 306,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 56,
+      "dominantRatio": 0.5847222222222223
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-invoice-detail",
+    "viewport": "mobile",
+    "path": "/dashboard/invoices/invoice-smoke-1",
+    "route": "dashboard/invoices/:id",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 306,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 92,
+      "dominantRatio": 0.2928503787878788
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-organization",
+    "viewport": "desktop",
+    "path": "/dashboard/organization",
+    "route": "dashboard/organization",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 202,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 89,
+      "dominantRatio": 0.5614583333333333
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-organization",
+    "viewport": "mobile",
+    "path": "/dashboard/organization",
+    "route": "dashboard/organization",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 202,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 100,
+      "dominantRatio": 0.25804924242424243
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-settings-connections",
+    "viewport": "desktop",
+    "path": "/dashboard/settings/connections",
+    "route": "dashboard/settings/connections",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [
+      "\"Connect Discord Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
+      "\"Connect Telegram Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
+    ],
+    "readableChars": 3312,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 81,
+      "dominantRatio": 0.24965277777777778
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-settings-connections",
+    "viewport": "mobile",
+    "path": "/dashboard/settings/connections",
+    "route": "dashboard/settings/connections",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [
+      "\"Connect Discord Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
+      "\"Connect Telegram Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
+    ],
+    "readableChars": 3312,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 87,
+      "dominantRatio": 0.2871685606060606
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "join",
+    "viewport": "desktop",
+    "path": "/join",
+    "route": "join",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 99,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 24,
+      "dominantRatio": 0.9909722222222223
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "join",
+    "viewport": "mobile",
+    "path": "/join",
+    "route": "join",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 99,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 28,
+      "dominantRatio": 0.9725378787878788
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "payment-request",
+    "viewport": "desktop",
+    "path": "/payment/payreq-smoke-1",
+    "route": "payment/:paymentRequestId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 98,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 33,
+      "dominantRatio": 0.8079861111111111
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "payment-request",
+    "viewport": "mobile",
+    "path": "/payment/payreq-smoke-1",
+    "route": "payment/:paymentRequestId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 98,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 45,
+      "dominantRatio": 0.5613162878787878
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "payment-success",
+    "viewport": "desktop",
+    "path": "/payment/success",
+    "route": "payment/success",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 148,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 33,
+      "dominantRatio": 0.8645833333333334
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "payment-success",
+    "viewport": "mobile",
+    "path": "/payment/success",
+    "route": "payment/success",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 148,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 39,
+      "dominantRatio": 0.5229640151515151
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "payment-app-charge",
+    "viewport": "desktop",
+    "path": "/payment/app-charge/app-smoke-1/charge-smoke-1",
+    "route": "payment/app-charge/:appId/:chargeId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 91,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 29,
+      "dominantRatio": 0.7258680555555556
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "payment-app-charge",
+    "viewport": "mobile",
+    "path": "/payment/app-charge/app-smoke-1/charge-smoke-1",
+    "route": "payment/app-charge/:appId/:chargeId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 91,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 34,
+      "dominantRatio": 0.4322916666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "approve-approval",
+    "viewport": "desktop",
+    "path": "/approve/approval-smoke-1",
+    "route": "approve/:approvalId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 169,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 43,
+      "dominantRatio": 0.8668402777777777
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "approve-approval",
+    "viewport": "mobile",
+    "path": "/approve/approval-smoke-1",
+    "route": "approve/:approvalId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 169,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 45,
+      "dominantRatio": 0.5111268939393939
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "ballot",
+    "viewport": "desktop",
+    "path": "/ballot/ballot-smoke-1",
+    "route": "ballot/:ballotId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 142,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 19,
+      "dominantRatio": 0.9574652777777778
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "ballot",
+    "viewport": "mobile",
+    "path": "/ballot/ballot-smoke-1",
+    "route": "ballot/:ballotId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 142,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 32,
+      "dominantRatio": 0.8579545454545454
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "sensitive-request",
+    "viewport": "desktop",
+    "path": "/sensitive-requests/sensitive-smoke-1",
+    "route": "sensitive-requests/:requestId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 158,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 37,
+      "dominantRatio": 0.8838541666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "sensitive-request",
+    "viewport": "mobile",
+    "path": "/sensitive-requests/sensitive-smoke-1",
+    "route": "sensitive-requests/:requestId",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 158,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 48,
+      "dominantRatio": 0.6808712121212122
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "public-character-chat",
+    "viewport": "desktop",
+    "path": "/chat/smoke-character",
+    "route": "chat/:characterRef",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 36,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 25,
+      "dominantRatio": 0.9708333333333333
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "public-character-chat",
+    "viewport": "mobile",
+    "path": "/chat/smoke-character",
+    "route": "chat/:characterRef",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 36,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 29,
+      "dominantRatio": 0.9159564393939394
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "invite-accept",
+    "viewport": "desktop",
+    "path": "/invite/accept?token=invite-smoke-token",
+    "route": "invite/accept",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 304,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 25,
+      "dominantRatio": 0.8519097222222223
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "invite-accept",
+    "viewport": "mobile",
+    "path": "/invite/accept?token=invite-smoke-token",
+    "route": "invite/accept",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 304,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 36,
+      "dominantRatio": 0.5459280303030303
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "accept-invitation",
+    "viewport": "desktop",
+    "path": "/accept-invitation?token=invite-smoke-token",
+    "route": "accept-invitation",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 304,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 25,
+      "dominantRatio": 0.8519097222222223
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "accept-invitation",
+    "viewport": "mobile",
+    "path": "/accept-invitation?token=invite-smoke-token",
+    "route": "accept-invitation",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 304,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 36,
+      "dominantRatio": 0.5459280303030303
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "login",
+    "viewport": "desktop",
+    "path": "/login",
+    "route": "login",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 148,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 33,
+      "dominantRatio": 0.8645833333333334
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "login",
+    "viewport": "mobile",
+    "path": "/login",
+    "route": "login",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 148,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 39,
+      "dominantRatio": 0.5229640151515151
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-success",
+    "viewport": "desktop",
+    "path": "/auth/success",
+    "route": "auth/success",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 98,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 9,
+      "dominantRatio": 0.9857638888888889
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-success",
+    "viewport": "mobile",
+    "path": "/auth/success",
+    "route": "auth/success",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 98,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 17,
+      "dominantRatio": 0.9495738636363636
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-error",
+    "viewport": "desktop",
+    "path": "/auth/error",
+    "route": "auth/error",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 158,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 32,
+      "dominantRatio": 0.9439236111111111
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-error",
+    "viewport": "mobile",
+    "path": "/auth/error",
+    "route": "auth/error",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 158,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 40,
+      "dominantRatio": 0.8496685606060606
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-cli-login",
+    "viewport": "desktop",
+    "path": "/auth/cli-login",
+    "route": "auth/cli-login",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 69,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 12,
+      "dominantRatio": 0.9868055555555556
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-cli-login",
+    "viewport": "mobile",
+    "path": "/auth/cli-login",
+    "route": "auth/cli-login",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 69,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 18,
+      "dominantRatio": 0.9637784090909091
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-callback-email",
+    "viewport": "desktop",
+    "path": "/auth/callback/email?token=email-smoke-token",
+    "route": "auth/callback/email",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 72,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 17,
+      "dominantRatio": 0.9828125
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "auth-callback-email",
+    "viewport": "mobile",
+    "path": "/auth/callback/email?token=email-smoke-token",
+    "route": "auth/callback/email",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 72,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 20,
+      "dominantRatio": 0.9521780303030303
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "app-auth-authorize",
+    "viewport": "desktop",
+    "path": "/app-auth/authorize?app_id=app-smoke-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcb",
+    "route": "app-auth/authorize",
+    "consoleErrors": [
+      "Error: useAuth must be used within a <StewardProvider> with an `auth` prop.\n    at useAuth (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:53131:11)\n    at AuthorizeAuthenticatedContent (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:108915:7)\n    at renderWithHooks (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:4142:23)\n    at updateFunctionComponent (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:5771:17)\n    at beginWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:6382:16)\n    at performUnitOfWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9148:16)\n    at workLoopSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9046:39)\n    at renderRootSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9030:9)\n    at performWorkOnRoot (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:8705:42)\n    at performWorkOnRootViaSchedulerTask (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9703:5)"
+    ],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 99,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 18,
+      "dominantRatio": 0.9883680555555555
+    },
+    "qualityIssues": [],
+    "verdict": "broken"
+  },
+  {
+    "slug": "app-auth-authorize",
+    "viewport": "mobile",
+    "path": "/app-auth/authorize?app_id=app-smoke-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcb",
+    "route": "app-auth/authorize",
+    "consoleErrors": [
+      "Error: useAuth must be used within a <StewardProvider> with an `auth` prop.\n    at useAuth (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:53131:11)\n    at AuthorizeAuthenticatedContent (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:108915:7)\n    at renderWithHooks (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:4142:23)\n    at updateFunctionComponent (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:5771:17)\n    at beginWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:6382:16)\n    at performUnitOfWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9148:16)\n    at workLoopSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9046:39)\n    at renderRootSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9030:9)\n    at performWorkOnRoot (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:8705:42)\n    at performWorkOnRootViaSchedulerTask (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9703:5)"
+    ],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 99,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 26,
+      "dominantRatio": 0.9618844696969697
+    },
+    "qualityIssues": [],
+    "verdict": "broken"
+  },
+  {
+    "slug": "terms-of-service",
+    "viewport": "desktop",
+    "path": "/terms-of-service",
+    "route": "terms-of-service",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 3009,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 12,
+      "dominantRatio": 0.7901041666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "terms-of-service",
+    "viewport": "mobile",
+    "path": "/terms-of-service",
+    "route": "terms-of-service",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 3009,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 15,
+      "dominantRatio": 0.6526988636363636
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "privacy-policy",
+    "viewport": "desktop",
+    "path": "/privacy-policy",
+    "route": "privacy-policy",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 2462,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 12,
+      "dominantRatio": 0.7588541666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "privacy-policy",
+    "viewport": "mobile",
+    "path": "/privacy-policy",
+    "route": "privacy-policy",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 2462,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 14,
+      "dominantRatio": 0.6607481060606061
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "bsc",
+    "viewport": "desktop",
+    "path": "/bsc",
+    "route": "bsc",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 201,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 17,
+      "dominantRatio": 0.8946180555555555
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "bsc",
+    "viewport": "mobile",
+    "path": "/bsc",
+    "route": "bsc",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 201,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 17,
+      "dominantRatio": 0.7521306818181818
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-api-explorer",
+    "viewport": "desktop",
+    "path": "/dashboard/api-explorer",
+    "route": "dashboard/api-explorer",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 3978,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 64,
+      "dominantRatio": 0.37309027777777776
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-api-explorer",
+    "viewport": "mobile",
+    "path": "/dashboard/api-explorer",
+    "route": "dashboard/api-explorer",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 3978,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 79,
+      "dominantRatio": 0.4737215909090909
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-apps",
+    "viewport": "desktop",
+    "path": "/dashboard/apps",
+    "route": "dashboard/apps",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 145,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 55,
+      "dominantRatio": 0.7489583333333333
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-apps",
+    "viewport": "mobile",
+    "path": "/dashboard/apps",
+    "route": "dashboard/apps",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 145,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 69,
+      "dominantRatio": 0.3307291666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-apps-detail",
+    "viewport": "desktop",
+    "path": "/dashboard/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+    "route": "dashboard/apps/:id",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 484,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 86,
+      "dominantRatio": 0.3873263888888889
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-apps-detail",
+    "viewport": "mobile",
+    "path": "/dashboard/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+    "route": "dashboard/apps/:id",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 484,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 90,
+      "dominantRatio": 0.23816287878787878
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-approvals",
+    "viewport": "desktop",
+    "path": "/dashboard/approvals",
+    "route": "dashboard/approvals",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 116,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 26,
+      "dominantRatio": 0.9782986111111112
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-approvals",
+    "viewport": "mobile",
+    "path": "/dashboard/approvals",
+    "route": "dashboard/approvals",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 116,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 38,
+      "dominantRatio": 0.9254261363636364
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-monetization",
+    "viewport": "desktop",
+    "path": "/dashboard/monetization",
+    "route": "dashboard/monetization",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 743,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 56,
+      "dominantRatio": 0.546875
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-monetization",
+    "viewport": "mobile",
+    "path": "/dashboard/monetization",
+    "route": "dashboard/monetization",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 743,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 67,
+      "dominantRatio": 0.6221590909090909
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-earnings",
+    "viewport": "desktop",
+    "path": "/dashboard/earnings",
+    "route": "dashboard/earnings",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 723,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 47,
+      "dominantRatio": 0.5208333333333334
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-earnings",
+    "viewport": "mobile",
+    "path": "/dashboard/earnings",
+    "route": "dashboard/earnings",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 723,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 39,
+      "dominantRatio": 0.6863162878787878
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-affiliates",
+    "viewport": "desktop",
+    "path": "/dashboard/affiliates",
+    "route": "dashboard/affiliates",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [
+      "\"Save Config\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
+    ],
+    "readableChars": 1769,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 21,
+      "dominantRatio": 0.4557291666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-affiliates",
+    "viewport": "mobile",
+    "path": "/dashboard/affiliates",
+    "route": "dashboard/affiliates",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [
+      "\"Save Config\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
+    ],
+    "readableChars": 1769,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 17,
+      "dominantRatio": 0.803030303030303
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-admin",
+    "viewport": "desktop",
+    "path": "/dashboard/admin",
+    "route": "dashboard/admin",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 308,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 69,
+      "dominantRatio": 0.496875
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-admin",
+    "viewport": "mobile",
+    "path": "/dashboard/admin",
+    "route": "dashboard/admin",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 308,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 86,
+      "dominantRatio": 0.26136363636363635
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-admin-redemptions",
+    "viewport": "desktop",
+    "path": "/dashboard/admin/redemptions",
+    "route": "dashboard/admin/redemptions",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 245,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 48,
+      "dominantRatio": 0.40347222222222223
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-admin-redemptions",
+    "viewport": "mobile",
+    "path": "/dashboard/admin/redemptions",
+    "route": "dashboard/admin/redemptions",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 245,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 69,
+      "dominantRatio": 0.33948863636363635
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-admin-rpc-status",
+    "viewport": "desktop",
+    "path": "/dashboard/admin/rpc-status",
+    "route": "dashboard/admin/rpc-status",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 221,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 53,
+      "dominantRatio": 0.7626736111111111
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-admin-rpc-status",
+    "viewport": "mobile",
+    "path": "/dashboard/admin/rpc-status",
+    "route": "dashboard/admin/rpc-status",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 221,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 58,
+      "dominantRatio": 0.7244318181818182
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-mcps",
+    "viewport": "desktop",
+    "path": "/dashboard/mcps",
+    "route": "dashboard/mcps",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 86,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 27,
+      "dominantRatio": 0.9682291666666667
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-mcps",
+    "viewport": "mobile",
+    "path": "/dashboard/mcps",
+    "route": "dashboard/mcps",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 86,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 27,
+      "dominantRatio": 0.8404356060606061
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  }
+]
