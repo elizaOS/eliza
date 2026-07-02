@@ -161,15 +161,29 @@ export type GoalsNormalizeOwnership = (
   current?: LifeOpsOwnership,
 ) => LifeOpsOwnership;
 
+/**
+ * Check-in engine hook. Implemented by `GoalsCheckinService`
+ * (`./services/checkin.ts`); wired lazily by both construction sites so goal
+ * writes keep per-goal check-in tasks on the scheduling spine in sync. A
+ * `null` resolution means no check-in engine runs on this runtime (e.g. the
+ * service is not registered) and goal writes proceed without scheduling.
+ */
+export interface GoalsCheckinSync {
+  syncGoalCheckins(goal: LifeOpsGoalDefinition): Promise<unknown>;
+  removeGoalCheckins(goalId: string): Promise<unknown>;
+}
+
 export interface GoalsServiceDependencies {
   recordAudit: GoalsRecordAudit;
   normalizeOwnership: GoalsNormalizeOwnership;
+  checkinSync?: () => GoalsCheckinSync | null;
 }
 
 export class GoalsService {
   readonly repository: GoalsRepository;
   private readonly recordAudit: GoalsRecordAudit;
   private readonly normalizeOwnership: GoalsNormalizeOwnership;
+  private readonly resolveCheckinSync: () => GoalsCheckinSync | null;
 
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -178,6 +192,7 @@ export class GoalsService {
     this.repository = new GoalsRepository(runtime);
     this.recordAudit = deps.recordAudit;
     this.normalizeOwnership = deps.normalizeOwnership;
+    this.resolveCheckinSync = deps.checkinSync ?? (() => null);
   }
 
   private agentId(): string {
@@ -210,6 +225,7 @@ export class GoalsService {
       { title: goal.title },
       {},
     );
+    await this.resolveCheckinSync()?.removeGoalCheckins(goalId);
   }
 
   async listGoals(): Promise<LifeOpsGoalRecord[]> {
@@ -293,6 +309,8 @@ export class GoalsService {
           reviewState: dedupCandidate.record.reviewState,
         },
       );
+      // Idempotent heal: the dedup winner may predate the check-in engine.
+      await this.resolveCheckinSync()?.syncGoalCheckins(dedupCandidate.record);
       return {
         goal: dedupCandidate.record,
         links,
@@ -352,6 +370,7 @@ export class GoalsService {
         reviewState: goal.reviewState,
       },
     );
+    await this.resolveCheckinSync()?.syncGoalCheckins(goal);
     return {
       goal,
       links: [],
@@ -422,6 +441,7 @@ export class GoalsService {
         reviewState: nextGoal.reviewState,
       },
     );
+    await this.resolveCheckinSync()?.syncGoalCheckins(nextGoal);
     return {
       goal: nextGoal,
       links: current.links,

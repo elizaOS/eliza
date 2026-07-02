@@ -10,7 +10,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ownerGoalsAction } from "../src/actions/goals.ts";
-import { GoalsRepository } from "../src/db/goals-repository.ts";
 import { GoalsServiceError } from "../src/goal-normalize.ts";
 import { createOwnerGoalsService } from "../src/goals-runtime.ts";
 import {
@@ -126,6 +125,10 @@ function makeRuntime(): {
   const runtime = {
     agentId: AGENT_ID,
     adapter: { db: { execute } },
+    // No GoalsCheckinService registered in this SQL-shim runtime: the
+    // checkinSync hook resolves null and goal writes skip check-in sync.
+    getService: () => null,
+    hasService: () => false,
   } as unknown as IAgentRuntime;
 
   return { runtime, goals, links, audits, executedSql };
