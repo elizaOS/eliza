@@ -5,7 +5,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
 
-const KNOWN_ADAPTER_TYPES = new Set([
+export const KNOWN_ADAPTER_TYPES = new Set([
   "elizaos",
   "pi-agent",
   "claude",
