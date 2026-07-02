@@ -12,6 +12,7 @@
  */
 import { describe, expect, mock, test } from "bun:test";
 import {
+  reconcileNonStreamingSettleError,
   reconcileStreamProcessingError,
   type StreamRefundCredits,
 } from "../v1/apps/[id]/chat/stream-refund";
@@ -104,5 +105,61 @@ describe("reconcileStreamProcessingError (#10837)", () => {
     // 2 delivered (no refund) + 2 pre-delivery failures (refund) = exactly 2 refunds.
     expect(credits.reconcileCredits).toHaveBeenCalledTimes(2);
     expect(credits.calls.every((c) => c.actualBaseCost === 0)).toBe(true);
+  });
+});
+
+const nonStreamBase = {
+  appId: "app-1",
+  userId: "user-1",
+  reservedBaseCost: 0.05,
+  model: "openai/gpt-oss-120b",
+  provider: "openai",
+  billingSource: "openai",
+  errorMessage: "provider body was not valid JSON",
+};
+
+describe("reconcileNonStreamingSettleError (#11169 part 1)", () => {
+  test("throw BEFORE the settle reconcile was invoked → full refund (actualBaseCost 0)", async () => {
+    const credits = makeCredits();
+    const result = await reconcileNonStreamingSettleError(
+      { ...nonStreamBase, settleStarted: false },
+      credits,
+    );
+    expect(result.refunded).toBe(true);
+    expect(credits.reconcileCredits).toHaveBeenCalledTimes(1);
+    expect(credits.calls[0]).toEqual({
+      estimatedBaseCost: 0.05,
+      actualBaseCost: 0,
+    });
+  });
+
+  test("throw at/after the settle reconcile (incl. from INSIDE it — movement may have committed) → NO refund (no double-credit)", async () => {
+    const credits = makeCredits();
+    const result = await reconcileNonStreamingSettleError(
+      { ...nonStreamBase, settleStarted: true },
+      credits,
+    );
+    expect(result.refunded).toBe(false);
+    expect(credits.reconcileCredits).not.toHaveBeenCalled();
+  });
+
+  test("the refund is tagged non-streaming (streaming:false) so it's distinguishable in the ledger", async () => {
+    const metaCalls: Array<Record<string, unknown> | undefined> = [];
+    const credits = {
+      reconcileCredits: mock(
+        async (args: { metadata?: Record<string, unknown> }) => {
+          metaCalls.push(args.metadata);
+          return null;
+        },
+      ),
+    } as unknown as StreamRefundCredits;
+    await reconcileNonStreamingSettleError(
+      { ...nonStreamBase, settleStarted: false },
+      credits,
+    );
+    expect(metaCalls[0]).toMatchObject({
+      streaming: false,
+      refundReason: "non_streaming_settle_error",
+    });
   });
 });
