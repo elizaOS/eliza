@@ -391,11 +391,19 @@ export function Launcher({
     ],
   );
 
+  // The launcher owns EVERY horizontal gesture on its surface — inter-page
+  // paging AND the swipe-right-back-to-home (via onEdgeSwipeRight). Decoupling
+  // the edge-swipe from `showPageDots` is what lets the outer home↔launcher rail
+  // stand down entirely while the launcher is showing, so a swipe is tracked by
+  // exactly one pager instead of two stacked ones. The pager stays enabled for a
+  // single-page launcher too when the edge-swipe-home is available (otherwise a
+  // one-page launcher would have no way back).
+  const edgeSwipeRightEnabled = onEdgeSwipeRight != null;
   const pager = useHorizontalPager({
     page: clampedPage,
     pageCount: pages.length,
-    enabled: !editing && pages.length > 1,
-    edgeSwipeRightEnabled: showPageDots && onEdgeSwipeRight != null,
+    enabled: !editing && (pages.length > 1 || edgeSwipeRightEnabled),
+    edgeSwipeRightEnabled,
     onEdgeSwipeRight,
     onPageChange: (nextPage) => {
       setActivePage(nextPage);
