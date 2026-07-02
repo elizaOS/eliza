@@ -36,15 +36,23 @@
  *     env is absent we assert the correct rejection code instead of 200.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { api, getBaseUrl, isServerReachable } from "./_helpers/api";
 
-beforeAll(async () => {
-  await isServerReachable();
-});
+const serverReachable = await isServerReachable();
+if (!serverReachable) {
+  console.warn(
+    `[group-f-connectors] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
+}
+
+// Loud, counted skip instead of a silent pass when the Worker is absent.
+// (These tests need no API key — they assert unauthenticated contracts.)
+const describeE2E = describe.skipIf(!serverReachable);
 
 // No cleanup needed — these tests do not create persistent state.
-afterAll(() => {});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,7 +142,7 @@ async function buildWhatsAppSignature(
 // /api/eliza-app/connections
 // ---------------------------------------------------------------------------
 
-describe("GET /api/eliza-app/connections", () => {
+describeE2E("GET /api/eliza-app/connections", () => {
   test("no Authorization header → 401", async () => {
     const res = await api.get("/api/eliza-app/connections");
     expect(res.status).toBe(401);
@@ -169,7 +177,7 @@ describe("GET /api/eliza-app/connections", () => {
 // /api/eliza-app/connections/:platform/initiate
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza-app/connections/:platform/initiate", () => {
+describeE2E("POST /api/eliza-app/connections/:platform/initiate", () => {
   test("no Authorization header → 401", async () => {
     const res = await api.post(
       "/api/eliza-app/connections/google/initiate",
@@ -206,7 +214,7 @@ describe("POST /api/eliza-app/connections/:platform/initiate", () => {
 // /api/eliza-app/gateway/:agentId
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza-app/gateway/:agentId", () => {
+describeE2E("POST /api/eliza-app/gateway/:agentId", () => {
   // Public path — no auth gate.
 
   test("missing message body → 400", async () => {
@@ -252,7 +260,7 @@ describe("POST /api/eliza-app/gateway/:agentId", () => {
 // /api/eliza-app/user/me
 // ---------------------------------------------------------------------------
 
-describe("GET /api/eliza-app/user/me", () => {
+describeE2E("GET /api/eliza-app/user/me", () => {
   // Public path per auth.ts, but handler checks its own session token.
 
   test("no Authorization header → 401", async () => {
@@ -276,7 +284,7 @@ describe("GET /api/eliza-app/user/me", () => {
 // /api/eliza-app/webhook/* — forwards when configured; fail closed otherwise
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza-app/webhook/blooio", () => {
+describeE2E("POST /api/eliza-app/webhook/blooio", () => {
   test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
     const res = await api.post("/api/eliza-app/webhook/blooio", {
       event: "test",
@@ -287,7 +295,7 @@ describe("POST /api/eliza-app/webhook/blooio", () => {
   });
 });
 
-describe("POST /api/eliza-app/webhook/discord", () => {
+describeE2E("POST /api/eliza-app/webhook/discord", () => {
   test("without Discord webhook handler URL → 503 DISCORD_WEBHOOK_HANDLER_NOT_CONFIGURED", async () => {
     const res = await api.post("/api/eliza-app/webhook/discord", {
       event: "test",
@@ -298,7 +306,7 @@ describe("POST /api/eliza-app/webhook/discord", () => {
   });
 });
 
-describe("POST /api/eliza-app/webhook/telegram", () => {
+describeE2E("POST /api/eliza-app/webhook/telegram", () => {
   test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
     const res = await api.post("/api/eliza-app/webhook/telegram", {
       update_id: 1,
@@ -309,7 +317,7 @@ describe("POST /api/eliza-app/webhook/telegram", () => {
   });
 });
 
-describe("POST /api/eliza-app/webhook/twilio", () => {
+describeE2E("POST /api/eliza-app/webhook/twilio", () => {
   test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
     const res = await api.post("/api/eliza-app/webhook/twilio", {
       MessageSid: "SM_test",
@@ -323,7 +331,7 @@ describe("POST /api/eliza-app/webhook/twilio", () => {
   });
 });
 
-describe("POST /api/eliza-app/webhook/whatsapp", () => {
+describeE2E("POST /api/eliza-app/webhook/whatsapp", () => {
   test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
     const res = await api.post("/api/eliza-app/webhook/whatsapp", {
       object: "whatsapp_business_account",
@@ -338,7 +346,7 @@ describe("POST /api/eliza-app/webhook/whatsapp", () => {
 // /api/eliza/rooms/:roomId — legacy route contract
 // ---------------------------------------------------------------------------
 
-describe("GET/POST /api/eliza/rooms/:roomId (legacy route)", () => {
+describeE2E("GET/POST /api/eliza/rooms/:roomId (legacy route)", () => {
   test("any request → 501 unsupported route contract", async () => {
     const res = await api.get("/api/eliza/rooms/room-test-001");
     expect(res.status).toBe(501);
@@ -352,7 +360,7 @@ describe("GET/POST /api/eliza/rooms/:roomId (legacy route)", () => {
 // /api/eliza/rooms/:roomId/messages — legacy route contract
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza/rooms/:roomId/messages (legacy route)", () => {
+describeE2E("POST /api/eliza/rooms/:roomId/messages (legacy route)", () => {
   test("any request → 501 unsupported route contract", async () => {
     const res = await api.post("/api/eliza/rooms/room-test-001/messages", {
       text: "hello",
@@ -367,7 +375,7 @@ describe("POST /api/eliza/rooms/:roomId/messages (legacy route)", () => {
 // /api/eliza/rooms/:roomId/messages/stream — legacy route contract
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza/rooms/:roomId/messages/stream (legacy route)", () => {
+describeE2E("POST /api/eliza/rooms/:roomId/messages/stream (legacy route)", () => {
   test("any request → 501 unsupported route contract", async () => {
     const res = await api.post(
       "/api/eliza/rooms/room-test-001/messages/stream",
@@ -393,7 +401,7 @@ describe("POST /api/eliza/rooms/:roomId/messages/stream (legacy route)", () => {
 // /api/eliza/rooms/:roomId/welcome
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza/rooms/:roomId/welcome", () => {
+describeE2E("POST /api/eliza/rooms/:roomId/welcome", () => {
   // Public path — but handler enforces its own auth (session or anon cookie).
 
   test("no auth → 401", async () => {
@@ -414,7 +422,7 @@ describe("POST /api/eliza/rooms/:roomId/welcome", () => {
   });
 });
 
-describe("DELETE /api/eliza/rooms/:roomId/welcome", () => {
+describeE2E("DELETE /api/eliza/rooms/:roomId/welcome", () => {
   test("no auth → 401", async () => {
     const res = await api.delete("/api/eliza/rooms/room-welcome-test/welcome");
     expect(res.status).toBe(401);
@@ -425,7 +433,7 @@ describe("DELETE /api/eliza/rooms/:roomId/welcome", () => {
 // /api/webhooks/blooio/:orgId
 // ---------------------------------------------------------------------------
 
-describe("GET /api/webhooks/blooio/:orgId (health probe)", () => {
+describeE2E("GET /api/webhooks/blooio/:orgId (health probe)", () => {
   test("returns 200 ok", async () => {
     const res = await api.get("/api/webhooks/blooio/test-org-blooio");
     expect(res.status).toBe(200);
@@ -434,7 +442,7 @@ describe("GET /api/webhooks/blooio/:orgId (health probe)", () => {
   });
 });
 
-describe("POST /api/webhooks/blooio/:orgId", () => {
+describeE2E("POST /api/webhooks/blooio/:orgId", () => {
   test("missing or invalid signature → 401 or 500 (no secret configured)", async () => {
     // Without SKIP_WEBHOOK_VERIFICATION, the handler tries to load the webhook
     // secret from the DB. In the test environment there is no DB row for
@@ -517,7 +525,7 @@ describe("POST /api/webhooks/blooio/:orgId", () => {
 // /api/webhooks/twilio/:orgId
 // ---------------------------------------------------------------------------
 
-describe("GET /api/webhooks/twilio/:orgId (health probe)", () => {
+describeE2E("GET /api/webhooks/twilio/:orgId (health probe)", () => {
   test("returns 200 ok", async () => {
     const res = await api.get("/api/webhooks/twilio/test-org-twilio");
     expect(res.status).toBe(200);
@@ -526,7 +534,7 @@ describe("GET /api/webhooks/twilio/:orgId (health probe)", () => {
   });
 });
 
-describe("POST /api/webhooks/twilio/:orgId", () => {
+describeE2E("POST /api/webhooks/twilio/:orgId", () => {
   test("no X-Twilio-Signature header → 401 or 500 (no auth token configured)", async () => {
     // Twilio webhook receives form-encoded data, not JSON.
     const formParams = new URLSearchParams({
@@ -595,7 +603,7 @@ describe("POST /api/webhooks/twilio/:orgId", () => {
 // /api/webhooks/whatsapp/:orgId
 // ---------------------------------------------------------------------------
 
-describe("GET /api/webhooks/whatsapp/:orgId (Meta verification handshake)", () => {
+describeE2E("GET /api/webhooks/whatsapp/:orgId (Meta verification handshake)", () => {
   test("missing hub.mode query param → 403 (verification fails)", async () => {
     // Without hub.mode, hub.verify_token, hub.challenge the service
     // returns null → handler sends 403.
@@ -613,7 +621,7 @@ describe("GET /api/webhooks/whatsapp/:orgId (Meta verification handshake)", () =
   });
 });
 
-describe("POST /api/webhooks/whatsapp/:orgId", () => {
+describeE2E("POST /api/webhooks/whatsapp/:orgId", () => {
   test("invalid signature with non-UUID orgId → 400 before signature handling", async () => {
     const body = JSON.stringify({
       object: "whatsapp_business_account",
