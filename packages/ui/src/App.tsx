@@ -2309,7 +2309,17 @@ export function App() {
               detail:
                 "The auth probe could not reach /api/auth/me. If this is local development, start the local agent API with `bun run dev` or `bun run dev:desktop`, then retry.",
             }}
-            onRetry={retryStartup}
+            onRetry={() => {
+              // This screen is triggered by the AUTH probe failing
+              // (useAuthStatus publishes `server_unavailable` after its 10×1s
+              // retry budget), so `retryStartup()` alone is a no-op here —
+              // the startup coordinator is already in a ready/hydrating phase
+              // whose reducer has no RETRY arm. Re-probe auth so a transient
+              // outage (agent restart, phone network blip) actually recovers,
+              // and still kick the startup retry for the mixed case.
+              refetchAuth();
+              retryStartup();
+            }}
           />
           <BugReportModal />
         </BugReportProvider>
