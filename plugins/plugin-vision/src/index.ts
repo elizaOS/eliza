@@ -1,7 +1,13 @@
 import type { Plugin } from "@elizaos/core";
-import { logger, promoteSubactionsToActions } from "@elizaos/core";
+import {
+  isAndroidMobile,
+  logger,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
+import { OcrBridgeService } from "./ocr-bridge";
+import { AndroidBridgeOcrService } from "./ocr-service-android-bridge";
 import { LinuxTesseractOcrService } from "./ocr-service-linux-tesseract";
 import { PaddleOcrService } from "./ocr-service-paddleocr";
 import { WindowsMediaOcrService } from "./ocr-service-windows";
@@ -26,7 +32,7 @@ export const visionPlugin: Plugin = {
   name: "vision",
   description:
     "Provides visual perception through camera integration and scene analysis",
-  services: [VisionService, ScreenCaptureBridgeService],
+  services: [VisionService, ScreenCaptureBridgeService, OcrBridgeService],
   providers: [visionProvider],
   routes: visionRoutes,
   actions: [...promoteSubactionsToActions(visionAction)],
@@ -65,7 +71,9 @@ export const visionPlugin: Plugin = {
       // NPU-accelerated): Windows.Media.Ocr on Windows; the classic tesseract
       // CLI on Linux when installed; otherwise the docTR / Apple-Vision chain.
       // Native providers can override via registerOcrWithCoordsService later.
-      if (PaddleOcrService.isAvailable()) {
+      if (isAndroidMobile() && _runtime) {
+        registerOcrWithCoordsService(new AndroidBridgeOcrService(_runtime));
+      } else if (PaddleOcrService.isAvailable()) {
         // Opt-in alternate engine (#9581): ELIZA_VISION_OCR_BACKEND=paddleocr.
         // Cross-platform; only selected when explicitly requested so it never
         // displaces a verified default provider.
