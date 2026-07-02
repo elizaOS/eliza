@@ -6,7 +6,7 @@ Unified cross-channel inbox triage with unresolved-item tracking, snooze, archiv
 
 Adds the inbox-zero workflow to an agent: a single `INBOX` umbrella action (op-based dispatch), `INBOX_TRIAGE` + `CROSS_CHANNEL_CONTEXT` providers that surface unresolved threads to the planner each turn, and a registered `/inbox` view for human review. Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaster, iMessage, and similar non-SMS channels. Android SMS stays in `@elizaos/plugin-messages`.
 
-This package owns the triage domain carved out of `plugin-lifeops`: the persisted queue, queue operations, providers, schema, migration, and terminal/app view registration. `@elizaos/plugin-personal-assistant` still owns the legacy cross-channel read aggregation route (`GET /api/lifeops/inbox`) and delegates shared triage primitives here.
+This package owns the triage domain carved out of `plugin-lifeops`: the persisted queue, queue operations, providers, schema, migration, and terminal/app view registration. It also owns the cross-channel **aggregation domain** (`src/inbox/aggregate.ts`: channel normalization, `buildInbox` thread grouping, `resolveInboxRequest`, LLM priority orchestration, and the cached read-through `InboxDomain`) plus the LLM priority scorer (`src/inbox/priority-scoring.ts`). `@elizaos/plugin-personal-assistant` keeps the transport route (`GET /api/lifeops/inbox`), the `life_inbox_messages` cache tables in `app_lifeops`, and the Gmail/X connector projections — it composes the `InboxDomain` by injecting those through the typed seams (`InboxMessageCache`, `PriorityScoringSettingsLoader`, `GmailInboxSource`/`XDmInboxSource`) and keeps behavior-identical re-export shims at the old import paths.
 
 ## Plugin surface
 
@@ -69,6 +69,13 @@ src/
     migration.ts                      app_lifeops -> app_inbox copy + additive repair
     types.ts                          InboundMessage, TriageEntry, TriageClassification, etc.
     triage-classifier.ts              LLM classification of inbound messages
+    aggregate.ts                      Cross-channel aggregation domain: builders,
+                                      resolveInboxRequest, LLM-score orchestration,
+                                      cached read-through InboxDomain (host seams:
+                                      InboxMessageCache, PriorityScoringSettingsLoader,
+                                      Gmail/X sources)
+    priority-scoring.ts               LLM inbox priority scorer (batched, cached,
+                                      concurrency-capped)
   db/
     index.ts                          re-exports schema.ts
     schema.ts                         drizzle pgSchema('app_inbox') + 3 tables
