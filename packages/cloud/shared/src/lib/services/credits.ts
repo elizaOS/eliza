@@ -1001,6 +1001,14 @@ export class CreditsService {
    * `clawback` debits tagged with it). Lets the refund handler claw back only the
    * DELTA of a cumulative `amount_refunded` across multiple partial refunds
    * without double-charging. (#10920)
+   *
+   * Won-dispute reinstatements (the `refund` row that
+   * handleChargeDisputeFundsReinstated writes with
+   * metadata.source = 'charge.dispute.funds_reinstated') NET AGAINST the tally:
+   * clawback rows carry a negative amount (so `-amount` adds), reinstatement
+   * refunds carry a positive amount (so `-amount` subtracts). Without netting,
+   * a refund that follows a won dispute would see the stale dispute clawback
+   * as "already clawed" and under-claw by that amount. (#11155)
    */
   async getClawedBackUsdForPaymentIntent(paymentIntentId: string): Promise<number> {
     const rows = await sqlRows<{ total: string | number | null }>(
@@ -1008,8 +1016,11 @@ export class CreditsService {
       sql`
         SELECT COALESCE(SUM(-amount), 0) AS total
         FROM credit_transactions
-        WHERE type = 'clawback'
-          AND metadata->>'payment_intent_id' = ${paymentIntentId}
+        WHERE metadata->>'payment_intent_id' = ${paymentIntentId}
+          AND (
+            type = 'clawback'
+            OR (type = 'refund' AND metadata->>'source' = 'charge.dispute.funds_reinstated')
+          )
       `,
     );
     return parseNumeric(rows[0]?.total ?? 0, "clawed_back_total");

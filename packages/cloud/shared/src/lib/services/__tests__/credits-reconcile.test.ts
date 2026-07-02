@@ -593,6 +593,56 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "getClawedBackUsdForPaymentIntent nets won-dispute reinstatements (#11155)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+
+      // Dispute opens: Stripe withdraws the funds → dispute clawback tagged
+      // with the payment intent (mirrors handleChargeDisputeFundsWithdrawn).
+      await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 10,
+        description: "dispute clawback",
+        stripePaymentIntentId: "stripe:dispute:dp_r1",
+        metadata: { payment_intent_id: "pi_r1" },
+      });
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(10, 6);
+
+      // Platform wins the dispute: funds_reinstated writes a `refund` row
+      // (mirrors handleChargeDisputeFundsReinstated in stripe-event.ts).
+      await creditsService.refundCredits({
+        organizationId: ORG_ID,
+        amount: 10,
+        description: "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r1",
+        stripePaymentIntentId: "stripe:dispute:dp_r1:reinstated",
+        metadata: {
+          payment_intent_id: "pi_r1",
+          source: "charge.dispute.funds_reinstated",
+        },
+      });
+
+      // The tally nets to 0 so a later charge.refunded claws the FULL refund
+      // delta instead of under-clawing by the reinstated amount.
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(0, 6);
+
+      // An ordinary (non-reinstatement) refund tagged with the same payment
+      // intent must NOT reduce the tally.
+      await creditsService.refundCredits({
+        organizationId: ORG_ID,
+        amount: 5,
+        description: "unrelated refund",
+        metadata: { payment_intent_id: "pi_r1" },
+      });
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(0, 6);
+
+      // Balance: 100 - 10 (clawback) + 10 (reinstatement) + 5 (refund) = 105.
+      expect(await getBalance()).toBeCloseTo(105, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
 });
 
 // Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
