@@ -77,8 +77,7 @@ async function classifyBatch(
 
   let rawResponse = "";
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "inbox_triage" },
+    const result = await runWithTrajectoryPurpose("inbox_triage",
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     rawResponse = typeof result === "string" ? result : "";

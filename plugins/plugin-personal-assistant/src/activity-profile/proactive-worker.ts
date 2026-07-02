@@ -266,8 +266,7 @@ export async function classifyCalendarEventsForProactivePlanning(
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-proactive-worker" },
+    const result = await runWithTrajectoryPurpose("lifeops-proactive-worker",
       () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
     );
     const raw = typeof result === "string" ? result : "";

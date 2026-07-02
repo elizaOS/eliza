@@ -905,8 +905,7 @@ async function resolveSchedulingPlanWithLlm(args: {
   });
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "schedule_plan" },
+    const result = await runWithTrajectoryPurpose("schedule_plan",
       () =>
         args.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,

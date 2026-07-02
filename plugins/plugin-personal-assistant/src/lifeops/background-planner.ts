@@ -541,8 +541,7 @@ export async function planJob(
   const prompt = buildPrompt(jobContext);
   let result: unknown;
   try {
-    result = await runWithTrajectoryContext(
-      { purpose: "lifeops-background-planner" },
+    result = await runWithTrajectoryPurpose("lifeops-background-planner",
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
   } catch (error) {

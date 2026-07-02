@@ -577,8 +577,7 @@ export async function extractUnlockModeWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-extract-task-plan-unlock" },
+    const result = await runWithTrajectoryPurpose("lifeops-extract-task-plan-unlock",
       () =>
         args.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,

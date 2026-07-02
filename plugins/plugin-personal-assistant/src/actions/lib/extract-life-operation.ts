@@ -294,8 +294,7 @@ async function recoverCoreLifeOperationWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-extract-life-operation" },
+    const result = await runWithTrajectoryPurpose("lifeops-extract-life-operation",
       () =>
         args.runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,

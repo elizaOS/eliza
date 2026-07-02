@@ -695,8 +695,7 @@ export const prioritizeAction: Action & {
 
     let raw: unknown;
     try {
-      raw = await runWithTrajectoryContext(
-        { purpose: "lifeops-prioritize" },
+      raw = await runWithTrajectoryPurpose("lifeops-prioritize",
         () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
       );
     } catch (error) {

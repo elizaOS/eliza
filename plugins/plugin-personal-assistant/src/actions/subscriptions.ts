@@ -167,8 +167,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-subscriptions" },
+    const result = await runWithTrajectoryPurpose("lifeops-subscriptions",
       () =>
         args.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,

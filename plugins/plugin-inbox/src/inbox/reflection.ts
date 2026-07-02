@@ -78,8 +78,7 @@ export async function reflectOnSendConfirmation(
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-inbox-reflect-autoreply" },
+    const result = await runWithTrajectoryPurpose("lifeops-inbox-reflect-autoreply",
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const raw = typeof result === "string" ? result : "";
@@ -162,8 +161,7 @@ export async function reflectOnAutoReply(
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-inbox-reflect-send" },
+    const result = await runWithTrajectoryPurpose("lifeops-inbox-reflect-send",
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const raw = typeof result === "string" ? result : "";

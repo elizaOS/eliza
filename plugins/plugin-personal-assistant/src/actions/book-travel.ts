@@ -262,8 +262,7 @@ async function extractBookTravelPlanWithLlm(args: {
 
   let parsed: Record<string, unknown> | null = null;
   try {
-    const raw = await runWithTrajectoryContext(
-      { purpose: "lifeops-book-travel" },
+    const raw = await runWithTrajectoryPurpose("lifeops-book-travel",
       () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const rawText = typeof raw === "string" ? raw : "";

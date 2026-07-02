@@ -424,8 +424,7 @@ export async function extractBill(
   if (typeof runtime.useModel === "function") {
     try {
       const modelKey = resolveModelType(modelSetting);
-      const raw = await runWithTrajectoryContext(
-        { purpose: "lifeops-bill-extraction" },
+      const raw = await runWithTrajectoryPurpose("lifeops-bill-extraction",
         () =>
           runtime.useModel(ModelType[modelKey], {
             prompt: buildLlmPrompt(message),

@@ -139,8 +139,7 @@ Return strict JSON only with exactly these keys:
   "requestId": "id of the single targeted request, or null if ambiguous",
   "reason": "short human-readable reason in the user's language, or null if none given"
 }`;
-  const raw = await runWithTrajectoryContext(
-    { purpose: "lifeops-resolve-request" },
+  const raw = await runWithTrajectoryPurpose("lifeops-resolve-request",
     () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
   );
   return parseResolutionJson(raw);

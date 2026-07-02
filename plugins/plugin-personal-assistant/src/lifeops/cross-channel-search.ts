@@ -859,8 +859,7 @@ async function embedQuery(
   runtime: IAgentRuntime,
   text: string,
 ): Promise<number[] | null> {
-  const result = await runWithTrajectoryContext(
-    { purpose: "lifeops-cross-channel-search-embedding" },
+  const result = await runWithTrajectoryPurpose("lifeops-cross-channel-search-embedding",
     () => runtime.useModel(ModelType.TEXT_EMBEDDING, { text }),
   );
   if (Array.isArray(result)) {

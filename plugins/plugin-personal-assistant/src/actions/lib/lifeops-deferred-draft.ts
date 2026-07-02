@@ -487,8 +487,7 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-deferred-draft" },
+    const result = await runWithTrajectoryPurpose("lifeops-deferred-draft",
       () =>
         args.runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,

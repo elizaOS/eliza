@@ -1388,8 +1388,7 @@ export class CheckinService {
     }
     const prompt = buildCheckinSummaryPrompt(report);
     try {
-      const response = await runWithTrajectoryContext(
-        { purpose: "lifeops-checkin-summary" },
+      const response = await runWithTrajectoryPurpose("lifeops-checkin-summary",
         () =>
           this.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,
