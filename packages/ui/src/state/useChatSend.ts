@@ -107,10 +107,42 @@ function asStringList(value: unknown): string[] {
 }
 
 /**
+ * 4xx statuses whose response body carries a user-actionable validation reason
+ * (bad/oversized/unsupported payload) rather than an infrastructure condition.
+ * Auth (401/403), rate limit (429), and not-found (404) have their own
+ * handling and are deliberately excluded.
+ */
+const VALIDATION_FAILURE_STATUSES: ReadonlySet<number> = new Set([
+  400, 413, 415, 422,
+]);
+
+/**
+ * Extract the server's validation reason from a send failure, or `null` when
+ * the failure isn't a payload-validation 4xx. The client's ApiError carries
+ * the server's JSON `error` body as its message (e.g. "Attachment too large
+ * (max 5 MB)"), which tells the user exactly what to fix — the generic "didn't
+ * go through, please resend" copy would send them into a retry loop that fails
+ * identically every time. Exported for the send path and unit tests.
+ */
+export function getSendValidationFailureMessage(err: unknown): string | null {
+  const status = (err as { status?: number }).status;
+  if (typeof status !== "number" || !VALIDATION_FAILURE_STATUSES.has(status)) {
+    return null;
+  }
+  const message = err instanceof Error ? err.message.trim() : "";
+  // A body-less rejection falls back to "HTTP <status>" upstream — that is not
+  // a validation reason worth surfacing over the generic copy.
+  if (!message || /^HTTP \d+$/i.test(message)) return null;
+  return message;
+}
+
+/**
  * Map a send/stream failure (HTTP status + error `kind`) to a user-facing notice
  * so a stalled turn is never silent dead air. Shared by the main-chat send path
  * and the action/inbox/connector send path — both must surface the same
- * status-specific message. (#10231)
+ * status-specific message. (#10231) 4xx validation rejections surface the
+ * server's specific reason; 5xx/network/timeout keep the generic copy (their
+ * bodies are internal noise, and resending genuinely can succeed).
  */
 export function buildSendFailureNotice(err: unknown): string {
   const status = (err as { status?: number }).status;
@@ -123,6 +155,10 @@ export function buildSendFailureNotice(err: unknown): string {
   }
   if (status === 503 || status === 502) {
     return "The agent is still waking up — give it a moment and resend.";
+  }
+  const validationMessage = getSendValidationFailureMessage(err);
+  if (validationMessage !== null) {
+    return `The agent couldn't accept that message: ${validationMessage}.`;
   }
   if (kind === "timeout") {
     return "The agent took too long to respond — give it a moment and resend.";
@@ -1277,7 +1313,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             dropEmptyAssistantPlaceholder(assistantMsgId);
           }
         } else {
-          // Non-abort, non-404 send failure (network/timeout/5xx/auth/429).
+          // Non-abort, non-404 send failure (network/timeout/5xx/auth/429/4xx).
           // Drop the empty assistant placeholder but KEEP the user's message,
           // and surface a status-specific notice so a stalled turn is never
           // silent dead air (the typing indicator stalls at ~30s while the SSE
@@ -1285,7 +1321,34 @@ export function useChatSend(deps: UseChatSendDeps) {
           // vanish and nothing replace them, reading as "my message was lost").
           dropEmptyAssistantPlaceholder(assistantMsgId);
           const isAuth = status === 401 || status === 403;
-          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
+          if (getSendValidationFailureMessage(err) !== null) {
+            // A 4xx validation rejection (oversized/unsupported attachment,
+            // malformed payload) means the server REFUSED the message before it
+            // persisted: the composer was already cleared at enqueue and the
+            // reconcile reload below wipes the optimistic bubble, so without a
+            // restore the user's text + attachments would be irrecoverably
+            // destroyed on a primary flow (e.g. a phone-photo upload). Mirror
+            // the cold-open create-failure path: put the draft — text AND
+            // pending attachments (the pending-images state holds the same
+            // ImageAttachment shape that was sent) — back in the composer, and
+            // say exactly why the server rejected it, because resending the
+            // same payload unchanged would fail identically.
+            if (rawText) setChatInput(rawText);
+            if (imagesToSend?.length) setChatPendingImages([...imagesToSend]);
+            const restored =
+              rawText && imagesToSend?.length
+                ? "Your text and attachments were restored to the input."
+                : imagesToSend?.length
+                  ? "Your attachments were restored to the input."
+                  : "Your message was restored to the input.";
+            setActionNotice(
+              `${buildSendFailureNotice(err)} ${restored}`,
+              "error",
+              10_000,
+            );
+          } else {
+            setActionNotice(buildSendFailureNotice(err), "error", 8_000);
+          }
           // Reconcile from the server for non-auth errors — loadConversationMessages
           // no longer wipes the thread on transient failures (404-only clear), so
           // this is safe; skip on auth where the reload would just fail again.
@@ -1332,6 +1395,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setConversations,
       setActionNotice,
       setChatInput,
+      setChatPendingImages,
       uiLanguage,
       elizaCloudEnabled,
       elizaCloudConnected,

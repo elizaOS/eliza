@@ -1,3 +1,10 @@
+import {
+  CHAT_UPLOAD_MIME_TYPES,
+  MAX_CHAT_IMAGE_BASE64_BYTES,
+  MAX_CHAT_MEDIA_BASE64_BYTES,
+  MAX_CHAT_MEDIA_RAW_BYTES,
+  MAX_CHAT_UPLOAD_ATTACHMENTS,
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   buildDroppedAttachmentNotice,
@@ -6,6 +13,7 @@ import {
   chatUploadKind,
   classifyComposerPaste,
   createImageThumbnail,
+  imageNeedsReencode,
   isSupportedChatUpload,
   LARGE_PASTE_CHAR_THRESHOLD,
   MAX_ATTACHMENT_BYTES,
@@ -13,6 +21,7 @@ import {
   MAX_CHAT_IMAGES,
   partitionAttachmentFiles,
   pastedTextToAttachment,
+  perFileByteCap,
   shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "./image-attachment";
@@ -50,6 +59,62 @@ describe("isSupportedChatUpload", () => {
   it("rejects unsupported types", () => {
     expect(isSupportedChatUpload(file("application/zip"))).toBe(false);
     expect(isSupportedChatUpload(file(""))).toBe(false);
+  });
+
+  it("accepts every MIME type on the shared server allowlist", () => {
+    for (const mime of CHAT_UPLOAD_MIME_TYPES) {
+      expect(isSupportedChatUpload(file(mime))).toBe(true);
+    }
+  });
+
+  it("accepts any image subtype (re-encoded to JPEG before send) but only allowlisted non-image media", () => {
+    // HEIC/TIFF pass intake because the canvas re-encode converts them.
+    expect(isSupportedChatUpload(file("image/heic"))).toBe(true);
+    expect(isSupportedChatUpload(file("image/tiff"))).toBe(true);
+    // Non-image media has no client-side conversion, so off-list types are
+    // rejected up front instead of 400-ing after the composer was cleared.
+    expect(isSupportedChatUpload(file("audio/x-m4a"))).toBe(false);
+    expect(isSupportedChatUpload(file("video/x-msvideo"))).toBe(false);
+  });
+});
+
+describe("shared-constant parity (client caps === server caps)", () => {
+  it("count cap comes from the shared constant the server enforces", () => {
+    expect(MAX_CHAT_IMAGES).toBe(MAX_CHAT_UPLOAD_ATTACHMENTS);
+  });
+
+  it("non-image per-file cap base64-fits under the server media cap", () => {
+    const cap = perFileByteCap(file("video/mp4"));
+    expect(cap).toBe(MAX_CHAT_MEDIA_RAW_BYTES);
+    expect(Math.ceil(cap / 3) * 4).toBeLessThanOrEqual(
+      MAX_CHAT_MEDIA_BASE64_BYTES,
+    );
+  });
+
+  it("images keep the higher intake bound (downscale rescues them)", () => {
+    expect(perFileByteCap(file("image/jpeg"))).toBe(MAX_ATTACHMENT_BYTES);
+  });
+});
+
+describe("imageNeedsReencode", () => {
+  it("flags non-allowlisted image subtypes regardless of size", () => {
+    expect(imageNeedsReencode("image/heic", 10)).toBe(true);
+    expect(imageNeedsReencode("image/svg+xml", 10)).toBe(true);
+  });
+
+  it("flags allowlisted images only when over the server base64 cap", () => {
+    expect(imageNeedsReencode("image/jpeg", MAX_CHAT_IMAGE_BASE64_BYTES)).toBe(
+      false,
+    );
+    expect(
+      imageNeedsReencode("image/jpeg", MAX_CHAT_IMAGE_BASE64_BYTES + 1),
+    ).toBe(true);
+  });
+
+  it("never flags non-image media (no client-side conversion exists)", () => {
+    expect(
+      imageNeedsReencode("application/pdf", MAX_CHAT_IMAGE_BASE64_BYTES + 1),
+    ).toBe(false);
   });
 });
 
@@ -182,6 +247,48 @@ describe("partitionAttachmentFiles", () => {
     const noSize = { name: "unknown.png", type: "image/png" } as File;
     const result = partitionAttachmentFiles([noSize]);
     expect(result.accepted.map((f) => f.name)).toEqual(["unknown.png"]);
+  });
+
+  it("caps non-image media at the server-derived raw cap (no downscale rescue)", () => {
+    const over = {
+      name: "clip.mp4",
+      type: "video/mp4",
+      size: MAX_CHAT_MEDIA_RAW_BYTES + 1,
+    } as File;
+    const exact = {
+      name: "song.mp3",
+      type: "audio/mpeg",
+      size: MAX_CHAT_MEDIA_RAW_BYTES,
+    } as File;
+    const result = partitionAttachmentFiles([over, exact]);
+    expect(result.accepted.map((f) => f.name)).toEqual(["song.mp3"]);
+    expect(result.droppedTooLarge.map((d) => d.name)).toEqual(["clip.mp4"]);
+  });
+
+  it("keeps an image between the server cap and the intake bound (downscale rescues it)", () => {
+    // A typical 8 MB phone photo: over the server's ~3.75 MB raw image cap but
+    // under the 20 MB intake bound — accepted here, re-encoded at read time.
+    const phonePhoto = {
+      name: "IMG_1.jpg",
+      type: "image/jpeg",
+      size: 8 * 1024 * 1024,
+    } as File;
+    const result = partitionAttachmentFiles([phonePhoto]);
+    expect(result.accepted.map((f) => f.name)).toEqual(["IMG_1.jpg"]);
+    expect(result.droppedTooLarge).toEqual([]);
+  });
+
+  it("applies an explicit maxBytes override to every kind", () => {
+    const image = { name: "a.png", type: "image/png", size: 2_000 } as File;
+    const video = { name: "b.mp4", type: "video/mp4", size: 2_000 } as File;
+    const result = partitionAttachmentFiles([image, video], {
+      maxBytes: 1_000,
+    });
+    expect(result.accepted).toEqual([]);
+    expect(result.droppedTooLarge.map((d) => d.name)).toEqual([
+      "a.png",
+      "b.mp4",
+    ]);
   });
 });
 
