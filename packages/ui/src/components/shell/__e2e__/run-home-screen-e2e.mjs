@@ -197,6 +197,20 @@ async function swipeLeft(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
+// Mirror of swipeLeft for the mouse drag-paging regression section (the
+// real-touch conversion dropped this helper but kept its call site — the
+// nested-pager mouse arbitration asserts genuinely need MOUSE input).
+async function swipeRight(locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("missing swipe target bounds");
+  const y = box.y + box.height * 0.45;
+  const startX = box.x + box.width * 0.22;
+  const endX = box.x + box.width * 0.78;
+  await locator.page().mouse.move(startX, y);
+  await locator.page().mouse.down();
+  await locator.page().mouse.move(endX, y, { steps: 8 });
+  await locator.page().mouse.up();
+}
 // Horizontal touch-swipes across an element, driven through Chromium's real
 // touch input path. These keep the mobile pagers honest — the inner launcher
 // pager AND the outer home↔launcher rail: hit-testing, touch-action, implicit
