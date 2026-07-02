@@ -518,7 +518,7 @@ export function DiscordGatewayConnection() {
         name={t("cloud.discord.cardName", {
           defaultValue: "Discord Gateway Bot",
         })}
-        icon={<DiscordIcon className="text-[#5865F2]" />}
+        icon={<DiscordIcon className="text-txt" />}
         description={t("cloud.discord.cardDescription", {
           defaultValue:
             "Connect Discord gateway bots for AI-powered automation",
@@ -533,7 +533,7 @@ export function DiscordGatewayConnection() {
       name={t("cloud.discord.cardName", {
         defaultValue: "Discord Gateway Bot",
       })}
-      icon={<DiscordIcon className="text-[#5865F2]" />}
+      icon={<DiscordIcon className="text-txt" />}
       description={t("cloud.discord.cardDescription", {
         defaultValue: "Connect Discord gateway bots for AI-powered automation",
       })}
@@ -573,7 +573,7 @@ export function DiscordGatewayConnection() {
                   <div className="border rounded-sm">
                     <CollapsibleTrigger asChild>
                       <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                        <div className="h-12 w-12 rounded-full bg-[#5865F2] flex items-center justify-center flex-shrink-0">
+                        <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
                           <Bot className="h-6 w-6 text-white" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -920,7 +920,7 @@ export function DiscordGatewayConnection() {
                       href="https://discord.com/developers/applications"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#5865F2] hover:underline"
+                      className="text-accent hover:underline"
                     >
                       {t("cloud.discord.devPortal", {
                         defaultValue: "Discord Developer Portal",
@@ -1014,7 +1014,7 @@ export function DiscordGatewayConnection() {
                   href="https://discord.com/developers/applications"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#5865F2] hover:underline"
+                  className="text-accent hover:underline"
                 >
                   {t("cloud.discord.devPortal", {
                     defaultValue: "Discord Developer Portal",
@@ -1255,7 +1255,7 @@ export function DiscordGatewayConnection() {
             !botToken.trim() ||
             !characterId
           }
-          className="w-full bg-[#5865F2] hover:bg-[#4752C4]"
+          className="w-full"
         >
           {isCreating ? (
             <>

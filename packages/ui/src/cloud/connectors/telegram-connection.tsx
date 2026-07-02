@@ -154,7 +154,7 @@ export function TelegramConnection() {
     return (
       <ConnectionCard
         name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
-        icon={<MessageSquare className="text-[#0088cc]" />}
+        icon={<MessageSquare className="text-txt" />}
         description={t("cloud.telegram.cardDescription", {
           defaultValue: "Connect your Telegram bot for AI-powered automation",
         })}
@@ -166,7 +166,7 @@ export function TelegramConnection() {
   return (
     <ConnectionCard
       name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
-      icon={<MessageSquare className="text-[#0088cc]" />}
+      icon={<MessageSquare className="text-txt" />}
       description={t("cloud.telegram.cardDescription", {
         defaultValue: "Connect your Telegram bot for AI-powered automation",
       })}
@@ -176,7 +176,7 @@ export function TelegramConnection() {
         <div className="space-y-4">
           <ConnectionIdentityPanel
             icon={<Bot className="h-6 w-6 text-white" />}
-            iconClassName="bg-[#0088cc]"
+            iconClassName="bg-accent"
             title={`@${status?.botUsername}`}
             subtitle={`Bot ID: ${status?.botId}`}
             actions={
@@ -260,7 +260,7 @@ export function TelegramConnection() {
                   href="https://t.me/BotFather"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#0088cc] hover:underline"
+                  className="text-accent hover:underline"
                 >
                   @BotFather
                 </a>
@@ -360,7 +360,7 @@ export function TelegramConnection() {
           <Button
             onClick={handleConnect}
             disabled={isConnecting || !botToken.trim()}
-            className="w-full bg-[#0088cc] hover:bg-[#0077b5]"
+            className="w-full"
           >
             {isConnecting ? (
               <>
