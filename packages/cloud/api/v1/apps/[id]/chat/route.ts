@@ -46,8 +46,10 @@ import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { reservationOutputTokens } from "./chat-reservation";
-import { reconcileNonStreamProcessingError } from "./non-stream-refund";
-import { reconcileStreamProcessingError } from "./stream-refund";
+import {
+  reconcileNonStreamingSettleError,
+  reconcileStreamProcessingError,
+} from "./stream-refund";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -667,7 +669,7 @@ async function handlePOST(
     // #11169). Full-refund on any failure BEFORE the settle completes; once
     // reconcileCredits has settled, a later throw must NOT refund (the charge is
     // real), mirroring the streaming branch's streamCompleted gating.
-    let reconciled = false;
+    let nonStreamingSettleStarted = false;
     try {
       const responseData = (await providerResponse.json()) as {
         usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -701,6 +703,11 @@ async function handlePOST(
 
       // Reconcile the difference between reserved and actual costs
       // Pass app to avoid N+1 query (app already fetched above)
+      // Flag the settle as STARTED *before* invoking reconcileCredits (not after
+      // it returns): reconcileCredits commits its org-balance movement before its
+      // non-transactional earnings/counter writes, so a throw mid-settle must not
+      // let the catch refund the hold a second time (double-credit). (#11218)
+      nonStreamingSettleStarted = true;
       const reconciliation = await appCreditsService.reconcileCredits({
         appId,
         userId: user.id,
@@ -717,7 +724,6 @@ async function handlePOST(
         },
         app,
       });
-      reconciled = true;
 
       const duration = Date.now() - startTime;
       logger.info("[App Chat] Request completed", {
@@ -737,20 +743,40 @@ async function handlePOST(
 
       return withCors(Response.json(responseData));
     } catch (postProviderError) {
-      // Refund the outstanding hold iff the settle had not yet run (#11169).
-      await reconcileNonStreamProcessingError(
+      const errorMessage =
+        postProviderError instanceof Error
+          ? postProviderError.message
+          : String(postProviderError);
+      // Refund the stranded hold ONLY if the settle never started. A throw
+      // at/after the settle may have already moved money (reconcileCredits is
+      // not transactional), so re-refunding would mint credits — the
+      // stranded-reservation sweep recovers that rare window instead. `.catch`
+      // so a refund failure can't mask the original error. (#11218)
+      await reconcileNonStreamingSettleError(
         {
-          reconciled,
+          settleStarted: nonStreamingSettleStarted,
           appId,
           userId: user.id,
           reservedBaseCost,
-          errorMessage:
-            postProviderError instanceof Error
-              ? postProviderError.message
-              : String(postProviderError),
+          model,
+          provider,
+          billingSource,
+          errorMessage,
         },
         appCreditsService,
-      );
+      ).catch((refundError) => {
+        logger.error(
+          "[App Chat] Non-streaming guard refund failed; surfacing original error",
+          {
+            appId,
+            userId: user.id,
+            refundError:
+              refundError instanceof Error
+                ? refundError.message
+                : String(refundError),
+          },
+        );
+      });
       throw postProviderError;
     }
   } catch (error) {
