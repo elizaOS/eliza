@@ -49,6 +49,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
+      # Some committed evidence files under .github/issue-evidence/** exceed the
+      # Windows 260-char MAX_PATH default, which makes actions/checkout abort with
+      # "unable to create file ...: Filename too long" and fails the whole
+      # windows-latest leg before any test runs. Enable git core.longpaths on the
+      # Windows runner (git config runs fine before the repo exists) so the
+      # working tree materializes.
+      - name: Enable Git long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Bun
