@@ -1,0 +1,99 @@
+name: lifeops-quality-bench
+
+# Recorded-baseline LifeOps quality benchmarks + regression gate (#10723).
+#
+# Two keyless, deterministic lanes over REAL LifeOps code paths:
+#
+#   triage      — the plugin-inbox triage classifier's prompt-build → parse →
+#                 validate → fail-closed path driven over a committed labeled
+#                 56-item corpus with a committed fixed-quality mock model
+#                 (fixtures). Precision/recall/accuracy/macro-F1 gate against
+#                 budgets.json floors and must reproduce baseline.json exactly.
+#   timeliness  — the plugin-personal-assistant scheduled-task tick
+#                 (processDueScheduledTasks) replayed over two committed 4-day
+#                 2026 DST windows (spring-forward + fall-back) at a 5-minute
+#                 cadence on a real PGlite runtime with an injected clock.
+#                 Missed/duplicate/early/occurrence-mismatch counts must be 0
+#                 and fire-time deviation must stay under budgets.json ceilings.
+#
+# No model bundle, no credentials — fully reproducible on a hosted runner
+# (mirrors recall-bench.yml, #9956). A red gate means a real quality
+# regression in triage parsing/validation or scheduler fire behavior.
+
+on:
+  pull_request:
+    paths:
+      - "packages/benchmarks/lifeops-quality/**"
+      - "plugins/plugin-inbox/src/inbox/**"
+      - "plugins/plugin-personal-assistant/src/lifeops/**"
+      - "plugins/plugin-personal-assistant/test/helpers/**"
+      - "plugins/plugin-scheduling/src/**"
+      - "packages/core/src/services/triggerScheduling.ts"
+      - ".github/workflows/lifeops-quality-bench.yml"
+  schedule:
+    # 05:40 UTC — alongside the other nightly benchmark lanes.
+    - cron: "40 5 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: lifeops-quality-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  lifeops-quality-gate:
+    name: triage P/R + reminder timeliness budget gate (keyless)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PGLITE_WASM_MODE: node
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # The timeliness gate boots the personal-assistant plugin barrel, which
+      # imports sibling plugin dists (same requirement as the Integration Lane
+      # in test.yml). plugin-inbox is inside this dependency graph, so the
+      # triage gate's classifier import is covered too. Turbo replays warm
+      # runs from cache.
+      - name: Build personal-assistant dependency graph
+        run: node packages/scripts/run-turbo.mjs run build --filter='@elizaos/plugin-personal-assistant...'
+
+      - name: Unit lane (metrics + oracle + corpus/fixture/baseline invariants)
+        run: bun run --cwd packages/benchmarks/lifeops-quality test
+
+      - name: Triage precision/recall gate (real classifier, committed fixtures)
+        run: bun run --cwd packages/benchmarks/lifeops-quality bench:triage
+
+      - name: Reminder timeliness gate (real scheduler tick, DST windows)
+        timeout-minutes: 30
+        run: bun run --cwd packages/benchmarks/lifeops-quality bench:timeliness
+
+      - name: Upload measured results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lifeops-quality-results
+          path: packages/benchmarks/lifeops-quality/results/*.json
+          if-no-files-found: ignore

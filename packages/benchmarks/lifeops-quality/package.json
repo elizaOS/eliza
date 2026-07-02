@@ -1,0 +1,13 @@
+{
+  "name": "@elizaos/lifeops-quality-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Recorded-baseline LifeOps quality benchmarks (#10723): inbox-triage precision/recall over the real classifier parse/validate path, and reminder timeliness over the real scheduled-task tick, with committed budgets as the regression gate.",
+  "scripts": {
+    "test": "vitest run --config vitest.unit.config.ts",
+    "bench": "vitest run --config vitest.gate.config.ts",
+    "bench:triage": "vitest run --config vitest.gate.config.ts triage",
+    "bench:timeliness": "vitest run --config vitest.gate.config.ts timeliness"
+  }
+}
