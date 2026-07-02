@@ -24,11 +24,23 @@ Submodule PR: https://github.com/elizaOS/llama.cpp/pull/39
 - PASS: parent pointer diff reviewed with
   `git diff --submodule=log -- plugins/plugin-local-inference/native/llama.cpp`
 
+## Apple Metal regression proof (added from a macOS host)
+
+`mac-metal-regression/` builds the guarded submodule commit `299d5b78b` with the
+Apple Metal toolchain (macOS 26.2, M4 Max) and runs a real eliza-1 0.8B GGUF
+fully offloaded to the Metal GPU (`layer N assigned to device MTL0`). Generation
+completes correctly (`… is **Paris**.`) with no `nil Metal compute pipeline`
+abort — proving the two new nil-checks are inert on the healthy Metal path and
+only change behaviour when a pipeline is genuinely nil. See that directory's
+`README.md`. This is the regression risk a submodule bump introduces, verified
+on the one platform a Linux host could not.
+
 ## Hardware-gated evidence not captured here
 
-- N/A here: iPhone 16 Pro Max / A18 Pro runtime verification. This host is
-  Linux and cannot build or run Apple Metal or reproduce the device-only
-  `llama_decode` crash.
+- N/A here: iPhone 16 Pro Max / A18 Pro runtime verification. The original
+  capture host is Linux and cannot build or run Apple Metal or reproduce the
+  device-only `llama_decode` crash. (The desktop Apple Metal regression above
+  narrows this to the A18-Pro-specific kernel-selection root cause.)
 - Required before closing #11612: build the app with llama.cpp PR #39, run the
   same on-device local-generation path on the affected iPhone, and attach the
   crash-free run logs or the new explicit backend failure plus the device

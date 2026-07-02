@@ -1,0 +1,12 @@
+[ 98%] Building CXX object tools/server/CMakeFiles/server-context.dir/server-chat.cpp.o
+[ 98%] Building CXX object tools/server/CMakeFiles/server-context.dir/server-task.cpp.o
+[ 98%] Building CXX object tools/server/CMakeFiles/server-context.dir/server-common.cpp.o
+[ 98%] Building CXX object tools/server/CMakeFiles/server-context.dir/server-queue.cpp.o
+[ 98%] Building CXX object tools/completion/CMakeFiles/llama-completion.dir/completion.cpp.o
+[ 98%] Linking CXX executable ../../bin/llama-completion
+[ 98%] Built target llama-completion
+[ 98%] Linking CXX static library libserver-context.a
+[ 98%] Built target server-context
+[100%] Building CXX object tools/cli/CMakeFiles/llama-cli.dir/cli.cpp.o
+[100%] Linking CXX executable ../../bin/llama-cli
+[100%] Built target llama-cli

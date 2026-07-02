@@ -1,0 +1,12 @@
+# system_info (MTL backend compiled in)
+0.00.675.048 I system_info: n_threads = 12 (n_threads_batch = 12) / 16 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | 
+
+# perf
+0.00.772.693 I common_perf_print:    sampling time =       3.27 ms
+0.00.772.693 I common_perf_print:    samplers time =       1.47 ms /    25 tokens
+0.00.772.694 I common_perf_print:        load time =      30.73 ms
+0.00.772.695 I common_perf_print: prompt eval time =      30.21 ms /    13 tokens (    2.32 ms per token,   430.32 tokens per second)
+0.00.772.695 I common_perf_print:        eval time =      63.07 ms /    11 runs   (    5.73 ms per token,   174.40 tokens per second)
+0.00.772.695 I common_perf_print:       total time =      98.07 ms /    24 tokens
+0.00.772.696 I common_perf_print: unaccounted time =       1.52 ms /   1.5 %      (total - sampling - prompt eval - eval) / (total)
+0.00.772.696 I common_perf_print:    graphs reused =         11

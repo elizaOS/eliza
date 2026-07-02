@@ -1,0 +1,20 @@
+-- Looking for dgemm_ - found
+-- Found BLAS: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework
+-- BLAS found, Libraries: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework
+-- BLAS found, Includes: 
+-- Including BLAS backend
+-- Metal framework found
+-- Including METAL backend
+-- ggml version: 0.12.0
+-- ggml commit:  299d5b78b
+-- Found OpenSSL: /opt/homebrew/Cellar/openssl@3/3.6.2/lib/libcrypto.dylib (found version "3.6.2")
+-- Performing Test OPENSSL_VERSION_SUPPORTED
+-- Performing Test OPENSSL_VERSION_SUPPORTED - Success
+-- OpenSSL found: 3.6.2
+-- WebUI: using local build from /Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/tools/server/public
+-- WebUI: embedded with source: local
+-- Kokoro G2P: libespeak-ng found (/opt/homebrew/lib/libespeak-ng.dylib) — real IPA path enabled
+-- Generating embedded license file for target: llama-common
+-- Configuring done (6.1s)
+-- Generating done (0.3s)
+-- Build files have been written to: /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/7111417a-cc9d-4ea4-9724-0f22f9e0a997/scratchpad/llama-metal-11612
