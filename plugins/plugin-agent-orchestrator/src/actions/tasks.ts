@@ -194,16 +194,6 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function requestsDeferredUserReply(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:reply|respond)\s+only\s+after\b/.test(normalized) ||
-    /\b(?:reply|respond)\s+only\s+when\b/.test(normalized) ||
-    /\bdo\s+not\s+(?:reply|respond)\s+until\b/.test(normalized) ||
-    /\bdon't\s+(?:reply|respond)\s+until\b/.test(normalized)
-  );
-}
-
 function readOp(params: Record<string, unknown>): TaskOp | null {
   const raw = [
     params.action,
@@ -1095,9 +1085,10 @@ async function runSpawnAgent(
       "keepAliveAfterComplete",
     );
     const extraMetadata = additionalSessionMetadata(params, content);
+    // Structural only: the planner emits deferUserReply when the user asked for
+    // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
-      pickBoolean(params, content, "deferUserReply") === true ||
-      requestsDeferredUserReply(task);
+      pickBoolean(params, content, "deferUserReply") === true;
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
