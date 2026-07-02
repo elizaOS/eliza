@@ -1659,8 +1659,13 @@ export class DirectWalletPaymentsService {
         // only the not-yet-mined strings, so an RPC blip coincident with the cron
         // tick terminally marked a genuinely-paid deposit `failed_chain` with no
         // self-serve recovery. Inverting the default lets a blip self-heal.
+        // The allowlist quotes the EXACT strings confirmPayment's validity
+        // checks throw (broad patterns like "does not match" are avoided on
+        // purpose: an infra error phrased that way — e.g. a chain-id mismatch
+        // from the RPC client — must stay transient, or the blip burns a paid
+        // deposit again).
         const terminal =
-          /does not match|lower than the expected|does not transfer enough|transaction failed|metadata mismatch|signature mismatch|invalid amount|tampered|reverted/i.test(
+          /Transaction failed|is below the expected floor|is above the expected ceiling|amount is lower than the expected|recipient does not match|sender does not match the proven payer|was not confirmed successfully|ATA owner does not match|LEGACY_PAYMENT_MISSING_PAYER_PROOF|not a direct wallet payment|invalid direct network metadata|proof metadata mismatch|does not transfer enough|tampered/i.test(
             msg,
           );
         const transient = !terminal;
