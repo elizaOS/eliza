@@ -1,16 +1,17 @@
 /**
  * Auth-query gate for the app-hosted cloud analytics view.
  *
- * Ported from `@elizaos/cloud-frontend/src/lib/data/auth-query.ts`, rewired onto
- * the cloud shell's `LocalStewardAuthContext` (provided by `StewardAuthProvider`
- * for every authenticated cloud route) instead of cloud-frontend's
- * `useSessionAuth`. Same contract: react-query reads are gated until a Steward
- * session is ready + authenticated, and the query key is scoped by user id so a
- * sign-out / account switch doesn't serve another user's cached data.
+ * Ported from `@elizaos/cloud-frontend/src/lib/data/auth-query.ts`. Resolves the
+ * session through the console-wide `useSessionAuth` (Steward SDK context OR the
+ * persisted localStorage JWT) — NOT the raw Steward SDK context: that context
+ * lives in MemoryStorage and reads empty on every full page load, so gating on
+ * it left the analytics queries permanently `enabled: false` (stuck on the
+ * loading skeleton, no data call ever fired) for a genuinely signed-in user.
+ * Same class as the admin-gate / MCPs fixes. The query key stays scoped by user
+ * id so a sign-out / account switch doesn't serve another user's cached data.
  */
 
-import { useContext } from "react";
-import { LocalStewardAuthContext } from "../../shell/StewardProvider";
+import { useSessionAuth } from "../../public-pages/lib/use-session-auth";
 
 export interface AuthenticatedQueryGate {
   enabled: boolean;
@@ -18,20 +19,17 @@ export interface AuthenticatedQueryGate {
 }
 
 /**
- * Resolve the analytics query gate from the cloud Steward session. When no
- * provider is mounted (e.g. SSR or a misconfigured Steward URL where
- * `StewardAuthProvider` renders children directly), the context is null and the
- * gate stays disabled rather than firing unauthenticated requests.
+ * Resolve the analytics query gate from the console-wide session. Stays
+ * disabled until the session is ready + authenticated, so it never fires
+ * unauthenticated requests.
  */
 export function useAuthenticatedQueryGate(
   enabled = true,
 ): AuthenticatedQueryGate {
-  const auth = useContext(LocalStewardAuthContext);
-  const ready = auth ? !auth.isLoading : false;
-  const authenticated = auth?.isAuthenticated ?? false;
+  const session = useSessionAuth();
   return {
-    enabled: enabled && ready && authenticated,
-    userId: auth?.user?.id ?? null,
+    enabled: enabled && session.ready && session.authenticated,
+    userId: session.user?.id ?? null,
   };
 }
 
