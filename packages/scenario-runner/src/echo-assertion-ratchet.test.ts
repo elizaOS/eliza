@@ -94,7 +94,13 @@ const echoFiles = SCENARIO_ROOTS.flatMap(walkScenarioFiles)
 // assert real effects (#9310). Never raise it.
 // 237 -> 215: 30 scenarios rewritten outcome-asserting (20 PA chief-of-staff
 // flows, 5 lifeops.hygiene, 5 executive-assistant) — see #9310/#10721/#10723.
-const BASELINE = 215;
+// 215 -> 0: the remaining corpus-wide echo debt was rewritten outcome-asserting
+// (114 PA chief-of-staff files, 26 connector certifications, 75 mixed-domain
+// files across lifeops.*/reminders/todos/goals/health/relationships/...) —
+// seeded-token grounding, approval end-state read-back, decoy responseExcludes,
+// selectedActionArguments, definitionCountDelta + judge rubrics. The floor is
+// now ZERO: any newly echo-satisfiable scenario is a regression, not debt.
+const BASELINE = 0;
 
 describe("echo-assertion ratchet", () => {
   it(`does not grow the echo-satisfiable scenario count beyond ${BASELINE}`, () => {

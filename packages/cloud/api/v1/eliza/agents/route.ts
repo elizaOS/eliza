@@ -17,6 +17,7 @@ import {
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import {
@@ -42,22 +43,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
-/**
- * Per-org ceiling on live (non-terminal) dedicated agent sandboxes, by credit
- * tier. Mirrors the balance tiers already enforced for cloud characters in
- * `/api/v1/app/agents` (`AGENT_LIMITS`), applied here to the `agent_sandboxes`
- * (container) path so a `forceCreate` loop on a trivial balance can't exhaust
- * the shared fleet (#11023). A trivial (~$0.11) balance lands in the smallest
- * tier, bounding the DoS; funded orgs scale up.
- */
-function getMaxNonTerminalAgentsForOrg(creditBalance: number | undefined): number {
-  const balance = Number(creditBalance ?? 0);
-  if (balance >= 100.0) return 500;
-  if (balance >= 10.0) return 100;
-  if (balance >= 1.0) return 20;
-  return 5;
-}
 
 const dockerImageSchema = z
   .string()
@@ -424,11 +409,14 @@ app.post("/", async (c) => {
     });
   } catch (error) {
     if (error instanceof AgentQuotaExceededError) {
-      logger.warn("[agent-api] Agent creation blocked: per-org quota exceeded", {
-        orgId: user.organization_id,
-        count: error.count,
-        max: error.max,
-      });
+      logger.warn(
+        "[agent-api] Agent creation blocked: per-org quota exceeded",
+        {
+          orgId: user.organization_id,
+          count: error.count,
+          max: error.max,
+        },
+      );
       throw new ApiError(429, "agent_quota_exceeded", error.message, {
         currentAgents: error.count,
         maxAgents: error.max,

@@ -31,7 +31,6 @@ const VOICE_MODEL_ROLES: Readonly<Record<VoiceModelId, VoiceComponentRole>> = {
   "turn-detector-intl": "turn-detection",
   "voice-emotion": "emotion",
   kokoro: "tts",
-  omnivoice: "tts",
   vad: "vad",
   wakeword: "unknown",
   embedding: "voice",
@@ -45,7 +44,6 @@ const VOICE_MODEL_NAMES: Readonly<Record<VoiceModelId, string>> = {
   "turn-detector-intl": "International Turn Detector",
   "voice-emotion": "Voice Emotion",
   kokoro: "Kokoro",
-  omnivoice: "OmniVoice",
   vad: "Voice Activity Detection",
   wakeword: "Wake Word",
   embedding: "Voice Embedding",
@@ -53,7 +51,6 @@ const VOICE_MODEL_NAMES: Readonly<Record<VoiceModelId, string>> = {
 };
 
 function providerForVoiceModel(id: VoiceModelId): string {
-  if (id === "omnivoice") return "omnivoice";
   if (id === "kokoro") return "kokoro";
   if (id === "asr" || id === "vad") return "eliza-1";
   return "local-inference";
@@ -123,18 +120,6 @@ export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
   const backends = new Set(
     MODEL_CATALOG.flatMap((model) => [...(model.voiceBackends ?? [])]),
   );
-  if (backends.has("omnivoice")) {
-    const component = firstCatalogComponent("voice");
-    addSeed(components, {
-      id: "omnivoice",
-      name: "OmniVoice",
-      role: "tts",
-      provider: "omnivoice",
-      modelId: component?.model.id,
-      path: component?.file,
-      raw: jsonRecord({ source: "MODEL_CATALOG" }),
-    });
-  }
   if (backends.has("kokoro")) {
     addSeed(components, {
       id: "kokoro",

@@ -9,6 +9,10 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
 - `deterministic-app-control-actions` covers VIEWS list, search, show,
   broadcast, create/edit, direct edit, and confirmed delete plus APP list,
   launch, relaunch, `load_from_directory`, and create/edit.
+- `deterministic-background-actions` covers the real `BACKGROUND` handler:
+  named-color and hex color set, programmable GLSL shader presets (natural
+  phrasing + explicit `preset` param), a live-shader uniform tweak, undo, redo,
+  and reset — asserting the exact ordered `background:apply` broadcast ledger.
 - `deterministic-generated-app-routes` covers a generated app loaded through the
   real AppRegistryService and app-manager routes: registry persistence,
   catalog tile data, generated hero SVG, `/api/apps/:slug/*` package routing,

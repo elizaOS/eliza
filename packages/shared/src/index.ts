@@ -13,6 +13,10 @@ export * from "./app-hero-art.js";
 export * from "./awareness/index.js";
 export * from "./character-presets.characters.js";
 export * from "./character-presets.js";
+// Chat-upload limits — the single source of truth for the attachment caps and
+// MIME allowlists enforced by the agent server's validateChatImages and
+// mirrored by the UI composer. Both sides import these so they cannot drift.
+export * from "./chat-upload-limits.js";
 export * from "./cli/parse-duration.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";

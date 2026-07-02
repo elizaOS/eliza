@@ -19,10 +19,17 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "browser-portal-blocked-resume",
-      text: "Upload the file through the portal, and if the portal blocks the browser, ask me for help and resume after that instead of pretending it already finished.",
-      responseIncludesAny: ["portal", "blocked", "help", "resume"],
-      acceptedActions: ["COMPUTER_USE", "AUTOFILL"],
-      includesAny: ["portal", "blocked", "help", "resume"],
+      // The prompt never names the seeded block; the agent must discover it
+      // mid-flow and report what it needs in its own words.
+      text: "Upload the file through the portal and see it through to the end. If anything stands in the way, tell me what you need from me rather than pretending it finished.",
+      responseIncludesAny: [
+        "blocked",
+        "stuck",
+        "intervention",
+        "waiting on you",
+      ],
+      expectedActions: ["COMPUTER_USE", "AUTOFILL"],
+      actionPayloadIncludesAny: ["portal", "blocked", "help", "resume"],
     },
   ],
   finalChecks: [

@@ -13,9 +13,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "slack-core",
       text: "Read the Slack thread, draft a reply, and send it back in the right channel/thread.",
-      responseIncludesAny: ["slack", "reply", "thread", "draft"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["slack", "reply", "thread", "draft"],
+      // Completion-state tokens the prompt never uses; parroting "draft a
+      // reply, send it" cannot satisfy any of them.
+      responseIncludesAny: ["drafted", "sent", "delivered", "posted"],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["slack", "reply", "thread", "draft"],
     },
   ],
   finalChecks: [

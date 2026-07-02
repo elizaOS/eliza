@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { categoryIcon } from "../../state/notifications/category-icon";
@@ -292,11 +293,39 @@ export function NotificationCenter({
     return () => window.removeEventListener("keydown", onKey);
   }, [variant, open, onOpenChange]);
 
+  // Surface-agnostic open (#10706): the single always-mounted headless instance
+  // listens for OPEN_NOTIFICATION_CENTER_EVENT and reveals the pull-down sheet.
+  // This is how desktop — where the floating bell is hidden — gets a visible
+  // native way in (the "Notifications" menu/tray item and the
+  // `<scheme>://notifications` deep link both dispatch this event). Only the
+  // headless owner listens, so a transient pull-down/bell instance never double-
+  // opens.
+  const [selfOpen, setSelfOpen] = useState(false);
+  useEffect(() => {
+    if (!headless) return;
+    const onOpen = () => setSelfOpen(true);
+    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    return () =>
+      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+  }, [headless]);
+
   const hasUnread = unreadCount > 0;
 
   // Hidden for now: keep the store + toast routing live (the effect above) but
-  // render no bell. Drop the `headless` prop to bring the button back.
-  if (headless) return null;
+  // render no bell. Drop the `headless` prop to bring the button back. When an
+  // OPEN_NOTIFICATION_CENTER_EVENT has fired, the headless owner renders the
+  // pull-down sheet as a child (one level, variant="sheet" — no recursion).
+  if (headless) {
+    if (!selfOpen) return null;
+    return (
+      <NotificationCenter
+        variant="sheet"
+        open
+        onOpenChange={setSelfOpen}
+        className={className}
+      />
+    );
+  }
 
   const panelBody = (
     <>

@@ -37,7 +37,11 @@ export default scenario({
         description: "T-1h reminder schedule",
         includesAny: ["1 hour", "60", "hour", "board", "3pm"],
       }),
-      responseIncludesAny: ["1 hour", "hour", "board", "3pm"],
+      // De-echoed (#9310): the old keywords ("1 hour", "hour", "board",
+      // "3pm") all appeared in the user's own turn text. The reply must now
+      // show the derived fire time (3pm - 1h = 2pm) or the both-devices
+      // aggregation — neither appears in the prompt.
+      responseIncludesAny: ["2pm", "2:00", "14:00", "both"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

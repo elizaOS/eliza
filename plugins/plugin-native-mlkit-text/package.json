@@ -1,0 +1,70 @@
+{
+  "name": "@elizaos/capacitor-mlkit-text",
+  "version": "2.0.3-beta.7",
+  "description": "Android ML Kit text recognition Capacitor plugin for elizaOS OCR.",
+  "keywords": [
+    "ocr",
+    "mlkit",
+    "android",
+    "capacitor"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "bun": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza"
+  },
+  "scripts": {
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-mlkit-text -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
+    "prepublishOnly": "bun run build",
+    "watch": "tsc --watch",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "elizaos": {
+    "platforms": [
+      "android"
+    ],
+    "runtime": "browser",
+    "platformDetails": {
+      "android": true
+    }
+  }
+}

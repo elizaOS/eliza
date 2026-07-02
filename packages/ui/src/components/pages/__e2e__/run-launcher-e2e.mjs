@@ -256,6 +256,104 @@ assert(
   "long-press (500ms) enters edit mode (tiles pulse)",
 );
 
+// 2b. Real drag-to-reorder (#10722): a GENUINE pointer drag on a Reorder.Item
+//     must reorder the active page, PERSIST it to LAUNCHER_STORAGE_KEY, and emit
+//     `reorder` telemetry — the mock-based Launcher.gestures.test only drives the
+//     onReorder BRIDGE, never the drag physics. Here we drive Framer's real drag
+//     via the browser's own mouse pointer pipeline.
+const LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
+const activePageTileOrder = (p) =>
+  p
+    .getByTestId("launcher-page-0")
+    .locator('[data-testid^="launcher-tile-"]')
+    .evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute("data-testid") ?? ""),
+    );
+const persistedPages = (p) =>
+  p.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed?.pages) ? parsed.pages : null;
+    } catch {
+      return null;
+    }
+  }, LAUNCHER_STORAGE_KEY);
+
+const orderBefore = await activePageTileOrder(page);
+assert(
+  orderBefore.length >= 4,
+  `reorder: active page has enough tiles to drag (${orderBefore.length})`,
+);
+const reorderCountBefore = (await readTelemetry(page)).filter(
+  (e) => e.action === "reorder",
+).length;
+
+// Drag the FIRST tile downward. axis="y" over a multi-column grid means a
+// whole row shares one y-centre, so a fixed-endpoint fling thrashes onReorder
+// while crossing a row boundary and can round-trip back to the original order
+// by release time (timing-dependent). Deterministic protocol instead: nudge
+// down in small steps with a dwell, poll the LIVE order after each step, and
+// release only once a swap has been observed AND re-confirmed stable with the
+// pointer held still (onReorder only fires on pointer movement, so a stable
+// stationary order cannot thrash back before mouse.up).
+{
+  const firstId = orderBefore[0];
+  const from = await page.getByTestId(firstId).boundingBox();
+  const fx = from.x + from.width / 2;
+  const fy = from.y + from.height / 2;
+  await page.mouse.move(fx, fy);
+  await page.mouse.down();
+  // A small initial nudge to engage Framer's drag.
+  await page.mouse.move(fx, fy + 8, { steps: 4 });
+  let y = fy + 8;
+  // Bounded travel: about two grid rows below the start.
+  const maxY = fy + from.height * 3;
+  while (y < maxY) {
+    y += 12;
+    await page.mouse.move(fx, y, { steps: 2 });
+    await page.waitForTimeout(60);
+    const live = await activePageTileOrder(page);
+    if (live[0] !== orderBefore[0]) {
+      // Hold the pointer still and confirm the swap did not thrash back.
+      await page.waitForTimeout(300);
+      const settled = await activePageTileOrder(page);
+      if (settled[0] !== orderBefore[0]) break;
+    }
+  }
+  await page.mouse.up();
+  // Let the Reorder settle animation finish before reading the final order.
+  await page.waitForTimeout(600);
+}
+
+const orderAfter = await activePageTileOrder(page);
+const reorderCountAfter = (await readTelemetry(page)).filter(
+  (e) => e.action === "reorder",
+).length;
+assert(
+  reorderCountAfter > reorderCountBefore,
+  `reorder: a real drag fires reorder telemetry (${reorderCountBefore}→${reorderCountAfter})`,
+);
+assert(
+  JSON.stringify(orderAfter) !== JSON.stringify(orderBefore),
+  `reorder: the drag actually changed the tile order (before[0]=${orderBefore[0]}, after[0]=${orderAfter[0]})`,
+);
+// Persistence + integrity: the new order is written to LAUNCHER_STORAGE_KEY, and
+// no tile id was dropped or duplicated by the reorder.
+const pagesAfter = await persistedPages(page);
+assert(
+  Array.isArray(pagesAfter) && pagesAfter.length > 0,
+  "reorder: the new layout persisted to LAUNCHER_STORAGE_KEY",
+);
+{
+  const flat = pagesAfter.flat();
+  assert(
+    new Set(flat).size === flat.length,
+    `reorder: persisted layout has no duplicate ids (${flat.length} ids, ${new Set(flat).size} unique)`,
+  );
+}
+
 // 3. Page navigation — click the "Page 2" dot. Exit edit first (a second
 //    long-press toggles it off) so the walkthrough ends on a clean grid.
 await longPress(page, `launcher-tile-wallet`, 500);

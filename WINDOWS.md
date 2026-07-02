@@ -200,7 +200,7 @@ mostly manifest at install time:
 
 A handful of plugins ship native modules:
 
-- `@elizaos/plugin-local-inference` — llama.cpp/whisper/omnivoice. On
+- `@elizaos/plugin-local-inference` — llama.cpp (with the Kokoro TTS engine folded in) / whisper. On
   Windows you need Visual Studio Build Tools 2022 + Windows SDK; the
   llama.cpp submodule provides a CMake/MSVC build path.
 - `@elizaos/plugin-sql` (PGlite) — pure WASM, works.

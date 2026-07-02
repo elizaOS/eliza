@@ -37,7 +37,10 @@ export default scenario({
         description: "asset deadline tracking",
         includesAny: ["slides", "bio", "headshot", "sponsor", "deadline"],
       }),
-      responseIncludesAny: ["slides", "bio", "headshot", "sponsor"],
+      // De-echoed (#9310): the old keywords ("slides", "bio", "headshot",
+      // "sponsor") all appeared in the user's own turn text. The reply must
+      // now confirm the tracking behaviour in words the prompt never used.
+      responseIncludesAny: ["deadline", "checklist", "remind", "nudge"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

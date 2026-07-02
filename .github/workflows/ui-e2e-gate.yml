@@ -17,6 +17,7 @@ on:
     branches: [main, develop]
     paths:
       - "packages/ui/src/components/shell/**"
+      - "packages/ui/src/components/pages/**"
       - "packages/ui/src/state/**"
       - "packages/ui/src/voice/**"
       - "packages/ui/src/testing/**"
@@ -26,6 +27,7 @@ on:
     branches: [main, develop]
     paths:
       - "packages/ui/src/components/shell/**"
+      - "packages/ui/src/components/pages/**"
       - "packages/ui/src/state/**"
       - "packages/ui/src/voice/**"
       - "packages/ui/src/testing/**"
@@ -84,6 +86,13 @@ jobs:
       - name: Home-screen real-touch e2e
         run: bun run --cwd packages/ui test:home-screen-e2e
 
+      # Launcher grid (#10722): genuine CDP long-press pointer drag-to-reorder
+      # (section 2b) → onReorder → persisted LAUNCHER_STORAGE_KEY order +
+      # reorder telemetry + no duplicate ids. The jsdom Launcher.gestures suite
+      # explicitly defers this physics coverage here.
+      - name: Launcher real-drag reorder e2e
+        run: bun run --cwd packages/ui test:launcher-e2e
+
       - name: Upload chat gesture e2e artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -93,5 +102,6 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output
             packages/ui/src/components/shell/__e2e__/output-chatux
             packages/ui/src/components/shell/__e2e__/output-home
+            packages/ui/src/components/pages/__e2e__/output-launcher
           retention-days: 14
           if-no-files-found: ignore

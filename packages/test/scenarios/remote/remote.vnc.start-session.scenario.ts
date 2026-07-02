@@ -34,7 +34,17 @@ export default scenario({
         acceptedActions: ["REMOTE_DESKTOP"],
         description: "remote desktop session start",
       }),
-      responseIncludesAny: ["remote", "session", "pairing", "url"],
+      // De-echoed (#9310): the old keywords ("remote"/"session"/"pairing"/
+      // "url") all appeared in the user's own turn text. The reply must
+      // contain the actual connection info — a literal URL (the "://" of
+      // accessUrl), which no user turn contains. The finalChecks predicate
+      // asserts the real accessUrl/accessCode on the action result.
+      responseIncludesAll: ["://"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must present the concrete session URL and pairing code returned by the remote-desktop action (real values, not placeholders), not merely promise that a session will be started.",
+      },
     },
   ],
   finalChecks: [

@@ -30,6 +30,7 @@ function makeAcpStub(session?: Record<string, unknown>) {
   let handler:
     | ((sessionId: string, event: string, data: unknown) => void)
     | null = null;
+  let currentSession = session;
   return {
     onSessionEvent: vi.fn(
       (h: (sessionId: string, event: string, data: unknown) => void) => {
@@ -39,7 +40,10 @@ function makeAcpStub(session?: Record<string, unknown>) {
         };
       },
     ),
-    getSession: vi.fn(async () => session),
+    getSession: vi.fn(async () => currentSession),
+    setSession(nextSession?: Record<string, unknown>) {
+      currentSession = nextSession;
+    },
     emit(sessionId: string, event: string, data: unknown) {
       handler?.(sessionId, event, data);
     },
@@ -454,6 +458,182 @@ describe("SwarmCoordinatorService", () => {
       ],
     });
     await coordinator.stop();
+  });
+  it("caches session metadata per session so streaming events do not re-hit getSession", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: { label: "build-site", originRoomId: "origin-room-20" },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((e) => received.push(e));
+
+    // First enrichable event populates the cache with exactly one lookup.
+    acp.emit("sess-cache", "tool_running", { toolCall: { title: "Bash" } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(acp.getSession).toHaveBeenCalledTimes(1);
+
+    // Later enrichable events reuse the cache: no further getSession calls.
+    acp.emit("sess-cache", "tool_running", { toolCall: { title: "Read" } });
+    acp.emit("sess-cache", "usage_update", { tokens: 10 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(acp.getSession).toHaveBeenCalledTimes(1);
+
+    // Cached metadata still enriches later events.
+    expect(received.at(-1)?.data).toMatchObject({
+      originRoomId: "origin-room-20",
+      label: "build-site",
+      workdir: "/tmp/wd",
+      agentType: "codex",
+    });
+    await coordinator.stop();
+  });
+
+  it("does not cache a session miss (event racing session persistence)", async () => {
+    const acp = makeAcpStub(undefined);
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((e) => received.push(e));
+
+    // Event arrives before the session is persisted: no metadata available.
+    acp.emit("sess-race", "tool_running", {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(received.at(-1)?.data).not.toHaveProperty("label");
+
+    // Session shows up. The next event must retry the lookup (miss not pinned).
+    acp.setSession({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: { label: "late-session", originRoomId: "origin-room-30" },
+    });
+    acp.emit("sess-race", "tool_running", {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(received.at(-1)?.data).toMatchObject({
+      label: "late-session",
+      originRoomId: "origin-room-30",
+      workdir: "/tmp/wd",
+    });
+    await coordinator.stop();
+  });
+
+  it("skips getSession enrichment for high-frequency streaming events", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      metadata: { label: "build-site" },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((e) => received.push(e));
+
+    acp.emit("sess-stream", "message", { text: "chunk 1" });
+    acp.emit("sess-stream", "reasoning", { text: "thinking" });
+    acp.emit("sess-stream", "plan", { entries: [] });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(acp.getSession).not.toHaveBeenCalled();
+    expect(received).toHaveLength(3);
+    // Raw payloads pass through untouched.
+    expect(received[0].data).toEqual({ text: "chunk 1" });
+    await coordinator.stop();
+  });
+
+  it("evicts legacy task state after the post-terminal grace window", async () => {
+    vi.useFakeTimers();
+    try {
+      const acp = makeAcpStub({
+        agentType: "codex",
+        workdir: "/tmp/wd",
+        metadata: { label: "build-site", initialTask: "build it" },
+      });
+      const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+
+      acp.emit("sess-evict", "tool_running", {});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(coordinator.tasks.has("sess-evict")).toBe(true);
+
+      acp.emit("sess-evict", "task_complete", { response: "done" });
+      await vi.advanceTimersByTimeAsync(0);
+      // Terminal context stays visible through the grace window so Discord
+      // timeout suppression + synthesis consumers can still read it.
+      expect(coordinator.tasks.get("sess-evict")).toMatchObject({
+        status: "completed",
+      });
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(coordinator.tasks.has("sess-evict")).toBe(false);
+      await coordinator.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels the pending eviction when the session resumes within the grace window", async () => {
+    vi.useFakeTimers();
+    try {
+      const acp = makeAcpStub({
+        agentType: "codex",
+        workdir: "/tmp/wd",
+        metadata: { label: "build-site", initialTask: "build it" },
+      });
+      const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+
+      // Turn 1 completes and schedules the 60s eviction. task_complete fires at
+      // the end of every prompt turn — it is NOT the end of the session.
+      acp.emit("sess-resume", "task_complete", { response: "turn 1 done" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(coordinator.tasks.has("sess-resume")).toBe(true);
+
+      // A follow-up turn reuses the same session WITHIN the grace window: a
+      // non-terminal event must cancel the pending eviction.
+      await vi.advanceTimersByTimeAsync(30_000);
+      acp.emit("sess-resume", "tool_running", { toolCall: { title: "Bash" } });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Past the original 60s deadline the live task state must survive — without
+      // the cancel it is evicted mid-turn, blinding Discord suppression + routing.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(coordinator.tasks.has("sess-resume")).toBe(true);
+      await coordinator.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("eviction does not fire a duplicate swarm-complete for the session", async () => {
+    vi.useFakeTimers();
+    try {
+      const acp = makeAcpStub({
+        agentType: "codex",
+        metadata: { label: "build-site" },
+      });
+      const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+
+      const fired = vi.fn(async () => {});
+      coordinator.setSwarmCompleteCallback(fired);
+
+      acp.emit("sess-dup", "task_complete", { response: "done" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fired).toHaveBeenCalledTimes(1);
+
+      // After eviction clears synthesizedCompletionSessions, a straggler
+      // duplicate terminal event may synthesize again (state was released),
+      // but the eviction itself must not fire anything.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fired).toHaveBeenCalledTimes(1);
+      await coordinator.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("retries ACP binding when ACP is not yet registered, then binds", async () => {

@@ -2,6 +2,15 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 // client.getBaseUrl() — the widget builds raw fetch URLs from it (FinancesView
 // pattern). Keep the mock minimal: a stable base.
 vi.mock("../../../api", () => ({
@@ -80,6 +89,7 @@ const fetchProps: Partial<WidgetProps> = { slot: "home" };
 
 describe("FinancesAlertsWidget (#9143)", () => {
   beforeEach(() => {
+    authMock.authenticated = true;
     publishHomeAttentionSpy.mockReset();
   });
 

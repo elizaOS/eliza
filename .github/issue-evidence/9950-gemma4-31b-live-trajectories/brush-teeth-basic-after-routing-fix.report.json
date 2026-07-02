@@ -1,0 +1,245 @@
+{
+  "runId": "e5666e47-d751-4a64-988b-efcf9123f415",
+  "startedAtIso": "2026-07-02T02:37:06.325Z",
+  "completedAtIso": "2026-07-02T02:37:24.756Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "brush-teeth-basic",
+      "title": "Brush teeth basic save flow",
+      "domain": "tasks",
+      "tags": [
+        "lifeops",
+        "tasks",
+        "smoke"
+      ],
+      "status": "failed",
+      "durationMs": 12039,
+      "turns": [
+        {
+          "name": "brush-teeth preview",
+          "kind": "message",
+          "text": "Help me brush my teeth at 8 am and 9 pm every day.",
+          "responseText": "I can help you set up those daily reminders to brush your teeth at 8 am and 9 pm. Since this is a recurring habit, I'll get that organized for you right away.",
+          "actionsCalled": [
+            {
+              "actionName": "SCHEDULED_TASKS_CREATE",
+              "parameters": {
+                "parameters": {
+                  "action": "create",
+                  "taskId": "brush-teeth-am-daily",
+                  "kind": "reminder",
+                  "status": "scheduled",
+                  "subjectKind": "self",
+                  "subjectId": "self",
+                  "ownerVisibleOnly": false,
+                  "promptInstructions": "Remind the user to brush their teeth.",
+                  "trigger": {},
+                  "contextRequest": {},
+                  "shouldFire": {},
+                  "completionCheck": {},
+                  "output": {},
+                  "pipeline": {},
+                  "escalation": {},
+                  "metadata": {},
+                  "idempotencyKey": "brush-teeth-am-20260702",
+                  "priority": "medium",
+                  "respectsGlobalPause": true,
+                  "ownerVisible": true,
+                  "source": "user_chat",
+                  "minutes": 0,
+                  "reason": "User requested a daily reminder to brush teeth at 8am and 9pm.",
+                  "patch": {},
+                  "untilHistoryIso": "`,untilIso:"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": false,
+                "data": {
+                  "subaction": "create",
+                  "error": "INVALID_TRIGGER",
+                  "message": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task)."
+                },
+                "text": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task). If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.",
+                "raw": {
+                  "success": false,
+                  "text": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task). If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.",
+                  "data": {
+                    "subaction": "create",
+                    "error": "INVALID_TRIGGER",
+                    "message": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task)."
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 7975,
+          "failedAssertions": [
+            "responseIncludesAny: expected response to include any of [brush teeth,brushing habit,set that up], saw \"I can help you set up those daily reminders to brush your teeth at 8 am and 9 pm. Since this is a recurring habit, I'll get that organized for you right away.\""
+          ]
+        },
+        {
+          "name": "brush-teeth confirm",
+          "kind": "message",
+          "text": "Yes, save that brushing routine.",
+          "responseText": "call:SCHEDULED_TASKS_CREATE{action:create,createdAt:2026-07-02T02:37:21Z**,description:Brush teeth**,dueDate:2026-07-02T08:00:00Z**,recurrence:daily**,title:Brush teeth (Morning)}call:SCHEDULED_TASKS_CREATE{action:create,createdAt:2026-07-02T02:37:21Z**,description:Brush teeth**,dueDate:2026-07-02T21:00:00Z**,recurrence:daily**,title:Brush teeth (Evening)}",
+          "actionsCalled": [
+            {
+              "actionName": "SCHEDULED_TASKS_LIST",
+              "parameters": {
+                "parameters": {
+                  "action": "list",
+                  "kind": "reminder",
+                  "status": "scheduled",
+                  "ownerVisibleOnly": true
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "subaction": "list",
+                  "tasks": []
+                },
+                "text": "0 scheduled tasks match.",
+                "raw": {
+                  "success": true,
+                  "text": "0 scheduled tasks match.",
+                  "data": {
+                    "subaction": "list",
+                    "tasks": []
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 4034,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "definitionCountDelta",
+          "type": "definitionCountDelta",
+          "status": "failed",
+          "detail": "expected 1 matching definition(s) for \"Brush teeth\", saw none among 2 definition(s)"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "SCHEDULED_TASKS_CREATE",
+          "parameters": {
+            "parameters": {
+              "action": "create",
+              "taskId": "brush-teeth-am-daily",
+              "kind": "reminder",
+              "status": "scheduled",
+              "subjectKind": "self",
+              "subjectId": "self",
+              "ownerVisibleOnly": false,
+              "promptInstructions": "Remind the user to brush their teeth.",
+              "trigger": {},
+              "contextRequest": {},
+              "shouldFire": {},
+              "completionCheck": {},
+              "output": {},
+              "pipeline": {},
+              "escalation": {},
+              "metadata": {},
+              "idempotencyKey": "brush-teeth-am-20260702",
+              "priority": "medium",
+              "respectsGlobalPause": true,
+              "ownerVisible": true,
+              "source": "user_chat",
+              "minutes": 0,
+              "reason": "User requested a daily reminder to brush teeth at 8am and 9pm.",
+              "patch": {},
+              "untilHistoryIso": "`,untilIso:"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": false,
+            "data": {
+              "subaction": "create",
+              "error": "INVALID_TRIGGER",
+              "message": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task)."
+            },
+            "text": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task). If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.",
+            "raw": {
+              "success": false,
+              "text": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task). If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.",
+              "data": {
+                "subaction": "create",
+                "error": "INVALID_TRIGGER",
+                "message": "Trigger is missing \"kind\" (once | cron | interval | relative_to_anchor | during_window | event | manual | after_task)."
+              }
+            }
+          }
+        },
+        {
+          "actionName": "SCHEDULED_TASKS_LIST",
+          "parameters": {
+            "parameters": {
+              "action": "list",
+              "kind": "reminder",
+              "status": "scheduled",
+              "ownerVisibleOnly": true
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "subaction": "list",
+              "tasks": []
+            },
+            "text": "0 scheduled tasks match.",
+            "raw": {
+              "success": true,
+              "text": "0 scheduled tasks match.",
+              "data": {
+                "subaction": "list",
+                "tasks": []
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [
+        {
+          "label": "brush-teeth preview",
+          "detail": "responseIncludesAny: expected response to include any of [brush teeth,brushing habit,set that up], saw \"I can help you set up those daily reminders to brush your teeth at 8 am and 9 pm. Since this is a recurring habit, I'll get that organized for you right away.\""
+        },
+        {
+          "label": "definitionCountDelta",
+          "detail": "expected 1 matching definition(s) for \"Brush teeth\", saw none among 2 definition(s)"
+        }
+      ],
+      "providerName": "openai"
+    }
+  ],
+  "totals": {
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 0,
+  "failedCount": 1,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0
+}

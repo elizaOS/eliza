@@ -21,9 +21,13 @@ function mockRes(): {
   return { res, get: () => ({ status: state.status, body: state.body }) };
 }
 
-function runtimeWith(service: unknown): AgentRuntime {
+function runtimeWith(
+  service: unknown,
+  rooms: Record<string, unknown> = {},
+): AgentRuntime {
   return {
     getService: (type: string) => (type === "trajectories" ? service : null),
+    getRoom: async (id: string) => rooms[id] ?? null,
   } as unknown as AgentRuntime;
 }
 
@@ -56,7 +60,15 @@ describe("tryHandleTrajectoryFallback", () => {
     const service = {
       listTrajectories: async () => ({
         trajectories: [
-          { id: "t1", status: "completed", llmCallCount: 3 },
+          {
+            id: "t1",
+            status: "completed",
+            llmCallCount: 3,
+            source: "discord",
+            roomId: "room-1",
+            entityId: "entity-1",
+            metadata: { roomId: "room-1", entityId: "entity-1" },
+          },
           { id: "t2", status: "timeout", llmCallCount: 1 },
         ],
         total: 2,
@@ -132,6 +144,7 @@ describe("tryHandleTrajectoryFallback", () => {
         trajectoryId: id,
         endTime: 1000,
         metrics: { finalStatus: "completed" },
+        metadata: { source: "discord", roomId: "room-1", entityId: "entity-1" },
         steps: [
           {
             stepId: "s0",
@@ -169,7 +182,15 @@ describe("tryHandleTrajectoryFallback", () => {
     const { status, body } = get();
     expect(status).toBe(200);
     const b = body as {
-      trajectory: { id: string; status: string; llmCallCount: number };
+      trajectory: {
+        id: string;
+        status: string;
+        source: string;
+        roomId: string;
+        entityId: string;
+        metadata: Record<string, unknown>;
+        llmCallCount: number;
+      };
       llmCalls: Array<{ stepType: string }>;
       providerAccesses: unknown[];
       toolEvents: Array<{ actionName: string; success: boolean }>;
@@ -177,6 +198,10 @@ describe("tryHandleTrajectoryFallback", () => {
     expect(b.trajectory).toMatchObject({
       id: "abc",
       status: "completed",
+      source: "discord",
+      roomId: "room-1",
+      entityId: "entity-1",
+      metadata: { source: "discord", roomId: "room-1", entityId: "entity-1" },
       llmCallCount: 2,
     });
     expect(b.llmCalls.map((c) => c.stepType)).toEqual([
@@ -188,6 +213,49 @@ describe("tryHandleTrajectoryFallback", () => {
       actionName: "REPLY",
       success: true,
       type: "tool_result",
+    });
+  });
+
+  it("resolves room context only when requested", async () => {
+    const service = {
+      listTrajectories: async () => ({
+        trajectories: [
+          {
+            id: "t1",
+            status: "completed",
+            llmCallCount: 1,
+            metadata: { roomId: "room-1" },
+          },
+        ],
+        total: 1,
+      }),
+    };
+    const { res, get } = mockRes();
+    const handled = await tryHandleTrajectoryFallback({
+      pathname: "/api/trajectories",
+      method: "GET",
+      url: url("/api/trajectories?resolve=1"),
+      runtime: runtimeWith(service, {
+        "room-1": {
+          id: "room-1",
+          name: "ruby-trivia",
+          type: "GROUP",
+          worldId: "world-1",
+          serverId: "guild-1",
+        },
+      }),
+      res,
+    });
+    expect(handled).toBe(true);
+    const rows = (
+      get().body as { trajectories: Array<Record<string, unknown>> }
+    ).trajectories;
+    expect(rows[0].roomContext).toEqual({
+      id: "room-1",
+      name: "ruby-trivia",
+      type: "GROUP",
+      worldId: "world-1",
+      serverId: "guild-1",
     });
   });
 

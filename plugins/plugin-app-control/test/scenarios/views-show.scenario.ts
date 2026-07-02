@@ -13,7 +13,13 @@ export default scenario({
 	rooms: [
 		{
 			id: "main",
-			source: "telegram",
+			// View navigation is a first-party-surface contract: on viewless text
+			// connectors (telegram/discord/…) the #8613 gate deliberately removes
+			// the desktop-only VIEWS modes (show/open) from the planner surface —
+			// navigating a desktop view the asker cannot see is a silent
+			// non-answer there. "dashboard" is the in-app chat where views render
+			// for the asker, so it is the surface this contract exists on.
+			source: "dashboard",
 			title: "Views Show",
 		},
 	],

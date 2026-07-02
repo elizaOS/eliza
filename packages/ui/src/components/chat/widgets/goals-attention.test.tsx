@@ -8,6 +8,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
   getBaseUrlMock: vi.fn(() => "http://localhost"),
   publishHomeAttentionSpy: vi.fn(),
@@ -72,6 +81,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  authMock.authenticated = true;
   publishHomeAttentionSpy.mockClear();
 });
 

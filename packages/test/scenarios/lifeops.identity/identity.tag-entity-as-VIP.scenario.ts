@@ -50,7 +50,10 @@ export default scenario({
         description: "VIP tag with downstream triage effect",
         includesAny: ["VIP", "Tomás", "Acme", "tag", "top"],
       }),
-      responseIncludesAny: ["VIP", "Tomás", "Acme", "top"],
+      // De-echoed (#9310): the old keywords ("VIP", "Tomás", "Acme", "top")
+      // all appeared in the user's own turn text. The reply must now describe
+      // the derived triage cascade in words the prompt never used.
+      responseIncludesAny: ["priorit", "escalat", "promote", "faster"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

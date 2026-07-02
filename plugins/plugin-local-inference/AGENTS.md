@@ -112,7 +112,7 @@ src/
     tts/                          TTS pipeline helpers and audio cache
     asr/                          ASR backend interface and capability registration
     vision/                       Vision-describe backend interface and capability registration
-    voice/                        Full voice pipeline: Kokoro/OmniVoice TTS, fused local ASR, VAD, barge-in, speaker imprint, profiles
+    voice/                        Full voice pipeline: Kokoro TTS, fused local ASR, VAD, barge-in, speaker imprint, profiles
 ```
 
 ## Commands

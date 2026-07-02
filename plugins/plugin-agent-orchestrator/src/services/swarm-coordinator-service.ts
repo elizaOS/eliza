@@ -134,6 +134,16 @@ interface LegacyCoordinatorTask {
   };
 }
 
+interface EnrichmentMetadata {
+  metadata: Record<string, unknown>;
+  workdir?: string;
+  agentType?: string;
+}
+
+const STREAMING_SESSION_EVENTS = new Set(["message", "reasoning", "plan"]);
+
+const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -161,6 +171,14 @@ export class SwarmCoordinatorService extends Service {
   private swarmCompleteCallback: SwarmCompleteCallback | null = null;
   private readonly inFlightDecisionSessions = new Set<string>();
   private readonly synthesizedCompletionSessions = new Set<string>();
+  private readonly enrichmentMetadataCache = new Map<
+    string,
+    EnrichmentMetadata
+  >();
+  private readonly legacyTaskEvictionTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   /**
    * Legacy coordinator surface consumed by Discord timeout suppression and
@@ -214,6 +232,11 @@ export class SwarmCoordinatorService extends Service {
     this.swarmCompleteCallback = null;
     this.inFlightDecisionSessions.clear();
     this.synthesizedCompletionSessions.clear();
+    this.enrichmentMetadataCache.clear();
+    for (const timer of this.legacyTaskEvictionTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.legacyTaskEvictionTimers.clear();
     this.tasks.clear();
   }
 
@@ -368,7 +391,9 @@ export class SwarmCoordinatorService extends Service {
     event: string,
     data: unknown,
   ): Promise<void> {
-    const enrichedData = await this.enrichEventData(sessionId, data);
+    const enrichedData = this.shouldEnrichEvent(event)
+      ? await this.enrichEventData(sessionId, data)
+      : data;
 
     // App/plugin creation flows carry a custom app-verification validator in
     // session metadata. The verification-room bridge intentionally ignores raw
@@ -380,7 +405,26 @@ export class SwarmCoordinatorService extends Service {
       this.hasAppVerificationValidator(enrichedData)
     ) {
       await this.runCustomValidatorAndDispatch(sessionId, enrichedData);
+      this.scheduleLegacyTaskEviction(sessionId);
       return;
+    }
+
+    // A non-terminal event means the session resumed: a follow-up prompt turn
+    // reuses the same session (task_complete fires at the end of every turn, then
+    // the session returns to a non-terminal status and accepts more input). Cancel
+    // any pending post-terminal eviction so the still-live task state and its
+    // enrichment cache are not deleted mid-turn — an eviction inside the grace
+    // window blinds Discord timeout suppression and task routing until the next
+    // ACP event happens to recreate the entry.
+    // A non-terminal event means the session resumed: a follow-up prompt turn
+    // reuses the same session (task_complete fires at the end of every turn, then
+    // the session returns to a non-terminal status and accepts more input). Cancel
+    // any pending post-terminal eviction so the still-live task state and its
+    // enrichment cache are not deleted mid-turn — an eviction inside the grace
+    // window blinds Discord timeout suppression and task routing until the next
+    // ACP event happens to recreate the entry.
+    if (!this.isTerminalEvent(event)) {
+      this.cancelLegacyTaskEviction(sessionId);
     }
 
     const swarmEvent: SwarmEvent = {
@@ -395,6 +439,10 @@ export class SwarmCoordinatorService extends Service {
 
     if (event === "blocked" || event === "login_required") {
       void this.maybeRouteAgentDecision(sessionId, event, enrichedData);
+    }
+
+    if (this.isTerminalEvent(event)) {
+      this.scheduleLegacyTaskEviction(sessionId);
     }
   }
 
@@ -469,19 +517,19 @@ export class SwarmCoordinatorService extends Service {
     this.synthesizedCompletionSessions.add(sessionId);
 
     const record = isRecord(data) ? data : {};
-    let session: Awaited<ReturnType<AcpService["getSession"]>> | undefined;
+    let sessionMeta: EnrichmentMetadata = { metadata: {} };
     try {
-      session = await this.acp()?.getSession(sessionId);
+      sessionMeta = await this.getEnrichmentMetadata(sessionId);
     } catch {
-      session = undefined;
+      sessionMeta = { metadata: {} };
     }
-    const meta = isRecord(session?.metadata) ? session.metadata : {};
+    const meta = sessionMeta.metadata;
     const label =
       readString(record, "label") ?? readString(meta, "label") ?? sessionId;
     const agentType =
       readString(record, "agentType") ??
       readString(meta, "agentType") ??
-      session?.agentType ??
+      sessionMeta.agentType ??
       "unknown";
     const originalTask =
       readString(record, "initialTask") ??
@@ -492,7 +540,7 @@ export class SwarmCoordinatorService extends Service {
     const workdir =
       readString(record, "workdir") ??
       readString(meta, "workdir") ??
-      session?.workdir;
+      sessionMeta.workdir;
     const roomId =
       readString(record, "originRoomId") ??
       readString(meta, "originRoomId") ??
@@ -552,6 +600,34 @@ export class SwarmCoordinatorService extends Service {
     return null;
   }
 
+  private isTerminalEvent(event: string): boolean {
+    return TERMINAL_SESSION_STATUSES.has(this.legacyStatusForEvent(event));
+  }
+
+  private scheduleLegacyTaskEviction(sessionId: string): void {
+    const existing = this.legacyTaskEvictionTimers.get(sessionId);
+    if (existing) clearTimeout(existing);
+
+    // Give same-turn consumers (swarm synthesis, verification routing, and
+    // Discord timeout suppression) a short grace window to observe terminal
+    // context, then evict legacy state so completed sessions do not accumulate
+    // for the lifetime of the runtime.
+    const timer = setTimeout(() => {
+      this.legacyTaskEvictionTimers.delete(sessionId);
+      this.tasks.delete(sessionId);
+      this.synthesizedCompletionSessions.delete(sessionId);
+      this.enrichmentMetadataCache.delete(sessionId);
+    }, LEGACY_TASK_EVICTION_GRACE_MS);
+    this.legacyTaskEvictionTimers.set(sessionId, timer);
+  }
+
+  private cancelLegacyTaskEviction(sessionId: string): void {
+    const existing = this.legacyTaskEvictionTimers.get(sessionId);
+    if (!existing) return;
+    clearTimeout(existing);
+    this.legacyTaskEvictionTimers.delete(sessionId);
+  }
+
   private dispatchSwarmEvent(swarmEvent: SwarmEvent): void {
     // Fan out to in-process subscribers (verification-room-bridge et al).
     for (const listener of this.listeners) {
@@ -580,6 +656,31 @@ export class SwarmCoordinatorService extends Service {
     }
   }
 
+  private shouldEnrichEvent(event: string): boolean {
+    return !STREAMING_SESSION_EVENTS.has(event);
+  }
+
+  private async getEnrichmentMetadata(
+    sessionId: string,
+  ): Promise<EnrichmentMetadata> {
+    const cached = this.enrichmentMetadataCache.get(sessionId);
+    if (cached) return cached;
+
+    const session = await this.acp()?.getSession(sessionId);
+    // Do NOT cache a miss: an event can race session-store persistence, and
+    // pinning `{}` would strip routing metadata from every later event of the
+    // session. A miss stays uncached so the next event retries the lookup.
+    if (!session) return { metadata: {} };
+
+    const cachedMetadata: EnrichmentMetadata = {
+      metadata: isRecord(session.metadata) ? session.metadata : {},
+      ...(session.workdir ? { workdir: session.workdir } : {}),
+      ...(session.agentType ? { agentType: session.agentType } : {}),
+    };
+    this.enrichmentMetadataCache.set(sessionId, cachedMetadata);
+    return cachedMetadata;
+  }
+
   private async enrichEventData(
     sessionId: string,
     data: unknown,
@@ -588,8 +689,8 @@ export class SwarmCoordinatorService extends Service {
       ? { ...data }
       : { value: data };
     try {
-      const session = await this.acp()?.getSession(sessionId);
-      const meta = isRecord(session?.metadata) ? session.metadata : {};
+      const sessionMeta = await this.getEnrichmentMetadata(sessionId);
+      const meta = sessionMeta.metadata;
       for (const key of [
         "originRoomId",
         "originConnectorMessageId",
@@ -612,11 +713,11 @@ export class SwarmCoordinatorService extends Service {
           record[key] = meta[key];
         }
       }
-      if (record.workdir === undefined && session?.workdir) {
-        record.workdir = session.workdir;
+      if (record.workdir === undefined && sessionMeta.workdir) {
+        record.workdir = sessionMeta.workdir;
       }
-      if (record.agentType === undefined && session?.agentType) {
-        record.agentType = session.agentType;
+      if (record.agentType === undefined && sessionMeta.agentType) {
+        record.agentType = sessionMeta.agentType;
       }
     } catch {
       // Best-effort enrichment only; raw data is still useful to consumers.

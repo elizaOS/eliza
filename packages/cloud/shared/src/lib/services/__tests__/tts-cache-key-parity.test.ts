@@ -21,7 +21,7 @@ import {
   hashCloudCacheKey,
 } from "../tts-first-line-cache";
 
-const PROVIDERS = ["kokoro", "omnivoice", "edge-tts", "elevenlabs", "cloud"] as const;
+const PROVIDERS = ["kokoro", "edge-tts", "elevenlabs", "cloud"] as const;
 const CODECS = ["mp3", "opus", "wav", "pcm_f32", "ogg"] as const;
 const SAMPLE_RATES = [16000, 24000, 44100, 48000] as const;
 

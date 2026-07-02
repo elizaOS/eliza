@@ -109,16 +109,20 @@ function shouldIgnoreRequestFailure(url: string, failureText: string): boolean {
   return false;
 }
 
+// Avatar / background EXISTENCE probes: the client's `hasCustomVrm` /
+// `hasCustomBackground` issue a HEAD to `/api/avatar/vrm|background` with
+// `allowNonOk` and treat any non-ok response as "no custom asset" (falls back
+// to the default avatar/background). In the zero-key smoke stack that probe
+// legitimately answers non-2xx, which is the expected zero-state — the client
+// handles it and renders the default — not a diagnostic error.
+function isOptionalAssetProbeUrl(url: string): boolean {
+  return /\/api\/avatar\/(vrm|background)(\?|$)/.test(url);
+}
+
 function shouldIgnoreHttpError(url: string, status: number): boolean {
   if (status < 400) return true;
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
-  // Avatar / background EXISTENCE probes: the client's `hasCustomVrm` /
-  // `hasCustomBackground` issue a HEAD to `/api/avatar/vrm|background` with
-  // `allowNonOk` and treat any non-ok response as "no custom asset" (falls back
-  // to the default avatar/background). In the zero-key smoke stack that probe
-  // legitimately answers non-2xx, which is the expected zero-state — the client
-  // handles it and renders the default — not a diagnostic error.
-  if (/\/api\/avatar\/(vrm|background)(\?|$)/.test(url)) return true;
+  if (isOptionalAssetProbeUrl(url)) return true;
   return false;
 }
 
@@ -134,6 +138,12 @@ export function installPageDiagnosticsGuard(page: Page): void {
 
   page.on("console", (message) => {
     if (message.type() !== "error") return;
+    // The browser logs an automatic "Failed to load resource" console error for
+    // every non-2xx response; its text carries no URL — the resource URL is the
+    // message *location*. Skip it only for the optional-asset probes whose
+    // non-2xx answer is the expected zero-state (same contract as
+    // shouldIgnoreHttpError above); every other console.error still fails.
+    if (isOptionalAssetProbeUrl(message.location().url ?? "")) return;
     issues.push(`console.error: ${message.text()}`);
   });
 

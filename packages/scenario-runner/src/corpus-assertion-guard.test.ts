@@ -352,8 +352,8 @@ describe("scenario corpus assertion guard", () => {
 
   it("does not grow unenforced turn assertion typo fields", () => {
     const DEAD_TURN_ASSERTION_BASELINE = {
-      acceptedActions: 31,
-      includesAny: 31,
+      acceptedActions: 0,
+      includesAny: 0,
       waitForDefinitionTitle: 1,
       waitForDefinitionTitleAliases: 1,
     } as const satisfies Record<

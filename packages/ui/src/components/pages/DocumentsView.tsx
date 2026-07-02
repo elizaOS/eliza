@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type DragEvent,
   memo,
   useCallback,
   useEffect,
@@ -1018,6 +1019,37 @@ export function DocumentsView({
     [handleFilesUpload, uploading],
   );
 
+  // Root-level file-drop intake (#10722). The only shipped documents surface
+  // (CharacterHubView → /character/documents) hides the selector rail, so the
+  // UploadZone fieldset — and with it the ONLY drag-drop upload affordance —
+  // never mounts. Accepting file drops on the whole view root restores
+  // drag-drop upload on every variant, with the same default options as the
+  // embedded "Add Knowledge" file input above. When the rail IS mounted, the
+  // UploadZone's own drop handler stops propagation so a drop inside it keeps
+  // its scoped options and never double-uploads.
+  const handleRootDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (event.dataTransfer?.types?.includes("Files")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+  const handleRootDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const files = event.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      // preventDefault BEFORE the uploading gate: dragover advertised
+      // droppability, so bailing without it hands the drop to the browser
+      // default — navigating the SPA to the local file.
+      event.preventDefault();
+      if (uploading) return;
+      void handleFilesUpload(Array.from(files) as DocumentUploadFile[], {
+        includeImageDescriptions: true,
+        scope: DEFAULT_DOCUMENT_UPLOAD_SCOPE,
+      });
+    },
+    [handleFilesUpload, uploading],
+  );
+
   const handleSearch = useCallback(
     async (query: string) => {
       try {
@@ -1343,9 +1375,12 @@ export function DocumentsView({
   ) : null;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: file-drop target only; the keyboard-accessible upload path is the "Add Knowledge" file input rendered below.
     <div
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="documents-view"
+      onDragOver={handleRootDragOver}
+      onDrop={handleRootDrop}
     >
       {!shouldRenderSelectorRail && fileInputId ? (
         <input

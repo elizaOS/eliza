@@ -230,7 +230,10 @@ const strictXrViewRoutes = [
   },
   {
     actionName: "XR_RESIZE_VIEW",
-    args: { viewId: XR_VIEW_ID, scale: 1.2, distance: 1.1 },
+    // XR_RESIZE_VIEW passes structured scale/distance through verbatim
+    // (#10471): the planner turns "bigger and closer" into absolute values,
+    // and the service control mirrors them exactly.
+    args: { viewId: XR_VIEW_ID, scale: 1.5, distance: 0.8 },
     contextIds: ["xr", "views"],
     input: XR_RESIZE_TEXT,
     messageToUser: "Panel resized to 1.5\u00d7 at 0.8m.",
@@ -702,7 +705,7 @@ export default scenario({
         expectAction(execution, {
           actionName: "XR_RESIZE_VIEW",
           responseText: "Panel resized to 1.5\u00d7 at 0.8m.",
-          parameters: { viewId: XR_VIEW_ID, scale: 1.2, distance: 1.1 },
+          parameters: { viewId: XR_VIEW_ID, scale: 1.5, distance: 0.8 },
         }) ??
         (await expectControl(
           (control) =>
@@ -787,7 +790,7 @@ export default scenario({
     {
       type: "selectedActionArguments",
       actionName: "XR_RESIZE_VIEW",
-      includesAll: [/"scale":1\.2/, /"distance":1\.1/],
+      includesAll: [/"scale":1\.5/, /"distance":0\.8/],
     },
     {
       type: "custom",

@@ -220,11 +220,14 @@ async function persistNativeMobileRuntimeMode(
   }
 }
 
-export function persistMobileRuntimeModeForServerTarget(
-  target: FirstRunRuntimeTarget,
-): void {
-  const mode = mobileRuntimeModeForServerTarget(target);
-
+/**
+ * Persist a mobile runtime mode directly (or clear it with `null`) to BOTH
+ * localStorage and Capacitor Preferences, then broadcast the change. This is
+ * the single write path for `eliza:mobile-runtime-mode`;
+ * {@link persistMobileRuntimeModeForServerTarget} delegates here after mapping
+ * a first-run server target to its mode.
+ */
+export function persistMobileRuntimeMode(mode: MobileRuntimeMode | null): void {
   if (typeof window !== "undefined") {
     try {
       if (mode) {
@@ -242,4 +245,10 @@ export function persistMobileRuntimeModeForServerTarget(
   if (typeof document !== "undefined") {
     dispatchAppEvent(MOBILE_RUNTIME_MODE_CHANGED_EVENT, { mode });
   }
+}
+
+export function persistMobileRuntimeModeForServerTarget(
+  target: FirstRunRuntimeTarget,
+): void {
+  persistMobileRuntimeMode(mobileRuntimeModeForServerTarget(target));
 }

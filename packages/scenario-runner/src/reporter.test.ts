@@ -70,6 +70,7 @@ function aggregateReport(): AggregateReport {
       skipped: 0,
       flakyPassed: 0,
       costUsd: 0,
+      finalChecksSkipped: 0,
     },
     totalCount: 1,
     passedCount: 1,
@@ -229,8 +230,52 @@ describe("scenario report aggregation", () => {
         skipped: 1,
         flakyPassed: 0,
         costUsd: 0,
+        finalChecksSkipped: 0,
       },
     });
+  });
+
+  it("counts skipped finalChecks loudly in totals and the stdout summary", () => {
+    const base = aggregateReport().scenarios[0];
+    const report = buildAggregate(
+      [
+        {
+          ...base,
+          id: "live.with-skip",
+          status: "passed",
+          finalChecks: [
+            {
+              label: "approval exists",
+              type: "approvalRequestExists",
+              status: "skipped",
+              detail: "dependency missing: no approval queue service registered",
+            },
+            {
+              label: "push sent",
+              type: "pushSent",
+              status: "passed",
+              detail: "1 push(es)",
+            },
+          ],
+        },
+      ],
+      null,
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-skips",
+    );
+
+    expect(report.totals.finalChecksSkipped).toBe(1);
+
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    printStdoutSummary(report);
+    const output = write.mock.calls.map((call) => String(call[0])).join("");
+    expect(output).toContain("1 finalCheck(s) skipped (dependency missing)");
+    expect(output).toContain(
+      "live.with-skip :: approval exists: dependency missing: no approval queue service registered",
+    );
   });
 
   it("writes matrix and per-scenario reports with sanitized stable filenames", () => {

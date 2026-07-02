@@ -145,6 +145,11 @@ test("voice self-test screen reports overall=pass for the full STT->agent->TTS r
   expect(byStage.asr).toBe("pass");
   expect(byStage.send).toBe("pass");
   expect(byStage.tts).toBe("pass");
+  // This Chromium lane's ASR is a mock that echoes a fixed phrase, so the
+  // `contains("time")` below proves the transcript PROPAGATED through the
+  // capture→ASR→report pipeline — it is NOT an accuracy measure (that lives in
+  // the real-recognizer tiers, #10726). The stage-pass asserts above are the
+  // wiring proof; the WER accuracy assertion was removed from the mock lanes.
   expect(report.transcript.toLowerCase()).toContain("time");
   expect(report.reply.length).toBeGreaterThan(0);
 

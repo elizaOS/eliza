@@ -10,6 +10,7 @@ import {
 } from "../../src/services/orchestrator-task-store.js";
 import type {
   CreateTaskInput,
+  OrchestratorTaskDocument,
   OrchestratorTaskPlanRevision,
   OrchestratorTaskSession,
 } from "../../src/services/orchestrator-task-types.js";
@@ -445,6 +446,34 @@ describe("InMemoryTaskStore", () => {
 });
 
 describe("FileTaskStore", () => {
+  it("serializes first-touch loads so concurrent operations cannot hydrate over each other", async () => {
+    const file = await tempFile();
+    const seed = new FileTaskStore(file);
+    await seed.createTask(createInput({ title: "seed" }));
+
+    class CountingFileTaskStore extends FileTaskStore {
+      loadCount = 0;
+      override hydrate(docs: OrchestratorTaskDocument[]): void {
+        this.loadCount += 1;
+        super.hydrate(docs);
+      }
+    }
+
+    const store = new CountingFileTaskStore(file);
+    const created = await Promise.all(
+      Array.from({ length: 25 }, (_, i) =>
+        store.createTask(createInput({ title: `concurrent ${i}` })),
+      ),
+    );
+
+    expect(store.loadCount).toBe(1);
+    const listed = await store.listTasks({ includeArchived: true });
+    expect(listed).toHaveLength(created.length + 1);
+    for (const doc of created) {
+      expect(listed.map((task) => task.id)).toContain(doc.task.id);
+    }
+  });
+
   it("persists tasks atomically and reloads them in a fresh store", async () => {
     const file = await tempFile();
     const store = new FileTaskStore(file);

@@ -21,16 +21,25 @@ export default buildConnectorCertificationScenario({
     {
       name: "twilio-voice-retry-safe",
       text: "Create a Twilio voice call draft with CALL_EXTERNAL to Downtown Dental using the spoken message 'Running 10 minutes late for the appointment.' Keep confirmed false so it waits for approval.",
-      responseIncludesAny: ["call", "twilio", "confirm", "dental"],
-      acceptedActions: ["VOICE_CALL"],
-      includesAny: ["call", "twilio", "confirm", "dental"],
+      // Held-draft tokens the prompt never uses; parroting "keep confirmed
+      // false" cannot satisfy any of them.
+      responseIncludesAny: ["queued", "pending", "awaiting", "ready for your"],
+      expectedActions: ["VOICE_CALL"],
+      actionPayloadIncludesAny: ["call", "twilio", "confirm", "dental"],
     },
     {
       name: "twilio-voice-confirm-retry-safe",
-      text: "Now place that Twilio voice call. If Twilio times out once, retry safely without double-dialing Downtown Dental.",
-      responseIncludesAny: ["call", "retry", "twilio", "dental"],
-      acceptedActions: ["VOICE_CALL"],
-      includesAny: ["call", "retry", "twilio", "dental"],
+      // The prompt never names the seeded fault; the agent must discover the
+      // first-attempt timeout itself and report the safe single retry.
+      text: "Now place that Twilio voice call and tell me how the attempt actually went.",
+      responseIncludesAny: ["retried", "second attempt", "timed out", "placed"],
+      expectedActions: ["VOICE_CALL"],
+      actionPayloadIncludesAny: ["call", "retry", "twilio", "dental"],
+      responseJudge: {
+        rubric:
+          "The reply reports that the first call attempt timed out and that a safe retry placed exactly one call, with no double-dial of the dental office.",
+        minimumScore: 0.6,
+      },
     },
   ],
   finalChecks: [

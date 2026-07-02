@@ -63,7 +63,11 @@ export default scenario({
         description: "morning digest follow-up review",
         includesAny: ["morning", "digest", "follow-up", "overdue"],
       }),
-      responseIncludesAny: ["digest", "follow-up"],
+      // De-echoed (#9310): the old keywords ("digest", "follow-up") both
+      // appeared in the user's own turn text. Seeded-token grounding instead:
+      // the overdue contacts exist only in the seed, so naming one (as the
+      // rubric already demands) requires reading the relationship state.
+      responseIncludesAny: ["Fiona", "Greg"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

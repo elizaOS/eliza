@@ -1470,6 +1470,40 @@ try {
       `STATES: maximize → MAXIMIZED (got ${await chatState(p)})`,
     );
     await snap(p, "state-MAXIMIZED");
+
+    // #10698 regression: the floating transcript's message bubbles carry NO
+    // per-message fill — text floats over the ONE shared panel glass. The
+    // backdrop-blur gate only bans blur, not a fill, so a re-added
+    // bg-black*/bg-white/10 would slip past it. Assert the COMPUTED background of
+    // the WHOLE per-message wrapper chain — every ancestor from the selectable
+    // content up to (excluding) the thread-line container — so a fill re-added
+    // at any wrapper level is caught, not just on the immediate parent.
+    const bubbleBackgrounds = await p
+      .locator('[data-testid="thread-line"] [data-chat-selectable="true"]')
+      .evaluateAll((nodes) =>
+        nodes.flatMap((n) => {
+          const chain = [];
+          for (
+            let el = n.parentElement;
+            el && el.getAttribute("data-testid") !== "thread-line";
+            el = el.parentElement
+          ) {
+            chain.push(getComputedStyle(el).backgroundColor);
+          }
+          return chain.length > 0 ? chain : ["missing"];
+        }),
+      );
+    assert(
+      bubbleBackgrounds.length > 0,
+      `#10698: populated thread renders message bubbles (found ${bubbleBackgrounds.length})`,
+    );
+    const filled = bubbleBackgrounds.filter(
+      (bg) => bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent",
+    );
+    assert(
+      filled.length === 0,
+      `#10698: message bubbles have NO per-message fill (transparent bg); filled=${JSON.stringify(filled)}`,
+    );
     await p.close();
   }
 

@@ -37,7 +37,10 @@ export default scenario({
         description: "event asset checklist generation",
         includesAny: ["slides", "bio", "title", "portal", "event"],
       }),
-      responseIncludesAny: ["slides", "bio", "title", "portal", "owe"],
+      // Derived checklist framing: a real outstanding-assets answer anchors
+      // each item to a deadline — none of these tokens appear in the user
+      // turn, so echo cannot pass. The judge enforces enumeration.
+      responseIncludesAny: ["deadline", "due", "outstanding", "checklist"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

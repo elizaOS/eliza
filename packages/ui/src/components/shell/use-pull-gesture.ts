@@ -253,7 +253,15 @@ export function usePullGesture(
         const ax = Math.abs(dx);
         const ay = Math.abs(dy);
         if (Math.max(ax, ay) >= AXIS_COMMIT_SLOP) {
-          axis.current = ax > ay ? "x" : "y";
+          // Same widened cone as resolveSwipe (#10715): when this binding can
+          // swipe, a deliberate diagonal (horizontal ≥ 0.8× vertical) commits
+          // the X axis. A strict ax > ay here re-narrowed the cone to 45° at
+          // the FIRST 8px of travel, so the exact diagonals the release-time
+          // dominance check was widened for never reached it.
+          const horizontalWins = hasSwipe
+            ? ax >= ay * HORIZONTAL_DOMINANCE_RATIO
+            : ax > ay;
+          axis.current = horizontalWins ? "x" : "y";
           // Take over the pointer now that intent is clear (deferred-capture path).
           if (hasSwipe && !hasVerticalPull) {
             try {
@@ -334,7 +342,9 @@ export function usePullGesture(
       // resolves from release deltas alone.
       const releaseAxis =
         committedAxis ??
-        (hasSwipe && movedX >= AXIS_COMMIT_SLOP && movedX > movedY
+        (hasSwipe &&
+        movedX >= AXIS_COMMIT_SLOP &&
+        movedX >= movedY * HORIZONTAL_DOMINANCE_RATIO
           ? "x"
           : null);
       if (releaseAxis === "x") {
@@ -412,7 +422,10 @@ export function usePullGesture(
         const deltaUp = s.y - l.y; // up positive
         const deltaLeft = s.x - l.x; // left positive
         const movedX = Math.abs(deltaLeft);
-        if (movedX >= AXIS_COMMIT_SLOP && movedX > Math.abs(deltaUp)) {
+        if (
+          movedX >= AXIS_COMMIT_SLOP &&
+          movedX >= Math.abs(deltaUp) * HORIZONTAL_DOMINANCE_RATIO
+        ) {
           const elapsed = Math.max(1, l.t - s.t);
           const swipe = resolveSwipe(
             deltaLeft,

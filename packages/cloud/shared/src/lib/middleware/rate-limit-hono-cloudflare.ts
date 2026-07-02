@@ -5,7 +5,11 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
-import type { AppContext, AppEnv, Bindings } from "../../types/cloud-worker-env";
+import type {
+  AppContext,
+  AppEnv,
+  Bindings,
+} from "../../types/cloud-worker-env";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
 import { logger } from "../utils/logger";
 
@@ -99,7 +103,11 @@ interface CheckResult {
   retryAfter?: number;
 }
 
-function rateLimitHeaders(config: RateLimitConfig, result: CheckResult, policy: string) {
+function rateLimitHeaders(
+  config: RateLimitConfig,
+  result: CheckResult,
+  policy: string,
+) {
   return {
     "X-RateLimit-Limit": String(config.maxRequests),
     "X-RateLimit-Remaining": String(result.remaining),
@@ -116,13 +124,16 @@ function fallOpenResult(config: RateLimitConfig): CheckResult {
   };
 }
 
-function applyRateLimitHeaders(c: Context, headers: Record<string, string>): void {
+function applyRateLimitHeaders(
+  c: Context,
+  headers: Record<string, string>,
+): void {
   for (const [k, v] of Object.entries(headers)) {
     c.res.headers.set(k, v);
   }
 }
 
-async function checkUpstash(
+export async function checkUpstash(
   redis: CompatibleRedis,
   key: string,
   windowMs: number,
@@ -130,11 +141,20 @@ async function checkUpstash(
 ): Promise<CheckResult> {
   const fullKey = `ratelimit:${key}`;
   const count = await redis.incr(fullKey);
-  if (count === 1) {
+  let ttl = count === 1 ? null : await redis.pttl(fullKey);
+  if (count === 1 || ttl === null || ttl < 0) {
+    // First request of a window — or an ORPHANED counter: if the pexpire after
+    // a previous window's first incr ever failed (Workers sub-request drop),
+    // the key has no TTL (pttl -1), so the counter grows forever and the
+    // client is permanently 429'd while resetAt/retryAfter keep promising a
+    // 60s reset that never happens (observed live: an IP at ~26 req/hour
+    // locked out of every endpoint, including public /models). Always re-arm
+    // the window here so a missed expiry heals on the next request instead of
+    // bricking the key.
     await redis.pexpire(fullKey, windowMs);
+    ttl = windowMs;
   }
-  const ttl = await redis.pttl(fullKey);
-  const resetAt = Date.now() + (ttl !== null && ttl > 0 ? ttl : windowMs);
+  const resetAt = Date.now() + (ttl > 0 ? ttl : windowMs);
   const allowed = count <= maxRequests;
   return {
     allowed,
@@ -155,18 +175,25 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     }
 
     if (
-      (env.RATE_LIMIT_DISABLED === "true" || env.PLAYWRIGHT_TEST_AUTH === "true") &&
+      (env.RATE_LIMIT_DISABLED === "true" ||
+        env.PLAYWRIGHT_TEST_AUTH === "true") &&
       env.NODE_ENV !== "production"
     ) {
       await next();
-      applyRateLimitHeaders(c, rateLimitHeaders(config, fallOpenResult(config), "disabled"));
+      applyRateLimitHeaders(
+        c,
+        rateLimitHeaders(config, fallOpenResult(config), "disabled"),
+      );
       return;
     }
 
     const redis = getRedis(env);
     if (!redis) {
       await next();
-      applyRateLimitHeaders(c, rateLimitHeaders(config, fallOpenResult(config), "fall-open"));
+      applyRateLimitHeaders(
+        c,
+        rateLimitHeaders(config, fallOpenResult(config), "fall-open"),
+      );
       return;
     }
 
@@ -175,7 +202,12 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     let policy = "redis";
 
     try {
-      result = await checkUpstash(redis, key, config.windowMs, config.maxRequests);
+      result = await checkUpstash(
+        redis,
+        key,
+        config.windowMs,
+        config.maxRequests,
+      );
     } catch (error) {
       // Rate limiting is protective middleware. If its backing store is down
       // or unreachable in local Worker dev, requests should fall open instead

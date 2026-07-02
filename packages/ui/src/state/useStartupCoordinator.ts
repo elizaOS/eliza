@@ -18,6 +18,7 @@ import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
 import { isElectrobunRuntime } from "../bridge";
+import { reconcilePersistedMobileRuntimeModeAtBoot } from "../first-run/reconcile-mobile-runtime-mode";
 import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
 import {
   createAndroidPolicy,
@@ -200,6 +201,13 @@ export function useStartupCoordinator(
     effectRunRef.current += 1;
     const cancelled = { current: false };
 
+    // Boot-time runtime-mode reconciliation (issue #11030): a persisted
+    // `eliza:mobile-runtime-mode` that is unusable in THIS build (e.g. a stale
+    // "cloud" carried into a local sideload) must be corrected BEFORE the
+    // restore phase resolves the startup target from it — otherwise the native
+    // local-agent transports stay policy-locked and boot hangs. No-op on
+    // web/desktop and whenever the persisted mode is still usable.
+    reconcilePersistedMobileRuntimeModeAtBoot();
     runRestoringSession(d, dispatch, _ctx, cancelled).catch(() => {});
 
     return () => {
