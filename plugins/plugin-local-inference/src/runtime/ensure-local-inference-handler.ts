@@ -769,11 +769,13 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 function makeFusedEmbeddingHandler(): EmbeddingHandler {
 	return async (_runtime, params) => {
 		const text = extractEmbeddingText(params);
-		// A failed probe degrades to the conservative embedding preset. Log WHY
-		// so a broken probe on an accelerated box is visible, not silent (#10727).
+		// When the probe fails, resolveDesktopEmbeddingConfig(undefined) uses the
+		// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
+		// Log WHY so a broken probe on an accelerated box is visible, not silent
+		// (#10727) — the tier is then chosen without hardware evidence.
 		const hardware = await probeHardware().catch((error) => {
 			logger.warn(
-				`[ensureLocalInferenceHandler] hardware probe failed; embedding preset falls back to the conservative default: ${
+				`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (performance preset, gpuLayers: auto): ${
 					error instanceof Error ? error.message : String(error)
 				}`,
 			);

@@ -119,12 +119,18 @@ describe("selectImageGenBackends — platform policy", () => {
 		).toEqual([{ backendId: "sd-cpp", accelerator: "cpu" }]);
 	});
 
-	it("gates Linux NVIDIA CUDA on real sd-cpp evidence", () => {
-		// GPU vendor alone is NOT evidence the installed binary has CUDA.
+	it("proposes CUDA first on Linux NVIDIA and lets the loader gate it (#10727)", () => {
+		const cudaThenCpu = [
+			{ backendId: "sd-cpp", accelerator: "cuda" },
+			{ backendId: "sd-cpp", accelerator: "cpu" },
+		];
+		// GPU vendor alone now proposes CUDA first — the sd-cpp LOADER is the
+		// single source of capability truth and falls through to CPU if the binary
+		// can't prove CUDA. The old positive gate ran every NVIDIA box on CPU.
 		expect(
 			selectImageGenBackends(profile({ platform: "linux", gpu: "nvidia" })),
-		).toEqual([{ backendId: "sd-cpp", accelerator: "cpu" }]);
-		// cudaCapable evidence promotes CUDA ahead of the CPU fallback.
+		).toEqual(cudaThenCpu);
+		// Positive evidence still proposes CUDA first.
 		expect(
 			selectImageGenBackends(
 				profile({
@@ -133,11 +139,7 @@ describe("selectImageGenBackends — platform policy", () => {
 					sdCpp: { cudaCapable: true },
 				}),
 			),
-		).toEqual([
-			{ backendId: "sd-cpp", accelerator: "cuda" },
-			{ backendId: "sd-cpp", accelerator: "cpu" },
-		]);
-		// an accelerators list that includes cuda is equivalent evidence.
+		).toEqual(cudaThenCpu);
 		expect(
 			selectImageGenBackends(
 				profile({
@@ -146,10 +148,18 @@ describe("selectImageGenBackends — platform policy", () => {
 					sdCpp: { accelerators: ["cuda"] },
 				}),
 			),
-		).toEqual([
-			{ backendId: "sd-cpp", accelerator: "cuda" },
-			{ backendId: "sd-cpp", accelerator: "cpu" },
-		]);
+		).toEqual(cudaThenCpu);
+		// Explicit evidence the binary CANNOT do CUDA demotes to CPU-only — no
+		// wasted CUDA load attempt.
+		expect(
+			selectImageGenBackends(
+				profile({
+					platform: "linux",
+					gpu: "nvidia",
+					sdCpp: { cudaCapable: false, accelerators: ["cpu"] },
+				}),
+			),
+		).toEqual([{ backendId: "sd-cpp", accelerator: "cpu" }]);
 	});
 
 	it("falls back to sd-cpp CPU for an unknown platform", () => {
@@ -200,20 +210,41 @@ describe("imageGenGpuVendorFromProbeBackend (#10727 silent-CPU-fallback fix)", (
 		expect(imageGenGpuVendorFromProbeBackend(undefined)).toBeUndefined();
 	});
 
-	it("threading the probe's NVIDIA signal reaches CUDA instead of silent CPU (the real caller path)", () => {
+	it("threading the probe's NVIDIA signal reaches CUDA on the EXACT real-caller profile shape", () => {
 		// Regression guard for the bug: service.ts hardcoded `gpu: undefined`, so
-		// selectImageGenBackends fell through to CPU on every Linux/Windows box —
-		// even NVIDIA, whose backend the probe detects via nvidia-smi. Drive the
-		// SAME mapper the real caller now uses, not a synthetic `gpu:"nvidia"`.
+		// selectImageGenBackends fell to CPU on every Linux/Windows NVIDIA box.
+		// Build the profile the way loadImageGenBackend does — vendor from the
+		// mapper, and crucially NO `sdCpp` field (the real caller never sets it).
+		// Against the pre-fix positive gate this Linux assertion returned
+		// [{sd-cpp, cpu}] and would (correctly) fail.
 		const gpu = imageGenGpuVendorFromProbeBackend("cuda");
-		const linux = selectImageGenBackends(
-			profile({ platform: "linux", gpu, sdCpp: { cudaCapable: true } }),
+		expect(selectImageGenBackends(profile({ platform: "linux", gpu }))).toEqual(
+			[
+				{ backendId: "sd-cpp", accelerator: "cuda" },
+				{ backendId: "sd-cpp", accelerator: "cpu" },
+			],
 		);
-		expect(linux[0]).toEqual({ backendId: "sd-cpp", accelerator: "cuda" });
-		expect(linux.some((c) => c.accelerator === "cuda")).toBe(true);
+		expect(selectImageGenBackends(profile({ platform: "win32", gpu }))).toEqual(
+			[
+				{ backendId: "tensorrt", accelerator: "tensorrt" },
+				{ backendId: "sd-cpp", accelerator: "cuda" },
+				{ backendId: "sd-cpp", accelerator: "cpu" },
+			],
+		);
+	});
 
-		const win = selectImageGenBackends(profile({ platform: "win32", gpu }));
-		expect(win[0]).toEqual({ backendId: "tensorrt", accelerator: "tensorrt" });
+	it("leaves macOS unaffected when the mapper reports apple (darwin ignores gpu)", () => {
+		// The doc comment claims 'macOS still gets mflux/Metal'; prove it by
+		// running the mapper's metal->apple output through the selector on darwin.
+		const gpu = imageGenGpuVendorFromProbeBackend("metal");
+		expect(
+			selectImageGenBackends(
+				profile({ platform: "darwin", arch: "arm64", gpu }),
+			),
+		).toEqual([
+			{ backendId: "mflux", accelerator: "metal" },
+			{ backendId: "sd-cpp", accelerator: "cpu" },
+		]);
 	});
 
 	it("keeps AMD/Intel (probe reports null today) on the platform default", () => {

@@ -22,8 +22,10 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	};
 });
 
+import { logger } from "@elizaos/core";
 import { ActiveModelCoordinator } from "./active-model";
 import { localInferenceEngine } from "./engine";
+import * as hardwareModule from "./hardware";
 import {
 	readRoutingPreferences,
 	writeRoutingPreferences,
@@ -219,5 +221,55 @@ describe("LocalInferenceService activation prewarm", () => {
 				TEXT_LARGE: "manual",
 			},
 		});
+	});
+});
+
+describe("LocalInferenceService image-gen GPU vendor detection (#10727)", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	// Guards the SERVICE wiring (not just the pure mapper): loadImageGenBackend
+	// must feed the real probe's GPU vendor into the profile, so a Linux/Windows
+	// NVIDIA box reaches CUDA. If this seam is reverted to `gpu: undefined` these
+	// assertions go red.
+	it("maps a probed NVIDIA (cuda) host to the 'nvidia' image-gen vendor", async () => {
+		vi.spyOn(hardwareModule, "probeHardware").mockResolvedValue({
+			totalRamGb: 32,
+			freeRamGb: 16,
+			gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 24 },
+			cpuCores: 16,
+			cpuFeatures: {},
+			platform: "linux",
+			arch: "x64",
+			appleSilicon: false,
+			recommendedBucket: "performance",
+			source: "os-fallback",
+			openvino: { present: false, devices: [] },
+		} as Awaited<ReturnType<typeof hardwareModule.probeHardware>>);
+		const service = new LocalInferenceService();
+		const vendor = await (
+			service as unknown as {
+				detectImageGenGpuVendor(): Promise<string | undefined>;
+			}
+		).detectImageGenGpuVendor();
+		expect(vendor).toBe("nvidia");
+	});
+
+	it("degrades to the platform default (undefined) and WARNS when the probe fails", async () => {
+		vi.spyOn(hardwareModule, "probeHardware").mockRejectedValue(
+			new Error("nvidia-smi timed out"),
+		);
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const service = new LocalInferenceService();
+		const vendor = await (
+			service as unknown as {
+				detectImageGenGpuVendor(): Promise<string | undefined>;
+			}
+		).detectImageGenGpuVendor();
+		expect(vendor).toBeUndefined();
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("image-gen GPU probe failed"),
+		);
 	});
 });

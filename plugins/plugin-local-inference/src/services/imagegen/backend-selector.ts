@@ -16,10 +16,11 @@
  *     mflux is skipped on Intel Macs.
  *   - **iOS**: `coreml` only. There is no sd-cpp on iOS — Core ML is
  *     the only sanctioned acceleration path.
- *   - **Linux + NVIDIA**: `sd-cpp` CUDA only when the sd-cpp probe,
- *     binary manifest, help, or version output proves CUDA support.
- *     Otherwise use `sd-cpp` CPU and let the loader emit an explicit
- *     CUDA-missing fallback error if CUDA was requested elsewhere.
+ *   - **Linux + NVIDIA**: `sd-cpp` CUDA → `sd-cpp` CPU. CUDA is proposed
+ *     first and the loader's own capability probe gates it (throwing
+ *     ImageGenBackendUnavailableError → clean CPU fall-through when the binary
+ *     can't prove CUDA). Only demoted to CPU-only when the profile carries
+ *     explicit evidence the binary CANNOT do CUDA.
  *   - **Linux + AMD/Intel**: `sd-cpp --vulkan` → `sd-cpp` (CPU fallback).
  *   - **Linux + CPU**: `sd-cpp` (CPU).
  *   - **Windows + NVIDIA**: `tensorrt` → `sd-cpp` (CUDA) → `sd-cpp` (CPU).
@@ -211,15 +212,25 @@ export function selectImageGenBackends(
 	// accelerator order.
 	if (profile.platform === "linux") {
 		if (profile.gpu === "nvidia") {
-			const sdCppCudaCapable =
-				profile.sdCpp?.cudaCapable === true ||
-				profile.sdCpp?.accelerators?.includes("cuda") === true;
-			return sdCppCudaCapable
-				? [
+			// Propose CUDA first and let the sd-cpp loader be the single source of
+			// capability truth: `loadSdCppImageGenBackend` probes the binary and
+			// throws ImageGenBackendUnavailableError (→ clean fall-through to CPU)
+			// when it can't prove CUDA. The old gate required POSITIVE evidence in
+			// `profile.sdCpp`, which the real caller never populates, so every
+			// Linux NVIDIA box silently ran on CPU (#10727). We only demote to
+			// CPU-only when the profile carries explicit evidence the binary CANNOT
+			// do CUDA — the same trust-the-loader contract the AMD/Intel branch
+			// below and the win32 branch above already use.
+			const sdCppKnownIncapable =
+				profile.sdCpp !== undefined &&
+				profile.sdCpp.cudaCapable !== true &&
+				profile.sdCpp.accelerators?.includes("cuda") !== true;
+			return sdCppKnownIncapable
+				? [{ backendId: "sd-cpp", accelerator: "cpu" }]
+				: [
 						{ backendId: "sd-cpp", accelerator: "cuda" },
 						{ backendId: "sd-cpp", accelerator: "cpu" },
-					]
-				: [{ backendId: "sd-cpp", accelerator: "cpu" }];
+					];
 		}
 		if (profile.gpu === "amd" || profile.gpu === "intel") {
 			return [

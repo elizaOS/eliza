@@ -666,6 +666,15 @@ export class LocalInferenceService {
 			} catch (err) {
 				if (!isImageGenUnavailable(err)) throw err;
 				errors.push(err.message);
+				// Surface an accelerated→next degrade (e.g. CUDA/TensorRT/Metal
+				// unavailable → we fall through toward CPU). Otherwise a box with a
+				// real GPU that silently lands on CPU image-gen leaves no trace —
+				// the exact #10727 failure mode, one layer below selection.
+				if (choice.accelerator && choice.accelerator !== "cpu") {
+					logger.warn(
+						`[LocalInferenceService] image-gen ${choice.backendId}/${choice.accelerator} unavailable, falling through: ${err.message}`,
+					);
+				}
 			}
 		}
 		throw new Error(
