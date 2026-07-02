@@ -47,6 +47,7 @@
  */
 
 import type { Plugin } from "@elizaos/core";
+import { getAdCampaignAttributionAction } from "./actions/ad-attribution.js";
 import {
   duplicateAdCampaignAction,
   setAdCampaignDaypartingAction,
@@ -82,6 +83,7 @@ import { updateMonetizationAction } from "./actions/update-monetization.js";
 import { withdrawAppEarningsAction } from "./actions/withdraw-app-earnings.js";
 import { cloudAppsProvider } from "./providers/cloud-apps.js";
 
+export { getAdCampaignAttributionAction } from "./actions/ad-attribution.js";
 export {
   duplicateAdCampaignAction,
   setAdCampaignDaypartingAction,
@@ -143,6 +145,7 @@ export const cloudAppsPlugin: Plugin = {
     getAppEarningsAction,
     withdrawAppEarningsAction,
     regenerateAppApiKeyAction,
+    getAdCampaignAttributionAction,
     createAdSlotAction,
     listAdSlotsAction,
     setAdCampaignDaypartingAction,

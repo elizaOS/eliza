@@ -10,6 +10,7 @@
 import { mock } from "bun:test";
 import type {
   ActivateAppFrontendResponse,
+  AdCampaignAttributionResponse,
   AppBackupSnapshot,
   AppDeployStatusResponse,
   AppDto,
@@ -66,6 +67,9 @@ type DuplicateAdCampaignFn = (
   campaignId: string,
   input?: DuplicateAdCampaignInput,
 ) => Promise<DuplicateAdCampaignResponse>;
+type GetAdCampaignAttributionFn = (
+  campaignId: string,
+) => Promise<AdCampaignAttributionResponse>;
 type ListFrontendDeploymentsFn = (
   appId: string,
 ) => Promise<ListAppFrontendDeploymentsResponse>;
@@ -131,14 +135,13 @@ interface SdkState {
   listAdSlots: ListAdSlotsFn;
   updateAdCampaignDayparting: UpdateAdCampaignDaypartingFn;
   duplicateAdCampaign: DuplicateAdCampaignFn;
+  getAdCampaignAttribution: GetAdCampaignAttributionFn;
   deployAppFrontend: DeployAppFrontendFn;
   listAppFrontendDeployments: ListFrontendDeploymentsFn;
   activateAppFrontend: ActivateFrontendFn;
   createInfluencerProfile: CreateInfluencerProfileFn;
   createBooking: CreateBookingFn;
   listInfluencers: ListInfluencersFn;
-  createAdSlot: CreateAdSlotFn;
-  listAdSlots: ListAdSlotsFn;
   exportAppBackup: ExportAppBackupFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
@@ -214,6 +217,30 @@ function defaultState(): SdkState {
           createdAt: "2026-07-02T00:00:00.000Z",
         },
         creativesCopied: 1,
+      }),
+    getAdCampaignAttribution: (campaignId) =>
+      Promise.resolve({
+        success: true,
+        campaignId,
+        appId: "app_1",
+        token: "payloadpart.signaturepart123456789",
+        pixelEndpoint:
+          "https://cloud.test/api/v1/advertising/conversions/track?token=payloadpart.signaturepart123456789",
+        webhookEndpoint:
+          "https://cloud.test/api/v1/advertising/conversions/track",
+        install: {
+          pixelHtml:
+            '<img src="https://cloud.test/api/v1/advertising/conversions/track?token=payloadpart.signaturepart123456789&eventType=conversion&dedupeKey=ORDER_OR_EVENT_ID" width="1" height="1" style="display:none" alt="" />',
+          webhook: {
+            url: "https://cloud.test/api/v1/advertising/conversions/track",
+            method: "POST",
+            body: {
+              token: "payloadpart.signaturepart123456789",
+              eventType: "purchase",
+              dedupeKey: "ORDER_OR_EVENT_ID",
+            },
+          },
+        },
       }),
     deployAppFrontend: () =>
       Promise.resolve({
@@ -382,6 +409,11 @@ export function setUpdateAdCampaignDayparting(
 export function setDuplicateAdCampaign(fn: DuplicateAdCampaignFn): void {
   state.duplicateAdCampaign = fn;
 }
+export function setGetAdCampaignAttribution(
+  fn: GetAdCampaignAttributionFn,
+): void {
+  state.getAdCampaignAttribution = fn;
+}
 export function setDeployAppFrontend(fn: DeployAppFrontendFn): void {
   state.deployAppFrontend = fn;
 }
@@ -474,6 +506,11 @@ export class FakeElizaCloudClient {
     input?: DuplicateAdCampaignInput,
   ): Promise<DuplicateAdCampaignResponse> {
     return state.duplicateAdCampaign(campaignId, input);
+  }
+  getAdCampaignAttribution(
+    campaignId: string,
+  ): Promise<AdCampaignAttributionResponse> {
+    return state.getAdCampaignAttribution(campaignId);
   }
   deployAppFrontend(
     id: string,

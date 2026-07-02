@@ -147,10 +147,74 @@ export interface CampaignMetrics {
   impressions: number;
   clicks: number;
   conversions: number;
+  providerConversions?: number;
+  firstPartyConversions?: number;
+  conversionValue?: number;
   ctr?: number;
   cpc?: number;
   cpm?: number;
   roas?: number;
+}
+
+export interface AttributionTokenResult {
+  campaignId: string;
+  appId?: string | null;
+  token: string;
+}
+
+export interface CreateAttributionLinkInput {
+  campaignId: string;
+  organizationId: string;
+  destinationUrl: string;
+  creativeId?: string;
+  source?: string;
+  medium?: string;
+  content?: string;
+  term?: string;
+}
+
+export interface AttributionLinkResult {
+  id: string;
+  campaignId: string;
+  creativeId?: string | null;
+  destinationUrl: string;
+  utmUrl: string;
+  utm: {
+    source: string;
+    medium: string;
+    campaign: string;
+    content?: string | null;
+    term?: string | null;
+  };
+}
+
+export type ConversionEventType =
+  | "conversion"
+  | "purchase"
+  | "signup"
+  | "lead"
+  | "install"
+  | "custom";
+
+export interface RecordConversionInput {
+  token: string;
+  eventType: ConversionEventType;
+  dedupeKey: string;
+  value?: number;
+  currency?: string;
+  sourceUrl?: string;
+  referrer?: string;
+  userAgent?: string;
+  occurredAt?: Date;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RecordConversionResult {
+  eventId: string;
+  campaignId: string;
+  organizationId: string;
+  appId?: string | null;
+  inserted: boolean;
 }
 
 // ============================================

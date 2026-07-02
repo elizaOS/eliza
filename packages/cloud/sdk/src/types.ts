@@ -1406,6 +1406,25 @@ export interface DuplicateAdCampaignResponse {
   creativesCopied: number;
 }
 
+export interface AdCampaignAttributionInstall {
+  pixelHtml: string;
+  webhook: {
+    url: string;
+    method: "POST";
+    body: Record<string, unknown>;
+  };
+}
+
+export interface AdCampaignAttributionResponse {
+  success: boolean;
+  campaignId: string;
+  appId: string | null;
+  token: string;
+  pixelEndpoint: string;
+  webhookEndpoint: string;
+  install: AdCampaignAttributionInstall;
+}
+
 // ---- Influencer marketplace (#10687) ----
 
 export interface InfluencerProfileDto {

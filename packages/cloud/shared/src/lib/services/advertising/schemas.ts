@@ -285,3 +285,33 @@ export const ListCampaignsSchema = z.object({
 });
 
 export const GetAnalyticsSchema = CampaignIdSchema.merge(DateRangeSchema);
+
+export const CreateAttributionLinkSchema = z.object({
+  destinationUrl: z.string().url(),
+  creativeId: z.string().uuid().optional(),
+  source: z.string().trim().min(1).max(80).optional(),
+  medium: z.string().trim().min(1).max(80).optional(),
+  content: z.string().trim().min(1).max(120).optional(),
+  term: z.string().trim().min(1).max(120).optional(),
+});
+
+export const ConversionEventTypeSchema = z.enum([
+  "conversion",
+  "purchase",
+  "signup",
+  "lead",
+  "install",
+  "custom",
+]);
+
+export const RecordConversionSchema = z.object({
+  token: z.string().min(20),
+  eventType: ConversionEventTypeSchema.default("conversion"),
+  dedupeKey: z.string().trim().min(1).max(180),
+  value: z.number().nonnegative().optional(),
+  currency: z.string().length(3).default("USD"),
+  sourceUrl: z.string().url().optional(),
+  referrer: z.string().url().optional(),
+  occurredAt: z.string().datetime().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});

@@ -6,6 +6,7 @@ import {
   adAccountsRepository,
   adAudienceSegmentsRepository,
   adCampaignsRepository,
+  adConversionsRepository,
   adCreativesRepository,
   adTransactionsRepository,
 } from "../../../db/repositories";
@@ -29,10 +30,13 @@ import type {
   CampaignTargeting,
   ConnectAccountInput,
   CreateAudienceSegmentInput,
+  CreateAttributionLinkInput,
   CreateCampaignInput,
   CreateCreativeInput,
   CreativeMedia,
   DuplicateCampaignInput,
+  RecordConversionInput,
+  RecordConversionResult,
   UpdateAudienceSegmentInput,
   UpdateCampaignInput,
   UpdateCreativeInput,
@@ -51,6 +55,8 @@ const providers: Record<AdPlatform, AdProvider | null> = {
 };
 
 class AdvertisingService {
+  private textEncoder = new TextEncoder();
+
   getSupportedPlatforms(): AdPlatform[] {
     return Object.entries(providers)
       .filter(([_, p]) => p !== null)
@@ -294,6 +300,231 @@ class AdvertisingService {
     organizationId: string,
   ): Promise<AdCampaign> {
     return await this.updateCampaign(campaignId, organizationId, { audienceSegmentId: segmentId });
+  }
+
+  private base64UrlEncode(value: string | Uint8Array): string {
+    const bytes = typeof value === "string" ? this.textEncoder.encode(value) : value;
+    return btoa(String.fromCharCode(...bytes))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/, "");
+  }
+
+  private base64UrlDecode(value: string): string {
+    const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    return atob(padded);
+  }
+
+  private async hmacSha256(secret: string, message: string): Promise<string> {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      this.textEncoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const signature = await crypto.subtle.sign("HMAC", key, this.textEncoder.encode(message));
+    return this.base64UrlEncode(new Uint8Array(signature));
+  }
+
+  private constantTimeEqual(left: string, right: string): boolean {
+    if (left.length !== right.length) return false;
+    let diff = 0;
+    for (let i = 0; i < left.length; i += 1) {
+      diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+    }
+    return diff === 0;
+  }
+
+  private newAttributionSecret(): string {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return this.base64UrlEncode(bytes);
+  }
+
+  private slugForUtm(value: string): string {
+    const slug = value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+    return slug || "campaign";
+  }
+
+  private async ensureAttributionSecret(campaign: AdCampaign): Promise<{
+    campaign: AdCampaign;
+    secret: string;
+  }> {
+    const existing = campaign.metadata?.attribution_token_secret;
+    if (existing) {
+      return { campaign, secret: existing };
+    }
+
+    const secret = this.newAttributionSecret();
+    const updated = await adCampaignsRepository.update(campaign.id, {
+      metadata: {
+        ...(campaign.metadata ?? {}),
+        attribution_token_secret: secret,
+      },
+    });
+    if (!updated) {
+      throw new Error("Campaign not found");
+    }
+    return { campaign: updated, secret };
+  }
+
+  async getAttributionToken(campaignId: string, organizationId: string) {
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Campaign not found");
+    }
+    const { campaign: signedCampaign, secret } = await this.ensureAttributionSecret(campaign);
+    const payload = this.base64UrlEncode(
+      JSON.stringify({
+        v: 1,
+        c: signedCampaign.id,
+        o: signedCampaign.organization_id,
+        a: signedCampaign.app_id,
+      }),
+    );
+    const signature = await this.hmacSha256(secret, payload);
+    return {
+      campaignId: signedCampaign.id,
+      appId: signedCampaign.app_id,
+      token: `${payload}.${signature}`,
+    };
+  }
+
+  private async verifyAttributionToken(token: string): Promise<AdCampaign> {
+    const [payload, signature] = token.split(".");
+    if (!payload || !signature) {
+      throw new Error("Invalid attribution token");
+    }
+
+    let parsed: { v?: number; c?: string; o?: string; a?: string | null };
+    try {
+      parsed = JSON.parse(this.base64UrlDecode(payload));
+    } catch {
+      throw new Error("Invalid attribution token");
+    }
+    if (parsed.v !== 1 || !parsed.c || !parsed.o) {
+      throw new Error("Invalid attribution token");
+    }
+
+    const campaign = await adCampaignsRepository.findById(parsed.c);
+    if (!campaign || campaign.organization_id !== parsed.o || campaign.app_id !== parsed.a) {
+      throw new Error("Invalid attribution token");
+    }
+    const secret = campaign.metadata?.attribution_token_secret;
+    if (!secret) {
+      throw new Error("Invalid attribution token");
+    }
+    const expected = await this.hmacSha256(secret, payload);
+    if (!this.constantTimeEqual(signature, expected)) {
+      throw new Error("Invalid attribution token");
+    }
+    return campaign;
+  }
+
+  async createAttributionLink(input: CreateAttributionLinkInput) {
+    const campaign = await adCampaignsRepository.findById(input.campaignId);
+    if (!campaign || campaign.organization_id !== input.organizationId) {
+      throw new Error("Campaign not found");
+    }
+
+    if (input.creativeId) {
+      const creative = await adCreativesRepository.findById(input.creativeId);
+      if (!creative || creative.campaign_id !== campaign.id) {
+        throw new Error("Creative not found");
+      }
+    }
+
+    const utmSource = input.source ?? campaign.platform;
+    const utmMedium = input.medium ?? "paid";
+    const utmCampaign = this.slugForUtm(campaign.name);
+    const url = new URL(input.destinationUrl);
+    url.searchParams.set("utm_source", utmSource);
+    url.searchParams.set("utm_medium", utmMedium);
+    url.searchParams.set("utm_campaign", utmCampaign);
+    if (input.content) url.searchParams.set("utm_content", input.content);
+    if (input.term) url.searchParams.set("utm_term", input.term);
+
+    const existing = await adConversionsRepository.findAttributionLink({
+      campaignId: campaign.id,
+      creativeId: input.creativeId,
+      destinationUrl: input.destinationUrl,
+      utmSource,
+      utmMedium,
+      utmCampaign,
+      utmContent: input.content,
+      utmTerm: input.term,
+    });
+    const link =
+      existing ??
+      (await adConversionsRepository.createAttributionLink({
+        organization_id: campaign.organization_id,
+        campaign_id: campaign.id,
+        creative_id: input.creativeId,
+        app_id: campaign.app_id,
+        destination_url: input.destinationUrl,
+        utm_url: url.toString(),
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        utm_campaign: utmCampaign,
+        utm_content: input.content,
+        utm_term: input.term,
+      }));
+
+    return {
+      id: link.id,
+      campaignId: link.campaign_id,
+      creativeId: link.creative_id,
+      destinationUrl: link.destination_url,
+      utmUrl: link.utm_url,
+      utm: {
+        source: link.utm_source,
+        medium: link.utm_medium,
+        campaign: link.utm_campaign,
+        content: link.utm_content,
+        term: link.utm_term,
+      },
+    };
+  }
+
+  async recordConversion(input: RecordConversionInput): Promise<RecordConversionResult> {
+    const campaign = await this.verifyAttributionToken(input.token);
+    const recorded = await adConversionsRepository.recordConversion({
+      organization_id: campaign.organization_id,
+      campaign_id: campaign.id,
+      app_id: campaign.app_id,
+      event_type: input.eventType,
+      dedupe_key: input.dedupeKey,
+      value: input.value === undefined ? undefined : input.value.toFixed(2),
+      currency: input.currency ?? "USD",
+      source_url: input.sourceUrl,
+      referrer: input.referrer,
+      user_agent: input.userAgent,
+      occurred_at: input.occurredAt,
+      metadata: input.metadata ?? {},
+    });
+
+    logger.info("[Advertising] Conversion event recorded", {
+      campaignId: campaign.id,
+      organizationId: campaign.organization_id,
+      eventType: input.eventType,
+      dedupeKey: input.dedupeKey,
+      inserted: recorded.inserted,
+    });
+
+    return {
+      eventId: recorded.event.id,
+      campaignId: campaign.id,
+      organizationId: campaign.organization_id,
+      appId: campaign.app_id,
+      inserted: recorded.inserted,
+    };
   }
 
   // ============================================
@@ -1372,12 +1603,16 @@ class AdvertisingService {
     }
 
     if (!campaign.external_campaign_id) {
+      const firstParty = await adConversionsRepository.getCampaignRollup(campaignId, dateRange);
       // Return stored metrics if not synced
       return {
         spend: parseFloat(campaign.total_spend),
         impressions: campaign.total_impressions,
         clicks: campaign.total_clicks,
-        conversions: campaign.total_conversions,
+        conversions: campaign.total_conversions + firstParty.conversions,
+        providerConversions: campaign.total_conversions,
+        firstPartyConversions: firstParty.conversions,
+        conversionValue: firstParty.value,
       };
     }
 
@@ -1407,7 +1642,15 @@ class AdvertisingService {
       totalConversions: result.metrics.conversions,
     });
 
-    return result.metrics;
+    const firstParty = await adConversionsRepository.getCampaignRollup(campaignId, dateRange);
+
+    return {
+      ...result.metrics,
+      conversions: result.metrics.conversions + firstParty.conversions,
+      providerConversions: result.metrics.conversions,
+      firstPartyConversions: firstParty.conversions,
+      conversionValue: firstParty.value,
+    };
   }
 
   // ============================================

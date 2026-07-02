@@ -2,6 +2,7 @@ import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {
   type ActivateAppFrontendResponse,
+  type AdCampaignAttributionResponse,
   type AffiliateCodeResponse,
   type AgentLifecycleResponse,
   type AgentListResponse,
@@ -1002,6 +1003,16 @@ export class ElizaCloudClient {
       "POST",
       `/api/v1/advertising/campaigns/${encodeURIComponent(campaignId)}/duplicate`,
       { json: input },
+    );
+  }
+
+  /** `GET /api/v1/advertising/campaigns/:id/attribution` — signed pixel/webhook install contract. */
+  getAdCampaignAttribution(
+    campaignId: string,
+  ): Promise<AdCampaignAttributionResponse> {
+    return this.request<AdCampaignAttributionResponse>(
+      "GET",
+      `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/attribution`,
     );
   }
 
