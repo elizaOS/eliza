@@ -9,7 +9,7 @@ benchmarks (BFCL, action-calling, etc.) run against the Smithers harness.
 Each turn spawns a one-shot `bun` process running `smithers_turn.mjs` inside
 the Smithers install directory. The script drives Smithers' `OpenAIAgent`
 (ToolLoopAgent on the Vercel `ai` SDK) for one turn against an OpenAI-compatible
-endpoint (Cerebras `gpt-oss-120b` by default) and emits one JSON line.
+endpoint (Cerebras `gemma-4-31b` by default) and emits one JSON line.
 
 ## Install
 
@@ -31,7 +31,7 @@ pip install -e smithers-adapter/
 ```bash
 # Run BFCL against the Smithers harness (from packages/benchmarks/)
 CEREBRAS_API_KEY=... python -m orchestrator.cli run \
-  --model-profile cerebras-gpt-oss-120b \
+  --model-profile cerebras-gemma-4-31b \
   --benchmarks bfcl \
   --agent smithers
 ```

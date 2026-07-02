@@ -216,7 +216,7 @@ def _default_model_name(model_name: str | None) -> str:
         os.environ.get("BENCHMARK_MODEL_NAME")
         or os.environ.get("OPENAI_MODEL")
         or os.environ.get("CEREBRAS_MODEL")
-        or "gpt-oss-120b"
+        or "gemma-4-31b"
     )
 
 

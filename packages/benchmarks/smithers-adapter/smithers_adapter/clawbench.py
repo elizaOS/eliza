@@ -16,6 +16,7 @@ from smithers_adapter.client import SmithersClient
 logger = logging.getLogger(__name__)
 
 _CEREBRAS_PRICING = {
+    "gemma-4-31b": {"input_per_million_usd": 0.99, "output_per_million_usd": 1.49},
     "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
 }
 

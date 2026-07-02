@@ -9,7 +9,7 @@
  *   --mode <unguided|guided|strict-guided|cerebras|all>              (default: all)
  *   --n <count>                                                     (default: 10)
  *   --out <path.json>                                               (default: ./bench-results-<ISO>.json)
- *   --cerebras-model <name>                                         (default: llama3.1-8b; use gpt-oss-120b for the 27B tier)
+ *   --cerebras-model <name>                                         (default: llama3.1-8b; use gemma-4-31b for the 27B tier)
  *   --allow-skip-local                                           allow selected local modes to skip
  *   --help
  */
@@ -54,7 +54,7 @@ Flags:
       Output JSON path. Default: ./bench-results-<ISO>.json
   --cerebras-model <name>
       Override the Cerebras reference model. Default: llama3.1-8b
-      (use gpt-oss-120b when benching the eliza-1 27B tier on an H200).
+      (use gemma-4-31b when benching the eliza-1 27B tier on an H200).
   --tier <id>
       Eliza-1 tier to load. Default: eliza-1-2b. Valid:
       eliza-1-2b, eliza-1-4b, eliza-1-9b,

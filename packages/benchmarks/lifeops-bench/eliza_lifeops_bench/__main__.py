@@ -126,7 +126,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "LLM model used to simulate the user. Default is derived from "
-            "--model-tier (large → gpt-oss-120b on Cerebras)."
+            "--model-tier (large → gemma-4-31b on Cerebras)."
         ),
     )
     parser.add_argument(
@@ -342,7 +342,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             model_override
             or os.environ.get("BENCHMARK_MODEL_NAME")
             or os.environ.get("MODEL_NAME")
-            or "gpt-oss-120b"
+            or "gemma-4-31b"
         )
         client = OpenClawClient(
             provider=provider,

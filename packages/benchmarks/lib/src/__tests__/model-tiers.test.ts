@@ -7,7 +7,7 @@ describe("resolveTier", () => {
     const spec = resolveTier({});
     expect(spec.tier).toBe("large");
     expect(spec.provider).toBe("cerebras");
-    expect(spec.modelName).toBe("gpt-oss-120b");
+    expect(spec.modelName).toBe("gemma-4-31b");
     expect(spec.baseUrl).toBe("https://api.cerebras.ai/v1");
   });
 

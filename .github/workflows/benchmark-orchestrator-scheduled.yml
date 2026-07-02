@@ -1,13 +1,13 @@
 # Benchmark orchestrator — scheduled real-model lane
 #
 # Runs a core subset of registry benchmarks through the Python orchestrator on a
-# REAL model provider (Groq), so the suite is actually exercised end-to-end on a
-# schedule rather than only vitest-testing the bridge code (#9475). Before this
-# lane, `python -m benchmarks.orchestrator run` was invoked by exactly one
-# workflow (hyperliquid-bench-live.yml), leaving 42/43 registered benchmarks
-# with zero scheduled real-model runs.
+# REAL model provider (Cerebras gemma-4-31b), so the suite is actually exercised
+# end-to-end on a schedule rather than only vitest-testing the bridge code
+# (#9475). Before this lane, `python -m benchmarks.orchestrator run` was invoked
+# by exactly one workflow (hyperliquid-bench-live.yml), leaving 42/43 registered
+# benchmarks with zero scheduled real-model runs.
 #
-# OPERATOR PREREQUISITE: add a `GROQ_API_KEY` repo secret. With no secret
+# OPERATOR PREREQUISITE: add a `CEREBRAS_API_KEY` repo secret. With no secret
 # configured this workflow SKIPS GRACEFULLY — it never fails CI when the key is
 # absent (mirrors hyperliquid-bench-live.yml's gate).
 #
@@ -16,7 +16,7 @@
 # real AgentRuntime + LLM plugins via the eliza-adapter.
 #
 # Required repo secret (self-documented):
-#   GROQ_API_KEY          — Groq API key for the real-model orchestrator run.
+#   CEREBRAS_API_KEY      — Cerebras API key for the real-model orchestrator run.
 
 name: Benchmark orchestrator (scheduled)
 
@@ -35,12 +35,12 @@ on:
         description: "Model provider"
         required: false
         type: string
-        default: "groq"
+        default: "cerebras"
       model:
         description: "Model name"
         required: false
         type: string
-        default: "openai/gpt-oss-120b"
+        default: "gemma-4-31b"
 
 concurrency:
   group: benchmark-orchestrator-scheduled-${{ github.ref }}
@@ -61,19 +61,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
     steps:
       # ------------------------------------------------------------------
-      # Gate: skip everything (exit 0) when GROQ_API_KEY is unset, so this
+      # Gate: skip everything (exit 0) when CEREBRAS_API_KEY is unset, so this
       # workflow never fails CI when the secret is not configured. Mirrors the
       # gate in hyperliquid-bench-live.yml.
       # ------------------------------------------------------------------
-      - name: Check GROQ_API_KEY secret
+      - name: Check CEREBRAS_API_KEY secret
         id: gate
         run: |
           set -euo pipefail
-          if [ -z "${GROQ_API_KEY:-}" ]; then
-            echo "::notice::Benchmark orchestrator scheduled run skipped — GROQ_API_KEY is not configured. Add it as a repo secret to enable real-model orchestrator runs."
+          if [ -z "${CEREBRAS_API_KEY:-}" ]; then
+            echo "::notice::Benchmark orchestrator scheduled run skipped — CEREBRAS_API_KEY is not configured. Add it as a repo secret to enable real-model orchestrator runs."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -120,8 +120,8 @@ jobs:
         id: run
         env:
           BENCHMARKS: ${{ inputs.benchmarks || 'bfcl,action-calling,agentbench,tau_bench,mint,context_bench' }}
-          PROVIDER: ${{ inputs.provider || 'groq' }}
-          MODEL: ${{ inputs.model || 'openai/gpt-oss-120b' }}
+          PROVIDER: ${{ inputs.provider || 'cerebras' }}
+          MODEL: ${{ inputs.model || 'gemma-4-31b' }}
           PYTHONUNBUFFERED: "1"
         run: |
           set -e

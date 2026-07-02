@@ -31,7 +31,7 @@ export interface JudgeResponse {
 }
 
 export interface CerebrasJudgeOptions {
-  /** Default `gpt-oss-120b`. Override per call via judge() options if needed. */
+  /** Default `gemma-4-31b`. Override per call via judge() options if needed. */
   model?: string;
   /** OpenAI-compatible base. Default `https://api.cerebras.ai/v1`. */
   baseUrl?: string;
@@ -52,7 +52,10 @@ export interface JudgeCallOptions {
   systemPrompt?: string;
   /** When true, sets `response_format: { type: "json_object" }`. Default false. */
   jsonObjectMode?: boolean;
-  /** Reasoning effort hint for `gpt-oss-*` models. Default "low" for fast judges. */
+  /**
+   * Reasoning effort hint. Sent whenever set; `gpt-oss-*` models default to
+   * "low" for fast judges. gemma-4-31b keeps reasoning off unless requested.
+   */
   reasoningEffort?: "low" | "medium" | "high";
 }
 
@@ -193,7 +196,7 @@ async function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Cerebras gpt-oss-120b judge transport.
+ * Cerebras judge transport (default model: gemma-4-31b).
  *
  * Single shared client for the four judge call sites in this repo. Owns
  * transport (HTTP, auth, abort, retry, response_format) and parsing.
@@ -209,7 +212,7 @@ export class CerebrasJudge {
   private readonly maxRetries: number;
 
   constructor(options: CerebrasJudgeOptions = {}) {
-    this.model = options.model ?? "gpt-oss-120b";
+    this.model = options.model ?? "gemma-4-31b";
     this.baseUrl = (options.baseUrl ?? "https://api.cerebras.ai/v1").replace(
       /\/$/,
       "",
@@ -285,8 +288,11 @@ export class CerebrasJudge {
       temperature: options.temperature ?? 0,
       max_tokens: options.maxTokens ?? 1024,
     };
-    if (this.model.startsWith("gpt-oss")) {
-      body.reasoning_effort = options.reasoningEffort ?? "low";
+    const reasoningEffort =
+      options.reasoningEffort ??
+      (this.model.startsWith("gpt-oss") ? "low" : undefined);
+    if (reasoningEffort) {
+      body.reasoning_effort = reasoningEffort;
     }
     if (options.jsonObjectMode) {
       body.response_format = { type: "json_object" };

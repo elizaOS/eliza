@@ -16,7 +16,7 @@ CLI::
     python -m clawbench.multi_harness_runner \
         --harness eliza|hermes|openclaw \
         --scenario inbox_triage \
-        --model gpt-oss-120b
+        --model gemma-4-31b
 
 Each harness is responsible for routing the call to the Cerebras OpenAI-
 compatible surface; this module owns no transport.
@@ -369,8 +369,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--model",
-        default=os.environ.get("CLAWBENCH_MODEL", "gpt-oss-120b"),
-        help="Model name used for cost attribution (default: gpt-oss-120b)",
+        default=os.environ.get("CLAWBENCH_MODEL", "gemma-4-31b"),
+        help="Model name used for cost attribution (default: gemma-4-31b)",
     )
     parser.add_argument(
         "--output",

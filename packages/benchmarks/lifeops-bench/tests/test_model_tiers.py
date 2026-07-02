@@ -19,7 +19,7 @@ def test_resolve_tier_defaults_to_large_when_unset() -> None:
     spec = resolve_tier({})
     assert spec.tier == "large"
     assert spec.provider == "cerebras"
-    assert spec.model_name == "gpt-oss-120b"
+    assert spec.model_name == "gemma-4-31b"
     assert spec.base_url == "https://api.cerebras.ai/v1"
 
 

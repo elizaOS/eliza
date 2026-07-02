@@ -164,7 +164,7 @@ test.describe("monetization permissioning", () => {
       body: JSON.stringify({
         // Rejected at the auth layer before any inference — the model id is
         // immaterial here; use the cloud default for consistency.
-        model: "cerebras/gpt-oss-120b",
+        model: "cerebras/gemma-4-31b",
         max_tokens: 8,
         messages: [],
       }),

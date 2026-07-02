@@ -10,7 +10,7 @@
  *
  * Default model is `llama3.1-8b` — the baseline for eliza-1 tiers 2B
  * through 9B. For the 27B tier (which should be benched on an H200), pass
- * `--cerebras-model gpt-oss-120b` or construct with `{ model: "gpt-oss-120b" }`.
+ * `--cerebras-model gemma-4-31b` or construct with `{ model: "gemma-4-31b" }`.
  *
  * Skipped (with a logged reason) when `CEREBRAS_API_KEY` is absent so the
  * bench is safe to run in CI without secrets.

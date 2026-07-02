@@ -244,7 +244,7 @@ async function resolveAdapter(
 ): Promise<LlmAdapter> {
   if (input.adapter) return input.adapter;
   // Standing direction: training-side comparison runs on Cerebras
-  // gpt-oss-120b unless the operator passes their own adapter.
+  // (default gemma-4-31b) unless the operator passes their own adapter.
   const trainProvider =
     process.env.TRAIN_MODEL_PROVIDER?.trim() ??
     process.env.TRAINING_PROVIDER?.trim();

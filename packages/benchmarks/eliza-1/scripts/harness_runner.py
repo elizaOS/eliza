@@ -331,7 +331,7 @@ def _summarize(harness: str, cases: list[dict[str, Any]]) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--harness", choices=["eliza", "hermes", "openclaw"], required=True)
-    parser.add_argument("--model", default=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"))
+    parser.add_argument("--model", default=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"))
     parser.add_argument("--out", required=True)
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--limit", type=int, default=0)

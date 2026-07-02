@@ -36,7 +36,7 @@ python -m benchmarks.orchestrator list-benchmarks
 python -m benchmarks.orchestrator run --benchmarks <id> --provider <p> --model <m>
 
 # Run all
-python -m benchmarks.orchestrator run --all --provider groq --model openai/gpt-oss-120b
+python -m benchmarks.orchestrator run --all --provider cerebras --model gemma-4-31b
 ```
 
 `--rerun-failed` reruns only failed signatures; `--force` always makes a fresh

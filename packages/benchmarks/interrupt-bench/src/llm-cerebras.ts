@@ -2,7 +2,7 @@
  * Cerebras-backed LLM client for InterruptBench.
  *
  * Calls `https://api.cerebras.ai/v1/chat/completions` with an OpenAI-compatible
- * payload, model `gpt-oss-120b`, and a strict JSON response_format derived from
+ * payload, model `gemma-4-31b`, and a strict JSON response_format derived from
  * the registry-composed Stage-1 schema. Parses the result into the same
  * `ResponseHandlerResult` shape the scripted provider returns.
  *
@@ -13,7 +13,7 @@
 import type { JSONSchema, ResponseHandlerResult } from "./core-lite.ts";
 
 const _CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
-const DEFAULT_MODEL = "gpt-oss-120b";
+const DEFAULT_MODEL = "gemma-4-31b";
 
 interface CerebrasMessage {
   role: "system" | "user" | "assistant";

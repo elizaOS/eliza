@@ -1264,7 +1264,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "--scenario",
                 scenario_name,
                 "--model",
-                model.model or "gpt-oss-120b",
+                model.model or "gemma-4-31b",
                 "--output",
                 str(output_path),
                 "--json",
@@ -2202,7 +2202,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir),
             "--model",
-            (model.model or "gpt-oss-120b"),
+            (model.model or "gemma-4-31b"),
         ]
         harness = str(extra.get("agent") or extra.get("harness") or "hermes").strip().lower()
         if harness in {"eliza", "hermes", "openclaw"}:
@@ -2707,7 +2707,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 notes=(
                     "Cascaded STT (Groq Whisper or local Eliza runtime) → text adapter "
                     "(eliza/hermes/openclaw). "
-                    "Judged suites scored by gpt-oss-120b on Cerebras. "
+                    "Judged suites scored by gemma-4-31b on Cerebras. "
                     "Score is the unweighted mean of per-suite scores in [0, 1]; "
                     "real runs require a real STT provider: GROQ_API_KEY for groq, "
                     "VOICEBENCH_QUALITY_STT_PROVIDER=eliza-runtime with ELIZA_API_BASE/"
@@ -2864,7 +2864,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 notes=(
                     "model.model selects the agent backend: 'perfect'/'wrong' for hermetic oracle runs (no env vars needed); "
                     "'hermes'/'cerebras-direct'/'eliza' for live adapters. "
-                    "CEREBRAS_API_KEY is required when LIVE scenarios are scheduled (simulated user uses gpt-oss-120b). "
+                    "CEREBRAS_API_KEY is required when LIVE scenarios are scheduled (simulated user uses gemma-4-31b). "
                     "ANTHROPIC_API_KEY is required for the LIVE judge (claude-opus-4-7). "
                     "Cost cap defaults to $10; override via extra.max_cost_usd. "
                     "Score: pass@1 across all (scenario, seed) pairs. Higher is better."
@@ -2891,7 +2891,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                     "Real runs require upstream Hugging Face audio (or audio_b64 records) plus "
                     "GROQ_API_KEY for Whisper, VOICEAGENTBENCH_STT_PROVIDER=eliza-runtime with "
                     "ELIZA_API_BASE/ELIZA_BENCH_URL, or VOICEAGENTBENCH_STT_PROVIDER=faster-whisper. "
-                    "CEREBRAS_API_KEY is required for the multi-turn coherence judge (gpt-oss-120b). "
+                    "CEREBRAS_API_KEY is required for the multi-turn coherence judge (gemma-4-31b). "
                     "Set extra.mock=true and extra.suite=single|parallel|sequential|multi-turn|safety|multilingual|all. "
                     "Score: pass@1 across all (task, seed) pairs. Higher is better."
                 ),
