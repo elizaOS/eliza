@@ -16,7 +16,23 @@ export const inboxPlugin: Plugin = {
   services: [InboxMigrationService],
   // Promote the INBOX_* subaction virtuals here so they exist wherever the
   // plugin loads (including standalone, without plugin-personal-assistant).
-  actions: [...promoteSubactionsToActions(inboxAction)],
+  // The `triage` override sharpens the planner signal so a genuine triage
+  // request ("triage my inbox", "what needs my attention") routes to
+  // INBOX_TRIAGE — the `inbox_triage` optimized-prompt consumer — instead of
+  // the list/summarize reads (#11383).
+  actions: [
+    ...promoteSubactionsToActions(inboxAction, {
+      overrides: {
+        triage: {
+          description:
+            "subaction = triage — run the AI triage classifier over new cross-channel messages (urgent / needs_reply / notify / info / ignore) and return the prioritized queue",
+          descriptionCompressed:
+            "INBOX_TRIAGE classify new messages urgent|needs_reply|notify|info|ignore -> prioritized queue",
+          similes: ["TRIAGE_INBOX", "PRIORITIZE_INBOX", "CLASSIFY_INBOX"],
+        },
+      },
+    }),
+  ],
   providers: [inboxTriageProvider, crossChannelContextProvider],
   routes: inboxRoutes,
   views: [
