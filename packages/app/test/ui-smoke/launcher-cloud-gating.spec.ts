@@ -201,9 +201,20 @@ test.describe("launcher cloud gating (#10725)", () => {
   }
 
   test.describe("cloud setup walkthrough (recorded)", () => {
-    test.use({ video: { mode: "on", size: { width: 1280, height: 800 } } });
-
-    test("connect flow surfaces the cloud-apps tile", async ({ page }) => {
+    // `test.use({ video })` is not allowed inside a describe group, so the
+    // walkthrough records through its own context (recordVideo) instead.
+    test("connect flow surfaces the cloud-apps tile", async ({
+      browser,
+    }, testInfo) => {
+      const context = await browser.newContext({
+        baseURL: testInfo.project.use.baseURL,
+        viewport: { width: 1280, height: 800 },
+        recordVideo: {
+          dir: testInfo.outputPath("walkthrough-video"),
+          size: { width: 1280, height: 800 },
+        },
+      });
+      const page = await context.newPage();
       const state: CloudStatusState = { connected: false };
       await bootLauncher(page, { width: 1280, height: 800 }, state);
       await expect(cloudTile(page)).toHaveCount(0);
@@ -239,7 +250,7 @@ test.describe("launcher cloud gating (#10725)", () => {
 
       // Persist the recording next to the screenshots.
       const video = page.video();
-      await page.close();
+      await context.close();
       if (video) {
         await mkdir(EVIDENCE_DIR, { recursive: true });
         const videoPath = await video.path();
