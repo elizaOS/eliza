@@ -427,4 +427,71 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     b.onPointerUp(pointer(100, 180, 1));
     expect(onPullUp).toHaveBeenCalledTimes(1);
   });
+
+  it("commits a FULL constant-slope diagonal swipe (65px across, 75px down) — #10715", () => {
+    // The issue closure's exact exemplar: a deliberate diagonal whose vertical
+    // drift EXCEEDS its horizontal travel (65x across, 75y down; slope ~49°
+    // from horizontal). Every point of a constant-slope drag has ax/ay ≈ 0.87,
+    // so the old strict `ax > ay` mid-gesture commit locked axis "y" at 8px of
+    // travel and the widened release-time cone was never consulted. The
+    // widened commit (ax ≥ 0.8·ay when the binding can swipe) must land this
+    // as a horizontal swipe end to end.
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onSwipeLeft = vi.fn();
+    const onPullUp = vi.fn();
+    const onPullDown = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onSwipeLeft, onPullUp, onPullDown }),
+    );
+    const b = result.current;
+
+    // Finger moves LEFT (x decreasing) and DOWN (y increasing) on a straight
+    // line from (300, 300) to (235, 375) in 10 constant-slope steps.
+    b.onPointerDown(pointer(300, 300));
+    for (let step = 1; step <= 10; step++) {
+      b.onPointerMove(pointer(300 - step * 6.5, 300 + step * 7.5));
+    }
+    b.onPointerUp(pointer(235, 375));
+
+    expect(onSwipeLeft).toHaveBeenCalledTimes(1);
+    expect(onPullUp).not.toHaveBeenCalled();
+    expect(onPullDown).not.toHaveBeenCalled();
+  });
+
+  it("still commits a steep drag (vertical well past the cone) as a vertical pull", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onSwipeLeft = vi.fn();
+    const onPullUp = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onSwipeLeft, onPullUp }),
+    );
+    const b = result.current;
+
+    // ~63° from horizontal (ax/ay = 0.5, well under the 0.8 cone): a scroll-ish
+    // upward drag must stay a vertical pull even on a swipe-capable binding.
+    b.onPointerDown(pointer(300, 300));
+    for (let step = 1; step <= 10; step++) {
+      b.onPointerMove(pointer(300 - step * 4, 300 - step * 8));
+    }
+    b.onPointerUp(pointer(260, 220));
+
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onSwipeLeft).not.toHaveBeenCalled();
+  });
 });

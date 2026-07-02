@@ -497,12 +497,33 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
   }, []);
 
-  const resolveQueuedChatSends = useCallback(() => {
+  const resolveQueuedChatSends = useCallback((): string => {
     const queued = chatSendQueueRef.current.splice(0);
+    if (queued.length === 0) return "";
     for (const turn of queued) {
       turn.resolve();
     }
-  }, []);
+    // These turns were accepted ("send another" while a reply streamed), the
+    // composer was cleared at enqueue, and their optimistic bubble only paints
+    // at drain — so an interrupt here (new chat / conversation switch) would
+    // otherwise vanish the user's words with no trace (#10700's "no message is
+    // lost" guarantee). Mirror the cold-open create-failure path: restore the
+    // text to the composer and say why. Returned so a caller that wipes the
+    // draft AFTER interrupting (new chat) can re-apply the restore.
+    const restored = queued
+      .map((turn) => turn.rawInput.trim())
+      .filter((text) => text.length > 0)
+      .join("\n");
+    if (restored) {
+      setChatInput(restored);
+      setActionNotice(
+        "Your unsent message was restored to the input.",
+        "info",
+        6_000,
+      );
+    }
+    return restored;
+  }, [setActionNotice, setChatInput]);
 
   const resolveConversationRoomId = useCallback(
     async (
@@ -526,8 +547,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     [conversationsRef, loadConversations],
   );
 
-  const interruptActiveChatPipeline = useCallback(() => {
-    resolveQueuedChatSends();
+  const interruptActiveChatPipeline = useCallback((): string => {
+    const restoredQueuedText = resolveQueuedChatSends();
     const activeTurn = activeChatTurnRef.current;
     if (activeTurn?.roomId) {
       abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
@@ -548,6 +569,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     setChatSending(false);
     setChatFirstTokenReceived(false);
     setServerTurnStatus(null);
+    return restoredQueuedText;
   }, [
     chatAbortRef,
     flushStreamingText,
