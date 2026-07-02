@@ -43,7 +43,16 @@ on:
           - production
 
 concurrency:
-  group: deploy-apps-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  # Per-commit group (mirrors cloud-cf-deploy #10802/#10973). A SHARED
+  # deploy-apps-worker-<env> group with cancel-in-progress:false makes GitHub
+  # keep only the latest PENDING run per group and silently cancel the older
+  # pending ones (no annotation) — so a hot develop push/dispatch stream
+  # produces a chain of cancelled runs and zero completed deploys
+  # (elizaOS/eliza#10839). Keying on github.sha too gives each commit its own
+  # group: no deploy is ever superseded, the self-hosted runner serializes them,
+  # and the latest commit always lands. Env stays in the key so staging and
+  # production never block each other.
+  group: deploy-apps-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ github.sha }}
   cancel-in-progress: false
 
 permissions:
