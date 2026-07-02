@@ -189,6 +189,17 @@ function parseMetadata(value: CreditMutationRow["metadata"]): Record<string, unk
   return value;
 }
 
+function metadataNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function toCreditTransaction(row: CreditMutationRow): CreditTransaction {
   if (!row.id || !row.organization_id || !row.amount || !row.type || !row.created_at) {
     throw new Error("[CreditsService] Credit mutation did not return a transaction row");
@@ -1593,7 +1604,6 @@ export class CreditsService {
     const graceMs = opts?.graceMs ?? 20 * 60 * 1000;
     const batchSize = opts?.batchSize ?? 200;
     const maxBatches = opts?.maxBatches ?? 50;
-    const buffer = Number.isFinite(COST_BUFFER) && COST_BUFFER > 1 ? COST_BUFFER : 1;
     const stats: ReservationSweepStats = {
       scanned: 0,
       settled: 0,
@@ -1633,8 +1643,11 @@ export class CreditsService {
 
       for (const row of rows) {
         const reservedAmount = Math.abs(parseNumeric(row.amount, "reservation_amount"));
-        const actualCost = reservedAmount / buffer;
         const reservationMetadata = parseMetadata(row.metadata);
+        const actualCost =
+          metadataNumber(reservationMetadata.estimated_cost) ??
+          metadataNumber(reservationMetadata.estimatedCost) ??
+          reservedAmount;
         const description = (row.description ?? "Credit reservation").replace(
           /\s+\(reserved\)$/,
           "",
@@ -1721,10 +1734,12 @@ export class CreditsService {
       throw new Error("reserve() amount must be non-negative");
     }
 
+    let estimatedCost: number;
     let reservedAmount: number;
     let model: string | undefined;
 
     if (params.amount !== undefined) {
+      estimatedCost = params.amount;
       reservedAmount = params.amount;
     } else if (params.model) {
       model = params.model;
@@ -1732,7 +1747,7 @@ export class CreditsService {
       const estimatedInputTokens = params.estimatedInputTokens ?? 0;
       const estimatedOutputTokens = params.estimatedOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
 
-      const { totalCost: estimatedCost } = await calculateCost(
+      const { totalCost } = await calculateCost(
         params.model,
         provider,
         estimatedInputTokens,
@@ -1740,6 +1755,7 @@ export class CreditsService {
         params.billingSource,
       );
 
+      estimatedCost = totalCost;
       reservedAmount = Math.max(estimatedCost * COST_BUFFER, MIN_RESERVATION);
     } else {
       throw new Error("reserve() requires either `amount` or `model`");
@@ -1753,6 +1769,8 @@ export class CreditsService {
         user_id: userId,
         type: "reservation",
         settlement_marker: RESERVATION_SETTLEMENT_MARKER,
+        estimated_cost: estimatedCost,
+        reserved_amount: reservedAmount,
         ...(model && { model }),
       },
     });

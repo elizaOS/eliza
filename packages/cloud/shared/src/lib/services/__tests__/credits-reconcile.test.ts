@@ -58,13 +58,19 @@ async function countByType(type: string): Promise<number> {
   return (res.rows[0] as { n: number }).n;
 }
 
-async function insertReservation(amount: number, ageMs = 0, markerAware = true): Promise<string> {
+async function insertReservation(
+  amount: number,
+  ageMs = 0,
+  markerAware = true,
+  metadataOverrides: Record<string, unknown> = {},
+): Promise<string> {
   const createdAt = new Date(Date.now() - ageMs).toISOString();
   const metadata = {
     user_id: USER_ID,
     type: "reservation",
     model: "test-model",
     ...(markerAware && { settlement_marker: RESERVATION_SETTLEMENT_MARKER }),
+    ...metadataOverrides,
   };
   const res = await dbWrite.execute(
     `INSERT INTO credit_transactions (
@@ -625,6 +631,37 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
   );
 
   test(
+    "reserve records the fixed settlement estimate on marker-aware reservation rows",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+
+      const reservation = await creditsService.reserve({
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        description: "fixed image generation",
+        amount: 1.25,
+      });
+
+      const res = await dbWrite.execute(
+        `SELECT amount, metadata FROM credit_transactions WHERE id = '${reservation.reservationTransactionId}';`,
+      );
+      const row = res.rows[0] as { amount: string; metadata: Record<string, unknown> | string };
+      const metadata =
+        typeof row.metadata === "string"
+          ? (JSON.parse(row.metadata) as Record<string, unknown>)
+          : row.metadata;
+
+      expect(Number(row.amount)).toBeCloseTo(-1.25, 6);
+      expect(metadata.type).toBe("reservation");
+      expect(metadata.settlement_marker).toBe(RESERVATION_SETTLEMENT_MARKER);
+      expect(metadata.estimated_cost).toBe(1.25);
+      expect(metadata.reserved_amount).toBe(1.25);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "exact-cost settlement marks the reservation settled without a money row",
     async () => {
       if (!pgliteReady) return;
@@ -754,7 +791,9 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
     async () => {
       if (!pgliteReady) return;
       await seedOrg("9");
-      const reservationId = await insertReservation(1.0, 25 * 60 * 1000);
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000, true, {
+        estimated_cost: 0.6666666667,
+      });
 
       const stats = await creditsService.sweepStaleReservations({
         graceMs: 20 * 60 * 1000,
@@ -778,6 +817,54 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       expect(late.adjustmentType).toBe("none");
       expect(await getBalance()).toBeCloseTo(9.333333, 6);
       expect(await countByType("refund")).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep settles fixed-amount reservations to the stored estimate without applying the model buffer",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000, true, {
+        estimated_cost: 1.0,
+      });
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(1);
+      expect(stats.noops).toBe(1);
+      expect(stats.refunds).toBe(0);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep treats marker rows without an estimate as exact-cost instead of guessing from the current buffer",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000);
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(1);
+      expect(stats.noops).toBe(1);
+      expect(stats.refunds).toBe(0);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
     },
     PGLITE_TIMEOUT,
   );
