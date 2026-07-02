@@ -125,6 +125,30 @@ describe("InMemorySessionStore", () => {
     await expect(store.list()).resolves.toHaveLength(25);
   });
 
+  it("does not downgrade a terminal status under concurrent updates (#11028)", async () => {
+    const store = new InMemorySessionStore();
+    await store.create(session({ id: "race", status: "running" }));
+    // A terminal update racing several non-terminal ones. With the guard checked
+    // outside the write queue, all four read "running", all pass the guard, and
+    // the last-enqueued (a non-terminal) would win — downgrading the session
+    // back to a live status. The guard now lives inside the queue.
+    await Promise.all([
+      store.updateStatus("race", "busy"),
+      store.updateStatus("race", "stopped"),
+      store.updateStatus("race", "running"),
+      store.updateStatus("race", "tool_running"),
+    ]);
+    expect((await store.get("race"))?.status).toBe("stopped");
+  });
+
+  it("ignores a terminal → non-terminal downgrade", async () => {
+    const store = new InMemorySessionStore();
+    await store.create(session({ id: "term", status: "running" }));
+    await store.updateStatus("term", "stopped");
+    await store.updateStatus("term", "running");
+    expect((await store.get("term"))?.status).toBe("stopped");
+  });
+
   it("sweeps only old stopped and errored sessions", async () => {
     const store = new InMemorySessionStore();
     const old = new Date(Date.now() - 10_000);

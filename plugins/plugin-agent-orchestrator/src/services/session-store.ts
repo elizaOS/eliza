@@ -385,28 +385,33 @@ export class InMemorySessionStore implements SessionStore {
       .map(cloneSession);
   }
 
+  // The actual mutation, run ONLY inside the write queue so read-modify-write is
+  // serialized. Never call from outside an enqueue() (would race).
+  private async applyUpdateLocked(
+    id: string,
+    patch: Partial<SessionInfo>,
+  ): Promise<void> {
+    const current = this.sessions.get(id);
+    if (!current) return;
+    const next: SessionInfo = {
+      ...current,
+      ...patch,
+      lastActivityAt: patch.lastActivityAt
+        ? new Date(patch.lastActivityAt)
+        : new Date(),
+      createdAt: patch.createdAt ? new Date(patch.createdAt) : current.createdAt,
+      metadata: patch.metadata
+        ? { ...patch.metadata }
+        : current.metadata
+          ? { ...current.metadata }
+          : undefined,
+    };
+    this.sessions.set(id, next);
+    await this.afterWrite();
+  }
+
   async update(id: string, patch: Partial<SessionInfo>): Promise<void> {
-    await this.writes.enqueue(async () => {
-      const current = this.sessions.get(id);
-      if (!current) return;
-      const next: SessionInfo = {
-        ...current,
-        ...patch,
-        lastActivityAt: patch.lastActivityAt
-          ? new Date(patch.lastActivityAt)
-          : new Date(),
-        createdAt: patch.createdAt
-          ? new Date(patch.createdAt)
-          : current.createdAt,
-        metadata: patch.metadata
-          ? { ...patch.metadata }
-          : current.metadata
-            ? { ...current.metadata }
-            : undefined,
-      };
-      this.sessions.set(id, next);
-      await this.afterWrite();
-    });
+    await this.writes.enqueue(() => this.applyUpdateLocked(id, patch));
   }
 
   async updateStatus(
@@ -414,17 +419,23 @@ export class InMemorySessionStore implements SessionStore {
     status: SessionStatus,
     error?: string,
   ): Promise<void> {
-    const current = this.sessions.get(id);
-    if (
-      current &&
-      TERMINAL_SESSION_STATUSES.has(current.status) &&
-      !TERMINAL_SESSION_STATUSES.has(status)
-    ) {
-      return;
-    }
-    const patch: Partial<SessionInfo> = { status };
-    if (status === "errored") patch.lastError = error;
-    await this.update(id, patch);
+    // Guard + mutate atomically inside ONE queued op. Reading `current` outside
+    // the queue let two concurrent updates both observe a non-terminal status
+    // and both pass the guard, so one could downgrade a terminal status back to
+    // a live one (a stopped/errored session flipping back to running).
+    await this.writes.enqueue(async () => {
+      const current = this.sessions.get(id);
+      if (
+        current &&
+        TERMINAL_SESSION_STATUSES.has(current.status) &&
+        !TERMINAL_SESSION_STATUSES.has(status)
+      ) {
+        return;
+      }
+      const patch: Partial<SessionInfo> = { status };
+      if (status === "errored") patch.lastError = error;
+      await this.applyUpdateLocked(id, patch);
+    });
   }
 
   async delete(id: string): Promise<void> {
@@ -499,6 +510,18 @@ export class FileSessionStore extends InMemorySessionStore {
   async update(id: string, patch: Partial<SessionInfo>): Promise<void> {
     await this.load();
     await super.update(id, patch);
+  }
+
+  override async updateStatus(
+    id: string,
+    status: SessionStatus,
+    error?: string,
+  ): Promise<void> {
+    // Reload from disk first so the terminal-status guard sees a concurrent
+    // process's writes (mirrors update()/delete()). super.updateStatus then runs
+    // the guard + mutate atomically inside the write queue.
+    await this.load();
+    await super.updateStatus(id, status, error);
   }
 
   async delete(id: string): Promise<void> {
@@ -673,26 +696,31 @@ export class RuntimeDbSessionStore implements SessionStore {
     return sessions.filter((session) => matchesFilter(session, filter));
   }
 
-  async update(id: string, patch: Partial<SessionInfo>): Promise<void> {
-    await this.writes.enqueue(async () => {
-      await this.ensureInitialized();
-      const current = await this.getOne(
-        "SELECT * FROM acp_sessions WHERE id = ?",
-        [id],
-      );
-      if (!current) return;
-      await this.upsert({
-        ...current,
-        ...patch,
-        createdAt: patch.createdAt
-          ? new Date(patch.createdAt)
-          : current.createdAt,
-        lastActivityAt: patch.lastActivityAt
-          ? new Date(patch.lastActivityAt)
-          : new Date(),
-        metadata: patch.metadata ? { ...patch.metadata } : current.metadata,
-      });
+  // The actual mutation, run ONLY inside the write queue so read-modify-write is
+  // serialized. Never call from outside an enqueue() (would race).
+  private async applyUpdateLocked(
+    id: string,
+    patch: Partial<SessionInfo>,
+  ): Promise<void> {
+    await this.ensureInitialized();
+    const current = await this.getOne(
+      "SELECT * FROM acp_sessions WHERE id = ?",
+      [id],
+    );
+    if (!current) return;
+    await this.upsert({
+      ...current,
+      ...patch,
+      createdAt: patch.createdAt ? new Date(patch.createdAt) : current.createdAt,
+      lastActivityAt: patch.lastActivityAt
+        ? new Date(patch.lastActivityAt)
+        : new Date(),
+      metadata: patch.metadata ? { ...patch.metadata } : current.metadata,
     });
+  }
+
+  async update(id: string, patch: Partial<SessionInfo>): Promise<void> {
+    await this.writes.enqueue(() => this.applyUpdateLocked(id, patch));
   }
 
   async updateStatus(
@@ -700,17 +728,26 @@ export class RuntimeDbSessionStore implements SessionStore {
     status: SessionStatus,
     error?: string,
   ): Promise<void> {
-    const current = await this.get(id);
-    if (
-      current &&
-      TERMINAL_SESSION_STATUSES.has(current.status) &&
-      !TERMINAL_SESSION_STATUSES.has(status)
-    ) {
-      return;
-    }
-    const patch: Partial<SessionInfo> = { status };
-    if (status === "errored") patch.lastError = error;
-    await this.update(id, patch);
+    // Guard + mutate atomically inside ONE queued op. Reading `current` outside
+    // the queue let a concurrent update slip a terminal status back to a live
+    // one (the same race as InMemorySessionStore).
+    await this.writes.enqueue(async () => {
+      await this.ensureInitialized();
+      const current = await this.getOne(
+        "SELECT * FROM acp_sessions WHERE id = ?",
+        [id],
+      );
+      if (
+        current &&
+        TERMINAL_SESSION_STATUSES.has(current.status) &&
+        !TERMINAL_SESSION_STATUSES.has(status)
+      ) {
+        return;
+      }
+      const patch: Partial<SessionInfo> = { status };
+      if (status === "errored") patch.lastError = error;
+      await this.applyUpdateLocked(id, patch);
+    });
   }
 
   async delete(id: string): Promise<void> {
