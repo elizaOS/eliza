@@ -28,6 +28,7 @@ import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentIpcBase,
   isMobileLocalAgentUrl,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
@@ -216,6 +217,13 @@ export function isTrustedRestoreApiBaseUrl(
   apiBase: string | undefined,
 ): boolean {
   if (!apiBase) return false;
+  // The bundled on-device agent's IPC pseudo-base (eliza-local-agent://ipc) is
+  // in-process: no network dial, no attacker-choosable host, no bearer-token
+  // exfiltration surface. Its custom scheme fails the http/https gate below,
+  // and without this allowance EVERY relaunch of a local-mode phone dropped
+  // its saved on-device server and silently un-completed first-run (the iOS
+  // boot-to-onboarding bounce found via the #11110 device boot trace).
+  if (isMobileLocalAgentIpcBase(apiBase)) return true;
   let parsed: URL;
   try {
     parsed = new URL(apiBase);

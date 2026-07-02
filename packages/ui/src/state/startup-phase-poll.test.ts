@@ -1296,6 +1296,40 @@ describe("runPollingBackend bounded native boot (#11030)", () => {
     delete (globalThis as Record<string, unknown>).Capacitor;
   });
 
+  it("still reaches BACKEND_TIMEOUT when a probe NEVER settles (hung transport, #11030 raw-proxy deadlock)", async () => {
+    // The on-device failure shape: the iOS transport awaited Capacitor's raw
+    // plugin proxy — a thenable whose `then` never invokes its callbacks — so
+    // client.getAuthStatus() neither resolved nor rejected. Without the
+    // deadline race the loop freezes BEFORE its own deadline check and the
+    // phone sits on "Booting up…" forever with no timeout card.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(
+      () => new Promise<never>(() => {}),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, backendTimeoutMs: 1_200 },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-timeout",
+        detail: expect.stringContaining("did not settle"),
+      }),
+    );
+  }, 15_000);
+
   it("fails fast to AGENT_ERROR with the REAL message on the iOS cloud-mode IPC policy rejection", async () => {
     // The exact #11030 renderer failure: a stale persisted "cloud" runtime
     // mode policy-locks the local-agent transport, so every startup probe
@@ -1488,6 +1522,535 @@ describe("runPollingBackend bounded native boot (#11030)", () => {
       firstRunComplete: true,
     });
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+});
+
+describe("runPollingBackend progress-aware native budget + dead-cloud recovery (iOS boot automation D1)", () => {
+  const nativePolicy = {
+    supportsLocalRuntime: true,
+    backendTimeoutMs: 30_000,
+    agentReadyTimeoutMs: 30_000,
+    probeForExistingInstall: false,
+    defaultTarget: "cloud-managed" as const,
+  };
+
+  function nativeCtx(server: {
+    id: string;
+    kind: "local" | "cloud" | "remote";
+    label: string;
+    apiBase: string;
+  }): RestoringSessionCtx {
+    return {
+      persistedActiveServer: server,
+      restoredActiveServer: server,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+  }
+
+  const deadCloudServer = {
+    id: "cloud:67ae7b68",
+    kind: "cloud" as const,
+    label: "Cloud agent",
+    apiBase: "https://67ae7b68-6351-41db-a79a-a1d157265018.elizacloud.ai",
+  };
+
+  function installNativeWindow(options?: {
+    persistedRuntimeMode?: string | null;
+  }): { setItemCalls: Array<[string, string]> } {
+    const setItemCalls: Array<[string, string]> = [];
+    const store = new Map<string, string>();
+    if (options?.persistedRuntimeMode) {
+      store.set("eliza:mobile-runtime-mode", options.persistedRuntimeMode);
+    }
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "capacitor://localhost", protocol: "capacitor:" },
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+          setItemCalls.push([key, value]);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+      },
+    };
+    (globalThis as Record<string, unknown>).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    return { setItemCalls };
+  }
+
+  afterEach(async () => {
+    delete (globalThis as Record<string, unknown>).Capacitor;
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+  });
+
+  it("does NOT burn the native failure budget while the in-process agent is booting (503s are progress, not transport failures)", async () => {
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+    transport.recordIosNativeAgentBootPhase("starting");
+
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Agent is starting"), {
+        kind: "http",
+        status: 503,
+        path: "/api/auth/status",
+      }),
+    );
+
+    // Budget 150ms << overall deadline 600ms. WITHOUT progress-awareness the
+    // budget fires at ~150ms with the "consecutive failures" card; WITH it,
+    // the poll keeps going until the overall deadline.
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...nativePolicy,
+        backendTimeoutMs: 600,
+        nativeConsecutiveFailureBudgetMs: 150,
+      },
+      nativeCtx({
+        id: "local:mobile",
+        kind: "remote",
+        label: "On-device agent",
+        apiBase: "eliza-local-agent://ipc",
+      }),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("consecutive failures"),
+      }),
+    );
+  });
+
+  it("keeps the budget paused on fresh ready-phase heartbeats, too", async () => {
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+    transport.recordIosNativeAgentBootPhase("ready");
+
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(async () => {
+      // Each poll produces a structured response from the live bridge (a
+      // mid-boot 503) — which the transport records as a heartbeat.
+      transport.recordIosNativeAgentBootHeartbeat();
+      throw Object.assign(new Error("Service Unavailable"), {
+        kind: "http",
+        status: 503,
+        path: "/api/auth/status",
+      });
+    });
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...nativePolicy,
+        backendTimeoutMs: 600,
+        nativeConsecutiveFailureBudgetMs: 150,
+      },
+      nativeCtx({
+        id: "local:mobile",
+        kind: "remote",
+        label: "On-device agent",
+        apiBase: "eliza-local-agent://ipc",
+      }),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("consecutive failures"),
+      }),
+    );
+  });
+
+  it("burns the budget normally once the agent boot is in a terminal error state", async () => {
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+    transport.recordIosNativeAgentBootPhase("error", "engine start failed");
+
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+      nativeCtx({
+        id: "local:mobile",
+        kind: "remote",
+        label: "On-device agent",
+        apiBase: "eliza-local-agent://ipc",
+      }),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-timeout",
+        message: expect.stringContaining("consecutive failures"),
+      }),
+    );
+  });
+
+  it("recovers a stale persisted cloud mode to the ON-DEVICE agent on the dedicated proxy's terminal sandbox-error 503", async () => {
+    // The REAL on-device failure this leg root-caused: persisted
+    // eliza:mobile-runtime-mode="cloud" pins a local-capable build to a
+    // dedicated cloud agent whose sandbox is status:"error" — the proxy
+    // 503s "Agent is in an error state. Resolve the failure before
+    // connecting." on every poll, on every launch path (icon tap,
+    // devicectl, XCUITest), until the 90s budget fires the timeout card.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const { setItemCalls } = installNativeWindow({
+      persistedRuntimeMode: "cloud",
+    });
+
+    let base = deadCloudServer.apiBase;
+    clientMock.getBaseUrl.mockImplementation(() => base);
+    clientMock.setBaseUrl.mockImplementation((next: string | null) => {
+      base = next ?? "";
+    });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(async () => {
+      if (base === "eliza-local-agent://ipc") {
+        return {
+          required: false,
+          authenticated: true,
+          pairingEnabled: false,
+          expiresAt: null,
+        };
+      }
+      throw Object.assign(
+        new Error(
+          "Agent is in an error state. Resolve the failure before connecting.",
+        ),
+        { kind: "http", status: 503, path: "/api/auth/status" },
+      );
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({
+      complete: true,
+      cloudProvisioned: false,
+    });
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      nativePolicy,
+      nativeCtx(deadCloudServer),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    // Recovered to the bundled on-device agent and completed startup.
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "eliza-local-agent://ipc",
+    );
+    expect(setItemCalls).toContainEqual(["eliza:mobile-runtime-mode", "local"]);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("routes the terminal sandbox-error 503 to agent selection when on-device recovery is not applicable", async () => {
+    // No persisted cloud runtime mode (e.g. web / a build without the local
+    // engine): clear the dead saved server and go to first-run agent
+    // selection instead of polling the terminal 503 into the timeout card.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow({ persistedRuntimeMode: null });
+
+    clientMock.getBaseUrl.mockReturnValue(deadCloudServer.apiBase);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "Agent is in an error state. Resolve the failure before connecting.",
+        ),
+        { kind: "http", status: 503, path: "/api/auth/status" },
+      ),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      nativePolicy,
+      nativeCtx(deadCloudServer),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(vi.mocked(clearPersistedActiveServer)).toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("recovers a stale persisted cloud mode to the ON-DEVICE agent when the dedicated cloud agent is DELETED (outer 404)", async () => {
+    // Follow-on state of the same root cause: once the dead dedicated agent
+    // is deleted outright, the proxy answers 404 "agent not found or not
+    // running". A local-capable build with the stale persisted cloud mode
+    // must recover to the bundled agent, not bounce the user to agent
+    // selection.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const { setItemCalls } = installNativeWindow({
+      persistedRuntimeMode: "cloud",
+    });
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+
+    let base = deadCloudServer.apiBase;
+    clientMock.getBaseUrl.mockImplementation(() => base);
+    clientMock.setBaseUrl.mockImplementation((next: string | null) => {
+      base = next ?? "";
+    });
+    clientMock.hasToken.mockReturnValue(true);
+    clientMock.getCloudCompatAgent.mockRejectedValue(
+      Object.assign(new Error("agent not found"), {
+        kind: "http",
+        status: 404,
+      }),
+    );
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(async () => {
+      if (base === "eliza-local-agent://ipc") {
+        return {
+          required: false,
+          authenticated: true,
+          pairingEnabled: false,
+          expiresAt: null,
+        };
+      }
+      throw Object.assign(new Error("agent not found or not running"), {
+        kind: "http",
+        status: 404,
+        path: "/api/auth/status",
+      });
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({
+      complete: true,
+      cloudProvisioned: false,
+    });
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      nativePolicy,
+      nativeCtx(deadCloudServer),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "eliza-local-agent://ipc",
+    );
+    expect(setItemCalls).toContainEqual(["eliza:mobile-runtime-mode", "local"]);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("recovers to the on-device agent when the persisted cloud base dead-ends past the whole native budget", async () => {
+    // Unreachable (not terminally-503ing) cloud base: after the full
+    // consecutive-failure budget, a local-capable native build with a stale
+    // persisted cloud mode flips to the bundled agent instead of stranding
+    // the user on the timeout card.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const { setItemCalls } = installNativeWindow({
+      persistedRuntimeMode: "cloud",
+    });
+
+    let base = deadCloudServer.apiBase;
+    clientMock.getBaseUrl.mockImplementation(() => base);
+    clientMock.setBaseUrl.mockImplementation((next: string | null) => {
+      base = next ?? "";
+    });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(async () => {
+      if (base === "eliza-local-agent://ipc") {
+        return {
+          required: false,
+          authenticated: true,
+          pairingEnabled: false,
+          expiresAt: null,
+        };
+      }
+      throw Object.assign(new Error("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      });
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({
+      complete: true,
+      cloudProvisioned: false,
+    });
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+      nativeCtx(deadCloudServer),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "eliza-local-agent://ipc",
+    );
+    expect(setItemCalls).toContainEqual(["eliza:mobile-runtime-mode", "local"]);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("never auto-flips a user-configured remote-mac mode to the on-device agent", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const { setItemCalls } = installNativeWindow({
+      persistedRuntimeMode: "remote-mac",
+    });
+    const remoteServer = {
+      id: "remote:mac",
+      kind: "remote" as const,
+      label: "My Mac",
+      apiBase: "http://192.168.0.137:31337",
+    };
+    clientMock.getBaseUrl.mockReturnValue(remoteServer.apiBase);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+      nativeCtx(remoteServer),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    // Dead-ends on the timeout card (with Retry) — the explicit remote
+    // choice is respected, no silent mode flip.
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalledWith(
+      "eliza-local-agent://ipc",
+    );
+    expect(setItemCalls).not.toContainEqual([
+      "eliza:mobile-runtime-mode",
+      "local",
+    ]);
+  });
+});
+
+describe("iOS native agent boot progress (transport unit)", () => {
+  afterEach(async () => {
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+  });
+
+  it("reports progress while the engine start is pending, bounded by the start silence budget", async () => {
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+    expect(transport.isIosNativeAgentBootInProgress()).toBe(false);
+
+    transport.recordIosNativeAgentBootPhase("starting");
+    const startedAt = transport.getIosNativeAgentBootProgress().startedAt;
+    expect(startedAt).not.toBeNull();
+    expect(transport.isIosNativeAgentBootInProgress()).toBe(true);
+    // Still in progress just under the 300s engine-start budget…
+    expect(
+      transport.isIosNativeAgentBootInProgress((startedAt ?? 0) + 299_000),
+    ).toBe(true);
+    // …but a hung start past the budget stops counting as progress.
+    expect(
+      transport.isIosNativeAgentBootInProgress((startedAt ?? 0) + 300_001),
+    ).toBe(false);
+  });
+
+  it("reports progress after ready only while heartbeats stay fresh", async () => {
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+    transport.recordIosNativeAgentBootPhase("ready");
+    const heartbeatAt =
+      transport.getIosNativeAgentBootProgress().lastHeartbeatAt;
+    expect(heartbeatAt).not.toBeNull();
+    expect(transport.isIosNativeAgentBootInProgress()).toBe(true);
+    expect(
+      transport.isIosNativeAgentBootInProgress((heartbeatAt ?? 0) + 29_000),
+    ).toBe(true);
+    // Heartbeat silence: budget resumes.
+    expect(
+      transport.isIosNativeAgentBootInProgress((heartbeatAt ?? 0) + 30_001),
+    ).toBe(false);
+    // A fresh heartbeat revives progress.
+    transport.recordIosNativeAgentBootHeartbeat();
+    expect(transport.isIosNativeAgentBootInProgress()).toBe(true);
+  });
+
+  it("terminal error is never progress", async () => {
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+    transport.recordIosNativeAgentBootPhase("starting");
+    transport.recordIosNativeAgentBootPhase("error", "engine start failed");
+    expect(transport.isIosNativeAgentBootInProgress()).toBe(false);
+    expect(transport.getIosNativeAgentBootProgress().lastError).toBe(
+      "engine start failed",
+    );
   });
 });
 

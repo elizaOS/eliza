@@ -18,6 +18,26 @@ private enum RuntimeQueue {
 }
 #endif
 
+/// Boot-trace bridge for this pod: it cannot link against the app target, so
+/// it posts the app's `ElizaBootTraceAppend` notification; the app-side
+/// `ElizaStartupTrace` observer persists the entry to
+/// Documents/eliza-boot-trace.jsonl. Detail values must never include tokens
+/// or credentials — stage names, engine ids, durations, and error messages
+/// only. No-op when the host app ships no observer.
+enum ElizaBunRuntimeBootTrace {
+    static func post(stage: String, detail: [String: Any] = [:]) {
+        NotificationCenter.default.post(
+            name: Notification.Name("ElizaBootTraceAppend"),
+            object: nil,
+            userInfo: [
+                "source": "bun-runtime",
+                "stage": stage,
+                "detail": detail,
+            ]
+        )
+    }
+}
+
 /// Core runtime that hosts a JavaScriptCore JSContext on a dedicated serial
 /// queue. The plugin shell (`ElizaBunRuntimePlugin`) talks to this class to
 /// start/stop the agent, send chat messages, and route React UI calls into
@@ -92,6 +112,10 @@ public final class ElizaBunRuntime {
                 }
             }
             let startedAt = Date()
+            ElizaBunRuntimeBootTrace.post(stage: "engine-bootstrap-begin", detail: [
+                "engine": engine,
+                "argv": argv.joined(separator: " "),
+            ])
             do {
                 try self.bootstrap(
                     bundlePath: bundlePath,
@@ -103,10 +127,20 @@ public final class ElizaBunRuntime {
                 let outcome = StartOutcome(bridgeVersion: self.bridgeVersion ?? Self.defaultBridgeVersion)
                 let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
                 NSLog("[ElizaBunRuntime] start completed engineMode=\(self.engineMode) bridgeVersion=\(outcome.bridgeVersion) durationMs=\(durationMs)")
+                ElizaBunRuntimeBootTrace.post(stage: "engine-bootstrap-ok", detail: [
+                    "engineMode": self.engineMode,
+                    "bridgeVersion": outcome.bridgeVersion,
+                    "durationMs": durationMs,
+                ])
                 completion(.success(outcome))
             } catch {
                 let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
                 NSLog("[ElizaBunRuntime] start failed engine=\(engine) durationMs=\(durationMs) error=\(error)")
+                ElizaBunRuntimeBootTrace.post(stage: "engine-bootstrap-failed", detail: [
+                    "engine": engine,
+                    "durationMs": durationMs,
+                    "error": "\(error)",
+                ])
                 completion(.failure(error))
             }
         }
@@ -307,6 +341,9 @@ public final class ElizaBunRuntime {
                 fullBunEnv["ELIZA_IOS_AGENT_PUBLIC_DIR"] = publicDir
                 fullBunEnv["ELIZA_IOS_BRIDGE_TRANSPORT"] = "bun-host-ipc"
                 NSLog("[ElizaBunRuntime] full Bun bootstrap bundle=\(resolvedBundlePath) appSupport=\(appSupportDir) pglite=\(pgliteDir) assetDir=\(assetDir)")
+                ElizaBunRuntimeBootTrace.post(stage: "engine-host-start", detail: [
+                    "bundle": resolvedBundlePath,
+                ])
                 try host.start(
                     bundlePath: resolvedBundlePath,
                     argv: argv,

@@ -55,4 +55,22 @@ describe("isTrustedRestoreApiBaseUrl", () => {
     expect(isTrustedRestoreApiBaseUrl(undefined)).toBe(false);
     expect(isTrustedRestoreApiBaseUrl("")).toBe(false);
   });
+
+  it("trusts the bundled on-device agent's IPC pseudo-base (iOS/Android local mode)", () => {
+    // The mobile local-agent record is kind:"remote" with the in-process IPC
+    // base — no network dial, no attacker-choosable host. Rejecting it made
+    // every relaunch of a local-mode phone drop its saved on-device server
+    // and silently un-complete first-run (found via the #11110 device boot
+    // trace: boot ended at chat-first onboarding with no startup poll and
+    // the Bun engine never started).
+    expect(isTrustedRestoreApiBaseUrl("eliza-local-agent://ipc")).toBe(true);
+    expect(isTrustedRestoreApiBaseUrl("eliza-local-agent://ipc/")).toBe(true);
+  });
+
+  it("still rejects other custom schemes and non-IPC authorities on the IPC scheme", () => {
+    expect(isTrustedRestoreApiBaseUrl("evil-local-agent://ipc")).toBe(false);
+    expect(isTrustedRestoreApiBaseUrl("eliza-local-agent://attacker.com")).toBe(
+      false,
+    );
+  });
 });

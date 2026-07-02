@@ -140,6 +140,91 @@ describe("iOS local agent transport bridge", () => {
     expect(handler).toBe(handleIosLocalAgentNativeRequest);
   });
 
+  it("does NOT deadlock when the plugin module exports a raw Capacitor proxy (hostile `then`) — #11030 device boot hang", async () => {
+    // Faithful reproduction of @capacitor/core's registerPlugin proxy: the
+    // get trap fabricates a method wrapper for ANY property — including
+    // `then` — and a wrapper for a method missing from the native plugin
+    // header produces a promise that REJECTS without ever invoking the
+    // (resolve, reject) arguments. `await`ing such a proxy therefore never
+    // settles. The transport must never let this proxy cross an await.
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ok: true }),
+      },
+    }));
+    const nativeMethods: Record<string, (...args: unknown[]) => unknown> = {
+      start,
+      getStatus,
+      call,
+    };
+    const capacitorLikeProxy = new Proxy(
+      {},
+      {
+        get(_target, prop) {
+          if (prop === "$$typeof") return undefined;
+          if (prop === "toJSON") return () => ({});
+          return (...args: unknown[]) => {
+            const fn = nativeMethods[String(prop)];
+            if (fn) return fn(...args);
+            const p = Promise.reject(
+              new Error(`"${String(prop)}()" is not implemented on ios`),
+            );
+            // Capacitor's wrapper promise is unobserved by the thenable
+            // assimilation machinery; keep vitest quiet about it the same way.
+            p.catch(() => {});
+            return p;
+          };
+        },
+      },
+    );
+    capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_STRICT", "1");
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "local" : null,
+    });
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: capacitorLikeProxy,
+    }));
+
+    const { handleIosLocalAgentNativeRequest } = await import(
+      "./ios-local-agent-transport"
+    );
+
+    // Pre-fix this await hangs forever (the raw proxy was returned from an
+    // async helper and its fake `then` swallowed the resolution). Bound the
+    // regression with a real-time race so a reintroduced deadlock fails
+    // loudly instead of timing out the whole suite.
+    const result = await Promise.race([
+      handleIosLocalAgentNativeRequest({
+        method: "GET",
+        path: "/api/auth/status",
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "deadlock: transport awaited the raw Capacitor plugin proxy (#11030)",
+              ),
+            ),
+          10_000,
+        );
+      }),
+    ]);
+
+    expect(result.status).toBe(200);
+    expect(getStatus).toHaveBeenCalled();
+    expect(call).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "http_request" }),
+    );
+  }, 30_000);
+
   it("honors native watchdog restart requests by re-running the full Bun start path", async () => {
     capacitorState.pluginAvailable = true;
     vi.stubGlobal("localStorage", {

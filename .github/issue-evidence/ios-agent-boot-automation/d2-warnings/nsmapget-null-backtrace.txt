@@ -1,0 +1,83 @@
+(lldb) process attach --pid 74070
+Process 74070 stopped
+* thread #1, stop reason = signal SIGSTOP
+    frame #0: 0x000000010410c9c0 dyld`_dyld_start
+dyld`_dyld_start:
+->  0x10410c9c0 <+0>:  mov    x0, sp
+    0x10410c9c4 <+4>:  and    sp, x0, #0xfffffffffffffff0
+    0x10410c9c8 <+8>:  mov    x29, #0x0                 ; =0 
+    0x10410c9cc <+12>: mov    x30, #0x0                 ; =0 
+Target 0: (App) stopped.
+Executable binary set to "/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/71561B6C-5BA3-4B58-95AE-D3855FE37E47/App.app/App".
+Architecture set to: arm64-apple-ios-simulator.
+(lldb) command source -s 0 '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/nsmapget.lldb'
+Executing commands in '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/nsmapget.lldb'.
+(lldb) br set -n NSMapGet -c '$x0 == 0'
+Breakpoint 1: no locations (pending).
+WARNING:  Unable to resolve breakpoint to any actual locations.
+(lldb) continue
+1 location added to breakpoint 1
+Process 74070 resuming
+Process 74070 stopped
+Target 0: (App) stopped.
+(lldb) bt 60
+* thread #1, queue = 'com.apple.main-thread'
+  * frame #0: 0x0000000180ee1df4 Foundation`NSMapGet
+    frame #1: 0x0000000194113d70 CoreUI`___LookupThemeProvider_block_invoke + 32
+    frame #2: 0x0000000194113a60 CoreUI`__PerformBlockWithThemeRegistry + 68
+    frame #3: 0x0000000194113ccc CoreUI`_LookupThemeProvider + 120
+    frame #4: 0x000000019413508c CoreUI`-[CUICatalog appearanceNames] + 20
+    frame #5: 0x0000000185eed350 UIKitCore`-[_UIAssetManager _appearanceNames] + 24
+    frame #6: 0x0000000185eed464 UIKitCore`-[_UIAssetManager _performLookUpObjectForTraitCollection:outNamedLookup:objectAccessor:] + 40
+    frame #7: 0x0000000185eed5b8 UIKitCore`-[_UIAssetManager _lookUpObjectForTraitCollection:objectAccessor:] + 32
+    frame #8: 0x0000000185eeb490 UIKitCore`__78-[_UIAssetManager imageNamed:configuration:cachingOptions:attachCatalogImage:]_block_invoke + 576
+    frame #9: 0x0000000185eeb080 UIKitCore`-[_UIAssetManager imageNamed:configuration:cachingOptions:attachCatalogImage:] + 256
+    frame #10: 0x0000000185eebc0c UIKitCore`-[_UIAssetManager imageNamed:configuration:] + 176
+    frame #11: 0x0000000185674720 UIKitCore`+[UIImage imageNamed:inBundle:withConfiguration:] + 356
+    frame #12: 0x0000000185de0a7c UIKitCore`+[UIAssistantBarButtonItemProvider configuredSymbolImageWithName:size:keyboardLanguageCode:] + 396
+    frame #13: 0x0000000185ddf9f8 UIKitCore`+[UIAssistantBarButtonItemProvider barButtonItemForAssistantItemStyle:target:forcePlainButton:] + 2700
+    frame #14: 0x0000000185de11e0 UIKitCore`+[UIAssistantBarButtonItemProvider defaultSystemTrailingBarButtonGroupsForItem:] + 92
+    frame #15: 0x0000000185de13cc UIKitCore`+[UIAssistantBarButtonItemProvider systemDefaultAssistantItem] + 84
+    frame #16: 0x0000000185b088c0 UIKitCore`-[UIResponder(UIResponderInputViewAdditions) inputAssistantItem] + 64
+    frame #17: 0x000000018ca6bda0 WebKit`-[WKContentView(WKInteraction) inputAssistantItemForWebView] + 40
+    frame #18: 0x00000001857f0d9c UIKitCore`-[UIKeyboardLayoutStar setRenderConfig:updateKeyplane:] + 324
+    frame #19: 0x00000001857fb5ac UIKitCore`-[UIKeyboardLayoutStar showKeyboardWithInputMode:renderConfig:inputTraits:screenTraits:splitTraits:reload:] + 540
+    frame #20: 0x00000001858d930c UIKitCore`-[UIKeyboardImpl finishLayoutChangeWithArguments:] + 804
+    frame #21: 0x00000001858d99f4 UIKitCore`-[UIKeyboardImpl updateLayout] + 1560
+    frame #22: 0x0000000185163390 UIKitCore`-[_UIKeyboardStateManager _setupDelegate:delegateSame:hardwareKeyboardStateChanged:endingInputSessionIdentifier:force:delayEndInputSession:] + 2228
+    frame #23: 0x00000001851612b0 UIKitCore`-[_UIKeyboardStateManager setDelegate:force:delayEndInputSession:] + 628
+    frame #24: 0x00000001854cfbd0 UIKitCore`-[UIKeyboardSceneDelegate _reloadInputViewsForKeyWindowSceneResponder:force:fromBecomeFirstResponder:] + 2872
+    frame #25: 0x00000001854cec3c UIKitCore`-[UIKeyboardSceneDelegate _reloadInputViewsForResponder:force:fromBecomeFirstResponder:] + 84
+    frame #26: 0x0000000185b087a0 UIKitCore`-[UIResponder(UIResponderInputViewAdditions) _reloadInputViewsFromFirstResponder:] + 84
+    frame #27: 0x0000000185b03308 UIKitCore`-[UIResponder becomeFirstResponder] + 720
+    frame #28: 0x0000000186034388 UIKitCore`-[UIView(Hierarchy) becomeFirstResponder] + 100
+    frame #29: 0x000000018ca652a0 WebKit`-[WKContentView(WKInteraction) becomeFirstResponderForWebView] + 96
+    frame #30: 0x000000018c3116c0 WebKit`-[WKWebView(WKViewInternalIOS) becomeFirstResponder] + 96
+    frame #31: 0x0000000105897f0c App.debug.dylib`CAPBridgeViewController.viewDidAppear(animated=false) at CAPBridgeViewController.swift:69:27
+    frame #33: 0x000000018536c298 UIKitCore`-[UIViewController _setViewAppearState:isAnimating:] + 1116
+    frame #34: 0x000000018536cd00 UIKitCore`-[UIViewController __viewDidAppear:] + 164
+    frame #35: 0x000000018536d020 UIKitCore`-[UIViewController _endAppearanceTransition:] + 200
+    frame #36: 0x0000000185277b6c UIKitCore`__48-[UIPresentationController transitionDidFinish:]_block_invoke + 100
+    frame #37: 0x0000000185fead08 UIKitCore`-[_UIAfterCACommitBlock run] + 64
+    frame #38: 0x0000000185feb118 UIKitCore`-[_UIAfterCACommitQueue flush] + 160
+    frame #39: 0x0000000185ae4ee8 UIKitCore`_runAfterCACommitDeferredBlocks + 256
+    frame #40: 0x0000000185ad6b68 UIKitCore`_cleanUpAfterCAFlushAndRunDeferredBlocks + 76
+    frame #41: 0x0000000185ad6c30 UIKitCore`_UIApplicationFlushCATransaction + 68
+    frame #42: 0x0000000185a07ccc UIKitCore`__setupUpdateSequence_block_invoke_2 + 352
+    frame #43: 0x000000018505d28c UIKitCore`_UIUpdateSequenceRun + 76
+    frame #44: 0x0000000185a07670 UIKitCore`schedulerStepScheduledMainSection + 168
+    frame #45: 0x0000000185a06aa8 UIKitCore`runloopSourceCallback + 80
+    frame #46: 0x000000018041b7c4 CoreFoundation`__CFRUNLOOP_IS_CALLING_OUT_TO_A_SOURCE0_PERFORM_FUNCTION__ + 24
+    frame #47: 0x000000018041b70c CoreFoundation`__CFRunLoopDoSource0 + 172
+    frame #48: 0x000000018041aecc CoreFoundation`__CFRunLoopDoSources0 + 324
+    frame #49: 0x00000001804153b4 CoreFoundation`__CFRunLoopRun + 788
+    frame #50: 0x0000000180414c24 CoreFoundation`CFRunLoopRunSpecific + 552
+    frame #51: 0x000000019020ab10 GraphicsServices`GSEventRunModal + 160
+    frame #52: 0x0000000185ad82fc UIKitCore`-[UIApplication _run] + 796
+    frame #53: 0x0000000185adc4f4 UIKitCore`UIApplicationMain + 124
+    frame #54: 0x000000010583a4d0 App.debug.dylib`main + 64
+    frame #55: 0x00000001043d9410 dyld_sim`start_sim + 20
+    frame #56: 0x0000000104110d54 dyld`start + 7184
+(lldb) detach
+Process 74070 detached
+(lldb) quit

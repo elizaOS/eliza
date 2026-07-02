@@ -500,6 +500,25 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     }
   }
 
+  /**
+   * Mobile embedded runtimes (iOS/Android local backend) are single-tenant:
+   * Bun runs as a thread inside the ONE app process and `ElizaBunRuntime`
+   * serializes engine starts, so a leftover `eliza-pglite.lock` is by
+   * definition stale — from a prior app launch, or a prior Bun thread in this
+   * same process. The `process.kill(pid, 0)` liveness heuristic below is
+   * unusable there: a prior launch's PID probes as EPERM inside the iOS
+   * sandbox (honored for LOCK_STALE_MS = 7 days → every relaunch bricks with
+   * "PGlite data dir is already in use", the #11030 post-engine-fix on-device
+   * failure), and a prior Bun thread's PID equals the CURRENT app PID
+   * (probes alive forever). Mirrors the identical mobile carve-out in the
+   * postmaster.pid reconciliation below.
+   */
+  private isSingleTenantMobileEmbedded(): boolean {
+    return (
+      process.env.ELIZA_IOS_LOCAL_BACKEND === "1" || process.env.ELIZA_ANDROID_LOCAL_BACKEND === "1"
+    );
+  }
+
   private acquireDataDirLockIfNeeded(): void {
     const dataDir = this.getDataDir();
     if (!this.isFileBackedDataDir(dataDir)) {
@@ -532,7 +551,12 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
         const lockInfo = this.getLockInfo(lockPath);
         const { pid } = lockInfo;
-        if (this.isLockActive(lockInfo)) {
+        if (this.isSingleTenantMobileEmbedded()) {
+          logger.info(
+            { src: "plugin:sql", dataDir, lockPath, pid },
+            "Mobile embedded mode: reclaiming leftover PGlite lock file"
+          );
+        } else if (this.isLockActive(lockInfo)) {
           throw this.createActiveLockError(
             dataDir,
             new Error(`PGlite lock file is held by running process ${pid}`)

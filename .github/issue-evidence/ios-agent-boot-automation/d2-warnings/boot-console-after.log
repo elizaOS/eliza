@@ -1,0 +1,171 @@
+2026-07-02 00:16:21.894 App[79663:62334959] [AgentWatchdog] bootstrapped (dormant until a local agent starts)
+2026-07-02 00:16:21.912 App[79663:62334959] DiskCookieStorage changing policy from 2 to 0, cookie file: file:///Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/D96E21D5-67CF-42ED-BF93-DC622C852972/Library/Cookies/ai.elizaos.app.binarycookies
+2026-07-02 00:16:21.958 App[79663:62334959] KeyboardPlugin: resize mode - body
+Loading network plugin
+2026-07-02 00:16:21.964 App[79663:62334981] [MobileSignalsPlugin] HealthKit background delivery skipped: binary lacks the com.apple.developer.healthkit entitlement (expected for simulator and non-store dev builds); foreground health monitoring is unaffected
+2026-07-02 00:16:21.967 App[79663:62334959] [ElizaStartupTrace] iOS startupTraceId=ios-1782965781900-a881991a-abcb-49f2-b8e7-20ead87c1eab
+⚡️  Loading app at capacitor://localhost...
+Reachable via WiFi
+2026-07-02 00:16:22.137 App[79663:62334959] void * _Nullable NSMapGet(NSMapTable * _Nonnull, const void * _Nullable): map table argument is NULL
+⚡️  WebView loaded
+⚡️  [info] - [renderer-build] 1b42c91d2f46 built 2026-07-02T04:13:50.580Z (variant=direct, target=ios)
+⚡️  [info] - [shell] window shell mode: main (search="")
+⚡️  To Native ->  Preferences get 81171068
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171069
+⚡️  To Native ->  Preferences get 81171070
+⚡️  To Native ->  Preferences get 81171071
+⚡️  To Native ->  Preferences get 81171072
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171073
+⚡️  To Native ->  Preferences get 81171074
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171075
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171076
+⚡️  To Native ->  Preferences get 81171077
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171078
+⚡️  To Native ->  Preferences get 81171079
+⚡️  To Native ->  Preferences get 81171080
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171081
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171082
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171083
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get ⚡️  TO JS 81171084
+⚡️  To Native ->  Preferences get 81171085
+{"value":null}
+⚡️  To Native ->  Preferences get 81171086
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":"{\"apiBase\":\"http:\/\/127.0.0.1:31337\"}"}
+⚡️  TO JS {"value":"{\"ok\":true,\"phase\":\"complete\",\"finishedAt\":\"2026-07-02T04:14:53.530Z\",\"apiBase\":\"http:\/\/127.0.0.1:31337\",\"homeVisible\":true,\"composerVisible\":true,\"onboardingHidden\":true,\"storage\":{\"eliza:first-run-complete\":null,\"eliz
+⚡️  To Native ->  Preferences get 81171087
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 81171088
+⚡️  To Native ->  Preferences set 81171089
+⚡️  TO JS {"value":null}
+⚡️  TO JS undefined
+⚡️  To Native ->  StatusBar setStyle 81171090
+⚡️  TO JS {}
+⚡️  To Native ->  Keyboard setScroll 81171091
+⚡️  TO JS undefined
+⚡️  To Native ->  Keyboard setResizeMode 81171092
+⚡️  TO JS undefined
+⚡️  To Native ->  Keyboard setScroll 81171093
+⚡️  TO JS undefined
+⚡️  To Native ->  Keyboard setAccessoryBarVisible 81171094
+2026-07-02 00:16:22.923 App[79663:62334992] Accessory bar visible change 1
+⚡️  TO JS undefined
+⚡️  To Native ->  Keyboard addListener 81171095
+⚡️  To Native ->  Keyboard addListener 81171096
+⚡️  To Native ->  App addListener 81171097
+⚡️  To Native ->  App addListener 81171098
+⚡️  To Native ->  App addListener 81171099
+⚡️  To Native ->  App getLaunchUrl 81171100
+⚡️  To Native ->  Agent getStatus 81171101
+⚡️  TO JS undefined
+⚡️  TO JS {"startedAt":1782965782935.8831,"state":"running","port":null,"agentName":"Eliza","error":null}
+⚡️  To Native ->  Network addListener 81171102
+⚡️  To Native ->  CapacitorBackgroundRunner dispatchEvent 81171103
+⚡️  TO JS {"configured":true,"event":"configure"}
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171104
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:25.182 App[79663:62334959] [AgentWatchdog] armed (discovered running local agent) — watching local agent health
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171105
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:25.183 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  TalkMode checkPermissions 81171106
+⚡️  To Native ->  Swabble addListener 81171107
+⚡️  TO JS {"microphone":"prompt","speechRecognition":"prompt"}
+⚡️  To Native ->  Keyboard addListener 81171108
+⚡️  To Native ->  Keyboard addListener 81171109
+⚡️  To Native ->  Preferences set 81171110
+⚡️  TO JS undefined
+⚡️  To Native ->  Preferences remove 81171111
+⚡️  TO JS undefined
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171112
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:30.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171113
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:35.183 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171114
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:40.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171115
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:45.190 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171116
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:50.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171117
+⚡️  TO JS {"ready":false}
+2026-07-02 00:16:55.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171118
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:00.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171119
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:05.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171120
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:10.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171121
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:15.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171122
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:20.184 App[79663:62334959] [AgentWatchdog] local agent not ready yet (within 60s cold-boot grace) — no strike
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171123
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:25.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (1/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171124
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:30.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (2/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171125
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:35.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (3/3 consecutive)
+2026-07-02 00:17:35.184 App[79663:62334959] [AgentWatchdog] requesting local agent restart in 1s (attempt 1/5)
+2026-07-02 00:17:36.232 App[79663:62334959] [AgentWatchdog] restart request emitted (attempt 1)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171126
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:40.185 App[79663:62334959] [AgentWatchdog] local agent health probe failed (1/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171127
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:45.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (2/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171128
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:50.185 App[79663:62334959] [AgentWatchdog] local agent health probe failed (3/3 consecutive)
+2026-07-02 00:17:50.185 App[79663:62334959] [AgentWatchdog] requesting local agent restart in 2s (attempt 2/5)
+2026-07-02 00:17:52.285 App[79663:62334959] [AgentWatchdog] restart request emitted (attempt 2)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171129
+⚡️  TO JS {"ready":false}
+2026-07-02 00:17:55.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (1/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171130
+⚡️  TO JS {"ready":false}
+2026-07-02 00:18:00.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (2/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171131
+⚡️  TO JS {"ready":false}
+2026-07-02 00:18:05.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (3/3 consecutive)
+2026-07-02 00:18:05.184 App[79663:62334959] [AgentWatchdog] requesting local agent restart in 4s (attempt 3/5)
+2026-07-02 00:18:09.384 App[79663:62334959] [AgentWatchdog] restart request emitted (attempt 3)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171132
+⚡️  TO JS {"ready":false}
+2026-07-02 00:18:10.185 App[79663:62334959] [AgentWatchdog] local agent health probe failed (1/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171133
+⚡️  TO JS {"ready":false}
+2026-07-02 00:18:15.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (2/3 consecutive)
+⚡️  To Native ->  ElizaBunRuntime getStatus 81171134
+⚡️  TO JS {"ready":false}
+2026-07-02 00:18:20.184 App[79663:62334959] [AgentWatchdog] local agent health probe failed (3/3 consecutive)
+2026-07-02 00:18:20.184 App[79663:62334959] [AgentWatchdog] requesting local agent restart in 8s (attempt 4/5)
+ai.elizaos.app: 79663

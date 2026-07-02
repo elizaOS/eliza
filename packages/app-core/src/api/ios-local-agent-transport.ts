@@ -3,6 +3,16 @@ import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
 } from "@elizaos/ui/api/ios-local-agent-kernel";
+// Boot-trace + boot-progress helpers come from the @elizaos/ui transport copy
+// so BOTH copies share ONE module-level progress state: the startup poll
+// (packages/ui/src/state/startup-phase-poll.ts) reads that state for its
+// progress-aware failure budget and must see engine phases/heartbeats no
+// matter which copy serves the request (#11030).
+import {
+  appendIosBootTrace,
+  recordIosNativeAgentBootHeartbeat,
+  recordIosNativeAgentBootPhase,
+} from "@elizaos/ui/api/ios-local-agent-transport";
 import { createIttpAgentTransport } from "@elizaos/ui/api/ittp-agent-transport";
 import type { AgentRequestTransport } from "@elizaos/ui/api/transport";
 import { isStoreBuild } from "@elizaos/ui/build-variant";
@@ -499,11 +509,24 @@ function iosFullBunEnv(): Record<string, string> {
     : IOS_FULL_BUN_ENV;
 }
 
+let tracedEngineAcquire = false;
+
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   const strict = shouldRequireFullBunRuntime();
+  const pluginAvailable = isFullBunRuntimePluginAvailable();
+  if (!tracedEngineAcquire && isNativeIos()) {
+    tracedEngineAcquire = true;
+    appendIosBootTrace("engine-acquire", {
+      copy: "app-core",
+      strict,
+      builtIn: isFullBunRuntimeBuiltIn(),
+      pluginAvailable,
+      runtimeMode: readRuntimeMode(),
+    });
+  }
   if (!isNativeIos() && !strict) return null;
   if (!strict && !isFullBunRuntimeBuiltIn()) return null;
-  if (!isFullBunRuntimePluginAvailable()) {
+  if (!pluginAvailable) {
     if (strict) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
     }
@@ -514,11 +537,22 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   }
   fullBunRuntime ??= (async () => {
     try {
-      const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
+      // importFullBunRuntimePlugin resolves to a plain wrapped object (never
+      // the raw Capacitor proxy — awaiting the proxy deadlocks; see the
+      // comment inside it).
+      const runtime = await importFullBunRuntimePlugin();
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
+        recordIosNativeAgentBootPhase("ready");
+        appendIosBootTrace("engine-adopted-running", {
+          copy: "app-core",
+          engine: currentStatus.engine,
+        });
         return runtime;
       }
+      recordIosNativeAgentBootPhase("starting");
+      appendIosBootTrace("engine-start-requested", { copy: "app-core" });
+      const startRequestedAt = Date.now();
       const started = await runtime.start({
         engine: "bun",
         argv: IOS_FULL_BUN_ARGV,
@@ -535,8 +569,16 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
           }`,
         );
       }
+      recordIosNativeAgentBootPhase("ready");
+      appendIosBootTrace("engine-start-ok", {
+        copy: "app-core",
+        durationMs: Date.now() - startRequestedAt,
+        engine: status.engine,
+      });
       return runtime;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      recordIosNativeAgentBootPhase("error", message);
       if (strict) {
         throw fullBunStartupError("startup failed", error);
       }
@@ -565,6 +607,7 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
 }
 
 async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  appendIosBootTrace("engine-import-start", { copy: "app-core" });
   let mod: Partial<FullBunRuntimeModule> | null = null;
   try {
     mod = (await import(
@@ -573,9 +616,22 @@ async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
   } catch {
     mod = null;
   }
-  return (
+  appendIosBootTrace("engine-import-done", {
+    copy: "app-core",
+    viaModule: Boolean(mod?.ElizaBunRuntime),
+  });
+  // CRITICAL (#11030 device boot hang): never return the raw Capacitor plugin
+  // proxy across an `await` boundary. registerPlugin's Proxy fabricates a
+  // native-method wrapper for ANY property — including `then` — so promise
+  // resolution treats the proxy as a thenable whose `then(resolve, reject)`
+  // is a Capacitor method wrapper that NEVER invokes its callbacks. Every
+  // caller of this async function then awaits forever, the engine never
+  // starts, and the phone dead-ends on the startup-timeout card. Wrapping
+  // into a plain bound-method object BEFORE returning makes the resolved
+  // value thenable-free and safe to await.
+  return wrapFullBunRuntime(
     mod?.ElizaBunRuntime ??
-    registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime")
+      registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime"),
   );
 }
 
@@ -584,17 +640,25 @@ async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
   restartRequestInFlight = (async () => {
     if (!isNativeIos()) return;
     if (isPureRemoteRuntimeMode(readRuntimeMode())) return;
+    appendIosBootTrace("watchdog-restart-handling", {
+      pluginAvailable: isFullBunRuntimePluginAvailable(),
+    });
     if (!isFullBunRuntimePluginAvailable()) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
     }
 
     const runtime = isPrimedFullBunRuntime(fullBunRuntime)
       ? fullBunRuntime.runtime
-      : wrapFullBunRuntime(await importFullBunRuntimePlugin());
+      : await importFullBunRuntimePlugin();
     if (!runtime) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
     }
 
+    recordIosNativeAgentBootPhase("starting");
+    appendIosBootTrace("engine-start-requested", {
+      copy: "app-core",
+      source: "watchdog-restart",
+    });
     const started = await runtime.start({
       engine: "bun",
       argv: IOS_FULL_BUN_ARGV,
@@ -611,8 +675,22 @@ async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
         }`,
       );
     }
+    recordIosNativeAgentBootPhase("ready");
+    appendIosBootTrace("engine-start-ok", {
+      copy: "app-core",
+      source: "watchdog-restart",
+      engine: status.engine,
+    });
     fullBunRuntime = { kind: "primed", runtime };
-  })().finally(() => {
+  })().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    recordIosNativeAgentBootPhase("error", message);
+    appendIosBootTrace("watchdog-restart-failed", {
+      message: message.slice(0, 300),
+    });
+    throw error;
+  });
+  restartRequestInFlight = restartRequestInFlight.finally(() => {
     restartRequestInFlight = null;
   });
   return restartRequestInFlight;
@@ -660,6 +738,11 @@ async function tryFullBunNativeRequest(
   if (!result) {
     throw new Error("Full Bun iOS bridge returned an invalid HTTP response");
   }
+  // Any structured response over the bridge — including a 503 from a mid-boot
+  // agent kernel — proves the in-process runtime is alive. The startup poll
+  // uses this heartbeat to keep boot-time 503s from burning its
+  // consecutive-failure budget.
+  recordIosNativeAgentBootHeartbeat();
   return result;
 }
 
@@ -721,9 +804,19 @@ async function dispatchIosLocalAgentRequest(
   );
 }
 
+let tracedNativeRequests = 0;
+
 export async function handleIosLocalAgentNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
 ): Promise<IosLocalAgentNativeRequestResult> {
+  if (tracedNativeRequests < 3) {
+    tracedNativeRequests += 1;
+    appendIosBootTrace("native-request", {
+      copy: "app-core",
+      n: tracedNativeRequests,
+      path: options.path?.slice(0, 120) ?? null,
+    });
+  }
   const path = options.path?.trim();
   if (!path || !isSafeLocalPath(path)) {
     throw new Error(

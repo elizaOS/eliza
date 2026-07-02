@@ -453,6 +453,19 @@ final class AgentWatchdog {
             self.probing = false
             switch result {
             case .success(let value):
+                if let dict = value as? [String: Any] {
+                    ElizaStartupTrace.append(
+                        source: "watchdog",
+                        stage: "probe",
+                        detail: [
+                            "mode": dict["mode"] ?? NSNull(),
+                            "present": dict["present"] ?? false,
+                            "local": dict["local"] ?? false,
+                            "ready": dict["ready"] ?? false,
+                            "engine": dict["engine"] ?? NSNull(),
+                        ]
+                    )
+                }
                 completion(self.parseReading(value))
             case .failure(let error):
                 self.log("health probe error: \(error.localizedDescription)")
@@ -543,5 +556,12 @@ final class AgentWatchdog {
 
     private func log(_ message: String) {
         NSLog("%@", "[AgentWatchdog] \(message)")
+        // Mirror every watchdog state transition into the persistent boot
+        // trace so unattended launches are diagnosable without a console.
+        ElizaStartupTrace.append(
+            source: "watchdog",
+            stage: "state",
+            detail: ["message": message]
+        )
     }
 }
