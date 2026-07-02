@@ -17,6 +17,9 @@ describe("fetchWithSsrfGuard when the pinned transport cannot load (Node runtime
 
 	it("keeps failing closed on subsequent guarded fetches (no poisoned success)", async () => {
 		await expect(
+			fetchWithSsrfGuard({ url: "https://example.org/first" }),
+		).rejects.toThrow(/Refusing to fall back to unpinned fetch/i);
+		await expect(
 			fetchWithSsrfGuard({ url: "https://example.org/other" }),
 		).rejects.toThrow(/Refusing to fall back to unpinned fetch/i);
 	});

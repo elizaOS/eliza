@@ -114,9 +114,9 @@ async function loadNodePinnedFetchDefaults(): Promise<NodePinnedFetchDefaults | 
 	try {
 		return await nodePinnedFetchDefaults;
 	} catch (error) {
-		// Do not memoize the failure as a permanent null — allow a retry on the
-		// next guarded fetch in case the failure was transient.
-		nodePinnedFetchDefaults = undefined;
+		// Keep the rejected import memoized. In a Node-like runtime the pinned
+		// transport is the DNS-rebinding defense; once it is known unavailable,
+		// guarded fetches must keep failing closed for this process.
 		logger.error(
 			{ error },
 			"[FetchGuard] Failed to load the pinned DNS transport on a Node-like runtime; failing closed",
