@@ -97,6 +97,8 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_LOG_NAME = "agent.log";
     private static final String AGENT_RESTART_DIAGNOSTICS_NAME = "agent-restart-diagnostics.jsonl";
     private static final long AGENT_RESTART_DIAGNOSTICS_MAX_BYTES = 256L * 1024L;
+    /** Serializes rotate-check + append so concurrent events can't interleave JSONL lines. */
+    private static final Object DIAGNOSTICS_LOCK = new Object();
     private static final String EXIT_INFO_PREFS = "eliza-agent-exit-info";
     private static final String EXIT_INFO_LAST_TIMESTAMP = "lastTimestamp";
 
@@ -2317,6 +2319,7 @@ public class ElizaAgentService extends Service {
                 return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
             if (detached && isLoopbackAgentListening()) {
+                appendDiagnosticEvent("detached-agent-probe-busy-port-open", null);
                 Log.i(TAG, "Detached agent HTTP probe failed but loopback port is open — likely mid-decode. No strike.");
                 return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
@@ -2414,11 +2417,6 @@ public class ElizaAgentService extends Service {
                 return;
             }
             File log = new File(root, AGENT_RESTART_DIAGNOSTICS_NAME);
-            if (log.isFile() && log.length() > AGENT_RESTART_DIAGNOSTICS_MAX_BYTES) {
-                if (!log.delete()) {
-                    Log.w(TAG, "Could not rotate agent diagnostics log: " + log);
-                }
-            }
             JSONObject json = new JSONObject()
                 .put("ts", System.currentTimeMillis())
                 .put("event", event)
@@ -2432,9 +2430,16 @@ public class ElizaAgentService extends Service {
                 }
                 json.put("details", detailJson);
             }
-            try (FileOutputStream out = new FileOutputStream(log, true)) {
-                out.write(json.toString().getBytes(StandardCharsets.UTF_8));
-                out.write('\n');
+            byte[] line = (json.toString() + "\n").getBytes(StandardCharsets.UTF_8);
+            synchronized (DIAGNOSTICS_LOCK) {
+                if (log.isFile() && log.length() > AGENT_RESTART_DIAGNOSTICS_MAX_BYTES) {
+                    if (!log.delete()) {
+                        Log.w(TAG, "Could not rotate agent diagnostics log: " + log);
+                    }
+                }
+                try (FileOutputStream out = new FileOutputStream(log, true)) {
+                    out.write(line);
+                }
             }
         } catch (IOException | JSONException error) {
             Log.w(TAG, "Failed to write agent restart diagnostic event " + event, error);
