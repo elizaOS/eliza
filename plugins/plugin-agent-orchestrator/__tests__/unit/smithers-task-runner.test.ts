@@ -15,6 +15,7 @@ const TIMEOUT = 60_000;
 interface FakeOpts {
   doneOnTurn?: number; // per-agent turn at which runTurn reports done
   approved?: boolean;
+  malformedApproval?: boolean; // requestApproval returns a result missing `approved`
   throwOnTurnCall?: number; // throw a fatal error on the Nth runTurn call
   abort?: { controller: AbortController; onCall: number }; // abort + hang on the Nth call
 }
@@ -50,6 +51,11 @@ class FakeExecutor implements TaskStepExecutor {
 
   async requestApproval(_ctx: TaskStepContext): Promise<TaskApprovalResult> {
     this.approvalCalls += 1;
+    if (this.opts.malformedApproval) {
+      // Simulate a broken handler that omits `approved` at the untyped
+      // subprocess boundary.
+      return {} as unknown as TaskApprovalResult;
+    }
     return { approved: this.opts.approved !== false };
   }
 
@@ -136,6 +142,24 @@ describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
       expect(result.approved).toBe(false);
       expect(fake.submitCalls).toBe(0);
       expect(result.submit).toBeUndefined();
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "fails closed (skips submit) when a present approval handler returns a malformed result (#11028)",
+    async () => {
+      // A handler that omits `approved` must NOT be treated as approval — a
+      // broken approval gate should hold the submit, not silently release it.
+      const fake = new FakeExecutor({ doneOnTurn: 1, malformedApproval: true });
+      const result = await runTaskWithSmithers(
+        spec({ submit: true, approvalBeforeSubmit: true }),
+        fake,
+      );
+      expect(fake.approvalCalls).toBe(1);
+      expect(result.approved).toBe(false);
+      expect(fake.submitCalls).toBe(0);
+      expect(result.status).toBe("denied");
     },
     TIMEOUT,
   );
