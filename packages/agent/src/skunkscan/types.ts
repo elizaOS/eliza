@@ -12,11 +12,20 @@ export type WalletBalance = {
   rawAmount?: number;
 };
 
+export type WalletRecentTransaction = {
+  signature: string;
+  slot?: number;
+  blockTime?: number | null;
+  status: "success" | "failed" | "unknown";
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
   status: WalletInvestigationStatus;
   balance?: WalletBalance;
-  summary: string;
-  warnings: string[];
+recentTransactions?: WalletRecentTransaction[];
+transactionCountSample?: number;
+summary: string;
+warnings: string[];
 };
