@@ -178,10 +178,10 @@ export async function touchLongPress(
   }
 }
 
-// NOTE: no shared `touchPinch` here on purpose. The one pinch consumer
-// (packages/app/test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts)
-// deliberately runs in a NON-touch, desktop-layout context and must enable
+// NOTE: no `touchPinch`/`touchPan` here on purpose. The pinch/pan consumers
+// (the ui-smoke specs, e.g. apps-personal-assistant-decomposed-interactions)
+// deliberately run in a NON-touch, desktop-layout context and must enable
 // touch at the CDP level per-gesture (`Emulation.setTouchEmulationEnabled`)
 // with scale-based finger geometry — semantics these hasTouch-context helpers
-// don't share. A previous shared `touchPinch` export had zero consumers and
-// was removed rather than growing a second mode for one caller.
+// don't share. That contract has its own shared module:
+// packages/app/test/ui-smoke/helpers/real-touch-gestures.ts (#10722 item 8).
