@@ -59,6 +59,7 @@ const appMock = vi.hoisted(() => ({
     conversations: [] as Array<{ id: string }>,
     setTab: vi.fn(),
     handleChatStop: vi.fn(),
+    setActionNotice: vi.fn(),
     uiLanguage: "en",
     elizaCloudVoiceProxyAvailable: false,
   },

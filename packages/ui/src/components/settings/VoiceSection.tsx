@@ -133,9 +133,13 @@ export interface VoiceSectionProps {
    * we render an empty-state banner until model downloads are available.
    */
   modelsPanel?: React.ReactNode;
-  /** Whether the user has at least one wake-word configured. */
+  /**
+   * Whether the "hey <name>" wake-word listening loop is enabled. Wired by
+   * VoiceSectionMount to the persisted device-local pref the shell's
+   * useWakeListenWindow reads; defaults off only when no caller supplies it.
+   */
   wakeWordEnabled?: boolean;
-  /** Toggle wake-word listening (caller wires Swabble). */
+  /** Toggle wake-word listening on/off (persisted + read by the shell). */
   onWakeWordToggle?: (next: boolean) => void;
   className?: string;
 }
