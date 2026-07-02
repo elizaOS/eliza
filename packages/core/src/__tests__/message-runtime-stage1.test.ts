@@ -844,7 +844,45 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("- calendar [label=Calendar");
 		expect(systemContent).toContain("role>=ADMIN");
 		expect(systemContent).not.toContain(longDescription);
-		expect(systemContent.length).toBeLessThan(3_500);
+		// Compactness ceiling for the DM Stage-1 prompt. Any leaked context
+		// description (~2,500+ chars each) blows far past this; deliberate
+		// template rules only nudge it, so keep the ceiling tight.
+		expect(systemContent.length).toBeLessThan(3_800);
+	});
+
+	it("direct-channel prompt grounds capability denials in available_contexts and requires fresh tool retries", async () => {
+		// Mirror of the #11215 wording-regression test on the shared
+		// messageHandlerTemplate: Stage 1 for DM/API/SELF renders the compact
+		// DIRECT_MESSAGE_HANDLER_TEMPLATE instead, so the dashboard chat and
+		// 1:1 DMs — the primary surface where users hit "I don't have memory
+		// between sessions" / "I can't schedule" — need their own copies of
+		// the capability-denial and tool-retry rules.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi.",
+			}),
+		]);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const systemContent = params.messages?.[0]?.content ?? "";
+		expect(systemContent).toContain("task: Plan this direct message.");
+		expect(systemContent).toContain(
+			"Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.",
+		);
+		expect(systemContent).toContain(
+			"A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.",
+		);
 	});
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {
