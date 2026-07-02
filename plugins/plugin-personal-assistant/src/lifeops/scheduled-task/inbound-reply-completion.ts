@@ -82,7 +82,12 @@ export async function completeFiredTasksOnOwnerReply(
         result.completed.push(task.taskId);
         await resolvePendingPromptsStore(runtime).forgetTask(task.taskId);
         logger.info(
-          { src: LOG_SRC, agentId: runtime.agentId, taskId: task.taskId, roomId },
+          {
+            src: LOG_SRC,
+            agentId: runtime.agentId,
+            taskId: task.taskId,
+            roomId,
+          },
           `[InboundReplyCompletion] owner reply completed fired task ${task.taskId}`,
         );
       }

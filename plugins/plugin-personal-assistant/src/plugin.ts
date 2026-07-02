@@ -7,6 +7,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  type MessagePayload,
   messagingTriageActions,
   type Plugin,
   promoteSubactionsToActions,
@@ -62,7 +63,6 @@ import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduledTaskAction } from "./actions/scheduled-task.js";
 import { voiceCallAction } from "./actions/voice-call.js";
 import { workThreadAction } from "./actions/work-thread.js";
-import { registerDefaultPackCatalog } from "./default-packs/spine-registration.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -71,6 +71,7 @@ import {
   PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
+import { registerDefaultPackCatalog } from "./default-packs/spine-registration.js";
 import {
   ensureFollowupTrackerTask,
   FOLLOWUP_TRACKER_TASK_NAME,
@@ -132,7 +133,11 @@ import {
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
-import { registerLifeOpsScheduledTaskRunnerDeps } from "./lifeops/scheduled-task/runtime-wiring.js";
+import { completeFiredTasksOnOwnerReply } from "./lifeops/scheduled-task/inbound-reply-completion.js";
+import {
+  installLifeOpsScheduledTaskEventBridge,
+  registerLifeOpsScheduledTaskRunnerDeps,
+} from "./lifeops/scheduled-task/runtime-wiring.js";
 import { getScheduledTaskRunner as getProductionScheduledTaskRunner } from "./lifeops/scheduled-task/service.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
@@ -817,6 +822,28 @@ const rawPersonalAssistantPlugin: Plugin = {
     // the merge engine, then round-trip the binding to the voice-profile
     // owner. See lifeops/entities/voice-observer-bridge.ts.
     [EventType.VOICE_TURN_OBSERVED]: [handleVoiceTurnObserved],
+    // Deterministic completion for fired scheduled tasks awaiting an owner
+    // reply (user_replied_within et al.) — no LLM verb required. See
+    // lifeops/scheduled-task/inbound-reply-completion.ts. Boundary catch:
+    // an inbound chat message must never fail because the scheduled-task
+    // store or runner host is broken.
+    [EventType.MESSAGE_RECEIVED]: [
+      async (payload: MessagePayload): Promise<void> => {
+        try {
+          await completeFiredTasksOnOwnerReply(
+            payload.runtime,
+            payload.message,
+          );
+        } catch (error) {
+          logger.error(
+            { src: "lifeops:inbound-reply-completion", error },
+            `[lifeops] inbound-reply completion pass failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      },
+    ],
   },
   init: async (
     _pluginConfig: Record<string, unknown>,
@@ -911,6 +938,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         eventKindRegistry?: typeof eventKindRegistry;
       }
     ).eventKindRegistry = eventKindRegistry;
+    // Bridge runtime.emitEvent onto {kind:"event"} scheduled-task fires for
+    // every registered event kind. Must run after registerEventKindRegistry;
+    // the runner resolves lazily per event through the cached service host.
+    installLifeOpsScheduledTaskEventBridge(runtime);
 
     const familyRegistry = createFamilyRegistry();
     registerBuiltinTelemetryFamilies(familyRegistry);
