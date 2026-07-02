@@ -350,6 +350,7 @@ export class InMemoryTaskStore {
     return this.enqueue(async () => {
       const doc = newTaskDocument(input);
       this.docs.set(doc.task.id, doc);
+      this.noteMutated(doc.task.id);
       await this.afterWrite();
       return cloneDocument(doc);
     });
@@ -390,6 +391,7 @@ export class InMemoryTaskStore {
         updatedAt: nowIso(),
         lastActivityAt: nextPatch.lastActivityAt ?? Date.now(),
       };
+      this.noteMutated(id);
       await this.afterWrite();
       return structuredClone(doc.task);
     });
@@ -398,8 +400,17 @@ export class InMemoryTaskStore {
   async deleteTask(id: string): Promise<boolean> {
     return this.enqueue(async () => {
       const existed = this.docs.delete(id);
-      if (existed) await this.afterWrite();
-      return existed;
+      if (!existed) return false;
+      // Record the delete inside the queued op, immediately before its own
+      // afterWrite(). Recording it earlier (outside the queue) let an
+      // already-queued write's afterWrite consume and clear the tombstone while
+      // the doc was still present, after which the delete's own persist
+      // re-seeded the doc from disk — resurrecting a task whose deleteTask had
+      // returned true. It also left a lingering tombstone when the delete
+      // turned out to be a no-op.
+      this.noteDeleted(id);
+      await this.afterWrite();
+      return true;
     });
   }
 
@@ -414,6 +425,7 @@ export class InMemoryTaskStore {
       else doc.sessions.push(session);
       doc.task.lastActivityAt = Date.now();
       doc.task.updatedAt = nowIso();
+      this.noteMutated(session.taskId);
       await this.afterWrite();
     });
   }
@@ -433,6 +445,7 @@ export class InMemoryTaskStore {
         });
         doc.task.lastActivityAt = Date.now();
         doc.task.updatedAt = nowIso();
+        this.noteMutated(doc.task.id);
         await this.afterWrite();
         return;
       }
@@ -504,6 +517,7 @@ export class InMemoryTaskStore {
       mutate(doc);
       doc.task.lastActivityAt = Date.now();
       doc.task.updatedAt = nowIso();
+      this.noteMutated(taskId);
       await this.afterWrite();
     });
   }
@@ -511,6 +525,17 @@ export class InMemoryTaskStore {
   protected async afterWrite(): Promise<void> {
     // Durable subclasses persist here.
   }
+
+  /** Called inside the queued op for every doc this store mutated, right
+   * before afterWrite(). The file backend tracks these ids so its persist
+   * only overlays docs this process actually changed. No-op here. */
+  protected noteMutated(_id: string): void {}
+
+  /** Called inside the queued op when a doc was actually removed, right
+   * before afterWrite(). The file backend records a tombstone so its persist
+   * does not resurrect the doc from a concurrent process's on-disk copy.
+   * No-op here. */
+  protected noteDeleted(_id: string): void {}
 
   /** Replace the in-memory doc set from a durable source. Public so the SQL
    * backend can seed this store as a single-document mutation engine. */
@@ -531,11 +556,17 @@ function defaultStateFile(runtime?: TaskStoreRuntime): string {
 export class FileTaskStore extends InMemoryTaskStore {
   private readonly lockFile: string;
   private loaded = false;
-  // Ids deleted by this process since the last persist. afterWrite() re-reads the
-  // on-disk document set under the lock and merges it with this process's
-  // in-memory docs; tombstones ensure a task this process deleted is not
-  // resurrected from a concurrent process's copy of the file.
+  // Ids this process deleted but has not yet durably persisted. afterWrite()
+  // re-reads the on-disk document set under the lock; tombstones ensure a task
+  // this process deleted is not resurrected from a concurrent process's copy
+  // of the file. Populated via the noteDeleted() hook inside the queued delete
+  // op so an earlier-queued write can never consume a tombstone prematurely.
   private readonly tombstones = new Set<string>();
+  // Ids this process mutated but has not yet durably persisted. afterWrite()
+  // overlays ONLY these docs onto the on-disk set, so tasks this process never
+  // touched keep a concurrent process's (possibly newer) on-disk version
+  // instead of being reverted to this process's stale in-memory copy.
+  private readonly dirty = new Set<string>();
 
   constructor(
     private readonly filePath: string,
@@ -597,9 +628,6 @@ export class FileTaskStore extends InMemoryTaskStore {
   }
   override async deleteTask(id: string) {
     await this.ensureLoaded();
-    // Record the tombstone BEFORE the write so afterWrite()'s disk merge removes
-    // it even if a concurrent process's on-disk copy still carries the task.
-    this.tombstones.add(id);
     return super.deleteTask(id);
   }
   override async addSession(session: OrchestratorTaskSession) {
@@ -642,19 +670,26 @@ export class FileTaskStore extends InMemoryTaskStore {
     return super.addPlanRevision(revision);
   }
 
+  protected override noteMutated(id: string): void {
+    this.dirty.add(id);
+  }
+
+  protected override noteDeleted(id: string): void {
+    this.tombstones.add(id);
+  }
+
   protected override async afterWrite(): Promise<void> {
     await this.withLock(async () => {
       await mkdir(dirname(this.filePath), { recursive: true });
-      // Read-merge-write under the lock so a concurrent process's inserts/updates
-      // to OTHER tasks survive this process's whole-document write. Merge order:
-      //   1. seed from the current on-disk set (picks up concurrent inserts),
-      //   2. drop this process's deletes (tombstones),
-      //   3. overlay this process's in-memory docs (its inserts/updates win; a
-      //      re-created id is present in this.docs so it is restored after the
-      //      tombstone delete).
-      // Residual: two processes updating DIFFERENT fields of the SAME task still
-      // resolves last-writer-wins at the document level (matching the SQL
-      // backend's single-row semantics); cross-task lost updates are eliminated.
+      // Read-merge-write under the lock so a concurrent process's writes to
+      // OTHER tasks survive this process's write. Merge order:
+      //   1. seed from the current on-disk set (concurrent inserts/updates),
+      //   2. drop the ids this process deleted (tombstones),
+      //   3. overlay only the docs this process actually mutated (dirty ids) —
+      //      untouched tasks keep their on-disk versions.
+      // Residual: two processes mutating the SAME task still resolve
+      // last-writer-wins at the document level, matching the SQL backend's
+      // single-row upsert semantics.
       const merged = new Map<string, OrchestratorTaskDocument>();
       try {
         const contents = await readFile(this.filePath, "utf8");
@@ -671,16 +706,22 @@ export class FileTaskStore extends InMemoryTaskStore {
         if (code !== "ENOENT") throw error;
       }
       for (const id of this.tombstones) merged.delete(id);
-      for (const [id, doc] of this.docs) merged.set(id, doc);
-      // Adopt the merged view so subsequent reads in this process observe the
-      // concurrent inserts too, then clear the applied tombstones.
+      for (const id of this.dirty) {
+        const doc = this.docs.get(id);
+        if (doc) merged.set(id, doc);
+      }
+      // Adopt the merged view so subsequent reads in this process observe
+      // concurrent inserts/updates/deletes too.
       this.docs.clear();
       for (const [id, doc] of merged) this.docs.set(id, doc);
-      this.tombstones.clear();
       const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
       const payload = JSON.stringify([...merged.values()], null, 2);
       await writeFile(tempPath, `${payload}\n`, "utf8");
       await rename(tempPath, this.filePath);
+      // Forget applied tombstones/dirty ids only after the rename lands; a
+      // failed write leaves them pending so the next persist applies them.
+      this.tombstones.clear();
+      this.dirty.clear();
     });
   }
 
