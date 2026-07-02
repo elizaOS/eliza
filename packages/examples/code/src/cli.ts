@@ -12,6 +12,7 @@
  *   eliza-code --stream "message"        Stream response as it's generated
  */
 
+import { readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as readline from "node:readline";
 import type { AgentRuntime } from "@elizaos/core";
@@ -54,7 +55,25 @@ interface CLIResult {
 // Constants
 // ============================================================================
 
-const VERSION = "1.0.0";
+/**
+ * Read the real version from package.json rather than a hardcoded literal
+ * (which drifted to "1.0.0" while the package is on 2.0.x). `../package.json`
+ * resolves correctly whether running from source (`src/cli.ts`) or the built
+ * bundle (`dist/index.js`) — both are one level under the package root.
+ */
+function readVersion(): string {
+  try {
+    const pkgUrl = new URL("../package.json", import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgUrl, "utf8")) as {
+      version?: string;
+    };
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+const VERSION = readVersion();
 
 const HELP_TEXT = `
 Eliza Code - Async Coding Agent CLI
