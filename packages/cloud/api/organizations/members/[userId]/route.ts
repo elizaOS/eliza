@@ -135,7 +135,9 @@ app.delete("/", async (c) => {
       );
     }
 
-    await usersService.delete(userId);
+    // Detach, don't delete (#11332): removing a member must not destroy their
+    // account. They are moved to a fresh personal org where they are owner.
+    await usersService.detachFromOrganization(userId);
     return c.json({ success: true, message: "Member removed successfully" });
   } catch (error) {
     logger.error("Error removing member:", error);
