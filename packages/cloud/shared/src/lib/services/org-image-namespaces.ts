@@ -88,13 +88,10 @@ export async function getOrgImageNamespaces(
   try {
     return normalizeOrgImageNamespaces(await readSettings(organizationId));
   } catch (error) {
-    logger.warn(
-      "[OrgImageNamespaces] settings read failed; denying org extension",
-      {
-        organizationId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
+    logger.warn("[OrgImageNamespaces] settings read failed; denying org extension", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }

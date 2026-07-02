@@ -15,6 +15,20 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
     }
   });
 
+  it("denies broad GitHub host tokens but allows dedicated registry credentials", () => {
+    for (const key of ["GITHUB_TOKEN", "GH_TOKEN", "CR_PAT"]) {
+      expect(isDeniedSubAgentEnvKey(key)).toBe(true);
+    }
+    for (const key of [
+      "GHCR_USERNAME",
+      "GHCR_TOKEN",
+      "ELIZA_APP_IMAGE_REGISTRY_USERNAME",
+      "ELIZA_APP_IMAGE_REGISTRY_TOKEN",
+    ]) {
+      expect(isDeniedSubAgentEnvKey(key)).toBe(false);
+    }
+  });
+
   it("allows ordinary keys a caller may legitimately forward via customCredentials", () => {
     for (const key of [
       "OPENAI_API_KEY",

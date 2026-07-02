@@ -81,6 +81,9 @@ describe("shouldForwardEnv", () => {
     expect(isEnvForwardableToSubAgent("GHCR_TOKEN")).toBe(true);
     expect(shouldForwardEnv("GH_TOKEN")).toBe(false);
     expect(shouldForwardEnv("CR_PAT")).toBe(false);
+    expect(isEnvForwardableToSubAgent("GITHUB_TOKEN")).toBe(false);
+    expect(isEnvForwardableToSubAgent("GH_TOKEN")).toBe(false);
+    expect(isEnvForwardableToSubAgent("CR_PAT")).toBe(false);
   });
 });
 

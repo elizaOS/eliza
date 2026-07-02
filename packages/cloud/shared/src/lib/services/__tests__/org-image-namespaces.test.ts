@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isCodingContainerImageAllowed } from "../coding-containers";
-import {
-  getOrgImageNamespaces,
-  normalizeOrgImageNamespaces,
-} from "../org-image-namespaces";
+import { getOrgImageNamespaces, normalizeOrgImageNamespaces } from "../org-image-namespaces";
 
 // The per-org extension is a SECOND chance after the platform-wide env
 // allowlist denies — so its normalization is itself a security gate: any entry
@@ -11,12 +8,10 @@ import {
 // single-namespace registry glob must be dropped (fail-closed), never widened.
 describe("normalizeOrgImageNamespaces (shape gate)", () => {
   test("accepts single-namespace registry globs", () => {
-    expect(
-      normalizeOrgImageNamespaces([
-        "ghcr.io/nubscarson/*",
-        "docker.io/some-org/*",
-      ]),
-    ).toEqual(["ghcr.io/nubscarson/*", "docker.io/some-org/*"]);
+    expect(normalizeOrgImageNamespaces(["ghcr.io/nubscarson/*", "docker.io/some-org/*"])).toEqual([
+      "ghcr.io/nubscarson/*",
+      "docker.io/some-org/*",
+    ]);
   });
 
   test("lowercases + trims entries (GitHub logins can be mixed-case)", () => {
@@ -46,10 +41,7 @@ describe("normalizeOrgImageNamespaces (shape gate)", () => {
   });
 
   test("dedupes and caps a pathological list", () => {
-    const raw = Array.from(
-      { length: 100 },
-      (_, i) => `ghcr.io/user-${i % 50}/*`,
-    );
+    const raw = Array.from({ length: 100 }, (_, i) => `ghcr.io/user-${i % 50}/*`);
     const out = normalizeOrgImageNamespaces(raw);
     expect(out.length).toBe(32);
     expect(new Set(out).size).toBe(out.length);
@@ -57,18 +49,11 @@ describe("normalizeOrgImageNamespaces (shape gate)", () => {
 
   test("accepted entries drive the REAL gate: org namespace passes, others still deny", () => {
     const orgList = normalizeOrgImageNamespaces(["ghcr.io/nubscarson/*"]);
-    expect(
-      isCodingContainerImageAllowed("ghcr.io/nubscarson/my-app:v1", orgList),
-    ).toBe(true);
-    expect(
-      isCodingContainerImageAllowed("ghcr.io/evil/pwn:latest", orgList),
-    ).toBe(false);
+    expect(isCodingContainerImageAllowed("ghcr.io/nubscarson/my-app:v1", orgList)).toBe(true);
+    expect(isCodingContainerImageAllowed("ghcr.io/evil/pwn:latest", orgList)).toBe(false);
     // the dropped wildcard could never re-open the gate
     expect(
-      isCodingContainerImageAllowed(
-        "docker.io/evil/pwn",
-        normalizeOrgImageNamespaces(["*"]),
-      ),
+      isCodingContainerImageAllowed("docker.io/evil/pwn", normalizeOrgImageNamespaces(["*"])),
     ).toBe(false);
   });
 });
@@ -83,9 +68,7 @@ describe("getOrgImageNamespaces (fail-closed wrapper)", () => {
   });
 
   test("returns [] for a missing/unset settings key", async () => {
-    expect(await getOrgImageNamespaces("org-1", async () => undefined)).toEqual(
-      [],
-    );
+    expect(await getOrgImageNamespaces("org-1", async () => undefined)).toEqual([]);
   });
 
   test("returns [] when the read throws (deny, never propagate)", async () => {

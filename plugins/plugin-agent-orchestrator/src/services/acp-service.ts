@@ -188,6 +188,10 @@ const DENY_ENV_PATTERNS = [
   // hand a child process a credential that re-authorizes arbitrary host command
   // execution with zero legitimate use for it.
   /TERMINAL_RUN_TOKEN/i,
+  // Repo-scoped GitHub host credentials must not be injected into sub-agents,
+  // including through customCredentials. Registry push uses the dedicated
+  // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
+  /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT)$/i,
 ];
 
 /**
