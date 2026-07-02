@@ -553,6 +553,38 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
+	it("keeps a gemma-style bare code Stage 1 reply without replacing it with a fallback", async () => {
+		const codeReply = [
+			"def has_close_elements(numbers, threshold):",
+			"    for idx, left in enumerate(numbers):",
+			"        for right in numbers[idx + 1:]:",
+			"            if abs(left - right) < threshold:",
+			"                return True",
+			"    return False",
+		].join("\n");
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: codeReply,
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Write the HumanEval has_close_elements function in Python. Return only code.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(codeReply);
+		}
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
 	it("keeps requested all-caps exact-word Stage 1 replies without a second model call", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
