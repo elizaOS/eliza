@@ -31,14 +31,15 @@ import {
 
 // ─── Helper: check if embeddings are available ──────────────────────────────
 
+// unit/preload.ts injects OPENAI_API_KEY="mock-openai-api-key-for-testing" as a
+// placeholder for modules that validate config at import time. That mock cannot
+// serve embeddings, so it must count as "not configured" here — otherwise the CI
+// unit lane (which has no real key) would run these tests straight into a 401.
 const embeddingProviderConfigured = Boolean(
-  process.env.ELIZACLOUD_API_KEY || process.env.OPENAI_API_KEY,
+  process.env.ELIZACLOUD_API_KEY ||
+    (process.env.OPENAI_API_KEY &&
+      !process.env.OPENAI_API_KEY.startsWith("mock-")),
 );
-
-async function embeddingsAvailable(): Promise<boolean> {
-  const emb = await getEmbedding("test");
-  return emb !== null;
-}
 
 function requireEmbedding(
   embedding: number[] | null,
@@ -279,20 +280,21 @@ describe("Layer 3 — [EMBEDDING] semantic grounding catches drift", () => {
     },
   );
 
-  test("[EMBEDDING] grounding rejects content that drifts semantically even with keyword overlap", async () => {
-    // Keywords overlap ("market", "technology", "growth") but meaning drifts
-    const source =
-      "The stock market shows steady growth in technology sector investments";
-    const drifted =
-      "Ancient market bazaars showcased traditional technology growth pottery from indigenous cultures around the world for centuries.";
+  test.skipIf(!embeddingProviderConfigured)(
+    "[EMBEDDING] grounding rejects content that drifts semantically even with keyword overlap",
+    async () => {
+      // Keywords overlap ("market", "technology", "growth") but meaning drifts
+      const source =
+        "The stock market shows steady growth in technology sector investments";
+      const drifted =
+        "Ancient market bazaars showcased traditional technology growth pottery from indigenous cultures around the world for centuries.";
 
-    const result = await validateGrounding(source, drifted);
-    // Keyword overlap might pass (shared: market, technology, growth)
-    // But embedding similarity should be low — semantically different topics
-    if (await embeddingsAvailable()) {
+      const result = await validateGrounding(source, drifted);
+      // Keyword overlap might pass (shared: market, technology, growth)
+      // But embedding similarity must be low — semantically different topics
       expect(result.grounded).toBe(false);
-    }
-  });
+    },
+  );
 
   test("[EMBEDDING] validateGrounding correctly passes semantically grounded content", async () => {
     const source =
@@ -547,26 +549,23 @@ describe("Regression — known contamination patterns", () => {
     );
   });
 
-  test("[EMBEDDING] near-duplicate fact detection prevents DB bloat", async () => {
-    const existing =
-      "Bitcoin price surges past $100,000 milestone driven by institutional investment flows";
-    const nearDuplicate =
-      "Bitcoin price surges past $100,000 milestone driven by institutional investment flows";
+  test.skipIf(!embeddingProviderConfigured)(
+    "[EMBEDDING] near-duplicate fact detection prevents DB bloat",
+    async () => {
+      const existing =
+        "Bitcoin price surges past $100,000 milestone driven by institutional investment flows";
+      const nearDuplicate =
+        "Bitcoin price surges past $100,000 milestone driven by institutional investment flows";
 
-    const result = await validateGrounding(existing, nearDuplicate);
+      const result = await validateGrounding(existing, nearDuplicate);
 
-    if (await embeddingsAvailable()) {
       // Near-verbatim copy: embedding similarity > 0.98 → rejected
       expect(result.grounded).toBe(false);
       expect(result.reasons.some((r) => r.includes("near-verbatim copy"))).toBe(
         true,
       );
-    } else {
-      // Without embeddings, the keyword check alone won't catch verbatim copies
-      // But the structure check in ContentQualityGate catches them
-      expect(typeof result.grounded).toBe("boolean");
-    }
-  });
+    },
+  );
 });
 
 // ─── Quality Score Thresholds ───────────────────────────────────────────────

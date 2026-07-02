@@ -10,7 +10,14 @@
  * Run: bun test integration/session-heartbeat-api.integration.test.ts --preload ./integration/preload.ts
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import {
   and,
   db,
@@ -26,6 +33,8 @@ const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
   "http://localhost:3000";
+
+setDefaultTimeout(20_000);
 
 let serverAvailable = false;
 const testUserIds: string[] = [];

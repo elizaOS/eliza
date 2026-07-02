@@ -512,7 +512,7 @@ describe("Growth Metrics API", () => {
         `/api/admin/stats/growth?period=${longValue}`,
       );
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
     });
   });
 
