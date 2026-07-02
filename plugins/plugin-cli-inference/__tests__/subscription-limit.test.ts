@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isClaudeSubscriptionLimitMessage } from "../src/claude-sdk-session.ts";
+import {
+  isClaudeSdkApiErrorMessage,
+  isClaudeSubscriptionLimitMessage,
+} from "../src/claude-sdk-session.ts";
 
 // Live regression (2026-07-01): when the Agent SDK monthly credit ran dry the SDK
 // ended the turn cleanly but streamed the subscription-limit UI string as the
@@ -8,21 +11,33 @@ import { isClaudeSubscriptionLimitMessage } from "../src/claude-sdk-session.ts";
 describe("isClaudeSubscriptionLimitMessage", () => {
   it("matches the real leaked subscription-limit strings", () => {
     expect(
-      isClaudeSubscriptionLimitMessage("You've hit your session limit · resets 9:30pm (UTC)")
+      isClaudeSubscriptionLimitMessage(
+        "You've hit your session limit · resets 9:30pm (UTC)",
+      ),
     ).toBe(true);
     expect(
-      isClaudeSubscriptionLimitMessage("You've hit your session limit · resets 11:30am (UTC)")
+      isClaudeSubscriptionLimitMessage(
+        "You've hit your session limit · resets 11:30am (UTC)",
+      ),
     ).toBe(true);
     expect(
-      isClaudeSubscriptionLimitMessage("You've reached your usage limit for this month.")
+      isClaudeSubscriptionLimitMessage(
+        "You've reached your usage limit for this month.",
+      ),
     ).toBe(true);
   });
 
   it("matches known envelope variants (CLI epoch form, non-UTC interpunct)", () => {
     // The classic Claude CLI limit string: "Claude AI usage limit reached|<epoch>".
-    expect(isClaudeSubscriptionLimitMessage("Claude AI usage limit reached|1735689600")).toBe(true);
+    expect(
+      isClaudeSubscriptionLimitMessage(
+        "Claude AI usage limit reached|1735689600",
+      ),
+    ).toBe(true);
     // Interpunct separator variants without a "(UTC)" suffix.
-    expect(isClaudeSubscriptionLimitMessage("5-hour limit reached ∙ resets 3am")).toBe(true);
+    expect(
+      isClaudeSubscriptionLimitMessage("5-hour limit reached ∙ resets 3am"),
+    ).toBe(true);
   });
 
   it("does not match genuine model answers, even ones discussing limits", () => {
@@ -42,6 +57,35 @@ describe("isClaudeSubscriptionLimitMessage", () => {
       "Yes — you've hit your daily limit on that key.",
     ]) {
       expect(isClaudeSubscriptionLimitMessage(answer)).toBe(false);
+    }
+  });
+});
+
+// Second leak class (2026-07-02): the SDK streams upstream API failures as
+// assistant text — "API Error: 400 messages: text content blocks must be
+// non-empty" was relayed verbatim to Discord users 18x when empty relay lines
+// produced an empty content block.
+describe("isClaudeSdkApiErrorMessage", () => {
+  it("matches the SDK's API-error envelope", () => {
+    for (const s of [
+      "API Error: 400 messages: text content blocks must be non-empty",
+      "API Error: 429 rate limited",
+      "API Error: 529 overloaded",
+      "  API Error: 500 internal server error",
+    ]) {
+      expect(isClaudeSdkApiErrorMessage(s)).toBe(true);
+    }
+  });
+
+  it("does not match genuine answers that mention API errors", () => {
+    for (const s of [
+      "An API Error: 400 usually means your request body is malformed.",
+      "You're seeing 'API Error: 400' because the content block was empty.",
+      "The API returned an error: 400.",
+      "Error handling matters — retry on API Error status codes like 429.",
+      "42",
+    ]) {
+      expect(isClaudeSdkApiErrorMessage(s)).toBe(false);
     }
   });
 });
