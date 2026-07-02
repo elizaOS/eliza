@@ -1,120 +1,20 @@
 {
-  "generatedAt": "2026-07-01T22:03:44.129Z",
+  "generatedAt": "2026-07-02T02:45:55.628Z",
   "views": {
-    "builtin-apps@desktop-landscape": {
-      "borderDividerDensity": 89.5062,
-      "textDensity": 2.338,
-      "whitespaceRatio": 0.6723
-    },
-    "builtin-apps@ipad-portrait": {
-      "borderDividerDensity": 119.8842,
-      "textDensity": 3.1315,
-      "whitespaceRatio": 0.6249
-    },
-    "builtin-apps@mobile-landscape": {
-      "borderDividerDensity": 243.0429,
-      "textDensity": 5.6811,
-      "whitespaceRatio": 0.3164
-    },
-    "builtin-apps@mobile-portrait": {
-      "borderDividerDensity": 303.8036,
-      "textDensity": 7.9293,
-      "whitespaceRatio": 0.2555
-    },
-    "builtin-automations@ipad-portrait": {
-      "borderDividerDensity": 49.6073,
-      "textDensity": 2.6561,
-      "whitespaceRatio": 0.8128
-    },
-    "builtin-automations@mobile-landscape": {
-      "borderDividerDensity": 85.065,
-      "textDensity": 6.5622,
-      "whitespaceRatio": 0.686
-    },
-    "builtin-automations@mobile-portrait": {
-      "borderDividerDensity": 145.8257,
-      "textDensity": 7.8078,
-      "whitespaceRatio": 0.5563
-    },
     "builtin-browser@mobile-portrait": {
       "borderDividerDensity": 51.6466,
       "textDensity": 8.4761,
-      "whitespaceRatio": 0.5484
-    },
-    "builtin-contacts@desktop-landscape": {
-      "borderDividerDensity": 89.5062,
-      "textDensity": 2.338,
-      "whitespaceRatio": 0.6741
-    },
-    "builtin-contacts@ipad-portrait": {
-      "borderDividerDensity": 119.8842,
-      "textDensity": 3.1315,
-      "whitespaceRatio": 0.642
-    },
-    "builtin-contacts@mobile-landscape": {
-      "borderDividerDensity": 243.0429,
-      "textDensity": 5.6811,
-      "whitespaceRatio": 0.3342
-    },
-    "builtin-contacts@mobile-portrait": {
-      "borderDividerDensity": 303.8036,
-      "textDensity": 7.9293,
-      "whitespaceRatio": 0.3388
-    },
-    "builtin-database@mobile-landscape": {
-      "borderDividerDensity": 78.9889,
-      "textDensity": 6.5318,
-      "whitespaceRatio": 0.5774
-    },
-    "builtin-documents@mobile-landscape": {
-      "borderDividerDensity": 109.3693,
-      "textDensity": 6.0457,
-      "whitespaceRatio": 0.3014
-    },
-    "builtin-documents@mobile-portrait": {
-      "borderDividerDensity": 109.3693,
-      "textDensity": 6.0457,
-      "whitespaceRatio": 0.4338
-    },
-    "builtin-fine-tuning@desktop-landscape": {
-      "borderDividerDensity": 52.4691,
-      "textDensity": 3.2793,
-      "whitespaceRatio": 0.2507
-    },
-    "builtin-fine-tuning@ipad-portrait": {
-      "borderDividerDensity": 82.6788,
-      "textDensity": 6.5936,
-      "whitespaceRatio": 0.2087
-    },
-    "builtin-fine-tuning@mobile-landscape": {
-      "borderDividerDensity": 121.5214,
-      "textDensity": 5.833,
-      "whitespaceRatio": 0.263
-    },
-    "builtin-fine-tuning@mobile-portrait": {
-      "borderDividerDensity": 145.8257,
-      "textDensity": 9.9344,
-      "whitespaceRatio": 0.216
+      "whitespaceRatio": 0.5626
     },
     "builtin-logs@mobile-landscape": {
       "borderDividerDensity": 72.9129,
-      "textDensity": 4.9216,
+      "textDensity": 4.952,
       "whitespaceRatio": 0.7403
     },
     "builtin-logs@mobile-portrait": {
       "borderDividerDensity": 72.9129,
-      "textDensity": 4.9216,
-      "whitespaceRatio": 0.8259
-    },
-    "builtin-memories@mobile-landscape": {
-      "borderDividerDensity": 66.8368,
-      "textDensity": 5.2254,
-      "whitespaceRatio": 0.6317
-    },
-    "builtin-memories@mobile-portrait": {
-      "borderDividerDensity": 75.9509,
-      "textDensity": 3.9191,
-      "whitespaceRatio": 0.79
+      "textDensity": 4.952,
+      "whitespaceRatio": 0.8268
     },
     "builtin-plugins@mobile-landscape": {
       "borderDividerDensity": 75.9509,
@@ -131,38 +31,18 @@
       "textDensity": 6.8356,
       "whitespaceRatio": 0.7044
     },
-    "builtin-rolodex@desktop-landscape": {
-      "borderDividerDensity": 89.5062,
-      "textDensity": 2.338,
-      "whitespaceRatio": 0.6741
-    },
-    "builtin-rolodex@ipad-portrait": {
-      "borderDividerDensity": 119.8842,
-      "textDensity": 3.1315,
-      "whitespaceRatio": 0.642
-    },
-    "builtin-rolodex@mobile-landscape": {
-      "borderDividerDensity": 243.0429,
-      "textDensity": 5.6811,
-      "whitespaceRatio": 0.3342
-    },
-    "builtin-rolodex@mobile-portrait": {
-      "borderDividerDensity": 303.8036,
-      "textDensity": 7.9293,
-      "whitespaceRatio": 0.3388
-    },
     "builtin-runtime@desktop-landscape": {
-      "borderDividerDensity": 60.1852,
+      "borderDividerDensity": 59.4136,
       "textDensity": 6.8981,
       "whitespaceRatio": 0.6766
     },
     "builtin-runtime@ipad-portrait": {
-      "borderDividerDensity": 80.6118,
+      "borderDividerDensity": 79.5783,
       "textDensity": 9.2394,
       "whitespaceRatio": 0.5287
     },
     "builtin-runtime@mobile-landscape": {
-      "borderDividerDensity": 142.7877,
+      "borderDividerDensity": 139.7497,
       "textDensity": 16.7396,
       "whitespaceRatio": 0.4404
     },
@@ -177,39 +57,9 @@
       "whitespaceRatio": 0.4489
     },
     "builtin-skills@mobile-landscape": {
-      "borderDividerDensity": 66.8368,
+      "borderDividerDensity": 63.7988,
       "textDensity": 7.99,
       "whitespaceRatio": 0.54
-    },
-    "builtin-stream@mobile-landscape": {
-      "borderDividerDensity": 60.7607,
-      "textDensity": 5.0431,
-      "whitespaceRatio": 0.5656
-    },
-    "builtin-stream@mobile-portrait": {
-      "borderDividerDensity": 60.7607,
-      "textDensity": 5.0431,
-      "whitespaceRatio": 0.7376
-    },
-    "builtin-views@desktop-landscape": {
-      "borderDividerDensity": 89.5062,
-      "textDensity": 2.338,
-      "whitespaceRatio": 0.6723
-    },
-    "builtin-views@ipad-portrait": {
-      "borderDividerDensity": 119.8842,
-      "textDensity": 3.1315,
-      "whitespaceRatio": 0.6249
-    },
-    "builtin-views@mobile-landscape": {
-      "borderDividerDensity": 243.0429,
-      "textDensity": 5.6811,
-      "whitespaceRatio": 0.3164
-    },
-    "builtin-views@mobile-portrait": {
-      "borderDividerDensity": 303.8036,
-      "textDensity": 7.9293,
-      "whitespaceRatio": 0.2555
     },
     "plugin-calendar-gui@ipad-portrait": {
       "borderDividerDensity": 51.6742,
@@ -225,26 +75,6 @@
       "borderDividerDensity": 151.9018,
       "textDensity": 6.5925,
       "whitespaceRatio": 0.7053
-    },
-    "plugin-contacts-gui@desktop-landscape": {
-      "borderDividerDensity": 89.5062,
-      "textDensity": 2.338,
-      "whitespaceRatio": 0.6741
-    },
-    "plugin-contacts-gui@ipad-portrait": {
-      "borderDividerDensity": 119.8842,
-      "textDensity": 3.1315,
-      "whitespaceRatio": 0.642
-    },
-    "plugin-contacts-gui@mobile-landscape": {
-      "borderDividerDensity": 243.0429,
-      "textDensity": 5.6811,
-      "whitespaceRatio": 0.3342
-    },
-    "plugin-contacts-gui@mobile-portrait": {
-      "borderDividerDensity": 303.8036,
-      "textDensity": 7.9293,
-      "whitespaceRatio": 0.3388
     },
     "plugin-finances-gui@mobile-landscape": {
       "borderDividerDensity": 48.6086,
@@ -356,26 +186,6 @@
       "textDensity": 4.7697,
       "whitespaceRatio": 0.8278
     },
-    "plugin-training-gui@desktop-landscape": {
-      "borderDividerDensity": 52.4691,
-      "textDensity": 3.2793,
-      "whitespaceRatio": 0.2507
-    },
-    "plugin-training-gui@ipad-portrait": {
-      "borderDividerDensity": 82.6788,
-      "textDensity": 6.5936,
-      "whitespaceRatio": 0.2087
-    },
-    "plugin-training-gui@mobile-landscape": {
-      "borderDividerDensity": 121.5214,
-      "textDensity": 5.833,
-      "whitespaceRatio": 0.263
-    },
-    "plugin-training-gui@mobile-portrait": {
-      "borderDividerDensity": 145.8257,
-      "textDensity": 9.9344,
-      "whitespaceRatio": 0.216
-    },
     "plugin-trajectory-logger-gui@mobile-landscape": {
       "borderDividerDensity": 60.7607,
       "textDensity": 6.8052,
@@ -395,26 +205,6 @@
       "borderDividerDensity": 48.6086,
       "textDensity": 6.6229,
       "whitespaceRatio": 0.6365
-    },
-    "plugin-views-manager-gui@desktop-landscape": {
-      "borderDividerDensity": 89.5062,
-      "textDensity": 2.338,
-      "whitespaceRatio": 0.6723
-    },
-    "plugin-views-manager-gui@ipad-portrait": {
-      "borderDividerDensity": 119.8842,
-      "textDensity": 3.1315,
-      "whitespaceRatio": 0.6249
-    },
-    "plugin-views-manager-gui@mobile-landscape": {
-      "borderDividerDensity": 243.0429,
-      "textDensity": 5.6811,
-      "whitespaceRatio": 0.3164
-    },
-    "plugin-views-manager-gui@mobile-portrait": {
-      "borderDividerDensity": 303.8036,
-      "textDensity": 7.9293,
-      "whitespaceRatio": 0.2555
     }
   }
 }

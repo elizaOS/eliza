@@ -319,11 +319,10 @@ export function UploadZone({
         accept={DOCUMENT_UPLOAD_ACCEPT}
         onChange={handleFileSelect}
       />
+      {/* Flat at rest — the border/fill appears only as the drag-over drop-zone affordance. */}
       <div
         className={`rounded-sm border px-3 py-3 transition-colors ${
-          dragOver
-            ? "border-accent/40 bg-accent/8 "
-            : "border-transparent bg-card/12"
+          dragOver ? "border-accent/40 bg-accent/8" : "border-transparent"
         } ${uploading ? "opacity-60" : ""}`}
       >
         <div className="flex items-center gap-2">
@@ -332,7 +331,7 @@ export function UploadZone({
               ref={chooseFilesButton.ref}
               variant="outline"
               size="icon"
-              className="h-9 w-9 rounded-sm"
+              className="h-9 w-9"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               aria-label={t("documentsview.ChooseFiles", {
@@ -349,7 +348,7 @@ export function UploadZone({
               ref={addUrlButton.ref}
               variant="outline"
               size="icon"
-              className={`h-9 w-9 rounded-sm ${
+              className={`h-9 w-9 ${
                 showUrlInput ? "border-accent/45 bg-accent/12 text-txt" : ""
               }`}
               onClick={() => setShowUrlInput((current) => !current)}
@@ -368,7 +367,7 @@ export function UploadZone({
               ref={newTextButton.ref}
               variant="outline"
               size="icon"
-              className={`h-9 w-9 rounded-sm ${
+              className={`h-9 w-9 ${
                 showTextInput ? "border-accent/45 bg-accent/12 text-txt" : ""
               }`}
               onClick={() => setShowTextInput((current) => !current)}
@@ -506,7 +505,7 @@ export function UploadZone({
           />
           <label
             htmlFor="documents-upload-image-descriptions"
-            className="inline-flex min-w-0 cursor-pointer items-center rounded-full border border-border/30 bg-bg-muted/20 px-2 py-0.5"
+            className="inline-flex min-w-0 cursor-pointer items-center"
           >
             {t("documentsview.IncludeAIImageDes")}
           </label>

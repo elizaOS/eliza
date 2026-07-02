@@ -213,7 +213,8 @@ export function DocumentViewer({
   };
 
   return (
-    <PagePanel className="flex flex-col overflow-hidden !rounded-none !border-0 !bg-transparent !shadow-none ">
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
+    <PagePanel className="flex flex-col overflow-hidden">
       <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {loading && (
           <div className="py-10 text-center font-bold tracking-wide text-muted animate-pulse">
@@ -227,7 +228,7 @@ export function DocumentViewer({
         {!loading && !error && !doc && (
           <PagePanel.Empty
             variant="inset"
-            className="px-0 py-12 !rounded-none !border-0 !bg-transparent !shadow-none "
+            className="px-0 py-12"
             description={t("documentsview.NoDocumentSelectedDesc", {
               defaultValue:
                 "Select a document from the list to view its fragments and metadata.",
@@ -242,60 +243,69 @@ export function DocumentViewer({
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
             <div className="px-1">
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-bg-muted/30 text-muted-strong">
-                  <FileText className="h-4.5 w-4.5" aria-hidden />
-                </span>
+                <FileText
+                  className="mt-1.5 h-5 w-5 shrink-0 text-muted-strong"
+                  aria-hidden
+                />
                 <div className="min-w-0 flex-1">
                   <h2 className="break-words text-lg font-semibold text-txt">
                     {doc.filename}
                   </h2>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/8 px-2 py-0.5 text-accent-fg">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+                    <span className="inline-flex items-center gap-1">
                       <ScopeIcon className="h-3 w-3" aria-hidden />
                       {scopeLabel}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/35 bg-bg-muted/25 px-2 py-0.5">
-                      {doc.provenance.label}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/35 bg-bg-muted/25 px-2 py-0.5">
-                      {formatByteSize(doc.fileSize)}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/35 bg-bg-muted/25 px-2 py-0.5">
+                    <span aria-hidden>·</span>
+                    <span>{doc.provenance.label}</span>
+                    <span aria-hidden>·</span>
+                    <span>{formatByteSize(doc.fileSize)}</span>
+                    <span aria-hidden>·</span>
+                    <span>
                       {doc.fragmentCount === 1
                         ? "1 fragment"
                         : `${doc.fragmentCount} fragments`}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/35 bg-bg-muted/25 px-2 py-0.5">
-                      {getDocumentTypeLabel(doc.contentType)}
-                    </span>
+                    <span aria-hidden>·</span>
+                    <span>{getDocumentTypeLabel(doc.contentType)}</span>
                     {doc.canEditText ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-status-success/25 bg-status-success-bg px-2 py-0.5 text-status-success">
-                        <BadgeCheck className="h-3 w-3" aria-hidden />
-                        {t("documentsview.Editable", {
-                          defaultValue: "Editable",
-                        })}
-                      </span>
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="inline-flex items-center gap-1 text-status-success">
+                          <BadgeCheck className="h-3 w-3" aria-hidden />
+                          {t("documentsview.Editable", {
+                            defaultValue: "Editable",
+                          })}
+                        </span>
+                      </>
                     ) : null}
                     {!doc.canDelete ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/35 bg-bg-muted/25 px-2 py-0.5">
-                        <Lock className="h-3 w-3" aria-hidden />
-                        {t("documentsview.Locked", {
-                          defaultValue: "Locked",
-                        })}
-                      </span>
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Lock className="h-3 w-3" aria-hidden />
+                          {t("documentsview.Locked", {
+                            defaultValue: "Locked",
+                          })}
+                        </span>
+                      </>
                     ) : null}
                     {documentCreatedLabel ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/35 bg-bg-muted/25 px-2 py-0.5">
-                        <CalendarDays className="h-3 w-3" aria-hidden />
-                        {documentCreatedLabel}
-                      </span>
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarDays className="h-3 w-3" aria-hidden />
+                          {documentCreatedLabel}
+                        </span>
+                      </>
                     ) : null}
                     {doc.provenance.detail ? (
-                      <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-border/35 bg-bg-muted/25 px-2 py-0.5">
-                        <span className="truncate">
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="min-w-0 max-w-full truncate">
                           {doc.provenance.detail}
                         </span>
-                      </span>
+                      </>
                     ) : null}
                   </div>
                 </div>
@@ -320,7 +330,6 @@ export function DocumentViewer({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
                     data-testid="document-download"
                     onClick={() => void handleDownloadFile()}
                   >
@@ -335,7 +344,6 @@ export function DocumentViewer({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
                     data-testid="document-share"
                     onClick={() => void handleShareFile()}
                   >
@@ -351,7 +359,6 @@ export function DocumentViewer({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="rounded-sm"
                       onClick={() => setEditing((current) => !current)}
                       disabled={saving}
                     >
@@ -362,7 +369,6 @@ export function DocumentViewer({
                       <Button
                         type="button"
                         size="sm"
-                        className="rounded-sm"
                         onClick={() => void handleSave()}
                         disabled={saving || draftText.trim().length === 0}
                       >
@@ -379,10 +385,7 @@ export function DocumentViewer({
               </div>
             </div>
 
-            <PagePanel
-              variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
-            >
+            <PagePanel variant="inset" className="p-4">
               {editing ? (
                 <Textarea
                   value={draftText}
@@ -403,11 +406,8 @@ export function DocumentViewer({
               )}
             </PagePanel>
 
-            <PagePanel
-              variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
-            >
-              <div className="divide-y divide-border/20">
+            <PagePanel variant="inset" className="p-4">
+              <div>
                 {fragments.map((fragment, index) => {
                   const createdLabel = formatDocumentTimestamp(
                     fragment.createdAt,
@@ -417,15 +417,8 @@ export function DocumentViewer({
                       key={fragment.id}
                       className="grid gap-3 py-4 sm:grid-cols-[4rem_minmax(0,1fr)]"
                     >
-                      <div className="flex items-start gap-2 sm:block">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-border/35 bg-bg-muted/20 text-xs font-bold text-muted-strong">
-                          {index + 1}
-                        </div>
-                        <div className="mt-0.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/60 sm:mt-2">
-                          {t("documentsview.Chunk", {
-                            defaultValue: "Chunk",
-                          })}
-                        </div>
+                      <div className="flex h-8 w-8 items-center justify-center text-xs font-bold text-muted-strong">
+                        {index + 1}
                       </div>
 
                       <div className="min-w-0">
@@ -465,7 +458,7 @@ export function DocumentViewer({
                 {fragments.length === 0 && (
                   <PagePanel.Empty
                     variant="inset"
-                    className="min-h-[8rem] py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
+                    className="min-h-[8rem] py-8"
                     title={t("documentsview.NoFragmentsFound")}
                   />
                 )}

@@ -24,7 +24,6 @@ import { useAppSelectorShallow } from "../../state";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
-import { getBrandIcon } from "../conversations/brand-icons";
 import { DocumentsView } from "../pages/DocumentsView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { Button } from "../ui/button";
@@ -340,30 +339,6 @@ export function CharacterHubView({
       styleItems > 0 ||
       exampleCount > 0;
 
-    function StatChip({ children }: { children: ReactNode }) {
-      return (
-        <span className="rounded-full bg-surface/60 px-2.5 py-1 text-xs font-medium text-muted">
-          {children}
-        </span>
-      );
-    }
-
-    /** Clean person chip: avatar initial + name + optional platform badge. */
-    function PersonChip({ name }: { name: string }) {
-      const Brand = getBrandIcon(name);
-      return (
-        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface/60 py-1 pl-1 pr-2.5 text-xs font-medium text-txt">
-          <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-2xs font-semibold uppercase text-accent">
-            {name.slice(0, 1)}
-          </span>
-          <span className="truncate">{name}</span>
-          {Brand ? (
-            <Brand className="h-3 w-3 shrink-0 text-muted/70" aria-hidden />
-          ) : null}
-        </span>
-      );
-    }
-
     /**
      * Empty-state CTA shown inside a tile. The tile itself is the button that
      * navigates to the section where the real action lives, so this reads as the
@@ -375,50 +350,43 @@ export function CharacterHubView({
       );
     }
 
+    const personalityStats = [
+      styleItems > 0
+        ? `${styleItems} style rule${styleItems === 1 ? "" : "s"}`
+        : null,
+      exampleCount > 0
+        ? `${exampleCount} example${exampleCount === 1 ? "" : "s"}`
+        : null,
+      styleItems === 0 && exampleCount === 0 && trimmedBio ? "bio set" : null,
+    ].filter(Boolean);
+
     const personalityBody: ReactNode = personalityHasContent ? (
-      <div className="flex flex-wrap gap-1.5">
-        {styleItems > 0 ? (
-          <StatChip>
-            {styleItems} style rule{styleItems === 1 ? "" : "s"}
-          </StatChip>
-        ) : null}
-        {exampleCount > 0 ? (
-          <StatChip>
-            {exampleCount} example{exampleCount === 1 ? "" : "s"}
-          </StatChip>
-        ) : null}
-        {styleItems === 0 && exampleCount === 0 && trimmedBio ? (
-          <StatChip>bio set</StatChip>
-        ) : null}
-      </div>
+      <span className="text-xs font-medium text-muted">
+        {personalityStats.join(" · ")}
+      </span>
     ) : (
       <EmptyCta>Define your voice</EmptyCta>
     );
 
     const relationshipsBody: ReactNode =
       peopleNames.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {peopleNames.slice(0, 4).map((name) => (
-            <PersonChip key={name} name={name} />
-          ))}
-          {peopleNames.length > 4 ? (
-            <StatChip>+{peopleNames.length - 4}</StatChip>
-          ) : null}
-        </div>
+        <span className="text-xs font-medium text-txt">
+          {peopleNames.slice(0, 4).join(" · ")}
+          {peopleNames.length > 4 ? ` · +${peopleNames.length - 4}` : ""}
+        </span>
       ) : (
         <EmptyCta>Introduce someone in chat</EmptyCta>
       );
 
     const skillsBody: ReactNode =
       activeSkills.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {activeSkills.slice(0, 4).map((skill) => (
-            <StatChip key={skill.name}>{skill.name}</StatChip>
-          ))}
-          {activeSkills.length > 4 ? (
-            <StatChip>+{activeSkills.length - 4}</StatChip>
-          ) : null}
-        </div>
+        <span className="text-xs font-medium text-muted">
+          {activeSkills
+            .slice(0, 4)
+            .map((skill) => skill.name)
+            .join(" · ")}
+          {activeSkills.length > 4 ? ` · +${activeSkills.length - 4}` : ""}
+        </span>
       ) : (
         <EmptyCta>Browse skills</EmptyCta>
       );

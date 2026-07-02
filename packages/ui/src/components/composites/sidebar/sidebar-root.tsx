@@ -93,7 +93,9 @@ const sidebarFooterVariants = cva(
 );
 
 const sidebarControlButtonClassName =
-  "h-11 w-11 rounded-sm border border-border bg-card text-muted-strong transition-colors duration-200 hover:border-border-strong hover:text-txt active:scale-95";
+  // Borderless toggle (#10710): the card wash alone keeps it visible over
+  // page content; hover expresses through text color.
+  "h-11 w-11 rounded-sm bg-card text-muted-strong transition-colors duration-200 hover:text-txt active:scale-95";
 
 const sidebarMobileHeaderBarClassName =
   "sticky top-0 z-10 flex items-center justify-between bg-card px-3.5 py-2.5";
