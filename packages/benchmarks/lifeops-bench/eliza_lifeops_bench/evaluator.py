@@ -2,7 +2,7 @@
 
 Two distinct LLM clients power the evaluator:
 
-* The **simulated-user client** (typically Cerebras gpt-oss-120b) plays the
+* The **simulated-user client** (typically Cerebras gemma-4-31b) plays the
   scenario persona. It receives the hidden goal in its system prompt and is
   instructed to reveal it gradually, the way a real user would.
 

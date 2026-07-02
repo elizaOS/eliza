@@ -42,7 +42,7 @@ _OPENAI_COMPATIBLE_PROVIDERS = ("openai", "groq", "openrouter", "cerebras")
 
 
 def _configure_bridge_model_env(model_name: str | None) -> None:
-    model = (model_name or os.environ.get("BENCHMARK_MODEL_NAME") or "gpt-oss-120b").strip()
+    model = (model_name or os.environ.get("BENCHMARK_MODEL_NAME") or "gemma-4-31b").strip()
     if not model:
         return
     for key in (
@@ -132,7 +132,7 @@ class OpenAICompatibleTrustHandler:
             "openai": "openai/gpt-oss-120b",
             "groq": "openai/gpt-oss-120b",
             "openrouter": "openai/gpt-oss-120b",
-            "cerebras": "gpt-oss-120b",
+            "cerebras": "gemma-4-31b",
         }[provider]
         self.api_key = api_key
         self.base_url = {

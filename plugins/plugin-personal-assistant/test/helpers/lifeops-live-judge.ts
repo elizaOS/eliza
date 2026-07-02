@@ -62,10 +62,10 @@ function buildJudgePrompt(args: {
 }
 
 // `provider` is accepted for backwards compat with the existing call sites
-// but ignored: the judge always runs on Cerebras gpt-oss-120b regardless of
-// which provider the agent under test is using. This is the whole point of
-// the redirect — the judge must be a different model than the one being
-// graded.
+// but ignored: the judge always runs on the Cerebras judge model (default
+// gemma-4-31b) regardless of which provider the agent under test is using.
+// This is the whole point of the redirect — the judge must be a different
+// model than the one being graded.
 export async function judgeTextWithLlm(args: {
   provider?: SelectedLiveProvider;
   rubric: string;

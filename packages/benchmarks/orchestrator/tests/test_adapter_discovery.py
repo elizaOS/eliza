@@ -318,7 +318,7 @@ def test_hyperliquid_cli_detects_cerebras_provider(
 
     monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "openrouter")
     assert _detect_model_provider() == "openrouter"
-    assert _default_model_for_provider("cerebras") == "gpt-oss-120b"
+    assert _default_model_for_provider("cerebras") == "gemma-4-31b"
     assert _default_model_for_provider("openrouter") == "openai/gpt-oss-120b"
 
     _apply_model_environment("cerebras", "gpt-oss-120b")
@@ -1740,7 +1740,7 @@ def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> 
         adapters["mt_bench"],
     )
     assert mt_command[mt_command.index("--judge-provider") + 1] == "cerebras"
-    assert mt_command[mt_command.index("--judge-model") + 1] == "gpt-oss-120b"
+    assert mt_command[mt_command.index("--judge-model") + 1] == "gemma-4-31b"
     assert mt_command[mt_command.index("--judge-api-key-env") + 1] == "CEREBRAS_API_KEY"
     assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "512"
 

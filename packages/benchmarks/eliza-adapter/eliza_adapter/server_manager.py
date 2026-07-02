@@ -73,7 +73,7 @@ def _server_command(server_script: Path) -> list[str]:
     return ["node", "--import", "tsx", str(server_script)]
 
 
-CEREBRAS_OPENAI_MODEL_IDS = {"gpt-oss-120b", "zai-glm-4.7"}
+CEREBRAS_OPENAI_MODEL_IDS = {"gemma-4-31b", "gpt-oss-120b", "zai-glm-4.7"}
 
 
 def _normalize_model_env(env: dict[str, str]) -> None:
@@ -115,7 +115,7 @@ def _normalize_model_env(env: dict[str, str]) -> None:
             env.setdefault("ELIZA_PROVIDER", "cerebras")
             env.setdefault("OPENAI_BASE_URL", cerebras_base_url)
             env.setdefault("OPENAI_API_KEY", cerebras_key)
-        model = model or "gpt-oss-120b"
+        model = model or "gemma-4-31b"
 
     if not model:
         return

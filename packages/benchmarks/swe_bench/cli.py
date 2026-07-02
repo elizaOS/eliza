@@ -708,8 +708,18 @@ def _build_subtask_prompt(instance: SWEBenchInstance) -> str:
     )
 
 
+# Cerebras-enforced limits per model id (live-verified): gemma-4-31b caps at a
+# 131 000-token context with 40k max output on the paid tier.
+_OPENCODE_MODEL_LIMITS = {
+    "gemma-4-31b": {"context": 131000, "output": 40000},
+    "gpt-oss-120b": {"context": 131072, "output": 65536},
+}
+
+
 def _opencode_config_content(model_name: str) -> str:
     """Return an OpenCode config for Cerebras/OpenAI-compatible SWE-bench runs."""
+    model_id = model_name.rsplit("/", 1)[-1]
+    limit = _OPENCODE_MODEL_LIMITS.get(model_id, _OPENCODE_MODEL_LIMITS["gemma-4-31b"])
     return json.dumps(
         {
             "$schema": "https://opencode.ai/config.json",
@@ -726,11 +736,11 @@ def _opencode_config_content(model_name: str) -> str:
                         "timeout": 600000,
                     },
                     "models": {
-                        "gpt-oss-120b": {
-                            "name": "gpt-oss-120b",
+                        model_id: {
+                            "name": model_id,
                             "tool_call": True,
                             "reasoning": False,
-                            "limit": {"context": 131072, "output": 65536},
+                            "limit": limit,
                         }
                     },
                 }
@@ -770,7 +780,7 @@ def _resolve_subtask_executable(provider: str) -> str:
 
 def _provider_model_name(provider: str, model_name: str | None) -> str:
     """Normalize model labels for provider CLIs."""
-    raw = model_name or "cerebras/gpt-oss-120b"
+    raw = model_name or "cerebras/gemma-4-31b"
     if provider == "opencode":
         model_id = raw.split("/", 1)[1] if raw.startswith("cerebras/") else raw
         return raw if raw.startswith("cerebras-bench/") else f"cerebras-bench/{model_id}"
@@ -1491,7 +1501,7 @@ async def _run_instance(
         except (TypeError, ValueError):
             pass
         cost = _harness_turn_cost_usd(
-            model_name or os.environ.get("OPENAI_LARGE_MODEL") or "gpt-oss-120b",
+            model_name or os.environ.get("OPENAI_LARGE_MODEL") or "gemma-4-31b",
             usage,
         )
         if cost is not None:
@@ -1911,7 +1921,7 @@ async def _run(args: argparse.Namespace) -> int:
         timeout_seconds=args.timeout,
         model_name=args.model
         or (
-            "gpt-oss-120b"
+            "gemma-4-31b"
             if args.harness in {"hermes", "smithers"}
             else f"{args.harness}-swe-bench"
         ),

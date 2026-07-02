@@ -148,8 +148,8 @@ class DirectOpenAICompatibleMMAUAgent:
             "openai": "openai/gpt-oss-120b",
             "groq": "openai/gpt-oss-120b",
             "openrouter": "openai/gpt-oss-120b",
-            "cerebras": "gpt-oss-120b",
-        }.get(self.provider, "gpt-oss-120b")
+            "cerebras": "gemma-4-31b",
+        }.get(self.provider, "gemma-4-31b")
         self.temperature = temperature
         key_var = {
             "openai": "OPENAI_API_KEY",
