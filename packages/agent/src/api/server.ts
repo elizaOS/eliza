@@ -3165,6 +3165,16 @@ async function handleRequest(
   }
 
   if (
+  await handleSkunkScanRoute(req, res, pathname, method, {
+    json,
+    error,
+    readJsonBody,
+  })
+) {
+  return;
+}
+  
+  if (
     await handleConversationRouteGroup({
       req,
       res,
