@@ -33,8 +33,8 @@
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { checkProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
 import { logger } from "@/lib/utils/logger";
@@ -133,12 +133,15 @@ async function resumeAndRespond(
     // credit re-check, so this HTTP call-site is the only gate. (#11583)
     const creditCheck = await checkAgentCreditGate(orgId);
     if (!creditCheck.allowed) {
-      logger.warn("[dedicated-proxy] auto-resume blocked: insufficient credits", {
-        agentId,
-        orgId,
-        balance: creditCheck.balance,
-        required: AGENT_PRICING.MINIMUM_DEPOSIT,
-      });
+      logger.warn(
+        "[dedicated-proxy] auto-resume blocked: insufficient credits",
+        {
+          agentId,
+          orgId,
+          balance: creditCheck.balance,
+          required: AGENT_PRICING.MINIMUM_DEPOSIT,
+        },
+      );
       return Response.json(
         {
           success: false,
