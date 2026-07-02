@@ -20,7 +20,16 @@ import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityProfile } from "./types.js";
 
-const GM_FAVORABLE_NOW = new Date("2026-06-23T09:00:00Z");
+// 09:00 in the HOST timezone: the worker resolves its timezone via
+// `resolveDefaultTimeZone()` (host Intl), and the retired planner's GM slot
+// defaulted to 08:00 local with an 11:00 cutoff — so a 9am-local tick with an
+// hour-old owner sighting is squarely inside the old firing window on any
+// machine this suite runs on.
+const GM_FAVORABLE_NOW = (() => {
+  const now = new Date();
+  now.setHours(9, 0, 0, 0);
+  return now;
+})();
 
 const gmFavorableProfile = {
   analyzedAt: GM_FAVORABLE_NOW.getTime(),
@@ -56,6 +65,32 @@ vi.mock("./service.js", () => ({
   buildActivityProfile: vi.fn(async () => gmFavorableProfile),
   refreshCurrentState: vi.fn(async () => gmFavorableProfile),
 }));
+
+// Boundary guard on the parallel planner: the retired worker consulted
+// planGm/planGn/… on every tick; the one-scheduler worker must never import
+// (let alone invoke) them. The mock records every invocation — it only takes
+// effect if the module under test imports proactive-planner at all, so on the
+// current code it is inert and on the retired code it captures the violation.
+const parallelPlannerInvocations: string[] = [];
+vi.mock("./proactive-planner.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const guarded = (name: string) => {
+    const original = actual[name] as (...args: unknown[]) => unknown;
+    return (...args: unknown[]) => {
+      parallelPlannerInvocations.push(name);
+      return original(...args);
+    };
+  };
+  return {
+    ...actual,
+    planGm: guarded("planGm"),
+    planGn: guarded("planGn"),
+    planNudges: guarded("planNudges"),
+    planDowntimeNudges: guarded("planDowntimeNudges"),
+    planGoalCheckIns: guarded("planGoalCheckIns"),
+    planSocialOveruseCheck: guarded("planSocialOveruseCheck"),
+  };
+});
 
 import * as workerModule from "./proactive-worker.js";
 import {
@@ -168,17 +203,20 @@ describe("proactive-worker behavioral tripwire", () => {
     vi.clearAllMocks();
   });
 
-  it("a GM-favorable tick sends nothing and emits nothing", async () => {
+  it("a GM-favorable tick plans nothing, sends nothing, and emits nothing", async () => {
     const { runtime, sent, emitted } = createTripwireRuntime();
+    parallelPlannerInvocations.length = 0;
 
     const result = await executeProactiveTask(runtime, {
       now: GM_FAVORABLE_NOW,
     });
 
     expect(result.nextInterval).toBeGreaterThan(0);
-    // The retired path would have delivered a GM here — 09:00 local, active
-    // owner, empty fired log, client_chat primary platform, agent-event
-    // service available. The single scheduler owns that send now.
+    // The retired path consulted the parallel planner on every tick and, at
+    // 09:00 local with an active owner and an empty fired log, produced a
+    // pending GM for direct delivery. The single scheduler owns that now:
+    // the tick must not invoke a planner, push a message, or emit an event.
+    expect(parallelPlannerInvocations).toHaveLength(0);
     expect(sent).toHaveLength(0);
     expect(emitted).toHaveLength(0);
   });
