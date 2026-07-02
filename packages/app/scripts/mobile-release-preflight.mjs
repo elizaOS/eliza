@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { evaluateStagedIosSideloadBundle } from "../../app-core/scripts/lib/mobile-lane-stamp.mjs";
 import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,13 @@ const platformArg = process.argv.find((arg) => arg.startsWith("--platform="));
 const platform = platformArg?.split("=")[1] ?? "ios";
 const storeMode = args.has("--store");
 const sideloadMode = args.has("--sideload") || !storeMode;
+// --staged-only: run ONLY the staged-bundle check (used by ios-sideload-helper
+// right after a build step, when toolchain checks already passed once).
+// --skip-staged: omit the staged-bundle check (used by ios-sideload-helper
+// before a build step — the staged state is about to be replaced and gets
+// re-validated post-build).
+const stagedOnly = args.has("--staged-only");
+const skipStaged = args.has("--skip-staged");
 
 const checks = [];
 
@@ -39,6 +47,40 @@ function run(command, args) {
 
 function envPresent(names) {
   return names.filter((name) => !process.env[name]?.trim());
+}
+
+function readJson(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// #11030: a sideloaded bundle whose staged runtime mode is cloud with no
+// Agent.apiBase hangs at "Booting up…" on a real device (the native agent has
+// no endpoint and no local mode). The store lane (--store) legitimately ships
+// cloud mode with no apiBase — cloud onboarding happens in-app — so this
+// check is sideload-only by design; see evaluateStagedIosSideloadBundle.
+function checkIosStagedSideloadBundle() {
+  const iosAppDir = path.join(appRoot, "ios", "App", "App");
+  const agentConfig =
+    readJson(path.join(iosAppDir, "capacitor.config.json"))?.plugins?.Agent ??
+    null;
+  const rendererManifest = readJson(
+    path.join(iosAppDir, "public", "eliza-renderer-build.json"),
+  );
+  const verdict = evaluateStagedIosSideloadBundle({
+    agentConfig,
+    rendererManifest,
+  });
+  addCheck(
+    "Staged bundle agent reachability",
+    verdict.ok,
+    verdict.reason,
+    "Rebuild with `bun run --cwd packages/app build:ios:local`, or set VITE_ELIZA_IOS_API_BASE for an intentional cloud sideload.",
+  );
 }
 
 function checkIos() {
@@ -112,6 +154,9 @@ function checkIos() {
         : "xcrun unavailable",
       "Install Xcode command line tools and connect or boot a target device.",
     );
+    if (!skipStaged) {
+      checkIosStagedSideloadBundle();
+    }
   }
 
   if (storeMode) {
@@ -221,15 +266,23 @@ function checkAndroid() {
   }
 }
 
-if (!["ios", "android"].includes(platform)) {
+if (
+  !["ios", "android"].includes(platform) ||
+  (stagedOnly && (platform !== "ios" || storeMode || skipStaged))
+) {
   console.error(
-    "Usage: mobile-release-preflight.mjs --platform=ios|android [--sideload|--store]",
+    "Usage: mobile-release-preflight.mjs --platform=ios|android [--sideload|--store] [--staged-only|--skip-staged]\n" +
+      "  --staged-only applies to the iOS sideload lane only.",
   );
   process.exit(1);
 }
 
 if (platform === "ios") {
-  checkIos();
+  if (stagedOnly) {
+    checkIosStagedSideloadBundle();
+  } else {
+    checkIos();
+  }
 } else {
   checkAndroid();
 }

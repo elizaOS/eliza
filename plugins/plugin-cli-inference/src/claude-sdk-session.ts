@@ -43,9 +43,11 @@
  */
 
 import { logger } from "@elizaos/core";
+import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 
 const DEFAULT_MODEL = "claude-opus-4-7";
 const DEFAULT_RESTART_AFTER_TURNS = 20;
+const DEFAULT_TURN_TIMEOUT_MS = 90_000;
 /** Fully-qualified name the SDK assigns our in-process MCP tool. */
 const ROUTE_TOOL = "mcp__eliza__route_action";
 
@@ -66,11 +68,7 @@ export function isClaudeSubscriptionLimitMessage(text: string): boolean {
   // A genuine short ANSWER about limits ("No, you haven't hit your rate limit
   // yet.") shares vocabulary with the envelope; the envelope itself never
   // contains negation.
-  if (
-    /\b(no|not|haven't|havent|hasn't|hasnt|didn't|didnt|isn't|isnt|wasn't|wasnt)\b/.test(
-      t,
-    )
-  ) {
+  if (/\b(no|not|haven't|havent|hasn't|hasnt|didn't|didnt|isn't|isnt|wasn't|wasnt)\b/.test(t)) {
     return false;
   }
   return (
@@ -92,17 +90,12 @@ export function isClaudeSubscriptionLimitMessage(text: string): boolean {
  * string as assistant text and terminating the turn cleanly — e.g.
  * "API Error: 400 messages: text content blocks must be non-empty" (observed
  * live 18x when empty relay lines produced an empty text content block).
- * The shipping CLI also emits NON-numeric envelopes — strings baked into the
- * binary include "API Error: Request was aborted.", "API Error: Missing Tool
- * Result Block", and a bare "API Error" label — so the match anchors on the
- * "API Error" opener (with a colon or end-of-string after it) rather than
- * requiring a status code. Genuine prose that merely begins with the words
- * ("API Error handling is a best practice…") has no colon there and does not
- * match. This envelope is never a genuine completion: detect it so callers
+ * That format is the SDK's own error envelope, never a genuine completion:
+ * real answers don't open with "API Error: <status>". Detect it so callers
  * throw to failover instead of relaying the raw error to the user.
  */
 export function isClaudeSdkApiErrorMessage(text: string): boolean {
-  return /^API Error(:|$)/.test(text.trim());
+  return parseProviderApiErrorText(text) !== null;
 }
 
 /** The model's captured routing decision (ROUTE mode). */
@@ -137,13 +130,9 @@ type SdkToolFn = (
   handler: (args: {
     action?: unknown;
     params?: unknown;
-  }) => Promise<{ content: Array<{ type: string; text: string }> }>,
+  }) => Promise<{ content: Array<{ type: string; text: string }> }>
 ) => unknown;
-type SdkMcpServerFn = (options: {
-  name: string;
-  version?: string;
-  tools: unknown[];
-}) => unknown;
+type SdkMcpServerFn = (options: { name: string; version?: string; tools: unknown[] }) => unknown;
 
 /** Minimal shape of the SDK module we load lazily. */
 export interface SdkModule {
@@ -176,6 +165,8 @@ export interface ClaudeSdkSessionConfig {
   claudeExecutablePath?: string | null;
   /** Restart the warm session after this many turns (bounds context growth). */
   restartAfterTurns?: number;
+  /** Hard wall-clock budget for one SDK turn. Defaults below common 120s connector timeouts. */
+  turnTimeoutMs?: number;
   /** Injected for tests; defaults to the real SDK + zod. */
   sdkModule?: SdkModule;
   zodModule?: ZodModule;
@@ -206,18 +197,14 @@ function isZodModule(value: unknown): value is ZodModule {
   }
   const z = value.z;
   return (
-    typeof z.string === "function" &&
-    typeof z.any === "function" &&
-    typeof z.record === "function"
+    typeof z.string === "function" && typeof z.any === "function" && typeof z.record === "function"
   );
 }
 
 async function loadSdk(): Promise<SdkModule> {
   const sdk: unknown = await import(SDK_PACKAGE);
   if (!isSdkModule(sdk)) {
-    throw new Error(
-      "[cli-inference:sdk] Claude Agent SDK module has an unexpected shape",
-    );
+    throw new Error("[cli-inference:sdk] Claude Agent SDK module has an unexpected shape");
   }
   return sdk;
 }
@@ -241,6 +228,7 @@ export class ClaudeSdkSession {
   private readonly textMaxTurns: number;
   private readonly claudeExecutablePath: string | null;
   private readonly restartAfterTurns: number;
+  private readonly turnTimeoutMs: number;
   private readonly sdkOverride?: SdkModule;
   private readonly zodOverride?: ZodModule;
 
@@ -258,13 +246,16 @@ export class ClaudeSdkSession {
     this.model = config.model?.trim() || DEFAULT_MODEL;
     this.systemPrompt = config.systemPrompt?.trim() || null;
     this.router = config.router === true;
-    this.textMaxTurns =
-      config.textMaxTurns && config.textMaxTurns > 0 ? config.textMaxTurns : 1;
+    this.textMaxTurns = config.textMaxTurns && config.textMaxTurns > 0 ? config.textMaxTurns : 1;
     this.claudeExecutablePath = config.claudeExecutablePath?.trim() || null;
     this.restartAfterTurns =
       config.restartAfterTurns && config.restartAfterTurns > 0
         ? config.restartAfterTurns
         : DEFAULT_RESTART_AFTER_TURNS;
+    this.turnTimeoutMs =
+      config.turnTimeoutMs && config.turnTimeoutMs > 0
+        ? config.turnTimeoutMs
+        : DEFAULT_TURN_TIMEOUT_MS;
     this.sdkOverride = config.sdkModule;
     this.zodOverride = config.zodModule;
   }
@@ -292,10 +283,7 @@ export class ClaudeSdkSession {
     return run;
   }
 
-  private async sendOnce(
-    body: string,
-    mode: "text" | "route",
-  ): Promise<string> {
+  private async sendOnce(body: string, mode: "text" | "route"): Promise<string> {
     if (!body.trim()) {
       throw new Error("[cli-inference:sdk] empty prompt body");
     }
@@ -312,9 +300,7 @@ export class ClaudeSdkSession {
     } catch (err) {
       // Self-heal: a dead/erroring session must not poison the next turn.
       await this.dispose();
-      throw err instanceof Error
-        ? err
-        : new Error(`[cli-inference:sdk] ${String(err)}`);
+      throw err instanceof Error ? err : new Error(`[cli-inference:sdk] ${String(err)}`);
     }
   }
 
@@ -384,11 +370,9 @@ export class ClaudeSdkSession {
             };
           }
           return {
-            content: [
-              { type: "text", text: "ACK. Routing recorded. Stop now." },
-            ],
+            content: [{ type: "text", text: "ACK. Routing recorded. Stop now." }],
           };
-        },
+        }
       );
       const mcp = sdk.createSdkMcpServer({
         name: "eliza",
@@ -418,15 +402,44 @@ export class ClaudeSdkSession {
         model: this.model,
         mode: this.router ? "route" : "text",
       },
-      "warm Claude Agent SDK session started",
+      "warm Claude Agent SDK session started"
     );
   }
 
+  private async nextWithTurnTimeout(): Promise<IteratorResult<SdkMessage>> {
+    const iterator = this.iterator;
+    if (!iterator) {
+      throw new Error("[cli-inference:sdk] session not started");
+    }
+
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        iterator.next(),
+        new Promise<IteratorResult<SdkMessage>>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new ProviderApiError(
+                `[cli-inference:sdk] turn timed out after ${this.turnTimeoutMs}ms`,
+                { retryable: true }
+              )
+            );
+          }, this.turnTimeoutMs);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof ProviderApiError) {
+        await this.dispose();
+      }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   /** Push one user message and read the turn's assistant text + result envelope. */
-  private async sendAndRead(
-    body: string,
-    mode: "text" | "route",
-  ): Promise<string> {
+  private async sendAndRead(body: string, mode: "text" | "route"): Promise<string> {
     if (!this.feed || !this.iterator) {
       throw new Error("[cli-inference:sdk] session not started");
     }
@@ -441,7 +454,7 @@ export class ClaudeSdkSession {
     let resultSubtype: string | undefined;
     let sawResult = false;
     while (true) {
-      const { value, done } = await this.iterator.next();
+      const { value, done } = await this.nextWithTurnTimeout();
       if (done) {
         // Generator ended WITHOUT a terminating `result` message — the session
         // died mid-turn. Force a restart next turn; `sawResult` stays false so
@@ -483,11 +496,11 @@ export class ClaudeSdkSession {
     // as a REPLY, text mode as the completion). "rate limit" in the thrown
     // message routes it through isRateLimitError.
     const limitEnvelope = [text, resultText ?? ""].find((candidate) =>
-      isClaudeSubscriptionLimitMessage(candidate),
+      isClaudeSubscriptionLimitMessage(candidate)
     );
     if (sawResult && limitEnvelope !== undefined) {
       throw new Error(
-        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`,
+        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`
       );
     }
 
@@ -499,11 +512,13 @@ export class ClaudeSdkSession {
     // keeps the SDK's status text so isRateLimitError/isAuthError classify
     // 429/401 correctly downstream.
     const apiErrorEnvelope = [text, resultText ?? ""].find((candidate) =>
-      isClaudeSdkApiErrorMessage(candidate),
+      isClaudeSdkApiErrorMessage(candidate)
     );
     if (apiErrorEnvelope !== undefined) {
-      throw new Error(
+      const parsed = parseProviderApiErrorText(apiErrorEnvelope);
+      throw new ProviderApiError(
         `[cli-inference:sdk] upstream ${apiErrorEnvelope.trim().slice(0, 160)}`,
+        { statusCode: parsed?.statusCode }
       );
     }
 
@@ -520,7 +535,7 @@ export class ClaudeSdkSession {
         }
       }
       throw new Error(
-        `[cli-inference:sdk] route: model emitted no decision (subtype=${resultSubtype ?? "?"})`,
+        `[cli-inference:sdk] route: model emitted no decision (subtype=${resultSubtype ?? "?"})`
       );
     }
 
@@ -538,7 +553,7 @@ export class ClaudeSdkSession {
     // No trustworthy text: THROW so useModel / AccountPool fails over, per the
     // plugin's throw-to-failover contract — never return partial/meta output.
     throw new Error(
-      `[cli-inference:sdk] empty completion (subtype=${resultSubtype ?? (sawResult ? "?" : "session-ended")})`,
+      `[cli-inference:sdk] empty completion (subtype=${resultSubtype ?? (sawResult ? "?" : "session-ended")})`
     );
   }
 

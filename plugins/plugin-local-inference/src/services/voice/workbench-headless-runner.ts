@@ -327,10 +327,17 @@ export async function runVoiceScenarioHeadless(
 	// Entity extraction + voice→entity match only when the scenario asserts them.
 	if (expectedEntities.length > 0 || inferredEntities.length > 0) {
 		cases.push(
-			scoreEntityExtraction({
-				expected: expectedEntities,
-				inferred: inferredEntities,
-			}),
+			scoreEntityExtraction(
+				{
+					expected: expectedEntities,
+					inferred: inferredEntities,
+				},
+				{
+					...(assertions.minEntityF1 !== undefined
+						? { minF1: assertions.minEntityF1 }
+						: {}),
+				},
+			),
 		);
 	}
 	if (voiceEntitySamples.length > 0) {

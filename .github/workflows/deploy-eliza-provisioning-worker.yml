@@ -220,7 +220,7 @@ jobs:
             #
             # --no-recurse-submodules on both fetch + checkout: the provisioning
             # worker daemon and agent router are pure Node/tsx code and never
-            # touch the llama.cpp / omnivoice.cpp / opencode submodules. If the
+            # touch the llama.cpp / opencode submodules. If the
             # deploy host has `fetch.recurseSubmodules=on-demand` (the default
             # when submodules are present), recursing through a superproject
             # commit whose submodule SHA was never pushed to the fork kills the

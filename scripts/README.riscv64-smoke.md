@@ -48,10 +48,6 @@ The smoke harness writes a machine-readable report to
   `packages/app-core/scripts/aosp/compile-libllama.mjs --target
   linux-riscv64-cpu` and `--target android-riscv64-cpu`.
 
-- **`libomnivoice.so`** —
-  `plugins/plugin-local-inference/native/build-omnivoice.mjs` with
-  `OMNIVOICE_TARGET=linux-riscv64-cpu`.
-
 - **`libsigsys-handler.so`** for riscv64 — the Bun seccomp shim,
   built by `packages/app-core/scripts/aosp/compile-shim.mjs --abi
   riscv64` into `~/.cache/eliza-android-agent/seccomp-shim/riscv64/`.
