@@ -58,6 +58,17 @@ const DRY_RUN = flag("--dry-run");
 const DETERMINISTIC = flag("--deterministic");
 const LIMIT = Number(opt("--limit", "0")) || 0; // 0 = no limit
 const FAMILY = opt("--family", "scenario");
+// --shard i/n : deterministic split of the discovered scenario list across N
+// parallel workers (worker i takes items where globalIndex % N === i). Lets the
+// big packages/test/scenarios dir run across several codex workers at once.
+const SHARD = opt("--shard", null); // "i/n"
+const [SHARD_I, SHARD_N] = SHARD
+  ? SHARD.split("/").map((x) => Number(x))
+  : [0, 1];
+// --resume : skip an item whose verdict.json already exists, so a killed /
+// rate-limited harvest picks up where it left off without re-spending on
+// already-captured trajectories.
+const RESUME = flag("--resume");
 const DIR_FILTER = opt("--dir", null);
 const MANIFEST_PATH = opt("--manifest", path.join(__dirname, "manifest.json"));
 const HARVEST_ROOT = path.resolve(
@@ -236,24 +247,41 @@ function main() {
     (it) => !DIR_FILTER || it.dir === DIR_FILTER || it.id === DIR_FILTER,
   );
 
+  // Flatten to a stable global list first so --shard splits deterministically
+  // across parallel workers and --resume can skip already-done items.
+  const allItems = [];
+  for (const dirItem of dirs) {
+    for (const id of discoverScenarioIds(dirItem.dir, provider.env)) {
+      allItems.push({ dir: dirItem.dir, id });
+    }
+  }
+  summary.totalDiscovered = allItems.length;
+  summary.shard = `${SHARD_I}/${SHARD_N}`;
+
   let ran = 0;
-  outer: for (const dirItem of dirs) {
-    const ids = discoverScenarioIds(dirItem.dir, provider.env);
-    for (const id of ids) {
-      if (LIMIT && ran >= LIMIT) break outer;
-      ran += 1;
-      if (DRY_RUN) {
-        summary.items.push({ dir: dirItem.dir, id, planned: true });
-        console.log(`[dry-run] would harvest scenario ${dirItem.dir} :: ${id}`);
+  for (let gi = 0; gi < allItems.length; gi += 1) {
+    if (SHARD_N > 1 && gi % SHARD_N !== SHARD_I) continue; // not this shard
+    if (LIMIT && ran >= LIMIT) break;
+    ran += 1;
+    const { dir, id } = allItems[gi];
+    if (RESUME) {
+      const doneMarker = path.join(HARVEST_ROOT, slug(dir), slug(id), "verdict.json");
+      if (existsSync(doneMarker)) {
+        console.log(`[resume] skip (already harvested) ${dir} :: ${id}`);
         continue;
       }
-      console.log(`[harvest] ${dirItem.dir} :: ${id}`);
-      const verdict = runScenario(dirItem.dir, id, provider.env);
-      summary.items.push(verdict);
-      console.log(
-        `[harvest]   → status=${verdict.status} rows=${verdict.rows} judge=${verdict.judgeScore ?? "n/a"} exit=${verdict.exitCode}`,
-      );
     }
+    if (DRY_RUN) {
+      summary.items.push({ dir, id, gi, planned: true });
+      console.log(`[dry-run] would harvest scenario ${dir} :: ${id}`);
+      continue;
+    }
+    console.log(`[harvest #${gi}] ${dir} :: ${id}`);
+    const verdict = runScenario(dir, id, provider.env);
+    summary.items.push(verdict);
+    console.log(
+      `[harvest]   → status=${verdict.status} rows=${verdict.rows} judge=${verdict.judgeScore ?? "n/a"} exit=${verdict.exitCode}`,
+    );
   }
 
   summary.finishedAt = new Date().toISOString();
