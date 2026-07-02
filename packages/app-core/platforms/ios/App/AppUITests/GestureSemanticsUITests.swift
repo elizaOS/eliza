@@ -328,7 +328,9 @@ final class GestureSemanticsUITests: XCTestCase {
 
     /// Fast flick on the grabber: short press, fast drag, immediate release —
     /// crosses the web gesture engine's velocity threshold so it resolves as a
-    /// FLICK (detent step), not a deliberate free-settling drag.
+    /// FLICK (detent step), not a deliberate free-settling drag. `.fast` is
+    /// only 750 pt/s (≈0.5 px/ms over the whole gesture — right AT the web
+    /// threshold), so drive an explicit 2000 pt/s.
     private func flickGrabber(in app: XCUIApplication, dy: CGFloat) throws {
         guard let handle = grabber(in: app), handle.isHittable else {
             attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-grabber")
@@ -338,7 +340,8 @@ final class GestureSemanticsUITests: XCTestCase {
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let end = start.withOffset(CGVector(dx: 0, dy: dy))
         start.press(
-            forDuration: 0.05, thenDragTo: end, withVelocity: .fast,
+            forDuration: 0.05, thenDragTo: end,
+            withVelocity: XCUIGestureVelocity(rawValue: 2000),
             thenHoldForDuration: 0)
     }
 
@@ -376,7 +379,8 @@ final class GestureSemanticsUITests: XCTestCase {
                     withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 let end = start.withOffset(CGVector(dx: 0, dy: 300))
                 start.press(
-                    forDuration: 0.05, thenDragTo: end, withVelocity: .fast,
+                    forDuration: 0.05, thenDragTo: end,
+                    withVelocity: XCUIGestureVelocity(rawValue: 2000),
                     thenHoldForDuration: 0)
             } else {
                 break
@@ -458,24 +462,48 @@ final class GestureSemanticsUITests: XCTestCase {
             attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-keyboard")
             throw XCTSkip("keyboard never appeared after tapping the composer")
         }
-        composer.typeText(text + "\n")
+        composer.typeText(text)
 
-        // The user turn lands optimistically; only its existence matters (the
-        // assistant's reply, if any, is irrelevant to gesture semantics).
+        // Send by tapping the composer's send control (aria-label "send" /
+        // "send another"). The iOS software keyboard's Return does NOT reach
+        // the web textarea as an Enter keydown, so typing "\n" never submits.
+        let sendButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'send'")
+        ).firstMatch
+        guard sendButton.waitForExistence(timeout: 5), sendButton.isHittable
+        else {
+            attachScreenshot(named: "send-no-send-button")
+            attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-send-button")
+            throw XCTSkip("no hittable send control after typing a draft")
+        }
+        sendButton.tap()
+
+        // A successful submit CLEARS the draft (the composer's own text is AX-
+        // visible, so it must not be mistaken for the sent bubble) and lands
+        // the user turn optimistically; sending also springs the sheet open.
         let deadline = Date().addingTimeInterval(15)
+        var composerCleared = false
         while Date() < deadline {
-            if messageBubbles(in: app).count > bubblesBefore { return }
-            if app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS %@", text)
-            ).count > 0 {
-                return
+            if !composerCleared {
+                let draft = (composer.value as? String) ?? ""
+                composerCleared = !draft.contains(text)
+            }
+            if composerCleared {
+                if messageBubbles(in: app).count > bubblesBefore { return }
+                if app.staticTexts.matching(
+                    NSPredicate(format: "label CONTAINS %@", text)
+                ).count > 0 {
+                    return
+                }
             }
             Thread.sleep(forTimeInterval: 0.5)
         }
         attachScreenshot(named: "send-no-bubble")
         attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-sent-bubble")
         throw XCTSkip(
-            "sent '\(text)' but no user bubble surfaced in the AX tree within 15s"
+            composerCleared
+                ? "sent '\(text)' but no user bubble surfaced in the AX tree within 15s"
+                : "the send control never cleared the draft — the message did not submit"
         )
     }
 
