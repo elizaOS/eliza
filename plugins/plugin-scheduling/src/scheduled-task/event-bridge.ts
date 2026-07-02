@@ -52,7 +52,9 @@ function subsetDeepEquals(expected: unknown, actual: unknown): boolean {
     if (!Array.isArray(actual) || actual.length !== expected.length) {
       return false;
     }
-    return expected.every((item, index) => subsetDeepEquals(item, actual[index]));
+    return expected.every((item, index) =>
+      subsetDeepEquals(item, actual[index]),
+    );
   }
   if (
     typeof expected === "object" &&

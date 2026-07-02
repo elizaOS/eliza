@@ -37,15 +37,6 @@ export {
   type ScheduledTaskDueDecision,
 } from "./due.js";
 export {
-  type EventBridgeRunner,
-  type EventTriggeredFireOutcome,
-  eventFilterMatches,
-  type FireEventTriggeredTasksArgs,
-  fireEventTriggeredTasks,
-  type InstallScheduledTaskEventBridgeArgs,
-  installScheduledTaskEventBridge,
-} from "./event-bridge.js";
-export {
   createEscalationLadderRegistry,
   DEFAULT_ESCALATION_LADDERS,
   type EscalationCursor,
@@ -57,6 +48,15 @@ export {
   resetLadderForSnooze,
   resolveEffectiveLadder,
 } from "./escalation.js";
+export {
+  type EventBridgeRunner,
+  type EventTriggeredFireOutcome,
+  eventFilterMatches,
+  type FireEventTriggeredTasksArgs,
+  fireEventTriggeredTasks,
+  type InstallScheduledTaskEventBridgeArgs,
+  installScheduledTaskEventBridge,
+} from "./event-bridge.js";
 export {
   createTaskGateRegistry,
   registerBuiltInGates,

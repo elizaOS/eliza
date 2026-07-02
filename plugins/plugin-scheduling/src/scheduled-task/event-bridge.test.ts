@@ -161,9 +161,9 @@ describe("eventFilterMatches", () => {
         { meeting: { room: "A", floor: 2 } },
       ),
     ).toBe(true);
-    expect(
-      eventFilterMatches({ tags: ["a", "b"] }, { tags: ["a", "b"] }),
-    ).toBe(true);
+    expect(eventFilterMatches({ tags: ["a", "b"] }, { tags: ["a", "b"] })).toBe(
+      true,
+    );
     expect(eventFilterMatches({ tags: ["a"] }, { tags: ["a", "b"] })).toBe(
       false,
     );
