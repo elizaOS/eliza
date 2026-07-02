@@ -119,6 +119,67 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
     // fractionSpent clamps to 1 → creditsRemaining 0 → no refund call.
     expect(refund).not.toHaveBeenCalled();
   });
+
+  // #11151 — internal (miniapp) SSP campaigns accrue spend on `credits_spent`
+  // (written by recordServe), NOT `total_spend` (only the external-provider sync
+  // writes that). Before the fix, an internal campaign had total_spend "0" so
+  // deleteCampaign refunded the FULL allocation after it spent real budget on
+  // impressions. The refund must now honor credits_spent too.
+  test("#11151 internal campaign spent via credits_spent → refunds only the unused portion, not the full allocation", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        // external_campaign_id null (internal), total_spend "0", but 40 allocated
+        // credits actually spent on served impressions.
+        makeCampaign({ credits_spent: "40", total_spend: "0" }) as never,
+      ),
+    );
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+    track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
+
+    await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
+
+    expect(refund).toHaveBeenCalledTimes(1);
+    const arg = refund.mock.calls[0]?.[0] as { amount: number };
+    // credits_spent is already in allocated-credit units: 110 - 40 = 70.
+    // Pre-fix this refunded the full 110 (free advertising).
+    expect(arg.amount).toBeCloseTo(70, 9);
+  });
+
+  test("#11151 fully-spent internal campaign (credits_spent ≥ allocated) refunds nothing", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ credits_spent: "110", total_spend: "0" }) as never,
+      ),
+    );
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+    track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
+
+    await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
+
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  test("#11151 mixed spend takes the MAX of internal+external measures (no double-refund)", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        // credits_spent 40 (allocated units) vs total_spend 100 USD → 100*1.1 = 110
+        // allocated-credit units; the external measure dominates → nothing left.
+        makeCampaign({ credits_spent: "40", total_spend: "100" }) as never,
+      ),
+    );
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+    track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
+
+    await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
+
+    expect(refund).not.toHaveBeenCalled();
+  });
 });
 
 describe("updateCampaign — reconciles the credit hold on a budget change", () => {
