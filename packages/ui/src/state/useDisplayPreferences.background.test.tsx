@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   loadBackgroundConfig,
   loadBackgroundHistory,
+  loadBackgroundRedo,
   loadHomeTimeWidgetHidden,
   MAX_BACKGROUND_HISTORY,
   MAX_BACKGROUND_HISTORY_DATA_URLS,
@@ -122,6 +123,39 @@ describe("useDisplayPreferences — background history + undo", () => {
     });
     expect(loadBackgroundConfig().color).toBe("#059669");
     expect(loadBackgroundHistory().length).toBe(1);
+  });
+
+  it("persists the redo stack so 'step forward' survives a reload (#10694)", () => {
+    // Edit twice, then undo → the undone config is now redoable AND persisted.
+    const first = renderHook(() => useDisplayPreferences());
+    act(() => {
+      first.result.current.setBackgroundConfig({
+        mode: "shader",
+        color: "#059669",
+      });
+    });
+    act(() => {
+      first.result.current.setBackgroundConfig({
+        mode: "shader",
+        color: "#e11d48",
+      });
+    });
+    act(() => {
+      first.result.current.undoBackgroundConfig();
+    });
+    expect(loadBackgroundRedo().map((c) => c.color)).toEqual(["#e11d48"]);
+    first.unmount();
+
+    // A fresh mount (reload) re-hydrates the redo stack and can step forward.
+    const reloaded = renderHook(() => useDisplayPreferences());
+    expect(reloaded.result.current.state.canRedoBackground).toBe(true);
+    act(() => {
+      reloaded.result.current.redoBackgroundConfig();
+    });
+    expect(reloaded.result.current.state.backgroundConfig.color).toBe(
+      "#e11d48",
+    );
+    expect(reloaded.result.current.state.canRedoBackground).toBe(false);
   });
 
   it("caps the undo history at the maximum", () => {

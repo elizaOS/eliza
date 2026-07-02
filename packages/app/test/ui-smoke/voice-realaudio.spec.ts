@@ -482,7 +482,12 @@ test("pressing the mic button captures REAL injected audio and completes the voi
   expect(report.mode).toBe("mic-capture");
   const asr = report.stages?.find((s) => s.stage === "asr");
   expect(asr?.status).toBe("pass");
-  expect(Number(asr?.detail?.wer ?? 1)).toBeLessThanOrEqual(0.34);
+  // NOTE: this Chromium lane runs against a MOCK ASR that echoes the expected
+  // phrase, so a WER assertion here would be structurally 0 and could never
+  // catch a regression (#10726). The load-bearing proof in this lane is that a
+  // real captured WAV reached ASR (asrPosted above). WER accuracy is scored only
+  // in the tiers with a REAL recognizer — plugin-local-inference *.real.test.ts
+  // and the voice:matrix hardware lanes — not against the echo mock.
 });
 
 test("REAL audio: transcription start during spoken local TTS barges in and silences playback", async ({
