@@ -15,6 +15,7 @@ import "./worker-polyfills";
 import type { Hono } from "hono";
 import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { serveBlobHostRequest } from "./blob-host";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
 const AGENT_ID_RE =
@@ -349,6 +350,8 @@ export default {
 
     const frontendAliasResponse = proxyFrontendAliasRequest(request, url, env);
     if (frontendAliasResponse) return frontendAliasResponse;
+    const blobResponse = await serveBlobHostRequest(request, url, env);
+    if (blobResponse) return blobResponse;
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
     if (agentProxyResponse) return agentProxyResponse;
     const frontendRedirect = redirectFrontendHost(url, env);
