@@ -264,6 +264,43 @@ def test_final_summary_requires_grounding_event() -> None:
     assert evaluator.evaluate_scenario(scenario, [grounded]).passed
 
 
+def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
+    """The old metrics substituted the overall score whenever the summary
+    category scored 0 — a failed summary scenario was reported at the
+    (higher) overall rate. The real rate must be reported."""
+    evaluator = LifecycleEvaluator()
+    cancel_scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Cancel the task now.",
+                expected_behaviors=["cancel_task"],
+            )
+        ],
+        scenario_id="cancel_task",
+    )
+    summary_scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Give me the final stakeholder summary.",
+                expected_behaviors=["final_summary_to_stakeholder"],
+            )
+        ],
+        scenario_id="final_stakeholder_summary",
+    )
+    cancel_pass = evaluator.evaluate_scenario(
+        cancel_scenario, [TurnRecord(reply_text="Shut down.", events=["cancel"])]
+    )
+    summary_fail = evaluator.evaluate_scenario(
+        summary_scenario,
+        [TurnRecord(reply_text="Summary: all done, deliverable shipped.", events=[])],
+    )
+    metrics = evaluator.compute_metrics([cancel_pass, summary_fail])
+    assert metrics.overall_score == 0.5
+    assert metrics.completion_summary_quality == 0.0
+
+
 def test_compute_metrics_aggregates_pass_rate() -> None:
     evaluator = LifecycleEvaluator()
     scenario = _scenario(

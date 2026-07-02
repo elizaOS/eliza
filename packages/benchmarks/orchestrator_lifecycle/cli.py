@@ -88,8 +88,16 @@ def main() -> None:
     print("Orchestrator lifecycle benchmark complete")
     print(f"Mode: {config.mode}")
     print(f"Scenarios: {len(results)}")
-    print(f"Overall score: {metrics.overall_score:.3f}")
-    print(f"Pass rate: {metrics.scenario_pass_rate:.1%}")
+    if config.mode == "simulate":
+        print(
+            "SMOKE ONLY — simulate mode exercises the harness/evaluator with a "
+            "deterministic simulator; this is NOT a benchmark result and the "
+            "report withholds metrics.overall_score so it cannot be published."
+        )
+        print(f"Harness self-check pass rate: {metrics.scenario_pass_rate:.1%}")
+    else:
+        print(f"Overall score: {metrics.overall_score:.3f}")
+        print(f"Pass rate: {metrics.scenario_pass_rate:.1%}")
     print(f"Report: {report_path}")
 
 
