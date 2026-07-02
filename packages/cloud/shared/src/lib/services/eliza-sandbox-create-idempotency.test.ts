@@ -57,6 +57,7 @@ const txSelect = mock(() => {
     orderBy: () => chain,
     for: () => chain,
     limit: () => existingRows,
+    // biome-ignore lint/suspicious/noThenProperty: Drizzle's count chain is awaited at `.where()`, so this mock must be thenable.
     then: (resolve: (rows: Array<{ count: number }>) => unknown) => resolve(countRows),
   } as Record<string, unknown>;
   return chain;
