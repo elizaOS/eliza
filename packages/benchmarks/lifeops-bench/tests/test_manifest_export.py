@@ -70,6 +70,56 @@ def test_manifest_actions_are_unique_sorted_and_augmented() -> None:
     }.issubset(bench_names)
 
 
+def test_scheduled_task_augments_cover_expanded_scenario_kwargs() -> None:
+    actions = {
+        entry["function"]["name"]: entry
+        for entry in _manifest()["actions"]
+    }
+    create_properties = actions["SCHEDULED_TASK_CREATE"]["function"]["parameters"][
+        "properties"
+    ]
+    update_properties = actions["SCHEDULED_TASK_UPDATE"]["function"]["parameters"][
+        "properties"
+    ]
+
+    assert {
+        "escalation",
+        "metadata",
+        "output",
+        "pipeline",
+        "respectsGlobalPause",
+        "subject",
+    }.issubset(create_properties)
+    assert "updates" in update_properties
+
+
+def test_plugin_action_overlays_cover_expanded_scenario_kwargs() -> None:
+    actions = {
+        entry["function"]["name"]: entry for entry in _manifest()["actions"]
+    }
+    block_properties = actions["BLOCK_BLOCK"]["function"]["parameters"][
+        "properties"
+    ]
+    travel_properties = actions["BOOK_TRAVEL"]["function"]["parameters"][
+        "properties"
+    ]
+    finance_properties = actions["MONEY_SUBSCRIPTION_CANCEL"]["function"][
+        "parameters"
+    ]["properties"]
+
+    assert {"exceptions", "mode", "policy", "schedule"}.issubset(
+        block_properties
+    )
+    assert {"approval", "calendarSync", "hotelCheckIn", "rebookReason"}.issubset(
+        travel_properties
+    )
+    assert {schema["type"] for schema in travel_properties["passengers"]["oneOf"]} == {
+        "array",
+        "number",
+    }
+    assert "candidateId" in finance_properties
+
+
 def test_summary_counts_match_manifest() -> None:
     actions = _manifest()["actions"]
     summary = SUMMARY_PATH.read_text(encoding="utf-8")

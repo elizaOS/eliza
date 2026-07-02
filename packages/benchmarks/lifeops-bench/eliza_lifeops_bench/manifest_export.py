@@ -195,22 +195,29 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
             "destination": {"type": "string"},
             "departureDate": {"type": "string"},
             "returnDate": {"type": "string"},
-            # passengers is an array of objects, not a bare integer count.
-            # Each item carries name (string) and seat_class (economy|business|first).
-            # The scorer coerces integer counts to this canonical array form.
+            # The corpus uses both integer counts and the canonical array form.
+            # The scorer coerces counts to passenger objects.
             "passengers": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "seat_class": {
-                            "type": "string",
-                            "enum": ["economy", "business", "first"],
+                "description": (
+                    "Either an integer passenger count or the canonical passenger array."
+                ),
+                "oneOf": [
+                    {"type": "number"},
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "seat_class": {
+                                    "type": "string",
+                                    "enum": ["economy", "business", "first"],
+                                },
+                            },
+                            "required": ["name", "seat_class"],
                         },
                     },
-                    "required": ["name", "seat_class"],
-                },
+                ],
             },
         },
     },
@@ -225,6 +232,12 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
             "source": {"type": "string"},
             "priority": {"type": "string"},
             "ownerVisible": {"type": "boolean"},
+            "respectsGlobalPause": {"type": "boolean"},
+            "metadata": {"type": "object", "additionalProperties": True},
+            "subject": {"type": "object", "additionalProperties": True},
+            "output": {"type": "object", "additionalProperties": True},
+            "pipeline": {"type": "object", "additionalProperties": True},
+            "escalation": {"type": "object", "additionalProperties": True},
         },
     },
     "SCHEDULED_TASK_UPDATE": {
@@ -234,6 +247,7 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
         "extra_properties": {
             "taskId": {"type": "string"},
             "trigger": {"type": "object", "additionalProperties": True},
+            "updates": {"type": "object", "additionalProperties": True},
             "reason": {"type": "string"},
         },
     },
@@ -246,6 +260,58 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
             "minutes": {"type": "number"},
             "reason": {"type": "string"},
         },
+    },
+}
+
+# Some expanded-corpus scenarios intentionally carry benchmark metadata through
+# live plugin action names. The generated plugin schemas stay strict for agent
+# tooling, so the bench manifest overlays only these scenario-side fields.
+_BENCH_PROPERTY_OVERLAYS: dict[str, dict[str, Any]] = {
+    "BLOCK_BLOCK": {
+        "exceptions": {
+            "type": "array",
+            "items": {"type": "object", "additionalProperties": True},
+        },
+        "mode": {"type": "string"},
+        "policy": {"type": "string"},
+        "schedule": {"type": "object", "additionalProperties": True},
+    },
+    "BLOCK_LIST_ACTIVE": {
+        "includeScheduled": {"type": "boolean"},
+    },
+    "BLOCK_REQUEST_PERMISSION": {
+        "confirmationRequired": {"type": "boolean"},
+        "mode": {"type": "string"},
+        "noBypass": {"type": "boolean"},
+    },
+    "BLOCK_STATUS": {
+        "scope": {"type": "string"},
+    },
+    "BOOK_TRAVEL": {
+        "approval": {"type": "object", "additionalProperties": True},
+        "calendarSync": {"type": "boolean"},
+        "hotelCheckIn": {"type": "string"},
+        "rebookReason": {"type": "string"},
+    },
+    "ENTITY": {
+        "storeAllowed": {"type": "boolean"},
+    },
+    "LIFE_SKIP": {
+        "reason": {"type": "string"},
+        "target": {"type": "string"},
+    },
+    "LIFE_UPDATE": {
+        "target": {"type": "string"},
+        "updates": {"type": "object", "additionalProperties": True},
+    },
+    "MONEY_SPENDING_SUMMARY": {
+        "groupBy": {"type": "string"},
+    },
+    "MONEY_SUBSCRIPTION_AUDIT": {
+        "category": {"type": "string"},
+    },
+    "MONEY_SUBSCRIPTION_CANCEL": {
+        "candidateId": {"type": "string"},
     },
 }
 
@@ -316,6 +382,29 @@ def bench_umbrella_actions() -> list[dict[str, Any]]:
     return [_build_entry(name, spec) for name, spec in _BENCH_UMBRELLA_AUGMENTS.items()]
 
 
+def _apply_property_overlays(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return entries with benchmark-only scenario properties merged in."""
+    patched_entries: list[dict[str, Any]] = []
+    for entry in entries:
+        name = entry.get("function", {}).get("name")
+        overlays = _BENCH_PROPERTY_OVERLAYS.get(name)
+        if not overlays:
+            patched_entries.append(entry)
+            continue
+
+        patched = dict(entry)
+        function = dict(patched["function"])
+        parameters = dict(function["parameters"])
+        properties = dict(parameters.get("properties", {}))
+        for key, schema in overlays.items():
+            properties.setdefault(key, schema)
+        parameters["properties"] = properties
+        function["parameters"] = parameters
+        patched["function"] = function
+        patched_entries.append(patched)
+    return patched_entries
+
+
 def augment_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of ``manifest`` with bench-only umbrella entries appended.
 
@@ -347,6 +436,7 @@ def augment_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
             continue
         deduplicated.append(entry)
         existing.add(name)
+    deduplicated = _apply_property_overlays(deduplicated)
     deduplicated.sort(key=lambda a: a["function"]["name"])
     out = dict(manifest)
     out["actions"] = deduplicated
