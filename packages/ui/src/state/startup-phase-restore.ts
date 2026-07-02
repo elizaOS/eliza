@@ -487,6 +487,17 @@ export async function applyRestoredConnection(args: {
     return;
   }
 
+  if (isMobileLocalActiveServer(restoredActiveServer)) {
+    // Bundled mobile on-device agent (`eliza-local-agent://ipc`): a native
+    // Capacitor IPC identity, not a network host — no socket dial, no bearer
+    // token. Route the client at the IPC base; the full-Bun engine starts
+    // lazily on the first /api request through the iOS/Android local-agent
+    // transport. Without this branch the remote-host SECURITY backstop below
+    // dropped the record on every cold launch (see canRestoreActiveServer).
+    clientRef.setBaseUrl(restoredActiveServer.apiBase ?? null);
+    return;
+  }
+
   const reconciled = reconcilePersistedApiBaseWithLive(
     restoredActiveServer.apiBase,
   );
