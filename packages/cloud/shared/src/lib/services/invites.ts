@@ -6,7 +6,6 @@ import {
   type NewOrganizationInvite,
   type OrganizationInvite,
   organizationInvitesRepository,
-  type User,
 } from "../../db/repositories";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { appsRepository } from "../../db/repositories/apps";
@@ -186,7 +185,7 @@ export class InvitesService {
     // actionable error — abandoning a real org needs an explicit path.
     const vacatedSoloOrgId = user.role === "owner" ? user.organization_id : null;
     if (vacatedSoloOrgId) {
-      await this.assertOwnerCanVacateSoloOrganization(user, vacatedSoloOrgId);
+      await this.assertOwnerCanVacateSoloOrganization(user.id, vacatedSoloOrgId);
     }
 
     const movedUser = await usersService.update(userId, {
@@ -213,11 +212,11 @@ export class InvitesService {
    * solo org (the auto-provisioned signup artifact), not a real organization.
    */
   private async assertOwnerCanVacateSoloOrganization(
-    user: User,
+    userId: string,
     organizationId: string,
   ): Promise<void> {
     const members = await usersService.listByOrganization(organizationId);
-    if (members.some((member) => member.id !== user.id)) {
+    if (members.some((member) => member.id !== userId)) {
       throw new Error(
         "You cannot join another organization while your current organization has other members. Transfer ownership or remove them first.",
       );
@@ -284,6 +283,7 @@ export class InvitesService {
         previousOrganizationId,
         newOrganizationId,
       );
+      await this.assertOwnerCanVacateSoloOrganization(userId, previousOrganizationId);
       await organizationsService.delete(previousOrganizationId);
     } catch (error) {
       logger.warn("[InvitesService] Failed to clean up vacated solo organization", {
