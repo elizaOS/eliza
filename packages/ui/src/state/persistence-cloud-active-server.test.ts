@@ -109,6 +109,26 @@ describe("Cloud active server persistence", () => {
     ).toBe(false);
   });
 
+  it("restores the persisted mobile on-device agent IPC record (issue: iOS local cold launch re-onboarded every boot)", () => {
+    // `eliza-local-agent://ipc` is a native Capacitor IPC identity, not a
+    // network host. The remote-host trust gate (http/https only) must not
+    // drop it — dropping it clears the saved server + first-run flag and
+    // bounces every iOS/Android local-mode launch back into onboarding.
+    expect(
+      canRestoreActiveServer({
+        server: {
+          id: "local:mobile",
+          kind: "remote",
+          label: "On-device agent",
+          apiBase: "eliza-local-agent://ipc",
+        },
+        clientApiAvailable: false,
+        forceLocal: false,
+        isDesktop: false,
+      }),
+    ).toBe(true);
+  });
+
   it("restores a Cloud session with a recoverable agent id even when the apiBase is missing", () => {
     // backfillCloudApiBase recovers the runtime base from `cloud:<agentId>`, so
     // a returning user is not forced back through onboarding just because the
