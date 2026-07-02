@@ -256,10 +256,12 @@ export interface TaskEvent {
 // ============================================================================
 
 export type MessageRole = "user" | "assistant" | "system";
+export type MessageKind = "chat" | "tool";
 
 export interface Message {
   id: string;
   role: MessageRole;
+  kind?: MessageKind;
   content: string;
   timestamp: Date;
   roomId: string;

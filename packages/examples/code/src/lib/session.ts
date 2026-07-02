@@ -6,6 +6,7 @@ import type {
   ChatRoom,
   JsonValue,
   Message,
+  MessageKind,
   MessageRole,
   PaneFocus,
   SubAgentType,
@@ -56,6 +57,7 @@ interface SerializedMessage {
   timestamp: number;
   roomId: string;
   taskId?: string;
+  kind?: MessageKind;
 }
 
 function getSessionPath(): string {
@@ -106,6 +108,10 @@ function sanitizeRole(role: string): MessageRole {
   return "system";
 }
 
+function sanitizeKind(kind: unknown): MessageKind | undefined {
+  return kind === "chat" || kind === "tool" ? kind : undefined;
+}
+
 function shouldPersistToDisk(): boolean {
   if (process.env.ELIZA_CODE_DISABLE_SESSION_PERSISTENCE === "1") return false;
   if (process.env.BUN_TEST === "1") return false;
@@ -124,6 +130,7 @@ function serializeRoom(room: ChatRoom): SerializedRoom {
       timestamp: toEpoch(msg.timestamp),
       roomId: msg.roomId || room.id,
       taskId: msg.taskId,
+      kind: msg.kind,
     })),
     createdAt: toEpoch(room.createdAt),
     taskIds: room.taskIds || [],
@@ -152,6 +159,7 @@ function deserializeRoom(data: SerializedRoom): ChatRoom {
         timestamp: toDate(msg.timestamp),
         roomId: msg.roomId || id,
         taskId: msg.taskId,
+        kind: sanitizeKind(msg.kind),
       }),
     ),
     createdAt: toDate(data.createdAt),

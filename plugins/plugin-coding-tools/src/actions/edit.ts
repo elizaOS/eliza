@@ -46,6 +46,10 @@ function lineNumberOf(haystack: string, byteIndex: number): number {
   return line;
 }
 
+function lineSpan(text: string): number {
+  return text.length === 0 ? 0 : text.split("\n").length;
+}
+
 export async function editFileHandler(
   runtime: IAgentRuntime,
   message: Memory,
@@ -142,6 +146,8 @@ export async function editFileHandler(
     ? original.split(oldStr).join(newStr)
     : `${original.slice(0, firstIndex)}${newStr}${original.slice(firstIndex + oldStr.length)}`;
   const replacements = replaceAll ? occurrences : 1;
+  const addedLines = lineSpan(newStr) * replacements;
+  const removedLines = lineSpan(oldStr) * replacements;
 
   const secrets = detectSecrets(newStr);
   if (secrets.length > 0) {
@@ -174,5 +180,7 @@ export async function editFileHandler(
     path: resolved,
     replacements,
     firstLine,
+    addedLines,
+    removedLines,
   });
 }

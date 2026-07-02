@@ -43,6 +43,8 @@ describe("EDIT", () => {
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.replacements).toBe(1);
     expect(data?.firstLine).toBe(2);
+    expect(data?.addedLines).toBe(1);
+    expect(data?.removedLines).toBe(1);
   });
 
   it("keeps edit plugin-owned until fs.patch parity exists", async () => {

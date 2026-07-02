@@ -116,4 +116,24 @@ describe("eliza-code TUI at cockpit phone width", () => {
     expect(wideLoading).toContain("Esc/Ctrl+C abort");
     expect(visibleWidth(wideLoading ?? "")).toBeLessThanOrEqual(80);
   });
+
+  test("ChatPane renders tool transcript lines without overflowing narrow terminals", () => {
+    const { chatPane } = makeScreen(PHONE_COLS);
+    chatPane.syncFocus(true);
+    useStore
+      .getState()
+      .addMessage(
+        useStore.getState().currentRoomId,
+        "system",
+        "edit src/foo.ts +12/-3",
+        undefined,
+        "tool",
+      );
+
+    const lines = chatPane.renderContent(PHONE_COLS, 24);
+    const toolLine = lines.find((line) => line.includes("edit src/foo.ts"));
+    expect(toolLine).toBeDefined();
+    expect(toolLine).not.toContain("Eliza");
+    expect(visibleWidth(toolLine ?? "")).toBeLessThanOrEqual(PHONE_COLS);
+  });
 });
