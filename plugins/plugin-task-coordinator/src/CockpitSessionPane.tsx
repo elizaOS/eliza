@@ -75,7 +75,7 @@ export function CockpitSessionPane({
   t = fallbackTranslate,
   locale,
 }: CockpitSessionPaneProps) {
-  const { detail, messages, events, mutating, runMutation } =
+  const { detail, messages, events, mutating, actionError, runMutation } =
     useOrchestratorData({
       selectedId: taskId,
       showArchived: false,
@@ -160,12 +160,16 @@ export function CockpitSessionPane({
   const isElizaCloud =
     detail?.providerPolicy?.preferredFramework === "elizaos" &&
     detail?.providerPolicy?.providerSource === "eliza-cloud";
-  const currentTier: ElizaCloudTier =
-    ELIZA_CLOUD_TIER_MODEL.small === ELIZA_CLOUD_TIER_MODEL.large
-      ? "small"
-      : detail?.providerPolicy?.model === ELIZA_CLOUD_TIER_MODEL.large
-        ? "large"
-        : "small";
+  // While both tiers lower to the SAME model, flipping the toggle would persist
+  // an identical policy and then restart({stopActive:true}) — killing the live
+  // worker mid-task for zero effect. Hide the toggle until the tiers diverge.
+  const tiersDiverge =
+    ELIZA_CLOUD_TIER_MODEL.small !== ELIZA_CLOUD_TIER_MODEL.large;
+  const currentTier: ElizaCloudTier = !tiersDiverge
+    ? "small"
+    : detail?.providerPolicy?.model === ELIZA_CLOUD_TIER_MODEL.large
+      ? "large"
+      : "small";
   const onTierChange = useCallback(
     (tier: ElizaCloudTier) => {
       const model = ELIZA_CLOUD_TIER_MODEL[tier];
@@ -275,7 +279,7 @@ export function CockpitSessionPane({
           {detail?.title ??
             t("cockpit.session.loading", { defaultValue: "Loading room…" })}
         </h2>
-        {isElizaCloud ? (
+        {isElizaCloud && tiersDiverge ? (
           <CockpitTierToggle
             value={currentTier}
             onChange={onTierChange}
@@ -347,6 +351,20 @@ export function CockpitSessionPane({
           className="shrink-0 border-destructive/40 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
           {composerError}
+        </div>
+      ) : null}
+
+      {/* Inspector-action failures (pause/resume/archive/delete/fork/restart/
+          validate/add-agent/stop-agent/tier-flip): useOrchestratorData's
+          runMutation catches instead of rethrowing and surfaces the message as
+          `actionError` — without this banner every failed action is silent. */}
+      {actionError ? (
+        <div
+          role="alert"
+          data-testid="cockpit-session-action-error"
+          className="shrink-0 border-destructive/40 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          {actionError}
         </div>
       ) : null}
 
