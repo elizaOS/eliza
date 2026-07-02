@@ -5,7 +5,10 @@ import {
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
-import { TRAY_ACTION_EVENT } from "@elizaos/ui/events";
+import {
+  dispatchOpenNotificationCenter,
+  TRAY_ACTION_EVENT,
+} from "@elizaos/ui/events";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
 import { useEffect } from "react";
@@ -151,6 +154,14 @@ export function DesktopTrayRuntime() {
           case "tray-open-plugins":
             switchShellView("desktop");
             setTab("plugins");
+            await showAndFocusWindow();
+            return;
+          case "tray-open-notifications":
+            // Desktop-native entry (#10706): open the notification center in
+            // place (the always-mounted headless NotificationCenter listens for
+            // the event) instead of navigating a tab.
+            switchShellView("desktop");
+            dispatchOpenNotificationCenter();
             await showAndFocusWindow();
             return;
           case "tray-open-desktop-workspace":

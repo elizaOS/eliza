@@ -129,6 +129,14 @@ export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
     labelKey: "desktop.tray.views",
     submenu: buildTrayViewItems(),
   },
+  // Desktop-native notification-center entry (#10706): the tray counterpart of
+  // the Desktop → Notifications app-menu item. Opens the center in place
+  // (dispatchOpenNotificationCenter) — the floating bell is hidden on desktop.
+  {
+    id: "tray-open-notifications",
+    label: "Notifications",
+    labelKey: "desktop.tray.notifications",
+  },
   { id: "tray-sep-0", type: "separator" },
   {
     id: "tray-toggle-lifecycle",
@@ -212,6 +220,15 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     label: "Open Voice Controls",
     expectedAction:
       "Open a detached settings window focused on the voice controls section.",
+    runtimeRequirement: "desktop",
+    coverage: "automated",
+  },
+  {
+    id: "tray-open-notifications",
+    entryPoint: "tray",
+    label: "Notifications",
+    expectedAction:
+      "Show and focus the main window, then open the notification center in place.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
