@@ -26,6 +26,10 @@
  */
 import type { Action, AgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const KNOWLEDGE_GRAPH = "KNOWLEDGE_GRAPH";
 type R = AgentRuntime & {
@@ -100,6 +104,28 @@ export default scenario({
       actionName: KNOWLEDGE_GRAPH,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the list op really read the per-agent
+      // EntityStore — a fresh graph must surface an empty entities array in
+      // the result payload, not just handler success.
+      type: "custom",
+      name: "entity-store-read-effect",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, KNOWLEDGE_GRAPH);
+        if (!data) {
+          return `no successful ${KNOWLEDGE_GRAPH} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.op !== "list") {
+          return `expected result.data.op "list", saw ${String(data.op ?? "(missing)")}`;
+        }
+        if (!Array.isArray(data.entities)) {
+          return `expected result.data.entities array from the EntityStore, saw ${JSON.stringify(data.entities ?? null)}`;
+        }
+        if (data.entities.length !== 0) {
+          return `fresh knowledge graph must have no entities; saw ${data.entities.length}`;
+        }
+      },
     },
   ],
 });
