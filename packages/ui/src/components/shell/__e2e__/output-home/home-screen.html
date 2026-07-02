@@ -38734,6 +38734,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     if (typeof window === "undefined") return;
     window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
   }
+  var ELIZA_BACK_INTENT_EVENT = "eliza:back-intent";
   function dispatchWindowEvent(name, detail) {
     if (typeof window === "undefined") return;
     window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -38862,6 +38863,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var isNative = detected.isNative;
 
   // packages/ui/src/lib/floating-layers.ts
+  var Z_NOTIFICATION_BACKDROP = 9550;
+  var Z_NOTIFICATION_OVERLAY = 9560;
   var CONFIG_SELECT_FLOATING_LAYER_NAME = "config-select";
 
   // packages/ui/src/utils/asset-url.ts
@@ -58411,6 +58414,13 @@ Assistant:`;
       (event) => finish(event, true),
       [finish]
     );
+    const onLostPointerCapture = React35.useCallback(
+      (event) => {
+        if (event.target !== event.currentTarget) return;
+        finish(event, true);
+      },
+      [finish]
+    );
     const onClickCapture = React35.useCallback(
       (event) => {
         if (!suppressClickRef.current) return;
@@ -58429,7 +58439,7 @@ Assistant:`;
         onPointerMove,
         onPointerUp,
         onPointerCancel,
-        onLostPointerCapture: onPointerCancel,
+        onLostPointerCapture,
         onClickCapture
       },
       canPrev: clampedPage > 0,
@@ -58941,10 +58951,14 @@ Assistant:`;
       },
       [pageControlled, onPageChange]
     );
+    const groups = (0, import_react49.useMemo)(
+      () => pageGroups ?? [entries2.map((e) => e.id)],
+      [pageGroups, entries2]
+    );
     const pages = (0, import_react49.useMemo)(() => {
-      const filtered = pageGroups.map((group) => group.filter((id) => byId.has(id))).filter((group) => group.length > 0);
+      const filtered = groups.map((group) => group.filter((id) => byId.has(id))).filter((group) => group.length > 0);
       return filtered.length > 0 ? filtered : [[]];
-    }, [pageGroups, byId]);
+    }, [groups, byId]);
     (0, import_react49.useEffect)(() => {
       if (pageControlled) return;
       setLocalPage((p) => Math.min(p, pages.length - 1));
@@ -59005,7 +59019,7 @@ Assistant:`;
                   ref: pager.railRef,
                   "data-testid": "launcher-page-rail",
                   className: "flex h-full min-h-0 w-full",
-                  children: loading && entries2.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)(
+                  children: loading && entries2.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)(
                     "div",
                     {
                       className: "flex flex-col items-center gap-1.5 opacity-60",
@@ -59028,7 +59042,7 @@ Assistant:`;
                           "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
                           !active && "pointer-events-none"
                         ),
-                        children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: pageIds.map((id) => {
+                        children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: pageIds.map((id) => {
                           const entry = byId.get(id);
                           if (!entry) return null;
                           return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "flex justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(IconTile, { entry, onLaunch: handleLaunch }) }, id);
@@ -59265,7 +59279,7 @@ Assistant:`;
       } catch {
       }
     }, []);
-    return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
       Launcher,
       {
         entries: entries2,
@@ -70408,6 +70422,10 @@ Assistant:`;
     "cloud-agent"
   ]);
   function isWidgetEnabled(declaration, plugins, source) {
+    const snapshotPlugin = plugins.find((p) => p.id === declaration.pluginId);
+    if (snapshotPlugin && snapshotPlugin.enabled === false && snapshotPlugin.isActive !== true) {
+      return false;
+    }
     if (source === "builtin" && declaration.defaultEnabled !== false && ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS.has(declaration.pluginId)) {
       return true;
     }
@@ -70892,8 +70910,8 @@ Assistant:`;
   function DefaultHomeWidgets() {
     const timeHidden = useAppSelector((s) => s.homeTimeWidgetHidden === true);
     const now2 = useNow(6e4);
-    const showTime = !timeHidden && now2 > 0;
-    if (!timeHidden && !now2) return null;
+    const showTime = !timeHidden;
+    const timeReady = now2 > 0;
     const d = new Date(now2);
     const hours = d.getHours();
     const minutes = d.getMinutes();
@@ -70907,7 +70925,7 @@ Assistant:`;
         "data-testid": "default-home-widgets",
         className: "grid grid-cols-4 gap-2.5",
         children: [
-          showTime ? /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(
+          showTime ? /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
             "div",
             {
               "data-testid": "home-time-widget",
@@ -70915,14 +70933,23 @@ Assistant:`;
                 "col-span-2 row-span-2 flex aspect-square flex-col items-center justify-center gap-1 text-center text-white",
                 FLOAT_SHADOW
               ),
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "text-[3.25rem] font-semibold leading-none tabular-nums tracking-tight", children: [
-                  time3,
-                  /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "ml-1.5 align-top text-base font-medium text-white/70", children: ampm })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "mt-1 text-sm font-medium text-white/85", children: dateLabel }),
-                /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "text-xs text-white/65", children: greeting(hours) })
-              ]
+              children: /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(
+                "div",
+                {
+                  className: cn(
+                    "flex flex-col items-center gap-1",
+                    !timeReady && "invisible"
+                  ),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "text-[3.25rem] font-semibold leading-none tabular-nums tracking-tight", children: [
+                      time3,
+                      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "ml-1.5 align-top text-base font-medium text-white/70", children: ampm })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "mt-1 text-sm font-medium text-white/85", children: dateLabel }),
+                    /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "text-xs text-white/65", children: greeting(hours) })
+                  ]
+                }
+              )
             }
           ) : null,
           /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(WeatherTile, {})
@@ -71326,8 +71353,12 @@ Assistant:`;
             // the content and left a large empty band above the dashboard. Just a
             // small gutter — the notch is already cleared by the root.
             "px-4",
+            // Reserve the notification pull-strip band at the very top so resting
+            // content isn't tap-shadowed by the invisible pull-zone button (same
+            // height math as the strip in the pull zone below).
+            "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)]",
             // Clear the floating chat composer at the bottom.
-            "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
+            "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
           ),
           children: [
             /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("style", { children: HOME_ENTER_CSS }),
@@ -71752,7 +71783,7 @@ Assistant:`;
       "li",
       {
         className: cn(
-          "group relative flex items-start gap-3 rounded-sm pr-9 transition-colors hover:bg-surface",
+          "group relative flex items-start gap-3 rounded-sm pr-9 transition-colors hover:bg-surface pointer-coarse:pr-12",
           unread && "bg-surface/60"
         ),
         children: [
@@ -71768,7 +71799,7 @@ Assistant:`;
                   {
                     className: cn(
                       "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
-                      notification.priority === "urgent" ? "bg-status-error/15 text-status-error" : notification.priority === "high" ? "bg-accent/15 text-accent" : "bg-surface text-muted-strong"
+                      notification.priority === "urgent" ? "bg-status-danger/15 text-status-danger" : notification.priority === "high" ? "bg-accent/15 text-accent" : "bg-surface text-muted-strong"
                     ),
                     children: categoryIcon(notification.category)
                   }
@@ -71790,7 +71821,7 @@ Assistant:`;
               type: "button",
               "aria-label": "Dismiss notification",
               onClick: handleRemove,
-              className: "absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-50 transition-opacity hover:bg-surface hover:text-txt group-hover:opacity-100",
+              className: "absolute right-1.5 top-2.5 flex shrink-0 items-center justify-center rounded-sm p-1 text-muted opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-surface hover:text-txt group-hover:opacity-100",
               children: /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(X, { className: "h-3.5 w-3.5" })
             }
           )
@@ -71910,11 +71941,26 @@ Assistant:`;
     (0, import_react81.useEffect)(() => {
       if (!isControlled || !open) return;
       const onKey = (e) => {
-        if (e.key === "Escape") onOpenChange?.(false);
+        if (e.key !== "Escape") return;
+        if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+        onOpenChange?.(false);
       };
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
     }, [isControlled, open, onOpenChange]);
+    (0, import_react81.useEffect)(() => {
+      const shellOpen = isControlled && open || bellOpen;
+      if (!shellOpen) return;
+      const onBackIntent = (e) => {
+        const detail = e.detail;
+        if (!detail || detail.handled) return;
+        detail.handled = true;
+        if (isControlled) onOpenChange?.(false);
+        else setBellOpen(false);
+      };
+      window.addEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+      return () => window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+    }, [isControlled, open, bellOpen, onOpenChange]);
     const dialogRef = (0, import_react81.useRef)(null);
     const restoreFocusRef = (0, import_react81.useRef)(null);
     (0, import_react81.useEffect)(() => {
@@ -72039,7 +72085,7 @@ Assistant:`;
             "aria-pressed": sortMode === mode,
             onClick: () => setSortMode(mode),
             className: cn(
-              "rounded px-2 py-0.5 text-2xs font-medium transition-colors",
+              "rounded-sm px-2 py-0.5 text-2xs font-medium transition-colors",
               sortMode === mode ? "bg-accent/15 text-accent" : "text-muted hover:text-txt"
             ),
             children: label
@@ -72097,7 +72143,8 @@ Assistant:`;
               "data-above-shell-overlay": true,
               tabIndex: -1,
               onClick: () => onOpenChange?.(false),
-              className: "fixed inset-0 z-[9550] bg-black/40"
+              style: { zIndex: Z_NOTIFICATION_BACKDROP },
+              className: "fixed inset-0 bg-black/40"
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(
@@ -72111,12 +72158,12 @@ Assistant:`;
               "data-above-shell-overlay": true,
               tabIndex: -1,
               onKeyDown: onDialogKeyDown,
+              style: { zIndex: Z_NOTIFICATION_OVERLAY },
               className: cn(
                 // Floating sheet: flat (no drop shadow, app-wide direction); the
                 // popover scrim + one outer edge give self-contained contrast. Short
                 // landscape caps lower so it floats over the (already short) viewport.
-                // z-[9560] mirrors Z_NOTIFICATION_OVERLAY in ../../lib/floating-layers.ts
-                "fixed inset-x-0 top-0 z-[9560] mx-auto flex w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover outline-none",
+                "fixed inset-x-0 top-0 mx-auto flex w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover outline-none",
                 isShortLandscape ? "max-h-[75vh]" : "max-h-[85vh]",
                 "pt-[var(--safe-area-top,0px)]",
                 className
@@ -72153,7 +72200,8 @@ Assistant:`;
               "data-above-shell-overlay": true,
               tabIndex: -1,
               onClick: () => onOpenChange?.(false),
-              className: "fixed inset-0 z-[9550]"
+              style: { zIndex: Z_NOTIFICATION_BACKDROP },
+              className: "fixed inset-0"
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
@@ -72167,11 +72215,11 @@ Assistant:`;
               "data-above-shell-overlay": true,
               tabIndex: -1,
               onKeyDown: onDialogKeyDown,
+              style: { zIndex: Z_NOTIFICATION_OVERLAY },
               className: cn(
                 // Flat like the app's PopoverContent (border + bg, no shadow): the
                 // 1px border defines the floating panel over content.
-                // z-[9560] mirrors Z_NOTIFICATION_OVERLAY in ../../lib/floating-layers.ts
-                "fixed right-3 top-3 z-[9560] flex max-h-[min(560px,calc(100vh-1.5rem))] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover outline-none",
+                "fixed right-3 top-3 flex max-h-[min(560px,calc(100vh-1.5rem))] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover outline-none",
                 className
               ),
               children: panelBody

@@ -13835,6 +13835,13 @@
       (event) => finish(event, true),
       [finish]
     );
+    const onLostPointerCapture = React.useCallback(
+      (event) => {
+        if (event.target !== event.currentTarget) return;
+        finish(event, true);
+      },
+      [finish]
+    );
     const onClickCapture = React.useCallback(
       (event) => {
         if (!suppressClickRef.current) return;
@@ -13853,7 +13860,7 @@
         onPointerMove,
         onPointerUp,
         onPointerCancel,
-        onLostPointerCapture: onPointerCancel,
+        onLostPointerCapture,
         onClickCapture
       },
       canPrev: clampedPage > 0,
@@ -45780,16 +45787,20 @@ Assistant:`;
         if (pageControlled) onPageChange?.(next);
         else setLocalPage(next);
       },
-      [pageControlled, onPageChange, setLocalPage]
+      [pageControlled, onPageChange]
+    );
+    const groups = (0, import_react7.useMemo)(
+      () => pageGroups ?? [entries.map((e) => e.id)],
+      [pageGroups, entries]
     );
     const pages = (0, import_react7.useMemo)(() => {
-      const filtered = pageGroups.map((group) => group.filter((id) => byId.has(id))).filter((group) => group.length > 0);
+      const filtered = groups.map((group) => group.filter((id) => byId.has(id))).filter((group) => group.length > 0);
       return filtered.length > 0 ? filtered : [[]];
-    }, [pageGroups, byId]);
+    }, [groups, byId]);
     (0, import_react7.useEffect)(() => {
       if (pageControlled) return;
       setLocalPage((p) => Math.min(p, pages.length - 1));
-    }, [pages.length, pageControlled, setLocalPage]);
+    }, [pages.length, pageControlled]);
     (0, import_react7.useEffect)(() => {
       onPageCountChange?.(pages.length);
     }, [pages.length, onPageCountChange]);
@@ -45846,7 +45857,7 @@ Assistant:`;
                   ref: pager.railRef,
                   "data-testid": "launcher-page-rail",
                   className: "flex h-full min-h-0 w-full",
-                  children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                  children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
                     "div",
                     {
                       className: "flex flex-col items-center gap-1.5 opacity-60",
@@ -45869,7 +45880,7 @@ Assistant:`;
                           "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
                           !active && "pointer-events-none"
                         ),
-                        children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: pageIds.map((id) => {
+                        children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: pageIds.map((id) => {
                           const entry = byId.get(id);
                           if (!entry) return null;
                           return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(IconTile, { entry, onLaunch: handleLaunch }) }, id);
