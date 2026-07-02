@@ -43,9 +43,13 @@ export default defineConfig({
       "node_modules/**",
       "dist/**",
       "**/*.e2e.test.{ts,tsx}",
-      "**/*.real.test.{ts,tsx}",
       "**/*.real-*.test.{ts,tsx}",
-      "**/*.live.test.{ts,tsx}",
+      // #9310 §E: the guarded real/live connector suites (they self-skip
+      // without creds) are invocable only in the post-merge lane, where
+      // run-all-tests.mjs prints a named skip accounting.
+      ...(process.env.VITEST_LANE === "post-merge"
+        ? []
+        : ["**/*.real.test.{ts,tsx}", "**/*.live.test.{ts,tsx}"]),
       // Integration specs load @elizaos/agent, which (dynamically) pulls the full
       // connector plugin graph. Those connector packages aren't built in the unit
       // Plugin Tests lane, so Node fails to resolve their dist entries. Keep
