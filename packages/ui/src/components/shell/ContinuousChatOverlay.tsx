@@ -801,6 +801,21 @@ function isNestedInteractiveTarget(
 }
 
 /**
+ * True while there's a live (non-collapsed) text selection. The
+ * conversation-swipe binding lives on the transcript surface, which contains
+ * the selectable message bubbles — so a MOUSE drag to highlight bubble text
+ * travels horizontally and otherwise reads as a swipe, navigating away and
+ * destroying the selection on release. The swipe handlers consult this to skip
+ * navigation when the gesture was really a highlight, mirroring the ThreadLine
+ * tap-reveal guard (`window.getSelection()` non-collapsed). Touch drags don't
+ * create a selection, so a genuine finger swipe is unaffected.
+ */
+function hasLiveTextSelection(): boolean {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  return !!sel && sel.toString().trim().length > 0;
+}
+
+/**
  * One icon-only control in a message's click-to-reveal action row (#10713).
  * Overlay glass styling: no card fill, neutral resting → neutral-opacity hover;
  * an active (e.g. playing) control tints with the orange accent. `stopPropagation`
@@ -1438,6 +1453,13 @@ export function ContinuousChatOverlay({
     },
     onSwipeLeft: () => {
       setSwipeDx(0);
+      // A mouse highlight drag inside a bubble finishes here too; never switch
+      // the conversation out from under a live text selection (destroying it).
+      // Mirrors the ThreadLine tap-reveal selection guard.
+      if (hasLiveTextSelection()) {
+        swipeJank.end();
+        return;
+      }
       // Tag the flushed window with the committed direction so the ring shows
       // which way a janky swipe went (left → "next", the older conversation).
       swipeJank.end("next");
@@ -1445,6 +1467,10 @@ export function ContinuousChatOverlay({
     },
     onSwipeRight: () => {
       setSwipeDx(0);
+      if (hasLiveTextSelection()) {
+        swipeJank.end();
+        return;
+      }
       swipeJank.end("prev");
       conversationNav.goPrev();
     },
@@ -4430,7 +4456,11 @@ export function ContinuousChatOverlay({
                       icon={Mic}
                       label={
                         pttHolding
-                          ? "release to send"
+                          ? // Press-and-hold dictates into the composer draft; a
+                            // release drops the transcript into the text box and
+                            // does NOT send (see beginPushToTalkPress /
+                            // setDictationSink). Label the real behavior.
+                            "release to insert"
                           : transcriptionMode
                             ? "stop transcription"
                             : handsFree
