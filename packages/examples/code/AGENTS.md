@@ -9,6 +9,23 @@ A first-party elizaOS runnable example — an interactive coding-agent TUI. See 
 - **`scripts/write-dist-tsconfig.mjs` runs as the last `build` step** and emits a paths-free `dist/tsconfig.json`. Bun applies the nearest tsconfig's `compilerOptions.paths` **at runtime**; this package's tsconfig maps externalized `@elizaos/plugin-*` to types-only `.d.ts`, so without the shadow tsconfig `bun dist/index.js` loads a `.d.ts` and throws `ReferenceError: <plugin> is not defined` on first import. Removing the step silently re-breaks every cockpit terminal spawn (#11043).
 - **The TUI must survive narrow terminals.** `components/ChatPane.ts` renders the editor at `innerWidth - 3` and `components/MainScreen.ts` clips every assembled line via `truncateToWidth`, because the cockpit xterm can be ~40 columns on a phone and the TUI's overflow guard aborts the whole render otherwise (#11043). A regression here is covered by `components/narrow-terminal.test.ts`.
 
+## TUI architecture and capabilities
+
+The interactive TUI is built on `@elizaos/tui`: differential rendering, `Editor`, `Markdown`, and themes. Most expected terminal UI primitives already exist in `@elizaos/tui` or `@elizaos/core`; the work is wiring them, not reinventing them. `App` owns input and slash commands; `MainScreen` composes columns and clips every line; `ChatPane` owns transcript plus composer; `TaskPane` owns task detail; `StatusBar` owns room, cwd, task count, and active model display.
+
+- **Input routing:** stdin flows through `FilteringTerminal` into `App.consumeGlobalInput`. Global shortcuts fire before the focused component. Shortcuts must not eat typed characters: `?` opens help only when the chat composer is empty or unfocused; bare `,` / `.` resize the task pane only when it is focused. Ctrl-left/right always resizes.
+- **Markdown transcript:** assistant replies render through the tui `Markdown` component with `lib/markdown-theme.ts`. Below roughly 40 columns it falls back to plain `wrapText` so the narrow-terminal guarantee holds. Markdown output is pre-styled as `RenderLine.raw`; do not re-chalk it.
+- **Streaming and turn control:** `lib/agent-client.ts` streams via `onDelta` / core `onStreamChunk`. `App.activeTurnAbortController` lets Esc / Ctrl-C cancel an in-flight turn, and a re-entrancy guard blocks concurrent turns. Turn errors are caught and shown as system messages; unhandled rejections escape to `index.ts` fatal handlers, which only best-effort restore the terminal.
+- **Composer and history:** `Editor` handles multiline input, cursor-windowing, and up/down prompt history. `ChatPane` must call `editor.addToHistory` on submit for recall to work.
+- **Scrollback:** Ctrl-up/down scrolls one line, PgUp/PgDn scroll by page, Home/End jump to oldest/newest. Home/End route to scroll only when the composer is empty or the transcript is already scrolled; otherwise they reach editor line navigation. Key matching goes through `@elizaos/tui` `matchesKey(...)`, not raw escape sequences.
+- **Slash commands:** `App.handleSlashCommand` owns `/copy`, `/new`, `/task`, `/cd`, `/clear`, and related commands. `/copy` writes the latest reply via OSC 52 for SSH/PTY clipboard support. Unknown `/cmd` is reported, not sent to the LLM; `//literal` escapes. Register new commands in `SLASH_COMMANDS` and `/help`.
+- **ANSI-safe borders:** pad styled strings with `lib/text-width.ts` `padEndVisible`; never use `String.padEnd` on chalked strings, because invisible SGR bytes collapse right borders.
+
+Reusable test patterns:
+- Drive private handlers by constructing `new App(stubRuntime)` with `{ agentId, character, getService: () => null }` and casting to call `consumeGlobalInput` or `handleSlashCommand`.
+- Render assertions use `VirtualTerminal` plus `TUI` plus `MainScreen.render(width)`, as in `narrow-terminal.test.ts`. Chalk color is off outside a TTY, so assert visible width / marker stripping instead of raw SGR unless a test explicitly forces and restores `chalk.level`.
+- The zustand `useStore` is a cross-file singleton. Each `beforeEach` must seed its own room with `createRoom` plus `switchRoom`, and pin/restore `chalk.level`, or sibling tests can leak `rooms: []` or color state into your assertions.
+
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
