@@ -14,7 +14,9 @@
  * (`lastResortTokenUnitPrice`), keyed by product family, and still never throws.
  * (Provider-max / env-default tiers are covered in lookup-fallback-pricing.test.ts.)
  */
-import { expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, test } from "bun:test";
+
+const warnSpy = mock(() => {});
 
 mock.module("../../../db/repositories/ai-pricing", () => ({
   aiPricingRepository: {
@@ -22,11 +24,20 @@ mock.module("../../../db/repositories/ai-pricing", () => ({
     listActiveEntries: async () => [],
   },
 }));
+mock.module("../../utils/logger", () => ({
+  logger: {
+    warn: warnSpy,
+  },
+}));
 mock.module("./providers/gateway", () => ({
   fetchEntriesForSource: async () => [],
 }));
 
 const { calculateTextCostFromCatalog } = await import("./lookup");
+
+beforeEach(() => {
+  warnSpy.mockClear();
+});
 
 test("missing language pricing bills a non-zero last-resort rate, never $0 (#11635)", async () => {
   const result = await calculateTextCostFromCatalog({
@@ -42,6 +53,26 @@ test("missing language pricing bills a non-zero last-resort rate, never $0 (#116
   expect(result.outputCost).toBeGreaterThan(0);
   expect(result.totalCost).toBeGreaterThan(0);
   expect(result.totalCost).toBeLessThan(0.1); // sane: not an absurd rate
+  expect(warnSpy.mock.calls).toContainEqual([
+    "ai-pricing: input pricing unavailable; billing at fallback rate",
+    {
+      canonicalModel: "someprovider/totally-uncatalogued-model",
+      provider: "someprovider",
+      billingSource: undefined,
+      fallbackSource: "last_resort",
+      fallbackUnitPrice: 0.000005,
+    },
+  ]);
+  expect(warnSpy.mock.calls).toContainEqual([
+    "ai-pricing: output pricing unavailable; billing at fallback rate",
+    {
+      canonicalModel: "someprovider/totally-uncatalogued-model",
+      provider: "someprovider",
+      billingSource: undefined,
+      fallbackSource: "last_resort",
+      fallbackUnitPrice: 0.000025,
+    },
+  ]);
 });
 
 test("missing embedding pricing bills the cheaper embedding last-resort rate, non-zero (#11635)", async () => {

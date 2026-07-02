@@ -205,7 +205,7 @@ function lastResortTokenUnitPrice(
 
 type FallbackTokenRate = {
   unitPrice: number;
-  source: "provider_max_catalog" | "env_default";
+  source: "provider_max_catalog" | "env_default" | "last_resort";
   referenceModel?: string;
 };
 
@@ -219,9 +219,10 @@ type FallbackTokenRate = {
  * catalogued token rate for the same product family/charge type (an upper
  * bound over any plausible real price from that provider), or an
  * env-configured default (AI_PRICING_FALLBACK_{INPUT,OUTPUT}_USD_PER_M) when
- * the provider has no catalogued entries at all. Both reserve (pre-flight
- * estimate) and settle (actual usage) resolve through this same path, so both
- * sides of a request bill at the same rate.
+ * the provider has no catalogued entries at all, or a hardcoded last-resort
+ * rate when neither source exists. Both reserve (pre-flight estimate) and
+ * settle (actual usage) resolve through this same path, so both sides of a
+ * request bill at the same rate.
  */
 async function resolveFallbackTokenRate(params: {
   billingSource?: PricingBillingSource;
@@ -293,7 +294,10 @@ async function resolveFallbackTokenRate(params: {
     return { unitPrice: envUnitPrice, source: "env_default" };
   }
 
-  return null;
+  return {
+    unitPrice: lastResortTokenUnitPrice(params.productFamily, params.chargeType),
+    source: "last_resort",
+  };
 }
 
 function computeCostFromEntry(entry: PreparedPricingEntry, quantity: number): FlatOperationCost {
@@ -409,7 +413,7 @@ export async function calculateTextCostFromCatalog(params: {
       canonicalModel,
       provider: params.provider,
       billingSource: params.billingSource,
-      fallbackSource: fallback?.source ?? "none_zero",
+      fallbackSource: fallback?.source ?? "none",
       fallbackUnitPrice: fallback?.unitPrice ?? 0,
       ...(fallback?.referenceModel ? { fallbackReferenceModel: fallback.referenceModel } : {}),
     });
