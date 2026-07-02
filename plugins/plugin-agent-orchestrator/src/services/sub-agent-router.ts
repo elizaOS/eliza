@@ -669,6 +669,19 @@ export class SubAgentRouter extends Service {
     if (event === "message") {
       await this.maybeDispatchParentAgent(sessionId, data);
     }
+    // Bound the per-session tracking collections. Each accrues one entry per
+    // session (buffered parent-agent output, dispatch count, verify-retry
+    // handoff marker) and only stop() cleared them, so a long-lived orchestrator
+    // leaked one set of entries per finished session. Cap to the most recent N
+    // sessions — evicting an old, finished session's entry is harmless (its
+    // buffer/count are only used while it streams, and a handoff suppression is
+    // moot once the original session is long gone).
+    pruneOldestTracked(this.parentAgentBuffers, PARENT_AGENT_TRACKING_CAP);
+    pruneOldestTracked(this.parentAgentDispatchCounts, PARENT_AGENT_TRACKING_CAP);
+    pruneOldestTracked(
+      this.verifyRetryHandedOffSessions,
+      PARENT_AGENT_TRACKING_CAP,
+    );
     if (!shouldInject(event)) return;
     const acp = this.acp;
     if (!acp) return;
@@ -3096,6 +3109,36 @@ function pruneDelivered(set: Set<string>, max: number): void {
     if (next.done) break;
     set.delete(next.value);
   }
+}
+
+// Cap for the per-session parent-agent tracking collections (buffers, dispatch
+// counts, verify-retry handoffs). Far above any realistic concurrent-session
+// count; it exists only to stop unbounded growth over a long uptime.
+const PARENT_AGENT_TRACKING_CAP = 256;
+
+/**
+ * Evict the oldest entries from a Map or Set (insertion-ordered) so it never
+ * exceeds `max`. Collects the doomed keys first, then deletes, so it prunes the
+ * exact excess in one pass (unlike the older size-mutating loop in
+ * {@link pruneDelivered}).
+ */
+export function pruneOldestTracked(
+  collection: {
+    size: number;
+    keys(): IterableIterator<string>;
+    delete(key: string): unknown;
+  },
+  max: number,
+): void {
+  const excess = collection.size - max;
+  if (excess <= 0) return;
+  const doomed: string[] = [];
+  let seen = 0;
+  for (const key of collection.keys()) {
+    if (seen++ >= excess) break;
+    doomed.push(key);
+  }
+  for (const key of doomed) collection.delete(key);
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
