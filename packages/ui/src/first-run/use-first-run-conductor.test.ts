@@ -361,7 +361,10 @@ describe("useFirstRunConductor", () => {
         transcript.current.some(
           (message) =>
             message.id.startsWith("first-run:error:") &&
-            message.text.includes("cloud is down"),
+            // A transport failure surfaces a friendly, actionable line — never
+            // the raw thrown message (e.g. "Unable to resolve host …").
+            message.text.includes("Couldn't reach Eliza Cloud") &&
+            !message.text.includes("cloud is down"),
         ),
       ).toBe(true);
     });
