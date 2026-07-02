@@ -199,6 +199,103 @@ describe("resolveImageRef: apps-deploy allowlist is elizaos-only", () => {
   });
 });
 
+// Per-org namespace extension — the normie app-deploy 403 fix (#8434 lane): a
+// user's OWN registry namespace (ghcr.io/<their-login>/*) can be granted by an
+// operator on the ORG record (settings.allowed_image_namespaces) instead of
+// widening the platform-wide env allowlist for every tenant. Additive and
+// fail-closed: consulted only after the env allowlist denies, only when the
+// deploy carries an organizationId, and a failing lookup denies.
+describe("resolveImageRef: per-org namespace extension", () => {
+  const baseApp = { id: "app-1", name: "demo", metadata: {} as Record<string, unknown> };
+  const ORG_IMAGE = "ghcr.io/nubscarson/my-app:v1";
+
+  function depsWithOrgNamespaces(
+    lookup: (orgId: string) => Promise<string[]>,
+  ): AppDeployRunnerDeps {
+    return {
+      resolveImage: undefined,
+      orgImageNamespaces: lookup,
+    } as unknown as AppDeployRunnerDeps;
+  }
+
+  test("an operator-granted org namespace passes for THAT org", async () => {
+    const seen: string[] = [];
+    const deps = depsWithOrgNamespaces(async (orgId) => {
+      seen.push(orgId);
+      return ["ghcr.io/nubscarson/*"];
+    });
+    const img = await resolveImageRef(deps, {
+      ...baseApp,
+      organizationId: "org-1",
+      metadata: { imageTag: ORG_IMAGE },
+    });
+    expect(img).toBe(ORG_IMAGE);
+    expect(seen).toEqual(["org-1"]);
+  });
+
+  test("an org WITHOUT the grant still rejects the same image (no cross-tenant widening)", async () => {
+    const deps = depsWithOrgNamespaces(async () => []);
+    await expect(
+      resolveImageRef(deps, {
+        ...baseApp,
+        organizationId: "org-2",
+        metadata: { imageTag: ORG_IMAGE },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+  });
+
+  test("the grant does not open OTHER namespaces for the granted org", async () => {
+    const deps = depsWithOrgNamespaces(async () => ["ghcr.io/nubscarson/*"]);
+    await expect(
+      resolveImageRef(deps, {
+        ...baseApp,
+        organizationId: "org-1",
+        metadata: { imageTag: "docker.io/evil/pwn:latest" },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+  });
+
+  test("no organizationId → no lookup, still rejected (unchanged legacy path)", async () => {
+    let called = false;
+    const deps = depsWithOrgNamespaces(async () => {
+      called = true;
+      return ["ghcr.io/nubscarson/*"];
+    });
+    await expect(
+      resolveImageRef(deps, { ...baseApp, metadata: { imageTag: ORG_IMAGE } }),
+    ).rejects.toThrow(/is not permitted/);
+    expect(called).toBe(false);
+  });
+
+  test("a throwing lookup fails CLOSED (deny), never propagates", async () => {
+    const deps = depsWithOrgNamespaces(async () => {
+      throw new Error("db down");
+    });
+    await expect(
+      resolveImageRef(deps, {
+        ...baseApp,
+        organizationId: "org-1",
+        metadata: { imageTag: ORG_IMAGE },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+  });
+
+  test("an env-allowlisted image never consults the org lookup (fast path)", async () => {
+    let called = false;
+    const deps = depsWithOrgNamespaces(async () => {
+      called = true;
+      return [];
+    });
+    const img = await resolveImageRef(deps, {
+      ...baseApp,
+      organizationId: "org-1",
+      metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
+    });
+    expect(img).toBe("ghcr.io/elizaos/myapp:v1");
+    expect(called).toBe(false);
+  });
+});
+
 // #9853 follow-up — an app deploy is the THIRD shared-node image path (alongside
 // the /v1/containers and /v1/coding-containers routes). When the opt-in
 // digest-pin gate (CONTAINER_IMAGE_REQUIRE_DIGEST) is armed, all three must

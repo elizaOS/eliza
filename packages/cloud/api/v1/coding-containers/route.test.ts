@@ -90,6 +90,16 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+// Per-org namespace extension (the DB seam). Default: no grant — the platform
+// env allowlist alone decides, exactly the pre-extension behavior.
+const getOrgImageNamespaces = mock(
+  async (_orgId: string): Promise<string[]> => [],
+);
+
+mock.module("@/lib/services/org-image-namespaces", () => ({
+  getOrgImageNamespaces,
+}));
+
 const { default: app } = await import("./route");
 
 async function postCodingContainer(image: string): Promise<Response> {
@@ -125,6 +135,8 @@ describe("coding containers route", () => {
     enqueueAgentProvisionOnce.mockClear();
     getJobForOrg.mockClear();
     triggerImmediate.mockClear();
+    getOrgImageNamespaces.mockClear();
+    getOrgImageNamespaces.mockResolvedValue([]);
     delete process.env.CONTAINER_IMAGE_REQUIRE_DIGEST;
   });
 
@@ -252,5 +264,47 @@ describe("coding containers route", () => {
     expect(response.status).toBe(200);
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(createCodingContainerAgent).toHaveBeenCalledTimes(1);
+  });
+
+  // Per-org namespace extension (the normie 403 fix, #8434 lane): an image
+  // outside the platform env allowlist deploys ONLY when the caller's org
+  // carries an operator grant for that namespace; every other org still 403s.
+  test("rejects an off-allowlist image with 403 when the org has no namespace grant", async () => {
+    const response = await postCodingContainer("ghcr.io/nubscarson/my-app:v1");
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        success: false,
+        code: "CODING_CONTAINER_IMAGE_NOT_ALLOWED",
+      }),
+    );
+    // The org extension WAS consulted (for the caller's org) and denied.
+    expect(getOrgImageNamespaces).toHaveBeenCalledWith("org-1");
+    expect(createCodingContainerAgent).not.toHaveBeenCalled();
+  });
+
+  test("allows an image under the org's operator-granted namespace", async () => {
+    getOrgImageNamespaces.mockResolvedValueOnce(["ghcr.io/nubscarson/*"]);
+
+    const response = await postCodingContainer("ghcr.io/nubscarson/my-app:v1");
+
+    expect(response.status).toBe(200);
+    expect(getOrgImageNamespaces).toHaveBeenCalledWith("org-1");
+    expect(createCodingContainerAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dockerImage: "ghcr.io/nubscarson/my-app:v1",
+        organizationId: "org-1",
+      }),
+    );
+  });
+
+  test("a platform-allowlisted image never consults the org extension (fast path)", async () => {
+    const response = await postCodingContainer(
+      "ghcr.io/dexploarer/bnancy:latest",
+    );
+
+    expect(response.status).toBe(200);
+    expect(getOrgImageNamespaces).not.toHaveBeenCalled();
   });
 });

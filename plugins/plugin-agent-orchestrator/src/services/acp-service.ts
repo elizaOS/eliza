@@ -2705,6 +2705,16 @@ export function shouldForwardEnv(key: string): boolean {
       "OPENCODE_DISABLE_AUTOUPDATE",
       "OPENCODE_DISABLE_TERMINAL_TITLE",
       "CODEX_HOME",
+      // Container-registry PUSH credential for app-image builds (docker login
+      // ghcr.io before the deploy contract's docker push). Narrow by design:
+      // these are the dedicated registry-scoped names (a packages:write PAT),
+      // mirrored cloud-side by containersEnv.registryUsername()/registryToken().
+      // The broad GITHUB_TOKEN / GH_TOKEN / CR_PAT stay DENIED — a repo-scoped
+      // host token must never ride into a sub-agent. The canonical
+      // ELIZA_APP_IMAGE_REGISTRY_USERNAME/_TOKEN pair already forwards via the
+      // ELIZA_ prefix above.
+      "GHCR_USERNAME",
+      "GHCR_TOKEN",
     ].includes(key)
   );
 }

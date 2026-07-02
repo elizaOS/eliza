@@ -250,5 +250,22 @@ describe("app-deploy-guidance", () => {
         "Eliza Cloud",
       );
     });
+    // The push step of the container flow: an anonymous ghcr.io push always
+    // 403s, so BOTH cloud branches must carry the docker-login contract (env
+    // var NAMES only — never values) and the explicit report-the-missing-
+    // credential instruction instead of a silent/vague failure.
+    it("both Cloud branches carry the registry login contract by env-var name", () => {
+      for (const task of [
+        "build a monetized app that charges $2 per use",
+        "build a website about cats",
+      ]) {
+        const out = buildAppDeployGuidance({ target: "eliza-cloud" }, task);
+        expect(out).toContain("docker login ghcr.io");
+        expect(out).toContain("ELIZA_APP_IMAGE_REGISTRY_USERNAME");
+        expect(out).toContain("ELIZA_APP_IMAGE_REGISTRY_TOKEN");
+        expect(out).toContain("GHCR_TOKEN");
+        expect(out).toContain("registry push credential is missing");
+      }
+    });
   });
 });

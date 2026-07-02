@@ -98,6 +98,16 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+// Per-org namespace extension (the DB seam). Default: no grant — the platform
+// env allowlist alone decides, exactly the pre-extension behavior.
+const getOrgImageNamespaces = mock(
+  async (_orgId: string): Promise<string[]> => [],
+);
+
+mock.module("@/lib/services/org-image-namespaces", () => ({
+  getOrgImageNamespaces,
+}));
+
 const { default: containersRoute } = await import("./route");
 
 const app = new Hono<{ Variables: TestVariables }>();
@@ -174,6 +184,8 @@ describe("containers route", () => {
     codingContainerImageAllowlist.mockClear();
     requireDigestPinnedImages.mockReset();
     requireDigestPinnedImages.mockReturnValue(false);
+    getOrgImageNamespaces.mockClear();
+    getOrgImageNamespaces.mockResolvedValue([]);
     auditEmit.mockClear();
   });
 
@@ -296,5 +308,66 @@ describe("containers route", () => {
     // No duplicate provisioning, and no quota burn for an already-live deploy.
     expect(createContainer).not.toHaveBeenCalled();
     expect(checkQuota).not.toHaveBeenCalled();
+  });
+
+  // Per-org namespace extension (the normie 403 fix, #8434 lane): an image
+  // outside the platform env allowlist deploys ONLY when the caller's org
+  // carries an operator grant for that namespace; every other org still 403s.
+  test("rejects an off-allowlist image with 403 when the org has no namespace grant", async () => {
+    getActiveByProjectName.mockResolvedValue(null);
+
+    const response = await app.request("/api/v1/containers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "App",
+        image: "ghcr.io/nubscarson/my-app:v1",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe("CONTAINER_IMAGE_NOT_ALLOWED");
+    // The org extension WAS consulted (for the caller's org) and denied.
+    expect(getOrgImageNamespaces).toHaveBeenCalledWith("org-1");
+    expect(createContainer).not.toHaveBeenCalled();
+  });
+
+  test("provisions an image under the org's operator-granted namespace", async () => {
+    getActiveByProjectName.mockResolvedValue(null);
+    checkQuota.mockResolvedValue({ allowed: true });
+    createContainer.mockResolvedValue(summaryContainer());
+    getOrgImageNamespaces.mockResolvedValueOnce(["ghcr.io/nubscarson/*"]);
+
+    const response = await app.request("/api/v1/containers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "App",
+        image: "ghcr.io/nubscarson/my-app:v1",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(getOrgImageNamespaces).toHaveBeenCalledWith("org-1");
+    expect(createContainer).toHaveBeenCalledTimes(1);
+  });
+
+  test("a platform-allowlisted image never consults the org extension (fast path)", async () => {
+    getActiveByProjectName.mockResolvedValue(null);
+    checkQuota.mockResolvedValue({ allowed: true });
+    createContainer.mockResolvedValue(summaryContainer());
+
+    const response = await app.request("/api/v1/containers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "App",
+        image: "ghcr.io/elizaos/app:latest",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(getOrgImageNamespaces).not.toHaveBeenCalled();
   });
 });

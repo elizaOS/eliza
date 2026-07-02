@@ -50,6 +50,7 @@ import {
   type ContainerSummary,
   HetznerClientError,
 } from "@/lib/services/containers/hetzner-client/types";
+import { getOrgImageNamespaces } from "@/lib/services/org-image-namespaces";
 import { findReservedEnvKeys } from "@/lib/services/reserved-env-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -263,9 +264,18 @@ app.post("/", async (c) => {
     }
 
     // SECURITY: gate the image on the shared container image allowlist so an
-    // org cannot run an arbitrary image on the shared node pool.
+    // org cannot run an arbitrary image on the shared node pool. When the
+    // platform-wide list denies, consult the org's OWN operator-granted
+    // namespace extension (organizations.settings.allowed_image_namespaces) —
+    // additive and fail-closed, so one org's grant never widens another's gate.
     const allowlist = containersEnv.codingContainerImageAllowlist();
-    if (!isCodingContainerImageAllowed(body.image, allowlist)) {
+    const imageAllowed =
+      isCodingContainerImageAllowed(body.image, allowlist) ||
+      isCodingContainerImageAllowed(
+        body.image,
+        await getOrgImageNamespaces(user.organization_id),
+      );
+    if (!imageAllowed) {
       logger.warn("[Containers API] image rejected by allowlist", {
         organizationId: user.organization_id,
         image: body.image,

@@ -144,6 +144,11 @@ function elizaCloudGuidance(task?: string, monetized?: boolean): string {
     );
   }
   lines.push(
+    // The container flow pushes a built image to a registry, and an anonymous
+    // push always 403s. The credential env-var names are the contract here
+    // (values are forwarded by the spawn env allowlist when the operator set
+    // them); absence must surface as a NAMED blocker, not a vague failure.
+    '- If you build a container image, log in BEFORE pushing: `printf \'%s\' "$ELIZA_APP_IMAGE_REGISTRY_TOKEN" | docker login ghcr.io -u "$ELIZA_APP_IMAGE_REGISTRY_USERNAME" --password-stdin` (fallback pair: `GHCR_USERNAME` / `GHCR_TOKEN`). If neither pair is set in your env, STOP and report exactly that — the registry push credential is missing (name the vars) — instead of attempting an anonymous push or reporting a vague failure.',
     "- Report ONLY the verified live Cloud URL. If you could not deploy or verify it, say that plainly — never report an unverified or guessed URL.",
   );
   return lines.join("\n");

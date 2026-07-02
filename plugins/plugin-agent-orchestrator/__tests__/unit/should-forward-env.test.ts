@@ -69,6 +69,19 @@ describe("shouldForwardEnv", () => {
     expect(shouldForwardEnv("AWS_SECRET_ACCESS_KEY")).toBe(false);
     expect(shouldForwardEnv("GITHUB_TOKEN")).toBe(false);
   });
+
+  // The app-deploy contract's docker push needs a registry login — without a
+  // forwarded credential every ghcr.io push 403s before deploy is attempted.
+  // Only the DEDICATED registry-scoped names pass (a packages:write PAT); the
+  // broad host tokens (GITHUB_TOKEN above, GH_TOKEN, CR_PAT — repo-scoped)
+  // stay denied.
+  it("forwards the registry-scoped push credential, not the broad host tokens", () => {
+    expect(shouldForwardEnv("GHCR_USERNAME")).toBe(true);
+    expect(shouldForwardEnv("GHCR_TOKEN")).toBe(true);
+    expect(isEnvForwardableToSubAgent("GHCR_TOKEN")).toBe(true);
+    expect(shouldForwardEnv("GH_TOKEN")).toBe(false);
+    expect(shouldForwardEnv("CR_PAT")).toBe(false);
+  });
 });
 
 // The effective per-var decision buildEnv applies: deny-list BEFORE allowlist.
@@ -164,5 +177,23 @@ describe("forwardableSubAgentEnv", () => {
     expect(out.ELIZA_VAULT_PASSPHRASE).toBeUndefined();
     expect(out.DISCORD_BOT_TOKEN).toBeUndefined();
     expect("MISSING" in out).toBe(false);
+  });
+
+  // The projection an app-build spawn actually sees: the registry push pair
+  // (both the dedicated GHCR_* names and the canonical ELIZA_APP_IMAGE_* names)
+  // rides along; the host's repo-scoped GITHUB_TOKEN does not.
+  it("projects the registry push credential but never the repo-scoped host token", () => {
+    const out = forwardableSubAgentEnv({
+      GHCR_USERNAME: "pusher",
+      GHCR_TOKEN: "ghp-registry-scoped",
+      ELIZA_APP_IMAGE_REGISTRY_USERNAME: "pusher",
+      ELIZA_APP_IMAGE_REGISTRY_TOKEN: "ghp-registry-scoped",
+      GITHUB_TOKEN: "ghp-repo-scoped",
+    });
+    expect(out.GHCR_USERNAME).toBe("pusher");
+    expect(out.GHCR_TOKEN).toBe("ghp-registry-scoped");
+    expect(out.ELIZA_APP_IMAGE_REGISTRY_USERNAME).toBe("pusher");
+    expect(out.ELIZA_APP_IMAGE_REGISTRY_TOKEN).toBe("ghp-registry-scoped");
+    expect(out.GITHUB_TOKEN).toBeUndefined();
   });
 });

@@ -71,6 +71,7 @@ import {
   AgentQuotaExceededError,
   elizaSandboxService,
 } from "@/lib/services/eliza-sandbox";
+import { getOrgImageNamespaces } from "@/lib/services/org-image-namespaces";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -154,8 +155,17 @@ async function createCodingContainer(
   payload: CodingContainerCreatePayload,
 ): Promise<Response> {
   // ── SECURITY: image allowlist gate ───────────────────────────────────
+  // Platform-wide env allowlist first; on deny, the org's OWN operator-granted
+  // namespace extension (organizations.settings.allowed_image_namespaces) —
+  // additive and fail-closed, scoped to this org only.
   const allowlist = containersEnv.codingContainerImageAllowlist();
-  if (!isCodingContainerImageAllowed(payload.image, allowlist)) {
+  const imageAllowed =
+    isCodingContainerImageAllowed(payload.image, allowlist) ||
+    isCodingContainerImageAllowed(
+      payload.image,
+      await getOrgImageNamespaces(user.organization_id),
+    );
+  if (!imageAllowed) {
     logger.warn("[CodingContainers API] image rejected by allowlist", {
       orgId: user.organization_id,
       image: payload.image,
@@ -174,7 +184,8 @@ async function createCodingContainer(
           `Image '${payload.image}' is not in the coding-container allowlist. ` +
           `Permitted images: ${permitted}. ` +
           `To run another image, ask an operator to add its GHCR namespace to ` +
-          `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
+          `CODING_CONTAINER_IMAGE_ALLOWLIST, or to grant it to your organization ` +
+          `(settings.allowed_image_namespaces).`,
         permittedImages: allowlist,
       },
       403,

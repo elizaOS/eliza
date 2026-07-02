@@ -59,6 +59,7 @@ import { deriveAppPublicUrl } from "./app-url";
 import { appsService } from "./apps";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import { ContainerJobEnqueuer, type ContainerJobsWriter } from "./container-job-service";
+import { getOrgImageNamespaces } from "./org-image-namespaces";
 import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 import type { UserDatabaseService } from "./user-database";
 
@@ -89,6 +90,12 @@ export interface AppDeployRunnerDeps {
     /** The app's git repo (apps.github_repo) — the build pipeline's context. */
     repoUrl?: string;
   }) => Promise<string | undefined> | string | undefined;
+  /**
+   * Per-org image-namespace extension lookup (operator-granted namespaces from
+   * `organizations.settings.allowed_image_namespaces`). Injected for tests;
+   * defaults to the DB-backed {@link getOrgImageNamespaces}.
+   */
+  orgImageNamespaces?: (organizationId: string) => Promise<string[]>;
   /** App listen port. Default 3000. */
   port?: number;
 }
@@ -114,7 +121,14 @@ export function toNewContainer(row: NewAppContainerRow): NewContainer {
 
 export async function resolveImageRef(
   deps: AppDeployRunnerDeps,
-  app: { id: string; name: string; metadata: Record<string, unknown>; repoUrl?: string },
+  app: {
+    id: string;
+    name: string;
+    metadata: Record<string, unknown>;
+    repoUrl?: string;
+    /** Owning org — enables its per-org image-namespace extension when set. */
+    organizationId?: string;
+  },
 ): Promise<string> {
   const fromResolver = deps.resolveImage ? await deps.resolveImage(app) : undefined;
   const fromMetadata =
@@ -145,13 +159,25 @@ export async function resolveImageRef(
   // cannot run an arbitrary off-namespace image. Fail-closed: empty allowlist
   // denies. The default allowlist covers the first-party elizaOS namespace, so
   // the stamped template image / APP_DEFAULT_IMAGE under it pass unchanged.
+  // When the platform allowlist denies, the owning org's operator-granted
+  // namespace extension (organizations.settings.allowed_image_namespaces) is
+  // consulted — additive, fail-closed, scoped to that org only. This is the
+  // path that lets a user's own `ghcr.io/<login>/*` app image deploy without
+  // widening the platform-wide list for every tenant.
   const allowlist = containersEnv.appsDeployImageAllowlist();
-  if (!isCodingContainerImageAllowed(image, allowlist)) {
+  let imageAllowed = isCodingContainerImageAllowed(image, allowlist);
+  if (!imageAllowed && app.organizationId) {
+    const lookup = deps.orgImageNamespaces ?? getOrgImageNamespaces;
+    const orgNamespaces = await lookup(app.organizationId).catch(() => []);
+    imageAllowed = isCodingContainerImageAllowed(image, orgNamespaces);
+  }
+  if (!imageAllowed) {
     const permitted = allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
     throw new Error(
       `Image '${image}' is not permitted for app ${app.id}: it is outside the ` +
         `allowed image namespaces (${permitted}). Set app.metadata.imageTag to an ` +
-        `allowlisted image, or widen APPS_DEPLOY_IMAGE_ALLOWLIST.`,
+        `allowlisted image, widen APPS_DEPLOY_IMAGE_ALLOWLIST, or ask an operator ` +
+        `to grant the namespace to your organization (settings.allowed_image_namespaces).`,
     );
   }
   // SECURITY (opt-in, default OFF): when the digest-pin gate is armed, reject a
@@ -203,6 +229,7 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       name: app.name,
       metadata: deployMetadata,
       repoUrl: app.github_repo ?? undefined,
+      organizationId: app.organization_id,
     });
     const containerName = containerNameForApp(appId);
 
