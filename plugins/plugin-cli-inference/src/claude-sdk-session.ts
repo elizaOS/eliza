@@ -92,12 +92,17 @@ export function isClaudeSubscriptionLimitMessage(text: string): boolean {
  * string as assistant text and terminating the turn cleanly — e.g.
  * "API Error: 400 messages: text content blocks must be non-empty" (observed
  * live 18x when empty relay lines produced an empty text content block).
- * That format is the SDK's own error envelope, never a genuine completion:
- * real answers don't open with "API Error: <status>". Detect it so callers
+ * The shipping CLI also emits NON-numeric envelopes — strings baked into the
+ * binary include "API Error: Request was aborted.", "API Error: Missing Tool
+ * Result Block", and a bare "API Error" label — so the match anchors on the
+ * "API Error" opener (with a colon or end-of-string after it) rather than
+ * requiring a status code. Genuine prose that merely begins with the words
+ * ("API Error handling is a best practice…") has no colon there and does not
+ * match. This envelope is never a genuine completion: detect it so callers
  * throw to failover instead of relaying the raw error to the user.
  */
 export function isClaudeSdkApiErrorMessage(text: string): boolean {
-  return /^API Error:\s*\d{3}\b/.test(text.trim());
+  return /^API Error(:|$)/.test(text.trim());
 }
 
 /** The model's captured routing decision (ROUTE mode). */
