@@ -59,7 +59,7 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
-
+import { handleSkunkScanRoute } from "./skunkscan-routes.ts";
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
 // imported via module-scope top-level await, which forced both plugins to
 // load (and pulled their transitive native deps) whenever anything imported
