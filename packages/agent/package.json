@@ -306,6 +306,7 @@
     "@elizaos/security": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
     "@elizaos/plugin-pty": "workspace:*",
+    "@elizaos/plugin-birdclaw": "workspace:*",
     "@elizaos/plugin-worker-runtime": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",

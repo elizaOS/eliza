@@ -108,6 +108,7 @@
         "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-app-manager": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
+        "@elizaos/plugin-birdclaw": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
@@ -2961,6 +2962,30 @@
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
+      },
+    },
+    "plugins/plugin-birdclaw": {
+      "name": "@elizaos/plugin-birdclaw",
+      "version": "1.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.2",
+        "@types/node": "^25.0.6",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.0",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-blocker": {
@@ -6315,6 +6340,8 @@
     "@elizaos/plugin-background-runner": ["@elizaos/plugin-background-runner@workspace:plugins/plugin-background-runner"],
 
     "@elizaos/plugin-benchmarks": ["@elizaos/plugin-benchmarks@workspace:plugins/plugin-benchmarks"],
+
+    "@elizaos/plugin-birdclaw": ["@elizaos/plugin-birdclaw@workspace:plugins/plugin-birdclaw"],
 
     "@elizaos/plugin-blocker": ["@elizaos/plugin-blocker@workspace:plugins/plugin-blocker"],
 

@@ -19,6 +19,11 @@
       "measuredGzipBytes": 2245,
       "gzipBudgetBytes": 3000
     },
+    "plugin-birdclaw": {
+      "measuredRawBytes": 9930,
+      "measuredGzipBytes": 3270,
+      "gzipBudgetBytes": 3800
+    },
     "plugin-blocker": {
       "measuredRawBytes": 5863,
       "measuredGzipBytes": 1870,

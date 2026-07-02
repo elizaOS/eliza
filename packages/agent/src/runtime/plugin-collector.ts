@@ -120,6 +120,41 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
   return existsSync(path.join(resolveGitpathologistRepoRoot(), ".git"));
 }
 
+/**
+ * Birdclaw (@elizaos/plugin-birdclaw) wraps the birdclaw CLI — a local-first
+ * Twitter/X archive (https://birdclaw.sh). Auto-loads when the host actually
+ * has birdclaw: the `birdclaw` binary on PATH, a `BIRDCLAW_BIN`/`BIRDCLAW_HOME`
+ * override, or an existing `~/.birdclaw` data root. Users can force it either
+ * way via config `birdclaw: true|false` or ELIZA_BIRDCLAW=1/0.
+ */
+function birdclawBinaryOnPath(): boolean {
+  const rawPath = process.env.PATH;
+  if (!rawPath) return false;
+  for (const dir of rawPath.split(path.delimiter)) {
+    if (!dir) continue;
+    if (existsSync(path.join(dir, "birdclaw"))) return true;
+  }
+  return false;
+}
+
+function birdclawRequested(config: ElizaConfig): boolean {
+  const agentEntry = config.agents?.list?.[0];
+  const fromEntry = agentEntry?.birdclaw;
+  const fromDefaults = config.agents?.defaults?.birdclaw;
+  if (typeof fromEntry === "boolean") return fromEntry;
+  if (typeof fromDefaults === "boolean") return fromDefaults;
+  const raw = process.env.ELIZA_BIRDCLAW?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "no") return false;
+  if (raw === "1" || raw === "true" || raw === "yes") return true;
+  const bin = process.env.BIRDCLAW_BIN?.trim();
+  if (bin && existsSync(bin)) return true;
+  const home = process.env.BIRDCLAW_HOME?.trim();
+  if (home && existsSync(home)) return true;
+  const userHome = process.env.HOME?.trim();
+  if (userHome && existsSync(path.join(userHome, ".birdclaw"))) return true;
+  return birdclawBinaryOnPath();
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -461,6 +496,17 @@ export function collectPluginNames(
     track(
       "@elizaos/plugin-gitpathologist",
       "gitpathologist (auto-on when .git/ present; gate ELIZA_GITPATHOLOGIST)",
+    );
+  }
+  // Mobile never gets birdclaw: the plugin shells out to the birdclaw CLI,
+  // which cannot exist inside a store-build sandbox — gating the whole plugin
+  // (not just spawning) keeps its launcher tile from appearing where the
+  // archive can never load.
+  if (!onMobile && birdclawRequested(config)) {
+    pluginsToLoad.add("@elizaos/plugin-birdclaw");
+    track(
+      "@elizaos/plugin-birdclaw",
+      "birdclaw (auto-on when the birdclaw CLI/data root is present; gate ELIZA_BIRDCLAW)",
     );
   }
   // Allow list is additive — extra plugins on top of auto-detection,
