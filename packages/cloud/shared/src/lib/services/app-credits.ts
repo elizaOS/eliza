@@ -825,24 +825,92 @@ export class AppCreditsService {
 
       // Reverse creator earnings if monetization is enabled and there was markup
       if (app.monetization_enabled && creatorEarningsReduction > 0) {
-        const { deduplicated } = await this.reverseCreatorEarnings(
-          appId,
-          userId,
-          creatorEarningsReduction,
-          "reconcile_refund",
-          {
-            type: "reconciliation_refund",
-            baseCostDifference,
-            estimatedBaseCost,
-            actualBaseCost,
-            description,
-            ...metadata,
-          },
-        );
+        let reversal: { deduplicated: boolean };
+        try {
+          reversal = await this.reverseCreatorEarnings(
+            appId,
+            userId,
+            creatorEarningsReduction,
+            "reconcile_refund",
+            {
+              type: "reconciliation_refund",
+              baseCostDifference,
+              estimatedBaseCost,
+              actualBaseCost,
+              description,
+              ...metadata,
+            },
+          );
+        } catch (reversalError) {
+          logger.error(
+            "[AppCredits] Creator-earnings reversal failed after the reconcile refund committed",
+            {
+              appId,
+              userId,
+              organizationId,
+              refundAmount,
+              creatorEarningsReduction,
+              error: reversalError instanceof Error ? reversalError.message : String(reversalError),
+            },
+          );
+          // #10846 mirror for the refund branch: the refund above has already
+          // committed, and the reversal is not co-transactional with it. On the
+          // KEYED path (reserveInferenceCredits threads the request-stable key)
+          // the routes' settler re-invokes reconcile after a throw: the refund
+          // dedupes on `reconcile-refund:<key>` (#11512) and this reversal then
+          // completes, so the retry heals the pair — compensating here would
+          // instead strand the org overcharged after that retry (its re-refund
+          // dedupes away). On the UNKEYED path (the app-chat and generate-image
+          // routes settle once and never re-invoke) there is NO retry: without
+          // compensation the org keeps the refund while the creator keeps the
+          // matching markup as unbacked REDEEMABLE earnings. Undo the refund
+          // (best-effort + logged, like the #10846 reversal) so the creator's
+          // markup stays backed by a real charge, then rethrow.
+          if (!reconcileIdempotencyKey) {
+            try {
+              const compensation = await creditsService.reserveAndDeductCredits({
+                organizationId,
+                amount: refundAmount,
+                description: `Compensation charge for failed reconciliation refund (${app.name ?? appId})`,
+                metadata: {
+                  appId,
+                  userId,
+                  baseCostDifference,
+                  estimatedBaseCost,
+                  actualBaseCost,
+                  creatorEarningsReduction,
+                  reason: "reconcile_refund_reversal_failed",
+                  ...metadata,
+                },
+              });
+              if (!compensation.success) {
+                logger.error(
+                  "[AppCredits] Failed to compensate reconcile refund after reversal failure — manual reconciliation may be needed",
+                  { appId, userId, organizationId, refundAmount },
+                );
+              }
+            } catch (compensationError) {
+              logger.error(
+                "[AppCredits] Failed to compensate reconcile refund after reversal failure — manual reconciliation may be needed",
+                {
+                  appId,
+                  userId,
+                  organizationId,
+                  refundAmount,
+                  error:
+                    compensationError instanceof Error
+                      ? compensationError.message
+                      : String(compensationError),
+                },
+              );
+            }
+          }
+          throw reversalError;
+        }
 
         // A dedup retry already applied this reduction — decrementing again
         // would drift the apps aggregate below the redeemable ledger (#10847).
-        if (!deduplicated) {
+        if (!reversal.deduplicated) {
           await dbWrite
             .update(apps)
             .set({
