@@ -121,27 +121,26 @@ test.describe("Wallet - Balance", () => {
 
   test("Buy Points modal opens", async ({ page }) => {
     const modal = await openModal(page, SELECTORS.BUY_POINTS_BUTTON);
-    if (modal) {
-      const isVisible = await modal.isVisible().catch(() => false);
-      expect(isVisible).toBe(true);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      modal === null,
+      "no Buy Points button rendered on the wallet page",
+    );
+    await expect(modal).toBeVisible();
   });
 
   test("Buy Points modal closes", async ({ page }) => {
     const modal = await openModal(page, SELECTORS.BUY_POINTS_BUTTON);
-    if (modal) {
-      await closeModal(page);
-      const stillVisible = await page
-        .locator(SELECTORS.MODAL)
-        .first()
-        .isVisible({ timeout: 1000 })
-        .catch(() => false);
-      expect(stillVisible).toBe(false);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      modal === null,
+      "no Buy Points button rendered on the wallet page",
+    );
+    await closeModal(page);
+    const stillVisible = await page
+      .locator(SELECTORS.MODAL)
+      .first()
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+    expect(stillVisible).toBe(false);
   });
 });
 

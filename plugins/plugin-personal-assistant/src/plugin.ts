@@ -158,7 +158,11 @@ import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { BrowserBridgePluginService } from "./service.js";
-import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
+import {
+  BLOCK_RULE_RECONCILE_TASK_NAME,
+  ensureBlockRuleReconcileTask,
+  registerBlockRuleReconcilerWorker,
+} from "./website-blocker/chat-integration/index.js";
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
@@ -1019,6 +1023,14 @@ const rawPersonalAssistantPlugin: Plugin = {
     });
 
     registerBlockRuleReconcilerWorker(runtime);
+    scheduleTaskEnsureAfterRuntimeInit({
+      runtime,
+      prefix: "[block-rule-reconciler]",
+      label: "task",
+      ensure: async () => {
+        await ensureBlockRuleReconcileTask(runtime);
+      },
+    });
 
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,
@@ -1087,6 +1099,7 @@ const rawPersonalAssistantPlugin: Plugin = {
       PROACTIVE_TASK_NAME,
       LIFEOPS_TASK_NAME,
       FOLLOWUP_TRACKER_TASK_NAME,
+      BLOCK_RULE_RECONCILE_TASK_NAME,
     ];
 
     // Delete persisted Task rows so the scheduler doesn't try to run them

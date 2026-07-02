@@ -90,12 +90,9 @@ test.describe("Research - Form", () => {
     const isVisible = await submitBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const isDisabled = await submitBtn.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no submit button rendered on the research form");
+    // An empty required form must not be submittable.
+    await expect(submitBtn).toBeDisabled();
   });
 
   test("valid input accepted in fields", async ({ page }) => {
@@ -136,11 +133,8 @@ test.describe("Research - Form", () => {
     const isVisible = await submitBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const isDisabled = await submitBtn.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no submit button rendered on the research form");
+    // An empty required form must not be submittable.
+    await expect(submitBtn).toBeDisabled();
   });
 });

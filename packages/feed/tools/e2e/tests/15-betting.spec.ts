@@ -42,8 +42,12 @@ test.describe("Betting - Page Load", () => {
       .isVisible({ timeout: 5000 })
       .catch(() => false);
     const url = page.url();
+    // Either a login/connect affordance is shown or we were sent off /betting.
     expect(
-      hasLogin || url.includes("login") || url.includes("connect") || true,
+      hasLogin ||
+        url.includes("login") ||
+        url.includes("connect") ||
+        !url.includes("/betting"),
     ).toBe(true);
   });
 });
@@ -82,14 +86,11 @@ test.describe("Betting - Market Selection", () => {
     const isVisible = await marketItem
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await marketItem.click({ force: true });
-      await page.waitForTimeout(1000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no betting markets rendered on the betting page");
+    await marketItem.click({ force: true });
+    await page.waitForTimeout(1000);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 });
 
@@ -127,36 +128,32 @@ test.describe("Betting - Order Form", () => {
     const isVisible = await yesBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await yesBtn.click({ force: true });
-      await page.waitForTimeout(300);
-      const noBtn = page.locator(SELECTORS.NO_BUTTON).first();
-      await noBtn.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(300);
-      expect(true).toBe(true);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no YES button rendered on the betting page");
+    await yesBtn.click({ force: true });
+    await page.waitForTimeout(300);
+    const noBtn = page.locator(SELECTORS.NO_BUTTON).first();
+    await expect(noBtn, "NO side of the toggle is missing").toBeVisible();
+    await noBtn.click({ force: true });
+    await expect(noBtn).toBeEnabled();
   });
 
   test("amount input accepts values", async ({ page }) => {
     const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "100");
-    expect(result === null || result === "100").toBe(true);
+    test.skip(result === null, "no amount input rendered on the betting page");
+    expect(result).toBe("100");
   });
 
   test("amount validation rejects invalid values", async ({ page }) => {
     const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "-50");
-    if (result !== null) {
-      const hasError = await pageContainsText(
-        page,
-        "invalid",
-        "error",
-        "minimum",
-      );
-      expect(typeof hasError).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(result === null, "no amount input rendered on the betting page");
+    const hasError = await pageContainsText(page, "invalid", "error", "minimum");
+    const inputValue = await page
+      .locator(SELECTORS.QUANTITY_INPUT)
+      .first()
+      .inputValue()
+      .catch(() => "");
+    // Either the negative value is rejected or an error message shows.
+    expect(hasError || !inputValue.startsWith("-")).toBe(true);
   });
 
   test("payout preview updates", async ({ page }) => {
@@ -205,22 +202,17 @@ test.describe("Betting - Confirm", () => {
     const yesVisible = await yesBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (yesVisible) {
-      await yesBtn.click({ force: true });
-      await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "100");
-      await page.waitForTimeout(500);
-      const confirmBtn = page
-        .locator(
-          'button:has-text("Confirm"), button:has-text("Place Bet"), button:has-text("Submit")',
-        )
-        .first();
-      const confirmVisible = await confirmBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-      expect(typeof confirmVisible).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!yesVisible, "no YES button rendered (no betting markets)");
+    await yesBtn.click({ force: true });
+    await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "100");
+    await page.waitForTimeout(500);
+    const confirmBtn = page
+      .locator(
+        'button:has-text("Confirm"), button:has-text("Place Bet"), button:has-text("Submit")',
+      )
+      .first();
+    await expect(confirmBtn).toBeVisible({ timeout: 5000 });
+    await expect(confirmBtn).toBeEnabled();
   });
 
   test("confirm button disabled when invalid", async ({ page }) => {
@@ -232,11 +224,8 @@ test.describe("Betting - Confirm", () => {
     const isVisible = await confirmBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const isDisabled = await confirmBtn.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no confirm button rendered on the betting page");
+    // Nothing selected and no amount entered: confirming must be blocked.
+    await expect(confirmBtn).toBeDisabled();
   });
 });

@@ -1,19 +1,110 @@
 /**
- * Approved-request execution (issue #10723 Bug 2).
+ * Approved-request execution (issues #10723 Bug 2 and #10721).
  *
  * The old `executeApprovedRequest` flipped execute_workflow approvals through
  * markExecuting -> markDone WITHOUT invoking the workflow runner, and returned
- * `success: true, "Approved."` for executor-less actions (sign_document, ...)
- * while executing nothing. These tests pin the fix: an approved
- * execute_workflow actually calls `LifeOpsService.runWorkflow`, and actions
- * with no executor return an explicit NO_EXECUTOR failure.
+ * `success: true, "Approved."` for executor-less actions while executing
+ * nothing. These tests pin the fixes: approved execute_workflow /
+ * schedule_event / make_call / sign_document requests drive their real rails
+ * (`LifeOpsService.runWorkflow`, `LifeOpsService.createCalendarEvent`, Twilio
+ * voice dispatch, the DocumentRequest lifecycle), rail failures surface as
+ * typed failures instead of fake success, and actions with no rail at all
+ * (spend_money) return an explicit NO_EXECUTOR failure.
  *
  * Run: bunx vitest run test/resolve-request-executor.test.ts
  */
 
 import { randomUUID } from "node:crypto";
-import type { HandlerCallback, IAgentRuntime, UUID } from "@elizaos/core";
+import type {
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const twilioMocks = vi.hoisted(() => ({
+  readTwilioCredentialsFromEnv: vi.fn<
+    () => {
+      accountSid: string;
+      authToken: string;
+      fromPhoneNumber: string;
+    } | null
+  >(() => null),
+  sendTwilioVoiceCall: vi.fn(
+    async (): Promise<{
+      ok: boolean;
+      status: number | null;
+      sid?: string;
+      error?: string;
+    }> => ({ ok: true, status: 201, sid: "CA-approved-1" }),
+  ),
+}));
+
+vi.mock("@elizaos/plugin-phone/twilio", () => twilioMocks);
+
+// The sign_document tests seed a real DocumentRequest through the real
+// OWNER_DOCUMENTS action; only its collaborators (owner gate, approval-queue
+// persistence, scheduled-task runner) are mocked, mirroring
+// test/document-action.test.ts.
+const docMocks = vi.hoisted(() => ({
+  hasOwnerAccess: vi.fn(async () => true),
+  enqueue: vi.fn(async (input: { payload?: unknown }) => ({
+    id: `approval-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    state: "pending" as const,
+    requestedBy: "OWNER_DOCUMENTS",
+    subjectUserId: "owner-1",
+    action: "sign_document",
+    payload: input.payload ?? {},
+    channel: "internal",
+    reason: "",
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    resolvedAt: null,
+    resolvedBy: null,
+    resolutionReason: null,
+  })),
+  schedule: vi.fn(async (task: { kind: string; trigger: unknown }) => ({
+    taskId: `task-${Math.random().toString(36).slice(2, 8)}`,
+    kind: task.kind,
+    trigger: task.trigger,
+    state: { status: "scheduled", followupCount: 0 },
+  })),
+}));
+
+vi.mock("@elizaos/agent", () => ({
+  hasOwnerAccess: docMocks.hasOwnerAccess,
+}));
+
+vi.mock("../src/lifeops/approval-queue.js", () => ({
+  createApprovalQueue: () => ({
+    enqueue: docMocks.enqueue,
+    list: vi.fn(),
+    approve: vi.fn(),
+    reject: vi.fn(),
+    markExecuting: vi.fn(),
+    markDone: vi.fn(),
+  }),
+}));
+
+vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
+  getScheduledTaskRunner: () => ({
+    schedule: docMocks.schedule,
+    apply: vi.fn(),
+    list: vi.fn(),
+    pipeline: vi.fn(),
+    evaluateCompletion: vi.fn(),
+    fire: vi.fn(),
+    fireWithResult: vi.fn(),
+  }),
+}));
+
+import {
+  __resetDocumentStoreForTests,
+  ownerDocumentsAction,
+} from "../src/actions/document.js";
 import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import type {
   ApprovalEnqueueInput,
@@ -101,7 +192,27 @@ function approvedRequest(
 
 afterEach(() => {
   vi.restoreAllMocks();
+  __resetDocumentStoreForTests();
+  twilioMocks.readTwilioCredentialsFromEnv.mockReset();
+  twilioMocks.readTwilioCredentialsFromEnv.mockReturnValue(null);
+  twilioMocks.sendTwilioVoiceCall.mockReset();
+  twilioMocks.sendTwilioVoiceCall.mockResolvedValue({
+    ok: true,
+    status: 201,
+    sid: "CA-approved-1",
+  });
+  docMocks.enqueue.mockClear();
+  docMocks.schedule.mockClear();
 });
+
+function collectTexts(): { texts: string[]; callback: HandlerCallback } {
+  const texts: string[] = [];
+  const callback: HandlerCallback = async (content) => {
+    if (typeof content.text === "string") texts.push(content.text);
+    return [];
+  };
+  return { texts, callback };
+}
 
 describe("executeApprovedRequest", () => {
   it("execute_workflow approval actually runs the workflow", async () => {

@@ -176,14 +176,11 @@ test.describe("Uncovered Pages - Game", () => {
     const isVisible = await refreshBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await refreshBtn.click({ force: true });
-      await page.waitForTimeout(1000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no refresh button rendered on the game page");
+    await refreshBtn.click({ force: true });
+    await page.waitForTimeout(1000);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 });
 

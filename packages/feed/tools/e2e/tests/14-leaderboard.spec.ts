@@ -100,14 +100,14 @@ test.describe("Leaderboard - Pagination", () => {
     const isVisible = await nextBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await nextBtn.click({ force: true });
-      await page.waitForTimeout(1000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no pagination controls rendered on the leaderboard");
+    const beforeBody = await page.locator("body").textContent();
+    await nextBtn.click({ force: true });
+    await page.waitForTimeout(1000);
+    const afterBody = await page.locator("body").textContent();
+    expect(afterBody).toBeTruthy();
+    // Paging to the next page must change the rendered list.
+    expect(afterBody).not.toBe(beforeBody);
   });
 
   test("previous page button works", async ({ page }) => {
@@ -115,17 +115,18 @@ test.describe("Leaderboard - Pagination", () => {
     const isVisible = await nextBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await nextBtn.click({ force: true });
-      await page.waitForTimeout(500);
-      const prevBtn = page.locator(SELECTORS.PAGINATION_PREV).first();
-      await prevBtn.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(500);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no pagination controls rendered on the leaderboard");
+    await nextBtn.click({ force: true });
+    await page.waitForTimeout(500);
+    const prevBtn = page.locator(SELECTORS.PAGINATION_PREV).first();
+    await expect(
+      prevBtn,
+      "no previous-page control after paging forward",
+    ).toBeVisible({ timeout: 3000 });
+    await prevBtn.click({ force: true });
+    await page.waitForTimeout(500);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 
   test("first page disables previous button", async ({ page }) => {
@@ -133,12 +134,9 @@ test.describe("Leaderboard - Pagination", () => {
     const isVisible = await prevBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const isDisabled = await prevBtn.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no pagination controls rendered on the leaderboard");
+    // On the first page the previous-page control must be disabled.
+    await expect(prevBtn).toBeDisabled();
   });
 });
 
@@ -177,14 +175,11 @@ test.describe("Leaderboard - User Interaction", () => {
     const isVisible = await userRow
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await userRow.click({ force: true });
-      await page.waitForTimeout(1000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no leaderboard rows rendered");
+    await userRow.click({ force: true });
+    await page.waitForTimeout(1000);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 
   test("follow button on leaderboard entry", async ({ page }) => {

@@ -75,23 +75,20 @@ test.describe("Profile - Own Profile", () => {
     const isVisible = await editBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await editBtn.click({ force: true });
-      await page.waitForTimeout(2000);
-      const url = page.url();
-      const hasEditContent = await pageContainsText(
-        page,
-        "edit",
-        "save",
-        "name",
-        "bio",
-      );
-      expect(
-        url.includes("edit") || url.includes("settings") || hasEditContent,
-      ).toBe(true);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no edit button rendered on the profile page");
+    await editBtn.click({ force: true });
+    await page.waitForTimeout(2000);
+    const url = page.url();
+    const hasEditContent = await pageContainsText(
+      page,
+      "edit",
+      "save",
+      "name",
+      "bio",
+    );
+    expect(
+      url.includes("edit") || url.includes("settings") || hasEditContent,
+    ).toBe(true);
   });
 });
 
@@ -157,14 +154,11 @@ test.describe("Profile - Other User", () => {
     const isVisible = await authorLink
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await authorLink.click({ force: true });
-      await page.waitForTimeout(2000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no author profile links rendered in the feed");
+    const beforeUrl = page.url();
+    await authorLink.click({ force: true });
+    await page.waitForTimeout(2000);
+    expect(page.url()).not.toBe(beforeUrl);
   });
 
   test("follow/unfollow button on other user profile", async ({ page }) => {
@@ -184,20 +178,17 @@ test.describe("Profile - Other User", () => {
     const isVisible = await messageBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await messageBtn.click({ force: true });
-      await page.waitForTimeout(2000);
-      const url = page.url();
-      const hasChatContent = await pageContainsText(
-        page,
-        "message",
-        "chat",
-        "send",
-      );
-      expect(url.includes("chat") || hasChatContent).toBe(true);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no message button rendered on the profile page");
+    await messageBtn.click({ force: true });
+    await page.waitForTimeout(2000);
+    const url = page.url();
+    const hasChatContent = await pageContainsText(
+      page,
+      "message",
+      "chat",
+      "send",
+    );
+    expect(url.includes("chat") || hasChatContent).toBe(true);
   });
 
   test("handle route /u/[handle] loads", async ({ page }) => {

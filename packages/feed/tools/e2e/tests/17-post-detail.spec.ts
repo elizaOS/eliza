@@ -32,16 +32,11 @@ test.describe("Post Detail - Load", () => {
     const isVisible = await postCard
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await postCard.click({ force: true });
-      await page.waitForTimeout(2000);
-      const _url = page.url();
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-      expect(body?.length).toBeGreaterThan(0);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no post cards rendered in the feed");
+    const beforeUrl = page.url();
+    await postCard.click({ force: true });
+    await page.waitForTimeout(2000);
+    expect(page.url()).not.toBe(beforeUrl);
   });
 
   test("post shows full content", async ({ page }) => {
@@ -98,11 +93,17 @@ test.describe("Post Detail - Interactions", () => {
     const isVisible = await likeBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await likeBtn.click({ force: true });
-      await page.waitForTimeout(500);
-    }
-    expect(true).toBe(true);
+    test.skip(!isVisible, "no like button rendered on the post detail page");
+    // A real like click must hit the like API (/api/posts/[id]/like).
+    const likeResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("/like") &&
+        response.request().method() !== "GET",
+      { timeout: 10_000 },
+    );
+    await likeBtn.click({ force: true });
+    const response = await likeResponse;
+    expect(response.status()).toBeLessThan(500);
   });
 
   test("share button on post detail", async ({ page }) => {

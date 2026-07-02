@@ -6,6 +6,11 @@ vi.mock("../block-activator.js", () => ({
     success: true,
     endsAt: null,
   })),
+  syncOsBlockToRules: vi.fn(async () => ({
+    ok: true,
+    changed: false,
+    error: null,
+  })),
 }));
 
 import { reconcileBlockRulesOnce } from "../block-rule-reconciler.js";

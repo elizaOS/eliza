@@ -120,6 +120,26 @@ async function getApp(id: string): Promise<AppDto | undefined> {
   return ((await res.json()) as GetAppResponse).app;
 }
 
+const createdCharacterIds: string[] = [];
+
+/**
+ * Creates a real character owned by the test user. linked_character_ids on
+ * PUT /api/v1/apps/:id enforces the character ownership guard (#10863), so
+ * link targets must exist and be owned/public — made-up UUIDs 404.
+ */
+async function createTestCharacter(): Promise<string> {
+  const res = await api.post(
+    "/api/my-agents/characters",
+    { name: uniqueName("Linked Character"), bio: ["app-link e2e fixture"] },
+    { headers: bearerHeaders() },
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { id?: string };
+  expect(body.id).toBeTruthy();
+  createdCharacterIds.push(body.id as string);
+  return body.id as string;
+}
+
 beforeAll(async () => {
   hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
   hasMemberApiKey = Boolean(process.env.TEST_MEMBER_API_KEY?.trim());
@@ -146,6 +166,11 @@ afterAll(async () => {
   if (!shouldRunAuthed()) return;
   for (const appId of createdAppIds) {
     await api.delete(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+      headers: bearerHeaders(),
+    });
+  }
+  for (const characterId of createdCharacterIds) {
+    await api.delete(`/api/my-agents/characters/${characterId}`, {
       headers: bearerHeaders(),
     });
   }
@@ -436,12 +461,12 @@ describe("PUT /api/v1/apps/:id", () => {
     expect(fetched?.allowed_origins).toEqual(origins);
   });
 
-  test("happy path: sets linked_character_ids", async () => {
+  test("happy path: sets linked_character_ids to owned characters", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createTestApp();
     const characters = [
-      "00000000-0000-4000-8000-000000000010",
-      "00000000-0000-4000-8000-000000000011",
+      await createTestCharacter(),
+      await createTestCharacter(),
     ];
 
     const res = await api.put(
@@ -455,6 +480,20 @@ describe("PUT /api/v1/apps/:id", () => {
 
     const fetched = await getApp(created.id as string);
     expect(fetched?.linked_character_ids).toEqual(characters);
+  });
+
+  test("ownership guard: 404 when linking a nonexistent character", async () => {
+    if (!shouldRunAuthed()) return;
+    const created = await createTestApp();
+
+    const res = await api.put(
+      `/api/v1/apps/${created.id}`,
+      { linked_character_ids: ["00000000-0000-4000-8000-000000000010"] },
+      { headers: bearerHeaders() },
+    );
+    // #10863: linked_character_ids enforces the same existence/ownership guard
+    // as PUT /apps/:id/characters — unknown character id → 404.
+    expect(res.status).toBe(404);
   });
 
   test("validation: 400 for more than four linked_character_ids", async () => {

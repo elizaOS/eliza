@@ -91,13 +91,10 @@ test.describe("Chats - Messaging", () => {
     const isVisible = await chatInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await chatInput.fill("Hello E2E test");
-      const value = await chatInput.inputValue().catch(() => "");
-      expect(value).toContain("Hello");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no chat input rendered (no chat open)");
+    await chatInput.fill("Hello E2E test");
+    const value = await chatInput.inputValue().catch(() => "");
+    expect(value).toContain("Hello");
   });
 
   test("send button present", async ({ page }) => {
@@ -152,13 +149,12 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    if (modal) {
-      const isVisible = await modal.isVisible().catch(() => false);
-      expect(isVisible).toBe(true);
-      await closeModal(page);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      modal === null,
+      "no group/chat creation button rendered on the chats page",
+    );
+    await expect(modal).toBeVisible();
+    await closeModal(page);
   });
 
   test("group creation requires name", async ({ page }) => {
@@ -166,18 +162,16 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    if (modal) {
-      const nameInput = modal
-        .locator('input[name="name"], input[placeholder*="name" i]')
-        .first();
-      const isVisible = await nameInput
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
-      expect(typeof isVisible).toBe("boolean");
-      await closeModal(page);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      modal === null,
+      "no group/chat creation button rendered on the chats page",
+    );
+    const nameInput = modal
+      .locator('input[name="name"], input[placeholder*="name" i]')
+      .first();
+    // A creation form must ask for a name.
+    await expect(nameInput).toBeVisible({ timeout: 3000 });
+    await closeModal(page);
   });
 
   test("cancel closes group creation modal", async ({ page }) => {
@@ -185,16 +179,16 @@ test.describe("Chats - Group Creation", () => {
       page,
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
-    if (modal) {
-      await closeModal(page);
-      const modalGone = page.locator(SELECTORS.MODAL).first();
-      const stillVisible = await modalGone
-        .isVisible({ timeout: 1000 })
-        .catch(() => false);
-      expect(stillVisible).toBe(false);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      modal === null,
+      "no group/chat creation button rendered on the chats page",
+    );
+    await closeModal(page);
+    const modalGone = page.locator(SELECTORS.MODAL).first();
+    const stillVisible = await modalGone
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+    expect(stillVisible).toBe(false);
   });
 });
 
@@ -216,7 +210,8 @@ test.describe("Chats - Search", () => {
 
   test("search filters chats", async ({ page }) => {
     const result = await fillAndVerify(page, SELECTORS.SEARCH_INPUT, "test");
-    expect(result === null || typeof result === "string").toBe(true);
+    test.skip(result === null, "no search input rendered on the chats page");
+    expect(result).toBe("test");
   });
 
   test("clear search resets list", async ({ page }) => {

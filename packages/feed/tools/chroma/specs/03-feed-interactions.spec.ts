@@ -25,10 +25,10 @@ test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
 test.describe("Feed - Core Functionality", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -56,10 +56,10 @@ test.describe("Feed - Core Functionality", () => {
 
 test.describe("Feed - Tab Switching", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -130,10 +130,10 @@ test.describe("Feed - Tab Switching", () => {
 
 test.describe("Feed - Post Composer", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -315,10 +315,10 @@ test.describe("Feed - Post Composer", () => {
 
 test.describe("Feed - Post Card Interactions", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -498,10 +498,10 @@ test.describe("Feed - Post Card Interactions", () => {
 
 test.describe("Feed - Infinite Scroll", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -530,10 +530,10 @@ test.describe("Feed - Widget Sidebar", () => {
   });
 
   test("displays widget sidebar on desktop viewport", async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.DESKTOP_LARGE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -555,10 +555,10 @@ test.describe("Feed - Widget Sidebar", () => {
   });
 
   test("hides widget sidebar on tablet viewport", async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.TABLET);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);

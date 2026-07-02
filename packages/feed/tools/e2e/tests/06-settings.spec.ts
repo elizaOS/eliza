@@ -126,19 +126,16 @@ test.describe("Settings - Profile Tab", () => {
     const isVisible = await nameInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await nameInput.clear();
-      await page.waitForTimeout(300);
-      const saveBtn = page.locator(SELECTORS.SAVE_BUTTON).first();
-      if (await saveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await saveBtn.click({ force: true });
-        await page.waitForTimeout(500);
-      }
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
+    test.skip(!isVisible, "no name input rendered on the settings page");
+    await nameInput.clear();
+    await page.waitForTimeout(300);
+    const saveBtn = page.locator(SELECTORS.SAVE_BUTTON).first();
+    if (await saveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await saveBtn.click({ force: true });
+      await page.waitForTimeout(500);
     }
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 });
 
@@ -183,15 +180,13 @@ test.describe("Settings - Theme Tab", () => {
     const isVisible = await darkBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await darkBtn.click({ force: true });
-      await page.waitForTimeout(500);
-      const html = page.locator("html");
-      const className = await html.getAttribute("class").catch(() => "");
-      expect(typeof className).toBe("string");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no dark-theme control rendered on the settings page");
+    const before = (await page.locator("html").getAttribute("class")) ?? "";
+    await darkBtn.click({ force: true });
+    await page.waitForTimeout(500);
+    const after = (await page.locator("html").getAttribute("class")) ?? "";
+    // Switching theme must change the root class (or already be dark).
+    expect(after !== before || after.includes("dark")).toBe(true);
   });
 });
 
@@ -330,13 +325,12 @@ test.describe("Settings - API Keys Tab", () => {
       page,
       'button:has-text("Create"), button:has-text("Generate"), button:has-text("New Key")',
     );
-    if (modal) {
-      const isVisible = await modal.isVisible().catch(() => false);
-      expect(isVisible).toBe(true);
-      await closeModal(page);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      modal === null,
+      "no create-API-key button rendered on the settings page",
+    );
+    await expect(modal).toBeVisible();
+    await closeModal(page);
   });
 
   test("API keys list renders", async ({ page }) => {

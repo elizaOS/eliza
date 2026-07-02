@@ -9,15 +9,15 @@
  *   3. Validation — malformed body / missing required query param returns 400
  *      with a structured `error` field.
  *
- * Skip behavior matches `agent-token-flow.test.ts`: every test no-ops if the
- * Worker isn't reachable. Tests that require a bootstrapped API key skip
- * cleanly when `TEST_API_KEY` is missing (preload couldn't seed the DB).
+ * Skip behavior matches `agent-token-flow.test.ts`: with REQUIRE_E2E_SERVER=0
+ * and no reachable Worker (or no bootstrapped TEST_API_KEY) every test in this
+ * file reports as a counted, named `skip` — never a silent pass.
  *
  * Run from `apps/api/`:
  *   bun test --preload ./test/e2e/preload.ts test/e2e/group-a-auth.test.ts
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   api,
   bearerHeaders,
@@ -26,18 +26,28 @@ import {
   isServerReachable,
 } from "./_helpers/api";
 
-let serverReachable = false;
-let hasTestApiKey = false;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-a-auth] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (`bun run dev` in packages/cloud/api) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
+}
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-a-auth] TEST_API_KEY is not set. Tests will SKIP. Run with " +
+      "`bun test --preload ./test/e2e/preload.ts ...` against a live local " +
+      "Postgres so the preload can seed a key.",
+  );
+}
+
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+
 let _sessionCookie: string | null = null;
 let anonSessionToken: string | null = null;
-
-function shouldRun(): boolean {
-  return serverReachable && hasTestApiKey;
-}
-
-function reachableOnly(): boolean {
-  return serverReachable;
-}
 
 function internalHeaders(): Record<string, string> {
   return {
@@ -46,69 +56,36 @@ function internalHeaders(): Record<string, string> {
   };
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-a-auth] ${getBaseUrl()} did not respond to /api/health. ` +
-        "Tests will skip. Start the Worker (`bun run dev` in apps/api/) " +
-        "or set TEST_API_BASE_URL to a reachable host.",
-    );
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-a-auth] TEST_API_KEY is not set. Auth-gated tests will skip. " +
-        "Run with `bun test --preload ./test/e2e/preload.ts ...` against a " +
-        "live local Postgres so the preload can seed a key.",
-    );
-  }
-});
-
-afterAll(async () => {
-  // Best-effort: nothing to clean up. CLI-auth sessions self-expire, anonymous
-  // sessions cookie out, and steward cookies are scoped to the response.
-});
-
-describe("Group A: auth + sessions", () => {
+describeE2E("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   // /api/auth/anonymous-session — POST, get-or-create anon session.
   // Not in publicPathPrefixes; middleware should require auth.
   // --------------------------------------------------------------------
   describe("POST /api/auth/anonymous-session", () => {
     test("auth gate: rejects unauthenticated POST", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/auth/anonymous-session", {});
-      // Middleware not in publicPathPrefixes → 401. Some deployments may
-      // still treat this as public; accept either but require a structured
-      // error for the 401 case.
-      expect([200, 401]).toContain(res.status);
-      if (res.status === 401) {
-        const body = (await res.json()) as { error?: string };
-        expect(body.error).toBeTruthy();
-      }
+      // Not in publicPathPrefixes → the auth middleware rejects with 401.
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).toBeTruthy();
     });
 
     test("happy path: with valid Bearer creates or returns an anon session", async () => {
-      if (!shouldRun()) return;
       const res = await api.post(
         "/api/auth/anonymous-session",
         {},
         { headers: bearerHeaders() },
       );
-      // Steward session-mode users may not be able to mint anon sessions;
-      // accept 200 (session minted) or 4xx (user is not anonymous-eligible).
-      expect([200, 400, 403]).toContain(res.status);
-      if (res.status === 200) {
-        const body = (await res.json()) as {
-          isNew?: boolean;
-          user?: { id?: string };
-          session?: { session_token?: string; messages_limit?: number };
-        };
-        expect(body.session?.session_token).toBeTruthy();
-        if (body.session?.session_token) {
-          anonSessionToken = body.session.session_token;
-        }
+      // The bootstrapped API-key user is anonymous-eligible → session minted.
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        isNew?: boolean;
+        user?: { id?: string };
+        session?: { session_token?: string; messages_limit?: number };
+      };
+      expect(body.session?.session_token).toBeTruthy();
+      if (body.session?.session_token) {
+        anonSessionToken = body.session.session_token;
       }
     });
   });
@@ -118,7 +95,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("POST /api/auth/pair", () => {
     test("validation: missing token returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/auth/pair",
         {},
@@ -135,7 +111,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: missing Origin header returns 400", async () => {
-      if (!reachableOnly()) return;
       // Bun's fetch always sets Host but Origin is optional. Send a token
       // without Origin to hit the second 400 branch.
       const res = await fetch(`${getBaseUrl()}/api/auth/pair`, {
@@ -143,14 +118,14 @@ describe("Group A: auth + sessions", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: "fake-token" }),
       });
-      // Some clients (browsers) auto-inject Origin; in CI we send none.
-      expect([400, 401]).toContain(res.status);
+      // Bun's fetch sends no Origin → the route's "Origin header required"
+      // branch answers 400 before token validation runs.
+      expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBeTruthy();
     });
 
     test("auth gate: invalid pairing token returns 401", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/auth/pair",
         { token: "definitely-not-a-real-pairing-token-zzz" },
@@ -161,9 +136,8 @@ describe("Group A: auth + sessions", () => {
           },
         },
       );
-      // Token validation rejects → 401. (404 if token validates but the
-      // sandbox is missing — shouldn't happen with a random token.)
-      expect([401, 404]).toContain(res.status);
+      // Token validation rejects the random token → 401.
+      expect(res.status).toBe(401);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBeTruthy();
     });
@@ -174,15 +148,16 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("/api/auth/steward-debug", () => {
     test("removed debug route is not publicly reachable", async () => {
-      if (!reachableOnly()) return;
 
+      // The route is gone AND the path is not public, so the auth middleware
+      // rejects unauthenticated callers before 404 routing: 401 either way.
       const getRes = await api.get("/api/auth/steward-debug");
-      expect([401, 404]).toContain(getRes.status);
+      expect(getRes.status).toBe(401);
 
       const postRes = await api.post("/api/auth/steward-debug", {
         token: "not-a-real-steward-jwt",
       });
-      expect([401, 404]).toContain(postRes.status);
+      expect(postRes.status).toBe(401);
     });
   });
 
@@ -198,7 +173,6 @@ describe("Group A: auth + sessions", () => {
     const stewardSessionHeaders = { Origin: "http://localhost:8787" };
 
     test("POST validation: missing token returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/auth/steward-session",
         {},
@@ -212,12 +186,14 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("POST auth gate: invalid steward JWT returns 401", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/auth/steward-session",
         { token: "bogus.jwt.token" },
         { headers: stewardSessionHeaders },
       );
+      // Env-dependent pair, named by body.code below: with a configured
+      // Steward JWT secret the bogus token is rejected as 401 invalid_token;
+      // the keyless local harness has no secret → 503 server_secret_missing.
       expect([401, 503]).toContain(res.status);
       const body = (await res.json()) as { code?: string; error?: string };
       expect(["invalid_token", "server_secret_missing"]).toContain(
@@ -226,7 +202,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("POST without Origin returns 403 (CSRF protection)", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/auth/steward-session", {
         token: "bogus.jwt.token",
       });
@@ -236,7 +211,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("DELETE clears cookies and returns ok", async () => {
-      if (!reachableOnly()) return;
       const res = await api.delete("/api/auth/steward-session", {
         headers: stewardSessionHeaders,
       });
@@ -259,7 +233,6 @@ describe("Group A: auth + sessions", () => {
     const nonceHeaders = { Origin: "http://localhost:8787" };
 
     test("validation: missing code returns 400 missing_code", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/auth/steward-nonce-exchange",
         { redirectUri: "https://elizaos.ai/checkout" },
@@ -271,7 +244,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: missing redirectUri returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/auth/steward-nonce-exchange",
         { code: "abc" },
@@ -283,7 +255,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("CSRF: POST without Origin returns 403 forbidden_origin", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/auth/steward-nonce-exchange", {
         code: "abc",
         redirectUri: "https://elizaos.ai/checkout",
@@ -294,7 +265,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("happy-path inputs reach upstream; bogus code is rejected", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/auth/steward-nonce-exchange",
         {
@@ -329,7 +299,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("GET /api/anonymous-session", () => {
     test("validation: missing token query returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get("/api/anonymous-session");
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
@@ -337,7 +306,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: malformed token (too short) returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get("/api/anonymous-session?token=short");
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
@@ -345,7 +313,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("auth gate: well-formed but unknown token returns 404", async () => {
-      if (!reachableOnly()) return;
       const fakeToken = "a".repeat(32);
       const res = await api.get(`/api/anonymous-session?token=${fakeToken}`);
       expect(res.status).toBe(404);
@@ -354,7 +321,8 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("happy path: previously-minted token round-trips", async () => {
-      if (!reachableOnly() || !anonSessionToken) return;
+      if (!anonSessionToken)
+        throw new Error("anon session token not set — earlier step failed");
       const res = await api.get(
         `/api/anonymous-session?token=${encodeURIComponent(anonSessionToken)}`,
       );
@@ -373,7 +341,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("POST /api/set-anonymous-session", () => {
     test("validation: invalid JSON body returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await fetch(`${getBaseUrl()}/api/set-anonymous-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -385,7 +352,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: missing sessionToken returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/set-anonymous-session", {});
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
@@ -393,11 +359,11 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("auth gate: unknown sessionToken returns 404", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/set-anonymous-session", {
         sessionToken: "z".repeat(32),
       });
-      expect([404, 410]).toContain(res.status);
+      // Unknown token → 404 SESSION_NOT_FOUND (410 is reserved for expired).
+      expect(res.status).toBe(404);
       const body = (await res.json()) as { error?: string; code?: string };
       expect(body.error).toBeTruthy();
       expect(body.code).toBe("SESSION_NOT_FOUND");
@@ -409,7 +375,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("GET /api/sessions/current", () => {
     test("auth gate: rejects unauthenticated GET with 401", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get("/api/sessions/current");
       expect(res.status).toBe(401);
       const body = (await res.json()) as { error?: string };
@@ -417,7 +382,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("happy path: Bearer eliza_* returns session stats", async () => {
-      if (!shouldRun()) return;
       const res = await api.get("/api/sessions/current", {
         headers: bearerHeaders(),
       });
@@ -438,7 +402,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: malformed Bearer rejected as 401", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get("/api/sessions/current", {
         headers: { Authorization: "Bearer not-a-real-key" },
       });
@@ -454,29 +417,27 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("POST /api/internal/auth/refresh", () => {
     test("rejects missing internal bearer with 401 or JWKS config failure", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/internal/auth/refresh", {
         token: "anything",
       });
-      expect([401, 503]).toContain(res.status);
+      // The internal-bearer gate fires before any JWKS work → 401.
+      expect(res.status).toBe(401);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBeTruthy();
     });
 
     test("rejects bogus bearer token", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/internal/auth/refresh",
         {},
         { headers: { Authorization: "Bearer not-a-real-internal-token" } },
       );
-      expect([401, 503]).toContain(res.status);
+      expect(res.status).toBe(401);
     });
 
     test("GET is not mounted for token refresh", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get("/api/internal/auth/refresh");
-      expect([401, 404, 405, 503]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -485,7 +446,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("POST /api/internal/identity/resolve", () => {
     test("auth gate: missing internal bearer returns 401", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/internal/identity/resolve", {
         identifier: "user@example.com",
       });
@@ -495,7 +455,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("happy path: resolves bootstrapped test user email", async () => {
-      if (!shouldRun()) return;
       const res = await api.post(
         "/api/internal/identity/resolve",
         { identifier: process.env.TEST_USER_EMAIL },
@@ -522,7 +481,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: invalid JSON body returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await fetch(`${getBaseUrl()}/api/internal/identity/resolve`, {
         method: "POST",
         headers: internalHeaders(),
@@ -532,11 +490,10 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("method gate: GET is not mounted", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get("/api/internal/identity/resolve", {
         headers: internalHeaders(),
       });
-      expect([404, 405]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -546,26 +503,26 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("POST /api/test/auth/session", () => {
     test("auth gate: missing API key returns 401 (when enabled) or 404 (when disabled)", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/test/auth/session", undefined);
-      expect([401, 404]).toContain(res.status);
+      // The e2e harness always runs the Worker with PLAYWRIGHT_TEST_AUTH=true
+      // (preload + batch runner set it), so the route is mounted → 401.
+      expect(res.status).toBe(401);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBeTruthy();
     });
 
     test("auth gate: invalid API key returns 401 (when enabled)", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/test/auth/session", undefined, {
         headers: { Authorization: "Bearer eliza_definitely-not-real" },
       });
-      // Disabled → 404. Enabled but invalid → 401. Bad key validation → 401.
-      expect([401, 404]).toContain(res.status);
+      // Route is enabled in the harness (PLAYWRIGHT_TEST_AUTH=true) → the
+      // invalid key is rejected as 401.
+      expect(res.status).toBe(401);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBeTruthy();
     });
 
     test("happy path: valid Bearer eliza_* mints a session cookie", async () => {
-      if (!shouldRun()) return;
       const cookie = await exchangeApiKeyForSession();
       _sessionCookie = cookie;
       expect(cookie).toMatch(/^[^=]+=.+/);
@@ -577,19 +534,17 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("GET /api/eliza-app/auth/connection-success", () => {
     test("auth gate: public path, GET with web platform redirects", async () => {
-      if (!reachableOnly()) return;
       const res = await fetch(
         `${getBaseUrl()}/api/eliza-app/auth/connection-success?platform=web`,
         { redirect: "manual" },
       );
-      // Handler issues c.redirect → 302 (or 301). Public path so no 401.
-      expect([301, 302, 303, 307, 308]).toContain(res.status);
+      // Handler issues c.redirect → Hono's default 302. Public path, no 401.
+      expect(res.status).toBe(302);
       const location = res.headers.get("location") ?? "";
       expect(location).toMatch(/\/dashboard\/chat/);
     });
 
     test("happy path: discord platform returns HTML success page", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get(
         "/api/eliza-app/auth/connection-success?platform=discord",
       );
@@ -602,7 +557,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: source=eliza-app + provider returns provider-labeled HTML", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get(
         "/api/eliza-app/auth/connection-success?source=eliza-app&platform=google&connection_id=conn-123",
       );
@@ -619,7 +573,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("POST /api/eliza-app/cli-auth/init", () => {
     test("happy path: returns a session_id and expires_at", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/eliza-app/cli-auth/init", {});
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
@@ -635,21 +588,18 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("auth gate: public path accepts request with no auth header", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/eliza-app/cli-auth/init", {});
-      // Public — should not be 401. May be 200 or 500 (no DB).
-      expect(res.status).not.toBe(401);
-      expect(res.status).not.toBe(403);
+      // Public — no auth gate, and the harness always has a live DB.
+      expect(res.status).toBe(200);
     });
 
     test("validation: extra body fields are ignored (no schema rejection)", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/eliza-app/cli-auth/init", {
         unexpected: "value",
         nested: { junk: true },
       });
-      // No schema, so this should still 200 (or 500 on DB failure).
-      expect([200, 500]).toContain(res.status);
+      // No schema, so extra fields are ignored.
+      expect(res.status).toBe(200);
     });
   });
 
@@ -658,7 +608,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("GET /api/eliza-app/cli-auth/poll", () => {
     test("validation: missing session_id returns 400", async () => {
-      if (!reachableOnly()) return;
       const res = await api.get("/api/eliza-app/cli-auth/poll");
       expect(res.status).toBe(400);
       const body = (await res.json()) as { success?: boolean; error?: string };
@@ -666,8 +615,7 @@ describe("Group A: auth + sessions", () => {
       expect(body.error).toBe("Missing session_id");
     });
 
-    test("auth gate: unknown session_id returns 404 (or 500 if no DB)", async () => {
-      if (!reachableOnly()) return;
+    test("auth gate: unknown session_id returns 404", async () => {
       const res = await api.get(
         "/api/eliza-app/cli-auth/poll?session_id=00000000-0000-0000-0000-000000000000",
       );
@@ -678,7 +626,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("happy path: init then poll returns status=pending", async () => {
-      if (!reachableOnly()) return;
       const initRes = await api.post("/api/eliza-app/cli-auth/init", {});
       expect(initRes.status).toBe(200);
       const initBody = (await initRes.json()) as { session_id?: string };
@@ -694,9 +641,8 @@ describe("Group A: auth + sessions", () => {
         status?: string;
       };
       expect(pollBody.success).toBe(true);
-      expect(["pending", "expired", "authenticated"]).toContain(
-        pollBody.status ?? "",
-      );
+      // Freshly-inited session polled immediately → still pending.
+      expect(pollBody.status).toBe("pending");
     });
   });
 
@@ -705,7 +651,6 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("POST /api/eliza-app/cli-auth/complete", () => {
     test("auth gate: missing Authorization returns 401", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post("/api/eliza-app/cli-auth/complete", {
         session_id: "abc",
       });
@@ -716,7 +661,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("auth gate: invalid eliza-app Bearer returns 401", async () => {
-      if (!reachableOnly()) return;
       const res = await api.post(
         "/api/eliza-app/cli-auth/complete",
         { session_id: "abc" },
@@ -729,7 +673,6 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: a valid-looking but non-eliza-app JWT still 401", async () => {
-      if (!reachableOnly()) return;
       // Even with a bogus JWT-shaped token, validateAuthHeader should reject.
       const res = await api.post(
         "/api/eliza-app/cli-auth/complete",
@@ -748,7 +691,6 @@ describe("Group A: auth + sessions", () => {
   // /api/auth/logout — POST, ends all sessions + expires the auth cookies.
   describe("POST /api/auth/logout", () => {
     test("happy path: authenticated logout succeeds and expires auth cookies", async () => {
-      if (!serverReachable || !hasTestApiKey) return;
       const res = await api.post(
         "/api/auth/logout",
         {},

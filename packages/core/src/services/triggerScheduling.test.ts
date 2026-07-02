@@ -97,3 +97,99 @@ describe("computeNextCronRunAtMs - timezone handling", () => {
 		}
 	});
 });
+
+describe("computeNextCronRunAtMs - DST fall-back single fire (#11046)", () => {
+	// America/New_York fall-back: 2026-11-01 02:00 EDT -> 01:00 EST
+	// (transition instant 06:00:00Z). Local 01:00-01:59 happens twice:
+	// 05:00-05:59Z (EDT) and 06:00-06:59Z (EST).
+	const NY = "America/New_York";
+	// Europe/Berlin fall-back: 2026-10-25 03:00 CEST -> 02:00 CET
+	// (transition instant 01:00:00Z). Local 02:00-02:59 happens twice.
+	const BERLIN = "Europe/Berlin";
+
+	it("NY: a cron inside the repeated hour fires on the first pass (01:30 EDT)", () => {
+		const midnightLocal = Date.UTC(2026, 10, 1, 4, 0, 0); // 00:00 EDT
+		const next = computeNextCronRunAtMs("30 1 * * *", midnightLocal, NY);
+		expect(next).toBe(Date.UTC(2026, 10, 1, 5, 30, 0)); // 01:30 EDT
+	});
+
+	it("NY: the second wall-clock pass is skipped — next fire is the following local day", () => {
+		const firstPass = Date.UTC(2026, 10, 1, 5, 30, 0); // 01:30 EDT
+		const next = computeNextCronRunAtMs("30 1 * * *", firstPass, NY);
+		// NOT 2026-11-01T06:30Z (01:30 EST — the old double fire).
+		expect(next).toBe(Date.UTC(2026, 10, 2, 6, 30, 0)); // Nov 2 01:30 EST
+	});
+
+	it("Berlin: a cron inside the repeated hour fires once (02:30 CEST), then the next local day", () => {
+		const beforeTransition = Date.UTC(2026, 9, 25, 0, 0, 0);
+		const first = computeNextCronRunAtMs(
+			"30 2 * * *",
+			beforeTransition,
+			BERLIN,
+		);
+		expect(first).toBe(Date.UTC(2026, 9, 25, 0, 30, 0)); // 02:30 CEST
+		const next = computeNextCronRunAtMs("30 2 * * *", first as number, BERLIN);
+		// NOT 2026-10-25T01:30Z (02:30 CET — the repeated pass).
+		expect(next).toBe(Date.UTC(2026, 9, 26, 1, 30, 0)); // Oct 26 02:30 CET
+	});
+
+	it("hour-wildcard schedules keep firing on both passes (hourly cadence is not deduped)", () => {
+		const firstPass = Date.UTC(2026, 10, 1, 5, 30, 0); // 01:30 EDT
+		const next = computeNextCronRunAtMs("30 * * * *", firstPass, NY);
+		expect(next).toBe(Date.UTC(2026, 10, 1, 6, 30, 0)); // 01:30 EST — a real hour later
+	});
+
+	it("spring-forward skipped-hour behavior is unchanged (02:30 never exists on 2026-03-08)", () => {
+		const beforeTransition = Date.UTC(2026, 2, 8, 0, 0, 0); // Mar 7 19:00 EST
+		const next = computeNextCronRunAtMs("30 2 * * *", beforeTransition, NY);
+		expect(next).toBe(Date.UTC(2026, 2, 9, 6, 30, 0)); // Mar 9 02:30 EDT — Mar 8 skipped
+	});
+
+	it("daily crons outside the transition hour still fire exactly once per local day across fall-back", () => {
+		const fired = Date.UTC(2026, 9, 31, 12, 0, 0); // Oct 31 08:00 EDT
+		const next = computeNextCronRunAtMs("0 8 * * *", fired, NY);
+		expect(next).toBe(Date.UTC(2026, 10, 1, 13, 0, 0)); // Nov 1 08:00 EST — 25h later
+		const after = computeNextCronRunAtMs("0 8 * * *", next as number, NY);
+		expect(after).toBe(Date.UTC(2026, 10, 2, 13, 0, 0));
+	});
+});
+
+describe("computeNextCronRunAtMs - pathological scan cost (#11046)", () => {
+	it("a rare-match cron with a timezone completes a full 366-day scan fast", () => {
+		// Feb 29 next occurs in 2028 — outside the 366-day window from
+		// 2026-03-01, so this is the worst case: a full scan returning null.
+		const startedAt = performance.now();
+		const next = computeNextCronRunAtMs(
+			"0 0 29 2 *",
+			Date.UTC(2026, 2, 1),
+			"America/New_York",
+		);
+		const elapsedMs = performance.now() - startedAt;
+		expect(next).toBeNull();
+		expect(elapsedMs).toBeLessThan(3000);
+	});
+
+	it("bails immediately on non-finite and non-representable bases", () => {
+		const startedAt = performance.now();
+		expect(
+			computeNextCronRunAtMs("0 0 * * *", Number.NaN, "America/New_York"),
+		).toBeNull();
+		expect(
+			computeNextCronRunAtMs(
+				"0 0 * * *",
+				Number.POSITIVE_INFINITY,
+				"America/New_York",
+			),
+		).toBeNull();
+		// Beyond the max representable Date: every candidate would be an
+		// Invalid Date, so the scan returns null without iterating (was ~26s).
+		expect(
+			computeNextCronRunAtMs(
+				"0 0 * * *",
+				8_640_000_000_000_000 + 60_000,
+				"America/New_York",
+			),
+		).toBeNull();
+		expect(performance.now() - startedAt).toBeLessThan(1000);
+	});
+});

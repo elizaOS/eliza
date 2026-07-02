@@ -12,6 +12,7 @@ import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,
 } from "../contracts/index.js";
+import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.js";
 
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;
@@ -265,6 +266,23 @@ export async function handleWebsiteBlockerRoutes(
   }
 
   if (method === "DELETE") {
+    // harsh_no_bypass rules refuse every manual bypass, including this HTTP
+    // route (the chat unblock action has the same gate). Non-harsh rules are
+    // not gated here: the reconciler re-asserts their OS block on its next
+    // tick, and releasing them properly goes through the confirmed
+    // release flow (BLOCK action=release), which reconciles OS state.
+    if (runtime && (await hasActiveHarshNoBypassRule(runtime))) {
+      json(
+        res,
+        {
+          success: false,
+          error:
+            "A harsh-no-bypass block rule is active. The block cannot be removed manually — it releases only when the rule's gate is fulfilled.",
+        },
+        423,
+      );
+      return true;
+    }
     const result = await stopSelfControlBlock();
     if (result.success === true) {
       json(
