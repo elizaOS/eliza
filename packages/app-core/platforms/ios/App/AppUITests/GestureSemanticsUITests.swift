@@ -465,9 +465,12 @@ final class GestureSemanticsUITests: XCTestCase {
         composer.typeText(text)
 
         // Send by tapping the composer's send control (aria-label "send" /
-        // "send another"). The iOS software keyboard's Return does NOT reach
-        // the web textarea as an Enter keydown, so typing "\n" never submits.
-        let sendButton = app.buttons.matching(
+        // "send another"). The iOS keyboard's Return does NOT reach the web
+        // textarea as an Enter keydown, so typing "\n" never submits. NOTE:
+        // the control carries aria-pressed, so iOS AX exposes it as a SWITCH
+        // (verified in the run-2 AX dump), not a button — match by label
+        // across element types.
+        let sendButton = app.descendants(matching: .any).matching(
             NSPredicate(format: "label BEGINSWITH 'send'")
         ).firstMatch
         guard sendButton.waitForExistence(timeout: 5), sendButton.isHittable
