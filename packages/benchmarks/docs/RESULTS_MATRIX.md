@@ -180,6 +180,7 @@ registry in three ways, all fixed here:
   are quarantined into the clearly-labeled non-registry section above; the other
   2 (`compactbench`, `loca_bench`) were part of the phantom set removed.
 
-The registered set (44) and the non-registry adapter set (9) here are kept in
-sync with `orchestrator/ci_coverage.py` by `tests/test_ci_coverage.py`, which
-also pins the counts so this file cannot silently drift again.
+The registered set (44), the non-registry adapter set (9), the lane cells, and
+the certified numeric rows here are kept in sync by
+`tests/test_results_matrix_sync.py`; the CI lane taxonomy itself is pinned by
+`tests/test_ci_coverage.py`.
