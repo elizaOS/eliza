@@ -39,6 +39,10 @@ describe("detectTaskType", () => {
       "coding",
     );
     expect(detectTaskType("refactor the auth module")).toBe("coding");
+    // A bare "app"/"application" is coding, NOT an app-build — it must not pull
+    // in the app-build-only "the live URL returns HTTP 200" criterion.
+    expect(detectTaskType("refactor the app's state store")).toBe("coding");
+    expect(detectTaskType("fix the application startup crash")).toBe("coding");
   });
 
   it("classifies view-create goals", () => {
