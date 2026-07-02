@@ -47,18 +47,66 @@ export interface BenchCorpusEntry {
  * and cached. Voices rotate so no single timbre dominates the aggregate WER.
  */
 export const STT_BENCH_CORPUS: readonly BenchCorpusEntry[] = [
-	{ id: "utt-01", voiceId: "af_bella", text: "The quick brown fox jumps over the lazy dog near the river bank." },
-	{ id: "utt-02", voiceId: "am_michael", text: "Please schedule a meeting with the design team for tomorrow afternoon." },
-	{ id: "utt-03", voiceId: "bf_emma", text: "The weather forecast predicts light rain and cooler temperatures this weekend." },
-	{ id: "utt-04", voiceId: "bm_george", text: "She placed the old photographs carefully inside the wooden box." },
-	{ id: "utt-05", voiceId: "af_bella", text: "Our train departs from platform nine at half past seven." },
-	{ id: "utt-06", voiceId: "am_michael", text: "The museum exhibit features paintings from the early modern period." },
-	{ id: "utt-07", voiceId: "bf_emma", text: "He ordered a large coffee and a blueberry muffin for breakfast." },
-	{ id: "utt-08", voiceId: "bm_george", text: "The engineers reviewed the bridge design before construction began." },
-	{ id: "utt-09", voiceId: "af_bella", text: "A gentle breeze carried the scent of pine through the valley." },
-	{ id: "utt-10", voiceId: "am_michael", text: "The library closes early on national holidays during the summer." },
-	{ id: "utt-11", voiceId: "bf_emma", text: "Remember to water the plants and feed the cat before leaving." },
-	{ id: "utt-12", voiceId: "bm_george", text: "The orchestra rehearsed the final movement twice before the concert." },
+	{
+		id: "utt-01",
+		voiceId: "af_bella",
+		text: "The quick brown fox jumps over the lazy dog near the river bank.",
+	},
+	{
+		id: "utt-02",
+		voiceId: "am_michael",
+		text: "Please schedule a meeting with the design team for tomorrow afternoon.",
+	},
+	{
+		id: "utt-03",
+		voiceId: "bf_emma",
+		text: "The weather forecast predicts light rain and cooler temperatures this weekend.",
+	},
+	{
+		id: "utt-04",
+		voiceId: "bm_george",
+		text: "She placed the old photographs carefully inside the wooden box.",
+	},
+	{
+		id: "utt-05",
+		voiceId: "af_bella",
+		text: "Our train departs from platform nine at half past seven.",
+	},
+	{
+		id: "utt-06",
+		voiceId: "am_michael",
+		text: "The museum exhibit features paintings from the early modern period.",
+	},
+	{
+		id: "utt-07",
+		voiceId: "bf_emma",
+		text: "He ordered a large coffee and a blueberry muffin for breakfast.",
+	},
+	{
+		id: "utt-08",
+		voiceId: "bm_george",
+		text: "The engineers reviewed the bridge design before construction began.",
+	},
+	{
+		id: "utt-09",
+		voiceId: "af_bella",
+		text: "A gentle breeze carried the scent of pine through the valley.",
+	},
+	{
+		id: "utt-10",
+		voiceId: "am_michael",
+		text: "The library closes early on national holidays during the summer.",
+	},
+	{
+		id: "utt-11",
+		voiceId: "bf_emma",
+		text: "Remember to water the plants and feed the cat before leaving.",
+	},
+	{
+		id: "utt-12",
+		voiceId: "bm_george",
+		text: "The orchestra rehearsed the final movement twice before the concert.",
+	},
 ];
 
 /**
@@ -66,23 +114,75 @@ export const STT_BENCH_CORPUS: readonly BenchCorpusEntry[] = [
  * from the STT corpus voices so babble never shares a timbre with the target.
  */
 export const BABBLE_CORPUS: readonly BenchCorpusEntry[] = [
-	{ id: "babble-01", voiceId: "af_nicole", text: "Meanwhile the committee discussed the annual budget and the upcoming election of new board members without reaching any firm conclusion." },
-	{ id: "babble-02", voiceId: "am_adam", text: "Somebody mentioned that the restaurant on the corner serves excellent pasta and the service is usually quite fast on weekdays." },
-	{ id: "babble-03", voiceId: "af_sarah", text: "The children played in the garden while their parents talked about holiday plans and the new school schedule." },
+	{
+		id: "babble-01",
+		voiceId: "af_nicole",
+		text: "Meanwhile the committee discussed the annual budget and the upcoming election of new board members without reaching any firm conclusion.",
+	},
+	{
+		id: "babble-02",
+		voiceId: "am_adam",
+		text: "Somebody mentioned that the restaurant on the corner serves excellent pasta and the service is usually quite fast on weekdays.",
+	},
+	{
+		id: "babble-03",
+		voiceId: "af_sarah",
+		text: "The children played in the garden while their parents talked about holiday plans and the new school schedule.",
+	},
 ];
 
 /** Two-speaker dialogue for the speaker-isolation slice (A=af_bella, B=am_michael). */
 export const TWO_SPEAKER_DIALOGUE: readonly (BenchCorpusEntry & {
 	speaker: "A" | "B";
 })[] = [
-	{ id: "turn-01", speaker: "A", voiceId: "af_bella", text: "Did you finish reading the report I sent you yesterday evening?" },
-	{ id: "turn-02", speaker: "B", voiceId: "am_michael", text: "Yes, I read it last night and left a few comments in the margins." },
-	{ id: "turn-03", speaker: "A", voiceId: "af_bella", text: "Great, I will update the draft before the meeting on Thursday." },
-	{ id: "turn-04", speaker: "B", voiceId: "am_michael", text: "Remember to include the revised numbers from the finance team." },
-	{ id: "turn-05", speaker: "A", voiceId: "af_bella", text: "Those figures arrived this morning and they look much better now." },
-	{ id: "turn-06", speaker: "B", voiceId: "am_michael", text: "Perfect, then we are ready to present the results on Friday." },
-	{ id: "turn-07", speaker: "A", voiceId: "af_bella", text: "I will book the conference room for ten o'clock in the morning." },
-	{ id: "turn-08", speaker: "B", voiceId: "am_michael", text: "Sounds good, send me the invite when everything is ready." },
+	{
+		id: "turn-01",
+		speaker: "A",
+		voiceId: "af_bella",
+		text: "Did you finish reading the report I sent you yesterday evening?",
+	},
+	{
+		id: "turn-02",
+		speaker: "B",
+		voiceId: "am_michael",
+		text: "Yes, I read it last night and left a few comments in the margins.",
+	},
+	{
+		id: "turn-03",
+		speaker: "A",
+		voiceId: "af_bella",
+		text: "Great, I will update the draft before the meeting on Thursday.",
+	},
+	{
+		id: "turn-04",
+		speaker: "B",
+		voiceId: "am_michael",
+		text: "Remember to include the revised numbers from the finance team.",
+	},
+	{
+		id: "turn-05",
+		speaker: "A",
+		voiceId: "af_bella",
+		text: "Those figures arrived this morning and they look much better now.",
+	},
+	{
+		id: "turn-06",
+		speaker: "B",
+		voiceId: "am_michael",
+		text: "Perfect, then we are ready to present the results on Friday.",
+	},
+	{
+		id: "turn-07",
+		speaker: "A",
+		voiceId: "af_bella",
+		text: "I will book the conference room for ten o'clock in the morning.",
+	},
+	{
+		id: "turn-08",
+		speaker: "B",
+		voiceId: "am_michael",
+		text: "Sounds good, send me the invite when everything is ready.",
+	},
 ];
 
 /**
@@ -160,7 +260,8 @@ export function buildSpeakerTimeline(
 	gapMs: number,
 ): SpeakerTimeline {
 	const gap = Math.round((gapMs / 1000) * sampleRate);
-	const total = turns.reduce((acc, t) => acc + t.pcm.length, 0) + gap * (turns.length + 1);
+	const total =
+		turns.reduce((acc, t) => acc + t.pcm.length, 0) + gap * (turns.length + 1);
 	const pcm = new Float32Array(total);
 	const segments: SpeakerTimelineSegment[] = [];
 	let off = gap;

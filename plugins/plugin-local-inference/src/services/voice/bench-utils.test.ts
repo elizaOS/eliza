@@ -29,9 +29,9 @@ describe("mixAtSnr", () => {
 	});
 
 	it("rejects an empty noise track", () => {
-		expect(() => mixAtSnr(tone(220, 1, 16_000), new Float32Array(0), 10)).toThrow(
-			/empty noise/,
-		);
+		expect(() =>
+			mixAtSnr(tone(220, 1, 16_000), new Float32Array(0), 10),
+		).toThrow(/empty noise/);
 	});
 });
 
