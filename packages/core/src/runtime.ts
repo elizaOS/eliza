@@ -4643,6 +4643,25 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	/**
+	 * The runtime-selected text-model provider, or undefined to use the default
+	 * (highest-priority) handler. Read from `ELIZA_BRAIN_PROVIDER` so an owner
+	 * action that mutates `character.settings` (and/or persists it to config)
+	 * flips the chat brain on the next model call with no restart. Returns
+	 * undefined when the setting is empty OR names a provider that has no
+	 * registered text handler, so a stale or mistyped value never strands the
+	 * brain — it simply falls back to the default provider.
+	 */
+	private resolveTextProviderOverride(): string | undefined {
+		const raw = this.getSetting("ELIZA_BRAIN_PROVIDER");
+		const override = typeof raw === "string" ? raw.trim() : "";
+		if (!override) return undefined;
+		const hasHandler = TEXT_GENERATION_MODEL_KEYS.some((key) =>
+			this.models.get(key)?.some((m) => m.provider === override),
+		);
+		return hasHandler ? override : undefined;
+	}
+
 	private resolveModelRegistration(
 		modelType: ModelTypeName | string,
 		provider?: string,
@@ -5097,10 +5116,25 @@ export class AgentRuntime implements IAgentRuntime {
 				? this.pinnedEmbeddingProvider
 				: provider;
 
-		const resolvedModels = this.resolveModelRegistrations(
-			requestedModelKey,
-			requestedProvider,
-		);
+		// Runtime preferred-provider override: when the caller did not pin a
+		// provider and this is a text-generation model, honor the runtime-selected
+		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
+		// between loaded providers with no restart. It is a hint only — if that
+		// provider resolves no handlers for this model the default chain is used
+		// instead (see resolveTextProviderOverride), so the override can never
+		// strand the brain. Unset → byte-identical to prior behavior.
+		const providerOverride =
+			provider === undefined &&
+			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
+				? this.resolveTextProviderOverride()
+				: undefined;
+		const overrideResolved = providerOverride
+			? this.resolveModelRegistrations(requestedModelKey, providerOverride)
+			: [];
+		const resolvedModels =
+			overrideResolved.length > 0
+				? overrideResolved
+				: this.resolveModelRegistrations(requestedModelKey, requestedProvider);
 		if (resolvedModels.length === 0) {
 			this.throwNoModelHandler(requestedModelKey);
 		}

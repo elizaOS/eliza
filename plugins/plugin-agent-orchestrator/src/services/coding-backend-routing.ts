@@ -68,9 +68,7 @@ export interface CodingBackendResolution {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" && value !== null && !Array.isArray(value)
-  );
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Coerce an unknown into a valid `BackendAxisRouting`, dropping bad fields. */
@@ -86,9 +84,7 @@ function parseAxis(value: unknown): BackendAxisRouting | undefined {
     if (Object.keys(byTag).length > 0) axis.byTag = byTag;
   }
   if (Array.isArray(value.allow)) {
-    const allow = value.allow.filter(
-      (v): v is string => typeof v === "string",
-    );
+    const allow = value.allow.filter((v): v is string => typeof v === "string");
     if (allow.length > 0) axis.allow = allow;
   }
   return axis.default || axis.byTag || axis.allow ? axis : undefined;

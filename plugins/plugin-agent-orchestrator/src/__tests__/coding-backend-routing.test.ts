@@ -132,8 +132,10 @@ describe("resolveCodingBackend precedence", () => {
         ?.agentType,
     ).toBe("codex");
     expect(
-      resolveCodingBackend({ runtime: fakeRuntime({}), explicit: "claude-code" })
-        ?.agentType,
+      resolveCodingBackend({
+        runtime: fakeRuntime({}),
+        explicit: "claude-code",
+      })?.agentType,
     ).toBe("claude");
   });
 
@@ -178,7 +180,10 @@ describe("resolveCodingBackend precedence", () => {
   it("6. returns undefined when no signal resolves a known backend", () => {
     expect(resolveCodingBackend({ runtime: fakeRuntime({}) })).toBeUndefined();
     expect(
-      resolveCodingBackend({ runtime: fakeRuntime({}), plannerGuess: "garbage" }),
+      resolveCodingBackend({
+        runtime: fakeRuntime({}),
+        plannerGuess: "garbage",
+      }),
     ).toBeUndefined();
   });
 
@@ -237,7 +242,11 @@ describe("resolveCodingBackend operator allow lock-list", () => {
       settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
     });
     expect(
-      resolveCodingBackend({ runtime, explicit: "codex", plannerGuess: "claude" }),
+      resolveCodingBackend({
+        runtime,
+        explicit: "codex",
+        plannerGuess: "claude",
+      }),
     ).toBeUndefined();
   });
 });

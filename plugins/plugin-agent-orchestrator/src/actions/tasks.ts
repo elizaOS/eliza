@@ -44,6 +44,7 @@ import {
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
+import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
@@ -52,7 +53,6 @@ import {
   runDurableTask,
   shouldUseSmithersTaskRunner,
 } from "../services/smithers-task-integration";
-import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
 import {
   KNOWN_ADAPTER_TYPES,
   normalizeTaskAgentAdapter,
