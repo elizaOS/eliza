@@ -64,6 +64,22 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
 }
 
 /**
+ * The Eliza Cloud app this agent's inference should be attributed to (#10423).
+ *
+ * The managed deploy path injects the platform-authoritative `ELIZA_APP_ID`
+ * (the app's UUID) into a deployed app container, so its inference bills the
+ * app's credits + the creator's earnings rather than the caller's own org. When
+ * set, {@link createCloudApiClient} attaches it as the `X-App-Id` header on
+ * every request. The cloud verifies the caller is authorized for the app and
+ * falls back to normal (caller-org) billing when it is not — so a non-app agent
+ * that happens to carry an unrelated `ELIZA_APP_ID` (e.g. the desktop bundle id)
+ * is simply billed normally, never rejected.
+ */
+export function getAppId(runtime: IAgentRuntime): string | undefined {
+  return getSetting(runtime, "ELIZA_APP_ID");
+}
+
+/**
  * Truthiness for host-written cloud flags: "true" or "1" (trimmed,
  * case-insensitive), mirroring how core `isCloudConnected` reads
  * `ELIZAOS_CLOUD_ENABLED`. Runtime boolean `true` arrives here as the

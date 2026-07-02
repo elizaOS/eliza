@@ -12,13 +12,14 @@
  * the marker lives in `metadata`.
  *
  * Runs against in-process PGlite so the real SQL (jsonb_set / jsonb_exists,
- * GREATEST clamping, the cross-table transaction) executes. Self-skips if PGlite
- * is unavailable.
+ * GREATEST clamping, the cross-table transaction) executes. Fails loudly (via the
+ * `pgliteReady` guard) if PGlite ever fails to initialize — never a silent skip.
  */
 
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 const PGLITE_TIMEOUT = 60000;
@@ -28,12 +29,13 @@ const CONTAINER_ID = "00000000-0000-0000-0000-0000000000c3";
 const NODE_ID = "node-1";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let containersRepository: typeof import("../../../db/repositories/containers").containersRepository;
 let pgliteReady = true;
 
 beforeAll(async () => {
   try {
-    ({ dbWrite } = await import("../../../db/client"));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ containersRepository } = await import("../../../db/repositories/containers"));
 
     // Minimal schema: only the columns tryReleaseNodeSlot reads/writes.
@@ -59,6 +61,10 @@ beforeAll(async () => {
     console.warn("[containers-slot-release] PGlite unavailable, skipping DB cases:", error);
   }
 }, PGLITE_TIMEOUT);
+
+afterAll(async () => {
+  if (closeDb) await closeDb();
+});
 
 async function allocatedCount(): Promise<number> {
   const res = await dbWrite.execute(
@@ -128,4 +134,12 @@ describe("containersRepository.tryReleaseNodeSlot — idempotency", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+// early-return; this turns that silent no-op into a hard CI failure so a
+// money-path proof can never masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
 });

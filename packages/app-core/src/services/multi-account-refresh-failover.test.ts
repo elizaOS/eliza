@@ -386,4 +386,91 @@ describe("bridge.markNeedsReauth verifies before evicting", () => {
       "needs-reauth",
     );
   });
+  // #11033 regression: direct-API keys resolve offline from local storage with
+  // a never-expires sentinel, so a successful getAccessToken proves nothing —
+  // a cached-but-revoked key that 401'd a session must be probed against the
+  // provider, not blindly kept in rotation.
+  it("marks a REVOKED direct-API key needs-reauth (probe 401), not kept in rotation", async () => {
+    writeAccount("anthropic-api", "ada-anthropic-api", {
+      access: "sk-ant-revoked",
+      refresh: "",
+      expires: Number.MAX_SAFE_INTEGER,
+    });
+    // The direct-key probe (GET /models) returns 401 → the stored key is dead.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 401,
+        text: async () => '{"error":{"type":"authentication_error"}}',
+        json: async () => ({ error: { type: "authentication_error" } }),
+      })),
+    );
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    await bridge?.markNeedsReauth(
+      "anthropic-api",
+      "ada-anthropic-api",
+      "sub-agent session s-2 (claude)",
+    );
+
+    const pool = getDefaultAccountPool();
+    expect(pool.get("ada-anthropic-api", "anthropic-api")?.health).toBe(
+      "needs-reauth",
+    );
+  });
+
+  it("keeps a still-valid direct-API key in rotation (probe 200)", async () => {
+    writeAccount("anthropic-api", "ada-anthropic-api", {
+      access: "sk-ant-good",
+      refresh: "",
+      expires: Number.MAX_SAFE_INTEGER,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })),
+    );
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    await bridge?.markNeedsReauth(
+      "anthropic-api",
+      "ada-anthropic-api",
+      "sub-agent session s-2 (claude)",
+    );
+
+    const pool = getDefaultAccountPool();
+    expect(pool.get("ada-anthropic-api", "anthropic-api")?.health).not.toBe(
+      "needs-reauth",
+    );
+  });
+
+  it("leaves a direct-API key alone on an inconclusive probe (network blip, status 0)", async () => {
+    writeAccount("anthropic-api", "ada-anthropic-api", {
+      access: "sk-ant-good",
+      refresh: "",
+      expires: Number.MAX_SAFE_INTEGER,
+    });
+    // A rejected fetch → probeDirectApiKey returns { ok:false, status:0 }.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNRESET");
+      }),
+    );
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    await bridge?.markNeedsReauth(
+      "anthropic-api",
+      "ada-anthropic-api",
+      "sub-agent session s-2 (claude)",
+    );
+
+    const pool = getDefaultAccountPool();
+    expect(pool.get("ada-anthropic-api", "anthropic-api")?.health).not.toBe(
+      "needs-reauth",
+    );
+  });
 });

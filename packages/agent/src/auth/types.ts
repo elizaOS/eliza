@@ -95,6 +95,15 @@ export function isSubscriptionProvider(
   );
 }
 
+export function isDirectAccountProvider(
+  value: unknown,
+): value is DirectAccountProvider {
+  return (
+    typeof value === "string" &&
+    (DIRECT_ACCOUNT_PROVIDER_IDS as readonly string[]).includes(value)
+  );
+}
+
 export function isOAuthSubscriptionProvider(
   value: unknown,
 ): value is OAuthSubscriptionProvider {

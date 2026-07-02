@@ -75,6 +75,14 @@ jobs:
       - name: Run cloud unit tests
         run: bun run test:cloud
 
+      # The bun `test:cloud` lane skips suites that need the Vitest-only module
+      # mock API (`vi.mock` + `vi.importActual`) — see `SUPPORTS_VITEST_MOCK_API`.
+      # Run those under Vitest here so the direct-wallet payer/state-machine proof
+      # (33 tests, in-process PGlite) actually executes instead of vacuously
+      # skipping. Uses pglite://memory — no DB service required.
+      - name: Run cloud vitest-only suites
+        run: bun run --cwd packages/cloud/shared test:vitest
+
   integration-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 25
