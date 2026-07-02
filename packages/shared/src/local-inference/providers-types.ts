@@ -76,4 +76,13 @@ export interface ProviderStatus {
   enableState: ProviderEnableState;
   /** Registered model types this provider has handlers for, right now. */
   registeredSlots: string[];
+  /**
+   * capacitor-llama only: which live path serves the handlers right now.
+   * "bionic-host" is the in-process Android GPU host (handlers bound via
+   * bionic-host AND the host socket accepts connections); "device-bridge" is
+   * a paired cross-process device; null/absent = nothing can serve (#11498).
+   */
+  servingVia?: "bionic-host" | "device-bridge" | null;
+  /** capacitor-llama only: the trigger that bound the handlers, if any. */
+  registeredTrigger?: "bionic-host" | "device-bridge" | null;
 }

@@ -67,11 +67,18 @@ type DownloadState =
 
 type MobileDeviceBridgeApi = {
 	getMobileDeviceBridgeStatus: () => MobileDeviceBridgeStatus;
+	getMobileDeviceBridgeServingStatus: () => Promise<MobileDeviceBridgeServingStatus>;
 	loadMobileDeviceBridgeModel: (
 		modelPath: string,
 		modelId: string,
 	) => Promise<void>;
 	unloadMobileDeviceBridgeModel: () => Promise<void>;
+};
+
+type MobileDeviceBridgeServingStatus = {
+	registeredTrigger: "bionic-host" | "device-bridge" | null;
+	/** True only when handlers are bound via bionic-host AND the host socket serves. */
+	bionicHostServing: boolean;
 };
 
 type MobileDeviceBridgeStatus = {
@@ -1369,6 +1376,20 @@ export async function handleLocalInferenceRoutes(
 		const bridge = await getMobileDeviceBridgeApi()
 			.then((api) => api.getMobileDeviceBridgeStatus())
 			.catch(() => getMobileDeviceBridgeStatusUnavailable());
+		// In-process bionic-host serving signal (#11498): on Android the
+		// capacitor-llama handlers can be bound directly to the in-process GPU
+		// host (no paired cross-process device), in which case bridge.connected
+		// stays false even though the provider serves every turn. Surface that
+		// as servingVia so readiness gates don't reject a working path.
+		const serving = await getMobileDeviceBridgeApi()
+			.then((api) => api.getMobileDeviceBridgeServingStatus())
+			.catch(
+				(): MobileDeviceBridgeServingStatus => ({
+					registeredTrigger: null,
+					bionicHostServing: false,
+				}),
+			);
+		const bionicServing = serving.bionicHostServing === true;
 		const installed = await installedSnapshot();
 		sendJson(res, {
 			providers: [
@@ -1380,12 +1401,20 @@ export async function handleLocalInferenceRoutes(
 					supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
 					configureHref: null,
 					enableState: {
-						enabled: bridge.connected,
-						reason: bridge.connected
-							? "Device bridge connected"
-							: "Waiting for device bridge",
+						enabled: bridge.connected === true || bionicServing,
+						reason: bionicServing
+							? "In-process bionic host serving"
+							: bridge.connected
+								? "Device bridge connected"
+								: "Waiting for device bridge",
 					},
 					registeredSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+					servingVia: bionicServing
+						? ("bionic-host" as const)
+						: bridge.connected
+							? ("device-bridge" as const)
+							: null,
+					registeredTrigger: serving.registeredTrigger,
 				},
 				{
 					id: LOCAL_INFERENCE_PROVIDER_ID,
