@@ -1,12 +1,3 @@
-/**
- * Deterministic contract tests for handleResearch — a loopback HTTP double
- * plays the cloud /responses endpoint with controlled payloads.
- *
- * This is NOT live-cloud coverage. It was formerly misnamed
- * `research-model.real.test.ts`, which parked a stub-backed test in the
- * live-API `*.real.test.ts` lane. Live coverage lives in the post-merge real lane (`TEST_LANE=post-merge`).
- */
-
 import * as http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handleResearch } from "../../src/models/research";

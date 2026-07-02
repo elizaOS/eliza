@@ -59,7 +59,7 @@ export async function loginWithWallet(
 export async function logout(page: Page): Promise<void> {
   await page.evaluate(() => {
     window.localStorage.removeItem("feed-playwright-dev-auth");
-    (window as Window & { __accessToken?: string | null }).__accessToken = null;
+    window.__accessToken = null;
   });
   await page.context().clearCookies();
 }

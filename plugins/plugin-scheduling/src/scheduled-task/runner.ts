@@ -12,10 +12,6 @@
  *  - `idempotencyKey` deduplicates schedules.
  *  - `pipeline.onSkip` wins over `completionCheck.followupAfterMinutes` when
  *    both are set.
- *  - `trigger.kind = "after_task"` children auto-fire when the parent reaches
- *    the recorded terminal outcome through a runner transition (verbs,
- *    gate-deny skip, dispatch failure, `pipeline()`), EXCEPT the global-pause
- *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
 import { decideDispatchPolicy } from "../dispatch-policy.js";
@@ -799,7 +795,7 @@ export function createScheduledTaskRunner(
     await logger.log(task.taskId, "skipped", {
       reason: payload?.reason ?? "user skipped",
     });
-    await settleTerminal(task, "skipped");
+    await runPipeline(task, "skipped");
     return task;
   }
 
@@ -812,7 +808,7 @@ export function createScheduledTaskRunner(
     task.state.lastDecisionLog = payload?.reason ?? "completed";
     await persist(task);
     await logger.log(task.taskId, "completed", { reason: payload?.reason });
-    await settleTerminal(task, "completed");
+    await runPipeline(task, "completed");
     return task;
   }
 
@@ -824,9 +820,6 @@ export function createScheduledTaskRunner(
     task.state.lastDecisionLog = payload?.reason ?? "dismissed";
     await persist(task);
     await logger.log(task.taskId, "dismissed", { reason: payload?.reason });
-    // `pipeline.on*` deliberately does not propagate `dismissed`; `after_task`
-    // children DO cover it (the trigger union records all five outcomes).
-    await fireAfterTaskChildren(task, "dismissed");
     return task;
   }
 
@@ -953,51 +946,8 @@ export function createScheduledTaskRunner(
   }
 
   // -------------------------------------------------------------------------
-  // Pipeline propagation + after_task chaining
+  // Pipeline propagation
   // -------------------------------------------------------------------------
-
-  /**
-   * Fire every `scheduled` task whose trigger is
-   * `{ kind: "after_task", taskId: parent, outcome }`. This is the push side
-   * of the `after_task` contract (`isScheduledTaskDue` reports these tasks
-   * not-due, so the tick never wall-clock fires them). Firing goes through
-   * `fireWithResult`, whose atomic claim makes concurrent terminal
-   * transitions race-safe — one dispatch per child, losers observe `raced`.
-   *
-   * Unlike `pipeline.on*` (declared on the parent), `after_task` is declared
-   * on the CHILD, so chains can be attached without editing the parent, and
-   * they cover ALL five terminal outcomes (`pipeline` only propagates
-   * completed / skipped / failed).
-   */
-  async function fireAfterTaskChildren(
-    parent: ScheduledTask,
-    outcome: TerminalState,
-  ): Promise<void> {
-    const scheduled = await deps.store.list({ status: "scheduled" });
-    for (const child of scheduled) {
-      if (child.trigger.kind !== "after_task") continue;
-      if (child.trigger.taskId !== parent.taskId) continue;
-      if (child.trigger.outcome !== outcome) continue;
-      await fireWithResult(child.taskId, {
-        eventPayload: { afterTask: { taskId: parent.taskId, outcome } },
-      });
-    }
-  }
-
-  /**
-   * The single terminal-transition seam: propagate `pipeline.on*` refs, then
-   * fire matching `after_task` children. Every runner path that records a
-   * terminal outcome routes through here (the global-pause skip deliberately
-   * does not — pause suppresses chaining).
-   */
-  async function settleTerminal(
-    parent: ScheduledTask,
-    outcome: TerminalState,
-  ): Promise<ScheduledTask[]> {
-    const created = await runPipeline(parent, outcome);
-    await fireAfterTaskChildren(parent, outcome);
-    return created;
-  }
 
   async function runPipeline(
     parent: ScheduledTask,
@@ -1080,7 +1030,7 @@ export function createScheduledTaskRunner(
         reason: `pipeline: ${outcome}`,
       });
     }
-    return settleTerminal(task, outcome);
+    return runPipeline(task, outcome);
   }
 
   function outcomeToLogTransition(
@@ -1157,7 +1107,7 @@ export function createScheduledTaskRunner(
         message: failure.error.message,
       },
     });
-    await settleTerminal(claimed, "failed");
+    await runPipeline(claimed, "failed");
     return { kind: "dispatch_failed", task: claimed, error: failure.error };
   }
 
@@ -1244,7 +1194,7 @@ export function createScheduledTaskRunner(
       await logger.log(task.taskId, "skipped", {
         reason: task.state.lastDecisionLog,
       });
-      await settleTerminal(task, "skipped");
+      await runPipeline(task, "skipped");
       return {
         kind: "skipped",
         task,
@@ -1560,7 +1510,7 @@ export function createScheduledTaskRunner(
       reason: `dispatch_failed:${reason}`,
       detail: { message: detailMessage },
     });
-    await settleTerminal(task, "failed");
+    await runPipeline(task, "failed");
     return {
       kind: "dispatch_failed",
       task,

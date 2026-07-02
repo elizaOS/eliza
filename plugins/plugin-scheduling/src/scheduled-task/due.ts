@@ -1,7 +1,6 @@
 import { computeNextCronRunAtMs } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
-import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
   ScheduledTask,
@@ -233,7 +232,6 @@ function cronDue(
   task: ScheduledTask,
   trigger: Extract<ScheduledTaskTrigger, { kind: "cron" }>,
   nowMs: number,
-  ownerFacts: OwnerFactsView | undefined,
 ): ScheduledTaskDueDecision {
   const baseMs =
     parseIsoMs(task.state.firedAt) ??
@@ -248,11 +246,7 @@ function cronDue(
   if (baseMs > nowMs) {
     return { due: false, reason: "cron_pending" };
   }
-  const nextMs = computeNextCronRunAtMs(
-    trigger.expression,
-    baseMs,
-    resolveTriggerTz(trigger.tz, ownerFacts),
-  );
+  const nextMs = computeNextCronRunAtMs(trigger.expression, baseMs, trigger.tz);
   if (nextMs === null) return { due: false, reason: "cron_invalid" };
   return nextMs <= nowMs
     ? {
@@ -449,7 +443,7 @@ export async function isScheduledTaskDue(
     case "interval":
       return intervalDue(task, task.trigger, nowMs);
     case "cron":
-      return cronDue(task, task.trigger, nowMs, context.ownerFacts);
+      return cronDue(task, task.trigger, nowMs);
     case "relative_to_anchor":
       return relativeAnchorDue(task, task.trigger, context, nowMs);
     case "during_window":

@@ -6,14 +6,10 @@
 import type { Page } from "@playwright/test";
 import { SEED_PHRASE } from "./test-data";
 
-/**
- * Structural subset of @avalix/chroma's configured MetaMask wallet that this
- * helper actually uses. The real chroma API is { extensionId, type, unlock,
- * approve, reject, importSeedPhrase } — there is no authorize()/confirm().
- */
 interface ChromaWallets {
   metamask: {
-    approve: () => Promise<void>;
+    authorize: () => Promise<void>;
+    confirm: () => Promise<void>;
     reject: () => Promise<void>;
     importSeedPhrase: (opts: { seedPhrase: string }) => Promise<void>;
   };
@@ -93,10 +89,9 @@ export async function loginWithWallet(
     }
   }
 
-  // Approve the connection prompt via Chroma. The catch is intentional:
-  // MetaMask raises no prompt when the site is already connected.
+  // Authorize via Chroma
   if (walletClicked && wallets?.metamask) {
-    await wallets.metamask.approve().catch(() => {});
+    await wallets.metamask.authorize().catch(() => {});
     await page.waitForTimeout(2000);
   } else if (walletClicked) {
     await page.waitForTimeout(3000);

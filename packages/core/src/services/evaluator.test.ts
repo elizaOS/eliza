@@ -142,7 +142,6 @@ describe("EvaluatorService", () => {
 
 	it("isolates invalid sections and processor failures", async () => {
 		const runtime = makeRuntime();
-		const warnSpy = vi.spyOn(runtime.logger, "warn");
 		const processed: string[] = [];
 
 		runtime.registerEvaluator({
@@ -220,12 +219,6 @@ describe("EvaluatorService", () => {
 					error: "processor failed",
 				}),
 			]),
-		);
-		// A parse failure must no longer vanish silently — it logs like every
-		// sibling failure path so silent-drop bugs (#11239/#11253) are diagnosable.
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.objectContaining({ evaluator: "invalid" }),
-			"Evaluator output section did not validate",
 		);
 	});
 

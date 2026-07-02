@@ -204,12 +204,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          # Pinned off `canary`: canary's link phase hangs on the self-hosted
-          # runners (bun install resolves+extracts in ~2min then stalls past the
-          # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # bun does not exhibit the hang. See elizaOS/eliza#10839.
-          bun-version: "latest"
+          bun-version: "canary"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -227,14 +222,7 @@ jobs:
         # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
-          # Cache on LOCAL disk ($HOME), not under $PWD — the checkout dir lives
-          # on the box's /tmp, whose contended/slow filesystem stalls bun's link
-          # phase past the 900s cap and wedges deploys (bun itself logs "Slow
-          # filesystem detected ... consider setting $BUN_INSTALL_CACHE_DIR to a
-          # local folder"). This is the real fix; the earlier canary→latest pin
-          # (#11235) did not address it — the hang recurs on a released bun too
-          # (run 28572046433). Persistent across runs so the cache stays warm.
-          install_cache="${HOME}/.bun-install-cache-deploy"
+          install_cache="$PWD/.bun-install-cache"
           install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
@@ -519,12 +507,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          # Pinned off `canary`: canary's link phase hangs on the self-hosted
-          # runners (bun install resolves+extracts in ~2min then stalls past the
-          # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # bun does not exhibit the hang. See elizaOS/eliza#10839.
-          bun-version: "latest"
+          bun-version: "canary"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -542,14 +525,7 @@ jobs:
         # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
-          # Cache on LOCAL disk ($HOME), not under $PWD — the checkout dir lives
-          # on the box's /tmp, whose contended/slow filesystem stalls bun's link
-          # phase past the 900s cap and wedges deploys (bun itself logs "Slow
-          # filesystem detected ... consider setting $BUN_INSTALL_CACHE_DIR to a
-          # local folder"). This is the real fix; the earlier canary→latest pin
-          # (#11235) did not address it — the hang recurs on a released bun too
-          # (run 28572046433). Persistent across runs so the cache stays warm.
-          install_cache="${HOME}/.bun-install-cache-deploy"
+          install_cache="$PWD/.bun-install-cache"
           install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
@@ -865,12 +841,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          # Pinned off `canary`: canary's link phase hangs on the self-hosted
-          # runners (bun install resolves+extracts in ~2min then stalls past the
-          # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # bun does not exhibit the hang. See elizaOS/eliza#10839.
-          bun-version: "latest"
+          bun-version: "canary"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -888,14 +859,7 @@ jobs:
         # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
-          # Cache on LOCAL disk ($HOME), not under $PWD — the checkout dir lives
-          # on the box's /tmp, whose contended/slow filesystem stalls bun's link
-          # phase past the 900s cap and wedges deploys (bun itself logs "Slow
-          # filesystem detected ... consider setting $BUN_INSTALL_CACHE_DIR to a
-          # local folder"). This is the real fix; the earlier canary→latest pin
-          # (#11235) did not address it — the hang recurs on a released bun too
-          # (run 28572046433). Persistent across runs so the cache stays warm.
-          install_cache="${HOME}/.bun-install-cache-deploy"
+          install_cache="$PWD/.bun-install-cache"
           install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }

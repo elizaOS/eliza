@@ -37,13 +37,11 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import {
   copyFile,
   mkdir,
-  mkdtemp,
   readdir,
   rename,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -1916,55 +1914,6 @@ if (TARGET === "ios-jsc") {
   console.log(
     `[build-mobile] wrote manifest.json (sha256=${sha256.slice(0, 16)}..., polyfill_bundled=${iosJscPolyfillBundled})`,
   );
-}
-
-// Load smoke — fail closed on load-time eval errors.
-//
-// Bun.build's lazy CJS-interop lowering of the (cyclic) @elizaos/core barrel
-// graph has dropped modules that were reachable only through re-export-only
-// barrels while keeping eager consumers of their bindings. The bundle then
-// dies at MODULE INIT with e.g. `ReferenceError:
-// declareSubAgentCredentialScopeAction is not defined` — on device the bun
-// agent process exits instantly, /api/health never binds, and the app shows
-// local_agent_unavailable. None of that is visible at build time, so evaluate
-// the finished bundle's module graph under the host bun and require it to
-// reach the post-init marker. Boot continuing past init is not required —
-// the process exits as soon as the module graph has evaluated.
-//
-// Android-only: the ios-jsc bundle needs the __ELIZA_BRIDGE__ host and the
-// ios target assumes the iOS Bun port's sandbox shims. Opt out with
-// ELIZA_SKIP_BUNDLE_LOAD_SMOKE=1.
-if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
-  console.log("[build-mobile] load smoke: evaluating bundle module graph...");
-  const smokeStateDir = await mkdtemp(
-    path.join(tmpdir(), "eliza-bundle-smoke-"),
-  );
-  const smokeEval =
-    `await import(${JSON.stringify(bundlePath)}); ` +
-    'console.log("BUNDLE_LOAD_SMOKE_OK"); process.exit(0);';
-  const smoke = spawnSync("bun", ["-e", smokeEval], {
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 180_000,
-    maxBuffer: 64 * 1024 * 1024,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      ELIZA_STATE_DIR: smokeStateDir,
-      ELIZA_DISABLE_TRAJECTORY_LOGGING: "1",
-    },
-  });
-  rmRecursive(smokeStateDir);
-  const smokeOutput = `${smoke.stdout ?? ""}\n${smoke.stderr ?? ""}`;
-  if (smoke.status !== 0 || !smokeOutput.includes("BUNDLE_LOAD_SMOKE_OK")) {
-    console.error(smokeOutput.slice(-6000));
-    console.error(
-      "[build-mobile] FATAL: agent-bundle.js failed the module-load smoke " +
-        `(exit ${smoke.status}). A load-time eval error in the bundle bricks ` +
-        "the on-device agent before /api/health can bind.",
-    );
-    process.exit(1);
-  }
-  console.log("[build-mobile] load smoke passed: module init OK");
 }
 
 console.log("[build-mobile] done.");

@@ -603,4 +603,90 @@ describe("Influencer marketplace escrow (#10687)", () => {
       await rejectPromise;
     }
   });
+
+  // #11167 — a booking claimed `refunding` is fenced against EVERY other
+  // transition: accept needs `offered`, submitDeliverable needs `accepted`,
+  // approve needs `delivered`/`approving`. This is what makes deleting the old
+  // force-finalize fallback safe — once the claim is won nothing can race in,
+  // and a crashed claim is resumable to exactly one refund.
+  test("a `refunding` claim fences out accept, deliver, and approve; the refund resumes to completion", async () => {
+    if (!pgliteReady) return;
+    const adv = await seedOrgUser("50.00");
+    const inf = await seedProfile();
+    const { booking } = await service.createBooking({
+      advertiserOrgId: adv.orgId,
+      profileId: inf.profileId,
+      brief: "b",
+      amount: 20,
+      createdByUserId: adv.userId,
+    });
+    const id = booking?.id as string;
+    await service.acceptBooking(id, inf.userId);
+    // Simulate a reject that claimed the booking but crashed before the money
+    // move (the claim-then-crash window).
+    await dbWrite
+      .update(influencerBookings)
+      .set({ status: "refunding" })
+      .where(eq(influencerBookings.id, id));
+
+    expect((await service.acceptBooking(id, inf.userId)).ok).toBe(false);
+    expect((await service.submitDeliverable(id, inf.userId, "https://x")).ok).toBe(false);
+    expect((await service.approveBooking(id, adv.orgId)).ok).toBe(false);
+    expect(await earnings(inf.userId)).toBe(0);
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(30, 2); // escrow still held
+
+    // The influencer's reject resumes the crashed claim: refunds exactly once
+    // and finalizes to its own terminal.
+    const resumed = await service.rejectBooking(id, inf.userId);
+    expect(resumed.ok).toBe(true);
+    expect((await service.getBooking(id))?.status).toBe("rejected");
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(50, 2);
+    const refunds = await dbWrite
+      .select()
+      .from(creditTransactions)
+      .where(eq(creditTransactions.stripe_payment_intent_id, `influencer_refund_${id}`));
+    expect(refunds.length).toBe(1);
+
+    // Terminal — no further refund path can move money again.
+    expect((await service.rejectBooking(id, inf.userId)).ok).toBe(false);
+    expect((await service.cancelBooking(id, adv.orgId)).ok).toBe(false);
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(50, 2);
+  });
+
+  // #11167 — two refund routes racing for one escrow (influencer reject vs
+  // advertiser cancel, both from `offered`): one wins the claim, the other is
+  // admitted as a resume of the same `refunding` claim; the keyed refund
+  // dedupes, so the advertiser is refunded exactly once either way.
+  test("concurrent reject + cancel on an offered booking refunds exactly once", async () => {
+    if (!pgliteReady) return;
+    const adv = await seedOrgUser("50.00");
+    const inf = await seedProfile();
+    const { booking } = await service.createBooking({
+      advertiserOrgId: adv.orgId,
+      profileId: inf.profileId,
+      brief: "b",
+      amount: 20,
+      createdByUserId: adv.userId,
+    });
+    const id = booking?.id as string;
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(30, 2);
+
+    const [rejected, cancelled] = await Promise.all([
+      service.rejectBooking(id, inf.userId),
+      service.cancelBooking(id, adv.orgId),
+    ]);
+
+    // At least one succeeds; a loser that resumed the winner's claim may also
+    // report success — but the money can only have moved once.
+    expect([rejected.ok, cancelled.ok].some(Boolean)).toBe(true);
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(50, 2); // refunded exactly once
+    expect(await earnings(inf.userId)).toBe(0);
+    const refunds = await dbWrite
+      .select()
+      .from(creditTransactions)
+      .where(eq(creditTransactions.stripe_payment_intent_id, `influencer_refund_${id}`));
+    expect(refunds.length).toBe(1);
+    const terminal = (await service.getBooking(id))?.status;
+    expect(["rejected", "cancelled"]).toContain(terminal);
+  });
 });

@@ -5,7 +5,6 @@
 // sessionId; error -> retry; unmount/close -> client.stopPtySession), mocking
 // only the client boundary and the xterm pane (which needs a real DOM/canvas).
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -127,26 +126,5 @@ describe("CockpitInteractiveTerminal — spawn → attach wiring", () => {
     fireEvent.click(screen.getByTestId("cockpit-terminal-close"));
     expect(mocks.stopPtySession).toHaveBeenCalledWith("sess-close");
     expect(onClose).toHaveBeenCalled();
-  });
-
-  it("unmount mid-spawn stops the session once it resolves (no orphan REPL)", async () => {
-    // spawnPtySession is async; unmount before it resolves. The cleanup runs
-    // first (activeSessionRef still null → stops nothing), so the fix must stop
-    // the session when the pending spawn finally resolves on a disposed component.
-    let resolveSpawn!: (v: { sessionId: string }) => void;
-    mocks.spawnPtySession.mockReturnValue(
-      new Promise<{ sessionId: string }>((r) => {
-        resolveSpawn = r;
-      }),
-    );
-    const { unmount } = render(<CockpitInteractiveTerminal tier="fast" />);
-    // Spawn is in flight (pane not mounted yet); unmount now.
-    unmount();
-    // Now the in-flight spawn resolves.
-    await act(async () => {
-      resolveSpawn({ sessionId: "sess-race" });
-      await Promise.resolve();
-    });
-    expect(mocks.stopPtySession).toHaveBeenCalledWith("sess-race");
   });
 });

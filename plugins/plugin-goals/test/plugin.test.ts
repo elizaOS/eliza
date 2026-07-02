@@ -19,12 +19,9 @@ import * as goalsExports from "../src/index.ts";
 import { GoalsCheckinService, GoalsView, goalsPlugin } from "../src/index.ts";
 
 describe("goalsPlugin manifest", () => {
-  it("identifies as @elizaos/plugin-goals and depends on plugin-sql + the scheduling spine", () => {
+  it("identifies as @elizaos/plugin-goals and depends on plugin-sql", () => {
     expect(goalsPlugin.name).toBe("@elizaos/plugin-goals");
-    expect(goalsPlugin.dependencies).toEqual([
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-scheduling",
-    ]);
+    expect(goalsPlugin.dependencies).toEqual(["@elizaos/plugin-sql"]);
   });
 
   it("registers exactly one view: the gui `goals` surface", () => {

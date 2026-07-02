@@ -78,14 +78,7 @@ const AddDurableOpSchema = z.object({
 	op: z.literal("add_durable"),
 	claim: z.string().min(1),
 	category: DurableCategoryEnum,
-	// `.default({})`, NOT required: the advertised wire schema (reflection-items
-	// factOpsSchema) marks structured_fields optional (only `op` is required)
-	// and the extractor prompt never even names the field, so the model omits it
-	// on most turns. A required schema here rejected those ops — and because the
-	// whole `ops` array was parsed atomically, one omission silently discarded
-	// EVERY fact op for the turn. The default keeps the inferred type a
-	// non-optional record so downstream applyAddDurable stays type-safe.
-	structured_fields: StructuredFieldsSchema.default({}),
+	structured_fields: StructuredFieldsSchema,
 	keywords: KeywordsSchema,
 	verification_status: VerificationStatusEnum.optional(),
 	reason: z.string().optional(),
@@ -95,8 +88,7 @@ const AddCurrentOpSchema = z.object({
 	op: z.literal("add_current"),
 	claim: z.string().min(1),
 	category: CurrentCategoryEnum,
-	// See AddDurableOpSchema: wire-optional + prompt-unnamed → default, not required.
-	structured_fields: StructuredFieldsSchema.default({}),
+	structured_fields: StructuredFieldsSchema,
 	keywords: KeywordsSchema,
 	/**
 	 * ISO timestamp of when the state began. Optional in the schema because
@@ -157,35 +149,3 @@ export const ExtractorOutputSchema = z.object({
 });
 
 export type ExtractorOutput = z.infer<typeof ExtractorOutputSchema>;
-
-/**
- * Parse the extractor envelope tolerantly, op-by-op.
- *
- * `ExtractorOutputSchema` parses the whole `ops` array atomically, so a single
- * malformed op (the model occasionally hallucinates one bad entry among good
- * ones — a missing `factId` on a strengthen, a `contradict` with no `reason`)
- * fails `safeParse` and silently discards EVERY fact op for the turn. That is
- * real, launch-critical memory loss.
- *
- * This validates the envelope leniently (`{ ops: [...] }`), then validates each
- * op independently, keeping only the ones that pass and reporting how many were
- * dropped so the caller can log it. Returns null only when the envelope itself
- * is not `{ ops: array }` (a genuinely malformed section).
- */
-export function parseExtractorOutputTolerant(
-	output: unknown,
-): { value: ExtractorOutput; dropped: number } | null {
-	const envelope = z.object({ ops: z.array(z.unknown()) }).safeParse(output);
-	if (!envelope.success) return null;
-	const ops: ExtractorOp[] = [];
-	let dropped = 0;
-	for (const raw of envelope.data.ops) {
-		const parsed = OpSchema.safeParse(raw);
-		if (parsed.success) {
-			ops.push(parsed.data);
-		} else {
-			dropped += 1;
-		}
-	}
-	return { value: { ops }, dropped };
-}

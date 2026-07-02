@@ -14,10 +14,6 @@ import {
   runWithTrajectoryContext,
   type SubactionsMap,
 } from "@elizaos/core";
-import {
-  readTwilioCredentialsFromEnv,
-  sendTwilioVoiceCall,
-} from "@elizaos/plugin-phone/twilio";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
@@ -29,7 +25,6 @@ import {
 } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedBookTravel } from "./book-travel.js";
-import { dispatchApprovedSignatureRequest } from "./document.js";
 import {
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,
@@ -297,155 +292,9 @@ export async function executeApprovedRequest(args: {
     };
   }
 
-  if (args.request.action === "schedule_event") {
-    const payload = args.request.payload;
-    if (payload.action !== "schedule_event") {
-      throw new Error(
-        `[approval] action/payload mismatch: action=schedule_event, payload.action=${payload.action}`,
-      );
-    }
-    await args.queue.markExecuting(args.request.id);
-    // Missing/unconnected calendar credentials throw here and propagate —
-    // invoking the rail and surfacing its failure IS the honest execution.
-    const event = await service.createCalendarEvent(INTERNAL_URL, {
-      ...(payload.calendarId ? { calendarId: payload.calendarId } : {}),
-      title: payload.title,
-      startAt: new Date(payload.startsAtMs).toISOString(),
-      endAt: new Date(payload.endsAtMs).toISOString(),
-      ...(payload.location ? { location: payload.location } : {}),
-      ...(payload.description ? { description: payload.description } : {}),
-      ...(payload.attendees.length > 0
-        ? { attendees: payload.attendees.map((email) => ({ email })) }
-        : {}),
-    });
-    const done = await args.queue.markDone(args.request.id);
-    const text = `Approved and scheduled "${event.title}" (${event.startAt} – ${event.endAt}).`;
-    await args.callback?.({ text });
-    return {
-      text,
-      success: true,
-      data: {
-        requestId: done.id,
-        state: done.state,
-        action: done.action,
-        calendarEventId: event.id,
-        calendarId: event.calendarId,
-      },
-    };
-  }
-
-  if (args.request.action === "make_call") {
-    const payload = args.request.payload;
-    if (payload.action !== "make_call") {
-      throw new Error(
-        `[approval] action/payload mismatch: action=make_call, payload.action=${payload.action}`,
-      );
-    }
-    // Missing credentials is a real, typed execution outcome: the approved
-    // call cannot be placed until Twilio is configured. The request stays
-    // `approved` so the owner can retry after setting the env vars.
-    const credentials = readTwilioCredentialsFromEnv();
-    if (!credentials) {
-      const text = `Approved the call to ${payload.to}, but Twilio is not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER) — the call was not placed.`;
-      await args.callback?.({ text });
-      return {
-        text,
-        success: false,
-        data: {
-          error: "TWILIO_NOT_CONFIGURED",
-          action: args.request.action,
-          requestId: args.request.id,
-          state: args.request.state,
-        },
-      };
-    }
-    await args.queue.markExecuting(args.request.id);
-    const delivery = await sendTwilioVoiceCall({
-      credentials,
-      to: payload.to,
-      message: payload.script,
-    });
-    if (!delivery.ok) {
-      const detail = delivery.error ?? `status ${delivery.status}`;
-      const text = `Approved the call to ${payload.to}, but the Twilio dispatch failed (${detail}) — the call was not placed.`;
-      await args.callback?.({ text });
-      return {
-        text,
-        success: false,
-        data: {
-          error: "TWILIO_DELIVERY_FAILED",
-          detail,
-          status: delivery.status,
-          action: args.request.action,
-          requestId: args.request.id,
-        },
-      };
-    }
-    const done = await args.queue.markDone(args.request.id);
-    const text = `Approved and placed the call to ${payload.to}${
-      delivery.sid ? ` (sid ${delivery.sid})` : ""
-    }.`;
-    await args.callback?.({ text });
-    return {
-      text,
-      success: true,
-      data: {
-        requestId: done.id,
-        state: done.state,
-        action: done.action,
-        callSid: delivery.sid ?? null,
-      },
-    };
-  }
-
-  if (args.request.action === "sign_document") {
-    const payload = args.request.payload;
-    if (payload.action !== "sign_document") {
-      throw new Error(
-        `[approval] action/payload mismatch: action=sign_document, payload.action=${payload.action}`,
-      );
-    }
-    await args.queue.markExecuting(args.request.id);
-    const doc = dispatchApprovedSignatureRequest(
-      args.runtime,
-      payload.documentId,
-    );
-    if (!doc) {
-      const text = `Approved the signature request for "${payload.documentName}", but DocumentRequest ${payload.documentId} no longer exists (the document store does not survive restarts) — nothing was dispatched. Please re-issue the signature request.`;
-      await args.callback?.({ text });
-      return {
-        text,
-        success: false,
-        data: {
-          error: "DOCUMENT_REQUEST_NOT_FOUND",
-          action: args.request.action,
-          requestId: args.request.id,
-          documentId: payload.documentId,
-        },
-      };
-    }
-    const done = await args.queue.markDone(args.request.id);
-    const text = `Approved and dispatched the signature request for "${doc.title}" (now ${doc.status}).`;
-    await args.callback?.({ text });
-    return {
-      text,
-      success: true,
-      data: {
-        requestId: done.id,
-        state: done.state,
-        action: done.action,
-        documentId: doc.id,
-        documentStatus: doc.status,
-      },
-    };
-  }
-
-  // No executor exists for this action (spend_money, modify_event,
-  // cancel_event). spend_money has no spend rail to wire:
-  // @elizaos/plugin-finances is read-only — payment-source tracking, CSV
-  // import, and spending summaries — and initiates no purchases or
-  // transfers. Approving must never report success while executing
-  // nothing — surface the gap instead (issue #10723).
+  // No executor exists for this action (sign_document, schedule_event,
+  // make_call, spend_money, ...). Approving must never report success while
+  // executing nothing — surface the gap instead (issue #10723).
   logger.error(
     `[OwnerResolveRequest] request ${args.request.id} approved but no executor exists for action ${args.request.action}; nothing was executed`,
   );

@@ -1,11 +1,7 @@
 /**
- * Deterministic contract tests for CloudApiClient — real fetch against a
- * loopback HTTP double that returns controlled responses, verifying headers,
- * error handling, auth injection, etc.
- *
- * This is NOT live-cloud coverage. It was formerly misnamed
- * `cloud-api.real.test.ts`, which parked a stub-backed test in the live-API
- * `*.real.test.ts` lane. Live coverage lives in the post-merge real lane (`TEST_LANE=post-merge`).
+ * Tests for CloudApiClient — exercises real fetch against a local HTTP server.
+ * No mocks of the code under test. The server returns controlled responses
+ * so we can verify headers, error handling, auth injection, etc.
  */
 
 import * as http from "node:http";

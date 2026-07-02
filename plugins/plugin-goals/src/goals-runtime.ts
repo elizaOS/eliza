@@ -27,7 +27,6 @@ import {
   type GoalsRecordAudit,
   GoalsService,
 } from "./goals-service.ts";
-import { getGoalsCheckinService } from "./services/checkin.ts";
 
 /** Owner-entity id PA derives for the admin/owner entity of an agent. */
 export function ownerEntityIdFor(runtime: IAgentRuntime): string {
@@ -80,9 +79,5 @@ export function createOwnerGoalsService(runtime: IAgentRuntime): GoalsService {
     });
   };
 
-  return new GoalsService(runtime, {
-    recordAudit,
-    normalizeOwnership,
-    checkinSync: () => getGoalsCheckinService(runtime),
-  });
+  return new GoalsService(runtime, { recordAudit, normalizeOwnership });
 }
