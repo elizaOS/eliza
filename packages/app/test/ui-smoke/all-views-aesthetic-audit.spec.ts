@@ -387,18 +387,26 @@ async function collectHoverViolations(page: Page): Promise<HoverScanResult> {
 
 /**
  * Scan the rendered DOM for border-radius values that are NOT on the token
- * radius scale (presets.ts: radiusSm/Md/Lg/Xl/2xl/3xl → 6/8/12/16/20/24px at a
- * 16px root, plus the base `radius` 8px). Allowed alongside the token scale:
- * `0px` (square) and full-round shapes (`9999px`, `50%`, `100%`, circle pills).
- * Everything else (e.g. ad-hoc `4px`/`10px`) is an off-scale value that should
- * round to a token. Returns a deduped list of offending computed values so the
- * report can surface them; ±1px tolerance absorbs sub-pixel rounding.
+ * radius scale: 3px (base.css collapses every --radius-* token to
+ * --radius-xs: 3px — the eliza ultra-tight radius, #10710) plus the presets.ts
+ * rem scale (radiusSm/Md/Lg/Xl/2xl/3xl → 6/8/12/16/20/24px at a 16px root).
+ * Allowed alongside the token scale: `0px` (square) and full-round shapes
+ * (`9999px`, `50%`, `100%`, circle pills). Everything else (e.g. ad-hoc
+ * `10px`) is an off-scale value that should round to a token. Returns a
+ * deduped list of offending computed values so the report can surface them;
+ * ±1px tolerance absorbs sub-pixel rounding.
  */
 async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
   const raw = await page.evaluate(() => {
-    // Allowed px values from the token rem scale (16px root):
-    //   0.375rem=6, 0.5rem=8, 0.75rem=12, 1rem=16, 1.25rem=20, 1.5rem=24.
-    const allowedPx = [0, 6, 8, 12, 16, 20, 24];
+    // Allowed px values. base.css collapses every radius token (--radius-sm
+    // through --radius-3xl) to --radius-xs: 3px — the intended ultra-tight
+    // eliza radius — so 3 is the canonical rendered value (#10710). The rem
+    // scale (0.375rem=6 … 1.5rem=24) stays admitted for surfaces that read
+    // presets.ts tokens directly rather than the base.css custom properties.
+    // 32 is the floating chat capsule: ContinuousChatOverlay animates the
+    // glass-panel radius 32→24 as the sheet opens (collapsed pill endpoint),
+    // and the overlay is mounted on every view.
+    const allowedPx = [0, 3, 6, 8, 12, 16, 20, 24, 32];
     const tolerance = 1;
     const isAllowed = (value: string): boolean => {
       const v = value.trim().toLowerCase();

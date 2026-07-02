@@ -177,6 +177,31 @@ export async function expectNoPageDiagnostics(
   ).toEqual([]);
 }
 
+/**
+ * Fault-injection variant of {@link expectNoPageDiagnostics}: a spec that
+ * deliberately makes the backend fail (e.g. a 500 on POST /api/first-run to
+ * drive the error-recovery flow) allowlists exactly those diagnostics; any
+ * UNRELATED console.error/pageerror/requestfailed still fails the spec.
+ */
+export async function expectOnlyAllowedPageDiagnostics(
+  page: Page,
+  label: string,
+  allowed: RegExp[],
+): Promise<void> {
+  const issues = browserDiagnosticIssuesByPage.get(page) ?? [];
+  const unexpected = issues.filter(
+    (issue) => !allowed.some((pattern) => pattern.test(issue)),
+  );
+  expect(
+    unexpected,
+    `[playwright-ui-smoke] ${label}: diagnostics beyond the injected fault; all=${JSON.stringify(
+      issues,
+      null,
+      2,
+    )}`,
+  ).toEqual([]);
+}
+
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],
   ["Models & Providers", "ai-model"],
@@ -708,6 +733,15 @@ function smokePolymarketStatus() {
       reason: null,
       gammaApiBase: "https://gamma-api.polymarket.com",
       dataApiBase: "https://data-api.polymarket.com",
+    },
+    // Required by PolymarketStatusResponse — usePolymarketState reads
+    // `status.account.ready` before fetching positions; omitting the block
+    // made the view render a caught TypeError as its error banner.
+    account: {
+      ready: false,
+      reason:
+        "No Polymarket wallet address configured. Set POLYMARKET_WALLET_ADDRESS (or a managed EVM address) to read positions.",
+      address: null,
     },
     trading: {
       ready: false,

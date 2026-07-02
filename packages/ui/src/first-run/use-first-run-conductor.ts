@@ -16,6 +16,16 @@
 // finish module funnels + idempotency-guards it). The real
 // `firstRunComplete` flip is DEFERRED to the tutorial-or-skip pick, so the
 // tutorial step is reachable after every runtime path.
+//
+// Confused-user guards (spam taps, stale widgets, out-of-order picks):
+// - `busyRef` — one finish/provision flow at a time; extra picks are consumed
+//   as no-ops while one is in flight.
+// - `provisionedRef` latch — after provisioning succeeds only the tutorial
+//   pick is live; leftover runtime/provider/cloud-agent widgets no-op.
+// - Strict id validation per group — garbage under the reserved prefix is
+//   consumed, never acted on and never forwarded to the server.
+// - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
+//   connect-and-resume continuation (`pendingCloudResumeRef`).
 // ============================================================================
 
 import * as React from "react";
@@ -147,9 +157,13 @@ interface FirstRunTurnWriter {
 }
 
 export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
+  // Replacing the turn re-parses its CHOICE block, so the re-offered runtime
+  // buttons arrive unlocked even when an earlier pick locked the originals —
+  // without this the "pick again" instruction is a dead end (every prior
+  // runtime widget locked itself on first tap).
   const connectTurn = makeTurn(
     "first-run:cloud-oauth",
-    "Connect your Eliza Cloud account to continue, then pick Eliza Cloud again.",
+    `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${RUNTIME_CHOICE}`,
     { secretRequest: cloudOAuthSecretRequest("failed") },
   );
   writer.seedTurn(connectTurn);
@@ -200,6 +214,13 @@ export function useFirstRunConductor(): void {
   // Set true once provisioning's completeFirstRun fired; the REAL store
   // completeFirstRun is deferred to the tutorial-or-skip pick.
   const provisionedRef = React.useRef(false);
+  // True while a finish/provision call is in flight; every other first-run
+  // pick is consumed as a no-op until it settles (see handleFirstRunAction).
+  const busyRef = React.useRef(false);
+  // Latched by the first tutorial pick: the store flip unregisters the handler
+  // only on the next commit, so a double-tap could otherwise re-fire
+  // completeFirstRun/startTutorial in the gap.
+  const completedRef = React.useRef(false);
 
   // ── Transcript seam ──────────────────────────────────────────────────────
   const seedTurn = React.useCallback(
@@ -215,6 +236,23 @@ export function useFirstRunConductor(): void {
       setConversationMessages((prev) =>
         prev.map((m) => (m.id === id ? next : m)),
       );
+    },
+    [setConversationMessages],
+  );
+  // Seed a CHOICE turn that must arrive unlocked on every re-offer. A choice
+  // widget locks itself after its first pick, and `seedTurn` dedups by id — so
+  // re-offering into an existing turn would present a dead (locked) widget.
+  // When the base turn already exists, seed a fresh retry turn instead.
+  const seedFreshChoiceTurn = React.useCallback(
+    (baseId: string, text: string) => {
+      setConversationMessages((prev) => {
+        if (!prev.some((m) => m.id === baseId)) {
+          return [...prev, makeTurn(baseId, text)];
+        }
+        const retryId = `${baseId}:retry:${Date.now()}`;
+        if (prev.some((m) => m.id === retryId)) return prev;
+        return [...prev, makeTurn(retryId, text)];
+      });
     },
     [setConversationMessages],
   );
@@ -312,15 +350,17 @@ export function useFirstRunConductor(): void {
       lines.push(
         `${FIRST_RUN_ACTION_PREFIX}cloud-agent:new=Create a new agent`,
       );
-      seedTurn(
-        makeTurn(
-          "first-run:cloud-agent",
-          `Which Eliza Cloud agent should I use?\n\n[CHOICE:first-run id=cloud-agent]\n${lines.join("\n")}\n[/CHOICE]`,
-        ),
+      seedFreshChoiceTurn(
+        "first-run:cloud-agent",
+        `Which Eliza Cloud agent should I use?\n\n[CHOICE:first-run id=cloud-agent]\n${lines.join("\n")}\n[/CHOICE]`,
       );
     },
-    [seedTurn],
+    [seedFreshChoiceTurn],
   );
+
+  // Armed by a needs-cloud-login outcome; consumed by the auto-resume effect
+  // when the cloud connection lands (or cleared by the user's next pick).
+  const pendingCloudResumeRef = React.useRef<"cloud" | "hybrid" | null>(null);
 
   const handleOutcome = React.useCallback(
     (outcome: FirstRunFinishOutcome) => {
@@ -335,6 +375,8 @@ export function useFirstRunConductor(): void {
           );
           return;
         case "needs-cloud-login": {
+          pendingCloudResumeRef.current =
+            draftRef.current.runtime === "cloud" ? "cloud" : "hybrid";
           surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
           return;
         }
@@ -346,45 +388,105 @@ export function useFirstRunConductor(): void {
     [seedTutorial, seedCloudAgentChoice, seedTurn, replaceTurn, seedError],
   );
 
+  // ── Flow launchers (shared by the action handler + the auto-resume) ──────
+  const startCloudProvisionFlow = React.useCallback(() => {
+    busyRef.current = true;
+    void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
+      .then((outcome) => {
+        if (outcome.kind === "done" || outcome.kind === "pick-cloud-agent") {
+          replaceTurn(
+            "first-run:cloud-oauth",
+            makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
+              secretRequest: cloudOAuthSecretRequest("saved"),
+            }),
+          );
+        }
+        handleOutcome(outcome);
+      })
+      // Unlike runFirstRunFinish (which funnels throws to seedError), these
+      // cloud entrypoints can reject (OAuth/network); without this the
+      // "Connecting…" turn strands on screen as an unhandled rejection.
+      .catch((err: unknown) => seedError(cloudFailureMessage(err)))
+      .finally(() => {
+        busyRef.current = false;
+      });
+  }, [handleOutcome, replaceTurn, seedError]);
+
+  const startProviderFinish = React.useCallback(() => {
+    busyRef.current = true;
+    void runFirstRunFinish(draftRef.current, portsRef.current)
+      .then(handleOutcome)
+      .finally(() => {
+        busyRef.current = false;
+      });
+  }, [handleOutcome]);
+
+  // Auto-resume: when the user connects Eliza Cloud from the retry turn's
+  // OAuth block (instead of re-picking a runtime), continue the interrupted
+  // flow the moment the store learns the connection landed. A fresh pick
+  // clears the pending marker, so the user's latest intent always wins.
+  React.useEffect(() => {
+    if (!active || !elizaCloudConnected) return;
+    const resume = pendingCloudResumeRef.current;
+    if (!resume || busyRef.current || provisionedRef.current) return;
+    pendingCloudResumeRef.current = null;
+    if (resume === "cloud") {
+      replaceTurn(
+        "first-run:cloud-oauth",
+        makeTurn(
+          "first-run:cloud-oauth",
+          "Connecting your Eliza Cloud account…",
+          { secretRequest: cloudOAuthSecretRequest("pending") },
+        ),
+      );
+      startCloudProvisionFlow();
+      return;
+    }
+    startProviderFinish();
+  }, [
+    active,
+    elizaCloudConnected,
+    replaceTurn,
+    startCloudProvisionFlow,
+    startProviderFinish,
+  ]);
+
   const handleFirstRunAction = React.useCallback(
     (value: string): boolean => {
       if (!value.startsWith(FIRST_RUN_ACTION_PREFIX)) return false;
       const suffix = value.slice(FIRST_RUN_ACTION_PREFIX.length);
-      const [group, id] = suffix.split(":");
+      const separator = suffix.indexOf(":");
+      const group = separator === -1 ? suffix : suffix.slice(0, separator);
+      const id = separator === -1 ? "" : suffix.slice(separator + 1);
+
+      // One provisioning flow at a time. Stale widgets survive in the
+      // transcript (error re-seeds, the cloud-agent picker next to a re-offered
+      // runtime choice), so a confused user can tap a second option while a
+      // finish call is still in flight — consume those as no-ops instead of
+      // starting a concurrent flow.
+      if (busyRef.current) return true;
+      // Once provisioning succeeded only the tutorial pick is live; taps on
+      // leftover runtime/provider/cloud-agent widgets must not re-provision.
+      if (provisionedRef.current && group !== "tutorial") return true;
+      // A fresh pick supersedes any armed connect-and-resume continuation.
+      pendingCloudResumeRef.current = null;
 
       if (group === "runtime") {
+        if (id !== "cloud" && id !== "local" && id !== "other") return true;
         if (id === "cloud") {
           draftRef.current = {
             ...draftRef.current,
             runtime: "cloud",
             localInference: "cloud-inference",
           };
-          seedTurn(
-            makeTurn(
-              "first-run:cloud-oauth",
-              "Connecting your Eliza Cloud account…",
-              { secretRequest: cloudOAuthSecretRequest("pending") },
-            ),
+          const connecting = makeTurn(
+            "first-run:cloud-oauth",
+            "Connecting your Eliza Cloud account…",
+            { secretRequest: cloudOAuthSecretRequest("pending") },
           );
-          void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
-            .then((outcome) => {
-              if (
-                outcome.kind === "done" ||
-                outcome.kind === "pick-cloud-agent"
-              ) {
-                replaceTurn(
-                  "first-run:cloud-oauth",
-                  makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
-                    secretRequest: cloudOAuthSecretRequest("saved"),
-                  }),
-                );
-              }
-              handleOutcome(outcome);
-            })
-            // Unlike runFirstRunFinish (which funnels throws to seedError), these
-            // cloud entrypoints can reject (OAuth/network); without this the
-            // "Connecting…" turn strands on screen as an unhandled rejection.
-            .catch((err: unknown) => seedError(cloudFailureMessage(err)));
+          seedTurn(connecting);
+          replaceTurn("first-run:cloud-oauth", connecting);
+          startCloudProvisionFlow();
           return true;
         }
         // local + "other" (bring your own keys) both run the local backend;
@@ -394,16 +496,15 @@ export function useFirstRunConductor(): void {
           runtime: "local",
           localInference: "all-local",
         };
-        seedTurn(
-          makeTurn(
-            "first-run:provider",
-            `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: id === "other" ? "other" : "on-device" })}`,
-          ),
+        seedFreshChoiceTurn(
+          "first-run:provider",
+          `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: id === "other" ? "other" : "on-device" })}`,
         );
         return true;
       }
 
       if (group === "backup-restore") {
+        if (id !== "latest" && id !== "start-fresh") return true;
         if (id === "start-fresh") {
           latestLocalBackupRef.current = null;
           seedRuntimeChoice();
@@ -448,6 +549,9 @@ export function useFirstRunConductor(): void {
       }
 
       if (group === "provider") {
+        if (id !== "on-device" && id !== "elizacloud" && id !== "other") {
+          return true;
+        }
         if (id === "elizacloud") {
           draftRef.current = {
             ...draftRef.current,
@@ -471,13 +575,12 @@ export function useFirstRunConductor(): void {
             localInference: "all-local",
           };
         }
-        void runFirstRunFinish(draftRef.current, portsRef.current).then(
-          handleOutcome,
-        );
+        startProviderFinish();
         return true;
       }
 
       if (group === "cloud-agent") {
+        if (!id) return true;
         const authToken = getCloudAuthToken(client) ?? "";
         if (!authToken) {
           handleOutcome({ kind: "needs-cloud-login" });
@@ -485,6 +588,7 @@ export function useFirstRunConductor(): void {
         }
         cloudPrefsRef.current =
           id === "new" ? { forceCreate: true } : { preferAgentId: id };
+        busyRef.current = true;
         void bindCloudAgent(
           draftRef.current,
           authToken,
@@ -492,11 +596,17 @@ export function useFirstRunConductor(): void {
           portsRef.current,
         )
           .then(handleOutcome)
-          .catch((err: unknown) => seedError(cloudFailureMessage(err)));
+          .catch((err: unknown) => seedError(cloudFailureMessage(err)))
+          .finally(() => {
+            busyRef.current = false;
+          });
         return true;
       }
 
       if (group === "tutorial") {
+        if (id !== "start" && id !== "skip") return true;
+        if (completedRef.current) return true;
+        completedRef.current = true;
         // The single real completion: flip the gate (deactivates the conductor),
         // then optionally launch the interactive tutorial.
         completeFirstRun("chat");
@@ -504,15 +614,20 @@ export function useFirstRunConductor(): void {
         return true;
       }
 
-      return false;
+      // Unknown group under the reserved prefix: consume it (the value is
+      // never a real chat message) and do nothing.
+      return true;
     },
     [
       seedTurn,
+      seedFreshChoiceTurn,
       seedRuntimeChoice,
       replaceTurn,
       handleOutcome,
       completeFirstRun,
       seedError,
+      startCloudProvisionFlow,
+      startProviderFinish,
     ],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);

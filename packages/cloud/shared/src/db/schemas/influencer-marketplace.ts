@@ -48,6 +48,13 @@ export type InfluencerBookingStatus =
   | "offered"
   | "accepted"
   | "delivered"
+  // Intermediate CLAIM states for the `delivered` money fork (#11116): exactly
+  // one of approve/rejectDeliverable can CAS `delivered` → `approving`/`refunding`,
+  // so only the winner moves money. A crash in the claim→money→finalize window
+  // leaves the booking here for the same operation to resume (money ops are
+  // idempotent). `status` is a plain text column, so this needs no migration.
+  | "approving"
+  | "refunding"
   | "approved"
   | "rejected"
   | "cancelled";

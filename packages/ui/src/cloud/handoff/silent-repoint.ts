@@ -4,6 +4,7 @@ import {
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state";
+import { clearPendingCloudHandoff } from "./pending-handoff-store";
 
 /**
  * Silently re-point the live client from the shared bridge to the dedicated
@@ -67,4 +68,8 @@ export function silentlyRepointToDedicated(opts: {
   // surface stays mounted on the same conversation id with no reload.
   client.setToken(authToken);
   client.repointBaseUrl(containerBase);
+
+  // Repointed ⇒ nothing pending: the reload-resume marker must not survive a
+  // completed switch (a later boot restores the dedicated server directly).
+  clearPendingCloudHandoff();
 }

@@ -43,7 +43,8 @@ function BudgetGauge({
 
   return (
     <div className="space-y-1">
-      <div className="h-2 w-full bg-card border border-border rounded-sm overflow-hidden">
+      {/* Progress bar — data, not chrome. The track fill stays. */}
+      <div className="h-2 w-full bg-card rounded-sm overflow-hidden">
         <div
           className={`h-full ${barColor} transition-all`}
           style={{ width: `${pct}%` }}
@@ -86,7 +87,7 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
 
   if (loading && !budget) {
     return (
-      <div className="border border-border rounded-sm p-3 bg-card flex items-center gap-2">
+      <div className="flex items-center gap-2 p-3">
         <Loader2 className="w-3 h-3 animate-spin" />
         <span className="text-xs text-muted">
           {t("budgetpanel.loading", {
@@ -112,7 +113,7 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
 
   if (!budget) {
     return (
-      <div className="border border-border rounded-sm p-3 bg-card">
+      <div className="p-3">
         <div className="text-xs text-muted">
           {t("budgetpanel.noInstance", {
             defaultValue:
@@ -130,7 +131,8 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
       : "text-green-500";
 
   return (
-    <div className="border border-border rounded-sm p-3 bg-card space-y-3">
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
+    <div className="space-y-3 p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs text-muted uppercase tracking-wide">

@@ -744,11 +744,12 @@ export const NOTIFICATIONS_TESTID = "widget-notifications";
 // First-run runtime/provider buttons live in the real chat transcript. The
 // headless conductor seeds the ChoiceWidgets and the chat action channel routes
 // their sentinel values before they hit the server.
-const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
+export const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
   `choice-__first_run__:runtime:${id}`;
-const PROVIDER_CHOICE = (id: "on-device" | "elizacloud" | "other"): string =>
-  `choice-__first_run__:provider:${id}`;
-const TUTORIAL_CHOICE = (id: "start" | "skip"): string =>
+export const PROVIDER_CHOICE = (
+  id: "on-device" | "elizacloud" | "other",
+): string => `choice-__first_run__:provider:${id}`;
+export const TUTORIAL_CHOICE = (id: "start" | "skip"): string =>
   `choice-__first_run__:tutorial:${id}`;
 const CLOUD_AGENT_CHOICE = (id: string): string =>
   `choice-__first_run__:cloud-agent:${id}`;

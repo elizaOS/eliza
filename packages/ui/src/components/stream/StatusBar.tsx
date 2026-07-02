@@ -71,9 +71,9 @@ export function StatusBar({
       >
         {/* Health stats — live only */}
         {streamLive && (
-          <span className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-border/45 bg-card/92 px-2.5 py-1.5 text-xs-tight text-muted-strong font-mono text-2xs">
+          <span className="inline-flex min-h-9 items-center gap-1.5 rounded-sm bg-card/92 px-2.5 py-1.5 text-xs-tight text-muted-strong font-mono text-2xs">
             <span className="text-txt">{formatUptime(uptime)}</span>
-            <span className="text-border">|</span>
+            <span className="text-muted">·</span>
             <span className="text-txt">
               {frameCount.toLocaleString("en-US")}f
             </span>
@@ -83,10 +83,13 @@ export function StatusBar({
         <Button
           size="sm"
           disabled={!streamAvailable || streamLoading}
-          className={`inline-flex h-9 min-h-9 items-center justify-center rounded-sm border px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] transition-[border-color,background-color,color,box-shadow]   disabled:cursor-wait disabled:opacity-50 ${
+          // Go Live is the primary action → accent, not a green status tint
+          // (orange is the only accent, #10710). Stop Stream stays danger —
+          // that chrome is semantic (destructive).
+          className={`inline-flex h-9 min-h-9 items-center justify-center rounded-sm px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] transition-[background-color,color,box-shadow] disabled:cursor-wait disabled:opacity-50 ${
             streamLive
-              ? "border-danger/35 bg-danger/10 text-danger hover:border-danger/50 hover:bg-danger/16"
-              : "border-ok/35 bg-ok/10 text-ok hover:border-ok/50 hover:bg-ok/16"
+              ? "bg-danger/10 text-danger hover:bg-danger/20"
+              : "bg-accent/10 text-accent hover:bg-accent/20"
           }`}
           onClick={onToggleStream}
           title={
@@ -110,7 +113,7 @@ export function StatusBar({
           <Button
             variant="ghost"
             size="sm"
-            className="inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-sm border border-border/45 bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[border-color,background-color,color,box-shadow]   hover:border-border-strong hover:bg-bg-hover hover:text-txt "
+            className="inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-sm bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const popoutWin = openStreamPopout(getBootConfig().apiBase);

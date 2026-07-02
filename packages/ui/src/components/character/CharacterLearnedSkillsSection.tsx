@@ -161,7 +161,7 @@ export function CharacterLearnedSkillsSection() {
         ) : null}
 
         {isEmpty ? (
-          <div className="rounded-sm border border-dashed border-border/60 bg-bg-hover/40 px-3 py-3 text-xs-tight leading-5 text-muted">
+          <div className="py-3 text-xs-tight leading-5 text-muted">
             {t("learnedskills.empty", {
               defaultValue:
                 "I haven’t picked up any abilities yet. Browse the catalog or add one by example, and I’ll start using it.",
@@ -241,10 +241,7 @@ function SkillSection({
       <div className="text-sm font-medium text-muted">{title}</div>
       <ul className="flex flex-col">
         {skills.map((skill) => (
-          <li
-            key={skill.name}
-            className="border-b border-border/15 py-3 last:border-b-0"
-          >
+          <li key={skill.name} className="py-3">
             <div className="flex items-start justify-between gap-3 text-xs-tight">
               <div className="flex flex-col gap-1">
                 <div className="font-mono text-sm font-semibold text-txt">

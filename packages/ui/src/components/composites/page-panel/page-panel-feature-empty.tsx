@@ -25,7 +25,7 @@ export function PagePanelFeatureEmpty({
   description,
   features = [],
   icon: Icon,
-  iconTone = "border-border/40 bg-bg-hover text-muted",
+  iconTone = "bg-bg-hover text-muted",
   title,
   variant = "surface",
   ...props
@@ -42,7 +42,8 @@ export function PagePanelFeatureEmpty({
       <div className="w-full max-w-2xl text-center">
         <div
           className={cn(
-            "mx-auto flex h-14 w-14 items-center justify-center rounded-sm border",
+            // Borderless icon plate (#10710): tint alone carries the shape.
+            "mx-auto flex h-14 w-14 items-center justify-center rounded-sm",
             iconTone,
           )}
         >

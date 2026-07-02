@@ -1,6 +1,9 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
+import {
+  buildAssistantLaunchHashRoute,
+  resolveDeepLinkNavigationIntent,
+} from "./deep-link-routing";
 
 function params(hashRoute: string): URLSearchParams {
   return new URLSearchParams(hashRoute.split("?")[1] ?? "");
@@ -272,5 +275,61 @@ describe("assistant launch deep-link routing", () => {
       }),
       { numRuns: 500 },
     );
+  });
+});
+
+describe("top-level-surface deep-link navigation intents", () => {
+  it("routes a settings deep link to the settings tab", () => {
+    expect(resolveDeepLinkNavigationIntent("settings")).toEqual({
+      viewId: "settings",
+      viewPath: "/settings",
+    });
+  });
+
+  it("routes a wallet deep link to the inventory tab (/wallet)", () => {
+    expect(resolveDeepLinkNavigationIntent("wallet")).toEqual({
+      viewId: "inventory",
+      viewPath: "/wallet",
+    });
+  });
+
+  it("treats the inventory alias like wallet", () => {
+    expect(resolveDeepLinkNavigationIntent("inventory")).toEqual({
+      viewId: "inventory",
+      viewPath: "/wallet",
+    });
+  });
+
+  it("routes a browser deep link to the browser tab", () => {
+    expect(resolveDeepLinkNavigationIntent("browser")).toEqual({
+      viewId: "browser",
+      viewPath: "/browser",
+    });
+  });
+
+  it("routes a bare connectors deep link to Settings → Connectors", () => {
+    expect(resolveDeepLinkNavigationIntent("connectors")).toEqual({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "connectors",
+    });
+  });
+
+  it("routes a per-provider connectors deep link to Settings → Connectors", () => {
+    expect(
+      resolveDeepLinkNavigationIntent("settings/connectors/discord"),
+    ).toEqual({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "connectors",
+    });
+  });
+
+  it("returns null for chat-launch and unknown paths (handled elsewhere)", () => {
+    expect(resolveDeepLinkNavigationIntent("chat")).toBeNull();
+    expect(resolveDeepLinkNavigationIntent("ask")).toBeNull();
+    expect(resolveDeepLinkNavigationIntent("share")).toBeNull();
+    expect(resolveDeepLinkNavigationIntent("connect")).toBeNull();
+    expect(resolveDeepLinkNavigationIntent("totally-unknown")).toBeNull();
   });
 });

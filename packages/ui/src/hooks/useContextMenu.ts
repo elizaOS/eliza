@@ -14,8 +14,8 @@ import {
   loadSavedCustomCommands,
   type SavedCustomCommand,
 } from "../chat";
+import { dispatchChatPrefill } from "../events";
 import { useAppSelectorShallow } from "../state/app-store";
-import { useChatInputRef } from "../state/ChatComposerContext.hooks";
 
 export type CustomCommand = SavedCustomCommand;
 
@@ -49,6 +49,22 @@ function getSelectedText(target: EventTarget | null): string {
   return "";
 }
 
+/**
+ * Editable native targets (text inputs, textareas, contenteditable) own the
+ * platform's Cut/Copy/Paste context menu. Suppressing it there would strip the
+ * user's clipboard editing, so the custom selection menu only takes over
+ * non-editable surfaces (message text, links).
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement
+  ) {
+    return true;
+  }
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
 export function useContextMenu(): ContextMenuState {
   const { setState, handleChatSend, setActionNotice } = useAppSelectorShallow(
     (s) => ({
@@ -57,9 +73,6 @@ export function useContextMenu(): ContextMenuState {
       setActionNotice: s.setActionNotice,
     }),
   );
-  // useChatInputRef() returns a stable MutableRefObject — subscribing to it never
-  // causes re-renders, so App.tsx (which calls this hook) stays quiet while typing.
-  const chatInputRef = useChatInputRef();
   const desktopRuntime = isElectrobunRuntime();
 
   const [saveCommandModalOpen, setSaveCommandModalOpen] = useState(false);
@@ -95,8 +108,11 @@ export function useContextMenu(): ContextMenuState {
       const command = payload as { text: string } | undefined;
       if (!command?.text) return;
       const quoted = `> ${command.text}\n\n`;
-      const existing = chatInputRef?.current ?? "";
-      setState("chatInput", quoted + existing);
+      // Route through the same prefill channel the live floating composer
+      // (ContinuousChatOverlay) consumes. Writing to the app-store `chatInput`
+      // slice would land in the detached-window ChatView, which is not mounted
+      // on the surface where the context menu fires — so the quote vanished.
+      dispatchChatPrefill({ text: quoted, select: false });
     };
 
     const unsubscribers = [
@@ -127,7 +143,7 @@ export function useContextMenu(): ContextMenuState {
         unsubscribe();
       }
     };
-  }, [setState, handleChatSend, chatInputRef]);
+  }, [setState, handleChatSend]);
 
   useEffect(() => {
     if (!desktopRuntime || typeof window === "undefined") {
@@ -136,6 +152,11 @@ export function useContextMenu(): ContextMenuState {
 
     const onContextMenu = (event: MouseEvent) => {
       if (event.defaultPrevented) {
+        return;
+      }
+
+      // Never shadow the native Cut/Copy/Paste menu on editable fields.
+      if (isEditableTarget(event.target)) {
         return;
       }
 

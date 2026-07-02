@@ -19,7 +19,7 @@ import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
-  FIRST_RUN_ACTION_PREFIX,
+  classifyActionMessage,
   tryHandleFirstRunAction,
 } from "../first-run/first-run-action-channel";
 import {
@@ -88,6 +88,7 @@ import { useMiscUiState } from "./useMiscUiState";
 import { useNavigationState } from "./useNavigationState";
 import { usePairingState } from "./usePairingState";
 import { usePluginsSkillsState } from "./usePluginsSkillsState";
+import { useResyncReconcile } from "./useResyncReconcile";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTabSync } from "./useTabSync";
 import { useTriggersState } from "./useTriggersState";
@@ -1328,23 +1329,28 @@ function AppProviderInner({
 
   // In-chat first-run interception: a first-run-scoped choice pick (reserved
   // `__first_run__:` prefix) is consumed by the active onboarding conductor and
-  // MUST NOT reach the server. While onboarding is ACTIVE (firstRunComplete
-  // false) every other value is dropped too: the transcript is choice-driven,
-  // so free text must never reach the server mid-setup (the overlay disables
-  // its composer; this is the send-seam backstop). Once onboarding completes,
-  // every non-first-run value falls through to the real send funnel unchanged.
-  // Widgets stay 100% display-only — both InlineWidgetText and MessageContent
-  // route picks through this single `sendActionMessage`.
+  // MUST NOT reach the server. The prefix is reserved unconditionally: even
+  // after onboarding completes (conductor unregistered), a tap on a leftover
+  // onboarding widget in the transcript is dropped here instead of sending the
+  // literal sentinel to the agent as a chat message. While onboarding is
+  // ACTIVE (firstRunComplete false) every other value is dropped too: the
+  // transcript is choice-driven, so free text must never reach the server
+  // mid-setup (the overlay disables its composer; this is the send-seam
+  // backstop). Once onboarding completes, every non-first-run value falls
+  // through to the real send funnel unchanged. Widgets stay 100% display-only
+  // — both InlineWidgetText and MessageContent route picks through this single
+  // `sendActionMessage`.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
-      if (
-        text.startsWith(FIRST_RUN_ACTION_PREFIX) &&
-        tryHandleFirstRunAction(text)
-      ) {
-        return Promise.resolve();
+      switch (classifyActionMessage(text, firstRunComplete === true)) {
+        case "first-run":
+          tryHandleFirstRunAction(text);
+          return Promise.resolve();
+        case "dropped":
+          return Promise.resolve();
+        case "send":
+          return rawSendActionMessage(text);
       }
-      if (!firstRunComplete) return Promise.resolve();
-      return rawSendActionMessage(text);
     },
     [firstRunComplete, rawSendActionMessage],
   );
@@ -1406,6 +1412,12 @@ function AppProviderInner({
       }
     });
   }, []);
+
+  // Live consumer of the RESYNC_EVENT dispatched above. Without this the resync
+  // signal had no listener, so a reconnect never reconciled messages the agent
+  // emitted while the socket was down. This reloads the active conversation from
+  // the server on resync so those missed messages appear without a refresh.
+  useResyncReconcile({ activeConversationIdRef, loadConversationMessages });
 
   // ── Pairing ────────────────────────────────────────────────────────
 

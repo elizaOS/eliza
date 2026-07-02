@@ -130,20 +130,22 @@ afterAll(async () => {
 });
 
 describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
-  it("purgeExpired landing inside approve()'s window cannot be overwritten", async () => {
+  it("an expiry landing inside approve()'s window cannot be overwritten", async () => {
+    // Future expiresAt: the lazy expiry guard (#11092) must not preempt the
+    // race — this test exercises the CAS window itself, with a concurrent
+    // markExpired standing in for any pending -> expired transition.
     const enqueued = await queue.enqueue(
       spendMoneyInput({
-        // Already past due: pending until purgeExpired runs.
-        expiresAt: new Date(Date.now() - 5 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       }),
     );
     expect(enqueued.state).toBe("pending");
 
-    // approve() reads `pending`, then the purge expires the row before the
-    // approve write lands — the classic race that used to resurrect the row.
+    // approve() reads `pending`, then the row expires before the approve
+    // write lands — the classic race that used to resurrect the row.
     queue.betweenReadAndWrite = async () => {
-      const purged = await queue.purgeExpired(new Date());
-      expect(purged).toContain(enqueued.id);
+      const expired = await queue.markExpired(enqueued.id);
+      expect(expired.state).toBe("expired");
     };
 
     await expect(
@@ -154,6 +156,30 @@ describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
     ).rejects.toBeInstanceOf(ApprovalTransitionConflictError);
 
     // The forbidden expired -> approved transition never happened.
+    const after = await queue.byId(enqueued.id);
+    expect(after?.state).toBe("expired");
+    expect(after?.resolvedBy).toBeNull();
+  }, 60_000);
+
+  it("a lapsed pending request is refused and expired at the boundary — no purge needed (#11092)", async () => {
+    // No interleaving hook: the guard itself must enforce expiry, because
+    // nothing runs purgeExpired periodically in production.
+    const enqueued = await queue.enqueue(
+      spendMoneyInput({
+        subjectUserId: "owner-lapsed",
+        expiresAt: new Date(Date.now() - 5 * 60 * 1000),
+      }),
+    );
+    expect(enqueued.state).toBe("pending");
+
+    await expect(
+      queue.approve(enqueued.id, {
+        resolvedBy: "owner-lapsed",
+        resolutionReason: "approving after expiry",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+
+    // The lazy guard flipped the row to expired; it never executed.
     const after = await queue.byId(enqueued.id);
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();

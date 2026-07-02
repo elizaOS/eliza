@@ -41,6 +41,8 @@ function startupReasonLabel(
 
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
+/* This is an error surface — the card framing is semantic and keeps its
+   surface scrim over the wallpaper. Inner content is flat — no nested boxes. */
 const SCREEN_CARD_CLASS =
   "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95";
 
@@ -86,7 +88,7 @@ export function StartupFailureView({
   return (
     <div className={SCREEN_SHELL_CLASS}>
       <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="border-b border-border/10 bg-card pb-6 pt-6">
+        <CardHeader className="pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <span
               aria-label={reasonLabel}
@@ -108,11 +110,11 @@ export function StartupFailureView({
               what actually went wrong. */}
           <p className="text-sm leading-relaxed text-txt">{error.message}</p>
           {error.detail ? (
-            <section className="space-y-2 rounded-sm border border-border/50 bg-bg/35 p-4">
+            <section className="space-y-2">
               <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
                 {t("common.details", { defaultValue: "Details" })}
               </div>
-              <pre className="max-h-60 overflow-auto rounded-sm border border-border/40 bg-card p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
+              <pre className="max-h-60 overflow-auto rounded-sm bg-bg/50 p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
                 {error.detail}
               </pre>
             </section>

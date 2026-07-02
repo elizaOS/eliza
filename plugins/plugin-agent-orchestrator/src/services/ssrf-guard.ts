@@ -26,7 +26,10 @@
  */
 
 import { lookup as dnsLookup } from "node:dns/promises";
+import { request as httpRequest, type IncomingMessage } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
+import { Readable } from "node:stream";
 
 const MAX_REDIRECTS = 5;
 
@@ -196,12 +199,20 @@ export function classifyIpLiteral(
  * Resolve `hostname` and assert every resolved address is fetch-safe
  * (loopback or public). Throws `SsrfBlockedError` if the host is, or resolves
  * to, a blocked (non-public, non-loopback) address. Checking *all* resolved
- * addresses defeats DNS rebinding to an internal IP.
+ * addresses defeats a rebinding answer that mixes public and internal IPs.
+ *
+ * Returns the vetted addresses for DNS hostnames so the caller can PIN the
+ * connection to them (#11028): validating here and letting `fetch` resolve
+ * again leaves a rebinding window where the second lookup answers with an
+ * internal IP. Returns `null` for `localhost` and IP literals — their
+ * "resolution" is local/static, so there is nothing to rebind.
  */
-export async function assertHostAllowed(hostname: string): Promise<void> {
+export async function assertHostAllowed(
+  hostname: string,
+): Promise<string[] | null> {
   const host = hostname.replace(/^\[|\]$/g, "");
   // `localhost` is loopback by convention; allow without a DNS round-trip.
-  if (host.toLowerCase() === "localhost") return;
+  if (host.toLowerCase() === "localhost") return null;
 
   // IP literal: classify directly, no DNS.
   if (isIP(host) !== 0) {
@@ -209,7 +220,7 @@ export async function assertHostAllowed(hostname: string): Promise<void> {
     if (verdict === "blocked") {
       throw new SsrfBlockedError(host, `non-public address ${host}`);
     }
-    return;
+    return null;
   }
 
   // Hostname: resolve to all addresses and reject if any is blocked.
@@ -223,10 +234,13 @@ export async function assertHostAllowed(hostname: string): Promise<void> {
       `DNS resolution failed for ${host}: ${reason}`,
     );
   }
-  if (records.length === 0) {
+  const addresses = records
+    .map((record) => record.address)
+    .filter((address) => typeof address === "string" && address.length > 0);
+  if (addresses.length === 0) {
     throw new SsrfBlockedError(host, `no addresses resolved for ${host}`);
   }
-  for (const { address } of records) {
+  for (const address of addresses) {
     if (classifyIpLiteral(address) === "blocked") {
       throw new SsrfBlockedError(
         host,
@@ -234,10 +248,16 @@ export async function assertHostAllowed(hostname: string): Promise<void> {
       );
     }
   }
+  return addresses;
 }
 
-/** Assert the full URL's host is fetch-safe. */
-export async function assertUrlAllowed(url: string | URL): Promise<void> {
+/**
+ * Assert the full URL's host is fetch-safe. Returns the vetted addresses to
+ * pin the connection to (`null` when the host is an IP literal/localhost).
+ */
+export async function assertUrlAllowed(
+  url: string | URL,
+): Promise<string[] | null> {
   let parsed: URL;
   try {
     parsed = typeof url === "string" ? new URL(url) : url;
@@ -250,7 +270,114 @@ export async function assertUrlAllowed(url: string | URL): Promise<void> {
       `unsupported protocol ${parsed.protocol}`,
     );
   }
-  await assertHostAllowed(parsed.hostname);
+  return assertHostAllowed(parsed.hostname);
+}
+
+/** Node-style lookup callback signature (`net.connect`/`tls.connect`). */
+type NodeLookupCallback = (
+  err: Error | null,
+  address: string | Array<{ address: string; family: number }>,
+  family?: number,
+) => void;
+
+/**
+ * Build a `lookup` implementation for `http(s).request` that only ever
+ * answers with the addresses vetted by `assertHostAllowed`. The socket layer
+ * never consults real DNS, so a rebinding resolver cannot swap in an internal
+ * address between validation and connection.
+ */
+function createPinnedLookup(
+  addresses: string[],
+): (
+  host: string,
+  options: { all?: boolean } | NodeLookupCallback,
+  callback?: NodeLookupCallback,
+) => void {
+  const records = addresses.map((address) => ({
+    address,
+    family: address.includes(":") ? 6 : 4,
+  }));
+  return (_host, options, callback) => {
+    const cb = typeof options === "function" ? options : callback;
+    if (!cb) return;
+    const all = typeof options === "object" && options.all === true;
+    if (all) {
+      cb(null, records);
+      return;
+    }
+    cb(null, records[0].address, records[0].family);
+  };
+}
+
+/**
+ * One redirect-free request with the connection pinned to the vetted
+ * addresses, wrapped back into a standard `Response`. Injectable so tests can
+ * observe the pinned path without opening sockets.
+ */
+export type PinnedTransport = (
+  url: string,
+  init: Omit<RequestInit, "redirect">,
+  addresses: string[],
+) => Promise<Response>;
+
+function nodePinnedTransport(
+  url: string,
+  init: Omit<RequestInit, "redirect">,
+  addresses: string[],
+): Promise<Response> {
+  const parsed = new URL(url);
+  const isHttps = parsed.protocol === "https:";
+  const requestFn = isHttps ? httpsRequest : httpRequest;
+  return new Promise<Response>((resolve, reject) => {
+    const req = requestFn(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? "443" : "80"),
+        path: `${parsed.pathname}${parsed.search}`,
+        method: init.method ?? "GET",
+        headers: Object.fromEntries(new Headers(init.headers ?? {}).entries()),
+        // The pin: TLS SNI + certificate verification still use the original
+        // hostname, but the socket connects to a vetted address only.
+        lookup: createPinnedLookup(addresses),
+      },
+      (res: IncomingMessage) => {
+        const status = res.statusCode ?? 0;
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(res.headers)) {
+          if (Array.isArray(value)) {
+            for (const entry of value) headers.append(name, entry);
+          } else if (typeof value === "string") {
+            headers.set(name, value);
+          }
+        }
+        // Statuses that forbid a body in the Response constructor.
+        const body =
+          status === 204 || status === 205 || status === 304
+            ? null
+            : (Readable.toWeb(res) as unknown as BodyInit);
+        resolve(new Response(body, { status, headers }));
+      },
+    );
+    const signal = init.signal;
+    if (signal) {
+      const onAbort = () =>
+        req.destroy(
+          signal.reason instanceof Error ? signal.reason : new Error("aborted"),
+        );
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+let pinnedTransport: PinnedTransport = nodePinnedTransport;
+
+/** Override the pinned transport (test seam). Pass no argument to reset. */
+export function setPinnedTransport(transport?: PinnedTransport): void {
+  pinnedTransport = transport ?? nodePinnedTransport;
 }
 
 /**
@@ -261,6 +388,12 @@ export async function assertUrlAllowed(url: string | URL): Promise<void> {
  * before fetching it — so a public page cannot redirect the verifier into an
  * internal or cloud-metadata endpoint. Caps redirects at `MAX_REDIRECTS`.
  *
+ * For DNS hostnames the connection is PINNED to the addresses the validation
+ * step resolved (#11028): `fetch` resolves DNS a second time, and a rebinding
+ * resolver could answer that second lookup with an internal address. IP
+ * literals and `localhost` connect through plain `fetch` — there is no DNS to
+ * rebind.
+ *
  * Throws `SsrfBlockedError` if any hop targets a blocked host; otherwise
  * behaves like `fetch` and returns the final `Response`.
  */
@@ -270,8 +403,10 @@ export async function safeFetch(
 ): Promise<Response> {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    await assertUrlAllowed(current);
-    const res = await fetch(current, { ...init, redirect: "manual" });
+    const pinned = await assertUrlAllowed(current);
+    const res = pinned
+      ? await pinnedTransport(current, init, pinned)
+      : await fetch(current, { ...init, redirect: "manual" });
     if (res.status < 300 || res.status >= 400) {
       return res;
     }

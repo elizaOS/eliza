@@ -321,7 +321,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           label: t(feature.labelKey, { defaultValue: feature.defaultLabel }),
         }))}
         icon={Brain}
-        iconTone="border-accent/25 bg-accent/12 text-accent"
+        iconTone="bg-accent/12 text-accent"
         title={t("memoryviewer.noMemoriesYet", {
           defaultValue: "No memories yet",
         })}
@@ -330,7 +330,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   }
 
   return (
-    <div className="divide-y divide-border/15" data-testid="memory-feed">
+    <div data-testid="memory-feed">
       {feed.map((memory) => (
         <MemoryCard
           key={memory.id}
@@ -481,7 +481,7 @@ function MemoryBrowserPanel({
       ) : !result || result.memories.length === 0 ? (
         <PagePanel.FeatureEmpty
           icon={Search}
-          iconTone="border-border/30 bg-bg-hover text-muted"
+          iconTone="bg-bg-hover text-muted"
           title={t("memoryviewer.noMemoriesFound", {
             defaultValue: "No memories found",
           })}
@@ -577,9 +577,9 @@ function TypeFilterButton({
       ref={ref}
       type="button"
       size="sm"
-      variant="outline"
+      variant="ghost"
       className={`h-7 rounded-full px-3 text-2xs font-semibold ${
-        active ? "border-accent/40 bg-accent/14 text-txt" : ""
+        active ? "bg-accent/14 text-txt" : ""
       }`}
       onClick={onSelect}
       {...agentProps}

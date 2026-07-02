@@ -90,7 +90,7 @@ function sectionChip(
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent  ">
+    <span className="inline-flex items-center text-[11px] font-medium text-accent">
       {children}
     </span>
   );
@@ -269,7 +269,7 @@ function SettingsSectionFallback({
       <button
         type="button"
         onClick={onRetry}
-        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent   "
+        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
       </button>

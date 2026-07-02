@@ -1614,6 +1614,60 @@ describe("ContinuousChatOverlay", () => {
     }
   });
 
+  it("push-to-talk dictates into the composer on release; the label matches (never 'send')", () => {
+    vi.useFakeTimers();
+    try {
+      const sinkRef: { fn: ((text: string) => void) | null } = { fn: null };
+      const send = vi.fn();
+      const startRecording = vi.fn();
+      const stopRecording = vi.fn();
+      const setDictationSink = vi.fn(
+        (sink: ((text: string) => void) | null) => {
+          sinkRef.fn = sink;
+        },
+      );
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            send,
+            startRecording,
+            stopRecording,
+            setDictationSink,
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+
+      const mic = screen.getByTestId("chat-composer-mic");
+      // Hold past the 200ms arm → dictation capture begins (intent "dictate").
+      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(220);
+      });
+      expect(startRecording).toHaveBeenCalledWith("dictate");
+
+      // The label must match the behavior: release inserts the dictation into
+      // the composer, it does NOT send. (Regression: it read "release to send",
+      // but the handler only fills the draft — see setDictationSink below.)
+      const label = mic.getAttribute("aria-label") ?? "";
+      expect(label).not.toContain("send");
+      expect(label).toBe("release to insert");
+
+      // Release ends the capture; the final transcript arrives via the
+      // dictation sink and lands in the composer draft — nothing is sent.
+      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
+      expect(stopRecording).toHaveBeenCalledTimes(1);
+      act(() => {
+        sinkRef.fn?.("hello from voice");
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect(
+        (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+      ).toBe("hello from voice");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("drops the finished transcript into the composer as an attachment, not an auto-sent message", () => {
     let sink:
       | ((
@@ -2011,6 +2065,33 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     fireEvent.pointerUp(el, { clientX: 285, clientY: 140, pointerId: 4 });
 
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("does NOT switch conversations when a mouse drag was highlighting bubble text", () => {
+    // The swipe binding lives on the transcript, which contains the selectable
+    // message bubbles. A horizontal MOUSE drag to highlight text would commit as
+    // a swipe and navigate away — destroying the selection. A live (non-
+    // collapsed) selection at release means the gesture was a highlight, so the
+    // swipe is skipped (mirrors the ThreadLine tap-reveal guard).
+    const { controller, onSelect } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    const getSelection = vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "selected bubble text",
+    } as unknown as Selection);
+    try {
+      const el = thread();
+      // The exact gesture that DOES navigate in the passing test above — only
+      // the live selection differs.
+      fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 6 });
+      fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 6 });
+      fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 6 });
+
+      expect(onSelect).not.toHaveBeenCalled();
+    } finally {
+      getSelection.mockRestore();
+    }
   });
 
   it("does not bind the swipe gesture while the sheet is collapsed", () => {
