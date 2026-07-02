@@ -173,6 +173,56 @@
         "default": "npx -y @zed-industries/codex-acp@0.14.0",
         "sensitive": false
       },
+      "ELIZA_CODEX_SANDBOX_MODE": {
+        "type": "string",
+        "description": "Optional Codex ACP sandbox override: read-only, workspace-write, or danger-full-access.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_SANDBOX_MODE": {
+        "type": "string",
+        "description": "Alias for ELIZA_CODEX_SANDBOX_MODE scoped to native ACP sessions.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_NO_LANDLOCK_SANDBOX_MODE": {
+        "type": "string",
+        "description": "Codex ACP sandbox mode used when Linux reports no Landlock support or Codex exits with the known Landlock panic.",
+        "required": false,
+        "default": "danger-full-access",
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE": {
+        "type": "string",
+        "description": "Alias for ELIZA_CODEX_NO_LANDLOCK_SANDBOX_MODE scoped to native ACP sessions.",
+        "required": false,
+        "default": "danger-full-access",
+        "sensitive": false
+      },
+      "ELIZA_CODEX_APPROVAL_POLICY": {
+        "type": "string",
+        "description": "Optional Codex CLI approval_policy value appended to the ACP command with -c.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_APPROVAL_POLICY": {
+        "type": "string",
+        "description": "Alias for ELIZA_CODEX_APPROVAL_POLICY scoped to native ACP sessions.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_LANDLOCK_AVAILABLE": {
+        "type": "boolean",
+        "description": "Override Codex ACP host Landlock detection. Set false in no-Landlock containers to apply the fallback before spawn.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_LANDLOCK_AVAILABLE": {
+        "type": "boolean",
+        "description": "Alias for ELIZA_CODEX_LANDLOCK_AVAILABLE scoped to native ACP sessions.",
+        "required": false,
+        "sensitive": false
+      },
       "ELIZA_CLAUDE_ACP_COMMAND": {
         "type": "string",
         "description": "Native ACP command used for Claude sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",

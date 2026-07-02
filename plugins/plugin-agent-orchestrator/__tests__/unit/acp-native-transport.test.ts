@@ -219,6 +219,53 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     );
   });
 
+  it("retries Codex ACP with the Landlock fallback command after the known panic", async () => {
+    const first = queueProc();
+    const second = queueProc();
+    const onFallback = vi.fn();
+    const client = new NativeAcpClient({
+      command: "codex-acp --stdio",
+      landlockFallbackCommand:
+        'codex-acp --stdio -c sandbox_mode="danger-full-access" -c approval_policy="never"',
+      cwd: "/tmp/native-acp",
+      approvalPreset: "autonomous",
+      onFallback,
+    });
+
+    const started = client.start();
+    await waitForWrites(first, 1);
+    first.stderr.emit(
+      "data",
+      Buffer.from(
+        "thread 'main' panicked at linux_run_main.rs:311:9:\npermission profiles requiring direct runtime enforcement are incompatible with --use-legacy-landlock\n",
+      ),
+    );
+    closeProc(first, 101, null);
+    await waitForSpawnCalls(2);
+    await waitForWrites(second, 1);
+
+    expect(spawnMock.mock.calls[1]?.[0]).toBe("codex-acp");
+    expect(spawnMock.mock.calls[1]?.[1]).toEqual([
+      "--stdio",
+      "-c",
+      'sandbox_mode="danger-full-access"',
+      "-c",
+      'approval_policy="never"',
+    ]);
+    expect(onFallback).toHaveBeenCalledWith({
+      reason: "codex-landlock-unavailable",
+      command:
+        'codex-acp --stdio -c sandbox_mode="danger-full-access" -c approval_policy="never"',
+    });
+
+    emitJson(second, {
+      jsonrpc: "2.0",
+      id: writeAt(second, 0).id,
+      result: {},
+    });
+    await started;
+  });
+
   it("falls back from session/cancel request to notification when rejected", async () => {
     const { client, p } = await startClient();
 

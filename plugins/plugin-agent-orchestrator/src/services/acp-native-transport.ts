@@ -1,6 +1,11 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  appendCodexStderrTail,
+  type CodexLandlockFallbackEvent,
+  isCodexLandlockPanicExit,
+} from "./codex-sandbox.js";
 import type { AcpJsonRpcMessage, ApprovalPreset } from "./types.js";
 
 export type NativeAcpEventCallback = (
@@ -29,6 +34,7 @@ export type AcpMcpServerConfig =
 
 export type NativeAcpClientOptions = {
   command: string;
+  landlockFallbackCommand?: string;
   cwd: string;
   env?: NodeJS.ProcessEnv;
   approvalPreset: ApprovalPreset;
@@ -36,6 +42,7 @@ export type NativeAcpClientOptions = {
   timeoutMs?: number;
   onEvent?: NativeAcpEventCallback;
   onStderr?: (chunk: string) => void;
+  onFallback?: (event: CodexLandlockFallbackEvent) => void;
   /**
    * MCP servers to expose to the spawned sub-agent. Defaults to the opt-in
    * `ELIZA_ACP_MCP_SERVERS` env var (see `parseAcpMcpServersEnv`); when unset,
@@ -145,26 +152,48 @@ export class NativeAcpClient {
 
   async start(): Promise<void> {
     if (this.proc) return;
-    const { command, args } = splitCommandLine(this.opts.command);
+    try {
+      await this.startWithCommand(this.opts.command);
+    } catch (err) {
+      const fallbackCommand = this.opts.landlockFallbackCommand;
+      if (
+        fallbackCommand &&
+        isCodexLandlockPanicError(err) &&
+        fallbackCommand !== this.opts.command
+      ) {
+        this.resetAfterFailedStart();
+        this.opts.onFallback?.({
+          reason: "codex-landlock-unavailable",
+          command: fallbackCommand,
+        });
+        await this.startWithCommand(fallbackCommand);
+        return;
+      }
+      throw err;
+    }
+  }
+
+  private async startWithCommand(commandLine: string): Promise<void> {
+    const { command, args } = splitCommandLine(commandLine);
     const proc = spawn(command, args, {
       cwd: this.opts.cwd,
       env: this.opts.env,
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.proc = proc;
+    let stderrTail = "";
 
     proc.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
-    proc.stderr.on("data", (chunk: Buffer) =>
-      this.opts.onStderr?.(chunk.toString("utf8")),
-    );
+    proc.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      stderrTail = appendCodexStderrTail(stderrTail, text);
+      this.opts.onStderr?.(text);
+    });
     proc.on("error", (err) => this.rejectAll(err));
     proc.on("close", (code, signal) => {
       this.closed = true;
-      this.rejectAll(
-        new Error(
-          `ACP agent exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}`,
-        ),
-      );
+      if (this.proc === proc) this.proc = undefined;
+      this.rejectAll(acpExitError(code, signal, stderrTail));
     });
 
     await this.request(
@@ -187,6 +216,12 @@ export class NativeAcpClient {
         ? this.opts.timeoutMs
         : DEFAULT_TIMEOUT_MS,
     );
+  }
+
+  private resetAfterFailedStart(): void {
+    this.proc = undefined;
+    this.closed = false;
+    this.readBuffer = "";
   }
 
   async createSession(cwd = this.opts.cwd): Promise<NativeAcpSession> {
@@ -732,6 +767,35 @@ class AcpRequestError extends Error {
     this.code = code;
     this.data = data;
   }
+}
+
+class AcpProcessExitError extends Error {
+  constructor(
+    message: string,
+    readonly code: number | null,
+    readonly signal: NodeJS.Signals | null,
+    readonly stderr: string,
+  ) {
+    super(message);
+    this.name = "AcpProcessExitError";
+  }
+}
+
+function acpExitError(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  stderr: string,
+): Error {
+  const message = `ACP agent exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}`;
+  return new AcpProcessExitError(message, code, signal, stderr);
+}
+
+function isCodexLandlockPanicError(err: unknown): boolean {
+  if (!(err instanceof AcpProcessExitError)) return false;
+  return isCodexLandlockPanicExit({
+    code: err.code,
+    stderr: err.stderr,
+  });
 }
 
 function jsonRpcError(error: unknown): Error {

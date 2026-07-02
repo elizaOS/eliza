@@ -144,6 +144,10 @@ All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native`
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command. |
+| `ELIZA_CODEX_SANDBOX_MODE` / `ELIZA_CODEX_ACP_SANDBOX_MODE` | unset | Optional Codex ACP sandbox override (`read-only`, `workspace-write`, `danger-full-access`). |
+| `ELIZA_CODEX_NO_LANDLOCK_SANDBOX_MODE` / `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | `danger-full-access` | Codex ACP sandbox used when Linux reports no Landlock support or the transport retries after the known Landlock panic. |
+| `ELIZA_CODEX_APPROVAL_POLICY` / `ELIZA_CODEX_ACP_APPROVAL_POLICY` | unset | Optional Codex CLI approval policy appended with `-c approval_policy=...`. |
+| `ELIZA_CODEX_LANDLOCK_AVAILABLE` / `ELIZA_CODEX_ACP_LANDLOCK_AVAILABLE` | auto | Override host Landlock detection for Codex ACP (`true`/`false`). |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |

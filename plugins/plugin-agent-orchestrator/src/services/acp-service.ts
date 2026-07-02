@@ -8,6 +8,10 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
+  type CodexAcpCommandConfig,
+  resolveCodexAcpCommand,
+} from "./codex-sandbox.js";
+import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   diagnoseCodingAccountFallback,
@@ -91,6 +95,12 @@ type RunResult = {
   stopReason?: string;
   cancelled?: boolean;
   durationMs: number;
+};
+
+type NativeAgentCommandConfig = {
+  command: string;
+  landlockFallbackCommand?: string;
+  codex?: CodexAcpCommandConfig;
 };
 
 const STDERR_CAP_BYTES = 64 * 1024;
@@ -1229,10 +1239,12 @@ export class AcpService extends Service {
     session: SessionInfo,
     opts: SpawnOptions,
   ): Promise<SpawnResult> {
-    const command = this.nativeAgentCommand(session.agentType);
+    const commandConfig = this.nativeAgentCommand(session.agentType);
+    this.logCodexCommandConfig(commandConfig.codex);
     const stderr: string[] = [];
     const client = new NativeAcpClient({
-      command,
+      command: commandConfig.command,
+      landlockFallbackCommand: commandConfig.landlockFallbackCommand,
       cwd: session.workdir,
       approvalPreset: session.approvalPreset,
       timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
@@ -1265,6 +1277,16 @@ export class AcpService extends Service {
       },
       onStderr: (chunk) => {
         stderr.push(chunk);
+      },
+      onFallback: (event) => {
+        if (event.reason === "codex-landlock-unavailable") {
+          stderr.length = 0;
+          this.log("warn", "Codex ACP landlock fallback activated", {
+            sessionId: id,
+            sandboxMode: commandConfig.codex?.sandboxMode,
+            approvalPolicy: commandConfig.codex?.approvalPolicy,
+          });
+        }
       },
     });
     try {
@@ -1442,37 +1464,71 @@ export class AcpService extends Service {
     }
   }
 
-  private nativeAgentCommand(agentType: AgentType): string {
+  private nativeAgentCommand(agentType: AgentType): NativeAgentCommandConfig {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
     if (normalizedAgentType === "opencode") {
       const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
+      if (command) return { command };
+      return {
+        command: this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp",
+      };
     }
     const override = this.setting(
       `ELIZA_${String(normalizedAgentType)
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "_")}_ACP_COMMAND`,
     );
-    if (override?.trim()) return override.trim();
-    if (normalizedAgentType === "codex")
-      return (
-        this.setting("ELIZA_CODEX_ACP_COMMAND") ??
-        "npx -y @zed-industries/codex-acp@0.14.0"
+    if (normalizedAgentType === "codex") {
+      return this.codexAgentCommand(
+        override?.trim() ||
+          this.setting("ELIZA_CODEX_ACP_COMMAND") ||
+          "npx -y @zed-industries/codex-acp@0.14.0",
       );
+    }
+    if (override?.trim()) return { command: override.trim() };
     if (normalizedAgentType === "claude")
-      return (
-        this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
-        "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
-      );
+      return {
+        command:
+          this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
+          "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
+      };
     // The elizaos native agent is the eliza-code ACP server
     // (packages/examples/code, bin `eliza-code-acp`). The elizaos CLI has no
     // ACP mode, so the bare-name fallback below would spawn the wrong binary —
     // resolve to the eliza-code bin unless an explicit command is configured.
     if (normalizedAgentType === "elizaos")
-      return this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ?? "eliza-code-acp";
-    return String(normalizedAgentType);
+      return {
+        command: this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ?? "eliza-code-acp",
+      };
+    return { command: String(normalizedAgentType) };
+  }
+
+  private codexAgentCommand(command: string): NativeAgentCommandConfig {
+    const codex = resolveCodexAcpCommand(command, (key) => this.setting(key));
+    return {
+      command: codex.command,
+      landlockFallbackCommand: codex.landlockFallbackCommand,
+      codex,
+    };
+  }
+
+  private logCodexCommandConfig(config: CodexAcpCommandConfig | undefined) {
+    if (!config) return;
+    for (const invalid of config.invalidSettings) {
+      this.log("warn", "ignoring invalid Codex ACP sandbox setting", invalid);
+    }
+    if (config.noLandlockDetected) {
+      this.log("warn", "Codex ACP landlock unavailable; using fallback", {
+        sandboxMode: config.sandboxMode,
+        approvalPolicy: config.approvalPolicy,
+      });
+    } else if (config.landlockFallbackCommand) {
+      this.log("debug", "armed Codex ACP landlock fallback", {
+        sandboxMode: config.sandboxMode,
+        approvalPolicy: config.approvalPolicy,
+      });
+    }
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {

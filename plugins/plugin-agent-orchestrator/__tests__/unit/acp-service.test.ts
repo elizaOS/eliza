@@ -21,6 +21,7 @@ type NativeEventHandler = (
 ) => void;
 type NativeOptions = {
   command: string;
+  landlockFallbackCommand?: string;
   cwd: string;
   approvalPreset: ApprovalPreset;
   timeoutMs?: number;
@@ -28,6 +29,7 @@ type NativeOptions = {
   env?: NodeJS.ProcessEnv;
   onEvent?: NativeEventHandler;
   onStderr?: (chunk: string) => void;
+  onFallback?: (event: { reason: string; command: string }) => void;
 };
 type MockNativeClient = {
   opts: NativeOptions;
@@ -139,7 +141,11 @@ type MockProc = EventEmitter & {
 const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>;
 
 function runtime(settings: Record<string, string | undefined> = {}) {
-  const values = { ELIZA_ACP_TRANSPORT: "cli", ...settings };
+  const values = {
+    ELIZA_ACP_TRANSPORT: "cli",
+    ELIZA_CODEX_LANDLOCK_AVAILABLE: "true",
+    ...settings,
+  };
   return {
     logger: {
       debug: vi.fn(),
@@ -493,6 +499,66 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances[0]?.opts.command).toBe(
       "codex-acp --stdio",
     );
+  });
+
+  it("adds a Codex sandbox fallback when Linux reports no Landlock support", async () => {
+    const rt = runtime({
+      ELIZA_ACP_TRANSPORT: "native",
+      ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      ELIZA_CODEX_LANDLOCK_AVAILABLE: "false",
+    }) as {
+      logger: { warn: ReturnType<typeof vi.fn> };
+    };
+    const service = new AcpService(rt as never);
+    await service.start();
+
+    const result = await service.spawnSession({
+      name: "native-no-landlock",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(result.status).toBe("ready");
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      'codex-acp --stdio -c sandbox_mode="danger-full-access" -c approval_policy="never"',
+    );
+    expect(
+      nativeClientMock.instances[0]?.opts.landlockFallbackCommand,
+    ).toBeUndefined();
+    expect(rt.logger.warn).toHaveBeenCalledWith(
+      "[AcpService] Codex ACP landlock unavailable; using fallback",
+      {
+        sandboxMode: "danger-full-access",
+        approvalPolicy: "never",
+      },
+    );
+  });
+
+  it("does not duplicate Codex sandbox config already present in the native command", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND:
+          'codex-acp --stdio -c sandbox_mode="workspace-write"',
+        ELIZA_CODEX_LANDLOCK_AVAILABLE: "false",
+      }),
+    );
+    await service.start();
+
+    await service.spawnSession({
+      name: "native-configured-sandbox",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      'codex-acp --stdio -c sandbox_mode="workspace-write"',
+    );
+    expect(
+      nativeClientMock.instances[0]?.opts.landlockFallbackCommand,
+    ).toBeUndefined();
   });
 
   it("does not emit task_complete from the session creation command", async () => {
