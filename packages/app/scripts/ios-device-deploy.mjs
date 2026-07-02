@@ -32,6 +32,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
   buildCodesignPlan,
   buildPlistXml,
@@ -71,16 +72,7 @@ function runInherit(command, args, options = {}) {
 // ── Device resolution ───────────────────────────────────────────────────
 
 export function resolveDevice(deviceId) {
-  const raw = runCapture("xcrun", [
-    "devicectl",
-    "list",
-    "devices",
-    "--json-output",
-    "/dev/stdout",
-    "--quiet",
-  ]);
-  const jsonStart = raw.indexOf("{");
-  const payload = JSON.parse(raw.slice(jsonStart));
+  const payload = readDevicectlDeviceList();
   const record = findDeviceRecord(payload, deviceId);
   if (!record) {
     const names = (payload?.result?.devices ?? [])
@@ -462,7 +454,7 @@ async function main() {
     ]);
   }
   log(`done. app=${bundleId} device=${device.name}`);
-  log("next: bun run ios:device:logs -- --device " + device.identifier);
+  log(`next: bun run ios:device:logs -- --device ${device.identifier}`);
 }
 
 const isDirectRun =

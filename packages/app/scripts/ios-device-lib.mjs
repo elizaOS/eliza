@@ -586,16 +586,17 @@ export const DEFAULT_APP_BUNDLE_ID = "ai.elizaos.app";
  * COUPLING (leg D1): mirrors the native sink in
  * packages/app-core/platforms/ios/App/App/ElizaStartupTrace.swift
  * (`traceFileName` / `rotatedTraceFileName`) — the native side appends JSONL
- * to Documents/eliza-boot-trace.jsonl, rotates one generation to
- * eliza-boot-trace.prev.jsonl, and the renderer writes the sibling
- * eliza-boot-trace.renderer.jsonl. Keep these names in sync with that file;
- * ELIZA_IOS_BOOT_TRACE_PATH overrides the primary at runtime.
+ * to Documents/eliza-boot-trace.jsonl and rotates one generation to
+ * eliza-boot-trace.prev.jsonl. The renderer appends into the SAME primary
+ * file through the Agent plugin's `appendBootTrace` bridge (single-writer
+ * queue), so there is no separate renderer stream. Keep these names in sync
+ * with that Swift file. ELIZA_IOS_BOOT_TRACE_PATH is a PULL-SIDE override
+ * consumed only by ios-device-logs.mjs (native code does not read it).
  */
 export const DEFAULT_BOOT_TRACE_CONTAINER_PATH =
   "Documents/eliza-boot-trace.jsonl";
 export const BOOT_TRACE_SIBLING_CONTAINER_PATHS = [
   "Documents/eliza-boot-trace.prev.jsonl",
-  "Documents/eliza-boot-trace.renderer.jsonl",
 ];
 
 /**

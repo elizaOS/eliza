@@ -19,10 +19,11 @@
  *     [--output <file>] [--no-console] [--pull-boot-trace]
  *     [--boot-trace-path <container-relative>] [--bundle-id <id>]
  */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
   BOOT_TRACE_SIBLING_CONTAINER_PATHS,
   DEFAULT_APP_BUNDLE_ID,
@@ -42,12 +43,7 @@ const fail = (message) => {
 };
 
 function resolveDevice(deviceId) {
-  const raw = execFileSync(
-    "xcrun",
-    ["devicectl", "list", "devices", "--json-output", "/dev/stdout", "--quiet"],
-    { encoding: "utf8" },
-  );
-  const payload = JSON.parse(raw.slice(raw.indexOf("{")));
+  const payload = readDevicectlDeviceList();
   const record = findDeviceRecord(payload, deviceId);
   if (!record)
     fail(`device "${deviceId}" not found. xcrun devicectl list devices`);
@@ -212,8 +208,8 @@ async function main() {
       `boot-trace-${stamp}${path.extname(containerPath) || ".jsonl"}`,
     );
     pullBootTrace({ device, bundleId, containerPath, outputFile });
-    // Best-effort siblings: the rotated generation + the renderer stream.
-    // Missing files are expected (fresh install, no rotation yet) — not fatal.
+    // Best-effort sibling: the rotated generation (eliza-boot-trace.prev.jsonl).
+    // A missing file is expected (fresh install, no rotation yet) — not fatal.
     for (const sibling of BOOT_TRACE_SIBLING_CONTAINER_PATHS) {
       const siblingOut = path.join(
         outputRoot,

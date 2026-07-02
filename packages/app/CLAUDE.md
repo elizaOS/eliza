@@ -152,10 +152,11 @@ materialized into the gitignored `packages/app/ios` by cap sync. Pure decision
 logic (profile matching/selection, entitlement derivation, plist/xctestrun
 handling) is in `scripts/ios-device-lib.mjs`, unit-tested by
 `scripts/ios-device-lib.test.mjs` in the package vitest suite. Boot-trace pull
-path defaults to `Documents/eliza-boot-trace.jsonl` (+ best-effort
-`eliza-boot-trace.prev.jsonl` / `eliza-boot-trace.renderer.jsonl` siblings) —
-keep in sync with `ElizaStartupTrace.swift`; `ELIZA_IOS_BOOT_TRACE_PATH`
-overrides.
+path defaults to `Documents/eliza-boot-trace.jsonl` (+ best-effort rotated
+`eliza-boot-trace.prev.jsonl` sibling; the renderer appends into the same
+primary file via the Agent plugin's `appendBootTrace` bridge, so there is no
+separate renderer stream) — keep in sync with `ElizaStartupTrace.swift`;
+`ELIZA_IOS_BOOT_TRACE_PATH` overrides the pull path (script-side only).
 
 ## Config / env vars
 

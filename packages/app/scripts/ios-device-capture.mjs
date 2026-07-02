@@ -36,6 +36,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
   buildPlistXml,
   extractXctestrunAppPaths,
@@ -84,12 +85,7 @@ function bootedSimulatorUdid() {
 }
 
 function resolvePhysicalDeviceUdid(deviceId) {
-  const raw = execFileSync(
-    "xcrun",
-    ["devicectl", "list", "devices", "--json-output", "/dev/stdout", "--quiet"],
-    { encoding: "utf8" },
-  );
-  const payload = JSON.parse(raw.slice(raw.indexOf("{")));
+  const payload = readDevicectlDeviceList();
   const record = findDeviceRecord(payload, deviceId);
   if (!record)
     fail(`device "${deviceId}" not found. xcrun devicectl list devices`);
@@ -306,8 +302,11 @@ async function main() {
   );
 
   // 6. Export attachments regardless of the verdict — a failed boot's
-  //    screenshots are exactly the evidence we want.
+  //    screenshots are exactly the evidence we want. Clear any prior export
+  //    first: xcresulttool refuses to write manifest.json into a dir that
+  //    already has one (stale attachments would also mix runs).
   const attachmentsDir = path.join(outputDir, "attachments");
+  fs.rmSync(attachmentsDir, { recursive: true, force: true });
   fs.mkdirSync(attachmentsDir, { recursive: true });
   if (fs.existsSync(resultBundle)) {
     runInherit("xcrun", [

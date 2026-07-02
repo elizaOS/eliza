@@ -89,7 +89,47 @@ Steps actually run:
   were exercised (missing device, unknown device, `--help`): each fails with
   actionable remediation, exit 1, no stack traces.
 - Boot-trace pull path is coupled to leg D1's sink
-  (`ElizaStartupTrace.swift`: `Documents/eliza-boot-trace.jsonl` +
-  `eliza-boot-trace.prev.jsonl` + `eliza-boot-trace.renderer.jsonl`) —
+  (`ElizaStartupTrace.swift`: primary `Documents/eliza-boot-trace.jsonl` +
+  rotated `eliza-boot-trace.prev.jsonl`; the renderer appends into the SAME
+  primary file via the Agent plugin's `appendBootTrace` bridge — there is no
+  separate renderer stream, and `ELIZA_IOS_BOOT_TRACE_PATH` is a pull-side
+  override consumed only by `ios-device-logs.mjs`, not by native code) —
   constants mirrored in `ios-device-lib.mjs` with a coupling note in both
   files.
+
+## Re-verification pass (same day, post-commit `c24f720d277`)
+
+A second independent end-to-end run (fresh `build-for-testing` + a follow-up
+`--skip-build` run into a deliberately dirty output dir) re-validated the
+committed tooling and caught **two more real bugs, both fixed**:
+
+1. **`devicectl … --json-output /dev/stdout` never worked** — devicectl writes
+   its JSON with atomic-save file semantics, so targeting `/dev/stdout` fails
+   with `NSCocoaErrorDomain error 512` ("The file 'stdout' couldn't be saved in
+   the folder 'dev'"), which surfaced as a JSON-parse stack trace instead of a
+   device listing. All three scripts now route the JSON through a temp file via
+   the shared impure helper `scripts/ios-device-devicectl.mjs` (the pure lib
+   stays side-effect free). Proven against the real device list: the
+   unknown-device path now prints the actual paired phones
+   ("Known devices: MoonCycles …, Shaw's iPhone …") and exits 1.
+2. **Attachment export failed on a reused output dir** — `xcresulttool export
+   attachments` refuses to write `manifest.json` into a directory that already
+   has one (and stale files would mix runs). `ios-device-capture.mjs` now clears
+   `attachments/` before exporting, mirroring what it already did for the
+   `.xcresult` bundle. Re-run into the same dirty dir: clean export, exit 0.
+
+Re-verification artifacts (reviewed by hand):
+
+- `sim-reverify-capture.log.txt` — the `--skip-build` run end to end
+  (`.txt` suffix because `*.log` is repo-gitignored):
+  `simctl install` pre-install → `TEST EXECUTE SUCCEEDED`
+  (`testBootReachesHomeOrErrorCard` passed, 19.6 s in the fresh-build pass) →
+  3 attachments exported → `boot capture PASSED`.
+- `sim-reverify-final-home.png` — final frame: live home surface (2:01 AM
+  clock, weather card, welcome chips, "Choose an option to continue" composer).
+- `sim-reverify-test-summary.json` — `"result": "Passed"`, 1 passed / 0 failed.
+
+Also corrected in this pass: the boot-trace coupling constants now match leg
+D1's REAL sink (single primary file + `.prev` rotation; no
+`eliza-boot-trace.renderer.jsonl` — the renderer appends into the same file via
+the `appendBootTrace` bridge), in `ios-device-lib.mjs` and the package docs.
