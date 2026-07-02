@@ -198,6 +198,15 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
   ],
 };
 
+// GUI-only plugin views that intentionally ship without a terminal (TUI)
+// override, keyed by `${manifestPath}:${id}`. The cockpit (#10419) is a
+// mobile-first, touch-first coding deck (mode picker + live task room) declared
+// with `modalities: ["gui"]`; it has no terminal rendering by design (the same
+// orchestrator surface is available as a TUI via the `/orchestrator` view).
+const GUI_ONLY_TUI_EXEMPTIONS = new Set<string>([
+  "plugins/plugin-task-coordinator/src/index.ts:cockpit",
+]);
+
 function readManifest(path: string): string {
   return readFileSync(resolve(repoRoot, path), "utf8");
 }
@@ -440,7 +449,10 @@ describe("plugin TUI view coverage", () => {
       }
 
       for (const id of guiIds) {
-        if (!tuiIds.has(id)) missing.push(`${manifestPath}:${id}`);
+        if (tuiIds.has(id)) continue;
+        const identity = `${manifestPath}:${id}`;
+        if (GUI_ONLY_TUI_EXEMPTIONS.has(identity)) continue;
+        missing.push(identity);
       }
     }
 
