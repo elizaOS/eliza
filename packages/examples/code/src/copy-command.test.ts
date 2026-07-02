@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { AgentRuntime } from "@elizaos/core";
 import { App } from "./App.js";
+import { osc52 } from "./lib/clipboard.js";
 import { useStore } from "./lib/store.js";
 
 function makeApp() {
@@ -23,7 +24,16 @@ function makeApp() {
         handleSlashCommand(c: string, a: string): Promise<boolean>;
       }
     ).handleSlashCommand(cmd, args);
-  return { run };
+  // Capture terminal output so tests can assert the OSC-52 sequence is
+  // actually emitted, not just that the chat message says it was.
+  const written: string[] = [];
+  const terminal = (
+    app as unknown as { terminal: { write(data: string): void } }
+  ).terminal;
+  terminal.write = (data: string) => {
+    written.push(data);
+  };
+  return { run, written };
 }
 
 function freshRoom() {
@@ -45,8 +55,8 @@ describe("/copy command (#11294)", () => {
     freshRoom();
   });
 
-  it("reports success when there is an assistant reply to copy", async () => {
-    const { run } = makeApp();
+  it("emits the OSC-52 clipboard sequence for the last assistant reply", async () => {
+    const { run, written } = makeApp();
     const roomId = useStore.getState().currentRoomId;
     useStore.getState().addMessage(roomId, "user", "hi");
     useStore.getState().addMessage(roomId, "assistant", "the answer is 42");
@@ -54,10 +64,13 @@ describe("/copy command (#11294)", () => {
     const handled = await run("copy", "");
     expect(handled).toBe(true);
     expect(systemMessages(roomId).some((m) => m.includes("Copied"))).toBe(true);
+    // The core effect: the exact OSC-52 escape for the reply reached the
+    // terminal (deleting the emission must red this test).
+    expect(written).toContain(osc52("the answer is 42"));
   });
 
   it("says there is nothing to copy when no assistant reply exists", async () => {
-    const { run } = makeApp();
+    const { run, written } = makeApp();
     const roomId = useStore.getState().currentRoomId;
     useStore.getState().addMessage(roomId, "user", "hi"); // user only
 
@@ -66,5 +79,6 @@ describe("/copy command (#11294)", () => {
     expect(
       systemMessages(roomId).some((m) => m.includes("Nothing to copy")),
     ).toBe(true);
+    expect(written.filter((d) => d.includes("\x1b]52;"))).toHaveLength(0);
   });
 });
