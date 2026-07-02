@@ -16,11 +16,23 @@ import {
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
 import {
+  appendIosBootTrace,
   isIosInProcessLocalAgentBase,
+  isIosNativeAgentBootInProgress,
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../api/ios-local-agent-transport";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
+import {
+  ANDROID_LOCAL_AGENT_SERVER_ID,
+  isMobileLocalAgentIpcBase,
+  MOBILE_LOCAL_AGENT_IPC_BASE,
+  MOBILE_LOCAL_AGENT_LABEL,
+  MOBILE_LOCAL_AGENT_SERVER_ID,
+  persistMobileRuntimeMode,
+  readPersistedMobileRuntimeMode,
+} from "../first-run/mobile-runtime-mode";
+import { readMobileRuntimeBuildTruth } from "../first-run/reconcile-mobile-runtime-mode";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isIOS } from "../platform";
@@ -66,6 +78,36 @@ function isCapacitorNative(): boolean {
  * `PlatformPolicy.nativeConsecutiveFailureBudgetMs`.
  */
 const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS = 90_000;
+
+/**
+ * Terminal 503 body from the Eliza Cloud dedicated-agent proxy
+ * (packages/cloud/api/src/dedicated-agent-proxy.ts) when the agent sandbox
+ * status is `error`: "Agent is in an error state. Resolve the failure before
+ * connecting." Unlike the `starting`/`resuming` 503s (which self-heal via the
+ * proxy's auto-resume), this one never clears without user action in the
+ * cloud console — polling it just dead-ends the phone on the timeout card.
+ * This was the REAL on-device #11030-follow-up failure: a stale persisted
+ * `cloud` runtime mode pinned every launch (icon tap, devicectl, XCUITest) to
+ * a dead dedicated agent, 503ing /api/auth/status until the 90s budget fired.
+ */
+const DEDICATED_CLOUD_AGENT_ERROR_STATE_FRAGMENT = "Agent is in an error state";
+
+/**
+ * True when the failure is the dedicated-agent proxy's terminal
+ * sandbox-error 503 for the currently pinned dedicated cloud agent base.
+ */
+export function isTerminalDedicatedCloudAgentErrorState(args: {
+  status: number | undefined;
+  message: string | null | undefined;
+  clientBaseUrl: string;
+}): boolean {
+  return (
+    args.status === 503 &&
+    typeof args.message === "string" &&
+    args.message.includes(DEDICATED_CLOUD_AGENT_ERROR_STATE_FRAGMENT) &&
+    isDedicatedCloudAgentBase(args.clientBaseUrl)
+  );
+}
 
 /**
  * Decide whether a connection-level startup failure against the persisted
@@ -372,6 +414,59 @@ export async function runPollingBackend(
     lastErr = null;
   };
 
+  // One-shot recovery to the bundled ON-DEVICE agent (issue: iOS icon-tap
+  // startup timeout). A stale persisted `cloud` runtime mode can pin a
+  // local-capable native build to a dedicated cloud agent that is DEAD
+  // (sandbox status `error`, deleted, or unreachable). The boot-time
+  // reconciler keeps that persisted choice because a cloud session/record
+  // exists — it cannot probe. This poll CAN: once the cloud base proves
+  // terminally dead, flip the runtime mode to `local`, repoint at the
+  // on-device agent, and keep polling. Never applied to `remote-mac` /
+  // `tunnel-to-mobile` (user-configured external endpoints), and only on
+  // builds that actually ship the on-device engine.
+  let recoveredToOnDeviceAgent = false;
+  const canRecoverToOnDeviceLocalAgent = (): boolean => {
+    if (recoveredToOnDeviceAgent) return false;
+    if (!isCapacitorNative()) return false;
+    const persistedMode = readPersistedMobileRuntimeMode();
+    if (persistedMode !== "cloud" && persistedMode !== "cloud-hybrid") {
+      return false;
+    }
+    if (isMobileLocalAgentIpcBase(client.getBaseUrl())) return false;
+    try {
+      return readMobileRuntimeBuildTruth(isAndroid ? "android" : "ios")
+        .hasLocalEngine;
+    } catch {
+      return false;
+    }
+  };
+  const recoverToOnDeviceLocalAgent = (why: string) => {
+    recoveredToOnDeviceAgent = true;
+    logger.warn(
+      { staleBase: client.getBaseUrl(), reason: why },
+      "[startup-phase-poll] persisted cloud agent is dead; falling back to the on-device local agent",
+    );
+    appendIosBootTrace("recover-to-on-device-agent", {
+      staleBase: client.getBaseUrl(),
+      reason: why,
+    });
+    persistMobileRuntimeMode("local");
+    savePersistedActiveServer({
+      id: isAndroid
+        ? ANDROID_LOCAL_AGENT_SERVER_ID
+        : MOBILE_LOCAL_AGENT_SERVER_ID,
+      kind: "remote",
+      label: MOBILE_LOCAL_AGENT_LABEL,
+      apiBase: MOBILE_LOCAL_AGENT_IPC_BASE,
+    });
+    client.setBaseUrl(MOBILE_LOCAL_AGENT_IPC_BASE);
+    client.setToken(null);
+    deadline = Date.now() + policy.backendTimeoutMs;
+    attempts = 0;
+    lastErr = null;
+    nativeFailureStreakStartedAt = null;
+  };
+
   // Terminal recovery for a deleted/unreachable DEDICATED cloud agent: clear the
   // dead saved server + per-agent base/token, then route to first-run agent
   // selection (the user is still signed into Eliza Cloud — the cloud auth token
@@ -382,6 +477,10 @@ export async function runPollingBackend(
       { staleBase: client.getBaseUrl(), reason: why },
       "[startup-phase-poll] abandoning the saved cloud agent; routing to agent selection",
     );
+    appendIosBootTrace("recover-to-agent-selection", {
+      staleBase: client.getBaseUrl(),
+      reason: why,
+    });
     clearPersistedActiveServer();
     client.setBaseUrl(null);
     client.setToken(null);
@@ -432,8 +531,23 @@ export async function runPollingBackend(
     return;
   }
 
+  // Boot-trace bookkeeping (no-ops off native iOS): entry marker, capped
+  // per-failure entries, and a first-success marker, so an unattended device
+  // launch records WHICH base the poll hit and HOW it failed.
+  let tracedPollFailures = 0;
+  let tracedFirstSuccess = false;
+  appendIosBootTrace("polling-backend-start", {
+    baseUrl: client.getBaseUrl(),
+    backendTimeoutMs: policy.backendTimeoutMs,
+    nativeFailureBudgetMs,
+  });
+
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
+      appendIosBootTrace("backend-deadline-exceeded", {
+        baseUrl: client.getBaseUrl(),
+        detail: formatStartupErrorDetail(lastErr) ?? null,
+      });
       deps.setStartupError(describeBackendFailure(lastErr, true));
       deps.setFirstRunLoading(false);
       dispatch({ type: "BACKEND_TIMEOUT" });
@@ -442,6 +556,13 @@ export async function runPollingBackend(
     try {
       const auth = await client.getAuthStatus();
       latestAuth = auth;
+      if (!tracedFirstSuccess) {
+        tracedFirstSuccess = true;
+        appendIosBootTrace("auth-status-ok", {
+          baseUrl: client.getBaseUrl(),
+          authRequired: auth.required,
+        });
+      }
       // A successful probe breaks the native consecutive-failure streak — the
       // transport works; any remaining slowness is the agent booting, which
       // the overall `deadline` already budgets for.
@@ -671,6 +792,19 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      tracedPollFailures += 1;
+      if (tracedPollFailures <= 5 || tracedPollFailures % 10 === 0) {
+        const failureMessage =
+          ae?.message ?? (err instanceof Error ? err.message : String(err));
+        appendIosBootTrace("poll-failure", {
+          n: tracedPollFailures,
+          baseUrl: client.getBaseUrl(),
+          status: ae?.status ?? null,
+          path: ae?.path ?? null,
+          message: failureMessage.slice(0, 300),
+          agentBootInProgress: isIosNativeAgentBootInProgress(),
+        });
+      }
       // Terminal native transport / agent-config failure (issue #11030): the
       // iOS local-agent IPC policy gate, a missing full-Bun engine, or the
       // native Agent plugin's missing-endpoint error. These depend only on
@@ -688,6 +822,11 @@ export async function runPollingBackend(
           { message: terminalMessage, path: ae?.path },
           "[startup-phase-poll] terminal native agent/transport error during backend poll; surfacing the startup error",
         );
+        appendIosBootTrace("agent-error-terminal", {
+          baseUrl: client.getBaseUrl(),
+          message: terminalMessage.slice(0, 300),
+          path: ae?.path ?? null,
+        });
         deps.setStartupError({
           reason: "agent-error",
           phase: "starting-backend",
@@ -696,6 +835,32 @@ export async function runPollingBackend(
         });
         deps.setFirstRunLoading(false);
         dispatch({ type: "AGENT_ERROR", message: terminalMessage });
+        return;
+      }
+      // The dedicated-agent proxy's TERMINAL sandbox-error 503 ("Agent is in
+      // an error state. Resolve the failure before connecting."). Retrying
+      // never clears it — the sandbox needs user action in the cloud console.
+      // On a local-capable native build with a stale persisted cloud mode,
+      // recover to the bundled on-device agent; otherwise clear the dead
+      // saved server and route to agent selection (mirrors the
+      // dedicatedCloudAgentIsGone handling) instead of burning the whole
+      // failure budget into the timeout card.
+      if (
+        isTerminalDedicatedCloudAgentErrorState({
+          status: ae?.status,
+          message: terminalMessage,
+          clientBaseUrl: client.getBaseUrl(),
+        })
+      ) {
+        if (canRecoverToOnDeviceLocalAgent()) {
+          recoverToOnDeviceLocalAgent(
+            "saved dedicated cloud agent is in a terminal error state",
+          );
+          continue;
+        }
+        recoverToAgentSelection(
+          "saved dedicated cloud agent is in a terminal error state",
+        );
         return;
       }
       if (ae?.status === 401 && !client.hasToken()) {
@@ -793,10 +958,18 @@ export async function runPollingBackend(
         if (isDedicatedCloudAgentBase(client.getBaseUrl())) {
           // A dedicated cloud agent (<id>.elizacloud.ai) 404s on the first-run
           // shell — but it can also have been DELETED or be unreachable. Verify
-          // the record against the control-plane: if it is gone, clear the dead
-          // saved server and route to agent selection instead of "Backend
-          // Unreachable"; if it still exists, treat the 404 as first-run-complete.
+          // the record against the control-plane: if it is gone, recover to the
+          // bundled on-device agent (local-capable native build with a stale
+          // persisted cloud mode) or clear the dead saved server and route to
+          // agent selection instead of "Backend Unreachable"; if it still
+          // exists, treat the 404 as first-run-complete.
           if (await dedicatedCloudAgentIsGone(client.getBaseUrl())) {
+            if (canRecoverToOnDeviceLocalAgent()) {
+              recoverToOnDeviceLocalAgent(
+                "saved dedicated cloud agent is deleted / unreachable",
+              );
+              continue;
+            }
             recoverToAgentSelection(
               "saved dedicated cloud agent is deleted / unreachable",
             );
@@ -841,25 +1014,51 @@ export async function runPollingBackend(
       }
       lastErr = err;
       if (isCapacitorNative()) {
-        nativeFailureStreakStartedAt ??= Date.now();
-        const failingForMs = Date.now() - nativeFailureStreakStartedAt;
-        if (failingForMs >= nativeFailureBudgetMs) {
-          const detail = formatStartupErrorDetail(err) ?? String(err);
-          logger.warn(
-            { failingForMs, detail },
-            "[startup-phase-poll] native backend poll exceeded the consecutive-failure budget; surfacing the startup error",
-          );
-          deps.setStartupError({
-            reason: "backend-timeout",
-            phase: "starting-backend",
-            message: `Startup could not reach the agent after ${Math.round(failingForMs / 1000)}s of consecutive failures. Last failure: ${detail}`,
-            detail,
-            status: ae?.status,
-            path: ae?.path,
-          });
-          deps.setFirstRunLoading(false);
-          dispatch({ type: "BACKEND_TIMEOUT" });
-          return;
+        if (isIosNativeAgentBootInProgress()) {
+          // PROGRESS-AWARE budget: the in-process native agent is provably
+          // booting (engine start pending within its own timeout) or alive
+          // (fresh structured-response heartbeat). Boot-time 503s/timeouts
+          // are agent progress, not transport failures — they must not burn
+          // the consecutive-failure budget. Only a terminal engine error or
+          // heartbeat silence lets the streak resume; the overall `deadline`
+          // still bounds the whole phase.
+          nativeFailureStreakStartedAt = null;
+        } else {
+          nativeFailureStreakStartedAt ??= Date.now();
+          const failingForMs = Date.now() - nativeFailureStreakStartedAt;
+          if (failingForMs >= nativeFailureBudgetMs) {
+            const detail = formatStartupErrorDetail(err) ?? String(err);
+            if (canRecoverToOnDeviceLocalAgent()) {
+              // The persisted cloud base dead-ended for the whole budget on a
+              // build that ships the on-device agent — recover to it instead
+              // of stranding the user on the timeout card.
+              recoverToOnDeviceLocalAgent(
+                `native poll dead-ended after ${Math.round(failingForMs / 1000)}s: ${detail}`,
+              );
+              continue;
+            }
+            logger.warn(
+              { failingForMs, detail },
+              "[startup-phase-poll] native backend poll exceeded the consecutive-failure budget; surfacing the startup error",
+            );
+            appendIosBootTrace("native-failure-budget-exceeded", {
+              failingForMs,
+              detail,
+              status: ae?.status ?? null,
+              path: ae?.path ?? null,
+            });
+            deps.setStartupError({
+              reason: "backend-timeout",
+              phase: "starting-backend",
+              message: `Startup could not reach the agent after ${Math.round(failingForMs / 1000)}s of consecutive failures. Last failure: ${detail}`,
+              detail,
+              status: ae?.status,
+              path: ae?.path,
+            });
+            deps.setFirstRunLoading(false);
+            dispatch({ type: "BACKEND_TIMEOUT" });
+            return;
+          }
         }
       }
       attempts++;

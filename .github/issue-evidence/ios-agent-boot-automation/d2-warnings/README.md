@@ -27,6 +27,7 @@ access in this leg (device runs are D1/phase B).
 | `boot-console-before.log` | Full 90 s sim boot console BEFORE the fixes (all warnings present) |
 | `boot-console-after.log` | Full 120 s sim boot console AFTER rebuild+reinstall (target warnings gone) |
 | `boot-console-after-reverify.log` | Independent second 120 s cold-launch capture of the same installed build (`renderer-build 1b42c91d2f46`), taken in a fresh session: 0 `enableBackgroundDelivery` failures, 1 skip info line, 0 blocker warnings, 0 `JS Eval error`, agent reaches `state:"running"`. The `NSMapGet` notice did not occur at all this run — consistent with nondeterministic Apple-internal sim noise (see row 4). |
+| `boot-console-after-reverify2.log` | Third independent 100 s cold-launch capture (fresh session, after the D2 commit `aa0f19da97f` landed; same installed build `1b42c91d2f46`): 0 `enableBackgroundDelivery` failures, 1 skip info line, 0 blocker warnings, 0 `JS Eval error`, 0 `NSMapGet`, agent `state:"running"`. Only remaining non-info lines: AgentWatchdog probe loop (leg D1 seam). |
 | `nsmapget-null-backtrace.txt` | lldb backtrace of the exact `NSMapGet(NULL)` call (breakpoint `NSMapGet` with condition `$x0 == 0`) |
 | `js-eval-error-first-eval-backtrace.txt` | lldb trace of the first `-[WKWebView evaluateJavaScript:]` at cold boot — the eval that threw "JS Eval error" |
 
