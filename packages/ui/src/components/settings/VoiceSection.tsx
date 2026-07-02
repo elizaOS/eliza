@@ -1,13 +1,13 @@
 /**
  * VoiceSection — top-level Settings → Voice tree. Mounts the device-tier
  * banner, continuous-chat mode, wake word, end-of-turn tuning, the models
- * slot, voice profiles, and privacy toggles.
+ * slot, and voice profiles.
  *
  * Per-modality local-vs-cloud routing is owned by the RoutingMatrix control
  * (per-slot policy rows), not by this section.
  */
 
-import { Database, Mic, Shield, Sliders, Timer } from "lucide-react";
+import { Database, Mic, Sliders, Timer } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
@@ -108,8 +108,6 @@ function VadSlider({
 
 export interface VoiceSectionPrefs {
   continuous: VoiceContinuousMode;
-  cloudFirstLineCache: boolean;
-  autoLearnVoices: boolean;
   /**
    * VAD / local-ASR end-of-turn tuning. Optional so older persisted prefs (and
    * the registry mount) stay valid; falls back to {@link DEFAULT_VAD_AUTO_STOP_PREFS}.
@@ -188,31 +186,6 @@ export function VoiceSection({
       status: wakeWordEnabled ? "active" : "inactive",
       onActivate: () => onWakeWordToggle?.(!wakeWordEnabled),
     });
-  const { ref: cloudCacheRef, agentProps: cloudCacheAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "voice-section-cloud-cache-toggle",
-      role: "toggle",
-      label: t("voicesection.cloudFirstLineCacheAria", {
-        defaultValue: "Cloud first-line cache opt-in",
-      }),
-      group: "voice-section",
-      status: prefs.cloudFirstLineCache ? "active" : "inactive",
-      onActivate: () =>
-        updatePrefs({ cloudFirstLineCache: !prefs.cloudFirstLineCache }),
-    });
-  const { ref: autoLearnRef, agentProps: autoLearnAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "voice-section-auto-learn-toggle",
-      role: "toggle",
-      label: t("voicesection.autoLearnVoices", {
-        defaultValue: "Auto-learn new voices",
-      }),
-      group: "voice-section",
-      status: prefs.autoLearnVoices ? "active" : "inactive",
-      onActivate: () =>
-        updatePrefs({ autoLearnVoices: !prefs.autoLearnVoices }),
-    });
-
   return (
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
@@ -357,57 +330,19 @@ export function VoiceSection({
           <VoiceProfileSection profilesClient={profilesClient} />
         </SettingsGroup>
 
-        <SettingsGroup
-          title={t("voicesection.privacy", { defaultValue: "Privacy" })}
-          data-testid="voice-section-privacy"
-        >
-          <SettingsRow
-            icon={Shield}
-            label={t("voicesection.cloudFirstLineCache", {
-              defaultValue: "Cloud first-line cache",
-            })}
-            control={
-              <input
-                ref={cloudCacheRef}
-                type="checkbox"
-                checked={prefs.cloudFirstLineCache}
-                onChange={(e) =>
-                  updatePrefs({ cloudFirstLineCache: e.target.checked })
-                }
-                data-testid="voice-section-cloud-cache-toggle"
-                className="h-5 w-5 rounded-sm border-border accent-accent"
-                aria-current={prefs.cloudFirstLineCache ? "true" : undefined}
-                aria-label={t("voicesection.cloudFirstLineCacheAria", {
-                  defaultValue: "Cloud first-line cache opt-in",
-                })}
-                {...cloudCacheAgentProps}
-              />
-            }
-          />
-          <SettingsRow
-            icon={Shield}
-            label={t("voicesection.autoLearnVoices", {
-              defaultValue: "Auto-learn new voices",
-            })}
-            control={
-              <input
-                ref={autoLearnRef}
-                type="checkbox"
-                checked={prefs.autoLearnVoices}
-                onChange={(e) =>
-                  updatePrefs({ autoLearnVoices: e.target.checked })
-                }
-                data-testid="voice-section-auto-learn-toggle"
-                className="h-5 w-5 rounded-sm border-border accent-accent"
-                aria-current={prefs.autoLearnVoices ? "true" : undefined}
-                aria-label={t("voicesection.autoLearnVoices", {
-                  defaultValue: "Auto-learn new voices",
-                })}
-                {...autoLearnAgentProps}
-              />
-            }
-          />
-        </SettingsGroup>
+        {/*
+          The former "Privacy" group ("Cloud first-line cache" and
+          "Auto-learn new voices" toggles) was removed: both persisted to
+          `messages.voice.{cloudFirstLineCache,autoLearnVoices}` but NOTHING
+          reads those keys, so they were dead privacy opt-ins. The first-line
+          cache implementation exists (`wrapWithFirstLineCache`, wired
+          unconditionally via
+          packages/app-core/src/runtime/tts-cache-wiring.ts →
+          tts-provider-registry.ts) but does not consult the setting; gate that
+          consumer on `messages.voice.cloudFirstLineCache` before re-adding the
+          toggle. `autoLearnVoices` has no consumer anywhere — build the
+          voice-profile auto-learn pipeline first.
+        */}
       </SettingsStack>
     </section>
   );

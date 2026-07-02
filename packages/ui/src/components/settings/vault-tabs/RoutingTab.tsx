@@ -15,6 +15,11 @@ import {
   useState,
 } from "react";
 import { useAgentElement } from "../../../agent-surface";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -224,11 +229,15 @@ export function RoutingTab(props: RoutingTabProps) {
       setSaving(true);
       setError(null);
       try {
-        const res = await fetch("/api/secrets/routing", {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ config: next }),
-        });
+        const res = await client.rawRequest(
+          "/api/secrets/routing",
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ config: next }),
+          },
+          { allowNonOk: true },
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as { config: RoutingConfig };
         onConfigChange(body.config);

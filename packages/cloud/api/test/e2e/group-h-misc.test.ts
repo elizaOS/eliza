@@ -30,6 +30,7 @@ import {
   bearerHeaders,
   cronHeaders,
   getBaseUrl,
+  isLocalTarget,
   isServerReachable,
   url,
 } from "./_helpers/api";
@@ -605,7 +606,9 @@ for (const {
     });
 
     test("happy path: with INTERNAL_SECRET Bearer, handler is live", async () => {
-      if (!reachableOnly()) return;
+      // internalHeaders() must match the target Worker's INTERNAL_SECRET —
+      // only guaranteed for a local dev Worker; skip against deployed targets.
+      if (!reachableOnly() || !isLocalTarget()) return;
       const res =
         method === "GET"
           ? await api.get(validPath ?? path, { headers: internalHeaders() })
@@ -617,7 +620,9 @@ for (const {
     });
 
     test("validation: bad input → 400", async () => {
-      if (!reachableOnly()) return;
+      // Reaches input validation only after the internal-bearer check passes,
+      // which needs the matching secret → local-target only.
+      if (!reachableOnly() || !isLocalTarget()) return;
       const res =
         method === "GET"
           ? await api.get(invalidPath ?? `${path}?pod=`, {

@@ -1,5 +1,10 @@
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../api/client";
 import {
   dispatchSecretsManagerOpen,
   useSecretsManagerModalState,
@@ -83,8 +88,12 @@ export function SecretsManagerSection() {
 
   const refreshSummary = useCallback(async () => {
     const [bRes, pRes] = await Promise.all([
-      fetch("/api/secrets/manager/backends"),
-      fetch("/api/secrets/manager/preferences"),
+      client.rawRequest("/api/secrets/manager/backends", undefined, {
+        allowNonOk: true,
+      }),
+      client.rawRequest("/api/secrets/manager/preferences", undefined, {
+        allowNonOk: true,
+      }),
     ]);
     if (!bRes.ok || !pRes.ok) return;
     const bJson = (await bRes.json()) as { backends: BackendStatus[] };
@@ -333,13 +342,27 @@ function VaultBody({
         agentsRes,
         appsRes,
       ] = await Promise.all([
-        fetch("/api/secrets/manager/backends"),
-        fetch("/api/secrets/manager/preferences"),
-        fetch("/api/secrets/manager/install/methods"),
-        fetch("/api/secrets/inventory"),
-        fetch("/api/secrets/routing"),
-        fetch("/api/agents").catch(() => null),
-        fetch("/api/apps").catch(() => null),
+        client.rawRequest("/api/secrets/manager/backends", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/manager/preferences", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/manager/install/methods", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/inventory", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/routing", undefined, {
+          allowNonOk: true,
+        }),
+        client
+          .rawRequest("/api/agents", undefined, { allowNonOk: true })
+          .catch(() => null),
+        client
+          .rawRequest("/api/apps", undefined, { allowNonOk: true })
+          .catch(() => null),
       ]);
       if (!backendsRes.ok)
         throw new Error(`backends: HTTP ${backendsRes.status}`);
@@ -401,8 +424,12 @@ function VaultBody({
   // full re-load but always gives sibling tabs the latest data.
   const refreshInventory = useCallback(async () => {
     const [entriesRes, routingRes] = await Promise.all([
-      fetch("/api/secrets/inventory"),
-      fetch("/api/secrets/routing"),
+      client.rawRequest("/api/secrets/inventory", undefined, {
+        allowNonOk: true,
+      }),
+      client.rawRequest("/api/secrets/routing", undefined, {
+        allowNonOk: true,
+      }),
     ]);
     if (entriesRes.ok) {
       const json = (await entriesRes.json()) as { entries: VaultEntryMeta[] };
@@ -426,11 +453,15 @@ function VaultBody({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/secrets/manager/preferences", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ preferences }),
-      });
+      const res = await client.rawRequest(
+        "/api/secrets/manager/preferences",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ preferences }),
+        },
+        { allowNonOk: true },
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as { preferences: ManagerPreferences };
       setPreferences(json.preferences);
@@ -444,11 +475,15 @@ function VaultBody({
 
   const onSignout = useCallback(
     async (backendId: InstallableBackendId) => {
-      const res = await fetch("/api/secrets/manager/signout", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ backendId }),
-      });
+      const res = await client.rawRequest(
+        "/api/secrets/manager/signout",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ backendId }),
+        },
+        { allowNonOk: true },
+      );
       if (!res.ok) {
         setError(`sign-out HTTP ${res.status}`);
         return;
