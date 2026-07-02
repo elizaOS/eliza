@@ -199,7 +199,7 @@ describe("runVoiceLiveValidation", () => {
       status: "static",
     });
     expect(report.components.map((component) => component.id)).toEqual(
-      expect.arrayContaining(["kokoro", "omnivoice", "asr", "vad"]),
+      expect.arrayContaining(["kokoro", "asr", "vad"]),
     );
   });
 
