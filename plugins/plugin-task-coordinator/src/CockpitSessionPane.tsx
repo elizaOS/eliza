@@ -387,7 +387,7 @@ export function CockpitSessionPane({
         {detail ? (
           <TaskInspector
             detail={detail}
-            className="flex"
+            className={isMobile ? "flex" : undefined}
             style={
               isMobile
                 ? inspectorOpen
