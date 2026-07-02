@@ -40,11 +40,13 @@ import type {
 import { ChannelType, logger as coreLogger, stringToUuid } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
-  type OrchestratorTaskType,
   detectTaskType,
+  type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
+import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
+import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   runDurableTask,
@@ -56,7 +58,12 @@ import {
   resolveSpawnWorkdir,
 } from "../services/task-agent-routing.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
-import type { AgentType, SpawnResult } from "../services/types.js";
+import {
+  type AgentType,
+  type SessionInfo,
+  type SpawnResult,
+  TERMINAL_SESSION_STATUSES,
+} from "../services/types.js";
 import type {
   AuthPromptCallback,
   CodingWorkspaceService,
@@ -145,6 +152,28 @@ type HistoryWindow =
   | "yesterday"
   | "last_7_days"
   | "last_30_days";
+
+const TASK_HISTORY_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set([
+  "open",
+  "active",
+  "waiting_on_user",
+  "blocked",
+  "validating",
+  "done",
+  "failed",
+  "archived",
+  "interrupted",
+]);
+
+const ACTIVE_TASK_HISTORY_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
+  new Set([
+    "open",
+    "active",
+    "waiting_on_user",
+    "blocked",
+    "validating",
+    "interrupted",
+  ]);
 
 function startOfDay(date: Date): Date {
   const start = new Date(date);
@@ -521,9 +550,8 @@ function taskWithResolvedRoute(
 
 // Specialized (non-default) task types detectTaskType only returns for
 // unambiguous build/deploy/view signals — a bare personal to-do never trips them.
-const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> = new Set(
-  ["view-create", "app-build", "deploy"],
-);
+const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> =
+  new Set(["view-create", "app-build", "deploy"]);
 
 function looksLikePersonalLifeOpsTask(text: string): boolean {
   if (
@@ -1634,39 +1662,17 @@ function inferMetric(text: string, value?: string): HistoryMetric {
     return normalized;
   }
   if (/\bhow many\b|\bcount\b/i.test(text)) return "count";
+  if (/\bdetail\b|\bdetails\b|\bmost recent\b|\blatest\b/i.test(text)) {
+    return "detail";
+  }
   if (/\bshow me\b|\bgive me\b|\blist\b|\bwhat are\b/i.test(text))
     return "list";
-  return "detail";
+  return "list";
 }
 
-function _inferStatuses(
-  text: string,
-  rawStatuses?: string[],
-): string[] | undefined {
-  if (rawStatuses && rawStatuses.length > 0) {
-    return rawStatuses;
-  }
-  const statuses = new Set<string>();
-  if (/\bactive\b|\bright now\b|\bworking on right now\b/i.test(text)) {
-    statuses.add("active");
-  }
-  if (/\bblocked\b/i.test(text)) {
-    statuses.add("blocked");
-  }
-  if (/\binterrupted\b|\bpaused\b/i.test(text)) {
-    statuses.add("interrupted");
-  }
-  if (/\bdone\b|\bcompleted\b|\bfinished\b/i.test(text)) {
-    statuses.add("done");
-  }
-  if (/\bfailed\b|\berror\b/i.test(text)) {
-    statuses.add("failed");
-  }
-  return statuses.size > 0 ? Array.from(statuses) : undefined;
-}
-
-function _inferWindow(text: string, raw?: string): HistoryWindow | undefined {
-  const normalized = raw?.trim().toLowerCase();
+function historyWindowValue(value: unknown): HistoryWindow | undefined {
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : undefined;
   if (
     normalized === "active" ||
     normalized === "today" ||
@@ -1676,37 +1682,61 @@ function _inferWindow(text: string, raw?: string): HistoryWindow | undefined {
   ) {
     return normalized;
   }
-  if (/\bright now\b|\bcurrently\b|\bactive\b/i.test(text)) return "active";
-  if (/\byesterday\b/i.test(text)) return "yesterday";
-  if (/\blast week\b|\blast 7 days\b|\bin the last week\b/i.test(text)) {
-    return "last_7_days";
-  }
-  if (/\blast month\b|\blast 30 days\b/i.test(text)) return "last_30_days";
-  if (/\btoday\b/i.test(text)) return "today";
   return undefined;
 }
 
-function _inferSearch(text: string, raw?: string): string | undefined {
-  if (raw?.trim()) return raw.trim();
-  const quoted =
-    text.match(/"([^"]{3,120})"/)?.[1] ?? text.match(/'([^']{3,120})'/)?.[1];
-  if (quoted) return quoted.trim();
-  const topical =
-    text.match(/\bworking on\s+(.+?)(?:[?.!,]|$)/i)?.[1] ??
-    text.match(
-      /\ball tasks where we were working on\s+(.+?)(?:[?.!,]|$)/i,
-    )?.[1];
-  return topical?.trim();
+function normalizeHistoryStatus(
+  value: string,
+): OrchestratorTaskStatus | undefined {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (normalized === "all") return undefined;
+  if (normalized === "complete" || normalized === "completed") return "done";
+  if (
+    normalized === "error" ||
+    normalized === "errored" ||
+    normalized === "failure"
+  ) {
+    return "failed";
+  }
+  if (normalized === "paused" || normalized === "interrupted") {
+    return "interrupted";
+  }
+  if (TASK_HISTORY_STATUSES.has(normalized as OrchestratorTaskStatus)) {
+    return normalized as OrchestratorTaskStatus;
+  }
+  return undefined;
 }
 
-function _buildWindowFilters(window: HistoryWindow | undefined): {
+function historyStatusesValue(value: unknown): OrchestratorTaskStatus[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  const statuses = new Set<OrchestratorTaskStatus>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const status = normalizeHistoryStatus(item);
+    if (status) statuses.add(status);
+  }
+  return Array.from(statuses);
+}
+
+function buildWindowFilters(window: HistoryWindow | undefined): {
   latestActivityAfter?: number;
   latestActivityBefore?: number;
+  statuses?: ReadonlySet<OrchestratorTaskStatus>;
   label?: string;
 } {
   const now = new Date();
   if (window === "active") {
-    return { label: "active tasks right now" };
+    return {
+      statuses: ACTIVE_TASK_HISTORY_STATUSES,
+      label: "active tasks right now",
+    };
   }
   if (window === "today") {
     const start = startOfDay(now);
@@ -1747,17 +1777,121 @@ function _buildWindowFilters(window: HistoryWindow | undefined): {
   return {};
 }
 
-function _renderThreadLine(entry: {
-  title: string;
-  status: string;
-  latestActivityAt?: number | null;
-  summary?: string;
-}): string {
+function renderThreadLine(entry: TaskThreadDto): string {
   const activity =
     typeof entry.latestActivityAt === "number"
-      ? new Date(entry.latestActivityAt).toLocaleString("en-US")
+      ? dateString(entry.latestActivityAt)
       : "unknown time";
-  return `- ${entry.title} [${entry.status}] (${activity})${entry.summary ? `: ${entry.summary}` : ""}`;
+  const session = entry.latestSessionLabel
+    ? ` via ${entry.latestSessionLabel}`
+    : entry.latestSessionId
+      ? ` via ${entry.latestSessionId}`
+      : "";
+  return `- ${entry.title} [${entry.status}] (${activity})${session}${entry.summary ? `: ${entry.summary}` : ""}`;
+}
+
+function taskMatchesHistoryFilters(
+  task: TaskThreadDto,
+  statuses: readonly OrchestratorTaskStatus[],
+  windowFilters: ReturnType<typeof buildWindowFilters>,
+  search: string | undefined,
+): boolean {
+  if (statuses.length > 0 && !statuses.includes(task.status)) return false;
+  if (windowFilters.statuses && !windowFilters.statuses.has(task.status)) {
+    return false;
+  }
+  if (search && !taskMatchesSearch(task, search)) return false;
+  const latest = task.latestActivityAt ?? Date.parse(task.updatedAt);
+  if (windowFilters.latestActivityAfter !== undefined) {
+    if (
+      !Number.isFinite(latest) ||
+      latest < windowFilters.latestActivityAfter
+    ) {
+      return false;
+    }
+  }
+  if (windowFilters.latestActivityBefore !== undefined) {
+    if (
+      !Number.isFinite(latest) ||
+      latest > windowFilters.latestActivityBefore
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function taskMatchesSearch(task: TaskThreadDto, search: string): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  const haystack = [
+    task.id,
+    task.title,
+    task.originalRequest,
+    task.summary,
+    task.latestSessionId,
+    task.latestSessionLabel,
+    task.latestWorkdir,
+    task.latestRepo,
+    task.kind,
+  ]
+    .filter((part): part is string => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(needle);
+}
+
+function sessionMatchesHistoryFilters(
+  session: SessionInfo,
+  statuses: readonly OrchestratorTaskStatus[],
+  windowFilters: ReturnType<typeof buildWindowFilters>,
+  search: string | undefined,
+): boolean {
+  if (
+    statuses.length > 0 &&
+    !statuses.some((status) => sessionMatchesTaskStatus(session.status, status))
+  ) {
+    return false;
+  }
+  if (
+    windowFilters.statuses &&
+    !Array.from(windowFilters.statuses).some((status) =>
+      sessionMatchesTaskStatus(session.status, status),
+    )
+  ) {
+    return false;
+  }
+  if (search) {
+    const haystack =
+      `${session.id} ${session.name ?? ""} ${session.metadata?.label ?? ""} ${session.agentType} ${session.workdir}`.toLowerCase();
+    if (!haystack.includes(search.toLowerCase())) return false;
+  }
+  const latest = session.lastActivityAt.getTime();
+  if (windowFilters.latestActivityAfter !== undefined) {
+    if (latest < windowFilters.latestActivityAfter) return false;
+  }
+  if (windowFilters.latestActivityBefore !== undefined) {
+    if (latest > windowFilters.latestActivityBefore) return false;
+  }
+  return true;
+}
+
+function sessionMatchesTaskStatus(
+  sessionStatus: string,
+  taskStatus: OrchestratorTaskStatus,
+): boolean {
+  const status = sessionStatus.toLowerCase();
+  if (taskStatus === "active" || taskStatus === "open") {
+    return !TERMINAL_SESSION_STATUSES.has(status);
+  }
+  if (taskStatus === "blocked") return status === "blocked";
+  if (taskStatus === "done") {
+    return status === "completed" || status === "stopped";
+  }
+  if (taskStatus === "failed")
+    return status === "error" || status === "errored";
+  if (taskStatus === "interrupted") return status === "cancelled";
+  return status === taskStatus;
 }
 
 function failureResult(
@@ -1804,6 +1938,86 @@ async function runHistory(
   );
   const limit =
     Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : 10;
+  const window = historyWindowValue(params.window ?? content.window);
+  const statuses = historyStatusesValue(params.statuses ?? content.statuses);
+  const search = textValue(params.search) ?? textValue(content.search);
+  const includeArchived =
+    pickBoolean(params, content, "includeArchived") ?? false;
+  const windowFilters = buildWindowFilters(window);
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  if (taskService && typeof taskService.listTasks === "function") {
+    try {
+      const allTasks = (
+        await taskService.listTasks({
+          includeArchived,
+          ...(search ? { search } : {}),
+        })
+      ).filter((task) =>
+        taskMatchesHistoryFilters(task, statuses, windowFilters, search),
+      );
+      const count = allTasks.length;
+      const tasks = allTasks.slice(0, limit);
+      const filterParts = [
+        windowFilters.label ? `window ${windowFilters.label}` : undefined,
+        statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
+        search ? `search "${search}"` : undefined,
+        includeArchived ? "including archived" : undefined,
+      ].filter((part): part is string => Boolean(part));
+      const filterSuffix =
+        filterParts.length > 0 ? ` matching ${filterParts.join("; ")}` : "";
+
+      let responseText = "";
+      if (metric === "count") {
+        responseText = `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`;
+      } else if (tasks.length === 0) {
+        responseText = `I did not find any orchestrator task threads${filterSuffix}.`;
+      } else if (metric === "detail") {
+        const task = tasks[0];
+        responseText = [
+          `The most recent orchestrator task is "${task.title}" [${task.status}].`,
+          `Task id: ${task.id}`,
+          `Latest session: ${task.latestSessionLabel ?? task.latestSessionId ?? "none"}`,
+          `Workspace: ${task.latestWorkdir ?? "none"}`,
+          `Latest activity: ${task.latestActivityAt ? dateString(task.latestActivityAt) : "unknown"}`,
+          task.summary ? `Summary: ${task.summary}` : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n");
+      } else {
+        responseText = [
+          `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`,
+          ...tasks.map(renderThreadLine),
+        ].join("\n");
+      }
+
+      if (callback) await callback({ text: responseText });
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          actionName: "TASKS:history",
+          count,
+          taskIds: tasks.map((task) => task.id),
+          filters: {
+            metric,
+            ...(window ? { window } : {}),
+            ...(statuses.length > 0 ? { statuses } : {}),
+            ...(search ? { search } : {}),
+            includeArchived,
+            limit,
+          },
+        },
+      };
+    } catch (error) {
+      const msg = failureMessage(error);
+      if (callback)
+        await callback({ text: `Failed to read task history: ${msg}` });
+      return failureResult("TASKS:history", "TASK_HISTORY_FAILED", msg);
+    }
+  }
+
   const service = getAcpService(runtime);
   if (!service) {
     const msg = "ACP service is not available.";
@@ -1812,7 +2026,11 @@ async function runHistory(
       reason: "acp_unavailable",
     });
   }
-  const sessions = (await listSessionsWithin(service, 2000)).slice(0, limit);
+  const sessions = (await listSessionsWithin(service, 2000))
+    .filter((session) =>
+      sessionMatchesHistoryFilters(session, statuses, windowFilters, search),
+    )
+    .slice(0, limit);
   const count = sessions.length;
 
   let responseText = "";
@@ -3352,21 +3570,31 @@ export const tasksAction: Action & {
     },
   ],
   validate: async (runtime, message) => {
+    const content = contentRecord(message);
     // Always allow when ACP service is available — action switch handles dispatch.
-    if (!getAcpService(runtime)) return false;
+    if (!getAcpService(runtime)) {
+      const taskService = runtime.getService?.(
+        OrchestratorTaskService.serviceType,
+      ) as OrchestratorTaskService | null | undefined;
+      return (
+        readOp(content) === "history" &&
+        typeof taskService?.listTasks === "function"
+      );
+    }
     // Sub-agent task_complete events are routed back through the runtime as
     // synthetic inbound messages. Most verified completions are handled by
     // the response evaluator, but incomplete completions still need the TASKS
     // surface so the parent can send a follow-up to the same session instead
     // of asking the user to paste command output.
-    const content = message.content as {
+    const messageContent = message.content as {
       metadata?: unknown;
       source?: unknown;
     };
-    if (content.source === "sub_agent") {
+    if (messageContent.source === "sub_agent") {
       const metadata =
-        content.metadata !== null && typeof content.metadata === "object"
-          ? (content.metadata as Record<string, unknown>)
+        messageContent.metadata !== null &&
+        typeof messageContent.metadata === "object"
+          ? (messageContent.metadata as Record<string, unknown>)
           : undefined;
       return (
         metadata?.subAgent === true &&
