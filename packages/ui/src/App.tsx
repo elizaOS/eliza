@@ -2232,12 +2232,20 @@ export function App() {
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +
-  // waveform over a transparent background, no app chrome or onboarding gate.
+  // waveform over a transparent background, no app chrome and no blocking
+  // StartupScreen gate. The desktop bottom bar boots straight into this branch
+  // (createMainWindow appends ?shellMode=chat-overlay), so a fresh install's
+  // FIRST surface is this overlay — the in-chat first-run conductor must mount
+  // here too (#9952/#10720): while firstRunComplete is false it seeds the
+  // onboarding greeting + choices into the SAME live transcript the overlay
+  // renders. The hook self-gates on firstRunComplete, so after onboarding (and
+  // on any plain web ?shellMode=chat-overlay load) it is a headless no-op.
   if (shellMode === "chat-overlay") {
     return (
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
           <ChatOverlayShell />
+          <FirstRunConductorMount />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
