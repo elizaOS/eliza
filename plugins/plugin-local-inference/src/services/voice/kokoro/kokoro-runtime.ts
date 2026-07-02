@@ -31,6 +31,16 @@ export interface KokoroRuntimeChunk {
  * bytes off `layout.voicesDir/<file>`.
  */
 export interface KokoroRuntimeInputs {
+	/**
+	 * Raw (pre-phonemization) phrase text. The in-process fused engine
+	 * (`KokoroFfiRuntime`) MUST synthesize from this: `eliza_inference_kokoro_synthesize`
+	 * phonemizes internally (espeak-ng when linked, ASCII grapheme fallback
+	 * otherwise). Feeding it the JS-side IPA string double-phonemizes — the
+	 * engine's per-byte ASCII fallback shreds multi-byte IPA codepoints and the
+	 * espeak path re-G2Ps IPA as if it were words; both produce speech-shaped
+	 * but lexically wrong audio (#10726).
+	 */
+	text: string;
 	phonemes: KokoroPhonemeSequence;
 	voice: KokoroVoicePack;
 	/**

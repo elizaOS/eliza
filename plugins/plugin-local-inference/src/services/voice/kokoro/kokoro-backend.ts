@@ -157,6 +157,7 @@ export class KokoroTtsBackend implements TtsBackend, StreamingTtsBackend {
 		const limit = this.streamingChunkSamples;
 		let cancelled = false;
 		const result = await this.runtime.synthesize({
+			text: args.phrase.text,
 			phonemes,
 			voice,
 			cancelSignal: args.cancelSignal,
