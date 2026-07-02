@@ -10,6 +10,10 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const LINEAR = "LINEAR";
 type R = AgentRuntime & {
@@ -20,6 +24,8 @@ type R = AgentRuntime & {
 };
 
 let restoreFetch: (() => void) | undefined;
+/** GraphQL queries the Linear API mock actually served. */
+let linearMockQueries: string[] = [];
 
 export default scenario({
   lane: "pr-deterministic",
@@ -39,6 +45,7 @@ export default scenario({
       name: "linear-mock-and-config",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
+        linearMockQueries = [];
         // Scoped fetch interceptor: redirect @linear/sdk's calls to a mock.
         const realFetch = globalThis.fetch;
         restoreFetch = () => {
@@ -62,6 +69,7 @@ export default scenario({
             try {
               query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
             } catch {}
+            linearMockQueries.push(query);
             const data: Record<string, unknown> = {};
             if (/issues/i.test(query)) {
               data.issues = {
@@ -203,6 +211,31 @@ export default scenario({
       actionName: LINEAR,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the search really queried the Linear GraphQL
+      // mock for issues and surfaced its empty result set (issues: [],
+      // count: 0) — not just "the handler returned success".
+      type: "custom",
+      name: "linear-search-effect",
+      predicate: (ctx) => {
+        const issuesQuery = linearMockQueries.find((query) =>
+          /issues/i.test(query),
+        );
+        if (!issuesQuery) {
+          return `Linear API mock never received an issues query; served ${linearMockQueries.length} query(ies)`;
+        }
+        const data = successfulActionData(ctx, LINEAR);
+        if (!data) {
+          return `no successful ${LINEAR} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (!Array.isArray(data.issues) || data.issues.length !== 0) {
+          return `mock workspace has no issues, so result.data.issues must be an empty array; saw ${JSON.stringify(data.issues ?? null).slice(0, 200)}`;
+        }
+        if (data.count !== 0) {
+          return `expected result.data.count 0 for the empty mock workspace, saw ${String(data.count ?? "(missing)")}`;
+        }
+      },
     },
   ],
 });

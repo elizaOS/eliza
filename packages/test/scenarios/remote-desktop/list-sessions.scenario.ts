@@ -14,6 +14,10 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const REMOTE_DESKTOP = "REMOTE_DESKTOP";
 type R = AgentRuntime & {
@@ -142,6 +146,28 @@ export default scenario({
       actionName: REMOTE_DESKTOP,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the `list` subaction really read the
+      // RemoteSessionService store — a fresh runtime must yield an empty
+      // sessions array in the result payload, not just handler success.
+      type: "custom",
+      name: "remote-desktop-list-effect",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, REMOTE_DESKTOP);
+        if (!data) {
+          return `no successful ${REMOTE_DESKTOP} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.subaction !== "list") {
+          return `expected result.data.subaction "list", saw ${String(data.subaction ?? "(missing)")}`;
+        }
+        if (!Array.isArray(data.sessions)) {
+          return `expected result.data.sessions array from the session store, saw ${JSON.stringify(data.sessions ?? null)}`;
+        }
+        if (data.sessions.length !== 0) {
+          return `fresh RemoteSessionService store must be empty; saw ${data.sessions.length} session(s)`;
+        }
+      },
     },
   ],
 });

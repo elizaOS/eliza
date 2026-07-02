@@ -23,6 +23,10 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { LocalTunnelService } from "@elizaos/plugin-tunnel";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const TUNNEL = "TUNNEL";
 
@@ -177,6 +181,28 @@ export default scenario({
       actionName: TUNNEL,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the status sub-op really read the live
+      // LocalTunnelService's fresh state — an inactive tunnel with a named
+      // provider — not just "the handler returned success".
+      type: "custom",
+      name: "tunnel-status-effect",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, TUNNEL);
+        if (!data) {
+          return `no successful TUNNEL result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.action !== "tunnel_status") {
+          return `expected result.data.action "tunnel_status", saw ${String(data.action ?? "(missing)")}`;
+        }
+        if (data.active !== false) {
+          return `fresh LocalTunnelService must report an inactive tunnel (active=false); saw active=${String(data.active)}`;
+        }
+        if (typeof data.provider !== "string" || data.provider.length === 0) {
+          return `expected the service's provider name in result.data.provider; saw ${JSON.stringify(data.provider ?? null)}`;
+        }
+      },
     },
   ],
 });
