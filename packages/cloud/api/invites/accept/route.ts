@@ -54,7 +54,8 @@ app.post("/", async (c) => {
       error instanceof Error ? error.message : "Failed to accept invitation";
     const status =
       errorMessage.includes("sign in with") ||
-      errorMessage.includes("already a member")
+      errorMessage.includes("already a member") ||
+      errorMessage.includes("cannot join another organization")
         ? 409
         : errorMessage.includes("Invalid invite") ||
             errorMessage.includes("expired")
