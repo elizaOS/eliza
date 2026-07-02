@@ -77,6 +77,7 @@ import {
   type SharedAgentCharacter,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
+import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -564,6 +565,8 @@ export class ElizaSandboxService {
       | "web_ui_port"
       | "headscale_ip"
       | "sandbox_id"
+      | "organization_id"
+      | "user_id"
     >,
   ): Promise<string> {
     const createEndpoint = await this.getAgentApiEndpoint(rec, "/api/agents");
@@ -573,11 +576,22 @@ export class ElizaSandboxService {
     const bootstrapEnv = await decryptAgentEnvVars(
       (rec.environment_vars as Record<string, string> | null) ?? {},
     );
+    // Team credential pool (#11332): providers the agent has NO key for are
+    // filled from the org's pooled credentials. Merged only into this
+    // in-memory bootstrap payload (→ settings.secrets via
+    // buildRuntimeBootstrapAgent) — never persisted to environment_vars.
+    // Strict fallback: on any pool failure the env passes through unchanged.
+    const pooledEnv = await applyPooledCredentialsToBootstrapEnv({
+      organizationId: rec.organization_id,
+      userId: rec.user_id,
+      sessionKey: rec.id,
+      env: bootstrapEnv,
+    });
     const createRes = await fetch(createEndpoint, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
       body: JSON.stringify({
-        agent: this.buildRuntimeBootstrapAgent({ ...rec, environment_vars: bootstrapEnv }),
+        agent: this.buildRuntimeBootstrapAgent({ ...rec, environment_vars: pooledEnv }),
       }),
       signal: AbortSignal.timeout(60_000),
     });
@@ -609,6 +623,8 @@ export class ElizaSandboxService {
       | "web_ui_port"
       | "headscale_ip"
       | "sandbox_id"
+      | "organization_id"
+      | "user_id"
     >,
   ): Promise<RuntimeAgentSummary | null> {
     const initial = await this.listRuntimeAgents(rec);

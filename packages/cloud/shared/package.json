@@ -48,6 +48,7 @@
     "@electric-sql/pglite": "^0.4.5",
     "@electric-sql/pglite-socket": "0.1.6",
     "@elevenlabs/elevenlabs-js": "^2.45.0",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-cloud-apps": "workspace:*",
