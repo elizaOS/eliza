@@ -13,23 +13,23 @@
 
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
 import type { ScheduledTask } from "@elizaos/plugin-scheduling";
+import { afterEach, describe, expect, it } from "vitest";
+import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
+import { processDueScheduledTasks } from "../../../../plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../plugins/plugin-personal-assistant/test/helpers/runtime.ts";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import { processDueScheduledTasks } from "../../../../plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts";
 import budgets from "../budgets.json";
 import { TIMELINESS_WINDOWS } from "./corpus.ts";
 import {
   type ActualFire,
   scoreTimeliness,
-  tickGrid,
   type TimelinessCase,
   type TimelinessScore,
   type TimelinessWindow,
+  tickGrid,
 } from "./oracle.ts";
 
 /** Fires-per-tick budget. Far above the corpus so default-pack rows the PA
@@ -215,9 +215,10 @@ describe("lifeops-quality: reminder timeliness gate (#10723)", () => {
         score.meanDeviationMs,
         `${label} mean deviation`,
       ).toBeLessThanOrEqual(floors.meanDeviationMs);
-      expect(score.totalExpectedFires, `${label} oracle sanity`).toBeGreaterThan(
-        0,
-      );
+      expect(
+        score.totalExpectedFires,
+        `${label} oracle sanity`,
+      ).toBeGreaterThan(0);
     }
   });
 });

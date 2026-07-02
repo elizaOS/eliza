@@ -62,6 +62,14 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
   if (input.gateType === "until_todo" && !input.gateTodoId) {
     throw new Error("[BlockRuleWriter] until_todo gate requires gateTodoId");
   }
+  // A harsh rule refuses every manual bypass (confirmed release, chat unblock,
+  // HTTP DELETE) and the reconciler only releases it via its gate todo. Without
+  // a gateTodoId it would be a permanent lock with no exit path at all.
+  if (input.gateType === "harsh_no_bypass" && !input.gateTodoId) {
+    throw new Error(
+      "[BlockRuleWriter] harsh_no_bypass gate requires gateTodoId",
+    );
+  }
   if (input.gateType === "until_iso" && input.gateUntilMs === undefined) {
     throw new Error("[BlockRuleWriter] until_iso gate requires gateUntilMs");
   }

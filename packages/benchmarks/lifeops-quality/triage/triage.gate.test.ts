@@ -21,13 +21,13 @@
 
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   classifyMessages,
   InboxTriageClassificationError,
-} from "../../../plugins/plugin-inbox/src/inbox/triage-classifier.ts";
-import type { InboundMessage } from "../../../plugins/plugin-inbox/src/inbox/types.ts";
+} from "../../../../plugins/plugin-inbox/src/inbox/triage-classifier.ts";
+import type { InboundMessage } from "../../../../plugins/plugin-inbox/src/inbox/types.ts";
 import baseline from "../baseline.json";
 import budgets from "../budgets.json";
 import {
@@ -125,7 +125,9 @@ function createFixtureModelRuntime(): {
   for (const item of TRIAGE_CORPUS) {
     const fixture = TRIAGE_FIXTURES[item.id];
     if (!fixture) {
-      throw new Error(`[lifeops-quality] no fixture for corpus item ${item.id}`);
+      throw new Error(
+        `[lifeops-quality] no fixture for corpus item ${item.id}`,
+      );
     }
     byPromptText.set(promptScalar(item.text), fixture);
   }
@@ -278,7 +280,9 @@ describe("lifeops-quality: inbox triage precision/recall gate (#10723)", () => {
     for (const label of TRIAGE_CLASSES) {
       const measured = score.perClass[label];
       const recorded =
-        baseline.triage.perClass[label as keyof typeof baseline.triage.perClass];
+        baseline.triage.perClass[
+          label as keyof typeof baseline.triage.perClass
+        ];
       expect(measured?.precision, `${label} baseline precision`).toBeCloseTo(
         recorded.precision,
         10,

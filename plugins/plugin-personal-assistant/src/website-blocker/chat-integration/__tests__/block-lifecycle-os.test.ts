@@ -14,7 +14,10 @@
 
 import path from "node:path";
 import type { UUID } from "@elizaos/core";
-import { setSelfControlPluginConfig } from "@elizaos/plugin-blocker/services/website-blocker/index";
+import {
+  setSelfControlPluginConfig,
+  startSelfControlBlock,
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WebsiteBlockerRouteContext } from "../../../routes/website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "../../../routes/website-blocker-routes.js";
@@ -207,6 +210,39 @@ describe("website-blocker OS lifecycle (real hosts file)", () => {
     expect(result.osSync).toMatchObject({ ok: true, changed: true });
     expect((await reader.getBlockRuleById(id))?.active).toBe(true);
     expectHostsBlocked(harness);
+  });
+
+  it("a manually started OS block is never torn down by the rule lifecycle", async () => {
+    // The user starts their own block outside the rule system (no managedBy).
+    const manual = await startSelfControlBlock({
+      websites: ["reddit.com"],
+      durationMinutes: null,
+      scheduledByAgentId: null,
+    });
+    expect(manual.success).toBe(true);
+    expect(harness.readHosts()).toContain("0.0.0.0 reddit.com");
+
+    // Rules cannot engage while the foreign block runs — reported honestly,
+    // and the user's block is left exactly as it was.
+    const writer = new BlockRuleWriter(harness.runtime);
+    const id = await writer.createBlockRule({
+      profile: "focus",
+      websites: ["x.com"],
+      gateType: "until_todo",
+      gateTodoId: "todo-os-6",
+    });
+    let result = await reconcileBlockRulesOnce(harness.runtime);
+    expect(result.osSync.ok).toBe(false);
+    expect(result.osSync.error).toMatch(/not managed by block rules/);
+    expect(harness.readHosts()).toContain("0.0.0.0 reddit.com");
+    expect(harness.readHosts()).not.toContain("0.0.0.0 x.com");
+
+    // Releasing the last rule syncs to "no rules" — the foreign block must
+    // survive that too (the sync only stops rule-managed blocks).
+    await writer.releaseBlockRule(id, { confirmed: true });
+    result = await reconcileBlockRulesOnce(harness.runtime);
+    expect(result.osSync).toMatchObject({ ok: true, changed: false });
+    expect(harness.readHosts()).toContain("0.0.0.0 reddit.com");
   });
 
   it("activation failure is surfaced by the reconciler and retried until it succeeds", async () => {

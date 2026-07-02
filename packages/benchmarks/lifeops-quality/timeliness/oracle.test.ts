@@ -6,9 +6,9 @@ import {
   MINUTE_MS,
   scoreCase,
   scoreTimeliness,
-  tickGrid,
   type TimelinessCase,
   type TimelinessWindow,
+  tickGrid,
 } from "./oracle.ts";
 
 const WINDOW: TimelinessWindow = {
@@ -39,9 +39,7 @@ describe("tickGrid / firstTickAtOrAfter", () => {
     expect(firstTickAtOrAfter(ticks, T0 + 5 * MINUTE_MS)).toBe(
       T0 + 5 * MINUTE_MS,
     );
-    expect(
-      firstTickAtOrAfter(ticks, Date.parse(WINDOW.endIso) + 1),
-    ).toBeNull();
+    expect(firstTickAtOrAfter(ticks, Date.parse(WINDOW.endIso) + 1)).toBeNull();
   });
 });
 

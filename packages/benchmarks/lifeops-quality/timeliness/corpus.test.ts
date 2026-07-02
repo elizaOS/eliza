@@ -158,9 +158,7 @@ describe("timeliness corpus invariants", () => {
     for (const window of TIMELINESS_WINDOWS) {
       for (const task of window.tasks) {
         if (task.trigger.kind !== "once") continue;
-        expect(task.expectedOccurrences, task.id).toEqual([
-          task.trigger.atIso,
-        ]);
+        expect(task.expectedOccurrences, task.id).toEqual([task.trigger.atIso]);
       }
     }
   });
@@ -169,9 +167,7 @@ describe("timeliness corpus invariants", () => {
 describe("committed baseline + budgets consistency (timeliness)", () => {
   it("the recorded baseline satisfies every committed budget", () => {
     const floors = budgets.timeliness;
-    for (const [name, window] of Object.entries(
-      baseline.timeliness.windows,
-    )) {
+    for (const [name, window] of Object.entries(baseline.timeliness.windows)) {
       expect(window.missedFireCount, `${name} missed`).toBe(
         floors.missedFireCount,
       );

@@ -17,7 +17,7 @@
  * (fixtures.ts) were authored against it.
  */
 
-import type { TriageClassification } from "../../../plugins/plugin-inbox/src/inbox/types.ts";
+import type { TriageClassification } from "../../../../plugins/plugin-inbox/src/inbox/types.ts";
 
 export const TRIAGE_CLASSES: readonly TriageClassification[] = [
   "ignore",
@@ -86,7 +86,7 @@ export const TRIAGE_CORPUS: readonly TriageCorpusItem[] = [
     senderName: "MEE6",
     channelName: "#general",
     channelType: "group",
-    text: "GG @riley you just advanced to level 12!",
+    text: "GG @riley, you just advanced to level 12! Keep chatting to reach level 13.",
     gold: "ignore",
   },
   {

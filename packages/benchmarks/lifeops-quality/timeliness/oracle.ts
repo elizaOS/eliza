@@ -250,10 +250,7 @@ export function scoreTimeliness(
     totalExpectedFires: cases.reduce((acc, c) => acc + c.expectedFires, 0),
     totalActualFires: cases.reduce((acc, c) => acc + c.actualFires, 0),
     missedFireCount: cases.reduce((acc, c) => acc + c.missedFireCount, 0),
-    duplicateFireCount: cases.reduce(
-      (acc, c) => acc + c.duplicateFireCount,
-      0,
-    ),
+    duplicateFireCount: cases.reduce((acc, c) => acc + c.duplicateFireCount, 0),
     earlyFireCount: cases.reduce((acc, c) => acc + c.earlyFireCount, 0),
     occurrenceMismatchCount: cases.reduce(
       (acc, c) => acc + c.occurrenceMismatchCount,

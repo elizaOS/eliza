@@ -115,7 +115,9 @@ describe("committed baseline + budgets consistency", () => {
     for (const label of TRIAGE_CLASSES) {
       const measured = recomputed.perClass[label];
       const recorded =
-        baseline.triage.perClass[label as keyof typeof baseline.triage.perClass];
+        baseline.triage.perClass[
+          label as keyof typeof baseline.triage.perClass
+        ];
       expect(measured?.precision, `${label} precision`).toBe(
         recorded.precision,
       );
@@ -132,16 +134,18 @@ describe("committed baseline + budgets consistency", () => {
 
   it("the recorded baseline satisfies every committed budget floor", () => {
     const floors = budgets.triage;
-    expect(baseline.triage.accuracy).toBeGreaterThanOrEqual(
-      floors.minAccuracy,
-    );
+    expect(baseline.triage.accuracy).toBeGreaterThanOrEqual(floors.minAccuracy);
     expect(baseline.triage.macroF1).toBeGreaterThanOrEqual(floors.minMacroF1);
     for (const label of TRIAGE_CLASSES) {
       const recorded =
-        baseline.triage.perClass[label as keyof typeof baseline.triage.perClass];
+        baseline.triage.perClass[
+          label as keyof typeof baseline.triage.perClass
+        ];
       const floor = floors.perClass[label as keyof typeof floors.perClass];
-      expect(recorded.precision, `${label} precision floor`)
-        .toBeGreaterThanOrEqual(floor.minPrecision);
+      expect(
+        recorded.precision,
+        `${label} precision floor`,
+      ).toBeGreaterThanOrEqual(floor.minPrecision);
       expect(recorded.recall, `${label} recall floor`).toBeGreaterThanOrEqual(
         floor.minRecall,
       );
@@ -168,8 +172,7 @@ describe("committed baseline + budgets consistency", () => {
         `${label} precision floor would not trip on one extra false positive`,
       ).toBeLessThan(floor.minPrecision);
     }
-    const accuracyAfterOneMore =
-      (recomputed.correct - 1) / recomputed.total;
+    const accuracyAfterOneMore = (recomputed.correct - 1) / recomputed.total;
     expect(accuracyAfterOneMore).toBeLessThan(floors.minAccuracy);
   });
 });
