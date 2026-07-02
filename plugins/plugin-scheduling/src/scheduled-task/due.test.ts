@@ -160,3 +160,59 @@ describe("ScheduledTask due evaluation", () => {
     expect(pendingPromptRoomIdForTask(fired)).toBe("room-1");
   });
 });
+
+describe("owner_local cron tz resolution", () => {
+  // 2026-05-10 is inside US daylight time: America/Denver = UTC-6.
+  const trigger = {
+    kind: "cron",
+    expression: "0 9 * * *",
+    tz: "owner_local",
+  } as const;
+
+  it("is NOT due at 09:05 UTC when the owner is in America/Denver (03:05 local)", async () => {
+    const decision = await isScheduledTaskDue(
+      task({
+        trigger,
+        metadata: { createdAtIso: "2026-05-10T08:00:00.000Z" },
+      }),
+      {
+        now: new Date("2026-05-10T09:05:00.000Z"),
+        ownerFacts: { timezone: "America/Denver" },
+      },
+    );
+    expect(decision).toMatchObject({ due: false, reason: "cron_pending" });
+  });
+
+  it("is due at the Denver hour (15:00 UTC) — not the UTC hour", async () => {
+    const decision = await isScheduledTaskDue(
+      task({
+        trigger,
+        metadata: { createdAtIso: "2026-05-10T14:00:00.000Z" },
+      }),
+      {
+        now: new Date("2026-05-10T15:05:00.000Z"),
+        ownerFacts: { timezone: "America/Denver" },
+      },
+    );
+    expect(decision).toMatchObject({
+      due: true,
+      reason: "cron_due",
+      occurrenceAtIso: "2026-05-10T15:00:00.000Z",
+    });
+  });
+
+  it("resolves owner_local to UTC when the owner has no timezone on file", async () => {
+    const decision = await isScheduledTaskDue(
+      task({
+        trigger,
+        metadata: { createdAtIso: "2026-05-10T08:00:00.000Z" },
+      }),
+      { now: new Date("2026-05-10T09:05:00.000Z"), ownerFacts: {} },
+    );
+    expect(decision).toMatchObject({
+      due: true,
+      reason: "cron_due",
+      occurrenceAtIso: "2026-05-10T09:00:00.000Z",
+    });
+  });
+});
