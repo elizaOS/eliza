@@ -3059,13 +3059,65 @@ direct/private rules:
 Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
 `;
 
+/**
+ * Answer-free refusal stubs, matched against the WHOLE normalized reply after
+ * an optional leading apology ("I'm sorry, but …") is stripped. A refusal that
+ * continues into content ("I'm not sure, but my best guess is …") never
+ * matches, and a bare social apology ("Sorry.") is a legitimate reply, not a
+ * refusal.
+ */
+const STAGE1_BARE_REFUSAL_STUBS: ReadonlySet<string> = new Set([
+	"i am not sure",
+	"i'm not sure",
+	"i am not sure how to answer that",
+	"i'm not sure how to answer that",
+	"i don't know",
+	"i do not know",
+	"i can't help with that",
+	"i cannot help with that",
+	"i can't answer that",
+	"i cannot answer that",
+	"i am unable to help with that",
+	"i am unable to answer that",
+]);
+
+function isBareRefusalStage1Reply(trimmed: string): boolean {
+	const normalized = trimmed
+		.toLowerCase()
+		.replace(/[’‘]/gu, "'")
+		.replace(/\s+/gu, " ")
+		.replace(/[.!?]+$/u, "")
+		.trim();
+	const withoutApology = normalized.replace(
+		/^(?:i am sorry|i'm sorry|sorry|my apologies|i apologize)[,.!]?\s*(?:but\s+)?/u,
+		"",
+	);
+	return STAGE1_BARE_REFUSAL_STUBS.has(withoutApology);
+}
+
+/**
+ * Detect a Stage-1 `replyText` that is unusable as the user-facing answer:
+ * empty output, a bare refusal stub, or strict-JSON scaffold leakage (stray
+ * envelope punctuation, a leaked enum token, a degenerate repeated-character
+ * run). Every check is anchored to the WHOLE reply — a reply that merely
+ * contains a suspicious span is real content. The previous unanchored
+ * repeated-character check flagged any 5+ run anywhere in the reply, which
+ * classified valid bare code bodies (nested 8-space indentation),
+ * pretty-printed JSON, and "=====" separator lines as unusable and silently
+ * replaced them with a deferral (#11504).
+ */
 function isUnusableStage1Reply(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
-	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
+	if (isBareRefusalStage1Reply(trimmed)) return true;
 	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
-	if (/(.)\1{4,}/u.test(trimmed)) return true;
+	// Degenerate generation only: every whitespace-separated token is a single
+	// character repeated 5+ times ("aaaaa", "!!!!! !!!!!"). Checked per token —
+	// an alternation regex over the whole reply backtracks catastrophically.
+	if (trimmed.split(/\s+/u).every((token) => /^(\S)\1{4,}$/u.test(token))) {
+		return true;
+	}
 	if (/^[A-Z]{2,8}$/.test(trimmed)) {
 		const allowed = new Set(["OK", "YES", "NO", "STOP"]);
 		return !allowed.has(trimmed);
