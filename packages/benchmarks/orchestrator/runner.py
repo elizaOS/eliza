@@ -220,6 +220,20 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
     merged_extra = dict(adapter.default_extra_config)
     merged_extra.update(per_benchmark_extra)
     merged_extra.update(request_extra)
+    # `--extra '{"sample": N}'` is the common ask for "run N samples", but the
+    # standard-suite CLIs only read `limit`, so an integer `sample` used to be
+    # silently ignored and the bounded-smoke default (limit=2) ran instead.
+    # Treat an explicit integer sample as the caller's limit unless they also
+    # passed limit. Boolean `sample: true` keeps its flag meaning elsewhere.
+    explicit_sample = request_extra.get("sample", per_benchmark_extra.get("sample"))
+    if (
+        isinstance(explicit_sample, int)
+        and not isinstance(explicit_sample, bool)
+        and explicit_sample > 0
+        and "limit" not in request_extra
+        and "limit" not in per_benchmark_extra
+    ):
+        merged_extra["limit"] = explicit_sample
     explicit_agent = "agent" in per_benchmark_extra or "agent" in request_extra
     agent_label = request.agent.strip()
     if agent_label and not explicit_agent and agent_label != "compare":

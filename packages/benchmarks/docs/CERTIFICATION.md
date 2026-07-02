@@ -2,6 +2,17 @@
 
 Harnesses: **eliza**, **hermes**, **openclaw**, **smithers**.
 
+> **2026-07-02 default-model update.** The default Cerebras eval model is now
+> **`gemma-4-31b`** (131k context, reasoning opt-in), replacing `gpt-oss-120b`.
+> A fresh reviewed **eliza-harness** re-baseline on `gemma-4-31b` (10 core
+> benchmarks) is recorded in the section
+> **"2026-07-02 — gemma-4-31b eliza-harness re-baseline"** at the bottom of this
+> file. The 4-harness certification below stays as the last complete
+> `gpt-oss-120b` cert — its cells are **not** overwritten, because the
+> gemma re-baseline does not yet carry the hermes/openclaw/smithers rows the
+> 4-harness comparability contract requires (infra-gated successor scope,
+> #10199 / #10193).
+
 ## What was done
 
 | Goal item | Status |
@@ -141,4 +152,54 @@ CEREBRAS_API_KEY=... BENCHMARK_HARNESS=<harness> \
 BENCHMARK_MODEL_PROVIDER=cerebras BENCHMARK_MODEL_NAME=gpt-oss-120b \
 PYTHONPATH=smithers-adapter:hermes-adapter:openclaw-adapter:eliza-adapter \
 .venv-standard/bin/python -m benchmarks.bfcl run --provider eliza --model gpt-oss-120b --categories simple --sample 8
+```
+
+---
+
+## 2026-07-02 — gemma-4-31b eliza-harness re-baseline
+
+Fresh reviewed run of the confirmed bridge-wired eliza-harness core on the new
+default eval model **`gemma-4-31b`** (Cerebras). All rows are real graded
+`benchmark_results/latest/` runs, hand-reviewed; evidence +
+`review-package/` (scorecard.md + manifest.json) live under
+`.github/issue-evidence/10199-gemma-4-31b-cutover/`.
+
+| benchmark | eliza (gemma-4-31b) | samples |
+| --- | --- | --- |
+| mmlu | 0.70 | 40 (also hermes 0.75, openclaw 0.75) |
+| gsm8k | 0.975 | 40 |
+| humaneval | 0.75 | 20 |
+| mt_bench | 0.90 | 8 |
+| bfcl | 0.86 | multiple+parallel |
+| action-calling | 1.00 | 20 |
+| agentbench | 0.00 | 5 (real run; hard agentic tasks) |
+| tau_bench | 0.00 | 5 (real run; hard agentic tasks) |
+| mint | 1.00 | 5 |
+| context_bench | 0.75 | 1k/8k |
+
+**Harness pass/gated counts (eliza, this run):** 10 benchmarks ran and were
+reviewed; 8 non-zero, 2 genuine 0.0 on hard agentic tasks (agentbench,
+tau_bench — real completed runs, not failures). The formal `review-package`
+gate is `blocked` on 4-harness comparability (hermes/openclaw rows required for
+every benchmark) — deferred to the successor issue for standing up the external
+agent stacks.
+
+Two harness/runtime bugs were found and fixed during this pass:
+- **standard-suite 0.0 regression** (model-independent): terminal-only FINISH
+  coerced to CONTINUE tripped the trajectory limit; standard-suite prompt
+  composition + tool-force veto + `sample→limit` + smoke `max_tokens` 2048.
+  mmlu 0.0 → 0.75, gsm8k 0.0 → 1.0.
+- **media-reply sanitizer** flattened multiline replies (code/lists) on
+  non-media turns → humaneval 0.35 → 0.75.
+
+Reproduce:
+
+```bash
+cd packages/benchmarks
+CEREBRAS_API_KEY=... PYTHONPATH=packages python3 -m benchmarks.orchestrator run \
+  --benchmarks mmlu gsm8k humaneval mt_bench bfcl action-calling agentbench tau_bench mint context_bench \
+  --provider cerebras --model gemma-4-31b --force --extra "$(cat review-extras.json)"
+# then package the reviewed scorecard from latest/:
+python3 -m benchmarks.orchestrator review-package \
+  --out-dir <evidence>/review-package --reviewed-by "<you>" --reviewer-note "..." --skip-runtime-gates
 ```

@@ -38,9 +38,17 @@ orchestrator against a live model, then package + review it:
 
 ```bash
 python -m benchmarks.orchestrator review \
-  --benchmarks <id> --adapters eliza --provider cerebras --model gpt-oss-120b \
+  --benchmarks <id> --adapters eliza --provider cerebras --model gemma-4-31b \
   --out benchmark_results/review/<id>
 ```
+
+> **Default eval model:** as of 2026-07-02 the default Cerebras eval model is
+> `gemma-4-31b` (131k context, reasoning opt-in), replacing `gpt-oss-120b`.
+> The main matrix below is still the last **complete 4-harness** certification
+> pass (2026-05-28, `gpt-oss-120b`); a 2026-07-02 single-harness `gemma-4-31b`
+> re-baseline is recorded in the addendum after the totals. It is kept separate
+> because it does not yet carry the hermes/openclaw/smithers rows the 4-harness
+> comparability contract requires.
 
 Only scores that survive `validate-latest-*` + `review-package` should be
 transcribed here, and only from `benchmark_results/latest/` — never from
@@ -106,6 +114,33 @@ or `gated`.
 **Registered totals:** 44 benchmarks. 15 have a real posted score (from the
 2026-05-28 certification pass, `benchmark_results/latest/`); the rest are
 `not-run` (no committed graded run) or `gated` (infra/credentials required).
+
+---
+
+## 2026-07-02 addendum — `gemma-4-31b` eliza-harness re-baseline
+
+A fresh reviewed run of the confirmed bridge-wired eliza-harness core on the
+new default eval model **`gemma-4-31b`** (Cerebras). These are real graded
+`benchmark_results/latest/` runs, hand-reviewed
+(`.github/issue-evidence/10199-gemma-4-31b-cutover/review-package/`), all
+`status: succeeded`. They are recorded here rather than overwriting the main
+matrix because that matrix is a **4-harness** cert and this pass is
+eliza-only (+ `mmlu` on hermes/openclaw) — the review-package gate stays
+`blocked` on multi-harness comparability, which needs the external hermes /
+openclaw agent stacks (infra-gated successor scope, #10199 / #10193).
+
+| benchmark | eliza (gemma-4-31b) | samples | note |
+|---|---|---|---|
+| mmlu | 0.70 | 40 | also hermes 0.75, openclaw 0.75 |
+| gsm8k | 0.975 | 40 | strict `#### <int>` |
+| humaneval | 0.75 | 20 | 0.35 → 0.75 after a reply-flattening fix (#10199) |
+| mt_bench | 0.90 | 8 | gemma-4-31b judge |
+| bfcl | 0.86 | multiple+parallel, 25/cat | |
+| action-calling | 1.00 | 20 | |
+| agentbench | 0.00 | OS, 5 tasks, no_docker | real completed run; genuine hard-task perf |
+| tau_bench | 0.00 | retail, 5 tasks | real completed run; genuine hard-task perf |
+| mint | 1.00 | reasoning, 5 tasks | |
+| context_bench | 0.75 | 1k/8k, middle | |
 
 ---
 

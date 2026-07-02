@@ -2430,13 +2430,18 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "no_demo": True,
             "expand_scenarios": True,
         },
+        # Standard-suite smoke defaults keep `limit` tiny for cost, but
+        # max_tokens must stay at the suite's real default (2048): GSM8K needs
+        # chain-of-thought room, reasoning models spend hidden tokens before
+        # the visible answer, and 256 silently truncates both — depressing
+        # real scores to near-zero without any error surfacing.
         "gsm8k": {
             "limit": 2,
-            "max_tokens": 256,
+            "max_tokens": 2048,
         },
         "humaneval": {
             "limit": 2,
-            "max_tokens": 256,
+            "max_tokens": 2048,
             "timeout_s": 5,
         },
         "gauntlet": {
@@ -2445,7 +2450,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mmlu": {
             "limit": 2,
-            "max_tokens": 256,
+            "max_tokens": 2048,
         },
         "mt_bench": {
             "limit": 1,
