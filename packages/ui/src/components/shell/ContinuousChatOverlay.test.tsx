@@ -251,6 +251,51 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    expect(overlay.getAttribute("data-open")).toBeNull();
+    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+    expect(overlay.getAttribute("data-open")).toBe("true");
+  });
+
+  it("opens the sheet when the thread lands AFTER the composer was focused (focus wins the boot race, #11112)", () => {
+    // Boot: the overlay renders (and can be focused) before the restored
+    // conversation's messages arrive. The focus→expand used to be a one-shot
+    // no-op with nothing revealable, so data-open never flipped.
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    const composer = screen.getByTestId("chat-composer-textarea");
+    act(() => {
+      composer.focus();
+    });
+    // Nothing to reveal yet — focusing the bare input must not open an empty sheet.
+    expect(overlay.getAttribute("data-open")).toBeNull();
+
+    // The restored conversation's messages land while the composer is still
+    // focused: the parked focus-open intent completes the open.
+    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    expect(overlay.getAttribute("data-open")).toBe("true");
+  });
+
+  it("drops the parked focus-open intent if the composer blurred before the thread arrived", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    const composer = screen.getByTestId("chat-composer-textarea");
+    act(() => {
+      composer.focus();
+      composer.blur();
+    });
+
+    // The thread arriving later must NOT pop the sheet open — the user left.
+    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    expect(overlay.getAttribute("data-open")).toBeNull();
+  });
+
   it("does not move the overlay bottom padding just because the composer is focused", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const overlay = screen.getByTestId("continuous-chat-overlay");

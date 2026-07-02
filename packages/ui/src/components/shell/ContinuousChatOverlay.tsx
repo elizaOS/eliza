@@ -1811,6 +1811,14 @@ export function ContinuousChatOverlay({
   // that the normal "tap the visible composer" path relies on (which would
   // fling a history thread open to half instead of resting on the input bar).
   const suppressExpandOnFocusRef = React.useRef(false);
+  // A focus→expand that found nothing revealable yet (the boot race: composer
+  // focused while the restored conversation's messages are still in flight)
+  // parks its intent here. The reveal-edge effect below honors it — but only
+  // while the composer is STILL focused — so focusing the composer opens the
+  // chat even when the focus wins the race against the thread load. Consumed
+  // on every reveal edge so a stale intent can never fling the sheet open long
+  // after the user has moved on.
+  const pendingExpandOnRevealRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
   // Recomputed only when the thread or phase changes — NOT on every drag/draft
   // re-render. Pure windowing (empty-turn filter + most-recent cap, with the
@@ -2864,12 +2872,40 @@ export function ContinuousChatOverlay({
   // handle) can return to that prior resting state. Clears any free-rest so the
   // height matches the detent (no stale freeH pinning it below half).
   const expand = React.useCallback(() => {
-    if (!hasRevealableThread) return;
+    if (!hasRevealableThread) {
+      // Nothing to reveal YET — don't open an empty sheet, but remember the
+      // intent: on boot the composer can gain focus while the restored
+      // conversation's messages are still in flight, and dropping the expand
+      // here made focus-to-open silently do nothing (#11112). The reveal-edge
+      // effect below completes the open once the thread arrives, if the
+      // composer is still focused.
+      pendingExpandOnRevealRef.current = true;
+      return;
+    }
+    pendingExpandOnRevealRef.current = false;
     preFocusCollapsedRef.current = !sheetOpen;
     setFreeH(null);
     // Open to at least HALF; if already at half/full, keep the taller mode.
     setMode((m) => (m === "half" || m === "full" ? m : "half"));
   }, [hasRevealableThread, sheetOpen]);
+
+  // Reveal edge: the thread just became showable. If a focus→expand was parked
+  // while there was nothing to reveal (see expand above), honor it now — but
+  // only while the composer is STILL focused, so a long-abandoned focus can't
+  // pop the sheet open. The intent is consumed either way (one-shot). A
+  // pill-open keyboard-raise never parks an intent (its focus is suppressed
+  // before expand runs), so the suppressExpandOnFocusRef contract holds.
+  React.useEffect(() => {
+    if (!hasRevealableThread || !pendingExpandOnRevealRef.current) return;
+    pendingExpandOnRevealRef.current = false;
+    if (
+      typeof document === "undefined" ||
+      document.activeElement !== inputRef.current
+    ) {
+      return;
+    }
+    expand();
+  }, [hasRevealableThread, expand]);
 
   // Interactive tour control: the tutorial drives the chat into a clean, known
   // state at the start of each frame (so the spotlight always lands on the right
