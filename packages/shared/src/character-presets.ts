@@ -80,12 +80,24 @@ const CHARACTER_DEFINITION_BY_NAME = new Map(
   ]),
 );
 
-const CHARACTER_DEFINITION_BY_AVATAR_INDEX = new Map(
-  CHARACTER_DEFINITIONS.map((definition) => [
-    definition.avatarIndex,
-    definition,
-  ]),
-);
+// avatarIndex is a VRM art-asset index, not a unique persona key — multiple
+// personas can share one art asset (the default Eliza and Chen both render
+// asset 1). Build this lookup first-wins so an ambiguous index resolves
+// deterministically to the earliest-declared persona (the default preset is
+// CHARACTER_DEFINITIONS[0]) instead of the Map constructor's last-wins
+// semantics letting a later persona silently clobber it.
+const CHARACTER_DEFINITION_BY_AVATAR_INDEX = new Map<
+  number,
+  CharacterDefinition
+>();
+for (const definition of CHARACTER_DEFINITIONS) {
+  if (!CHARACTER_DEFINITION_BY_AVATAR_INDEX.has(definition.avatarIndex)) {
+    CHARACTER_DEFINITION_BY_AVATAR_INDEX.set(
+      definition.avatarIndex,
+      definition,
+    );
+  }
+}
 
 // The first/default character ("eliza") is the app's default agent. A
 // white-label app rebrands that default to its own app name (e.g. "Milady")
@@ -243,15 +255,26 @@ export function buildElizaCharacterCatalog(): {
   // Use getStylePresets() (not the STYLE_PRESETS const) so the default-agent
   // rename from setDefaultAgentName() is reflected in the white-label catalog.
   const presets = getStylePresets(DEFAULT_LANGUAGE);
-  const assets = presets
-    .slice()
-    .sort((left, right) => left.avatarIndex - right.avatarIndex)
-    .map((preset) => ({
-      id: preset.avatarIndex,
-      slug: `eliza-${preset.avatarIndex}`,
-      title: preset.name,
-      sourceName: preset.name,
-    }));
+  // Assets are keyed by avatarIndex (the VRM art asset), which multiple
+  // personas can share — dedupe first-wins so the shared asset is titled after
+  // the earliest-declared persona instead of emitting duplicate asset ids.
+  const assetsByAvatarIndex = new Map<
+    number,
+    { id: number; slug: string; title: string; sourceName: string }
+  >();
+  for (const preset of presets) {
+    if (!assetsByAvatarIndex.has(preset.avatarIndex)) {
+      assetsByAvatarIndex.set(preset.avatarIndex, {
+        id: preset.avatarIndex,
+        slug: `eliza-${preset.avatarIndex}`,
+        title: preset.name,
+        sourceName: preset.name,
+      });
+    }
+  }
+  const assets = [...assetsByAvatarIndex.values()].sort(
+    (left, right) => left.id - right.id,
+  );
 
   const injectedCharacters = presets.map((preset) => ({
     catchphrase: preset.catchphrase,

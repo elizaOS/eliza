@@ -322,13 +322,17 @@ export function resolveConversationGreetingText(
 
   // Prefer explicit UI selections over the loaded character card: users pick a
   // style in first-run/roster (avatar + preset) while `runtime.character.name`
-  // can still reflect the bundled preset name until save/restart.
+  // can still reflect the bundled preset name until save/restart. presetId is
+  // checked before avatarIndex (matching the build-character paths): the id
+  // names one persona, while avatarIndex is a VRM art-asset index that several
+  // personas can share (Eliza and Chen both render asset 1), so the index
+  // alone cannot disambiguate the selected persona.
   const preset =
+    resolveStylePresetById(uiConfig?.presetId, normalizedLanguage) ??
     resolveStylePresetByAvatarIndex(
       uiConfig?.avatarIndex,
       normalizedLanguage,
     ) ??
-    resolveStylePresetById(uiConfig?.presetId, normalizedLanguage) ??
     resolveStylePresetByName(assistantName, normalizedLanguage) ??
     resolveStylePresetByName(characterName, normalizedLanguage);
 
@@ -349,6 +353,28 @@ export function resolveConversationGreetingText(
   return name
     ? `Hey, I'm ${name}. What can I help you with?`
     : "Hey — what can I help you with?";
+}
+
+/**
+ * Preset id to persist when a stream avatar selection is mirrored into
+ * eliza.json.
+ *
+ * avatarIndex is a VRM art-asset index that several personas can share (Eliza
+ * and Chen both render asset 1), so the index alone cannot identify a persona.
+ * When the config already names a preset consistent with the selected avatar,
+ * keep it — deriving a fresh presetId from the index would silently swap the
+ * user's persona to whichever preset wins the index lookup.
+ */
+export function resolveMirroredAvatarPresetId(
+  currentPresetId: string | null | undefined,
+  avatarIndex: number,
+  language?: unknown,
+): string | undefined {
+  const current = resolveStylePresetById(currentPresetId, language);
+  if (current?.avatarIndex === avatarIndex) {
+    return current.id;
+  }
+  return resolveStylePresetByAvatarIndex(avatarIndex, language)?.id;
 }
 
 // ---------------------------------------------------------------------------

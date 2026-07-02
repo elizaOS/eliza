@@ -8,7 +8,10 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { resolveStylePresetByAvatarIndex } from "@elizaos/shared";
+import {
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetByName,
+} from "@elizaos/shared";
 import {
   type RefObject,
   useCallback,
@@ -647,19 +650,22 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       return;
     }
 
-    const preset = resolveStylePresetByAvatarIndex(
-      selectedVrmIndex,
-      uiLanguage,
-    );
+    const characterName =
+      characterData?.name?.trim() ||
+      characterDraft?.name?.trim() ||
+      agentStatus?.agentName?.trim();
+
+    // Resolve the persona by name first: avatarIndex is a VRM art-asset index
+    // that several personas can share (Eliza and Chen both render asset 1), so
+    // the index alone would relocalize a named persona to its sibling.
+    const preset =
+      resolveStylePresetByName(characterName, uiLanguage) ??
+      resolveStylePresetByAvatarIndex(selectedVrmIndex, uiLanguage);
     if (!preset) {
       return;
     }
 
-    const resolvedName =
-      characterData?.name?.trim() ||
-      characterDraft?.name?.trim() ||
-      agentStatus?.agentName?.trim() ||
-      preset.name;
+    const resolvedName = characterName || preset.name;
 
     void (async () => {
       try {

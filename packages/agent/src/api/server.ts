@@ -49,7 +49,6 @@ import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,
   normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
 } from "@elizaos/shared/character-presets";
 import {
   isMobilePlatform,
@@ -437,6 +436,7 @@ import {
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
+  resolveMirroredAvatarPresetId,
 } from "./server-helpers.ts";
 import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
@@ -4622,11 +4622,19 @@ export async function startApiServer(opts?: {
               }
               const diskCfg = loadElizaConfig();
               const lang = state.config.ui?.language ?? diskCfg.ui?.language;
-              const preset = resolveStylePresetByAvatarIndex(avatarIndex, lang);
+              // Keep an already-consistent presetId: avatarIndex is a VRM
+              // art-asset index shared by several personas, so re-deriving the
+              // preset from the index would overwrite the user's persona (e.g.
+              // persisting presetId "chen" over an Eliza selection).
+              const presetId = resolveMirroredAvatarPresetId(
+                state.config.ui?.presetId ?? diskCfg.ui?.presetId,
+                avatarIndex,
+                lang,
+              );
               const nextUi: ElizaConfig["ui"] = {
                 ...(state.config.ui ?? {}),
                 avatarIndex,
-                ...(preset?.id ? { presetId: preset.id } : {}),
+                ...(presetId ? { presetId } : {}),
               };
               state.config = {
                 ...state.config,
