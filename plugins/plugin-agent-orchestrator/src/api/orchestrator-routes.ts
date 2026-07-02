@@ -30,6 +30,9 @@ import type {
 } from "../services/orchestrator-task-types.js";
 import type { RouteContext } from "./route-utils.js";
 import {
+  asBoolean,
+  asString,
+  asStringArray,
   parseBody,
   sendError,
   sendJson,
@@ -49,20 +52,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-}
-
-function asStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const items = value.filter(
-    (v): v is string => typeof v === "string" && v.trim().length > 0,
-  );
-  return items.length > 0 ? items.map((s) => s.trim()) : [];
-}
-
 function asPriority(value: unknown): OrchestratorTaskPriority | undefined {
   return typeof value === "string" && PRIORITIES.has(value)
     ? (value as OrchestratorTaskPriority)
@@ -79,10 +68,6 @@ function asProviderPolicy(value: unknown): TaskProviderPolicy | undefined {
   if (source) policy.providerSource = source;
   if (model) policy.model = model;
   return policy;
-}
-
-function asBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
 }
 
 function asRetryMode(

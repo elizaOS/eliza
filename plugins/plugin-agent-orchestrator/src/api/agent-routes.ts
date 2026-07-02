@@ -787,7 +787,11 @@ export async function handleAgentRoutes(
     try {
       const sessionId = outputMatch[1];
       const url = new URL(req.url || "", `http://${req.headers.host}`);
-      const lines = parseInt(url.searchParams.get("lines") || "100", 10);
+      // Guard against a non-numeric ?lines= (parseInt("abc") → NaN would reach
+      // getSessionOutput); fall back to the default 100 on anything invalid.
+      const parsedLines = parseInt(url.searchParams.get("lines") || "100", 10);
+      const lines =
+        Number.isFinite(parsedLines) && parsedLines > 0 ? parsedLines : 100;
 
       const output = await ctx.acpService.getSessionOutput?.(sessionId, lines);
       sendJson(res, { sessionId, output });

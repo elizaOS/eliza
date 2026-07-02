@@ -10,7 +10,13 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./route-utils.js";
-import { parseBody, sendError, sendJson } from "./route-utils.js";
+import {
+  asBoolean,
+  asString,
+  parseBody,
+  sendError,
+  sendJson,
+} from "./route-utils.js";
 
 /**
  * Handle workspace routes (/api/workspace/*)
@@ -33,15 +39,22 @@ export async function handleWorkspaceRoutes(
 
     try {
       const body = await parseBody(req);
-      const { repo, baseBranch, useWorktree, parentWorkspaceId, branchName } =
-        body;
+      const repo = asString(body.repo);
+      if (!repo) {
+        sendError(res, "repo is required");
+        return true;
+      }
+      const baseBranch = asString(body.baseBranch);
+      const branchName = asString(body.branchName);
+      const parentWorkspaceId = asString(body.parentWorkspaceId);
+      const useWorktree = asBoolean(body.useWorktree);
 
       const workspace = await ctx.workspaceService.provisionWorkspace({
-        repo: repo as string,
-        baseBranch: baseBranch as string,
-        branchName: branchName as string | undefined,
-        useWorktree: useWorktree as boolean,
-        parentWorkspaceId: parentWorkspaceId as string,
+        repo,
+        ...(baseBranch ? { baseBranch } : {}),
+        ...(branchName ? { branchName } : {}),
+        ...(useWorktree !== undefined ? { useWorktree } : {}),
+        ...(parentWorkspaceId ? { parentWorkspaceId } : {}),
       });
 
       sendJson(
@@ -128,10 +141,12 @@ export async function handleWorkspaceRoutes(
     try {
       const workspaceId = pushMatch[1];
       const body = await parseBody(req);
+      const force = asBoolean(body.force);
+      const setUpstream = asBoolean(body.setUpstream);
 
       const result = await ctx.workspaceService.push(workspaceId, {
-        force: body.force as boolean,
-        setUpstream: body.setUpstream as boolean,
+        ...(force !== undefined ? { force } : {}),
+        ...(setUpstream !== undefined ? { setUpstream } : {}),
       });
 
       sendJson(res, result);
@@ -156,12 +171,20 @@ export async function handleWorkspaceRoutes(
     try {
       const workspaceId = prMatch[1];
       const body = await parseBody(req);
+      const title = asString(body.title);
+      const prBody = asString(body.body);
+      if (!title || !prBody) {
+        sendError(res, "title and body are required");
+        return true;
+      }
+      const base = asString(body.baseBranch);
+      const draft = asBoolean(body.draft);
 
       const result = await ctx.workspaceService.createPR(workspaceId, {
-        title: body.title as string,
-        body: body.body as string,
-        base: body.baseBranch as string,
-        draft: body.draft as boolean,
+        title,
+        body: prBody,
+        ...(base ? { base } : {}),
+        ...(draft !== undefined ? { draft } : {}),
       });
 
       sendJson(res, result, 201);
