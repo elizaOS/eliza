@@ -175,4 +175,42 @@ describe("owner send-approval worker", () => {
       first,
     );
   });
+
+  it("a concurrent duplicate confirm does not double-send (atomic claim)", async () => {
+    const harness = makeRuntime();
+    // Gate the send so both confirms are in-flight before either completes —
+    // this is the window a second CHOOSE_OPTION confirm for the same task could
+    // slip through if the executor were only consumed AFTER the awaited send.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let sends = 0;
+    const executor = vi.fn(async () => {
+      sends += 1;
+      await gate;
+      return { externalId: `ext-${sends}` };
+    });
+    const policy = createOwnerSendPolicy();
+    await policy.enqueueApproval(harness.runtime, makeDraft(), executor);
+    const task = harness.createdTasks.at(-1);
+    if (!task) throw new Error("enqueueApproval created no task");
+
+    // Two overlapping confirms for the SAME task, then release the gated send.
+    const first = dispatchChosenOption(harness.runtime, task, "confirm");
+    const second = dispatchChosenOption(harness.runtime, task, "confirm");
+    release();
+    const settled = await Promise.allSettled([first, second]);
+
+    // Exactly one send happened; the loser rejected with re-send guidance and
+    // never invoked the executor. Consuming the executor before the await makes
+    // the claim atomic on the single-threaded event loop.
+    expect(sends).toBe(1);
+    expect(executor).toHaveBeenCalledTimes(1);
+    const rejected = settled.filter((r) => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      message: expect.stringMatching(/no longer execute/u),
+    });
+  });
 });

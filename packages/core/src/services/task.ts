@@ -263,10 +263,20 @@ export class TaskService extends Service {
 		this.tasksDirty = false;
 
 		// WHY queue only: approval/follow-up etc. are stored but run on user trigger or external cron; one place for "scheduled by tick".
-		const allTasks = await this.runtime.getTasks({
-			tags: ["queue"],
-			agentIds: [this.runtime.agentId],
-		});
+		let allTasks: Task[];
+		try {
+			allTasks = await this.runtime.getTasks({
+				tags: ["queue"],
+				agentIds: [this.runtime.agentId],
+			});
+		} catch (error) {
+			// A transient getTasks rejection must NOT permanently disarm the tick:
+			// we already cleared tasksDirty above, so without re-arming a single DB
+			// hiccup would silence every repeat task (incl. the LifeOps heartbeat)
+			// until an unrelated createTask/updateTask happened to call markDirty().
+			this.tasksDirty = true;
+			throw error;
+		}
 
 		if (!allTasks || allTasks.length === 0) {
 			// Empty queue: stay disarmed until markDirty() (createTask/updateTask) re-arms.
