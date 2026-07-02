@@ -1,0 +1,143 @@
+name: Loadperf KPIs
+
+on:
+  schedule:
+    # Daily at 09:17 UTC, after the normal nightly lanes have had time to settle.
+    - cron: "17 9 * * *"
+  pull_request:
+    paths:
+      - ".github/workflows/loadperf.yml"
+      - "packages/benchmarks/loadperf/**"
+  workflow_dispatch:
+    inputs:
+      include_statesync:
+        description: "Run state-sync KPI against LOADPERF_BASE_URL / LOADPERF_WS_URL"
+        required: false
+        type: boolean
+        default: false
+      loadperf_base_url:
+        description: "Base URL for an already-running stack used by state-sync"
+        required: false
+        type: string
+        default: ""
+      loadperf_ws_url:
+        description: "Explicit WebSocket URL for state-sync, if different from base URL + /ws"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: loadperf-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "canary"
+  CI: "true"
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  loadperf-stack:
+    name: Bundle, boot, and frontend KPIs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 1
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build app runtime and web bundle
+        run: |
+          bun run --cwd packages/shared build:i18n
+          bun run --cwd packages/app-core build
+          bun run --cwd packages/app prebuild
+          bun run --cwd packages/app build:web
+
+      - name: Run loadperf bundle, boot, and frontend KPIs
+        env:
+          ELIZA_HEADLESS: "1"
+          ELIZA_NO_VISION_DEPS: "1"
+          LOADPERF_BOOT_RUNS: "1"
+        run: node packages/benchmarks/loadperf/run-all.mjs
+
+      - name: Upload loadperf artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: loadperf-stack-results
+          path: packages/benchmarks/loadperf/results/**
+          if-no-files-found: warn
+
+  statesync:
+    name: State-sync KPI against live stack
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_statesync }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 1
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          run-postinstall: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Validate state-sync target
+        env:
+          LOADPERF_BASE_URL: ${{ inputs.loadperf_base_url }}
+          LOADPERF_WS_URL: ${{ inputs.loadperf_ws_url }}
+        run: |
+          if [ -z "${LOADPERF_BASE_URL}" ] && [ -z "${LOADPERF_WS_URL}" ]; then
+            echo "::error::Set loadperf_base_url or loadperf_ws_url when include_statesync is true."
+            exit 1
+          fi
+
+      - name: Run state-sync KPI
+        env:
+          LOADPERF_BASE_URL: ${{ inputs.loadperf_base_url }}
+          LOADPERF_WS_URL: ${{ inputs.loadperf_ws_url }}
+        run: node packages/benchmarks/loadperf/run-all.mjs --no-boot --no-frontend --statesync
+
+      - name: Upload state-sync artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: loadperf-statesync-results
+          path: packages/benchmarks/loadperf/results/**
+          if-no-files-found: warn
