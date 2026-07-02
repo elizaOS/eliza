@@ -1,16 +1,15 @@
 /**
- * AOSP TEXT_TO_SPEECH handler tests. (Filename retained for git history;
- * the Kokoro/ONNX path was removed alongside `onnxruntime-web` in favour
- * of the fused OmniVoice FFI binding — see `aosp-omnivoice-tts-handler`
- * coverage in `aosp-local-inference-bootstrap.test.ts` for the routing
- * tests. These cases verify the public TTS handler shape: pre-warm
- * gating, foreground-skip semantics, and abort handling against a mocked
- * OmniVoice handler.)
+ * AOSP TEXT_TO_SPEECH handler tests. Kokoro is the only on-device TTS backend;
+ * the handler dlopens the fused `libelizainference.so` and synthesizes through
+ * the `eliza_inference_kokoro_*` ABI (see
+ * `aosp-local-inference-bootstrap.test.ts` for the routing tests). These cases
+ * verify the public TTS handler shape: pre-warm gating, foreground-skip
+ * semantics, and abort handling against a mocked Kokoro handler.
  */
 import { describe, expect, it } from "bun:test";
 import {
   makeAospTextToSpeechHandler,
-  prewarmAospOmnivoiceTextToSpeechHandler,
+  prewarmAospKokoroTextToSpeechHandler,
 } from "../src/aosp-local-inference-bootstrap";
 
 async function withEnv<T>(
@@ -45,21 +44,21 @@ function wait(ms: number): Promise<void> {
 }
 
 describe("AOSP TEXT_TO_SPEECH handler", () => {
-  it("returns the OmniVoice FFI handler output verbatim", async () => {
+  it("returns the Kokoro FFI handler output verbatim", async () => {
     const wav = new Uint8Array([
       0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45,
     ]);
     const handler = makeAospTextToSpeechHandler({
-      omnivoice: async () => wav,
+      kokoro: async () => wav,
     });
     await expect(
       handler({} as never, { text: "Hello from Android." }),
     ).resolves.toEqual(wav);
   });
 
-  it("propagates abort-style failures from the OmniVoice FFI binding", async () => {
+  it("propagates abort-style failures from the Kokoro FFI binding", async () => {
     const handler = makeAospTextToSpeechHandler({
-      omnivoice: async () => {
+      kokoro: async () => {
         throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
       },
     });
@@ -70,12 +69,12 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
 
   it("propagates a missing-FFI failure without falling back", async () => {
     const handler = makeAospTextToSpeechHandler({
-      omnivoice: async () => {
-        throw new Error("fused OmniVoice TEXT_TO_SPEECH is not available");
+      kokoro: async () => {
+        throw new Error("fused Kokoro TEXT_TO_SPEECH is not available");
       },
     });
     await expect(handler({} as never, "hello")).rejects.toThrow(
-      /fused OmniVoice TEXT_TO_SPEECH is not available/,
+      /fused Kokoro TEXT_TO_SPEECH is not available/,
     );
   });
 
@@ -92,7 +91,7 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
         ELIZA_AOSP_TTS_PREWARM_DELAY_MS: "1",
       },
       async () => {
-        prewarmAospOmnivoiceTextToSpeechHandler(handler);
+        prewarmAospKokoroTextToSpeechHandler(handler);
         await wait(10);
       },
     );
@@ -105,7 +104,7 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
         ELIZA_AOSP_TTS_PREWARM_TIMEOUT_MS: "100",
       },
       async () => {
-        prewarmAospOmnivoiceTextToSpeechHandler(handler);
+        prewarmAospKokoroTextToSpeechHandler(handler);
         await wait(10);
       },
     );
@@ -126,7 +125,7 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
         ELIZA_AOSP_TTS_PREWARM_TIMEOUT_MS: "100",
       },
       async () => {
-        prewarmAospOmnivoiceTextToSpeechHandler(handler, {
+        prewarmAospKokoroTextToSpeechHandler(handler, {
           shouldSkip: () => true,
         });
         await wait(10);

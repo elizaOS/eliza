@@ -56,9 +56,9 @@ import {
   type TranscriptionParams,
 } from "@elizaos/core";
 // @elizaos/shared/local-inference is no longer imported here: every AOSP TTS
-// path now flows through `makeAospFusedOmnivoiceTextToSpeechHandler` below,
-// which dlopen's `libelizainference.so` via bun:ffi and synthesizes OmniVoice
-// TTS in-process through the fused `eliza_inference_tts_*` ABI.
+// path now flows through `makeAospFusedKokoroTextToSpeechHandler` below,
+// which dlopen's `libelizainference.so` via bun:ffi and synthesizes Kokoro
+// TTS in-process through the fused `eliza_inference_kokoro_*` ABI.
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
   isAospEnabled,
@@ -284,13 +284,15 @@ type TextToSpeechHandler = (
   params: TextToSpeechParams | string,
 ) => Promise<Uint8Array>;
 
-interface AospOmnivoicePrewarmOptions {
+interface AospKokoroPrewarmOptions {
   shouldSkip?: () => boolean;
 }
 
-interface AospFusedOmnivoiceConfig {
+interface AospFusedKokoroConfig {
   libPath: string;
   bundleRoot: string;
+  kokoroGgufPath: string;
+  kokoroVoicePath: string;
 }
 
 type TranscriptionHandler = (
@@ -1183,64 +1185,8 @@ function resolveBundledModelsDir(): string {
   return path.join(resolveStateDir(), "local-inference", "models");
 }
 
-// OmniVoice TTS assets are NOT bundled into the APK (they're ~660MB). Like the
-// chat model, fetch them from HuggingFace into the active bundle's `tts/` dir so
-// the fused TextToSpeech handler has a real neural voice. Runs in the background
-// (the platform TextToSpeech fallback covers replies until it lands) and only
-// publishes `tts/` atomically once both files are complete, so the dir-existence
-// gate never sees a half-written bundle.
-const OMNIVOICE_TTS_FILES = [
-  "omnivoice-base-Q4_K_M.gguf",
-  "omnivoice-tokenizer-Q4_K_M.gguf",
-] as const;
-let omnivoiceTtsDownloadInflight: Promise<void> | null = null;
-
-function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
-  if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") return;
-  if (omnivoiceTtsDownloadInflight) return;
-  const ttsDir = path.join(bundleRoot, "tts");
-  if (existsSync(ttsDir)) return;
-  // The tier slug is the bundle-root dir name (e.g. `2b`); fall back to 2b.
-  const tier = path.basename(bundleRoot) || "2b";
-  const stagingDir = path.join(bundleRoot, "tts.staging");
-  omnivoiceTtsDownloadInflight = (async () => {
-    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
-    mkdirSync(stagingDir, { recursive: true });
-    for (const name of OMNIVOICE_TTS_FILES) {
-      const url = `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/${name}`;
-      logger.info(
-        `[aosp-local-inference] Auto-downloading OmniVoice TTS ${name} from ${url}`,
-      );
-      const response = await fetch(url, { redirect: "follow" });
-      if (!response.ok || !response.body) {
-        throw new Error(
-          `OmniVoice TTS download failed (${name}): HTTP ${response.status} ${response.statusText}`,
-        );
-      }
-      await pipeline(
-        Readable.fromWeb(response.body as never),
-        createWriteStream(path.join(stagingDir, name)),
-      );
-    }
-    // Atomic publish: `tts/` appears only when both GGUFs are fully written.
-    renameSync(stagingDir, ttsDir);
-    logger.info(`[aosp-local-inference] OmniVoice TTS staged under ${ttsDir}`);
-  })()
-    .catch((err) => {
-      logger.warn(
-        `[aosp-local-inference] OmniVoice TTS auto-download failed (falling back to system TTS): ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      removeAospGeneratedStagingDir(stagingDir, bundleRoot);
-    })
-    .finally(() => {
-      omnivoiceTtsDownloadInflight = null;
-    });
-}
-
-// Kokoro-82M is the small/fast on-device voice (catalog policy makes the mobile
-// 2b/4b tiers Kokoro-default). Like OmniVoice it isn't always bundled into
+// Kokoro-82M is the small/fast on-device voice — the only on-device TTS
+// backend. It isn't always bundled into
 // the APK, so fetch the acoustic GGUF + the af_sam speaker preset into the
 // bundle's `tts/kokoro/` dir — the exact dir ElizaBionicInferenceServer.tts()
 // and the fused Kokoro loader read. The on-device voice is an ESSENTIAL feature
@@ -1250,6 +1196,9 @@ function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
 // `af_sam.bin` lives under voice/kokoro/voices/, not the per-tier bundle.
 const KOKORO_GGUF_FILE = "kokoro-82m-v1_0-Q4_K_M.gguf";
 const KOKORO_VOICE_FILE = "af_sam.bin";
+// Kokoro style-embedding dimension (matches the shared voice/ffi-bindings loader
+// and the .bin voice-preset layout). Passed to eliza_inference_kokoro_load.
+const KOKORO_STYLE_DIM = 256;
 let kokoroTtsDownloadInflight: Promise<void> | null = null;
 
 // HF bundle tier slugs, longest-first so "27b-256k" matches before "27b".
@@ -1756,15 +1705,15 @@ function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
 }
 
 /**
- * Pre-warm the fused OmniVoice TTS pipeline on a delayed timer so the
- * first user-facing synthesis does not pay the ~5–10 s GGUF mmap +
- * codec init cost inside a request handler. Best-effort: failures are
+ * Pre-warm the fused Kokoro TTS pipeline on a delayed timer so the
+ * first user-facing synthesis does not pay the GGUF load + voice-preset
+ * init cost inside a request handler. Best-effort: failures are
  * logged at WARN since the foreground request will surface a clean
  * error if the FFI surface is unavailable.
  */
-export function prewarmAospOmnivoiceTextToSpeechHandler(
+export function prewarmAospKokoroTextToSpeechHandler(
   handler: TextToSpeechHandler,
-  opts: AospOmnivoicePrewarmOptions = {},
+  opts: AospKokoroPrewarmOptions = {},
 ): void {
   if (readBooleanEnv("ELIZA_AOSP_TTS_PREWARM") !== true) return;
 
@@ -1779,7 +1728,7 @@ export function prewarmAospOmnivoiceTextToSpeechHandler(
   setTimeout(() => {
     if (opts.shouldSkip?.()) {
       logger.info(
-        "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
+        "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
       );
       return;
     }
@@ -1792,12 +1741,12 @@ export function prewarmAospOmnivoiceTextToSpeechHandler(
     })
       .then((bytes) => {
         logger.info(
-          `[aosp-local-inference] OmniVoice TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
+          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
         );
       })
       .catch((err) => {
         logger.warn(
-          "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH pre-warm failed: " +
+          "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm failed: " +
             (err instanceof Error ? err.message : String(err)),
         );
       })
@@ -1823,18 +1772,6 @@ function resolveAssignedChatBundleRoot(): string {
 
 function isFfiNullPointer(value: unknown): boolean {
   return value === null || value === undefined || value === 0 || value === 0n;
-}
-
-function resolveAospOmnivoiceTtsStepOverride(
-  env: NodeJS.ProcessEnv = process.env,
-): string | null {
-  const raw =
-    env.ELIZA_AOSP_OMNIVOICE_MASKGIT_STEPS?.trim() ||
-    env.ELIZA_TTS_MASKGIT_STEPS?.trim();
-  if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 64) return null;
-  return String(parsed);
 }
 
 // Free RAM (MiB) at or above which the resident chat model is KEPT across a cold
@@ -1877,17 +1814,14 @@ function shouldEvictChatForVoiceLoad(): boolean {
   }
 }
 
-export function makeAospFusedOmnivoiceTextToSpeechHandler(
-  loader?: AospLoader,
-  onEvicted?: () => void,
-): TextToSpeechHandler {
+export function makeAospFusedKokoroTextToSpeechHandler(): TextToSpeechHandler {
   let contextPromise: Promise<{
     ffi: BunFfiModule;
     symbols: Record<string, (...args: unknown[]) => unknown>;
     close: () => void;
     ctx: unknown;
-    config: AospFusedOmnivoiceConfig;
-    streamSupported: boolean;
+    config: AospFusedKokoroConfig;
+    sampleRate: number;
   }> | null = null;
 
   async function ensureContext(): Promise<{
@@ -1895,16 +1829,16 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
     symbols: Record<string, (...args: unknown[]) => unknown>;
     close: () => void;
     ctx: unknown;
-    config: AospFusedOmnivoiceConfig;
-    streamSupported: boolean;
+    config: AospFusedKokoroConfig;
+    sampleRate: number;
   }> {
     if (contextPromise) return contextPromise;
     contextPromise = Promise.resolve()
       .then(async () => {
-        const config = resolveAospFusedOmnivoiceConfig();
+        const config = resolveAospFusedKokoroConfig();
         if (!config) {
           throw new Error(
-            "[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH is not available: expected libelizainference.so plus an active Eliza-1 bundle with tts assets.",
+            "[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH is not available: expected libelizainference.so plus an active Eliza-1 bundle with a staged tts/kokoro/ voice.",
           );
         }
         const ffi = await loadAospVoiceFfi();
@@ -1913,16 +1847,19 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
         const lib = ffi.dlopen(config.libPath, {
           eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
           eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-          eliza_inference_mmap_acquire: {
-            args: [T.ptr, T.ptr, T.ptr],
+          eliza_inference_kokoro_supported: { args: [], returns: T.i32 },
+          eliza_inference_kokoro_load: {
+            // ctx, gguf_path, voice_bin_path, style_dim, out_error
+            args: [T.ptr, T.ptr, T.ptr, T.i32, T.ptr],
             returns: T.i32,
           },
-          eliza_inference_tts_stream_supported: {
-            args: [],
+          eliza_inference_kokoro_synthesize: {
+            // ctx, text, text_len, speed, out_pcm, max_samples, out_error
+            args: [T.ptr, T.ptr, usize, T.f32, T.ptr, usize, T.ptr],
             returns: T.i32,
           },
-          eliza_inference_tts_synthesize: {
-            args: [T.ptr, T.ptr, usize, T.ptr, T.ptr, usize, T.ptr],
+          eliza_inference_kokoro_sample_rate: {
+            args: [T.ptr],
             returns: T.i32,
           },
           eliza_inference_free_string: { args: [usize], returns: T.void },
@@ -1940,19 +1877,11 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
             lib.close();
           } catch {}
           throw new Error(
-            `[aosp-local-inference] fused OmniVoice create failed: ${message}`,
+            `[aosp-local-inference] fused Kokoro create failed: ${message}`,
           );
         }
 
-        const errAcquire = Buffer.alloc(8);
-        const acquireStarted = Date.now();
-        const rc = symbols.eliza_inference_mmap_acquire(
-          ctx,
-          ffi.ptr(cString("tts")),
-          ffi.ptr(errAcquire),
-        ) as number;
-        if (rc < 0) {
-          const message = readFfiStringAndFree(ffi, symbols, errAcquire);
+        if ((symbols.eliza_inference_kokoro_supported?.() as number) !== 1) {
           try {
             symbols.eliza_inference_destroy(ctx);
           } catch {}
@@ -1960,14 +1889,39 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
             lib.close();
           } catch {}
           throw new Error(
-            `[aosp-local-inference] fused OmniVoice TTS mmap_acquire rc=${rc}: ${message}`,
+            "[aosp-local-inference] libelizainference.so does not export the Kokoro TTS engine (pre-v10 build); rebuild the fused lib with -DLLAMA_BUILD_KOKORO=ON.",
           );
         }
 
-        const streamSupported =
-          (symbols.eliza_inference_tts_stream_supported?.() as number) === 1;
+        const errLoad = Buffer.alloc(8);
+        const loadStarted = Date.now();
+        const ggufArg = cString(config.kokoroGgufPath);
+        const voiceArg = cString(config.kokoroVoicePath);
+        const loadRc = symbols.eliza_inference_kokoro_load(
+          ctx,
+          ffi.ptr(ggufArg),
+          ffi.ptr(voiceArg),
+          KOKORO_STYLE_DIM,
+          ffi.ptr(errLoad),
+        ) as number;
+        if (loadRc < 0) {
+          const message = readFfiStringAndFree(ffi, symbols, errLoad);
+          try {
+            symbols.eliza_inference_destroy(ctx);
+          } catch {}
+          try {
+            lib.close();
+          } catch {}
+          throw new Error(
+            `[aosp-local-inference] fused Kokoro load rc=${loadRc}: ${message}`,
+          );
+        }
+
+        const sampleRate =
+          (symbols.eliza_inference_kokoro_sample_rate?.(ctx) as number) ||
+          24_000;
         logger.info(
-          `[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH backend ready in ${Date.now() - acquireStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, stream=${streamSupported})`,
+          `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH backend ready in ${Date.now() - loadStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, sampleRate=${sampleRate})`,
         );
         return {
           ffi,
@@ -1975,7 +1929,7 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
           close: lib.close,
           ctx,
           config,
-          streamSupported,
+          sampleRate,
         };
       })
       .catch((err) => {
@@ -1997,100 +1951,57 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
       throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
     }
 
-    const stepOverride = resolveAospOmnivoiceTtsStepOverride();
-    const previousSteps = process.env.ELIZA_TTS_MASKGIT_STEPS;
-    if (stepOverride) process.env.ELIZA_TTS_MASKGIT_STEPS = stepOverride;
-
-    try {
-      // Release the resident chat model before the FIRST (cold) fused-TTS load.
-      // The engine keeps one model at a time, but the fused TTS context is a
-      // SEPARATE FFI allocation: loading the ~0.66 GB omnivoice model while the
-      // chat model + its hot KV/compute buffers (from the reply we are about to
-      // speak) are still resident spikes RAM past lmkd's low watermark and the
-      // detached agent — which an unprivileged app cannot oom-protect — gets
-      // killed mid-load. The chat model auto-reloads on the next TEXT turn
-      // (makeGenerateHandler -> lifecycle.ensureChatLoaded). Only on the cold
-      // load (contextPromise still null); cached reuse never re-evicts.
-      if (contextPromise === null && loader) {
-        try {
-          if (
-            shouldEvictChatForVoiceLoad() &&
-            typeof loader.currentModelPath === "function" &&
-            loader.currentModelPath() !== null &&
-            typeof loader.unloadModel === "function"
-          ) {
-            await loader.unloadModel();
-            // Tell the lifecycle the chat model is gone so the next text turn
-            // actually reloads it (loadRole short-circuits on a stale
-            // currentRole otherwise). Done after the unload succeeds so we
-            // never mark evicted when the model is in fact still resident.
-            onEvicted?.();
-            logger.info(
-              "[aosp-local-inference] released chat model before cold fused-TTS load to free memory",
-            );
-          }
-        } catch {
-          // Best-effort: a failed eviction just means TTS loads under the prior
-          // (possibly tight) memory conditions — no worse than before.
-        }
-      }
-      const started = Date.now();
-      const { ffi, symbols, ctx, config, streamSupported } =
-        await ensureContext();
-      const readyMs = Date.now() - started;
-      const maxSeconds = readPositiveIntEnv("ELIZA_AOSP_TTS_MAX_SECONDS", 30);
-      const maxSamples = Math.max(24_000, maxSeconds * 24_000);
-      const out = Buffer.alloc(maxSamples * 4);
-      const errTts = Buffer.alloc(8);
-      const textArg = cString(text);
-      const synthStarted = Date.now();
-      const rc = symbols.eliza_inference_tts_synthesize(
-        ctx,
-        ffi.ptr(textArg),
-        BigInt(text.length),
-        0,
-        ffi.ptr(out),
-        BigInt(maxSamples),
-        ffi.ptr(errTts),
-      ) as number;
-      const synthMs = Date.now() - synthStarted;
-      if (rc < 0) {
-        throw new Error(
-          `[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errTts)}`,
-        );
-      }
-      if (signal?.aborted) {
-        throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
-      }
-      const pcmBytes = out.subarray(0, rc * 4);
-      const pcm = new Float32Array(pcmBytes.buffer, pcmBytes.byteOffset, rc);
-      const encodeStarted = Date.now();
-      const wav = encodeWavPcm16(pcm, 24_000);
-      const encodeMs = Date.now() - encodeStarted;
-      logger.info(
-        `[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH completed chars=${text.length} bundle=${path.basename(config.bundleRoot)} backendReadyMs=${readyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${rc} wavBytes=${wav.byteLength} streamSupported=${streamSupported} maskgitSteps=${process.env.ELIZA_TTS_MASKGIT_STEPS ?? "default"}`,
+    // Kokoro-82M is a ~50 MB acoustic model in a SEPARATE FFI allocation from
+    // the resident chat model, so — unlike the retired ~0.66 GB neural TTS
+    // model — it loads alongside chat without tripping lmkd's low watermark.
+    // No chat eviction is needed.
+    const started = Date.now();
+    const { ffi, symbols, ctx, config, sampleRate } = await ensureContext();
+    const readyMs = Date.now() - started;
+    const maxSeconds = readPositiveIntEnv("ELIZA_AOSP_TTS_MAX_SECONDS", 30);
+    const maxSamples = Math.max(sampleRate, maxSeconds * sampleRate);
+    const out = Buffer.alloc(maxSamples * 4);
+    const errTts = Buffer.alloc(8);
+    const textArg = cString(text);
+    const textBytes = Buffer.byteLength(text, "utf8");
+    const synthStarted = Date.now();
+    const rc = symbols.eliza_inference_kokoro_synthesize(
+      ctx,
+      ffi.ptr(textArg),
+      BigInt(textBytes),
+      1.0,
+      ffi.ptr(out),
+      BigInt(maxSamples),
+      ffi.ptr(errTts),
+    ) as number;
+    const synthMs = Date.now() - synthStarted;
+    if (rc < 0) {
+      throw new Error(
+        `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errTts)}`,
       );
-      return wav;
-    } finally {
-      if (stepOverride) {
-        if (previousSteps === undefined) {
-          delete process.env.ELIZA_TTS_MASKGIT_STEPS;
-        } else {
-          process.env.ELIZA_TTS_MASKGIT_STEPS = previousSteps;
-        }
-      }
     }
+    if (signal?.aborted) {
+      throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
+    }
+    const pcmBytes = out.subarray(0, rc * 4);
+    const pcm = new Float32Array(pcmBytes.buffer, pcmBytes.byteOffset, rc);
+    const encodeStarted = Date.now();
+    const wav = encodeWavPcm16(pcm, sampleRate);
+    const encodeMs = Date.now() - encodeStarted;
+    logger.info(
+      `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH completed chars=${text.length} bundle=${path.basename(config.bundleRoot)} backendReadyMs=${readyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${rc} wavBytes=${wav.byteLength} sampleRate=${sampleRate}`,
+    );
+    return wav;
   };
 }
 
 export function makeAospTextToSpeechHandler(
-  opts: { omnivoice?: TextToSpeechHandler; onForegroundUse?: () => void } = {},
+  opts: { kokoro?: TextToSpeechHandler; onForegroundUse?: () => void } = {},
 ): TextToSpeechHandler {
-  const omnivoice =
-    opts.omnivoice ?? makeAospFusedOmnivoiceTextToSpeechHandler();
+  const kokoro = opts.kokoro ?? makeAospFusedKokoroTextToSpeechHandler();
   return async (runtime, params) => {
     opts.onForegroundUse?.();
-    return omnivoice(runtime, params);
+    return kokoro(runtime, params);
   };
 }
 
@@ -2140,7 +2051,7 @@ function resolveElizaInferenceLibPath(): string {
   return resolveAospElizaInferenceLibPath();
 }
 
-function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
+function resolveAospFusedKokoroConfig(): AospFusedKokoroConfig | null {
   const libPath = resolveElizaInferenceLibPath();
   if (!existsSync(libPath)) return null;
   let bundleRoot: string;
@@ -2149,18 +2060,20 @@ function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
   } catch {
     return null;
   }
-  // Ensure the on-device Kokoro voice is present (the mobile tiers are
-  // Kokoro-default). Without tts/kokoro/, on-device TTS has nothing to
-  // synthesize and the app falls back to the platform "android voice". This
-  // fetches in the background; the platform TTS covers replies until it lands.
+  // Ensure the on-device Kokoro voice is present (Kokoro is the only on-device
+  // TTS backend). Without tts/kokoro/, on-device TTS has nothing to synthesize
+  // and the app falls back to the platform "android voice". This fetches in the
+  // background; the platform TTS covers replies until it lands.
   ensureKokoroTtsAssetsInBackground(bundleRoot, resolveAssignedChatTierSlug());
-  if (!existsSync(path.join(bundleRoot, "tts"))) {
-    // No neural-voice assets yet — also kick off the OmniVoice fetch (larger
-    // tiers ship it) and report unavailable for now.
-    ensureOmnivoiceTtsAssetsInBackground(bundleRoot);
+  const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
+  const kokoroGgufPath = path.join(kokoroDir, KOKORO_GGUF_FILE);
+  const kokoroVoicePath = path.join(kokoroDir, KOKORO_VOICE_FILE);
+  if (!existsSync(kokoroGgufPath) || !existsSync(kokoroVoicePath)) {
+    // Kokoro voice not staged yet — the background download above will land it;
+    // until then on-device TTS reports unavailable and the platform TTS covers.
     return null;
   }
-  return { libPath, bundleRoot };
+  return { libPath, bundleRoot, kokoroGgufPath, kokoroVoicePath };
 }
 
 function resolveBundleRootFromModelPath(modelPath: string): string {
@@ -3024,16 +2937,13 @@ export async function ensureAospLocalInferenceHandlers(
       "[aosp-local-inference] ASR assets absent under the chat bundle; NOT registering a local TRANSCRIPTION handler (native SpeechRecognizer owns on-device STT). Readiness probes will correctly report transcription as unavailable.",
     );
   }
-  const baseOmnivoiceTextToSpeechHandler =
-    makeAospFusedOmnivoiceTextToSpeechHandler(
-      textLoader,
-      lifecycle.markEvicted,
-    );
-  let foregroundOmnivoiceTextToSpeechUsed = false;
+  const baseKokoroTextToSpeechHandler =
+    makeAospFusedKokoroTextToSpeechHandler();
+  let foregroundKokoroTextToSpeechUsed = false;
   const textToSpeechHandler = makeAospTextToSpeechHandler({
-    omnivoice: baseOmnivoiceTextToSpeechHandler,
+    kokoro: baseKokoroTextToSpeechHandler,
     onForegroundUse: () => {
-      foregroundOmnivoiceTextToSpeechUsed = true;
+      foregroundKokoroTextToSpeechUsed = true;
     },
   });
   for (const modelType of slots) {
@@ -3085,8 +2995,8 @@ export async function ensureAospLocalInferenceHandlers(
         (err instanceof Error ? err.message : String(err)),
     );
   });
-  prewarmAospOmnivoiceTextToSpeechHandler(baseOmnivoiceTextToSpeechHandler, {
-    shouldSkip: () => foregroundOmnivoiceTextToSpeechUsed,
+  prewarmAospKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
+    shouldSkip: () => foregroundKokoroTextToSpeechUsed,
   });
 
   const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${
