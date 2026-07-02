@@ -20,6 +20,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../../lib/api-client";
 import type {
+  CreatedInviteDto,
   InviteRole,
   OrgInviteDto,
   OrgMemberDto,
@@ -88,10 +89,16 @@ export function useCreateInvite() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: { email: string; role: InviteRole }) => {
-      await api("/api/organizations/invites", {
-        method: "POST",
-        json: input,
-      });
+      // `data.token` is the raw invite token, returned exactly once at
+      // creation so the inviter can copy a shareable accept link.
+      const res = await api<Envelope<CreatedInviteDto>>(
+        "/api/organizations/invites",
+        {
+          method: "POST",
+          json: input,
+        },
+      );
+      return res.data;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
