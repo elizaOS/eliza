@@ -1,6 +1,8 @@
 const port = 30_000 + Math.floor(Math.random() * 10_000);
 const baseUrl = `http://127.0.0.1:${port}`;
 
+const SESSION_SECRET = "test-session-secret";
+
 const proc = Bun.spawn(["bun", "run", "server.ts"], {
   cwd: import.meta.dir,
   env: {
@@ -8,6 +10,8 @@ const proc = Bun.spawn(["bun", "run", "server.ts"], {
     ELIZA_AFFILIATE_CODE: "AFF-TEST",
     ELIZA_APP_ID: "00000000-0000-4000-8000-000000000000",
     ELIZA_CLOUD_URL: "https://elizacloud.ai",
+    ELIZAOS_CLOUD_API_KEY: "eliza_test_owner_key",
+    EDAD_SESSION_SECRET: SESSION_SECRET,
     PORT: String(port),
   },
   stderr: "pipe",
@@ -78,6 +82,58 @@ try {
     body.cloud_url !== "https://elizacloud.ai"
   ) {
     throw new Error(`Unexpected config body: ${JSON.stringify(body)}`);
+  }
+
+  // ── App-session helper round-trip (pure, no network) ──────────────────────
+  const { mintAppSession, verifyAppSession } = await import("./app-session.ts");
+  const minted = mintAppSession("user-123", SESSION_SECRET);
+  if (verifyAppSession(minted, SESSION_SECRET) !== "user-123") {
+    throw new Error("app-session: valid token did not verify to its user id");
+  }
+  if (verifyAppSession(minted, "wrong-secret") !== null) {
+    throw new Error("app-session: token verified under the WRONG secret");
+  }
+  if (verifyAppSession(`${minted}tamper`, SESSION_SECRET) !== null) {
+    throw new Error("app-session: tampered token verified");
+  }
+  const expired = mintAppSession("u", SESSION_SECRET, -1);
+  if (verifyAppSession(expired, SESSION_SECRET) !== null) {
+    throw new Error("app-session: expired token verified");
+  }
+
+  // ── Auth gating: messages/history require a valid app session ──────────────
+  const noAuth = await fetch(`${baseUrl}/api/messages/`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (noAuth.status !== 401) {
+    throw new Error(
+      `messages without a session should 401, got ${noAuth.status}`,
+    );
+  }
+  const forged = await fetch(`${baseUrl}/api/messages/`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-app-session": "forged.token",
+    },
+    body: "{}",
+  });
+  if (forged.status !== 401) {
+    throw new Error(
+      `messages with a forged session should 401, got ${forged.status}`,
+    );
+  }
+
+  // ── Exchange route: rejects a missing code (without contacting cloud) ──────
+  const noCode = await fetch(`${baseUrl}/api/auth/exchange`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (noCode.status !== 400) {
+    throw new Error(`exchange without a code should 400, got ${noCode.status}`);
   }
 
   console.log("eDad local smoke test passed");
