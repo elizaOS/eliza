@@ -141,3 +141,62 @@ describe("factMemoryEvaluator keyword dedupe", () => {
 		expect(result?.data).toMatchObject({ added: 0, strengthened: 1 });
 	});
 });
+
+describe("reflection evaluator schemas are strict-structured-output safe", () => {
+	// Strict-mode validators (Cerebras, Groq, OpenAI strict) reject any object
+	// node that lacks an explicit `properties` map or allows additional
+	// properties — the WHOLE extraction request 400s ("Bad Request"), so the
+	// agent silently never writes fact/relationship memories. Walk every
+	// evaluator's response schema and assert the invariant on each object node.
+	function assertStrictObjectNodes(node: unknown, path: string): void {
+		if (node === null || typeof node !== "object") return;
+		if (Array.isArray(node)) {
+			node.forEach((item, i) => assertStrictObjectNodes(item, `${path}[${i}]`));
+			return;
+		}
+		const record = node as Record<string, unknown>;
+		// Strict mode also rejects value-constraint keywords (maxItems,
+		// minItems, maxLength, pattern, minimum, ...) — enforce caps in code,
+		// never on the wire.
+		for (const banned of [
+			"maxItems",
+			"minItems",
+			"uniqueItems",
+			"maxLength",
+			"minLength",
+			"pattern",
+			"format",
+			"minimum",
+			"maximum",
+			"multipleOf",
+			"minProperties",
+			"maxProperties",
+		]) {
+			expect(
+				record[banned],
+				`${path} must not use strict-unsupported keyword "${banned}"`,
+			).toBeUndefined();
+		}
+		if (record.type === "object") {
+			expect(record.properties, `${path} must declare properties`).toBeTypeOf(
+				"object",
+			);
+			expect(
+				record.additionalProperties,
+				`${path} must set additionalProperties: false`,
+			).toBe(false);
+		}
+		for (const [key, value] of Object.entries(record)) {
+			assertStrictObjectNodes(value, `${path}.${key}`);
+		}
+	}
+
+	it("every object node in every reflection schema has explicit properties + additionalProperties:false", async () => {
+		const { reflectionItems } = await import("./reflection-items.ts");
+		for (const evaluator of reflectionItems) {
+			const schema = (evaluator as { schema?: unknown }).schema;
+			if (!schema) continue;
+			assertStrictObjectNodes(schema, evaluator.name ?? "evaluator");
+		}
+	});
+});
