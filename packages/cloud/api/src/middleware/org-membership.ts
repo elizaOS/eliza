@@ -29,6 +29,7 @@ const RESOURCE_TYPE_TO_ACTION: Record<string, AuditAction> = {
   api_key: "api_key.use",
   agent: "agent.config.update",
   container: "agent.config.update",
+  pooled_credential: "secret.access",
   secret: "secret.access",
   workflow: "agent.config.update",
 };

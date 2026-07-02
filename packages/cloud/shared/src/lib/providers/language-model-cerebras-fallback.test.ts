@@ -57,6 +57,16 @@ function tooManyRequests(): Response {
   });
 }
 
+function authorizationHeader(init?: RequestInit): string | null {
+  const headers = init?.headers;
+  if (!headers) return null;
+  if (headers instanceof Headers) return headers.get("authorization");
+  if (Array.isArray(headers)) {
+    return headers.find(([name]) => name.toLowerCase() === "authorization")?.[1] ?? null;
+  }
+  return headers.authorization ?? headers.Authorization ?? null;
+}
+
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
 });
@@ -82,6 +92,28 @@ describe("getLanguageModel cerebras-direct (cerebras-only, no OpenRouter fallbac
 
     expect(result.text).toBe("from-cerebras");
     expect(hosts).toEqual(["cerebras"]);
+  });
+
+  test("a pooled Cerebras credential is used instead of the platform env key", async () => {
+    const authHeaders: Array<string | null> = [];
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      hosts.push(hostOf(url));
+      authHeaders.push(authorizationHeader(init));
+      return completion("gemma-4-31b", "from-pooled-cerebras");
+    }) as typeof fetch;
+
+    const result = await generateText({
+      model: getLanguageModel("gemma-4-31b", {
+        providerId: "cerebras-api",
+        apiKey: "pooled-cerebras-key",
+      }),
+      prompt: "hi",
+      maxRetries: 0,
+    });
+
+    expect(result.text).toBe("from-pooled-cerebras");
+    expect(hosts).toEqual(["cerebras"]);
+    expect(authHeaders).toEqual(["Bearer pooled-cerebras-key"]);
   });
 
   test("a 429 surfaces (cerebras-only) and is never routed to OpenRouter", async () => {

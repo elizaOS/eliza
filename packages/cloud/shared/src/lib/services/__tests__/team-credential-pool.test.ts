@@ -51,8 +51,10 @@ let svc: typeof import("../team-credential-pool/service");
 let registryMod: typeof import("../team-credential-pool/registry");
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
+const ORG_B = "22222222-2222-4222-8222-222222222222";
 const OWNER_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const MEMBER_A = "aaaaaaaa-2222-4222-8222-222222222222";
+const OWNER_B = "bbbbbbbb-1111-4111-8111-111111111111";
 
 const AUDIT = {
   actorType: "user" as const,
@@ -120,7 +122,10 @@ beforeAll(async () => {
     );
     await apply();
 
-    await dbWrite.insert(organizations).values([{ id: ORG_A, name: "Org A", slug: "org-a" }]);
+    await dbWrite.insert(organizations).values([
+      { id: ORG_A, name: "Org A", slug: "org-a" },
+      { id: ORG_B, name: "Org B", slug: "org-b" },
+    ]);
     await dbWrite.insert(users).values([
       {
         id: OWNER_A,
@@ -135,6 +140,13 @@ beforeAll(async () => {
         organization_id: ORG_A,
         role: "member",
         steward_user_id: `steward-${MEMBER_A}`,
+      },
+      {
+        id: OWNER_B,
+        email: "owner@b.test",
+        organization_id: ORG_B,
+        role: "owner",
+        steward_user_id: `steward-${OWNER_B}`,
       },
     ]);
   } catch (error) {
@@ -318,6 +330,44 @@ describe("selection — real AccountPool rotation + health", () => {
     expect(seen.has(credBeta)).toBe(true);
   });
 
+  test("Worker provider outcome writeback marks 429 and 401 credentials unhealthy", async () => {
+    const registry = new registryMod.TeamPoolRegistry();
+
+    await registry.recordProviderFailure({
+      organizationId: ORG_A,
+      credentialId: credBeta,
+      providerId: "anthropic-api",
+      status: 429,
+      detail: "429 from Worker inference",
+    });
+    const betaAfter429 = await repo.findById(credBeta);
+    expect(betaAfter429?.health).toBe("rate-limited");
+    expect(betaAfter429?.health_detail?.until).toBeGreaterThan(Date.now());
+    expect(betaAfter429?.health_detail?.lastError).toBe("429 from Worker inference");
+
+    await registry.recordProviderFailure({
+      organizationId: ORG_A,
+      credentialId: credGamma,
+      providerId: "anthropic-api",
+      status: 401,
+      detail: "401 from Worker inference",
+    });
+    const gammaAfter401 = await repo.findById(credGamma);
+    expect(gammaAfter401?.health).toBe("needs-reauth");
+    expect(gammaAfter401?.health_detail?.lastError).toBe("401 from Worker inference");
+
+    // Preserve the fixture state expected by the keep-alive test below: beta is
+    // rate-limited, but its cool-off has already passed.
+    await repo.updatePoolState(credBeta, {
+      health: "rate-limited",
+      health_detail: {
+        until: Date.now() - 1_000,
+        lastChecked: Date.now(),
+        lastError: "expired test cool-off",
+      },
+    });
+  });
+
   test("writeAccount (401 → needs-reauth) updates metadata only, ciphertext untouched", async () => {
     const before = await repo.findById(credGamma);
     if (!before) throw new Error("gamma missing");
@@ -426,6 +476,43 @@ describe("selection — real AccountPool rotation + health", () => {
     expect(rollups.find((r) => r.user_id === OWNER_A)?.calls).toBe(1);
     expect((await repo.usageTotalsForDay(ORG_A, day)).get(credAlpha)).toBe(3);
     expect((await repo.findById(credAlpha))?.last_used_at).not.toBeNull();
+  });
+
+  test("wrong-org service calls cannot update or delete a known credential id", async () => {
+    const before = await repo.findById(credAlpha);
+    if (!before) throw new Error("alpha missing");
+    const secretId = before.secret_id;
+
+    expect(
+      await repo.updatePoolStateForOrganization(credAlpha, ORG_B, {
+        enabled: false,
+      }),
+    ).toBeUndefined();
+    expect(await repo.deleteForOrganization(credAlpha, ORG_B)).toBeUndefined();
+
+    await expect(
+      svc.updatePooledCredential({
+        credentialId: credAlpha,
+        organizationId: ORG_B,
+        enabled: false,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      svc.removePooledCredential({
+        credentialId: credAlpha,
+        organizationId: ORG_B,
+        audit: {
+          actorType: "user",
+          actorId: OWNER_B,
+          source: "team-credential-pool.test",
+        },
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    const after = await repo.findById(credAlpha);
+    expect(after?.organization_id).toBe(ORG_A);
+    expect(after?.enabled).toBe(true);
+    expect(await secretRow(secretId)).toBeDefined();
   });
 
   test("remove deletes the pool row AND its vault secret", async () => {

@@ -196,6 +196,7 @@ function callStreaming(
     undefined,
     {} as never,
     "gateway" as never,
+    null,
   );
 }
 

@@ -358,11 +358,14 @@ describe("PATCH/DELETE /api/organizations/credentials/:id — RBAC + IDOR", () =
     // The denial is audited (assertOrgMembership emits a denied event).
     const { dbWrite } = await import("@/db/client");
     const audited = await dbWrite.execute(
-      `SELECT actor_id, result, metadata FROM auth_events
+      `SELECT actor_id, action, result, metadata FROM auth_events
        WHERE result = 'denied' AND resource_type = 'pooled_credential' AND resource_id = '${credentialByMemberA}';`,
     );
     expect(audited.rows.length).toBeGreaterThanOrEqual(1);
     expect((audited.rows[0] as { actor_id: string }).actor_id).toBe(MEMBER_B);
+    expect((audited.rows[0] as { action: string }).action).toBe(
+      "secret.access",
+    );
   });
 
   test("a non-contributor member cannot DELETE someone else's key", async () => {

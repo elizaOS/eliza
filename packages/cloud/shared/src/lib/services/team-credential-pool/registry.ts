@@ -177,13 +177,54 @@ export class TeamPoolRegistry {
         userId: params.userId,
         day,
       });
-      await pooledCredentialsRepository.updatePoolState(params.credentialId, {
-        last_used_at: new Date(),
-      });
+      await pooledCredentialsRepository.updatePoolStateForOrganization(
+        params.credentialId,
+        params.organizationId,
+        {
+          last_used_at: new Date(),
+        },
+      );
     } catch (err) {
       logger.warn("[TeamPoolRegistry] usage attribution failed", {
         organizationId: params.organizationId,
         credentialId: params.credentialId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Feed direct Worker/provider failures back into the org pool. Only statuses
+   * that tell us something about the selected credential mutate pool health:
+   * auth failures need reauth, and 429s cool off the credential briefly.
+   */
+  async recordProviderFailure(params: {
+    organizationId: string;
+    credentialId: string;
+    providerId: PooledDirectProvider;
+    status: number;
+    detail?: string;
+  }): Promise<void> {
+    if (![401, 403, 429].includes(params.status)) return;
+    try {
+      const entry = await this.getOrgPool(params.organizationId);
+      if (!entry) return;
+      const detail = params.detail ?? `provider returned ${params.status}`;
+      if (params.status === 429) {
+        await entry.pool.markRateLimited(params.credentialId, Date.now() + 60_000, detail, {
+          providerId: params.providerId,
+        });
+      } else {
+        await entry.pool.markNeedsReauth(params.credentialId, detail, {
+          providerId: params.providerId,
+        });
+      }
+    } catch (err) {
+      logger.warn("[TeamPoolRegistry] provider failure writeback failed", {
+        organizationId: params.organizationId,
+        credentialId: params.credentialId,
+        providerId: params.providerId,
+        status: params.status,
         error: err instanceof Error ? err.message : String(err),
       });
     }

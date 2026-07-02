@@ -193,8 +193,13 @@ export async function listPooledCredentials(
   );
 }
 
-export async function getPooledCredential(id: string): Promise<PooledCredential | undefined> {
-  return pooledCredentialsRepository.findById(id);
+export async function getPooledCredential(
+  id: string,
+  organizationId?: string,
+): Promise<PooledCredential | undefined> {
+  return organizationId
+    ? pooledCredentialsRepository.findByIdForOrganization(id, organizationId)
+    : pooledCredentialsRepository.findById(id);
 }
 
 export interface UpdatePooledCredentialParams {
@@ -208,11 +213,15 @@ export interface UpdatePooledCredentialParams {
 export async function updatePooledCredential(
   params: UpdatePooledCredentialParams,
 ): Promise<PooledCredentialSummary> {
-  const updated = await pooledCredentialsRepository.updatePoolState(params.credentialId, {
-    ...(params.enabled !== undefined ? { enabled: params.enabled } : {}),
-    ...(params.priority !== undefined ? { priority: params.priority } : {}),
-    ...(params.label !== undefined ? { label: params.label } : {}),
-  });
+  const updated = await pooledCredentialsRepository.updatePoolStateForOrganization(
+    params.credentialId,
+    params.organizationId,
+    {
+      ...(params.enabled !== undefined ? { enabled: params.enabled } : {}),
+      ...(params.priority !== undefined ? { priority: params.priority } : {}),
+      ...(params.label !== undefined ? { label: params.label } : {}),
+    },
+  );
   if (!updated) {
     throw new TeamCredentialPoolError("Credential not found", 404);
   }
@@ -225,7 +234,10 @@ export async function removePooledCredential(params: {
   organizationId: string;
   audit: AuditContext;
 }): Promise<void> {
-  const row = await pooledCredentialsRepository.delete(params.credentialId);
+  const row = await pooledCredentialsRepository.deleteForOrganization(
+    params.credentialId,
+    params.organizationId,
+  );
   if (!row) {
     throw new TeamCredentialPoolError("Credential not found", 404);
   }

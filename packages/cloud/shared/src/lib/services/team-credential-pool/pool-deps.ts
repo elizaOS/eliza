@@ -92,12 +92,16 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
     // Pool-owned columns ONLY. The pool spreads `...account` from a snapshot
     // that may be stale; persisting label/enabled/priority here would clobber
     // a concurrent admin PATCH (e.g. re-enable a just-disabled credential).
-    const updated = await pooledCredentialsRepository.updatePoolState(account.id, {
-      health: account.health,
-      health_detail: account.healthDetail ?? null,
-      usage: account.usage ?? null,
-      last_used_at: account.lastUsedAt ? new Date(account.lastUsedAt) : null,
-    });
+    const updated = await pooledCredentialsRepository.updatePoolStateForOrganization(
+      account.id,
+      this.organizationId,
+      {
+        health: account.health,
+        health_detail: account.healthDetail ?? null,
+        usage: account.usage ?? null,
+        last_used_at: account.lastUsedAt ? new Date(account.lastUsedAt) : null,
+      },
+    );
     if (!updated) {
       // Row deleted underneath us (e.g. contributor removed it) — drop it
       // from the snapshot instead of resurrecting stale state.
@@ -111,8 +115,12 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
 
   async deleteAccount(providerId: PoolProviderId, accountId: string): Promise<void> {
     const row =
-      this.rowsById.get(accountId) ?? (await pooledCredentialsRepository.findById(accountId));
-    const deleted = await pooledCredentialsRepository.delete(accountId);
+      this.rowsById.get(accountId) ??
+      (await pooledCredentialsRepository.findByIdForOrganization(accountId, this.organizationId));
+    const deleted = await pooledCredentialsRepository.deleteForOrganization(
+      accountId,
+      this.organizationId,
+    );
     delete this.snapshot[poolRecordKey(providerId, accountId)];
     this.rowsById.delete(accountId);
     const secretId = row?.secret_id;

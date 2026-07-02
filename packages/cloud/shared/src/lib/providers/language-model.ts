@@ -10,6 +10,7 @@ import {
   isGroqNativeModel,
   isVastNativeModel,
 } from "../models";
+import type { PooledDirectProvider } from "../services/team-credential-pool/provider-map";
 import { logger } from "../utils/logger";
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
 import { toBitRouterModelId } from "./model-id-translation";
@@ -161,6 +162,50 @@ function getAnthropicClient() {
   }
 
   return anthropicClient;
+}
+
+export interface PooledLanguageModelCredential {
+  providerId: PooledDirectProvider;
+  apiKey: string;
+}
+
+export function resolvePooledDirectProviderForModel(model: string): PooledDirectProvider | null {
+  if (isCerebrasNativeModel(model)) return "cerebras-api";
+  if (isOpenAINativeModel(model) && !requiresGatewayRouting(model)) return "openai-api";
+  if (isAnthropicNativeModel(model)) return "anthropic-api";
+  return null;
+}
+
+function getPooledLanguageModel(model: string, credential: PooledLanguageModelCredential) {
+  const providerId = resolvePooledDirectProviderForModel(model);
+  if (!providerId || providerId !== credential.providerId) return null;
+
+  if (providerId === "cerebras-api") {
+    return withRateLimitFailFast(
+      createOpenAI({
+        apiKey: credential.apiKey,
+        baseURL: "https://api.cerebras.ai/v1",
+      }).chat(normalizeCerebrasModelId(model)),
+    );
+  }
+
+  if (providerId === "openai-api") {
+    const baseURL = getProviderKey("OPENAI_BASE_URL") ?? undefined;
+    const client = createOpenAI({
+      apiKey: credential.apiKey,
+      ...(baseURL ? { baseURL } : {}),
+    });
+    const modelId = normalizeOpenAIModelId(model);
+    return baseURL ? client.chat(modelId) : client.languageModel(modelId);
+  }
+
+  if (providerId === "anthropic-api") {
+    return createAnthropic({ apiKey: credential.apiKey }).languageModel(
+      normalizeAnthropicModelId(model),
+    );
+  }
+
+  return null;
 }
 
 function getVercelAIGatewayClient() {
@@ -418,7 +463,12 @@ export function hasTextEmbeddingProviderConfigured(): boolean {
   return Boolean(getProviderKey("OPENAI_API_KEY") || getVercelAIGatewayApiKey());
 }
 
-export function getLanguageModel(model: string) {
+export function getLanguageModel(model: string, credential?: PooledLanguageModelCredential) {
+  if (credential) {
+    const pooledModel = getPooledLanguageModel(model, credential);
+    if (pooledModel) return pooledModel;
+  }
+
   if (isGroqNativeModel(model)) {
     return getGroqClient().languageModel(getGroqApiModelId(model));
   }

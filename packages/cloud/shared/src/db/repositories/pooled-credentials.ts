@@ -52,6 +52,20 @@ export class PooledCredentialsRepository {
     return rows[0];
   }
 
+  async findByIdForOrganization(
+    id: string,
+    organizationId: string,
+  ): Promise<PooledCredential | undefined> {
+    const rows = await dbRead
+      .select()
+      .from(pooledCredentials)
+      .where(
+        and(eq(pooledCredentials.id, id), eq(pooledCredentials.organization_id, organizationId)),
+      )
+      .limit(1);
+    return rows[0];
+  }
+
   async listByOrganization(organizationId: string): Promise<PooledCredential[]> {
     return await dbRead
       .select()
@@ -127,6 +141,22 @@ export class PooledCredentialsRepository {
     id: string,
     state: PooledCredentialPoolState,
   ): Promise<PooledCredential | undefined> {
+    return this.updatePoolStateWhere(id, undefined, state);
+  }
+
+  async updatePoolStateForOrganization(
+    id: string,
+    organizationId: string,
+    state: PooledCredentialPoolState,
+  ): Promise<PooledCredential | undefined> {
+    return this.updatePoolStateWhere(id, organizationId, state);
+  }
+
+  private async updatePoolStateWhere(
+    id: string,
+    organizationId: string | undefined,
+    state: PooledCredentialPoolState,
+  ): Promise<PooledCredential | undefined> {
     const set: Record<string, unknown> = { updated_at: new Date() };
     if (state.label !== undefined) set.label = state.label;
     if (state.enabled !== undefined) set.enabled = state.enabled;
@@ -138,15 +168,37 @@ export class PooledCredentialsRepository {
     const rows = await dbWrite
       .update(pooledCredentials)
       .set(set)
-      .where(eq(pooledCredentials.id, id))
+      .where(
+        organizationId
+          ? and(eq(pooledCredentials.id, id), eq(pooledCredentials.organization_id, organizationId))
+          : eq(pooledCredentials.id, id),
+      )
       .returning();
     return rows[0];
   }
 
   async delete(id: string): Promise<PooledCredential | undefined> {
+    return this.deleteWhere(id);
+  }
+
+  async deleteForOrganization(
+    id: string,
+    organizationId: string,
+  ): Promise<PooledCredential | undefined> {
+    return this.deleteWhere(id, organizationId);
+  }
+
+  private async deleteWhere(
+    id: string,
+    organizationId?: string,
+  ): Promise<PooledCredential | undefined> {
     const rows = await dbWrite
       .delete(pooledCredentials)
-      .where(eq(pooledCredentials.id, id))
+      .where(
+        organizationId
+          ? and(eq(pooledCredentials.id, id), eq(pooledCredentials.organization_id, organizationId))
+          : eq(pooledCredentials.id, id),
+      )
       .returning();
     return rows[0];
   }

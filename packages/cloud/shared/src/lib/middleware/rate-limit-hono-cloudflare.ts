@@ -130,6 +130,15 @@ function applyRateLimitHeaders(c: Context, headers: Record<string, string>): voi
   }
 }
 
+export function applyRateLimitMultiplier(config: RateLimitConfig, env: Bindings): RateLimitConfig {
+  const m = multiplier(env);
+  if (m === 1) return config;
+  return {
+    ...config,
+    maxRequests: config.maxRequests * m,
+  };
+}
+
 export async function checkUpstash(
   redis: CompatibleRedis,
   key: string,
@@ -171,19 +180,27 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
       return;
     }
 
+    const effectiveConfig = applyRateLimitMultiplier(config, env);
+
     if (
       (env.RATE_LIMIT_DISABLED === "true" || env.PLAYWRIGHT_TEST_AUTH === "true") &&
       env.NODE_ENV !== "production"
     ) {
       await next();
-      applyRateLimitHeaders(c, rateLimitHeaders(config, fallOpenResult(config), "disabled"));
+      applyRateLimitHeaders(
+        c,
+        rateLimitHeaders(effectiveConfig, fallOpenResult(effectiveConfig), "disabled"),
+      );
       return;
     }
 
     const redis = getRedis(env);
     if (!redis) {
       await next();
-      applyRateLimitHeaders(c, rateLimitHeaders(config, fallOpenResult(config), "fall-open"));
+      applyRateLimitHeaders(
+        c,
+        rateLimitHeaders(effectiveConfig, fallOpenResult(effectiveConfig), "fall-open"),
+      );
       return;
     }
 
@@ -192,7 +209,12 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     let policy = "redis";
 
     try {
-      result = await checkUpstash(redis, key, config.windowMs, config.maxRequests);
+      result = await checkUpstash(
+        redis,
+        key,
+        effectiveConfig.windowMs,
+        effectiveConfig.maxRequests,
+      );
     } catch (error) {
       // Rate limiting is protective middleware. If its backing store is down
       // or unreachable in local Worker dev, requests should fall open instead
@@ -200,11 +222,11 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
       logger.warn("[RateLimit] Redis unavailable; falling open", {
         error: error instanceof Error ? error.message : String(error),
       });
-      result = fallOpenResult(config);
+      result = fallOpenResult(effectiveConfig);
       policy = "redis-unavailable";
     }
 
-    const headers = rateLimitHeaders(config, result, policy);
+    const headers = rateLimitHeaders(effectiveConfig, result, policy);
 
     if (!result.allowed) {
       return c.json(
@@ -212,8 +234,8 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
           success: false,
           error: "Too many requests",
           code: "rate_limit_exceeded" as const,
-          message: `Rate limit exceeded. Maximum ${config.maxRequests} requests per ${Math.ceil(
-            config.windowMs / 1000,
+          message: `Rate limit exceeded. Maximum ${effectiveConfig.maxRequests} requests per ${Math.ceil(
+            effectiveConfig.windowMs / 1000,
           )} seconds.`,
           retryAfter: result.retryAfter,
         },

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { rateLimitConfigVerdict } from "./rate-limit-hono-cloudflare";
+import { applyRateLimitMultiplier, rateLimitConfigVerdict } from "./rate-limit-hono-cloudflare";
 
 // #9853 P1.1 — production must never silently serve with rate limiting OFF.
 describe("rateLimitConfigVerdict", () => {
@@ -60,5 +60,38 @@ describe("rateLimitConfigVerdict", () => {
         }),
       ).toBe("warn-disabled");
     }
+  });
+});
+
+describe("applyRateLimitMultiplier", () => {
+  const config = { windowMs: 60_000, maxRequests: 10 };
+
+  test("non-production RATE_LIMIT_MULTIPLIER scales maxRequests", () => {
+    expect(
+      applyRateLimitMultiplier(config, {
+        NODE_ENV: "development",
+        RATE_LIMIT_MULTIPLIER: "25",
+      } as never),
+    ).toEqual({ windowMs: 60_000, maxRequests: 250 });
+  });
+
+  test("invalid or sub-1 multiplier is ignored", () => {
+    for (const RATE_LIMIT_MULTIPLIER of ["0", "-2", "nope"]) {
+      expect(
+        applyRateLimitMultiplier(config, {
+          NODE_ENV: "development",
+          RATE_LIMIT_MULTIPLIER,
+        } as never),
+      ).toEqual(config);
+    }
+  });
+
+  test("production never scales limits", () => {
+    expect(
+      applyRateLimitMultiplier(config, {
+        NODE_ENV: "production",
+        RATE_LIMIT_MULTIPLIER: "100",
+      } as never),
+    ).toEqual(config);
   });
 });
