@@ -29,8 +29,14 @@ export const codingAgentExamplesProvider: Provider = {
   position: -1,
   contexts: ["code", "agent_internal"],
   contextGate: { anyOf: ["code", "agent_internal"] },
-  cacheStable: true,
-  cacheScope: "agent",
+  // Not agent-cacheable: the body embeds live framework state
+  // (frameworkState.preferred / configuredSubscriptionProvider), which changes
+  // as auth/availability changes during the agent's lifetime. Recompute per turn
+  // like the sibling framework-state providers (active-workspace-context,
+  // coding-session-changes), so a stale recommendedDefault isn't pinned for the
+  // whole session.
+  cacheStable: false,
+  cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
