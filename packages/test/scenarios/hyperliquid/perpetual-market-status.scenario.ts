@@ -11,6 +11,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const PERPETUAL_MARKET = "PERPETUAL_MARKET";
 type R = AgentRuntime & {
@@ -20,6 +25,8 @@ type R = AgentRuntime & {
 };
 
 let restoreFetch: (() => void) | undefined;
+/** Number of /api/hyperliquid/status reads the bridge mock actually served. */
+let statusMockHits = 0;
 
 const STATUS_RESPONSE = {
   publicReadReady: true,
@@ -58,6 +65,7 @@ export default scenario({
       name: "hyperliquid-bridge-mock",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
+        statusMockHits = 0;
         const realFetch = globalThis.fetch;
         restoreFetch = () => {
           if (globalThis.fetch === hyperliquidMockFetch) {
@@ -76,6 +84,7 @@ export default scenario({
                 ? input.url
                 : input.toString();
           if (url.includes("/api/hyperliquid/status")) {
+            statusMockHits += 1;
             return new Response(JSON.stringify(STATUS_RESPONSE), {
               headers: { "Content-Type": "application/json" },
             });
@@ -195,6 +204,37 @@ export default scenario({
       actionName: PERPETUAL_MARKET,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the read really hit the bridge's status
+      // endpoint and surfaced the mock's readiness payload (public reads
+      // ready, keyless credential mode) in the action result — not just
+      // "the handler returned success".
+      type: "custom",
+      name: "hyperliquid-status-effect",
+      predicate: (ctx) => {
+        if (statusMockHits === 0) {
+          return "bridge mock never served /api/hyperliquid/status — the status read never touched the HTTP path";
+        }
+        const data = successfulActionData(ctx, PERPETUAL_MARKET);
+        if (!data) {
+          return `no successful ${PERPETUAL_MARKET} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.kind !== "status") {
+          return `expected result.data.kind "status", saw ${String(data.kind ?? "(missing)")}`;
+        }
+        const status = toRecord(data.status);
+        if (!status) {
+          return `expected result.data.status payload from the bridge, saw ${JSON.stringify(data).slice(0, 300)}`;
+        }
+        if (
+          status.publicReadReady !== true ||
+          status.credentialMode !== "none" ||
+          status.executionReady !== false
+        ) {
+          return `expected the mock's readiness (publicReadReady=true, credentialMode="none", executionReady=false); saw ${JSON.stringify(status).slice(0, 300)}`;
+        }
+      },
     },
   ],
 });

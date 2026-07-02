@@ -22,6 +22,10 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const POST = "POST";
 
@@ -38,6 +42,8 @@ type R = AgentRuntime & {
 };
 
 let restoreWebSocket: (() => void) | undefined;
+/** REQ subscriptions the mock relay actually answered with EOSE. */
+let relayReqSubscriptions: string[] = [];
 
 /**
  * Minimal in-process Nostr relay over the WebSocket interface nostr-tools uses
@@ -73,6 +79,7 @@ class MockRelayWebSocket {
     if (!Array.isArray(message)) return;
     const [type, sub] = message as [string, string, ...unknown[]];
     if (type === "REQ") {
+      relayReqSubscriptions.push(sub);
       setTimeout(() => {
         this.onmessage?.({ data: JSON.stringify(["EOSE", sub]) });
       }, 0);
@@ -116,6 +123,7 @@ export default scenario({
       name: "nostr-mock-relay-and-config",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
+        relayReqSubscriptions = [];
 
         // Install the mock relay transport BEFORE plugin-nostr registers, so
         // SimplePool (constructed at service start) captures it as its
@@ -248,6 +256,32 @@ export default scenario({
       actionName: POST,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the search really flowed POST → nostr post
+      // connector → mock relay (a REQ subscription was answered) and the
+      // action surfaced the relay's empty result for the requested query —
+      // not just "the handler returned success".
+      type: "custom",
+      name: "nostr-search-effect",
+      predicate: (ctx) => {
+        if (relayReqSubscriptions.length === 0) {
+          return "mock relay never received a REQ subscription — the search never touched the Nostr transport";
+        }
+        const data = successfulActionData(ctx, POST);
+        if (!data) {
+          return `no successful ${POST} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.op !== "search" || data.source !== "nostr") {
+          return `expected result.data op "search" on source "nostr", saw op=${String(data.op)} source=${String(data.source)}`;
+        }
+        if (data.query !== "elizaos") {
+          return `expected the searched query "elizaos" in result.data.query, saw ${JSON.stringify(data.query ?? null)}`;
+        }
+        if (!Array.isArray(data.posts) || data.posts.length !== 0) {
+          return `mock relay returns zero events, so result.data.posts must be an empty array; saw ${JSON.stringify(data.posts ?? null).slice(0, 200)}`;
+        }
+      },
     },
   ],
 });

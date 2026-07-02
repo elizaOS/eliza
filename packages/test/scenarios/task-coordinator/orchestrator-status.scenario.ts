@@ -144,5 +144,25 @@ export default scenario({
       status: "success",
       minCount: 1,
     },
+    {
+      // Effect proof (#11381): the slash command's deterministic handler
+      // really produced its contractual status reply — the action's entire
+      // observable behavior — not merely success=true.
+      type: "custom",
+      name: "orchestrator-status-reply-effect",
+      predicate: (ctx) => {
+        const call = ctx.actionsCalled.find(
+          (action) =>
+            action.actionName === ORCHESTRATOR_STATUS_COMMAND_ACTION &&
+            action.result?.success === true,
+        );
+        if (!call) {
+          return `no successful ${ORCHESTRATOR_STATUS_COMMAND_ACTION} call captured`;
+        }
+        if (call.result?.text !== "Orchestrator is online.") {
+          return `expected the command's fixed status reply "Orchestrator is online." in result.text, saw ${JSON.stringify(call.result?.text ?? null)}`;
+        }
+      },
+    },
   ],
 });
