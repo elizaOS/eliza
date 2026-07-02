@@ -282,7 +282,10 @@ describe("Stripe Connect transfer route — money-path invariants (#10279)", () 
     });
 
     const res = await callTransfer(10);
-    const body = (await res.json()) as { success: boolean; transferId?: string };
+    const body = (await res.json()) as {
+      success: boolean;
+      transferId?: string;
+    };
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);

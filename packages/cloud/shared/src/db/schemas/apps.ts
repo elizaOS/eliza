@@ -62,12 +62,7 @@ export const appReviewStatusEnum = pgEnum("app_review_status", [
   "rejected",
 ]);
 
-export type AppReviewStatus =
-  | "draft"
-  | "submitted"
-  | "under_review"
-  | "approved"
-  | "rejected";
+export type AppReviewStatus = "draft" | "submitted" | "under_review" | "approved" | "rejected";
 
 /**
  * Apps table schema (core).

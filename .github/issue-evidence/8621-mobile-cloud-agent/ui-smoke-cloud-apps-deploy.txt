@@ -1,0 +1,12 @@
+# bun run --cwd packages/app test:e2e test/ui-smoke/cloud-apps-deploy-deeplink.spec.ts
+# (real Chromium against the ui-smoke stack; Electrobun desktop marker injected pre-boot;
+#  Eliza Cloud API route-mocked with strict no-unmocked-endpoints assertion)
+
+
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › test/ui-smoke/cloud-apps-deploy-deeplink.spec.ts:180:1 › eliza://apps/deploy intent mounts the Apps studio and reaches the Deploy control (2.2s)
+
+  1 passed (1.0m)
+EXIT=0

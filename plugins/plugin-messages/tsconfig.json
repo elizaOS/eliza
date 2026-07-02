@@ -25,6 +25,8 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/tui": ["../../packages/tui/src/index.ts"],
+      "@elizaos/tui/*": ["../../packages/tui/src/*"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
       "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "@elizaos/capacitor-messages": [

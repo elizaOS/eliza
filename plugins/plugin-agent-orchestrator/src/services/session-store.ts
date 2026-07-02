@@ -399,7 +399,9 @@ export class InMemorySessionStore implements SessionStore {
       lastActivityAt: patch.lastActivityAt
         ? new Date(patch.lastActivityAt)
         : new Date(),
-      createdAt: patch.createdAt ? new Date(patch.createdAt) : current.createdAt,
+      createdAt: patch.createdAt
+        ? new Date(patch.createdAt)
+        : current.createdAt,
       metadata: patch.metadata
         ? { ...patch.metadata }
         : current.metadata
@@ -711,7 +713,9 @@ export class RuntimeDbSessionStore implements SessionStore {
     await this.upsert({
       ...current,
       ...patch,
-      createdAt: patch.createdAt ? new Date(patch.createdAt) : current.createdAt,
+      createdAt: patch.createdAt
+        ? new Date(patch.createdAt)
+        : current.createdAt,
       lastActivityAt: patch.lastActivityAt
         ? new Date(patch.lastActivityAt)
         : new Date(),

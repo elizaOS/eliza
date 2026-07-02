@@ -1025,7 +1025,9 @@ describe("ScheduledTaskRunner — dispatcher", () => {
 describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
   const NOW_ISO = "2026-05-09T12:00:00.000Z";
 
-  function makeDispatchRunner(dispatch: () => Promise<DispatchResult | undefined>) {
+  function makeDispatchRunner(
+    dispatch: () => Promise<DispatchResult | undefined>,
+  ) {
     const gates = createTaskGateRegistry();
     registerBuiltInGates(gates);
     const completionChecks = createCompletionCheckRegistry();

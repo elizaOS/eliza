@@ -288,10 +288,14 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 	// Source: api.cerebras.ai/v1 self-reported limits (`context_length_exceeded`
 	// body cites the per-model ceiling). Captured 2026-05-11.
 	"gpt-oss-120b": 131_000,
-	// Source: https://inference-docs.cerebras.ai/models/gemma-4-31b
-	// (captured 2026-07-01). Paid tier context is 131k tokens; the public
-	// free tier is 65k.
-	"gemma-4-31b": 131_000,
+	// Source: https://inference-docs.cerebras.ai/models/gemma-4-31b +
+	// live API probe (captured 2026-07-02): a 140k-token prompt returns
+	// `context_length_exceeded ... limit is 131072`, and the `context_length`
+	// request param is rejected (`property 'context_length' is unsupported`) —
+	// so 131072 is the hard, non-extensible ceiling on the paid tier. (The
+	// model card's larger figure is not what Cerebras serves; the public free
+	// tier caps at 65k.)
+	"gemma-4-31b": 131_072,
 	"qwen-3-235b-a22b-instruct-2507": 64_000,
 	"zai-glm-4.7": 131_000,
 	"llama3.1-8b": 32_000,

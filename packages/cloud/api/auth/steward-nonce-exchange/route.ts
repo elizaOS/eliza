@@ -31,6 +31,7 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
+  STEWARD_AUTH_UPSTREAM_TIMEOUT_MS,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
@@ -248,7 +249,7 @@ async function callStewardExchange(
       method: "POST",
       headers,
       body: bodyText,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(STEWARD_AUTH_UPSTREAM_TIMEOUT_MS),
     });
   } catch (err) {
     return {

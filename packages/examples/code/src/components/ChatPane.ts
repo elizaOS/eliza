@@ -1,9 +1,14 @@
 import {
   type AutocompleteProvider,
+  CURSOR_MARKER,
   Editor,
   type Focusable,
+  Loader,
   Markdown,
+  matchesKey,
   type TUI,
+  truncateToWidth,
+  visibleWidth,
 } from "@elizaos/tui";
 import chalk from "chalk";
 import { createEditorTheme } from "../lib/editor-theme.js";
@@ -15,6 +20,12 @@ import type { Message } from "../types.js";
 // line); fall back to the plain wrapper there. This also keeps the #11043
 // narrow-terminal guarantee simple on the cockpit's ~43-col phone xterm.
 const MARKDOWN_MIN_WIDTH = 40;
+const COMPOSER_MAX_LINES = 6;
+const COMPOSER_PROMPT = "> ";
+const ANSI_SGR_PATTERN = new RegExp(
+  `${String.fromCharCode(27)}\\[[0-9;]*m`,
+  "g",
+);
 // One shared theme instance (chalk style fns; cheap, but no need to rebuild).
 const chatMarkdownTheme = createChatMarkdownTheme();
 
@@ -106,6 +117,37 @@ function wrapText(text: string, maxWidth: number): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
+function padToVisibleWidth(text: string, maxWidth: number): string {
+  const clipped = truncateToWidth(text, maxWidth, "");
+  const padding = Math.max(0, maxWidth - visibleWidth(clipped));
+  return `${clipped}${" ".repeat(padding)}`;
+}
+
+function isEditorRule(line: string, width: number): boolean {
+  if (visibleWidth(line) !== width) return false;
+  const plain = line
+    .replaceAll(CURSOR_MARKER, "")
+    .replace(ANSI_SGR_PATTERN, "");
+  return plain.length > 0 && [...plain].every((char) => char === "─");
+}
+
+function windowAroundCursor(lines: string[], maxLines: number): string[] {
+  if (lines.length <= maxLines) return lines;
+
+  const cursorIndex = lines.findIndex(
+    (line) => line.includes(CURSOR_MARKER) || line.includes("\x1b[7m"),
+  );
+  if (cursorIndex === -1) {
+    return lines.slice(-maxLines);
+  }
+
+  const start = Math.min(
+    Math.max(0, cursorIndex - maxLines + 1),
+    Math.max(0, lines.length - maxLines),
+  );
+  return lines.slice(start, start + maxLines);
+}
+
 function toRenderLines(messages: Message[], maxWidth: number): RenderLine[] {
   const lines: RenderLine[] = [];
 
@@ -164,9 +206,13 @@ export class ChatPane implements Focusable {
   focused = false;
   private props: ChatPaneProps;
   private editor: Editor;
+  private typingLoader: Loader | null = null;
+  private typingLoaderRunning = false;
   private scrollOffset = 0;
-  private width = 80;
-  private height = 24;
+  private lastMessageAreaHeight = 1;
+  private lastMaxScroll = 0;
+  private lastRenderedLineCount = 0;
+  private lastRenderedRoomId: string | null = null;
 
   constructor(props: ChatPaneProps) {
     this.props = props;
@@ -178,13 +224,21 @@ export class ChatPane implements Focusable {
     this.editor.onSubmit = async (text: string) => {
       const trimmed = text.trim();
       if (trimmed.length > 0) {
+        // Record the prompt so ↑/↓ recalls it — the Editor implements history
+        // browsing but never had anything added to it, so up-arrow did nothing.
+        this.editor.addToHistory(trimmed);
         this.editor.setText("");
+        this.scrollOffset = 0;
         await props.onSubmit(trimmed);
       }
     };
     this.editor.onChange = (text: string) => {
       useStore.getState().setInputValue(text);
     };
+  }
+
+  dispose(): void {
+    this.stopTypingLoader();
   }
 
   syncFocus(isFocused: boolean): void {
@@ -199,13 +253,32 @@ export class ChatPane implements Focusable {
   handleInput(char: string): void {
     if (!this.focused) return;
 
-    // Ctrl+Up/Down to scroll
-    if (char === "\x1b[1;5A") {
-      this.scrollUp();
+    // Transcript scrollback. Page keys always control history; Home/End do so
+    // when the composer is empty or the user is already reading scrollback.
+    if (matchesKey(char, "ctrl+up")) {
+      this.scrollBy(1);
       return;
     }
-    if (char === "\x1b[1;5B") {
-      this.scrollDown();
+    if (matchesKey(char, "ctrl+down")) {
+      this.scrollBy(-1);
+      return;
+    }
+    if (matchesKey(char, "pageUp")) {
+      this.scrollBy(this.getPageScrollAmount());
+      return;
+    }
+    if (matchesKey(char, "pageDown")) {
+      this.scrollBy(-this.getPageScrollAmount());
+      return;
+    }
+    const shouldRouteHomeEndToScroll =
+      this.editor.getText().length === 0 || this.scrollOffset > 0;
+    if (shouldRouteHomeEndToScroll && matchesKey(char, "home")) {
+      this.scrollToTop();
+      return;
+    }
+    if (shouldRouteHomeEndToScroll && matchesKey(char, "end")) {
+      this.scrollToBottom();
       return;
     }
 
@@ -224,27 +297,72 @@ export class ChatPane implements Focusable {
     this.props.tui.requestRender();
   }
 
-  private scrollUp(): void {
-    const state = useStore.getState();
-    const room = state.rooms.find((r) => r.id === state.currentRoomId);
-    const messages = room?.messages ?? [];
-    const innerWidth = Math.max(1, this.width - 4);
-    const allLines = toRenderLines(messages, innerWidth);
-    const messageAreaHeight = Math.max(1, this.height - 6);
-    const maxScroll = Math.max(0, allLines.length - messageAreaHeight);
-    this.scrollOffset = Math.min(this.scrollOffset + 1, maxScroll);
+  private getPageScrollAmount(): number {
+    return Math.max(1, this.lastMessageAreaHeight - 1);
+  }
+
+  private scrollBy(deltaLines: number): void {
+    this.scrollOffset = Math.max(
+      0,
+      Math.min(this.scrollOffset + deltaLines, this.lastMaxScroll),
+    );
     this.props.tui.requestRender();
   }
 
-  private scrollDown(): void {
-    this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+  private scrollToTop(): void {
+    this.scrollOffset = this.lastMaxScroll;
     this.props.tui.requestRender();
+  }
+
+  private scrollToBottom(): void {
+    this.scrollOffset = 0;
+    this.props.tui.requestRender();
+  }
+
+  private ensureTypingLoader(): Loader {
+    if (!this.typingLoader) {
+      this.typingLoader = new Loader(
+        this.props.tui,
+        chalk.green,
+        chalk.dim,
+        "Processing (Esc/Ctrl+C abort)",
+      );
+      this.typingLoaderRunning = true;
+      return this.typingLoader;
+    }
+
+    if (!this.typingLoaderRunning) {
+      this.typingLoader.start();
+      this.typingLoaderRunning = true;
+    }
+
+    return this.typingLoader;
+  }
+
+  private stopTypingLoader(): void {
+    if (!this.typingLoaderRunning) return;
+    this.typingLoader?.stop();
+    this.typingLoaderRunning = false;
+  }
+
+  private renderTypingLoader(width: number): RenderLine[] {
+    return this.ensureTypingLoader()
+      .render(width)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => ({ text: line, raw: true }));
+  }
+
+  private renderComposerLines(editorWidth: number, maxLines: number): string[] {
+    const editorLines = this.editor.render(editorWidth);
+    const bodyLines = editorLines.filter(
+      (line) => !isEditorRule(line, editorWidth),
+    );
+    const visibleBody = bodyLines.length > 0 ? bodyLines : [""];
+    return windowAroundCursor(visibleBody, maxLines);
   }
 
   /** Region body for the chat column (messages + input chrome). */
   renderContent(width: number, height: number): string[] {
-    this.width = width;
-    this.height = height;
     this.editor.setPaddingX(1);
 
     const state = useStore.getState();
@@ -256,8 +374,21 @@ export class ChatPane implements Focusable {
     const paddingX = 1;
 
     const headerHeight = 1;
-    const inputHeight = 3;
     const helpHeight = 1;
+    const inputChromeHeight = 2;
+    const editorWidth = Math.max(1, innerWidth - 3);
+    const composerMaxLines = Math.max(
+      1,
+      Math.min(
+        COMPOSER_MAX_LINES,
+        height - headerHeight - helpHeight - inputChromeHeight - 1,
+      ),
+    );
+    const composerLines = state.isLoading
+      ? []
+      : this.renderComposerLines(editorWidth, composerMaxLines);
+    const inputBodyHeight = state.isLoading ? 1 : composerLines.length;
+    const inputHeight = inputChromeHeight + inputBodyHeight;
     const messageAreaHeight = Math.max(
       1,
       height - headerHeight - inputHeight - helpHeight,
@@ -265,11 +396,28 @@ export class ChatPane implements Focusable {
 
     const allLines = toRenderLines(messages, innerWidth);
     if (isAgentTyping) {
-      allLines.push({ text: "Eliza typing…", color: "green", dim: true });
+      allLines.push(...this.renderTypingLoader(innerWidth));
+    } else {
+      this.stopTypingLoader();
+    }
+
+    if (this.lastRenderedRoomId !== state.currentRoomId) {
+      this.scrollOffset = 0;
+    } else if (
+      this.scrollOffset > 0 &&
+      allLines.length > this.lastRenderedLineCount
+    ) {
+      this.scrollOffset += allLines.length - this.lastRenderedLineCount;
     }
 
     const maxScroll = Math.max(0, allLines.length - messageAreaHeight);
     const clampedScroll = Math.min(this.scrollOffset, maxScroll);
+    this.scrollOffset = clampedScroll;
+    this.lastMaxScroll = maxScroll;
+    this.lastMessageAreaHeight = messageAreaHeight;
+    this.lastRenderedLineCount = allLines.length;
+    this.lastRenderedRoomId = state.currentRoomId;
+
     const startIndex = Math.max(
       0,
       allLines.length - messageAreaHeight - clampedScroll,
@@ -328,16 +476,16 @@ export class ChatPane implements Focusable {
         `${borderColor("│")} ${chalk.dim(visibleText)}${" ".repeat(Math.max(0, innerWidth - visibleText.length - 1))}${borderColor("│")}`,
       );
     } else {
-      // The composer row wraps the editor in "│ > " + "│" — 5 columns of
-      // chrome on top of innerWidth (= width - 4), so the editor must render
-      // narrower than innerWidth or the row exceeds the terminal width and
-      // the TUI's overflow guard aborts — fatal on phone-width terminals
-      // (the cockpit xterm is ~43 cols).
-      const editorLines = this.editor.render(Math.max(1, innerWidth - 3));
-      const promptLine = chalk.cyan("> ") + (editorLines[0] || "");
-      output.push(
-        `${borderColor("│")} ${promptLine.padEnd(innerWidth - 1)}${borderColor("│")}`,
-      );
+      for (let i = 0; i < composerLines.length; i++) {
+        const prompt =
+          i === 0
+            ? chalk.cyan(COMPOSER_PROMPT)
+            : " ".repeat(COMPOSER_PROMPT.length);
+        const content = ` ${prompt}${composerLines[i] ?? ""}`;
+        output.push(
+          `${borderColor("│")}${padToVisibleWidth(content, innerWidth)}${borderColor("│")}`,
+        );
+      }
     }
 
     output.push(bottomBorder);
@@ -346,8 +494,8 @@ export class ChatPane implements Focusable {
       ? "Tab: focus"
       : state.inputValue.startsWith("/")
         ? "Enter: run • Tab: complete • Esc: clear • ?: help"
-        : "Enter: send • Tab: tasks • Esc: clear • ?: help";
-    output.push(chalk.dim(helpText));
+        : "Enter: send • PgUp/PgDn: scroll • Esc: clear • ?: help";
+    output.push(truncateToWidth(chalk.dim(helpText), width));
 
     return output;
   }

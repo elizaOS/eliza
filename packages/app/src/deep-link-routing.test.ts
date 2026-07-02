@@ -307,6 +307,26 @@ describe("top-level-surface deep-link navigation intents", () => {
     });
   });
 
+  it("routes apps/deploy to the cloud-apps studio page (#10823 Apps Deploy UI entry)", () => {
+    expect(resolveDeepLinkNavigationIntent("apps/deploy")).toEqual({
+      viewId: "cloud-apps",
+      viewPath: "/cloud-apps",
+    });
+  });
+
+  it("treats the cloud-apps page id as an alias for the Apps Deploy studio", () => {
+    expect(resolveDeepLinkNavigationIntent("cloud-apps")).toEqual({
+      viewId: "cloud-apps",
+      viewPath: "/cloud-apps",
+    });
+  });
+
+  it("does NOT claim the installed-apps or nested app-slug paths for the studio", () => {
+    expect(resolveDeepLinkNavigationIntent("apps")).toBeNull();
+    expect(resolveDeepLinkNavigationIntent("apps/files")).toBeNull();
+    expect(resolveDeepLinkNavigationIntent("apps/deploy/extra")).toBeNull();
+  });
+
   it("routes a bare connectors deep link to Settings → Connectors", () => {
     expect(resolveDeepLinkNavigationIntent("connectors")).toEqual({
       viewId: "settings",

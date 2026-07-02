@@ -4,6 +4,7 @@ import chalk from "chalk";
 import { createEditorTheme } from "../lib/editor-theme.js";
 import { getCodeTaskService } from "../lib/get-code-task-service.js";
 import { useStore } from "../lib/store.js";
+import { padEndVisible } from "../lib/text-width.js";
 import type {
   CodeTaskService,
   SubAgentType,
@@ -503,7 +504,7 @@ export class TaskPane implements Focusable {
       );
       const taskHeader = `${getStatusIcon(currentTask.metadata?.status ?? "pending")} ${currentTask.name}`;
       output.push(
-        `${borderColor("│")} ${statusColor(chalk.bold(taskHeader)).padEnd(innerWidth - 1)}${borderColor("│")}`,
+        `${borderColor("│")} ${padEndVisible(statusColor(chalk.bold(taskHeader)), innerWidth - 1)}${borderColor("│")}`,
       );
 
       // Progress bar
@@ -518,7 +519,7 @@ export class TaskPane implements Focusable {
 
       // Sub-agent
       output.push(
-        `${borderColor("│")} ${chalk.dim(`Sub-agent: ${currentTask.metadata?.subAgentType ?? "eliza"}`).padEnd(innerWidth - 1)}${borderColor("│")}`,
+        `${borderColor("│")} ${padEndVisible(chalk.dim(`Sub-agent: ${currentTask.metadata?.subAgentType ?? "eliza"}`), innerWidth - 1)}${borderColor("│")}`,
       );
 
       // Detail view header
@@ -526,7 +527,7 @@ export class TaskPane implements Focusable {
       const liveIndicator =
         currentTask.metadata?.status === "running" ? " (live)" : "";
       output.push(
-        `${borderColor("│")} ${chalk.dim.bold(`${detailHeader}${liveIndicator}`).padEnd(innerWidth - 1)}${borderColor("│")}`,
+        `${borderColor("│")} ${padEndVisible(chalk.dim.bold(`${detailHeader}${liveIndicator}`), innerWidth - 1)}${borderColor("│")}`,
       );
 
       // Detail lines
@@ -539,7 +540,7 @@ export class TaskPane implements Focusable {
 
       if (visibleDetail.length === 0) {
         output.push(
-          `${borderColor("│")} ${chalk.dim.italic(this.detailView === "output" ? "No output yet." : "No trace yet.").padEnd(innerWidth - 1)}${borderColor("│")}`,
+          `${borderColor("│")} ${padEndVisible(chalk.dim.italic(this.detailView === "output" ? "No output yet." : "No trace yet."), innerWidth - 1)}${borderColor("│")}`,
         );
       } else {
         for (const line of visibleDetail.slice(0, maxOutputLines)) {
@@ -565,21 +566,21 @@ export class TaskPane implements Focusable {
               ? `${line.slice(0, Math.max(0, maxOutputChars - 1))}…`
               : line;
           output.push(
-            `${borderColor("│")} ${color(clipped).padEnd(innerWidth - 1)}${borderColor("│")}`,
+            `${borderColor("│")} ${padEndVisible(color(clipped), innerWidth - 1)}${borderColor("│")}`,
           );
         }
       }
 
       if (this.detailScrollOffset > 0) {
         output.push(
-          `${borderColor("│")} ${chalk.dim(`[↓ ${this.detailScrollOffset} newer lines]`).padEnd(innerWidth - 1)}${borderColor("│")}`,
+          `${borderColor("│")} ${padEndVisible(chalk.dim(`[↓ ${this.detailScrollOffset} newer lines]`), innerWidth - 1)}${borderColor("│")}`,
         );
       }
 
       // Error display
       if (currentTask.metadata?.error) {
         output.push(
-          `${borderColor("│")} ${chalk.red.bold("Error: ")}${chalk.red(currentTask.metadata.error.substring(0, innerWidth - 10)).padEnd(innerWidth - 8)}${borderColor("│")}`,
+          `${borderColor("│")} ${chalk.red.bold("Error: ")}${padEndVisible(chalk.red(currentTask.metadata.error.substring(0, innerWidth - 10)), innerWidth - 8)}${borderColor("│")}`,
         );
       }
 
@@ -592,7 +593,7 @@ export class TaskPane implements Focusable {
       output.push(borderColor(`┌${"─".repeat(innerWidth)}┐`));
       const editorLines = this.renameEditor.render(Math.max(1, innerWidth - 2));
       output.push(
-        `${borderColor("│")} ${chalk.dim("Rename: ")}${(editorLines[0] || "").padEnd(innerWidth - 10)}${borderColor("│")}`,
+        `${borderColor("│")} ${chalk.dim("Rename: ")}${padEndVisible(editorLines[0] || "", innerWidth - 10)}${borderColor("│")}`,
       );
       output.push(borderColor(`└${"─".repeat(innerWidth)}┘`));
     }

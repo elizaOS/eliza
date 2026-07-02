@@ -41,8 +41,7 @@ import { RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
  * broad: a false positive only costs an encrypt/decrypt round-trip through the
  * materialization path; a false negative leaves a secret in plaintext.
  */
-const SENSITIVE_ENV_KEY_PATTERN =
-  /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE)/i;
+const SENSITIVE_ENV_KEY_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE)/i;
 
 /**
  * Platform tokens the control plane must read synchronously from the stored
@@ -52,9 +51,7 @@ const SENSITIVE_ENV_KEY_PATTERN =
  * back to.
  */
 const NEVER_ENCRYPT_ENV_KEYS: ReadonlySet<string> = new Set(
-  [...RESERVED_PLATFORM_ENV_KEYS, "ELIZAOS_API_KEY"].map((key) =>
-    key.toUpperCase(),
-  ),
+  [...RESERVED_PLATFORM_ENV_KEYS, "ELIZAOS_API_KEY"].map((key) => key.toUpperCase()),
 );
 
 /** Whether a caller-supplied env key should be encrypted at rest. */

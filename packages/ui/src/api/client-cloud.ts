@@ -72,8 +72,10 @@ const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
   ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
 const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
   ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
@@ -281,6 +283,19 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
     return resolveDirectCloudAuthApiBase(
       getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
     );
+  }
+  // Web SPA served from a cloud host with no agent baseUrl yet — exactly the
+  // /join flow's state (selectOrProvisionCloudAgent runs BEFORE any agent
+  // connection exists). Resolve the control plane from the page host so the
+  // direct /api/v1 path works. Returning null here sent these calls down the
+  // agent-proxy fallback (/api/cloud/compat/*), a route only agent servers
+  // mount — the cloud worker 404s it, so every web sign-in dead-ended on
+  // "Couldn't connect to your agent".
+  if (typeof window !== "undefined") {
+    const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+      window.location.hostname.toLowerCase(),
+    );
+    if (byHost) return byHost;
   }
   return null;
 }
@@ -1272,6 +1287,14 @@ declare module "./client-base" {
        */
       preferSharedTier?: boolean;
       onProgress?: (status: string, detail?: string) => void;
+      /**
+       * Cold-boot wait tuning for a reused dedicated agent that is not yet
+       * `running` (a dedicated container cold-starts in ~5 minutes — #8621).
+       * Defaults: poll every 5 s, give up after 6 minutes. Exposed so tests
+       * can drive the wait loop against a mock cloud without real minutes.
+       */
+      wakePollIntervalMs?: number;
+      wakeTimeoutMs?: number;
     }): Promise<{
       agentId: string;
       agentName: string;
@@ -2687,17 +2710,18 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
  * Prefer a reachable URL the server explicitly provides (`webUiUrl`); otherwise
  * fall back to the raw container `bridgeUrl`.
  *
- * We deliberately do NOT derive `https://<agentId>.<domain>` ourselves.
- * Verified against live Eliza Cloud (2026-05-31): a running agent is exposed
- * ONLY as `bridgeUrl: http://<ip>:<port>` (no `web_ui_url` field), and the
- * per-agent subdomain the cloud code *intends* — `<agentId>.elizacloud.ai`,
- * built by getElizaAgentPublicWebUiUrl() — is not actually deployed: it returns
- * a Vercel `DEPLOYMENT_NOT_FOUND` 404. Pinning that 404 URL would wedge
- * first-run on BACKEND_NOT_FOUND (a 404 is an HTTP response, so the startup
- * connection-error fallback in startup-phase-poll deliberately does NOT catch
- * it) — strictly worse than the raw bridgeUrl, whose connection error the
- * fallback recovers from. If/when the cloud deploys that gateway and returns a
- * real `webUiUrl`, this picks it up automatically with no further change.
+ * For a DEDICATED agent the server-provided `webUiUrl` IS the unified-auth
+ * proxy base (`https://<agentId>.elizacloud.ai`, live since 2026-06-19 —
+ * #8621/#8628): the Worker validates the caller's cloud token, swaps in the
+ * container's own `ELIZA_API_TOKEN`, and auto-resumes a sleeping agent with
+ * `202 + Retry-After`. Preferring `webUiUrl` is therefore what points the app
+ * at the unified proxy. We still do NOT derive `https://<agentId>.<domain>`
+ * ourselves when the server omits it: an agent record without a `webUiUrl`
+ * (older rows, non-default base domains) is not guaranteed to have working
+ * subdomain ingress, and a pinned 404 URL wedges first-run on
+ * BACKEND_NOT_FOUND (a 404 is an HTTP response, so the startup
+ * connection-error fallback deliberately does not catch it) — strictly worse
+ * than the raw bridgeUrl, whose connection error the fallback recovers from.
  */
 export function resolveCloudAgentApiBase(args: {
   bridgeUrl: string | null;
@@ -2918,6 +2942,84 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   throw new Error("Provisioning timed out after 2 minutes");
 };
 
+// Dedicated cold-boot wait defaults. A dedicated container cold-starts in
+// ~5 minutes (#8621, measured live 2026-06-19); the generic 202-retry budget in
+// client-base is only ~60 s, so the connect flow must wait on the control plane
+// instead of letting the first chat call exhaust that budget and error.
+const CLOUD_AGENT_WAKE_POLL_INTERVAL_MS = 5_000;
+const CLOUD_AGENT_WAKE_TIMEOUT_MS = 6 * 60_000;
+const CLOUD_AGENT_FAILED_STATUSES = new Set(["error", "failed"]);
+
+/**
+ * Wait for a dedicated cloud agent to report `running` on the control plane,
+ * kicking a resume first so a stopped/suspended container actually boots.
+ *
+ * The resume kick is best-effort: an agent already starting answers with an
+ * idempotent "already in progress" envelope, and the dedicated-agent proxy
+ * auto-resumes on first request anyway — the poll below is the source of
+ * truth. Transient poll errors are tolerated (the timeout bounds them).
+ *
+ * Resolves with the FRESH agent record (post-wake URLs), so callers bind the
+ * base the running container actually reports, not the stale list entry.
+ * Throws on a terminal `error`/`failed` status and on timeout.
+ */
+export async function waitForCloudAgentRunning(
+  client: ElizaClient,
+  options: {
+    agentId: string;
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+    onProgress?: (status: string, detail?: string) => void;
+  },
+): Promise<CloudCompatAgent> {
+  const { agentId, onProgress } = options;
+  const pollIntervalMs = Math.max(
+    50,
+    options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS,
+  );
+  const timeoutMs = Math.max(
+    pollIntervalMs,
+    options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS,
+  );
+  const startedAt = Date.now();
+
+  onProgress?.(
+    "starting",
+    "Starting your agent — a cold boot can take a few minutes...",
+  );
+  await client.resumeCloudCompatAgent(agentId).catch(() => null);
+
+  let lastStatus = "unknown";
+  for (;;) {
+    const detail = await client.getCloudCompatAgent(agentId).catch(() => null);
+    const agent = detail?.success ? detail.data : null;
+    if (agent) {
+      lastStatus = agent.status || "unknown";
+      if (lastStatus === "running") return agent;
+      if (CLOUD_AGENT_FAILED_STATUSES.has(lastStatus)) {
+        throw new Error(
+          agent.error_message
+            ? `Your cloud agent failed to start: ${agent.error_message}`
+            : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again.",
+        );
+      }
+    }
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs + pollIntervalMs > timeoutMs) {
+      throw new Error(
+        `Your cloud agent is still "${lastStatus}" after ${Math.round(
+          elapsedMs / 1000,
+        )}s. It may still be booting — try again in a minute.`,
+      );
+    }
+    onProgress?.(
+      "starting",
+      `Starting your agent (${lastStatus}) — ${Math.round(elapsedMs / 1000)}s elapsed...`,
+    );
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+}
+
 /**
  * Pick which agent to reuse from a cloud agent list: a specific requested id if
  * it still exists, else the most-recently-created "running" agent, else the
@@ -2986,18 +3088,47 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     }
     const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
     if (chosen) {
-      const apiBase = resolveCloudAgentApiBase({
+      let agent = chosen;
+      const initialBase = resolveCloudAgentApiBase({
         bridgeUrl: chosen.bridge_url,
         webUiUrl: chosen.web_ui_url ?? chosen.webUiUrl,
         agentId: chosen.agent_id,
         cloudApiBase: resolvedCloudApiBase,
       });
+      // A DEDICATED agent (its record exposes the container subdomain / bridge
+      // base rather than the shared REST adapter) that is not `running` is a
+      // ~5-minute cold boot (#8621). Binding its base immediately makes the
+      // first chat call exhaust the ~60 s 202-retry budget and error out — so
+      // wait for `running` here, streaming progress through the connect flow's
+      // existing onProgress plumbing. Shared agents never wait (container-free,
+      // served instantly by the in-Worker runtime).
+      const isDedicated =
+        !isDirectCloudSharedAgentBase(initialBase) &&
+        Boolean(chosen.web_ui_url ?? chosen.webUiUrl ?? chosen.bridge_url);
+      if (isDedicated && agent.status !== "running") {
+        agent = await waitForCloudAgentRunning(this, {
+          agentId: chosen.agent_id,
+          ...(typeof options.wakePollIntervalMs === "number"
+            ? { pollIntervalMs: options.wakePollIntervalMs }
+            : {}),
+          ...(typeof options.wakeTimeoutMs === "number"
+            ? { timeoutMs: options.wakeTimeoutMs }
+            : {}),
+          ...(onProgress ? { onProgress } : {}),
+        });
+      }
+      const apiBase = resolveCloudAgentApiBase({
+        bridgeUrl: agent.bridge_url,
+        webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
+        agentId: agent.agent_id,
+        cloudApiBase: resolvedCloudApiBase,
+      });
       onProgress?.("ready", "Connected to your agent");
       return {
-        agentId: chosen.agent_id,
-        agentName: chosen.agent_name,
+        agentId: agent.agent_id,
+        agentName: agent.agent_name,
         apiBase,
-        bridgeUrl: chosen.bridge_url,
+        bridgeUrl: agent.bridge_url,
         created: false,
       };
     }

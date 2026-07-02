@@ -63,3 +63,14 @@ export function hasRedisConfig(env?: RedisFactoryEnv): boolean {
   const restToken = e.KV_REST_API_TOKEN || e.UPSTASH_REDIS_REST_TOKEN;
   return !!(restUrl && restToken);
 }
+
+/**
+ * True inside workerd, where a TCP socket is bound to the I/O context of the
+ * request that opened it. A module-cached client built from
+ * {@link buildRedisClient} poisons the isolate there after its first request
+ * ("Cannot perform I/O on behalf of a different request") — cache clients
+ * ONLY when this is false; on Workers, build per call.
+ */
+export function isCloudflareWorkerRuntime(): boolean {
+  return typeof globalThis !== "undefined" && "WebSocketPair" in globalThis;
+}

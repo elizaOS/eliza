@@ -1,0 +1,38 @@
+$ bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-background-e2e.mjs
+✓ default renders the warm-orange shader
+  📸 bg-01-default-orange.png
+✓ clicking the Green swatch recolors the background live
+  📸 bg-02-swatch-green.png
+✓ uploading an image switches to a cover-image background
+✓ the shader is replaced by the uploaded image
+  📸 bg-03-uploaded-image.png
+✓ agent "background:apply" recolors the background from chat
+  📸 bg-04-chat-apply-teal.png
+✓ agent "undo" reverts to the previous (image) background
+  📸 bg-05-chat-undo-to-image.png
+✓ the Undo control reverts to the prior shader color
+  📸 bg-06-ui-undo-to-green.png
+✓ agent "redo" re-applies the undone (image) background
+  📸 bg-07-chat-redo-to-image.png
+✓ the Redo control round-trips back to the chat-applied teal
+✓ the Redo control hides once the redo stack is empty
+  📸 bg-08-ui-redo-to-teal.png
+✓ GLSL mode did not fall back to the plain color field
+  🔬 glsl probe: spread=133 unique=70 mean=10.1,184.1,220.8
+✓ GLSL frame shows a real rendered pattern (spread=133, unique=70)
+  📸 bg-09-glsl-plasma.png
+  🔬 glsl animation delta=15.36
+✓ GLSL frames animate over time (mean delta=15.36)
+  📸 bg-10-glsl-plasma-later.png
+  🔬 glsl recolor mean=4.9,146.2,102.4
+✓ recoloring the live GLSL shader shifts the rendered pixels to green
+  📸 bg-11-glsl-recolor-green.png
+✓ an unknown GLSL preset id is ignored (canvas still live)
+✓ first undo steps back to the previous GLSL config (still rendering)
+✓ second undo pops the GLSL background off the history
+✓ undo from GLSL restores the prior teal color field
+  📸 bg-12-glsl-undo-to-teal.png
+  🎥 walkthrough.webm
+✓ no uncaught page errors (0)
+
+✅ background integration e2e passed

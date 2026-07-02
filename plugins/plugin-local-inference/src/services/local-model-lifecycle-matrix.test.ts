@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildLocalModelLifecycleMatrix,
 	formatLocalModelLifecycleMatrixMarkdown,
+	type LifecycleLoadRunCheck,
 	type LifecycleLocalFileCheck,
 	type LifecycleRemoteCheck,
 } from "./local-model-lifecycle-matrix";
@@ -234,6 +235,150 @@ describe("buildLocalModelLifecycleMatrix", () => {
 		expect(asr?.blockers.join("\n")).toContain("no catalog source file");
 		expect(matrix.host.expectedPrimaryBackend).toBe("cpu");
 		expect(matrix.host.cpuFallbackAllowed).toBe(true);
+	});
+
+	it("reconciles unadvertised MTP rows as a publish gap, not an implementation gap (#10727)", () => {
+		// eliza-1-4b is in ELIZA_1_MTP_TIER_IDS; the catalog gates advertisement
+		// on ELIZA_1_HOSTED_MTP_TIER_IDS (empty), so real catalog tiers carry no
+		// mtp source component. Model the real shape: sourceModel without mtp.
+		const model = catalogModel();
+		const components = { ...model.sourceModel?.components };
+		delete components.mtp;
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [
+				{
+					...model,
+					sourceModel: { finetuned: false, components },
+				},
+			],
+			installed: [],
+			assignments: {},
+			hardware: hardware(),
+			observedAt: "2026-07-02T00:00:00.000Z",
+		});
+
+		const mtp = matrix.rows.find((row) => row.component === "mtp");
+		expect(mtp?.knownGap?.kind).toBe("publish-pending");
+		expect(mtp?.checks.implemented.status).toBe("pass");
+		expect(mtp?.checks.implemented.detail).toContain(
+			"ELIZA_1_HOSTED_MTP_TIER_IDS",
+		);
+		expect(mtp?.checks.published.status).toBe("fail");
+		expect(mtp?.checks.published.detail).toContain("not hosted");
+		expect(mtp?.checks.downloadable.status).toBe("fail");
+		expect(mtp?.publishStatus).toBe("pending");
+		// Still an honest red row — but attributed to publish, and counted with
+		// the other pending-publish rows.
+		expect(mtp?.blockers.length).toBeGreaterThan(0);
+		expect(matrix.summary.pendingPublishRows).toBeGreaterThan(0);
+	});
+
+	it("records the product decision for a tier that ships no bundle embedding (#10727)", () => {
+		// 2b-style tier: no embedding source component — TEXT_EMBEDDING is
+		// served by the gte-small preset, so the row must not be a permanent
+		// unfixable fail.
+		const model = catalogModel({ id: "eliza-1-2b", displayName: "eliza-1-2B" });
+		const components = { ...model.sourceModel?.components };
+		delete components.embedding;
+		delete components.mtp;
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [
+				{
+					...model,
+					sourceModel: { finetuned: false, components },
+				},
+			],
+			installed: [installedModel({ id: "eliza-1-2b" })],
+			assignments: {},
+			hardware: hardware(),
+			observedAt: "2026-07-02T00:00:00.000Z",
+		});
+
+		const embedding = matrix.rows.find((row) => row.component === "embedding");
+		expect(embedding?.knownGap?.kind).toBe("served-by-alternate-runtime");
+		expect(embedding?.checks.implemented.status).toBe("skipped");
+		expect(embedding?.checks.implemented.detail).toContain("gte-small");
+		expect(embedding?.checks.published.status).toBe("skipped");
+		expect(embedding?.checks.downloadable.status).toBe("skipped");
+		expect(embedding?.checks.deployable.status).toBe("skipped");
+		expect(embedding?.checks.installed.status).toBe("skipped");
+		expect(embedding?.checks.loadsAndRunsOnDevice.status).toBe("skipped");
+		expect(embedding?.blockers).toEqual([]);
+	});
+
+	it("still fails genuinely missing components (asr) even with known-gap reconciliation", () => {
+		const model = catalogModel({
+			sourceModel: {
+				finetuned: false,
+				components: {
+					text: {
+						repo: "elizaos/eliza-1",
+						file: "bundles/4b/text/eliza-1-4b-128k.gguf",
+					},
+				},
+			},
+		});
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [model],
+			installed: [],
+			assignments: {},
+			hardware: hardware(),
+			observedAt: "2026-07-02T00:00:00.000Z",
+		});
+		const asr = matrix.rows.find((row) => row.component === "asr");
+		expect(asr?.knownGap).toBeUndefined();
+		expect(asr?.checks.implemented.status).toBe("fail");
+	});
+
+	it("prefers direct load-run evidence (tok/s + backend) over bundleVerifiedAt", () => {
+		const loadRun: LifecycleLoadRunCheck = {
+			status: "pass",
+			detail:
+				"loaded in 812 ms and decoded 48 tokens in 1370 ms via the FFI engine",
+			checkedAt: "2026-07-02T00:10:00.000Z",
+			backend: "metal",
+			loadMs: 812,
+			generateMs: 1370,
+			promptTokens: 21,
+			decodeTokens: 48,
+			tokensPerSecond: 35.04,
+		};
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [catalogModel()],
+			installed: [installedModel({ bundleVerifiedAt: undefined })],
+			assignments: {},
+			hardware: hardware(),
+			observedAt: "2026-07-02T00:15:00.000Z",
+			loadRunChecks: { "eliza-1-4b": loadRun },
+		});
+
+		const text = matrix.rows.find((row) => row.component === "text");
+		expect(text?.checks.loadsAndRunsOnDevice.status).toBe("pass");
+		expect(text?.checks.loadsAndRunsOnDevice.detail).toContain("35.04 tok/s");
+		expect(text?.checks.loadsAndRunsOnDevice.detail).toContain("metal");
+		expect(matrix.summary.verifiedRows).toBeGreaterThan(0);
+
+		// A failing load-run must surface as fail even when bundleVerifiedAt exists.
+		const failing = buildLocalModelLifecycleMatrix({
+			catalog: [catalogModel()],
+			installed: [installedModel()],
+			assignments: {},
+			hardware: hardware(),
+			observedAt: "2026-07-02T00:15:00.000Z",
+			loadRunChecks: {
+				"eliza-1-4b": {
+					status: "fail",
+					detail: "load/run threw: model file corrupt",
+					checkedAt: "2026-07-02T00:10:00.000Z",
+					backend: "metal",
+				},
+			},
+		});
+		const failingText = failing.rows.find((row) => row.component === "text");
+		expect(failingText?.checks.loadsAndRunsOnDevice.status).toBe("fail");
+		expect(failingText?.checks.loadsAndRunsOnDevice.detail).toContain(
+			"model file corrupt",
+		);
 	});
 
 	it("marks installed bundles without bundleVerifiedAt as not load/run verified", () => {

@@ -167,6 +167,7 @@ import type {
   UpdateLifeOpsGoalRequest,
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
+import { loadLifeOpsAppState } from "./app-state.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
 import { DefinitionsDomain } from "./domains/definitions-service.js";
@@ -216,6 +217,7 @@ import type {
   LifeOpsScheduleSummary,
 } from "./schedule-insight.js";
 import { LifeOpsServiceBase } from "./service-mixin-core.js";
+import { fail, requireNonEmptyString } from "./service-normalize.js";
 import type {
   FlightBookingExecutionResult,
   PreparedFlightBooking,
@@ -2546,22 +2548,52 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.sleepDomain.getPersonalBaseline(opts);
   }
 
-  // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
+  // The inbox aggregation domain lives in @elizaos/plugin-inbox
+  // (`inbox/aggregate.ts`). PA is the composition host: it injects the
+  // host-owned pieces through the domain's typed seams — the
+  // `life_inbox_messages` cache (LifeOpsRepository satisfies
+  // InboxMessageCache), the Gmail/X connector projections, and the owner's
+  // priority-scoring policy from the LifeOps app state.
   // Public (not private) to avoid TS4094 on the re-exported mixin class.
-  readonly inboxDomain = new InboxDomain(this, {
-    getGoogleConnectorStatus: (...args) =>
-      this.getGoogleConnectorStatus(...args),
-    getGmailTriage: (...args) => this.getGmailTriage(...args),
-    getXConnectorStatus: (...args) => this.getXConnectorStatus(...args),
-    syncXDms: (...args) => this.syncXDms(...args),
-    getXDms: (...args) => this.getXDms(...args),
+  readonly inboxDomain = new InboxDomain({
+    runtime: this.runtime,
+    cache: this.repository,
+    sources: {
+      getGoogleConnectorStatus: (...args) =>
+        this.getGoogleConnectorStatus(...args),
+      getGmailTriage: (...args) => this.getGmailTriage(...args),
+      getXConnectorStatus: (...args) => this.getXConnectorStatus(...args),
+      syncXDms: (...args) => this.syncXDms(...args),
+      getXDms: (...args) => this.getXDms(...args),
+    },
+    loadPriorityScoringSettings: async () => {
+      try {
+        const state = await loadLifeOpsAppState(this.runtime);
+        return {
+          enabled: state.priorityScoring.enabled === true,
+          model: state.priorityScoring.model ?? null,
+        };
+      } catch (error) {
+        this.logLifeOpsWarn(
+          "inbox.priority_scoring_settings",
+          "failed to load priority scoring settings; using default model",
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+        return { enabled: true, model: null };
+      }
+    },
   });
 
   getInbox(request: GetLifeOpsInboxRequest = {}): Promise<LifeOpsInbox> {
     return this.inboxDomain.getInbox(request);
   }
 
-  markInboxEntryRead(inboxEntryId: string): Promise<LifeOpsInboxMessage> {
-    return this.inboxDomain.markInboxEntryRead(inboxEntryId);
+  async markInboxEntryRead(inboxEntryId: string): Promise<LifeOpsInboxMessage> {
+    const id = requireNonEmptyString(inboxEntryId, "inboxEntryId");
+    const message = await this.inboxDomain.markInboxEntryRead(id);
+    if (!message) {
+      fail(404, "life-ops inbox entry not found");
+    }
+    return message;
   }
 }

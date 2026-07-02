@@ -1,0 +1,267 @@
+{
+  "runId": "396c5cb1-5ef5-4d7a-a1cf-920fb18a4506",
+  "startedAtIso": "2026-07-02T08:08:58.835Z",
+  "completedAtIso": "2026-07-02T08:09:17.275Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "live-background-actions",
+      "title": "Real LLM drives the BACKGROUND action (color, GLSL shader, undo)",
+      "domain": "scenario-runner",
+      "tags": [
+        "live",
+        "real-llm",
+        "app-control",
+        "background"
+      ],
+      "status": "passed",
+      "durationMs": 12316,
+      "turns": [
+        {
+          "name": "set a teal background from natural language",
+          "kind": "message",
+          "text": "Please make the app background teal.",
+          "responseText": "The app background has been set to teal.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "set",
+                  "color": "teal"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "set",
+                  "mode": "shader",
+                  "color": "#0891b2"
+                },
+                "text": "Set the background to teal.",
+                "raw": {
+                  "success": true,
+                  "text": "Set the background to teal.",
+                  "values": {
+                    "op": "set",
+                    "mode": "shader",
+                    "color": "#0891b2"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 2179,
+          "failedAssertions": [],
+          "judgeScore": 1
+        },
+        {
+          "name": "set an animated GLSL shader background",
+          "kind": "message",
+          "text": "Now switch the background to the animated lava shader.",
+          "responseText": "Background switched to the animated lava shader.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "set",
+                  "preset": "lava"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "set",
+                  "mode": "glsl",
+                  "presetId": "lava"
+                },
+                "text": "Set the background to the lava shader.",
+                "raw": {
+                  "success": true,
+                  "text": "Set the background to the lava shader.",
+                  "values": {
+                    "op": "set",
+                    "mode": "glsl",
+                    "presetId": "lava"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 4660,
+          "failedAssertions": [],
+          "judgeScore": 1
+        },
+        {
+          "name": "undo the background change",
+          "kind": "message",
+          "text": "Actually, undo that last background change.",
+          "responseText": "Reverted the background to the previous one.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "undo"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "undo"
+                },
+                "text": "Reverted the background to the previous one.",
+                "raw": {
+                  "success": true,
+                  "text": "Reverted the background to the previous one.",
+                  "values": {
+                    "op": "undo"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 4872,
+          "failedAssertions": [],
+          "judgeScore": 1
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "BACKGROUND succeeded 3x (3 total call(s))"
+        },
+        {
+          "label": "real background:apply broadcasts reached the renderer channel",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "set",
+              "color": "teal"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "set",
+              "mode": "shader",
+              "color": "#0891b2"
+            },
+            "text": "Set the background to teal.",
+            "raw": {
+              "success": true,
+              "text": "Set the background to teal.",
+              "values": {
+                "op": "set",
+                "mode": "shader",
+                "color": "#0891b2"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "set",
+              "preset": "lava"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "set",
+              "mode": "glsl",
+              "presetId": "lava"
+            },
+            "text": "Set the background to the lava shader.",
+            "raw": {
+              "success": true,
+              "text": "Set the background to the lava shader.",
+              "values": {
+                "op": "set",
+                "mode": "glsl",
+                "presetId": "lava"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "undo"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "undo"
+            },
+            "text": "Reverted the background to the previous one.",
+            "raw": {
+              "success": true,
+              "text": "Reverted the background to the previous one.",
+              "values": {
+                "op": "undo"
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "openai",
+      "judgeScore": 1
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/data.js",
+    "nativeJsonl": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.jsonl",
+    "nativeManifest": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.manifest.json"
+  }
+}

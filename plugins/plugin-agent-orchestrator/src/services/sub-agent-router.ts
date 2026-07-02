@@ -677,7 +677,10 @@ export class SubAgentRouter extends Service {
     // buffer/count are only used while it streams, and a handoff suppression is
     // moot once the original session is long gone).
     pruneOldestTracked(this.parentAgentBuffers, PARENT_AGENT_TRACKING_CAP);
-    pruneOldestTracked(this.parentAgentDispatchCounts, PARENT_AGENT_TRACKING_CAP);
+    pruneOldestTracked(
+      this.parentAgentDispatchCounts,
+      PARENT_AGENT_TRACKING_CAP,
+    );
     pruneOldestTracked(
       this.verifyRetryHandedOffSessions,
       PARENT_AGENT_TRACKING_CAP,
@@ -1165,7 +1168,9 @@ export class SubAgentRouter extends Service {
       // not the relay/do-not-respawn directive. The header can now be long
       // (it carries the actual-workdir + requested-vs-actual-agent note), so a
       // naive slice(0,200) of the raw text would capture only the directive.
-      const previewSource = (deliverable ?? stripSubAgentHeaderLine(text)).trim();
+      const previewSource = (
+        deliverable ?? stripSubAgentHeaderLine(text)
+      ).trim();
       const preview = previewSource.slice(0, 200);
       void getNotifier(this.runtime)
         ?.notify({
@@ -1414,14 +1419,15 @@ export class SubAgentRouter extends Service {
       const delivered = await sendToTarget(
         {
           source,
-          roomId: target.roomId,
+          roomId: origin.roomId,
         },
         threadedResponse,
       ).catch((err) => {
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
           source,
-          roomId: target.roomId,
+          roomId: origin.roomId,
+          targetRoomId: target.roomId,
           error: err instanceof Error ? err.message : String(err),
         });
         return undefined;
@@ -1874,7 +1880,9 @@ function publicPreferredUrls(urls: string[]): string[] {
 }
 
 interface OriginInfo {
+  /** Original user-facing room, e.g. the Discord channel-backed room. */
   roomId: UUID;
+  /** Internal task/swarm room minted for sub-agent coordination. */
   taskRoomId: UUID;
   worktreeRoomId?: UUID;
   swarmRooms: SwarmRoomTarget[];
@@ -1927,11 +1935,12 @@ export function spawnRootIdFromMeta(
   );
 }
 
-function readOrigin(session: SessionInfo): OriginInfo | null {
+export function readOrigin(session: SessionInfo): OriginInfo | null {
   const meta = session.metadata as Record<string, unknown> | undefined;
   if (!meta) return null;
   const taskRoomId = pickUuid(meta.taskRoomId) ?? pickUuid(meta.roomId);
-  const roomId = taskRoomId ?? pickUuid(meta.roomId);
+  const roomId =
+    pickUuid(meta.originRoomId) ?? pickUuid(meta.sourceRoomId) ?? taskRoomId;
   if (!roomId || !taskRoomId) return null;
   const worktreeRoomId = pickUuid(meta.worktreeRoomId);
   const swarmRooms = normalizeSwarmRooms(
@@ -2506,7 +2515,9 @@ function composeNarration(
     // it never leaks into the user-facing body.
     const missing = artifactVerification?.missingFiles ?? [];
     const unverifiedLine =
-      artifactVerification && !artifactVerification.verified && missing.length > 0
+      artifactVerification &&
+      !artifactVerification.verified &&
+      missing.length > 0
         ? `Artifact verification: UNVERIFIED at completion; missing ${missing.join(", ")}.`
         : undefined;
     const lines = [

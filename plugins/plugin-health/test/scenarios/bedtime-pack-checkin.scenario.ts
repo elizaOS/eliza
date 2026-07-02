@@ -20,7 +20,13 @@ export default scenario({
       // user's own turn text. The reply must surface the derived
       // suppress-when-asleep behavior in words the prompt never used; the
       // judge holds the full contract.
-      responseIncludesAny: ["skip", "suppress", "hold off", "won't send", "quiet"],
+      responseIncludesAny: [
+        "skip",
+        "suppress",
+        "hold off",
+        "won't send",
+        "quiet",
+      ],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

@@ -43,10 +43,7 @@ import {
   saveAccount,
 } from "../auth/account-storage.ts";
 import { getAccessToken } from "../auth/credentials.ts";
-import {
-  directProviderBaseUrl,
-  probeDirectApiKey,
-} from "../auth/direct-api-probe.ts";
+import { probeDirectApiKey } from "../auth/direct-api-probe.ts";
 import {
   cancelFlow,
   getFlowState,

@@ -2518,14 +2518,16 @@ function responseHandlerContextToJsonObject(value: unknown): JsonObject {
     return {};
   }
   const context = value as Record<string, unknown>;
-  return (
-    toJsonObject({
-      message: context.message,
-      state: context.state,
-      messageHandler: context.messageHandler,
-      availableContexts: context.availableContexts,
-    }) ?? {}
-  );
+  const serialized = toJsonObject({
+    message: context.message,
+    state: context.state,
+    messageHandler: context.messageHandler,
+    availableContexts: context.availableContexts,
+  });
+  if (serialized) {
+    return serialized;
+  }
+  return {};
 }
 
 function responseHandlerFieldContextToJsonObject(value: unknown): JsonObject {
@@ -2533,13 +2535,15 @@ function responseHandlerFieldContextToJsonObject(value: unknown): JsonObject {
     return {};
   }
   const context = value as Record<string, unknown>;
-  return (
-    toJsonObject({
-      message: context.message,
-      state: context.state,
-      senderRole: context.senderRole,
-    }) ?? {}
-  );
+  const serialized = toJsonObject({
+    message: context.message,
+    state: context.state,
+    senderRole: context.senderRole,
+  });
+  if (serialized) {
+    return serialized;
+  }
+  return {};
 }
 
 function responseHandlerFieldEffectFromJson(

@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import type { AgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
+import { type AgentRuntime, stringToUuid } from "@elizaos/core";
 import { TUI, visibleWidth } from "@elizaos/tui";
 import { VirtualTerminal } from "@elizaos/tui/testing";
 import { useStore } from "../lib/store.js";
@@ -11,20 +12,20 @@ import { TaskPane } from "./TaskPane.js";
 // Regression for #11040 / #10830: the cockpit xterm is ~43 cols. At that
 // width the eliza-code TUI used to abort every frame — the composer row
 // exceeded the terminal width (editor rendered at innerWidth, then wrapped in
-// "│ > … │" chrome → width + 1) and the 47-col help footer overflowed too.
+// "│ > … │" chrome → width + 1) and fixed footer chrome overflowed too.
 // The TUI's final render guard throws when any line's visible width exceeds
 // the terminal width (see packages/tui/src/tui.ts: `visibleWidth(line) >
 // width`), so an overflow is a hard crash, not a cosmetic glitch.
 //
-// The fix has two seams and this suite bites both:
+// The narrow-width guarantee has two seams and this suite bites both:
 //   * ChatPane renders the editor at innerWidth - 3 so the composer row fits.
 //   * MainScreen clips every assembled line via truncateToWidth so fixed-width
-//     chrome (the 47-col footer) can never overflow.
+//     chrome can never overflow.
 
 const PHONE_COLS = 43;
 
-function makeScreen(cols: number) {
-  const terminal = new VirtualTerminal(cols, 24);
+function makeScreen(cols: number, rows = 24) {
+  const terminal = new VirtualTerminal(cols, rows);
   const tui = new TUI(terminal);
   const chatPane = new ChatPane({ onSubmit: async () => {}, tui });
   const statusBar = new StatusBar();
@@ -38,18 +39,76 @@ function makeScreen(cols: number) {
   return { chatPane, mainScreen };
 }
 
+function resetChatStore(): void {
+  useStore.setState({
+    rooms: [
+      {
+        id: "test-room",
+        name: "Main",
+        messages: [],
+        createdAt: new Date(0),
+        taskIds: [],
+        elizaRoomId: stringToUuid("eliza-code-narrow-terminal-test-room"),
+      },
+    ],
+    currentRoomId: "test-room",
+    focusedPane: "chat",
+    taskPaneVisibility: "hidden",
+    inputValue: "",
+    isLoading: false,
+    isAgentTyping: false,
+  });
+}
+
+function plainText(lines: string[]): string {
+  return lines.map((line) => stripVTControlCharacters(line)).join("\n");
+}
+
+function inputFrameLines(lines: string[]): string[] {
+  const topBorderIdx = lines.findIndex((line) => line.includes("┌"));
+  expect(topBorderIdx).toBeGreaterThanOrEqual(0);
+  const bottomBorderIdx = lines.findIndex(
+    (line, index) => index > topBorderIdx && line.includes("└"),
+  );
+  expect(bottomBorderIdx).toBeGreaterThan(topBorderIdx);
+  return lines.slice(topBorderIdx + 1, bottomBorderIdx);
+}
+
+function typeIntoChat(chatPane: ChatPane, text: string): void {
+  for (const char of text) {
+    chatPane.handleInput(char);
+  }
+}
+
+function addTranscriptMessages(count: number): void {
+  const state = useStore.getState();
+  for (let i = 1; i <= count; i++) {
+    state.addMessage(
+      state.currentRoomId,
+      "assistant",
+      `transcript line ${i.toString().padStart(2, "0")}`,
+    );
+  }
+}
+
+function firstVisibleTranscriptLine(rendered: string): string | undefined {
+  return rendered.match(/transcript line \d{2}/)?.[0];
+}
+
 // Keep the shared zustand store deterministic across tests.
+beforeEach(() => {
+  resetChatStore();
+});
+
 afterEach(() => {
-  useStore.getState().setInputValue("");
-  useStore.getState().setLoading(false);
+  resetChatStore();
 });
 
 describe("eliza-code TUI at cockpit phone width", () => {
   test("MainScreen never emits a line wider than the terminal (would crash the TUI)", () => {
     const { chatPane, mainScreen } = makeScreen(PHONE_COLS);
-    // Chat focused → the full 47-col help footer renders (the fixed-width
-    // overflow the clip seam guards). Add a long message so the message area
-    // has real content too.
+    // Chat focused → the help footer renders along with real message content,
+    // so both child layout and MainScreen clipping are exercised.
     chatPane.syncFocus(true);
     const state = useStore.getState();
     state.addMessage(
@@ -101,6 +160,71 @@ describe("eliza-code TUI at cockpit phone width", () => {
     expect(visibleWidth(composer)).toBeLessThanOrEqual(PHONE_COLS);
   });
 
+  test("ChatPane renders multiple visible composer rows without overflowing", () => {
+    const { chatPane } = makeScreen(PHONE_COLS);
+    chatPane.syncFocus(true);
+
+    typeIntoChat(chatPane, "first line\nsecond line\nthird line");
+
+    const lines = chatPane.renderContent(PHONE_COLS, 24);
+    const composerLines = inputFrameLines(lines);
+    const composerText = plainText(composerLines);
+
+    expect(composerLines.length).toBeGreaterThanOrEqual(3);
+    expect(composerText).toContain("first line");
+    expect(composerText).toContain("second line");
+    expect(composerText).toContain("third line");
+    for (const line of lines) {
+      expect(visibleWidth(line)).toBeLessThanOrEqual(PHONE_COLS);
+    }
+  });
+
+  test("ChatPane supports page and edge scrollback keys", () => {
+    const { chatPane } = makeScreen(80, 18);
+    chatPane.syncFocus(true);
+    addTranscriptMessages(28);
+
+    const bottom = plainText(chatPane.renderContent(80, 18));
+    expect(bottom).toContain("transcript line 28");
+
+    chatPane.handleInput("\x1b[5~"); // PageUp
+    const pageUp = plainText(chatPane.renderContent(80, 18));
+    expect(pageUp).toContain("[↑ ");
+    expect(firstVisibleTranscriptLine(pageUp)).not.toBe(
+      firstVisibleTranscriptLine(bottom),
+    );
+
+    chatPane.handleInput("\x1b[H"); // Home
+    const top = plainText(chatPane.renderContent(80, 18));
+    expect(top).toContain("transcript line 01");
+
+    chatPane.handleInput("\x1b[F"); // End
+    const backAtBottom = plainText(chatPane.renderContent(80, 18));
+    expect(backAtBottom).toContain("transcript line 28");
+    expect(backAtBottom).not.toContain("[↑ ");
+  });
+
+  test("ChatPane keeps the visible scrollback viewport pinned while new messages arrive", () => {
+    const { chatPane } = makeScreen(80, 18);
+    chatPane.syncFocus(true);
+    addTranscriptMessages(28);
+    chatPane.renderContent(80, 18);
+
+    chatPane.handleInput("\x1b[5~"); // PageUp
+    const beforeAppend = plainText(chatPane.renderContent(80, 18));
+    const firstBeforeAppend = firstVisibleTranscriptLine(beforeAppend);
+    expect(firstBeforeAppend).toBeDefined();
+
+    const state = useStore.getState();
+    state.addMessage(state.currentRoomId, "assistant", "transcript line 29");
+    state.addMessage(state.currentRoomId, "assistant", "transcript line 30");
+
+    const afterAppend = plainText(chatPane.renderContent(80, 18));
+    expect(firstVisibleTranscriptLine(afterAppend)).toBe(firstBeforeAppend);
+    expect(afterAppend).not.toContain("transcript line 30");
+    expect(afterAppend).toContain("[↑ ");
+  });
+
   test("ChatPane loading row advertises abort without overflowing narrow terminals", () => {
     const { chatPane } = makeScreen(PHONE_COLS);
     chatPane.syncFocus(true);
@@ -115,6 +239,26 @@ describe("eliza-code TUI at cockpit phone width", () => {
     const wideLoading = wideLines.find((line) => line.includes("Processing"));
     expect(wideLoading).toContain("Esc/Ctrl+C abort");
     expect(visibleWidth(wideLoading ?? "")).toBeLessThanOrEqual(80);
+  });
+
+  test("ChatPane uses the TUI loader while the assistant is typing", () => {
+    const { chatPane } = makeScreen(PHONE_COLS);
+    chatPane.syncFocus(true);
+    useStore.getState().setAgentTyping(true);
+
+    try {
+      const lines = chatPane.renderContent(PHONE_COLS, 24);
+      const loaderLine = lines.find((line) =>
+        line.includes("Processing (Esc/Ctrl+C abort)"),
+      );
+      expect(loaderLine).toBeDefined();
+      expect(lines.join("\n")).not.toContain("Eliza typing");
+      expect(visibleWidth(loaderLine ?? "")).toBeLessThanOrEqual(PHONE_COLS);
+    } finally {
+      useStore.getState().setAgentTyping(false);
+      chatPane.renderContent(PHONE_COLS, 24);
+      chatPane.dispose();
+    }
   });
 
   test("ChatPane renders tool transcript lines without overflowing narrow terminals", () => {

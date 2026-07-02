@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { restorePiiInUserReplyText } from "../../services/message";
 import {
 	GazetteerEntityRecognizer,
 	PseudonymSession,
 } from "../../security/index.js";
+import { restorePiiInUserReplyText } from "../../services/message";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 
 /**

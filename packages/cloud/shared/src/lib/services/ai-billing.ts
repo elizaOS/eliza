@@ -82,6 +82,17 @@ export interface FlatBillingCost {
   platformMarkup: number;
 }
 
+function getAffiliateEarningsSourceId(
+  context: BillingContext,
+  operation: "usage" | "flat",
+): string {
+  const requestId = context.requestId?.trim();
+  if (requestId) {
+    return `ai_billing:${operation}:${requestId}`;
+  }
+  return `legacy_${crypto.randomUUID()}`;
+}
+
 // ============================================================================
 // Usage Normalization
 // ============================================================================
@@ -254,9 +265,7 @@ export async function billUsage(
 
       // Credit the affiliate owner
       if (affiliateEarnings > 0) {
-        // Prevent double booking on identical reservations easily,
-        // using the transaction ID or random ID if none present.
-        const sourceId = `legacy_${crypto.randomUUID()}`;
+        const sourceId = getAffiliateEarningsSourceId(context, "usage");
 
         await redeemableEarningsService
           .addEarnings({
@@ -334,7 +343,7 @@ export async function billFlatUsage(
       inputCost = totalCost;
 
       if (affiliateEarnings > 0) {
-        const sourceId = `legacy_${crypto.randomUUID()}`;
+        const sourceId = getAffiliateEarningsSourceId(context, "flat");
 
         await redeemableEarningsService
           .addEarnings({

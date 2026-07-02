@@ -102,11 +102,13 @@ describe("lookupModelPrice", () => {
 });
 
 describe("lookupModelContextWindow", () => {
-	it("returns the documented Cerebras Gemma 4 31B context window", () => {
+	it("returns the live-verified Cerebras Gemma 4 31B context window", () => {
+		// 131072 is the hard paid-tier ceiling (live probe 2026-07-02:
+		// >131072 -> context_length_exceeded; context_length param rejected).
 		const result = lookupModelContextWindow("gemma-4-31b");
 		expect(result).toEqual({
 			matchedKey: "gemma-4-31b",
-			contextWindowTokens: 131_000,
+			contextWindowTokens: 131_072,
 		});
 	});
 });

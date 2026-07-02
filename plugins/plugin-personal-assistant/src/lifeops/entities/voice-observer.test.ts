@@ -32,7 +32,8 @@ import type {
 } from "./types.js";
 import { SELF_ENTITY_ID } from "./types.js";
 import {
-  extractPartnerClaim,
+  extractKinClaim,
+  extractSelfAffiliationClaim,
   extractSelfNameClaim,
   PendingRelationshipQueue,
 } from "./voice-attribution.js";
@@ -229,33 +230,77 @@ describe("extractSelfNameClaim", () => {
   });
 });
 
-describe("extractPartnerClaim", () => {
+describe("extractKinClaim", () => {
   it.each([
-    ["Jill is my wife", "Jill", "wife"],
-    ["Bob is my husband", "Bob", "husband"],
-    ["Sam is my partner", "Sam", "partner"],
-    ["this is Jill, my wife", "Jill", "wife"],
+    ["Jill is my wife", "Jill", "wife", "partner_of"],
+    ["Bob is my husband", "Bob", "husband", "partner_of"],
+    ["Sam is my partner", "Sam", "partner", "partner_of"],
+    ["this is Jill, my wife", "Jill", "wife", "partner_of"],
     // Label-before-name phrasing must bind the name, not mint a "this" entity.
-    ["this is my wife Jill", "Jill", "wife"],
-    ["this is my husband Bob", "Bob", "husband"],
+    ["this is my wife Jill", "Jill", "wife", "partner_of"],
+    ["this is my husband Bob", "Bob", "husband", "partner_of"],
     // A single trailing name token — must not over-capture the verb.
-    ["my husband Bob just called", "Bob", "husband"],
-  ])("extracts %s → %s + %s", (input, name, label) => {
-    const claim = extractPartnerClaim(input);
+    ["my husband Bob just called", "Bob", "husband", "partner_of"],
+    // Sibling claims (#10726 — "my sister Joan" was not extractable).
+    ["Joan is my sister", "Joan", "sister", "sibling_of"],
+    ["this is Joan, my sister", "Joan", "sister", "sibling_of"],
+    ["this is my sister Joan", "Joan", "sister", "sibling_of"],
+    ["my brother Bob just called", "Bob", "brother", "sibling_of"],
+    ["Alex is my sibling", "Alex", "sibling", "sibling_of"],
+  ])("extracts %s → %s + %s (%s)", (input, name, label, type) => {
+    const claim = extractKinClaim(input);
     expect(claim?.name).toBe(name);
     expect(claim?.label).toBe(label);
-    expect(claim?.type).toBe("partner_of");
+    expect(claim?.type).toBe(type);
   });
 
-  it("never returns a stopword ('this') as the partner name", () => {
-    const claim = extractPartnerClaim("this is my wife Jill");
+  it("never returns a stopword ('this') as the kin name", () => {
+    const claim = extractKinClaim("this is my wife Jill");
     expect(claim?.name).toBe("Jill");
     expect(claim?.name).not.toBe("this");
   });
 
   it("returns null on no claim", () => {
-    expect(extractPartnerClaim("how is the weather")).toBeNull();
-    expect(extractPartnerClaim("")).toBeNull();
+    expect(extractKinClaim("how is the weather")).toBeNull();
+    expect(extractKinClaim("")).toBeNull();
+  });
+});
+
+describe("extractSelfAffiliationClaim", () => {
+  it.each([
+    ["Eliza I am John from the accounting team", "John", "accounting team"],
+    ["I'm John from accounting", "John", "accounting"],
+    ["This is Ada from Payroll", "Ada", "Payroll"],
+    ["Hi, I'm Maya with Acme Corp, nice to meet you", "Maya", "Acme Corp"],
+    // Clause break — the org phrase must not swallow the rest of the sentence.
+    [
+      "I am John from the accounting team and I need help with a spreadsheet",
+      "John",
+      "accounting team",
+    ],
+  ])("extracts %s → %s @ %s", (input, name, organization) => {
+    const claim = extractSelfAffiliationClaim(input);
+    expect(claim?.name).toBe(name);
+    expect(claim?.organization).toBe(organization);
+  });
+
+  it.each([
+    ["I work at Acme Corp", "Acme Corp"],
+    ["I work for the city council", "city council"],
+  ])("extracts org-only claim %s → %s", (input, organization) => {
+    const claim = extractSelfAffiliationClaim(input);
+    expect(claim?.name).toBeNull();
+    expect(claim?.organization).toBe(organization);
+  });
+
+  it("rejects non-affiliation phrasing", () => {
+    // Lowercase "calling" fails the uppercase name anchor.
+    expect(extractSelfAffiliationClaim("I'm calling from the airport")).toBe(
+      null,
+    );
+    expect(extractSelfAffiliationClaim("how is the weather")).toBeNull();
+    expect(extractSelfAffiliationClaim("")).toBeNull();
+    expect(extractSelfAffiliationClaim(null)).toBeNull();
   });
 });
 
@@ -484,5 +529,117 @@ describe("VoiceObserver — Jill scenario", () => {
     });
     expect(observer.pendingRelationshipsCount).toBe(0);
     expect(relationshipStore.relationships).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // #10726 attribute-inference additions: siblings + works_at affiliation.
+  // -------------------------------------------------------------------------
+
+  it("'my sister Joan' queues a sibling_of claim that resolves when Joan speaks", async () => {
+    const { observer, entityStore, relationshipStore } = setup();
+    const ownerTurn = await observer.ingestTurn({
+      turnId: "turn-shaw-1",
+      text: "my sister Joan just called",
+      imprintClusterId: "cluster_shaw",
+      matchConfidence: 0.95,
+      matchedEntityId: SELF_ENTITY_ID,
+      isOwner: true,
+    });
+    expect(ownerTurn.queuedPartnerClaims).toBe(1);
+    expect(observer.peekPending()[0]).toMatchObject({
+      type: "sibling_of",
+      toName: "Joan",
+      label: "sister",
+    });
+
+    const joanTurn = await observer.ingestTurn({
+      turnId: "turn-joan-1",
+      text: "hey there, I'm Joan",
+      imprintClusterId: "cluster_joan_seed",
+      matchConfidence: 0.5,
+      matchedEntityId: null,
+      isOwner: false,
+    });
+
+    const list = await entityStore.list();
+    const joan = list.find((e) => e.preferredName === "Joan");
+    expect(joan).toBeDefined();
+    expect(relationshipStore.relationships).toHaveLength(1);
+    const rel = relationshipStore.relationships[0];
+    expect(rel.type).toBe("sibling_of");
+    expect(rel.fromEntityId).toBe(SELF_ENTITY_ID);
+    expect(rel.toEntityId).toBe(joan?.entityId);
+    expect(rel.metadata?.label).toBe("sister");
+    expect(observer.pendingRelationshipsCount).toBe(0);
+    expect(joanTurn.relationshipIds).toContain(rel.relationshipId);
+  });
+
+  it("'I am John from the accounting team' binds the speaker to an org via works_at", async () => {
+    const { observer, entityStore, relationshipStore } = setup();
+    const result = await observer.ingestTurn({
+      turnId: "turn-john-1",
+      text: "Eliza I am John from the accounting team",
+      imprintClusterId: "cluster_john_seed",
+      matchConfidence: 0.5,
+      matchedEntityId: null,
+      isOwner: false,
+    });
+
+    const list = await entityStore.list();
+    const john = list.find((e) => e.preferredName === "John");
+    const org = list.find((e) => e.preferredName === "accounting team");
+    expect(john).toBeDefined();
+    expect(org).toBeDefined();
+    expect(org?.type).toBe("organization");
+    expect(result.affiliationOrgEntityId).toBe(org?.entityId);
+
+    const rel = relationshipStore.relationships.find(
+      (r) => r.type === "works_at",
+    );
+    expect(rel).toBeDefined();
+    expect(rel?.fromEntityId).toBe(john?.entityId);
+    expect(rel?.toEntityId).toBe(org?.entityId);
+    expect(rel?.metadata?.organization).toBe("accounting team");
+    expect(result.relationshipIds).toContain(rel?.relationshipId);
+  });
+
+  it("repeated mentions of the same org fold into one organization entity", async () => {
+    const { observer, entityStore } = setup();
+    await observer.ingestTurn({
+      turnId: "turn-john-1",
+      text: "I am John from the accounting team",
+      imprintClusterId: "cluster_john_seed",
+      matchConfidence: 0.5,
+      matchedEntityId: null,
+      isOwner: false,
+    });
+    await observer.ingestTurn({
+      turnId: "turn-ada-1",
+      text: "I'm Ada from the Accounting Team",
+      imprintClusterId: "cluster_ada_seed",
+      matchConfidence: 0.5,
+      matchedEntityId: null,
+      isOwner: false,
+    });
+    const list = await entityStore.list();
+    const orgs = list.filter((e) => e.type === "organization");
+    expect(orgs).toHaveLength(1);
+  });
+
+  it("does not mint an organization from non-affiliation 'with' phrasing", async () => {
+    const { observer, entityStore, relationshipStore } = setup();
+    await observer.ingestTurn({
+      turnId: "turn-jill-1",
+      text: "I'm Jill with the long hair",
+      imprintClusterId: "cluster_jill_seed",
+      matchConfidence: 0.5,
+      matchedEntityId: null,
+      isOwner: false,
+    });
+    const list = await entityStore.list();
+    expect(list.filter((e) => e.type === "organization")).toHaveLength(0);
+    expect(
+      relationshipStore.relationships.filter((r) => r.type === "works_at"),
+    ).toHaveLength(0);
   });
 });

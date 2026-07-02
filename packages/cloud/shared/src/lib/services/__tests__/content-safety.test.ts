@@ -18,12 +18,15 @@ const ORIGINAL_OPENAI_MODERATION_API_KEY = process.env.OPENAI_MODERATION_API_KEY
 const ORIGINAL_CONTENT_SAFETY_MODE = process.env.CONTENT_SAFETY_MODE;
 const ORIGINAL_CONTENT_SAFETY_REQUIRE_CONFIG = process.env.CONTENT_SAFETY_REQUIRE_CONFIG;
 const ORIGINAL_CONTENT_SAFETY_FAIL_OPEN = process.env.CONTENT_SAFETY_FAIL_OPEN;
+const loggerErrors: string[] = [];
 
 mock.module("@/lib/utils/logger", () => ({
   ...REAL_LOGGER,
   logger: {
     debug: () => {},
-    error: () => {},
+    error: (message: string) => {
+      loggerErrors.push(message);
+    },
     info: () => {},
     warn: () => {},
   },
@@ -41,6 +44,7 @@ afterAll(() => {
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
+  loggerErrors.length = 0;
   restoreEnv("OPENAI_API_KEY", ORIGINAL_OPENAI_API_KEY);
   restoreEnv("OPENAI_MODERATION_API_KEY", ORIGINAL_OPENAI_MODERATION_API_KEY);
   restoreEnv("CONTENT_SAFETY_MODE", ORIGINAL_CONTENT_SAFETY_MODE);
@@ -142,7 +146,12 @@ describe("contentSafetyService", () => {
 
   test("fails closed when moderation is configured but unavailable", async () => {
     process.env.OPENAI_API_KEY = "test-key";
-    globalThis.fetch = (async () => new Response("nope", { status: 503 })) as typeof fetch;
+    globalThis.fetch = (async () =>
+      // gitleaks:allow - synthetic low-entropy provider token used to assert log redaction.
+      new Response("Incorrect API key provided: sk-test-secret-1234567890", {
+        status: 503,
+        statusText: "Service Unavailable",
+      })) as typeof fetch;
 
     const { contentSafetyService } = await import(
       `../content-safety.ts?case=unavailable-${Date.now()}`
@@ -154,5 +163,29 @@ describe("contentSafetyService", () => {
         text: "Safe text",
       }),
     ).rejects.toThrow("Content safety moderation is unavailable");
+
+    expect(loggerErrors[0]).toContain("Incorrect API key provided: sk-[REDACTED]");
+    expect(loggerErrors[0]).not.toContain("sk-test-secret-1234567890");
+  });
+
+  test("fails closed when moderation transport rejects", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    globalThis.fetch = (async () => {
+      throw new Error("upstream timed out");
+    }) as typeof fetch;
+
+    const { contentSafetyService } = await import(
+      `../content-safety.ts?case=transport-${Date.now()}`
+    );
+
+    await expect(
+      contentSafetyService.assertSafeForPublicUse({
+        surface: "promotion_copy",
+        text: "Safe text",
+      }),
+    ).rejects.toThrow("Content safety moderation is unavailable");
+
+    expect(loggerErrors[0]).toContain("Moderation transport unavailable");
+    expect(loggerErrors[0]).toContain("failing closed");
   });
 });

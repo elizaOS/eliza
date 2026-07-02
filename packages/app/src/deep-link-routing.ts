@@ -48,6 +48,13 @@ export function resolveDeepLinkNavigationIntent(
   }
 
   switch (path) {
+    case "apps/deploy":
+    case "cloud-apps":
+      // eliza://apps/deploy (and https://eliza.app/apps/deploy) → the Eliza
+      // Cloud Applications studio, the registered `cloud-apps` app-shell page
+      // (NativeAppsStudio → ApplicationsPage → detail → Deploy/Redeploy). The
+      // in-app entry point for the Apps Deploy UI (#10823).
+      return { viewId: "cloud-apps", viewPath: "/cloud-apps" };
     case "settings":
       return { viewId: "settings", viewPath: "/settings" };
     case "wallet":

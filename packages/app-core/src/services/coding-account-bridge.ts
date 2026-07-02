@@ -31,6 +31,7 @@ import {
   getAccessToken,
   saveCredentials,
 } from "@elizaos/agent/auth/credentials";
+import { probeDirectApiKey } from "@elizaos/agent/auth/direct-api-probe";
 import { accountRefreshMutex } from "@elizaos/agent/auth/refresh-mutex";
 import type { DirectAccountProvider } from "@elizaos/agent/auth/types";
 import {
@@ -38,7 +39,6 @@ import {
   isDirectAccountProvider,
   isSubscriptionProvider,
 } from "@elizaos/agent/auth/types";
-import { probeDirectApiKey } from "@elizaos/agent/auth/direct-api-probe";
 import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
 import { logger, resolveStateDir } from "@elizaos/core";
 import type {

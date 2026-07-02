@@ -34,9 +34,9 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { openExternalUrl } from "../../../utils/openExternalUrl";
-import { resolveCloudConsoleUrl } from "../lib/native-cloud-nav";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import { resolveCloudConsoleUrl } from "../lib/native-cloud-nav";
 
 interface DomainCheckResponse {
   success: boolean;

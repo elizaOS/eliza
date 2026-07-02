@@ -99,11 +99,16 @@ function newestLocalBackup(
   );
 }
 
+// Onboarding stays a clean two-option location chooser: Cloud (managed) or
+// On this device. "Bring your own keys" is NOT a location — it just ran the
+// local backend and pre-highlighted the BYOK inference provider, so it lived on
+// the wrong axis. BYOK stays fully reachable one step later via the provider
+// sub-choice (provider:other → localInference "configure-later"). Remote agents
+// + multi-instance management live in Settings → Runtime (post-#9952).
 const RUNTIME_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
   `${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device`,
-  `${FIRST_RUN_ACTION_PREFIX}runtime:other=Bring your own keys`,
   "[/CHOICE]",
 ].join("\n");
 
@@ -332,7 +337,7 @@ export function useFirstRunConductor(): void {
       seedTurn(
         makeTurn(
           `first-run:error:${Date.now()}`,
-          `${message}\n\n[CHOICE:first-run id=runtime]\n${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)\n${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device\n${FIRST_RUN_ACTION_PREFIX}runtime:other=Bring your own keys\n[/CHOICE]`,
+          `${message}\n\n${RUNTIME_CHOICE}`,
         ),
       );
     },
@@ -472,7 +477,7 @@ export function useFirstRunConductor(): void {
       pendingCloudResumeRef.current = null;
 
       if (group === "runtime") {
-        if (id !== "cloud" && id !== "local" && id !== "other") return true;
+        if (id !== "cloud" && id !== "local") return true;
         if (id === "cloud") {
           draftRef.current = {
             ...draftRef.current,
@@ -489,8 +494,9 @@ export function useFirstRunConductor(): void {
           startCloudProvisionFlow();
           return true;
         }
-        // local + "other" (bring your own keys) both run the local backend;
-        // they differ only in the provider default the choice pre-highlights.
+        // On this device: run the local backend, then ask which model provider.
+        // BYOK is the provider:other sub-choice ("Other / configure in
+        // Settings" → localInference "configure-later").
         draftRef.current = {
           ...draftRef.current,
           runtime: "local",
@@ -498,7 +504,7 @@ export function useFirstRunConductor(): void {
         };
         seedFreshChoiceTurn(
           "first-run:provider",
-          `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: id === "other" ? "other" : "on-device" })}`,
+          `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: "on-device" })}`,
         );
         return true;
       }

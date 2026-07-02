@@ -1680,10 +1680,9 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	// `\s{2,}` matches `\n` + indentation (observed: every HumanEval
 	// completion through the eliza harness lost its newlines and failed with
 	// SyntaxError).
-	const hasEmbeddedMediaUrl = new RegExp(
-		MEDIA_CONTENT_URL_RE.source,
-		"i",
-	).test(cleaned);
+	const hasEmbeddedMediaUrl = new RegExp(MEDIA_CONTENT_URL_RE.source, "i").test(
+		cleaned,
+	);
 	if (deliveredUrls.length === 0 && !hasEmbeddedMediaUrl) {
 		return cleaned;
 	}

@@ -13,6 +13,18 @@
  *   7. agent emits {op:"redo"}        → steps forward to the image again (chat redo)
  *   8. click the Redo control         → forward again to the chat teal — the full
  *                                       set→set→undo→redo round-trip (#10694)
+ *   9. agent applies a GLSL preset    → the REAL programmable shader compiles and
+ *                                       RENDERS (SwiftShader GL, not the fallback):
+ *                                       pixel probes assert a non-uniform pattern
+ *  10. animation probe                → a later frame differs from an earlier one
+ *                                       (u_time actually drives the shader)
+ *  11. GLSL recolor                   → changing u_color shifts the rendered pixels
+ *  12. unknown preset id              → ignored (never wedges the background)
+ *  13. undo from GLSL                 → history integrates the shader config
+ *
+ * Chromium runs with SwiftShader ANGLE (NOT --disable-gpu) so WebGL frames are
+ * genuinely rasterized — previously the GLSL path silently took the no-webgl
+ * fallback here and was never exercised (#10694 tail).
  *
  * Captures a screenshot per step + a video walkthrough.
  *
@@ -80,10 +92,74 @@ const shaderColor = (p) =>
 const count = (p, sel) => p.locator(sel).count();
 const settle = (p) => p.waitForTimeout(350);
 
+/**
+ * Pixel-probe the COMPOSITED page (screenshot → decode in-page → sample a grid
+ * below the control panel). This reads what the GPU (SwiftShader) actually
+ * rasterized — a GLSL shader that silently fell back or rendered nothing shows
+ * up here as a flat field. Returns per-sample RGB plus summary stats.
+ */
+async function probePixels(p) {
+  const b64 = (await p.screenshot()).toString("base64");
+  return p.evaluate(async (data) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${data}`;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    // Sample a 12×8 grid across the lower 40% of the page — well clear of the
+    // centered control panel — where only the background layer paints.
+    const samples = [];
+    const x0 = Math.round(c.width * 0.04);
+    const x1 = Math.round(c.width * 0.96);
+    const y0 = Math.round(c.height * 0.62);
+    const y1 = Math.round(c.height * 0.97);
+    for (let iy = 0; iy < 8; iy += 1) {
+      for (let ix = 0; ix < 12; ix += 1) {
+        const x = Math.round(x0 + ((x1 - x0) * ix) / 11);
+        const y = Math.round(y0 + ((y1 - y0) * iy) / 7);
+        const d = ctx.getImageData(x, y, 1, 1).data;
+        samples.push([d[0], d[1], d[2]]);
+      }
+    }
+    const n = samples.length;
+    const mean = [0, 1, 2].map(
+      (ch) => samples.reduce((acc, s) => acc + s[ch], 0) / n,
+    );
+    const spread = Math.max(
+      ...[0, 1, 2].map(
+        (ch) =>
+          Math.max(...samples.map((s) => s[ch])) -
+          Math.min(...samples.map((s) => s[ch])),
+      ),
+    );
+    const unique = new Set(samples.map((s) => s.join(","))).size;
+    return { samples, mean, spread, unique };
+  }, b64);
+}
+
+/** Mean absolute per-channel delta between two equally-shaped probes. */
+function probeDelta(a, b) {
+  let total = 0;
+  for (let i = 0; i < a.samples.length; i += 1) {
+    for (let ch = 0; ch < 3; ch += 1) {
+      total += Math.abs(a.samples[i][ch] - b.samples[i][ch]);
+    }
+  }
+  return total / (a.samples.length * 3);
+}
+
 const browser = await chromium.launch({
   args: [
     "--no-sandbox",
-    "--disable-gpu",
+    // SwiftShader software GL instead of --disable-gpu: the programmable GLSL
+    // background needs a REAL WebGL context to render frames; --disable-gpu
+    // forced the no-webgl fallback and left the shader path untested (#10694).
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
     "--disable-dev-shm-usage",
     "--force-color-profile=srgb",
   ],
@@ -195,6 +271,98 @@ try {
     "the Redo control hides once the redo stack is empty",
   );
   await snap(p, "ui-redo-to-teal");
+
+  // ── Programmable GLSL shader — REAL rendered frames (#10694 tail) ──────
+  // 9. Agent applies a GLSL preset through the real background:apply channel.
+  // Under SwiftShader the shader must compile AND rasterize: the glsl host
+  // stays mounted (no fallback swap) and the composited pixels show a
+  // non-uniform pattern — a flat field means the shader never really ran.
+  await p.evaluate(() =>
+    window.__emitBgApply?.({ op: "set", mode: "glsl", presetId: "plasma" }),
+  );
+  await p.waitForTimeout(800);
+  await p.waitForSelector('[data-testid="app-background-glsl"] canvas', {
+    timeout: 8000,
+  });
+  await p.waitForTimeout(700); // let a few animation frames rasterize
+  assert(
+    (await count(p, '[data-testid="app-background-shader"]')) === 0,
+    "GLSL mode did not fall back to the plain color field",
+  );
+  const glslProbe = await probePixels(p);
+  console.log(
+    `  🔬 glsl probe: spread=${glslProbe.spread} unique=${glslProbe.unique} mean=${glslProbe.mean.map((v) => v.toFixed(1)).join(",")}`,
+  );
+  assert(
+    glslProbe.spread >= 25 && glslProbe.unique >= 24,
+    `GLSL frame shows a real rendered pattern (spread=${glslProbe.spread}, unique=${glslProbe.unique})`,
+  );
+  await snap(p, "glsl-plasma");
+
+  // 10. Animation probe: u_time drives the shader, so a later frame differs.
+  await p.waitForTimeout(700);
+  const glslProbeLater = await probePixels(p);
+  const animDelta = probeDelta(glslProbe, glslProbeLater);
+  console.log(`  🔬 glsl animation delta=${animDelta.toFixed(2)}`);
+  assert(
+    animDelta >= 2,
+    `GLSL frames animate over time (mean delta=${animDelta.toFixed(2)})`,
+  );
+  await snap(p, "glsl-plasma-later");
+
+  // 11. Recolor the live shader (same source → in-place u_color update, no
+  // remount): the green channel takes over from the teal blue channel.
+  // #059669 = emerald.
+  await p.evaluate(() =>
+    window.__emitBgApply?.({
+      op: "set",
+      mode: "glsl",
+      presetId: "plasma",
+      color: "#059669",
+    }),
+  );
+  await p.waitForTimeout(700);
+  const greenProbe = await probePixels(p);
+  console.log(
+    `  🔬 glsl recolor mean=${greenProbe.mean.map((v) => v.toFixed(1)).join(",")}`,
+  );
+  assert(
+    greenProbe.mean[1] > greenProbe.mean[2] + 10 &&
+      greenProbe.mean[1] > greenProbe.mean[0] + 10,
+    "recoloring the live GLSL shader shifts the rendered pixels to green",
+  );
+  await snap(p, "glsl-recolor-green");
+
+  // 12. Unknown preset id → ignored; the running shader is never wedged.
+  await p.evaluate(() =>
+    window.__emitBgApply?.({ op: "set", mode: "glsl", presetId: "nope" }),
+  );
+  await settle(p);
+  assert(
+    (await count(p, '[data-testid="app-background-glsl"] canvas')) === 1,
+    "an unknown GLSL preset id is ignored (canvas still live)",
+  );
+
+  // 13. Undo from GLSL: history integrates the shader configs. First undo
+  // steps green-plasma → teal-plasma (still GLSL); second undo pops the shader
+  // entirely, restoring the prior plain teal field. #0891b2 = rgb(8,145,178).
+  await p.evaluate(() => window.__emitBgApply?.({ op: "undo" }));
+  await settle(p);
+  assert(
+    (await count(p, '[data-testid="app-background-glsl"] canvas')) === 1,
+    "first undo steps back to the previous GLSL config (still rendering)",
+  );
+  await p.evaluate(() => window.__emitBgApply?.({ op: "undo" }));
+  await settle(p);
+  assert(
+    (await count(p, '[data-testid="app-background-glsl"]')) === 0,
+    "second undo pops the GLSL background off the history",
+  );
+  assert(
+    (await shaderColor(p)) === "rgb(8, 145, 178)",
+    "undo from GLSL restores the prior teal color field",
+  );
+  await snap(p, "glsl-undo-to-teal");
 } finally {
   await context.close(); // flush the video
   await browser.close();

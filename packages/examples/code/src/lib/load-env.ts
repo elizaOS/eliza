@@ -9,7 +9,7 @@ import { config } from "dotenv";
  */
 export function loadEnv(): void {
   // Load .env from current working directory if present.
-  config();
+  config({ quiet: true });
 
   // Also try to load from the monorepo root.
   // This file lives at: examples/code/src/lib/load-env.ts
@@ -18,6 +18,6 @@ export function loadEnv(): void {
     new URL("../../../../.env", import.meta.url),
   );
   if (existsSync(rootEnvPath)) {
-    config({ path: rootEnvPath, override: false });
+    config({ path: rootEnvPath, override: false, quiet: true });
   }
 }

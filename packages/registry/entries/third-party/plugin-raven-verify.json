@@ -4,7 +4,7 @@
   "kind": "plugin",
   "description": "Pre-action Solana token verification via Raven — signed, scope-bounded on-chain evidence receipts (checks performed, checks NOT performed, coverage gaps, ed25519 signature). Reports evidence, not a safe/unsafe verdict.",
   "homepage": "https://ravenattest.com",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "tags": [
     "solana",
     "token",

@@ -24,6 +24,28 @@ export {
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
 } from "./db/schema.ts";
+// Cross-channel inbox aggregation domain (builders, request resolver, cached
+// read-through InboxDomain). Also consumable via the narrow subpath
+// `@elizaos/plugin-inbox/inbox/aggregate`.
+export {
+  buildInbox,
+  buildInboxFromMessages,
+  type CachedInboxMessage,
+  fetchInbox,
+  type InboxChatType,
+  type InboxDeps,
+  InboxDomain,
+  type InboxDomainDeps,
+  type InboxMessageCache,
+  type LifeOpsInboxService,
+  normalizeInboxChannel,
+  type PriorityScoringSettings,
+  type PriorityScoringSettingsLoader,
+  type ResolvedInboxRequest,
+  resolveInboxRequest,
+  toInboxMessage,
+  toInboxMessages,
+} from "./inbox/aggregate.ts";
 // Email-curation decision engine. Pure (email + context → save/archive/delete/
 // review with evidence and citations); takes injected identity/policy hooks.
 // Also consumable via the narrow subpath
@@ -53,6 +75,15 @@ export {
   InboxMigrationService,
   MIGRATED_INBOX_TABLES,
 } from "./inbox/migration.ts";
+// LLM inbox priority scorer (batched, cached, concurrency-capped). Also at
+// `@elizaos/plugin-inbox/inbox/priority-scoring`.
+export {
+  __resetPriorityScoringCacheForTests,
+  type PriorityCategory,
+  type PriorityScore,
+  type ScoreInboxMessagesOptions,
+  scoreInboxMessages,
+} from "./inbox/priority-scoring.ts";
 export { InboxRepository } from "./inbox/repository.ts";
 export {
   InboxService,

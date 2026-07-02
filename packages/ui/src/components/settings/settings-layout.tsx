@@ -209,9 +209,9 @@ export function SettingsRow({
   disabled = false,
   className,
 }: SettingsRowProps) {
-  // Full-width content (the page owns horizontal padding). Nav rows bleed 0.5rem
-  // into that padding (-mx-2 px-2) so the hover/active wash has breathing room
-  // while the text still lines up with non-button rows.
+  // Full-width content (the page owns horizontal padding). Nav rows keep the
+  // 48px touch target while avoiding extra horizontal bleed that makes the
+  // mobile settings hub read denser in the app visual audit.
   if (onClick) {
     return (
       <button
@@ -221,7 +221,7 @@ export function SettingsRow({
         disabled={disabled}
         aria-current={active ? "true" : undefined}
         className={cn(
-          "group -mx-2 flex w-[calc(100%+1rem)] min-h-[3rem] items-center rounded-lg px-2 py-2.5 text-left transition-colors",
+          "group flex w-full min-h-[3rem] items-center rounded-lg px-2 py-2.5 text-left transition-colors",
           "hover:bg-surface/70    ",
           active && "bg-accent/10 hover:bg-accent/12",
           disabled && "cursor-not-allowed opacity-50",

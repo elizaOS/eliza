@@ -182,7 +182,7 @@ describe("SwarmCoordinatorService ACP bind race (coordinator silent give-up)", (
   });
 
   it("marks UNBOUND loudly when ACP fails to start (load-promise rejects)", async () => {
-    const errorSpy = vi.fn();
+    const _errorSpy = vi.fn();
     const { runtime, failAcpStart } = makeRuntime({ driveLoadPromise: true });
     const { subscriberCount } = makeFakeAcp();
 

@@ -1,10 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
-const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
+const repoRoot = path.resolve(
+  fileURLToPath(new URL("../../..", import.meta.url)),
+);
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const DEMO_ORCHESTRATOR = process.env.ELIZA_UI_SMOKE_DEMO_ORCHESTRATOR === "1";
 const HUMAN_CHAT_FIXTURES = process.env.ELIZA_UI_SMOKE_HUMAN_CHAT === "1";

@@ -39,6 +39,8 @@
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/tui": ["../../packages/tui/src/index.ts"],
+      "@elizaos/tui/*": ["../../packages/tui/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],

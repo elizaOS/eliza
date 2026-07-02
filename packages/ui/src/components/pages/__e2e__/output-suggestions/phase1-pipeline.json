@@ -1,0 +1,65 @@
+{
+  "frames": [
+    {
+      "type": "proactive-message",
+      "conversationId": "conv-1",
+      "message": {
+        "id": "26061354-6e47-426e-b653-c8cbe787e79e",
+        "role": "assistant",
+        "text": "Want me to pull your latest balances?",
+        "timestamp": 1783002182314,
+        "source": "proactive-interaction"
+      }
+    },
+    {
+      "type": "proactive-message",
+      "conversationId": "conv-1",
+      "message": {
+        "id": "ae9ea7fd-b4e1-446b-8f76-8215cbd77c05",
+        "role": "assistant",
+        "text": "Want a hand finding something?",
+        "timestamp": 1783002187692,
+        "source": "proactive-interaction"
+      }
+    }
+  ],
+  "gateDecisions": [
+    {
+      "surface": "wallet",
+      "text": "Want me to pull your latest balances?",
+      "atMs": 1600,
+      "admitted": true,
+      "reason": "ok"
+    },
+    {
+      "surface": "calendar",
+      "text": "Here is a calendar tip.",
+      "atMs": 3200,
+      "admitted": false,
+      "reason": "global cooldown"
+    },
+    {
+      "surface": "shortcut:open-command-palette",
+      "text": "Want a hand finding something?",
+      "atMs": 131600,
+      "admitted": true,
+      "reason": "ok"
+    },
+    {
+      "surface": "wallet",
+      "text": "Want me to refresh your wallet view?",
+      "atMs": 261600,
+      "admitted": false,
+      "reason": "per-surface cooldown"
+    },
+    {
+      "surface": "shortcut:open-command-palette",
+      "text": "Want a hand finding something?",
+      "atMs": 761600,
+      "admitted": false,
+      "reason": "duplicate of a recent comment"
+    }
+  ],
+  "judgeCalls": 5,
+  "memories": 2
+}

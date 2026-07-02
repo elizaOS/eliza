@@ -179,7 +179,11 @@ export function parseCompletionEnvelope(text: string): CompletionEnvelopeParse {
     } else {
       for (const [i, f] of o.verifiedChangedFiles.entries()) {
         const file = f as Record<string, unknown>;
-        if (!file || typeof file.path !== "string" || typeof file.exists !== "boolean") {
+        if (
+          !file ||
+          typeof file.path !== "string" ||
+          typeof file.exists !== "boolean"
+        ) {
           errors.push(`verifiedChangedFiles[${i}] must be {path, exists}`);
         } else {
           verifiedChangedFiles.push({
@@ -253,7 +257,9 @@ export function parseCompletionEnvelope(text: string): CompletionEnvelopeParse {
     envelope: {
       diffSummary: o.diffSummary as string,
       filesChanged: o.filesChanged as string[],
-      ...(typeof o.realWorkdir === "string" ? { realWorkdir: o.realWorkdir } : {}),
+      ...(typeof o.realWorkdir === "string"
+        ? { realWorkdir: o.realWorkdir }
+        : {}),
       ...(verifiedChangedFiles.length > 0 ? { verifiedChangedFiles } : {}),
       ...(typeof o.artifactsVerified === "boolean"
         ? { artifactsVerified: o.artifactsVerified }

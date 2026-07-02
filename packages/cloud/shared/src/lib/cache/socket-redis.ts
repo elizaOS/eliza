@@ -239,6 +239,10 @@ class Connection {
   private parser = new RespParser();
   private readonly opts: ParsedUrl;
   private inflight: Promise<unknown> = Promise.resolve();
+  // Bumped on every fresh socket. Failure cleanup closes a connection only if
+  // it is still the one the failing op used — a queued caller may already be
+  // on a newer socket, and a late loser must not tear that one down.
+  private generation = 0;
 
   constructor(opts: ParsedUrl) {
     this.opts = opts;
@@ -247,6 +251,7 @@ class Connection {
   private async ensureOpen(): Promise<void> {
     if (this.socket) return;
     const connect = await getConnect();
+    this.generation += 1;
     this.socket = connect(
       { hostname: this.opts.hostname, port: this.opts.port },
       { secureTransport: this.opts.tls ? "on" : "off", allowHalfOpen: false },
@@ -273,11 +278,44 @@ class Connection {
       release = r;
     });
     try {
-      await previous;
-      return await this.withTimeout(async () => {
-        await this.ensureOpen();
-        return await this.sendRaw(commands);
-      });
+      // Bound the queue wait too: on Workers a prior REQUEST's op can be
+      // orphaned mid-flight (its I/O context ends → workerd never runs its
+      // `finally release()`), so an unbounded `await previous` hangs every
+      // later caller on this connection forever (observed: 79s /embeddings
+      // stalls on staging). Each send() installs its own inflight promise
+      // before waiting, so the chain structurally recovers once we stop
+      // waiting on the orphan — but the socket's RESP framing state is
+      // unknown mid-op, so drop it and reconnect fresh.
+      let queueTimer: ReturnType<typeof setTimeout> | undefined;
+      const queueWait = await Promise.race([
+        previous.then(() => "released" as const),
+        new Promise<"orphaned">((resolve) => {
+          queueTimer = setTimeout(() => resolve("orphaned"), SOCKET_OP_TIMEOUT_MS);
+        }),
+      ]);
+      if (queueTimer) clearTimeout(queueTimer);
+      if (queueWait === "orphaned") {
+        await this.close().catch(() => {});
+      }
+      let opGeneration = -1;
+      try {
+        return await this.withTimeout(async () => {
+          await this.ensureOpen();
+          opGeneration = this.generation;
+          return await this.sendRaw(commands);
+        });
+      } catch (error) {
+        // Any mid-op failure leaves the RESP stream in an unknown state — and
+        // a cross-request I/O error means the socket belongs to a dead
+        // context. Drop the connection so the next call reconnects instead of
+        // reusing a poisoned socket for the isolate's lifetime. Guard on the
+        // generation: if a queued caller already reconnected, this failure
+        // belongs to the OLD socket and must not tear down the new one.
+        if (opGeneration === -1 || opGeneration === this.generation) {
+          await this.close().catch(() => {});
+        }
+        throw error;
+      }
     } finally {
       release();
     }
@@ -285,9 +323,10 @@ class Connection {
 
   /**
    * Bound a single connect+command to {@link SOCKET_OP_TIMEOUT_MS}. On timeout
-   * the socket may be half-open or stalled, so it is closed (forcing a fresh
-   * reconnect next call) and the error propagates to the caller, which falls
-   * back to its non-cached path instead of hanging.
+   * the error propagates to the caller, which falls back to its non-cached
+   * path instead of hanging. Closing the (possibly half-open or stalled)
+   * connection is `send()`'s job — it generation-guards the close so a late
+   * timeout can't tear down a successor's fresh socket.
    */
   private async withTimeout<T>(fn: () => Promise<T>): Promise<T> {
     const op = fn();
@@ -295,10 +334,8 @@ class Connection {
     // a post-timeout socket error doesn't surface as an unhandled rejection.
     op.catch(() => {});
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let timedOut = false;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        timedOut = true;
         reject(new Error(`SocketRedis operation timed out after ${SOCKET_OP_TIMEOUT_MS}ms`));
       }, SOCKET_OP_TIMEOUT_MS);
     });
@@ -306,7 +343,6 @@ class Connection {
       return await Promise.race([op, timeout]);
     } finally {
       if (timer) clearTimeout(timer);
-      if (timedOut) await this.close().catch(() => {});
     }
   }
 
@@ -363,6 +399,7 @@ class Connection {
     this.socket = null;
     this.writer = null;
     this.reader = null;
+    this.parser = new RespParser();
   }
 }
 

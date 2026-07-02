@@ -361,22 +361,26 @@ const SAFE_VIEW_TILES: readonly {
   expectedPath: new RegExp(`${escapeRegExp(tileCase.expectedPath)}$`),
 }));
 
-const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
-  /^Basics$/,
-  /^Models & Providers$/,
-  /^Runtime$/,
-  /^Appearance$/,
-  /^Voice$/,
-  /^Capabilities$/,
-  /^Apps$/,
-  /^Remote Plugins$/,
-  /^Connectors$/,
-  /^App Permissions$/,
-  /^Permissions$/,
-  /^Vault$/,
-  /^Security$/,
-  /^Updates$/,
-  /^Backup & Reset$/,
+const SETTING_SECTIONS_TO_CLICK: readonly {
+  label: RegExp;
+  expectedHash: string;
+}[] = [
+  { label: /^Basics$/, expectedHash: "identity" },
+  { label: /^Models & Providers$/, expectedHash: "ai-model" },
+  { label: /^Voice$/, expectedHash: "voice" },
+  { label: /^Capabilities$/, expectedHash: "capabilities" },
+  { label: /^Apps$/, expectedHash: "apps" },
+  { label: /^Connectors$/, expectedHash: "connectors" },
+  { label: /^Cloud Connectors$/, expectedHash: "cloud-connectors" },
+  { label: /^My Runtimes$/, expectedHash: "my-runtimes" },
+  { label: /^Runtime$/, expectedHash: "runtime" },
+  { label: /^Appearance$/, expectedHash: "appearance" },
+  { label: /^Background$/, expectedHash: "background" },
+  { label: /^Wallet & RPC\b/, expectedHash: "wallet-rpc" },
+  { label: /^Updates$/, expectedHash: "updates" },
+  { label: /^Backup & Reset$/, expectedHash: "advanced" },
+  { label: /^Overview$/, expectedHash: "cloud-overview" },
+  { label: /^Agents$/, expectedHash: "cloud-agents" },
 ];
 const SETTING_DEEP_LINKS: readonly {
   hash: string;
@@ -384,10 +388,11 @@ const SETTING_DEEP_LINKS: readonly {
   { hash: "ai-model" },
   { hash: "voice" },
   { hash: "connectors" },
-  { hash: "permissions" },
-  { hash: "secrets" },
-  { hash: "security" },
+  { hash: "apps" },
+  { hash: "background" },
+  { hash: "wallet-rpc" },
   { hash: "advanced" },
+  { hash: "cloud-agents" },
 ];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
@@ -1401,7 +1406,10 @@ async function expectNoPageIssues(
   issues: readonly string[],
   label: string,
 ): Promise<void> {
-  expect(issues, `[all-pages-clicksafe] ${label}`).toEqual([]);
+  expect(
+    issues,
+    [`[all-pages-clicksafe] ${label}`, ...issues].join("\n"),
+  ).toHaveLength(0);
 }
 
 async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
@@ -1478,12 +1486,40 @@ async function clickIfVisible(locator: Locator): Promise<boolean> {
   return true;
 }
 
+async function readFavoriteApps(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const raw = window.localStorage.getItem("eliza:favorite-apps");
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed)
+        ? parsed.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
 async function clickSafeAllowlist(
   page: Page,
   issues: readonly string[],
 ): Promise<void> {
   await probeRoute(page, coreRouteProbe("chat"));
-  await clickIfVisible(page.getByTestId("header-tasks-events-toggle"));
+  const legacyHeaderToggle = page.getByTestId("header-tasks-events-toggle");
+  const clickedLegacyHeaderToggle = await clickIfVisible(legacyHeaderToggle);
+  if (clickedLegacyHeaderToggle) {
+    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+      timeout: 60_000,
+    });
+  } else {
+    await expect(
+      page.locator(
+        '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      ),
+      "legacy header tasks/events toggle is not rendered in the current shell; the no-op is explicit and the chat route remains operable",
+    ).toBeVisible({ timeout: 60_000 });
+  }
   await expect(
     page.locator(
       '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
@@ -1495,20 +1531,43 @@ async function clickSafeAllowlist(
   const favoriteButton = page.getByRole("button", {
     name: "Add to favorites",
   });
+  const favoriteAppsBefore = await readFavoriteApps(page);
   if (await clickIfVisible(favoriteButton)) {
     await expect(
-      page.getByRole("button", { name: /^(Add to|Remove from) favorites$/ }),
+      page.getByRole("button", { name: "Remove from favorites" }),
     ).toBeVisible({ timeout: 60_000 });
+    await expect
+      .poll(() => readFavoriteApps(page), {
+        message: "favorite toggle must mutate persisted favorite app state",
+      })
+      .not.toEqual(favoriteAppsBefore);
+  } else {
+    await expect(
+      favoriteButton,
+      "no unfavorited app tile is visible in this fixture; the favorite-toggle no-op is explicit",
+    ).toHaveCount(0);
   }
   await expectNoPageIssues(issues, "apps favorite toggle");
 
   await probeRoute(page, coreRouteProbe("settings"));
   for (const section of SETTING_SECTIONS_TO_CLICK) {
-    await openSettingsSection(page, section);
+    await openSettingsSection(page, section.label);
     await expect(page.getByTestId("settings-shell")).toBeVisible({
       timeout: 60_000,
     });
-    await expectNoPageIssues(issues, `settings section ${String(section)}`);
+    await expect(page).toHaveURL(
+      new RegExp(`#${escapeRegExp(section.expectedHash)}$`),
+      {
+        timeout: 60_000,
+      },
+    );
+    await expect(page.locator(`#${section.expectedHash}`)).toBeVisible({
+      timeout: 60_000,
+    });
+    await expectNoPageIssues(
+      issues,
+      `settings section ${String(section.label)}`,
+    );
   }
 
   for (const link of SETTING_DEEP_LINKS) {

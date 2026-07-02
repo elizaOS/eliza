@@ -37,18 +37,10 @@ interface RuntimeOptions {
 
 function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
   const apiKey =
-    opts.apiKey !== undefined
-      ? opts.apiKey
-      : opts.connected === false
-        ? null
-        : "test-cloud-key";
+    opts.apiKey !== undefined ? opts.apiKey : opts.connected === false ? null : "test-cloud-key";
   const baseUrl = opts.baseUrl ?? "https://cloud.test.local/api/v1";
   const enabled =
-    opts.enabled !== undefined
-      ? opts.enabled
-      : opts.connected === false
-        ? "false"
-        : "true";
+    opts.enabled !== undefined ? opts.enabled : opts.connected === false ? "false" : "true";
   const settings: Record<string, string | null> = {
     ELIZAOS_CLOUD_API_KEY: apiKey,
     ELIZAOS_CLOUD_ENABLED: enabled,
@@ -251,14 +243,11 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
     const { client, calls } = makeFakeClient(expected);
     setCloudTtsClientFactoryForTesting(() => client);
 
-    const out = await handleTextToSpeech(
-      makeRuntime({ enabled: null, useTts: "true" }),
-      {
-        text: "capability-only hello",
-        voiceId: "EXAVITQu4vr4xnSDxMaL",
-        modelId: "eleven_flash_v2_5",
-      }
-    );
+    const out = await handleTextToSpeech(makeRuntime({ enabled: null, useTts: "true" }), {
+      text: "capability-only hello",
+      voiceId: "EXAVITQu4vr4xnSDxMaL",
+      modelId: "eleven_flash_v2_5",
+    });
 
     // The gate let the request through to the (mocked) HTTP call…
     expect(calls).toHaveLength(1);
@@ -310,14 +299,11 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
     setCloudTtsClientFactoryForTesting(() => client);
 
     await expect(
-      handleTextToSpeech(
-        makeRuntime({ apiKey: null, enabled: null, useTts: "true" }),
-        {
-          text: "hello",
-          voiceId: "EXAVITQu4vr4xnSDxMaL",
-          modelId: "eleven_flash_v2_5",
-        }
-      )
+      handleTextToSpeech(makeRuntime({ apiKey: null, enabled: null, useTts: "true" }), {
+        text: "hello",
+        voiceId: "EXAVITQu4vr4xnSDxMaL",
+        modelId: "eleven_flash_v2_5",
+      })
     ).rejects.toBeInstanceOf(CloudTtsUnavailableError);
     expect(calls).toHaveLength(0);
   });

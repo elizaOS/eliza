@@ -11,7 +11,6 @@
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import { usersRepository } from "../db/repositories/users";
 import { getClientIp } from "./runtime/request-context";
-import { getInitialCredits } from "./signup-credits";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { creditsService } from "./services/credits";
@@ -21,6 +20,7 @@ import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
 import { runWithSignupGrantIpCap } from "./services/signup-grant-guard";
 import { usersService } from "./services/users";
+import { getInitialCredits } from "./signup-credits";
 import type { UserWithOrganization } from "./types";
 import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";

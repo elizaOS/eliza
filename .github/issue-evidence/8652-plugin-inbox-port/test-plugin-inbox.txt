@@ -1,0 +1,10 @@
+
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/plugins/plugin-inbox
+
+
+ Test Files  18 passed | 1 skipped (19)
+      Tests  135 passed | 2 skipped (137)
+   Start at  04:13:01
+   Duration  23.89s (transform 16.35s, setup 520ms, import 36.50s, tests 7.28s, environment 346ms)
+
+exit: 0

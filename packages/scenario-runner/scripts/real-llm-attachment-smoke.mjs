@@ -14,13 +14,17 @@
  * real, authenticated model giving a wrong answer.
  *
  * Run: `node packages/scenario-runner/scripts/real-llm-attachment-smoke.mjs`
- * (reads OPENAI_API_KEY / ANTHROPIC_API_KEY / XAI_API_KEY from the env).
+ * (reads OPENAI_API_KEY / ANTHROPIC_API_KEY / XAI_API_KEY / CEREBRAS_API_KEY
+ * from the env).
  */
 
 const NOTE = "Project kickoff is Tuesday at 10am in room 4.";
 // A stable public image with an unmistakable man-made structure (a boardwalk).
+// NOTE: the /thumb/…/640px-… variant of this URL started returning HTTP 400
+// from Wikimedia (observed 2026-07-02), which silently broke the vision leg
+// for every provider — use the canonical full-size Commons URL instead.
 const IMAGE_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/640px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg";
+  "https://upload.wikimedia.org/wikipedia/commons/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg";
 
 function skip(reason) {
   console.log(`SKIP real-llm-attachment-smoke: ${reason}`);
@@ -29,14 +33,29 @@ function skip(reason) {
 
 class AuthError extends Error {}
 
-async function callOpenAICompatible({ base, key, model, vision }) {
+/**
+ * Fetch the reference image and inline it as a base64 data URI. Cerebras
+ * rejects remote image URLs (`invalid_multimodal_input`) — its multimodal
+ * models accept data URIs only.
+ */
+async function imageAsDataUri() {
+  // Wikimedia rejects UA-less programmatic fetches with HTTP 400.
+  const r = await fetch(IMAGE_URL, {
+    headers: { "user-agent": "elizaos-real-llm-attachment-smoke/1.0" },
+  });
+  if (!r.ok) throw new Error(`image fetch failed: HTTP ${r.status}`);
+  const bytes = Buffer.from(await r.arrayBuffer());
+  return `data:image/jpeg;base64,${bytes.toString("base64")}`;
+}
+
+async function callOpenAICompatible({ base, key, model, vision, imageUri }) {
   const userContent = vision
     ? [
         {
           type: "text",
           text: "What is the main man-made structure in this image? One or two words.",
         },
-        { type: "image_url", image_url: { url: IMAGE_URL } },
+        { type: "image_url", image_url: { url: imageUri ?? IMAGE_URL } },
       ]
     : `Attached note:\n"""${NOTE}"""\nWhat day is the kickoff? Reply with one word.`;
   const r = await fetch(`${base}/chat/completions`, {
@@ -124,11 +143,29 @@ const PROVIDERS = [
     run: (key, vision) =>
       callAnthropic({ key, model: "claude-haiku-4-5-20251001", vision }),
   },
+  {
+    // Cerebras is the repo's first-class live eval provider (see the
+    // scenario-runner Cerebras judge). Text runs on CEREBRAS_MODEL (default
+    // gpt-oss-120b); vision runs on gemma-4-31b (the multimodal model Cerebras
+    // hosts — gpt-oss-120b is text-only) with the image inlined as a data URI.
+    name: "cerebras",
+    keyEnv: "CEREBRAS_API_KEY",
+    run: async (key, vision) =>
+      callOpenAICompatible({
+        base: "https://api.cerebras.ai/v1",
+        key,
+        model: vision
+          ? "gemma-4-31b"
+          : (process.env.CEREBRAS_MODEL ?? "gpt-oss-120b").trim(),
+        vision,
+        imageUri: vision ? await imageAsDataUri() : undefined,
+      }),
+  },
 ];
 
 const available = PROVIDERS.filter((p) => (process.env[p.keyEnv] ?? "").trim());
 if (available.length === 0)
-  skip("no provider key in env (OPENAI/XAI/ANTHROPIC)");
+  skip("no provider key in env (OPENAI/XAI/ANTHROPIC/CEREBRAS)");
 
 let lastAuthError = "";
 for (const provider of available) {
