@@ -22,12 +22,17 @@ import {
 
 export { computeBillingFingerprint } from "./src/proxy/billing-fingerprint.js";
 export {
+  DEFAULT_REVERSE_MAP,
+  DEFAULT_TOOL_RENAMES,
+} from "./src/proxy/constants.js";
+export {
   type ProcessBodyConfig,
   processBody,
 } from "./src/proxy/process-body.js";
 export { reverseMap } from "./src/proxy/reverse-map.js";
 export type { ProxyServerOptions, ProxyStats } from "./src/proxy/server.js";
 export { ProxyServer } from "./src/proxy/server.js";
+export { getStainlessHeaders } from "./src/proxy/stainless-headers.js";
 export {
   ANTHROPIC_PROXY_SERVICE_NAME,
   AnthropicProxyService,
