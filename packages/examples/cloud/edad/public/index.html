@@ -91,6 +91,8 @@ Tone rules:
 
 You are not a therapist and you're not a life coach. You're the dad who believed in them, now over text.`;
 
+const GREETING_TEXT = "well look who finally came around, champ. pull up a chair. what's on your mind?";
+
 const els = {
   messages: document.getElementById("messages"),
   composer: document.getElementById("composer"),
@@ -194,6 +196,12 @@ function addMessage(role, text) {
   return p;
 }
 
+function resetConversation() {
+  history.length = 0;
+  els.messages.innerHTML = "";
+  addMessage("assistant", GREETING_TEXT);
+}
+
 function randomState() {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -249,6 +257,7 @@ async function handleOAuthCallback() {
     }
     lsSet(TOKEN_KEY, data.session);
     historyLoaded = false;
+    resetConversation();
     setNotice("signed in with eliza cloud. chat away.", "ok");
     setTimeout(() => setNotice(""), 3500);
     refreshAuthUI();
@@ -288,6 +297,7 @@ function startLogin() {
 function logout() {
   lsSet(TOKEN_KEY, "");
   historyLoaded = false;
+  resetConversation();
   refreshAuthUI();
   setNotice("signed out.", "ok");
   setTimeout(() => setNotice(""), 2000);
@@ -332,7 +342,7 @@ async function send(text) {
       if (res.status === 401) {
         msg = "dad needs you to sign in with eliza cloud. click the button up top, kiddo.";
         // token might be expired — nuke it
-        if (getToken()) { lsSet(TOKEN_KEY, ""); refreshAuthUI(); }
+        if (getToken()) { lsSet(TOKEN_KEY, ""); resetConversation(); refreshAuthUI(); }
       }
       if (res.status === 402) msg = "dad's wallet is empty. top up at elizacloud.ai, champ.";
       placeholder.textContent = msg;
