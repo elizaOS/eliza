@@ -46,6 +46,13 @@ const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
+/**
+ * The trigger that actually bound the capacitor-llama handlers, or null while
+ * nothing registered them. "bionic-host" is the true in-process serving signal
+ * the readiness surfaces key on (#11498): it is set ONLY by
+ * registerMobileDeviceBridgeModels, never by mere plugin presence.
+ */
+let registeredModelTrigger: "bionic-host" | "device-bridge" | null = null;
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-embedding": 1024,
 	// 2B reuses the text backbone for embeddings (--pooling last), so its dim is the
@@ -1720,6 +1727,53 @@ export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
 	return mobileDeviceBridge.status();
 }
 
+export interface MobileDeviceBridgeServingStatus {
+	/** Which path bound the capacitor-llama handlers (null = not registered). */
+	registeredTrigger: "bionic-host" | "device-bridge" | null;
+	/**
+	 * True ONLY when the handlers were bound via the in-process bionic host
+	 * AND its abstract UDS accepts a connection right now — i.e. the host can
+	 * actually serve a generate/embed call (#11498). Never true from mere
+	 * plugin presence or env configuration alone.
+	 */
+	bionicHostServing: boolean;
+}
+
+const BIONIC_PROBE_TIMEOUT_MS = readTimeoutMs(
+	"ELIZA_BIONIC_PROBE_TIMEOUT_MS",
+	2_000,
+);
+
+/** True when the bionic host's abstract UDS accepts a connection right now. */
+function probeBionicHostSocket(socketName: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		const sock = net.connect({ path: `\0${socketName}` });
+		const finish = (ok: boolean) => {
+			clearTimeout(timer);
+			sock.destroy();
+			resolve(ok);
+		};
+		const timer = setTimeout(() => finish(false), BIONIC_PROBE_TIMEOUT_MS);
+		sock.on("connect", () => finish(true));
+		sock.on("error", () => finish(false));
+	});
+}
+
+/**
+ * The true "in-process bionic host can serve" signal for readiness surfaces
+ * (GET /api/local-inference/providers → capacitor-llama.servingVia). The
+ * mobile-local-chat-smoke readiness gate accepts this as its third branch
+ * alongside hub.active.status==="ready" and device.connected (#11498).
+ */
+export async function getMobileDeviceBridgeServingStatus(): Promise<MobileDeviceBridgeServingStatus> {
+	const socketName = bionicSocketName();
+	const bionicHostServing =
+		registeredModelTrigger === "bionic-host" &&
+		socketName !== null &&
+		(await probeBionicHostSocket(socketName));
+	return { registeredTrigger: registeredModelTrigger, bionicHostServing };
+}
+
 export async function loadMobileDeviceBridgeModel(
 	modelPath: string,
 	modelId?: string,
@@ -1946,6 +2000,7 @@ function registerMobileDeviceBridgeModels(
 		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
 	);
 	registeredRuntimes.add(runtime);
+	registeredModelTrigger = trigger;
 	return true;
 }
 
