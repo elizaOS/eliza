@@ -20,6 +20,7 @@ import {
 
 import {
   clearChatDraft,
+  readChatDraft,
   writeChatDraft,
 } from "../../state/ChatComposerContext.hooks";
 
@@ -66,6 +67,7 @@ import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
+  type ConversationNav,
   type ShellController,
 } from "./useShellController";
 
@@ -2816,5 +2818,99 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("half-written thought");
     clearChatDraft("conv-draft-x");
+  });
+
+  // Draft handoff on conversation switch (mirrors ChatView's
+  // handleSelectConversation fix): the leaving conversation's in-progress text
+  // must be flushed under ITS OWN key, and a draftless target must CLEAR the
+  // composer — not inherit the previous conversation's text (which the
+  // debounced persister would then re-home under the WRONG conversation's key).
+  describe("draft handoff on conversation switch", () => {
+    const navFor = (activeId: string): ConversationNav => ({
+      hasPrev: false,
+      hasNext: false,
+      goPrev: () => {},
+      goNext: () => {},
+      activeId,
+      index: 0,
+    });
+
+    beforeEach(() => {
+      clearChatDraft("conv-a");
+      clearChatDraft("conv-b");
+    });
+
+    afterEach(() => {
+      clearChatDraft("conv-a");
+      clearChatDraft("conv-b");
+    });
+
+    it("switching A(typed) → B(no draft) clears the composer and saves the text under A's key — never B's", async () => {
+      const { rerender } = render(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-a") })}
+        />,
+      );
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "half-typed for A" } });
+
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-b") })}
+        />,
+      );
+
+      // The draftless target CLEARS — A's text must not stay visible in B.
+      expect(input.value).toBe("");
+      // The handoff flushed the text under the LEAVING conversation's key
+      // synchronously (the debounced persister's pending timer is cancelled
+      // by the switch, so only the explicit flush can have written this).
+      expect(readChatDraft("conv-a")).toBe("half-typed for A");
+      expect(readChatDraft("conv-b")).toBeNull();
+
+      // Outlast the 500ms persist debounce: the wrong-conversation write
+      // (A's text under B's key) must NEVER land.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      });
+      expect(readChatDraft("conv-b")).toBeNull();
+      expect(readChatDraft("conv-a")).toBe("half-typed for A");
+    });
+
+    it("switching A(typed) → B(saved draft) restores B's own draft and keeps A's under A's key", () => {
+      writeChatDraft("conv-b", "B's parked reply");
+      const { rerender } = render(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-a") })}
+        />,
+      );
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "half-typed for A" } });
+
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({ conversationNav: navFor("conv-b") })}
+        />,
+      );
+
+      expect(input.value).toBe("B's parked reply");
+      expect(readChatDraft("conv-a")).toBe("half-typed for A");
+      expect(readChatDraft("conv-b")).toBe("B's parked reply");
+    });
+
+    it("a successful send still clears both the composer and the active conversation's saved draft", () => {
+      writeChatDraft("conv-a", "stale saved draft");
+      const controller = makeController({ conversationNav: navFor("conv-a") });
+      render(<ContinuousChatOverlay controller={controller} />);
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "ship it" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ship it");
+      expect(input.value).toBe("");
+      // The submit path drops the persisted draft immediately (not just via
+      // the debounced persist of the now-empty draft).
+      expect(readChatDraft("conv-a")).toBeNull();
+    });
   });
 });
