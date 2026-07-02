@@ -267,9 +267,7 @@ export async function releaseDomain(domainId: string): Promise<void> {
  * reclaim path that stops an unproven attach from squatting a domain forever.
  * Returns the number of rows released. Intended for a periodic cron.
  */
-export async function releaseStaleUnverifiedExternals(
-  olderThanMs: number,
-): Promise<number> {
+export async function releaseStaleUnverifiedExternals(olderThanMs: number): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanMs);
   const deleted = await dbWrite
     .delete(managedDomains)
