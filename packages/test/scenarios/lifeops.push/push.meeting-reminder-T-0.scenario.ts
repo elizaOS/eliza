@@ -49,7 +49,11 @@ export default scenario({
         description: "T-0 reminder with join link",
         includesAny: ["start", "join", "link", "standup"],
       }),
-      responseIncludesAny: ["start", "join", "link", "standup"],
+      // De-echoed (#9310): the old keywords ("start", "join", "link",
+      // "standup") all appeared in the user's own turn text. Seeded-token
+      // grounding instead: the join URL exists only in the seeded calendar
+      // event, so the reply can only surface it by reading that state.
+      responseIncludesAll: ["meet.example.com"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
