@@ -889,9 +889,16 @@ class AdvertisingService {
         metadata: { campaignId, campaignName: claimed.name },
       });
 
+      // The campaign row is already deleted by the claim above, so a
+      // campaign_id here would violate the ad_transactions FK (23503) and
+      // 500 every refunding delete AFTER the refund committed — dropping the
+      // ledger row. onDelete:"set null" only rewrites existing rows; it does
+      // not permit inserting a dangling reference. Record the deleted id in
+      // external_reference instead.
       await adTransactionsRepository.create({
         organization_id: organizationId,
-        campaign_id: campaignId,
+        campaign_id: null,
+        external_reference: campaignId,
         type: "refund",
         amount: String(creditsRemaining),
         currency: claimed.budget_currency,
