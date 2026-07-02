@@ -670,18 +670,7 @@ class AdvertisingService {
       throw new Error(result.error || "Failed to update campaign");
     }
 
-    // Platform accepted — refund a budget DECREASE now (never refund before the
-    // live budget is actually lowered).
-    if (budgetCreditDelta < 0) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: -budgetCreditDelta,
-        description: `Ad budget decrease refund: ${campaign.name}`,
-        metadata: { type: "ad_budget_decrease_refund", campaignId },
-      });
-    }
-
-    const updated = await adCampaignsRepository.update(campaignId, {
+    const updateData = {
       name: input.name,
       budget_amount: input.budgetAmount ? String(input.budgetAmount) : undefined,
       ...(newCreditsAllocated !== undefined
@@ -690,7 +679,40 @@ class AdvertisingService {
       start_date: input.startDate,
       end_date: input.endDate,
       targeting: input.targeting,
-    });
+    };
+
+    let updated: AdCampaign | undefined;
+    if (budgetCreditDelta < 0 && newCreditsAllocated !== undefined) {
+      // Platform accepted a budget decrease. Refund only the genuinely unused
+      // freed allocation, and claim the allocation change atomically so two
+      // concurrent decreases cannot both refund the same credits.
+      const oldAllocated = parseFloat(campaign.credits_allocated);
+      const spentCredits = await this.computeCreditsSpent(campaign);
+      const freed = oldAllocated - newCreditsAllocated;
+      const unused = Math.max(0, oldAllocated - spentCredits);
+      const refundAmount = Math.max(0, Math.min(freed, unused));
+
+      updated = await adCampaignsRepository.claimAllocationChange(
+        campaignId,
+        organizationId,
+        campaign.credits_allocated,
+        updateData,
+      );
+      if (!updated) {
+        throw new Error("Campaign budget changed concurrently; please retry");
+      }
+
+      if (refundAmount > 0) {
+        await creditsService.refundCredits({
+          organizationId,
+          amount: refundAmount,
+          description: `Ad budget decrease refund: ${campaign.name}`,
+          metadata: { type: "ad_budget_decrease_refund", campaignId },
+        });
+      }
+    } else {
+      updated = await adCampaignsRepository.update(campaignId, updateData);
+    }
 
     logger.info("[Advertising] Campaign updated", { campaignId });
 
@@ -759,6 +781,43 @@ class AdvertisingService {
     return updated!;
   }
 
+  /**
+   * Credits genuinely spent for a campaign, honoring both spend columns:
+   * internal SSP credits are already in allocated-credit units, while external
+   * provider spend is USD and must be converted with the campaign markup.
+   */
+  private async computeCreditsSpent(campaign: {
+    id: string;
+    organization_id: string;
+    external_campaign_id: string | null;
+    credits_allocated: string;
+    budget_amount: string;
+    credits_spent: string;
+    total_spend: string;
+  }): Promise<number> {
+    let totalSpendUsd = parseFloat(campaign.total_spend);
+    if (campaign.external_campaign_id) {
+      try {
+        const freshMetrics = await this.getCampaignMetrics(campaign.id, campaign.organization_id);
+        if (Number.isFinite(Number(freshMetrics.spend))) {
+          totalSpendUsd = Number(freshMetrics.spend);
+        }
+      } catch (metricsError) {
+        logger.warn("[Advertising] spend refresh failed; using stored total_spend", {
+          campaignId: campaign.id,
+          error: metricsError instanceof Error ? metricsError.message : String(metricsError),
+        });
+      }
+    }
+
+    const creditsAllocated = parseFloat(campaign.credits_allocated);
+    const budgetAmountUsd = parseFloat(campaign.budget_amount);
+    const markup = budgetAmountUsd > 0 ? creditsAllocated / budgetAmountUsd : 1;
+    const internalSpentCredits = Math.max(0, parseFloat(campaign.credits_spent));
+    const externalSpentCredits = Math.max(0, totalSpendUsd) * markup;
+    return Math.min(creditsAllocated, internalSpentCredits + externalSpentCredits);
+  }
+
   async deleteCampaign(campaignId: string, organizationId: string): Promise<void> {
     const campaign = await adCampaignsRepository.findById(campaignId);
     if (!campaign || campaign.organization_id !== organizationId) {
@@ -778,72 +837,55 @@ class AdvertisingService {
       }
     }
 
-    // Refund the genuinely-UNUSED budget. Spend accrues on TWO different columns
-    // depending on the campaign type, and the refund must honor BOTH (#11151):
-    //   - internal miniapp SSP spend → `credits_spent` (allocated-credit units,
-    //     written by adSlotsRepository.recordServe on every served impression,
-    //     #10942/#11029). NOTE: the earlier "credits_spent is never written"
-    //     reasoning is STALE — it only checked incrementSpend's callers and
-    //     missed recordServe's direct UPDATE.
-    //   - external-provider spend → `total_spend` (USD, synced by getCampaignMetrics).
-    // Refunding off `total_spend` ALONE let a purely-internal campaign
-    // (external_campaign_id = null, so total_spend stays "0") refund its ENTIRE
-    // prepaid budget + markup after spending it on real impressions ("free
-    // advertising", platform eats the publisher payouts). Convert the external
-    // USD spend into allocated-credit units at the same markup applied at
-    // allocation, take the MAX of the two spent measures, and refund only the
-    // remainder — so a campaign of either kind (or both) can never be refunded
-    // past its genuinely-unused allocation. Best-effort refresh external spend
-    // first so a never-synced provider campaign can't over-refund.
-    let totalSpendUsd = parseFloat(campaign.total_spend);
+    // Refresh external spend before the atomic claim while the row still exists.
+    // getCampaignMetrics persists total_spend, so the claimed row carries it.
     if (campaign.external_campaign_id) {
       try {
-        const freshMetrics = await this.getCampaignMetrics(campaignId, organizationId);
-        if (Number.isFinite(Number(freshMetrics.spend))) {
-          totalSpendUsd = Number(freshMetrics.spend);
-        }
+        await this.getCampaignMetrics(campaignId, organizationId);
       } catch (metricsError) {
-        logger.warn(
-          "[Advertising] spend refresh before delete-refund failed; using stored total_spend",
-          {
-            campaignId,
-            error: metricsError instanceof Error ? metricsError.message : String(metricsError),
-          },
-        );
+        logger.warn("[Advertising] pre-delete spend refresh failed; using stored total_spend", {
+          campaignId,
+          error: metricsError instanceof Error ? metricsError.message : String(metricsError),
+        });
       }
     }
-    const creditsAllocated = parseFloat(campaign.credits_allocated);
-    const budgetAmountUsd = parseFloat(campaign.budget_amount);
-    const markup = budgetAmountUsd > 0 ? creditsAllocated / budgetAmountUsd : 1;
-    // credits_spent is already in allocated-credit units; total_spend is USD → scale by markup.
-    const internalSpentCredits = Math.max(0, parseFloat(campaign.credits_spent));
-    const externalSpentCredits = Math.max(0, totalSpendUsd) * markup;
-    const creditsSpent = Math.min(
-      creditsAllocated,
-      Math.max(internalSpentCredits, externalSpentCredits),
-    );
-    const creditsRemaining = Math.max(0, creditsAllocated - creditsSpent);
+
+    const deleted = await adCampaignsRepository.claimDelete(campaignId, organizationId);
+    if (!deleted) {
+      logger.info("[Advertising] Campaign already deleted concurrently; skipping refund", {
+        campaignId,
+      });
+      return;
+    }
+
+    // Refund from the claimed row, never the earlier findById snapshot: a
+    // concurrent budget decrease can commit a lower credits_allocated and
+    // refund the freed delta before this delete wins the row.
+    const creditsSpent = await this.computeCreditsSpent({
+      ...deleted,
+      external_campaign_id: null,
+    });
+    const creditsRemaining = Math.max(0, parseFloat(deleted.credits_allocated) - creditsSpent);
 
     if (creditsRemaining > 0) {
       await creditsService.refundCredits({
         organizationId,
         amount: creditsRemaining,
-        description: `Refund unused budget for deleted campaign: ${campaign.name}`,
-        metadata: { campaignId, campaignName: campaign.name },
+        description: `Refund unused budget for deleted campaign: ${deleted.name}`,
+        metadata: { campaignId, campaignName: deleted.name },
       });
 
       await adTransactionsRepository.create({
         organization_id: organizationId,
-        campaign_id: campaignId,
+        campaign_id: null,
+        external_reference: campaignId,
         type: "refund",
         amount: String(creditsRemaining),
-        currency: campaign.budget_currency,
+        currency: deleted.budget_currency,
         credits_amount: String(creditsRemaining),
-        description: `Refund for deleted campaign: ${campaign.name}`,
+        description: `Refund for deleted campaign: ${deleted.name}`,
       });
     }
-
-    await adCampaignsRepository.delete(campaignId);
 
     logger.info("[Advertising] Campaign deleted", { campaignId });
   }

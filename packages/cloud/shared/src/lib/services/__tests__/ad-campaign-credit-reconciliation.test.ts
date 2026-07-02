@@ -74,18 +74,17 @@ afterEach(() => {
 });
 
 describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
-  beforeEach(() => {
-    // Not synced to a platform → no platform delete, no metrics refresh; the
-    // stored total_spend is used directly (the simplest path through the fix).
-    track(spyOn(adCampaignsRepository, "delete").mockResolvedValue(undefined));
-  });
+  // Not synced to a platform -> no platform delete, no metrics refresh; the
+  // stored total_spend is used directly. claimDelete gates the refund and the
+  // refund is computed from that claimed row.
+  function stubCampaignRow(over: Record<string, unknown> = {}) {
+    const row = makeCampaign(over);
+    track(spyOn(adCampaignsRepository, "findById").mockResolvedValue(row as never));
+    track(spyOn(adCampaignsRepository, "claimDelete").mockResolvedValue(row as never));
+  }
 
   test("budget 100 / allocated 110 / spent 40 → refunds 66, not the full 110", async () => {
-    track(
-      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
-        makeCampaign({ total_spend: "40" }) as never,
-      ),
-    );
+    stubCampaignRow({ total_spend: "40" });
     const refund = track(
       spyOn(creditsService, "refundCredits").mockResolvedValue({
         success: true,
@@ -102,11 +101,7 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
   });
 
   test("fully-spent budget refunds nothing (no over-refund)", async () => {
-    track(
-      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
-        makeCampaign({ total_spend: "100" }) as never,
-      ),
-    );
+    stubCampaignRow({ total_spend: "100" });
     const refund = track(
       spyOn(creditsService, "refundCredits").mockResolvedValue({
         success: true,
@@ -126,13 +121,9 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
   // deleteCampaign refunded the FULL allocation after it spent real budget on
   // impressions. The refund must now honor credits_spent too.
   test("#11151 internal campaign spent via credits_spent → refunds only the unused portion, not the full allocation", async () => {
-    track(
-      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
-        // external_campaign_id null (internal), total_spend "0", but 40 allocated
-        // credits actually spent on served impressions.
-        makeCampaign({ credits_spent: "40", total_spend: "0" }) as never,
-      ),
-    );
+    // external_campaign_id null (internal), total_spend "0", but 40 allocated
+    // credits actually spent on served impressions.
+    stubCampaignRow({ credits_spent: "40", total_spend: "0" });
     const refund = track(
       spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
     );
@@ -148,11 +139,7 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
   });
 
   test("#11151 fully-spent internal campaign (credits_spent ≥ allocated) refunds nothing", async () => {
-    track(
-      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
-        makeCampaign({ credits_spent: "110", total_spend: "0" }) as never,
-      ),
-    );
+    stubCampaignRow({ credits_spent: "110", total_spend: "0" });
     const refund = track(
       spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
     );
@@ -163,14 +150,10 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
     expect(refund).not.toHaveBeenCalled();
   });
 
-  test("#11151 mixed spend takes the MAX of internal+external measures (no double-refund)", async () => {
-    track(
-      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
-        // credits_spent 40 (allocated units) vs total_spend 100 USD → 100*1.1 = 110
-        // allocated-credit units; the external measure dominates → nothing left.
-        makeCampaign({ credits_spent: "40", total_spend: "100" }) as never,
-      ),
-    );
+  test("#11151 mixed spend adds internal+external measures and clamps to allocation", async () => {
+    // credits_spent 40 (allocated units) plus total_spend 100 USD -> 110
+    // allocated-credit units; clamp at 110 leaves nothing to refund.
+    stubCampaignRow({ credits_spent: "40", total_spend: "100" });
     const refund = track(
       spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
     );
@@ -179,6 +162,24 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
     await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
 
     expect(refund).not.toHaveBeenCalled();
+  });
+
+  test("#11292 concurrent delete: the loser (claimDelete returns nothing) refunds nothing", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ total_spend: "40" }) as never,
+      ),
+    );
+    track(spyOn(adCampaignsRepository, "claimDelete").mockResolvedValue(undefined as never));
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+    const tx = track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
+
+    await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
+
+    expect(refund).not.toHaveBeenCalled();
+    expect(tx).not.toHaveBeenCalled();
   });
 });
 
@@ -305,6 +306,167 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     expect(updated.name).toBe("Renamed");
     // No budgetAmount in the input → no budget delta → no credit movement.
     expect(deduct).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateCampaign — budget DECREASE refunds only unused + is atomic (#11292)", () => {
+  beforeEach(() => {
+    track(
+      spyOn(adAccountsRepository, "findById").mockResolvedValue({
+        id: "acct-1",
+        organization_id: ORG_ID,
+        platform: "meta",
+      } as never),
+    );
+    track(
+      spyOn(
+        advertisingService as unknown as { getCredentials: () => Promise<unknown> },
+        "getCredentials",
+      ).mockResolvedValue({} as never),
+    );
+    track(spyOn(advertisingService, "getProvider").mockReturnValue(stubProvider()));
+  });
+
+  test("decrease AFTER spend refunds only the UNUSED portion, not the full delta", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ external_campaign_id: "ext-1" }) as never,
+      ),
+    );
+    track(
+      spyOn(advertisingService, "getCampaignMetrics").mockResolvedValue({
+        spend: 80,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+      } as never),
+    );
+    const claim = track(
+      spyOn(adCampaignsRepository, "claimAllocationChange").mockResolvedValue(
+        makeCampaign({
+          external_campaign_id: "ext-1",
+          budget_amount: "10",
+          credits_allocated: "11",
+        }) as never,
+      ),
+    );
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+
+    await advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, { budgetAmount: 10 });
+
+    expect(claim).toHaveBeenCalledTimes(1);
+    expect(claim.mock.calls[0]?.[2]).toBe("110");
+    expect((claim.mock.calls[0]?.[3] as { credits_allocated?: string }).credits_allocated).toBe(
+      "11",
+    );
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(22, 9);
+  });
+
+  test("decrease with NO spend refunds the full freed amount", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ external_campaign_id: "ext-1" }) as never,
+      ),
+    );
+    track(
+      spyOn(advertisingService, "getCampaignMetrics").mockResolvedValue({
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+      } as never),
+    );
+    track(
+      spyOn(adCampaignsRepository, "claimAllocationChange").mockResolvedValue(
+        makeCampaign({
+          external_campaign_id: "ext-1",
+          budget_amount: "10",
+          credits_allocated: "11",
+        }) as never,
+      ),
+    );
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+
+    await advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, { budgetAmount: 10 });
+
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(99, 9);
+  });
+
+  test("delete racing a decrease refunds from the CLAIMED row, keeping total refunds within the allocation", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ external_campaign_id: "ext-1" }) as never,
+      ),
+    );
+    track(
+      spyOn(advertisingService, "getCampaignMetrics").mockResolvedValue({
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+      } as never),
+    );
+    const decreasedRow = makeCampaign({
+      external_campaign_id: "ext-1",
+      budget_amount: "10",
+      credits_allocated: "11",
+    });
+    track(
+      spyOn(adCampaignsRepository, "claimAllocationChange").mockResolvedValue(
+        decreasedRow as never,
+      ),
+    );
+    track(spyOn(adCampaignsRepository, "claimDelete").mockResolvedValue(decreasedRow as never));
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+    track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
+
+    await advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, { budgetAmount: 10 });
+    await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
+
+    expect(refund).toHaveBeenCalledTimes(2);
+    expect((refund.mock.calls[1]?.[0] as { amount: number }).amount).toBeCloseTo(11, 9);
+    const totalRefunded = refund.mock.calls.reduce(
+      (sum, call) => sum + (call[0] as { amount: number }).amount,
+      0,
+    );
+    expect(totalRefunded).toBeLessThanOrEqual(110);
+    expect(totalRefunded).toBeCloseTo(110, 9);
+  });
+
+  test("concurrent decrease: a LOST CAS throws and refunds nothing", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ external_campaign_id: "ext-1" }) as never,
+      ),
+    );
+    track(
+      spyOn(advertisingService, "getCampaignMetrics").mockResolvedValue({
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+      } as never),
+    );
+    track(
+      spyOn(adCampaignsRepository, "claimAllocationChange").mockResolvedValue(undefined as never),
+    );
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({ success: true } as never),
+    );
+
+    await expect(
+      advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, { budgetAmount: 10 }),
+    ).rejects.toThrow("changed concurrently");
+
     expect(refund).not.toHaveBeenCalled();
   });
 });

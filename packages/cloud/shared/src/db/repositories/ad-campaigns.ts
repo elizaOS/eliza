@@ -123,6 +123,43 @@ export class AdCampaignsRepository {
     await db.delete(adCampaigns).where(eq(adCampaigns.id, id));
   }
 
+  /**
+   * Atomically apply an allocation-changing update only if credits_allocated
+   * still matches the row observed by the caller. Returns the updated row for
+   * the winner, or undefined when a concurrent budget change already moved it.
+   */
+  async claimAllocationChange(
+    id: string,
+    organizationId: string,
+    expectedAllocated: string,
+    data: Partial<NewAdCampaign>,
+  ): Promise<AdCampaign | undefined> {
+    const [updated] = await db
+      .update(adCampaigns)
+      .set({ ...data, updated_at: new Date() })
+      .where(
+        and(
+          eq(adCampaigns.id, id),
+          eq(adCampaigns.organization_id, organizationId),
+          eq(adCampaigns.credits_allocated, expectedAllocated),
+        ),
+      )
+      .returning();
+    return updated;
+  }
+
+  /**
+   * Atomically delete the campaign and return the deleted row. A concurrent
+   * delete, or a retry after another caller removed it, returns undefined.
+   */
+  async claimDelete(id: string, organizationId: string): Promise<AdCampaign | undefined> {
+    const [deleted] = await db
+      .delete(adCampaigns)
+      .where(and(eq(adCampaigns.id, id), eq(adCampaigns.organization_id, organizationId)))
+      .returning();
+    return deleted;
+  }
+
   async getStats(
     organizationId: string,
     options?: { adAccountId?: string; platform?: AdPlatform },
