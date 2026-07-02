@@ -72,8 +72,10 @@ const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
   ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
 const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
   ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],

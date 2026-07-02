@@ -91,6 +91,21 @@ describe("getCloudCompatAgents on hosted web with no agent baseUrl (join flow)",
     expect(String(fetchSpy.mock.calls[0][0])).toBe("/api/v1/eliza/agents");
   });
 
+  it("resolves app Pages hosts to their matching control plane", async () => {
+    for (const hostname of ["app.elizacloud.ai", "app-staging.elizacloud.ai"]) {
+      setHostname(hostname);
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse({ success: true, data: [] }));
+
+      const client = new ElizaClient("");
+      await client.getCloudCompatAgents();
+
+      expect(String(fetchSpy.mock.calls[0][0])).toBe("/api/v1/eliza/agents");
+      vi.restoreAllMocks();
+    }
+  });
+
   it("keeps the agent-proxy fallback on non-cloud hosts", async () => {
     setHostname("localhost", "http:");
     const fetchSpy = vi
