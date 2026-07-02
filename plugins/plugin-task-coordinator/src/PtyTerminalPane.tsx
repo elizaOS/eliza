@@ -24,6 +24,7 @@ export function PtyTerminalPane({
 
     let disposed = false;
     let unsub: (() => void) | undefined;
+    let unsubReconnect: (() => void) | undefined;
     let resizeObserver: ResizeObserver | undefined;
 
     (async () => {
@@ -108,6 +109,12 @@ export function PtyTerminalPane({
       }
 
       client.subscribePtyOutput(sessionId);
+      // A reconnect opens a NEW server-side socket with an empty subscription
+      // map — without re-subscribing, the pane silently stops receiving
+      // output and its keystrokes are rejected as "not subscribed".
+      unsubReconnect = client.onReconnect(() => {
+        if (!disposed) client.subscribePtyOutput(sessionId);
+      });
       unsub = client.onWsEvent(
         "pty-output",
         (data: Record<string, unknown>) => {
@@ -148,6 +155,7 @@ export function PtyTerminalPane({
     return () => {
       disposed = true;
       unsub?.();
+      unsubReconnect?.();
       client.unsubscribePtyOutput(sessionId);
       termRef.current?.dispose();
       termRef.current = null;
