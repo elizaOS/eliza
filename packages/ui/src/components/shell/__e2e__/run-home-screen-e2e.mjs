@@ -100,8 +100,12 @@ const stubResolver = {
 
 // @elizaos/core: the WidgetHost + the (dead-in-browser) @elizaos/shared graph
 // import a wide named surface from it. Satisfy ANY named import with a no-op
-// Proxy, but override the handful the render path actually uses with sane
-// values: `isViewVisible` (gate → always visible) and `dedupeModalities`.
+// Proxy, but override the handful the render path actually uses with REAL
+// implementations. These must be OWN enumerable keys of the exported object —
+// esbuild's __toESM interop only copies own keys onto the ESM namespace, so a
+// value reachable only through the Proxy `get` trap reads back as undefined
+// ("resolveViewKind is not a function"). The launcher curation drives real
+// developer/preview gating, so it needs the genuine view-kind helpers.
 const stubElizaCore = {
   name: "stub-eliza-core",
   setup(b) {
@@ -112,9 +116,22 @@ const stubElizaCore = {
     b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
       contents: `
         const noop = new Proxy(() => noop, { get: () => noop });
+        const resolveViewKind = (d) =>
+          (d && d.viewKind) || (d && d.developerOnly ? "developer" : "release");
+        const isViewKindEnabled = (kind, enabled) =>
+          kind === "system" || kind === "release"
+            ? true
+            : kind === "developer"
+              ? !!(enabled && enabled.developer)
+              : kind === "preview"
+                ? !!(enabled && enabled.preview)
+                : false;
         module.exports = new Proxy(
           {
-            isViewVisible: () => true,
+            resolveViewKind,
+            isViewKindEnabled,
+            isViewVisible: (d, enabled) =>
+              isViewKindEnabled(resolveViewKind(d), enabled),
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
           },
           { get: (t, p) => (p in t ? t[p] : noop) },
@@ -204,20 +221,6 @@ async function swipeLeft(locator) {
   const y = box.y + box.height * 0.45;
   const startX = box.x + box.width * 0.78;
   const endX = box.x + box.width * 0.22;
-  await locator.page().mouse.move(startX, y);
-  await locator.page().mouse.down();
-  await locator.page().mouse.move(endX, y, { steps: 8 });
-  await locator.page().mouse.up();
-}
-// Mirror of swipeLeft for the mouse drag-paging regression section (the
-// real-touch conversion dropped this helper but kept its call site — the
-// nested-pager mouse arbitration asserts genuinely need MOUSE input).
-async function swipeRight(locator) {
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("missing swipe target bounds");
-  const y = box.y + box.height * 0.45;
-  const startX = box.x + box.width * 0.22;
-  const endX = box.x + box.width * 0.78;
   await locator.page().mouse.move(startX, y);
   await locator.page().mouse.down();
   await locator.page().mouse.move(endX, y, { steps: 8 });
@@ -606,73 +609,42 @@ try {
   await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
 
-  // ── Swipe to page 2 = the Developer tools (no dots — paging is swipe-only).
-  // Developer tools live on page 2's grid; they are NOT on the apps page (page
-  // 0). Both pages are in the DOM, so scope the check to the page-0 container.
-  assert(
-    (await mobile
-      .getByTestId("launcher-page-0")
-      .getByTestId("launcher-tile-trajectories")
-      .count()) === 0,
-    "developer tool (trajectories) is not on the apps page (page 0)",
-  );
-  // Touch-swipe the INNER launcher viewport forward to the developer page. On a
-  // real device the launcher pager owns forward paging (touch does not grab
-  // pointer capture the way mouse does, so the outer home↔launcher rail does not
-  // hijack the gesture). Drive true `pointerType:"touch"` events so this matches
-  // the mobile experience, then assert the rail actually paged.
-  await touchSwipeLeft(mobile, "launcher-page-window");
-  await mobile.waitForTimeout(750);
-  const pagedOffset = await mobile
-    .getByTestId("launcher-page-rail")
-    .evaluate((el) => {
-      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
-      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
-    });
-  assert(
-    pagedOffset.x < -pagedOffset.width * 0.5,
-    `launcher paged forward to the developer page (rail x=${Math.round(pagedOffset.x)})`,
-  );
-  for (const id of ["trajectories", "database", "runtime", "logs", "skills", "plugins"]) {
+  // ── ONE page of views. Developer tools are NOT a separate swipeable page any
+  // more: when Developer Mode is on they sit on the SAME single page after the
+  // apps (this fixture enables developer mode, so they render). There is no
+  // page 2 and no inter-page view paging to swipe to.
+  for (const id of [
+    "trajectories",
+    "database",
+    "runtime",
+    "logs",
+    "skills",
+    "plugins",
+  ]) {
     assert(
-      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
-      `developer tool "${id}" renders on the launcher developer page`,
+      (await mobile
+        .getByTestId("launcher-page-0")
+        .getByTestId(`launcher-tile-${id}`)
+        .count()) === 1,
+      `developer tool "${id}" renders on the single launcher page (page 0)`,
     );
   }
-
-  // ── MOUSE drag-paging across the nested pagers. The outer rail used to steal
-  // pointer capture from the inner grid pager mid-drag (both pagers commit the
-  // axis on the same bubbled move; the outer's later setPointerCapture won), so
-  // a mouse drag left on launcher page 0 could NEVER reach the developer page.
-  // The claim registry now hands the gesture to the movable inner pager. Drive
-  // real mouse drags over the inner page window: back to the apps page, then
-  // forward again through the historically dead path.
-  const innerRailX = async () =>
-    mobile.getByTestId("launcher-page-rail").evaluate((el) => {
-      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
-      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
-    });
-  await swipeRight(mobile.getByTestId("launcher-page-window"));
-  await mobile.waitForTimeout(750);
-  const backToApps = await innerRailX();
   assert(
-    backToApps.x > -backToApps.width * 0.5,
-    `mouse swipe right pages the inner grid back to apps (rail x=${Math.round(backToApps.x)})`,
+    (await mobile.getByTestId("launcher-page-1").count()) === 0,
+    "there is no second launcher page (single curated page of views)",
   );
+  // A left-swipe on the single-page launcher has nowhere to go — it rubber-bands
+  // and never advances to a nonexistent page, staying on the launcher.
+  await touchSwipeLeft(mobile, "launcher-page-window");
+  await mobile.waitForTimeout(500);
   assert(
     (await mobile
       .getByTestId("home-launcher-surface")
-      .getAttribute("data-page")) === "launcher",
-    "inner mouse paging stays on the launcher (the rail did not hijack the drag)",
+      .getAttribute("data-page")) === "launcher" &&
+      (await mobile.getByTestId("launcher-page-1").count()) === 0,
+    "a left-swipe on the single page rubber-bands (no page 2, stays on launcher)",
   );
-  await swipeLeft(mobile.getByTestId("launcher-page-window"));
-  await mobile.waitForTimeout(750);
-  const forwardAgain = await innerRailX();
-  assert(
-    forwardAgain.x < -forwardAgain.width * 0.5,
-    `mouse swipe left from page 0 reaches the developer page (rail x=${Math.round(forwardAgain.x)})`,
-  );
-  await snap(mobile, "mobile-launcher-page2");
+  await snap(mobile, "mobile-launcher-single-page");
 
   // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"
   // label (edit-dashboard is an agent action, not a button).
