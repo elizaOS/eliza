@@ -259,17 +259,21 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("routes the 'bring your own keys' path to the Settings handoff banner without a model download", async () => {
+  it("keeps BYOK reachable after the runtime chooser was trimmed to Cloud + On this device: On this device → provider:other routes to the Settings handoff banner without a model download", async () => {
     const spies = seedAppStore();
     const { turn, unmount } = renderConductor();
-    await waitForTurn(turn, "first-run:greeting");
+    const greeting = await waitForTurn(turn, "first-run:greeting");
 
-    expect(tryHandleFirstRunAction("__first_run__:runtime:other")).toBe(true);
+    // The clean chooser offers exactly two locations — no "Bring your own keys"
+    // (runtime:other) button; BYOK is the provider sub-choice one step later.
+    expect(greeting.text).toContain("__first_run__:runtime:cloud=");
+    expect(greeting.text).toContain("__first_run__:runtime:local=");
+    expect(greeting.text).not.toContain("runtime:other");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
     const provider = await waitForTurn(turn, "first-run:provider");
-    // "other" runtime pre-highlights the Other/configure-in-Settings provider.
-    expect(provider.text.indexOf("provider:other")).toBeLessThan(
-      provider.text.indexOf("provider:on-device"),
-    );
+    // The provider sub-choice still offers "Other / configure in Settings" (BYOK).
+    expect(provider.text).toContain("__first_run__:provider:other=");
 
     expect(tryHandleFirstRunAction("__first_run__:provider:other")).toBe(true);
     await waitForTurn(turn, "first-run:tutorial");
@@ -284,6 +288,23 @@ describe("useFirstRunConductor", () => {
     expect(
       mocks.autoDownloadRecommendedLocalModelInBackground,
     ).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("the runtime chooser offers exactly two locations and consumes a stale runtime:other pick as a no-op", async () => {
+    seedAppStore();
+    const { turn, transcript, unmount } = renderConductor();
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+    const runtimeButtons = (greeting.text.match(/__first_run__:runtime:/g) ?? [])
+      .length;
+    expect(runtimeButtons).toBe(2);
+
+    // A leftover/stale runtime:other action (e.g. an old transcript widget) is
+    // still consumed by the handler but seeds no provider turn.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:other")).toBe(true);
+    expect(transcript.current.some((m) => m.id === "first-run:provider")).toBe(
+      false,
+    );
     unmount();
   });
 

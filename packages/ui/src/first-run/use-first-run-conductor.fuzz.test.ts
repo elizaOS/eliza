@@ -153,6 +153,9 @@ const ACTION_POOL = [
   // Every legitimate pick, so storms cross flows out of order.
   "__first_run__:runtime:cloud",
   "__first_run__:runtime:local",
+  // Retired option (chooser is now Cloud + On this device only) — kept in the
+  // storm so a stale runtime:other widget is exercised; it must be consumed as
+  // a no-op, never crash.
   "__first_run__:runtime:other",
   "__first_run__:provider:on-device",
   "__first_run__:provider:elizacloud",
