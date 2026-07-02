@@ -213,8 +213,12 @@ export function HomeScreen({
           data-testid="home-notification-grabber"
         />
       </button>
+      {/* `auto`: the home notification affordance renders the surface-appropriate
+          shell — the top-right panel on desktop/web (mouse-driven wide surfaces),
+          the full-width pull-down sheet on touch/narrow — instead of forcing the
+          mobile sheet everywhere. */}
       <NotificationCenter
-        variant="sheet"
+        variant="auto"
         open={notificationsOpen}
         onOpenChange={setNotificationsOpen}
       />

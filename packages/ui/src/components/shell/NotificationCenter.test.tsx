@@ -334,6 +334,28 @@ describe("NotificationCenter", () => {
     });
   });
 
+  it('variant="auto": a controlled caller renders the desktop panel on a fine-pointer surface', async () => {
+    // Fine pointer + wide viewport → the panel shell (this is HomeScreen's
+    // notification affordance path: controlled open, surface-picked shell).
+    mockMatchMedia((q) => q.includes("pointer: fine"));
+    seedNotifications([notification("a1", "Auto desktop alert", "system")]);
+    render(<NotificationCenter variant="auto" open onOpenChange={() => {}} />);
+
+    await screen.findByTestId("notification-panel");
+    expect(screen.queryByTestId("notification-sheet")).toBeNull();
+    expect(screen.getByText("Auto desktop alert")).toBeTruthy();
+  });
+
+  it('variant="auto": a controlled caller renders the pull-down sheet on a coarse surface', async () => {
+    // Coarse pointer / narrow viewport (beforeEach default) → the sheet shell.
+    seedNotifications([notification("a2", "Auto mobile alert", "reminder")]);
+    render(<NotificationCenter variant="auto" open onOpenChange={() => {}} />);
+
+    await screen.findByTestId("notification-sheet");
+    expect(screen.queryByTestId("notification-panel")).toBeNull();
+    expect(screen.getByText("Auto mobile alert")).toBeTruthy();
+  });
+
   it("mobile surface: OPEN event reveals the pull-down sheet, not the desktop panel", async () => {
     // Coarse pointer / narrow viewport → mobile sheet shell (beforeEach default,
     // set explicitly here for clarity).

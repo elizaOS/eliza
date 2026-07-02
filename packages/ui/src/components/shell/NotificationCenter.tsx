@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
@@ -76,6 +77,20 @@ const DESKTOP_PANEL_QUERY =
  */
 const SHORT_LANDSCAPE_QUERY =
   "(orientation: landscape) and (max-height: 520px)";
+
+/**
+ * Render a controlled overlay (sheet / panel) into `document.body` so its
+ * `position: fixed` is viewport-relative. The home↔launcher rail sets a paging
+ * `transform` on a `w-[200%]` element, and a transformed ancestor becomes the
+ * containing block for `fixed` descendants — without this portal the sheet/panel
+ * anchor to the 2×-wide rail and render clipped off-screen to the right (the
+ * "notifications look broken" bug). The bell popover already escapes via Radix's
+ * own portal; this gives the controlled shells the same viewport anchoring.
+ */
+function overlayPortal(node: ReactNode): ReactNode {
+  if (typeof document === "undefined" || !document.body) return node;
+  return createPortal(node, document.body);
+}
 
 function NotificationRow({
   notification,
@@ -252,7 +267,7 @@ export function NotificationCenter({
 }: {
   className?: string;
   headless?: boolean;
-  variant?: "bell" | "sheet" | "panel";
+  variant?: "bell" | "sheet" | "panel" | "auto";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }): ReactNode {
@@ -269,10 +284,19 @@ export function NotificationCenter({
   const isDesktopSurface = useMediaQuery(DESKTOP_PANEL_QUERY);
   const isShortLandscape = useMediaQuery(SHORT_LANDSCAPE_QUERY);
 
+  // `variant="auto"` lets a controlled caller (e.g. HomeScreen's notification
+  // pull-down) render the surface-appropriate shell without owning the media
+  // query itself: the desktop top-right panel on mouse-driven wide surfaces, the
+  // full-width pull-down sheet on touch/narrow. `bell` and the explicit
+  // `sheet`/`panel` pass through unchanged.
+  const effectiveVariant =
+    variant === "auto" ? (isDesktopSurface ? "panel" : "sheet") : variant;
+
   // The two controlled shells (pull-down sheet + desktop panel) share the body,
   // an Escape/close contract, and a scrolling list; the bell popover is
   // self-bounded.
-  const isControlled = variant === "sheet" || variant === "panel";
+  const isControlled =
+    effectiveVariant === "sheet" || effectiveVariant === "panel";
 
   // Categories actually present in the inbox, in a stable display order. Drives
   // the filter chips — empty/single-category inboxes get no filter clutter.
@@ -310,10 +334,10 @@ export function NotificationCenter({
     // the controlled shells the headless owner spawns (sheet + panel) are
     // transient readers and must not hijack (or null on unmount) the single
     // shared toast sink the always-mounted headless instance owns.
-    if (variant !== "bell") return;
+    if (effectiveVariant !== "bell") return;
     registerNotificationToastSink(setActionNotice);
     return () => registerNotificationToastSink(null);
-  }, [setActionNotice, variant]);
+  }, [setActionNotice, effectiveVariant]);
 
   const handleMarkAll = useCallback(() => {
     void markAllNotificationsRead();
@@ -361,7 +385,7 @@ export function NotificationCenter({
     if (!selfOpen) return null;
     return (
       <NotificationCenter
-        variant={isDesktopSurface ? "panel" : "sheet"}
+        variant="auto"
         open
         onOpenChange={setSelfOpen}
         className={className}
@@ -412,7 +436,7 @@ export function NotificationCenter({
               aria-label="Close notifications"
               title="Close"
               data-testid={
-                variant === "panel"
+                effectiveVariant === "panel"
                   ? "notification-panel-close"
                   : "notification-sheet-close"
               }
@@ -502,9 +526,9 @@ export function NotificationCenter({
   // aware. Backdrop dismisses; a grabber hints the gesture. In short landscape
   // it caps lower so it floats over the (already short) viewport instead of
   // swallowing it — the list stays the flex scroller.
-  if (variant === "sheet") {
+  if (effectiveVariant === "sheet") {
     if (!open) return null;
-    return (
+    return overlayPortal(
       <>
         <button
           type="button"
@@ -534,7 +558,7 @@ export function NotificationCenter({
             <div className="h-1 w-9 rounded-full bg-muted/40" aria-hidden />
           </div>
         </div>
-      </>
+      </>,
     );
   }
 
@@ -544,9 +568,9 @@ export function NotificationCenter({
   // deep link via OPEN_NOTIFICATION_CENTER_EVENT. A transparent full-screen
   // click-catcher dismisses on outside click (no modal scrim — this reads as a
   // panel, not a dialog); Escape also dismisses (effect above).
-  if (variant === "panel") {
+  if (effectiveVariant === "panel") {
     if (!open) return null;
-    return (
+    return overlayPortal(
       <>
         <button
           type="button"
@@ -570,7 +594,7 @@ export function NotificationCenter({
         >
           {panelBody}
         </div>
-      </>
+      </>,
     );
   }
 
