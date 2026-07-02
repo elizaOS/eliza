@@ -48,6 +48,7 @@ import {
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
+import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 import {
   ensureStewardTenant,
@@ -1174,6 +1175,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
+      const keylessOpenAIEnv = buildKeylessOpenAIContainerEnv({
+        stewardApiUrl: stewardContainerUrl,
+        stewardAuthToken: stewardJwt || stewardAgentToken,
+      });
+
       const allEnv: Record<string, string> = {
         ...baseEnv,
         STEWARD_AGENT_TOKEN: stewardAgentToken,
@@ -1187,6 +1193,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                 : {}),
             }
           : {}),
+        ...keylessOpenAIEnv,
         // Bind to 0.0.0.0 so Docker port mapping works (container otherwise
         // listens on 127.0.0.1 which is unreachable via -p host:container).
         // Set BOTH AGENT_API_BIND and ELIZA_API_BIND — the image default for
