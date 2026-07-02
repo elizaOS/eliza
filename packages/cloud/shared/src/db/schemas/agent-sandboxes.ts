@@ -54,7 +54,9 @@ export type AgentSandboxStatus =
    * storage and its container removed, freeing the compute slot (the node
    * autoscaler reclaims the now-empty Hetzner box). No compute cost accrues.
    * An `agent_wake` job provisions a fresh container and restores state.
-   * Distinct from `stopped` (suspend), which keeps the container + node slot.
+   * Distinct from `stopped` (suspend), which also drops the container and
+   * frees the node slot but keeps the row's `sandbox_id` for a lighter
+   * in-place resume; both retain the per-tenant managed DB.
    */
   | "sleeping"
   | "disconnected"

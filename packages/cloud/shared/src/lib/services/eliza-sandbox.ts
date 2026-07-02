@@ -116,10 +116,10 @@ export interface CreateAgentParams {
 
 /**
  * Statuses that COUNT toward `maxNonTerminalAgents`: the live states plus
- * `stopped` (suspend keeps the container + node slot + per-tenant managed
- * Postgres) and `sleeping` (cold storage keeps the managed Postgres). Both
- * still hold the org's durable per-agent resources, so a
- * create→suspend→create loop must not mint fresh agents past the ceiling
+ * `stopped` (suspend) and `sleeping` (cold storage). Both drop the container
+ * and free the node slot, but each RETAINS the org's per-tenant managed
+ * Postgres — the durable, costly resource — so a create→suspend→create loop
+ * must not mint fresh agents (and fresh managed DBs) past the ceiling
  * (#11023 residual). Terminal/deletion states (`error`, `disconnected`,
  * `deletion_pending`, `deletion_failed`) hold no reusable resources and stay
  * excluded. Intentionally BROADER than the reuse-guard SELECTs, which must
@@ -3980,11 +3980,12 @@ export class ElizaSandboxService {
   }
 
   /**
-   * Daemon-side handler for the `agent_suspend` job. SSH-stops the
-   * container, flips the DB row to `stopped`, clears bridge/health URLs
-   * but keeps `sandbox_id` for a subsequent `agent_resume` to docker
-   * start. Replaces the Worker-callable `shutdown()` path which silently
-   * failed to stop the container (Workers can't SSH).
+   * Daemon-side handler for the `agent_suspend` job. Calls the provider's
+   * `stop()` (which removes the container and frees the node slot), flips the
+   * DB row to `stopped`, and clears bridge/health URLs — but keeps `sandbox_id`
+   * and the per-tenant managed DB so a subsequent `agent_resume` re-provisions
+   * against the retained state. Replaces the Worker-callable `shutdown()` path
+   * which silently failed to stop the container (Workers can't SSH).
    */
   async executeSuspend(
     agentId: string,
@@ -4106,8 +4107,9 @@ export class ElizaSandboxService {
   /**
    * Daemon-side handler for the `agent_sleep` job — deep, cold suspend.
    *
-   * Unlike `agent_suspend` (which keeps the container + node slot for a fast
-   * `docker start`), sleep frees the compute entirely:
+   * Both suspend and sleep drop the container + free the node slot; unlike
+   * `agent_suspend` (which keeps the row's `sandbox_id` + managed DB for an
+   * in-place resume), sleep frees the compute identity entirely:
    *   1. Capture a durable backup. A live `/api/snapshot` pull when the agent
    *      is reachable, otherwise the agent's persisted config, otherwise the
    *      latest existing backup — a restore point ALWAYS exists before we
