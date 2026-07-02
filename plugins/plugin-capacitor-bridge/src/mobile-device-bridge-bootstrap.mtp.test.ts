@@ -1,9 +1,16 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	statSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	buildGemmaBionicPrompt,
 	buildLoadArgsFromRegistryModel,
+	deriveBionicBundleDir,
 } from "./mobile-device-bridge-bootstrap";
 
 function withTempBundle<T>(fn: (root: string) => T): T {
@@ -131,5 +138,51 @@ describe("buildGemmaBionicPrompt", () => {
 				prompt: "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n",
 			} as never),
 		).toBe("<start_of_turn>user\nhello<end_of_turn>\n<start_of_turn>model\n");
+	});
+});
+
+describe("deriveBionicBundleDir — flat-model bundle staging (#11335)", () => {
+	it("returns the bundle root for a canonical text/ layout", () => {
+		withTempBundle((root) => {
+			const textDir = path.join(root, "text");
+			mkdirSync(textDir, { recursive: true });
+			const model = path.join(textDir, "eliza-1-2b-128k.gguf");
+			writeFileSync(model, "gguf");
+			expect(deriveBionicBundleDir(model)).toBe(root);
+		});
+	});
+
+	it("stages a hardlinked text/ view for a flat models/ model (the WebView chat path)", () => {
+		withTempBundle((models) => {
+			const model = path.join(models, "eliza-1-2b-128k.gguf");
+			writeFileSync(model, "gguf-bytes");
+			mkdirSync(path.join(models, "asr"), { recursive: true }); // sibling voice dir
+
+			const bundle = deriveBionicBundleDir(model);
+			// Bundle root is under .bionic-bundles/<name>/ (matches BionicHostLoader).
+			expect(bundle).toBe(
+				path.join(models, ".bionic-bundles", "eliza-1-2b-128k"),
+			);
+			// The host globs <bundle>/text/*.gguf — the alias must exist and be
+			// the same file (hardlink → same inode; falls back to a symlink).
+			const view = path.join(bundle, "text", "eliza-1-2b-128k.gguf");
+			expect(existsSync(view)).toBe(true);
+			expect(statSync(view).ino).toBe(statSync(model).ino);
+		});
+	});
+
+	it("is idempotent and returns empty for a non-eliza-1 or missing model", () => {
+		withTempBundle((models) => {
+			const model = path.join(models, "eliza-1-4b-128k.gguf");
+			writeFileSync(model, "x");
+			const first = deriveBionicBundleDir(model);
+			expect(deriveBionicBundleDir(model)).toBe(first); // no EEXIST throw
+			// Non-eliza-1 flat names and missing paths fall back to host default.
+			writeFileSync(path.join(models, "random.gguf"), "x");
+			expect(deriveBionicBundleDir(path.join(models, "random.gguf"))).toBe("");
+			expect(
+				deriveBionicBundleDir(path.join(models, "eliza-1-none.gguf")),
+			).toBe("");
+		});
 	});
 });
