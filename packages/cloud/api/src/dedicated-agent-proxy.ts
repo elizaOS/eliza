@@ -32,6 +32,8 @@
 
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { checkProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
@@ -123,6 +125,32 @@ async function resumeAndRespond(
   let jobId: string | undefined;
   let alreadyInProgress = false;
   if (RESUMABLE_STATUSES.has(sandbox.status)) {
+    // A suspended / zero-balance org must NOT get free compute by hitting its
+    // own agent subdomain. Gate the auto-resume on credits, mirroring the
+    // pairing-token endpoint (#11224/#11227). Without this, billing suspension
+    // (active-billing sets status='stopped') is defeated: every proxied request
+    // would re-provision the container for free — the daemon executor does no
+    // credit re-check, so this HTTP call-site is the only gate. (#11583)
+    const creditCheck = await checkAgentCreditGate(orgId);
+    if (!creditCheck.allowed) {
+      logger.warn("[dedicated-proxy] auto-resume blocked: insufficient credits", {
+        agentId,
+        orgId,
+        balance: creditCheck.balance,
+        required: AGENT_PRICING.MINIMUM_DEPOSIT,
+      });
+      return Response.json(
+        {
+          success: false,
+          code: "insufficient_credits",
+          error:
+            creditCheck.error ?? "Insufficient credits to resume this agent",
+          requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+          currentBalance: creditCheck.balance,
+        },
+        { status: 402 },
+      );
+    }
     const workerHealth = await checkProvisioningWorkerHealth();
     if (workerHealth.ok) {
       try {
