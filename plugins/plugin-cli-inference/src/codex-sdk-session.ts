@@ -37,6 +37,7 @@
  */
 
 import { logger } from "@elizaos/core";
+import type { RotationSubprocessEnv } from "./account-rotation";
 
 const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_RESTART_AFTER_TURNS = 20;
@@ -97,6 +98,11 @@ export interface CodexSdkSessionConfig {
   codexBinPath?: string | null;
   /** Restart the warm thread after this many turns (bounds context growth). */
   restartAfterTurns?: number;
+  /**
+   * Optional subprocess-only env for a pooled account. Passed to the Codex SDK
+   * constructor; never written to the parent process env.
+   */
+  subprocessEnv?: RotationSubprocessEnv | null;
   /** Injected for tests; defaults to the real SDK. */
   codexModule?: CodexModule;
 }
@@ -144,6 +150,7 @@ export class CodexSdkSession {
   private readonly reasoningEffort: string | null;
   private readonly codexBinPath: string | null;
   private readonly restartAfterTurns: number;
+  private readonly subprocessEnv: RotationSubprocessEnv | null;
   private readonly codexOverride?: CodexModule;
 
   private thread: CodexThread | null = null;
@@ -159,6 +166,7 @@ export class CodexSdkSession {
       config.restartAfterTurns && config.restartAfterTurns > 0
         ? config.restartAfterTurns
         : DEFAULT_RESTART_AFTER_TURNS;
+    this.subprocessEnv = config.subprocessEnv ?? null;
     this.codexOverride = config.codexModule;
   }
 
@@ -261,7 +269,10 @@ export class CodexSdkSession {
     const { Codex } = this.codexOverride ?? (await loadCodex());
     // Drive the system codex binary (not the SDK's bundled-and-often-stale one)
     // when a path is configured, so current models work.
-    const codex = new Codex(this.codexBinPath ? { codexPathOverride: this.codexBinPath } : {});
+    const codexOptions: Record<string, unknown> = {};
+    if (this.codexBinPath) codexOptions.codexPathOverride = this.codexBinPath;
+    if (this.subprocessEnv) codexOptions.env = this.subprocessEnv;
+    const codex = new Codex(codexOptions);
     // Pure inference: read-only, no network, no approvals, no git-repo coupling —
     // a warm completion engine, not a coding agent.
     const options: Record<string, unknown> = {

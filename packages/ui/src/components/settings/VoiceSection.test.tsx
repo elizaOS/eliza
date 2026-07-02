@@ -37,10 +37,24 @@ describe("VoiceSection", () => {
     expect(screen.getByTestId("voice-section-wake-row")).toBeTruthy();
     expect(screen.getByTestId("voice-section-models")).toBeTruthy();
     expect(screen.getByTestId("voice-profile-section")).toBeTruthy();
-    expect(screen.getByTestId("voice-section-privacy")).toBeTruthy();
     // The local-vs-cloud strategy control was removed — per-modality routing
     // is owned by RoutingMatrix, not VoiceSection.
     expect(screen.queryByTestId("voice-section-strategy-select")).toBeNull();
+  });
+
+  it("no longer renders the dead privacy toggles (cloud cache / auto-learn)", () => {
+    render(
+      <VoiceSection
+        {...baseProps}
+        prefs={DEFAULT_VOICE_SECTION_PREFS}
+        onPrefsChange={() => {}}
+      />,
+    );
+    // `messages.voice.{cloudFirstLineCache,autoLearnVoices}` have no readers;
+    // the controls were removed so the UI stops offering no-op privacy opt-ins.
+    expect(screen.queryByTestId("voice-section-privacy")).toBeNull();
+    expect(screen.queryByTestId("voice-section-cloud-cache-toggle")).toBeNull();
+    expect(screen.queryByTestId("voice-section-auto-learn-toggle")).toBeNull();
   });
 
   it("renders the models slot when supplied", () => {
@@ -83,44 +97,6 @@ describe("VoiceSection", () => {
     expect(onPrefsChange).toHaveBeenCalledTimes(1);
     const call = onPrefsChange.mock.calls[0]?.[0] as VoiceSectionPrefs;
     expect(call.continuous).toBe("always-on");
-  });
-
-  it("propagates auto-learn-voices changes", () => {
-    const onPrefsChange = vi.fn();
-    render(
-      <VoiceSection
-        {...baseProps}
-        prefs={DEFAULT_VOICE_SECTION_PREFS}
-        onPrefsChange={onPrefsChange}
-      />,
-    );
-    const autoLearn = screen.getByTestId(
-      "voice-section-auto-learn-toggle",
-    ) as HTMLInputElement;
-    // Default is on; clicking turns it off.
-    expect(autoLearn.checked).toBe(true);
-    fireEvent.click(autoLearn);
-    expect(onPrefsChange).toHaveBeenCalled();
-    const call = onPrefsChange.mock.calls[0]?.[0] as VoiceSectionPrefs;
-    expect(call.autoLearnVoices).toBe(false);
-  });
-
-  it("toggles the privacy switches", () => {
-    const onPrefsChange = vi.fn();
-    render(
-      <VoiceSection
-        {...baseProps}
-        prefs={DEFAULT_VOICE_SECTION_PREFS}
-        onPrefsChange={onPrefsChange}
-      />,
-    );
-    const cloudToggle = screen.getByTestId(
-      "voice-section-cloud-cache-toggle",
-    ) as HTMLInputElement;
-    expect(cloudToggle.checked).toBe(false);
-    fireEvent.click(cloudToggle);
-    const call = onPrefsChange.mock.calls[0]?.[0] as VoiceSectionPrefs;
-    expect(call.cloudFirstLineCache).toBe(true);
   });
 
   it("falls back to GOOD tier when null is supplied", () => {

@@ -23,7 +23,14 @@ import type {
 /** Eliza Cloud inference tiers. `small` is fast; `large` is smart. */
 export type ElizaCloudTier = "small" | "large";
 
-/** Canonical Cerebras model id per tier. */
+/**
+ * Canonical Cerebras model id per tier.
+ *
+ * NOTE: until a distinct "smart" model ships, BOTH tiers lower to the same
+ * model. Tier UI must check `small === large` and hide/disable the choice when
+ * they collapse — flipping between identical tiers is a no-op that still
+ * persists policy and restarts the live worker (see CockpitSessionPane).
+ */
 export const ELIZA_CLOUD_TIER_MODEL: Record<ElizaCloudTier, string> = {
   small: DEFAULT_CEREBRAS_TEXT_MODEL,
   large: DEFAULT_CEREBRAS_TEXT_MODEL,

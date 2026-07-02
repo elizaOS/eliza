@@ -14,7 +14,7 @@ export interface CockpitInteractiveTerminalProps {
   onClose?: () => void;
 }
 
-type Phase = "spawning" | "ready" | "error";
+type Phase = "spawning" | "ready" | "ended" | "error";
 
 type InteractivePtyClient = typeof client & {
   spawnPtySession(options: {
@@ -45,12 +45,14 @@ export function CockpitInteractiveTerminal({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("spawning");
   const [error, setError] = useState<string | null>(null);
+  const [exitCode, setExitCode] = useState<number | null>(null);
   const spawnStartedRef = useRef(false);
   const activeSessionRef = useRef<string | null>(null);
 
   const spawn = useCallback(async () => {
     setPhase("spawning");
     setError(null);
+    setExitCode(null);
     try {
       const { sessionId: id } = await ptyClient.spawnPtySession({
         kind: "eliza-code",
@@ -76,6 +78,23 @@ export function CockpitInteractiveTerminal({
     spawnStartedRef.current = true;
     void spawn();
   }, [spawn]);
+
+  // Surface session death. The agent server bridges the PTY's `session_exit`
+  // as a `pty-exit` WS event; without this the pane stays "ready" forever over
+  // a dead session (nothing echoes, input goes nowhere).
+  useEffect(() => {
+    if (!sessionId) return;
+    return ptyClient.onWsEvent("pty-exit", (data: Record<string, unknown>) => {
+      if (data.sessionId !== sessionId) return;
+      // The process is already dead — clear the ref so unmount/close doesn't
+      // issue a redundant stop against a reaped session.
+      if (activeSessionRef.current === sessionId) {
+        activeSessionRef.current = null;
+      }
+      setExitCode(typeof data.exitCode === "number" ? data.exitCode : null);
+      setPhase("ended");
+    });
+  }, [sessionId]);
 
   // Kill the session when the terminal goes away — eliza-code is a REPL and
   // won't exit on its own, so an unclosed session would leave an orphan process.
@@ -152,6 +171,33 @@ export function CockpitInteractiveTerminal({
             }}
           >
             Starting interactive eliza-code on Cerebras…
+          </div>
+        ) : null}
+
+        {phase === "ended" ? (
+          <div
+            data-testid="cockpit-terminal-ended"
+            style={{
+              padding: 16,
+              fontSize: 13,
+              color: "var(--txt-muted, #9aa0aa)",
+            }}
+          >
+            <div>
+              eliza-code session ended
+              {exitCode !== null ? ` (exit ${exitCode})` : ""}.
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              data-testid="cockpit-terminal-restart"
+              onClick={retry}
+              style={{
+                marginTop: 10,
+              }}
+            >
+              Restart
+            </Button>
           </div>
         ) : null}
 

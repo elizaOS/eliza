@@ -37,6 +37,17 @@ export function url(path: string): string {
   return `${getBaseUrl()}${path}`;
 }
 
+/**
+ * True when the e2e target is a LOCAL dev Worker (which shares our `.env`, so
+ * INTERNAL_SECRET / test-only routes line up). Against a DEPLOYED target
+ * (staging/prod) the Worker's INTERNAL_SECRET is a server-side secret we can't
+ * supply, so internal-bearer-authenticated tests must skip rather than fail.
+ * The unauthenticated 401 auth-gate assertions still run everywhere.
+ */
+export function isLocalTarget(): boolean {
+  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/.test(getBaseUrl());
+}
+
 function timeoutSignal(): AbortSignal {
   return AbortSignal.timeout(REQUEST_TIMEOUT_MS);
 }
@@ -137,21 +148,7 @@ async function request(
     init.body =
       typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
   }
-  const res = await fetch(url(path), init);
-  recordStatus(method, path, res.status);
-  return res;
-}
-
-/**
- * Optional per-request status recorder for contract audits: set
- * E2E_STATUS_LOG=<file> to append one `METHOD path -> status` line per
- * request. No-op when unset.
- */
-function recordStatus(method: string, path: string, status: number): void {
-  const logPath = process.env.E2E_STATUS_LOG;
-  if (!logPath) return;
-  const { appendFileSync } = require("node:fs") as typeof import("node:fs");
-  appendFileSync(logPath, `${method} ${path} -> ${status}\n`);
+  return fetch(url(path), init);
 }
 
 export const api = {

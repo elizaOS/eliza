@@ -3583,7 +3583,6 @@
         "@elizaos/agent": "workspace:*",
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "drizzle-orm": "0.45.2",

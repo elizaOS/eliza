@@ -25,7 +25,13 @@ import {
   useState,
 } from "react";
 import { useAgentElement } from "../../../agent-surface";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -624,11 +630,15 @@ export function InstallSheet({
       setError(null);
       setDone(false);
       try {
-        const res = await fetch("/api/secrets/manager/install", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ backendId, method }),
-        });
+        const res = await client.rawRequest(
+          "/api/secrets/manager/install",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ backendId, method }),
+          },
+          { allowNonOk: true },
+        );
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as {
             error?: string;
@@ -637,7 +647,12 @@ export function InstallSheet({
         }
         const { jobId } = (await res.json()) as { jobId: string };
 
-        const source = openEventSource(`/api/secrets/manager/install/${jobId}`);
+        // EventSource cannot carry the client's Authorization header (browser
+        // limitation), but it must at least target the configured apiBase —
+        // a bare relative URL would open the stream against the page origin.
+        const source = openEventSource(
+          resolveApiUrl(`/api/secrets/manager/install/${jobId}`),
+        );
         sourceRef.current = source;
         if (!source) {
           throw new Error(
@@ -958,11 +973,15 @@ export function SigninSheet({
         body.bitwardenClientId = bwClientId;
         body.bitwardenClientSecret = bwClientSecret;
       }
-      const res = await fetch("/api/secrets/manager/signin", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const res = await client.rawRequest(
+        "/api/secrets/manager/signin",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+        { allowNonOk: true },
+      );
       if (!res.ok) {
         const errBody = (await res.json().catch(() => ({}))) as {
           error?: string;

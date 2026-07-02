@@ -137,12 +137,9 @@ describe("scenarios", () => {
     });
 
     expect(scripted.axes.latency.raw).toBeLessThan(1);
-    // In harness mode the latency axis is excluded (not a free 1.0): it
-    // contributes neither score nor weight.
-    expect(harnessLike.axes.latency.excluded).toBe(true);
-    expect(harnessLike.axes.latency.weighted).toBe(0);
+    expect(harnessLike.axes.latency.raw).toBe(1);
     expect(harnessLike.axes.latency.notes[0]).toContain(
-      "excluded for harness mode",
+      "skipped for harness mode",
     );
   });
 });

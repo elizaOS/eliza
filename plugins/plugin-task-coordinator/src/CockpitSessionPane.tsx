@@ -75,7 +75,7 @@ export function CockpitSessionPane({
   t = fallbackTranslate,
   locale,
 }: CockpitSessionPaneProps) {
-  const { detail, messages, events, mutating, runMutation, actionError } =
+  const { detail, messages, events, mutating, actionError, runMutation } =
     useOrchestratorData({
       selectedId: taskId,
       showArchived: false,
@@ -160,15 +160,12 @@ export function CockpitSessionPane({
   const isElizaCloud =
     detail?.providerPolicy?.preferredFramework === "elizaos" &&
     detail?.providerPolicy?.providerSource === "eliza-cloud";
-  // The Fast/Smart tiers are only distinct when their models differ. Today both
-  // map to DEFAULT_CEREBRAS_TEXT_MODEL (ELIZA_CLOUD_TIER_MODEL), so the toggle
-  // would render a permanent "Fast" whose every tap still fired a DESTRUCTIVE
-  // restart (stopActive kills the task's live workers mid-turn) that swapped the
-  // model to an identical value. Only show the toggle when the tiers genuinely
-  // diverge; the onTierChange no-op guard below is the belt-and-braces backstop.
-  const tiersAreDistinct =
+  // While both tiers lower to the SAME model, flipping the toggle would persist
+  // an identical policy and then restart({stopActive:true}) — killing the live
+  // worker mid-task for zero effect. Hide the toggle until the tiers diverge.
+  const tiersDiverge =
     ELIZA_CLOUD_TIER_MODEL.small !== ELIZA_CLOUD_TIER_MODEL.large;
-  const currentTier: ElizaCloudTier = !tiersAreDistinct
+  const currentTier: ElizaCloudTier = !tiersDiverge
     ? "small"
     : detail?.providerPolicy?.model === ELIZA_CLOUD_TIER_MODEL.large
       ? "large"
@@ -176,10 +173,6 @@ export function CockpitSessionPane({
   const onTierChange = useCallback(
     (tier: ElizaCloudTier) => {
       const model = ELIZA_CLOUD_TIER_MODEL[tier];
-      // No-op guard: never fire the destructive restart when the target model
-      // already matches the task's current model (identical-tier tap, or tiers
-      // that don't diverge).
-      if (model === detail?.providerPolicy?.model) return;
       void runMutation(async () => {
         await client.updateOrchestratorTask(taskId, {
           providerPolicy: {
@@ -195,7 +188,7 @@ export function CockpitSessionPane({
         await client.restartOrchestratorTask(taskId, { stopActive: true });
       });
     },
-    [taskId, runMutation, detail?.providerPolicy?.model],
+    [taskId, runMutation],
   );
 
   // Sub-agents render their per-session label; derive the lookup exactly as the
@@ -286,7 +279,7 @@ export function CockpitSessionPane({
           {detail?.title ??
             t("cockpit.session.loading", { defaultValue: "Loading room…" })}
         </h2>
-        {isElizaCloud && tiersAreDistinct ? (
+        {isElizaCloud && tiersDiverge ? (
           <CockpitTierToggle
             value={currentTier}
             onChange={onTierChange}
@@ -351,18 +344,27 @@ export function CockpitSessionPane({
         ) : null}
       </header>
 
-      {(composerError ?? actionError) ? (
+      {composerError ? (
         <div
           role="alert"
           data-testid="cockpit-session-error"
           className="shrink-0 border-destructive/40 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
-          {/* Surfaces BOTH the composer send error and actionError from
-              useOrchestratorData — the latter covers all 13 TaskInspector
-              mutations (pause/resume/archive/delete/restart/…) + the tier swap,
-              which previously failed 100% silently (runMutation catches, sets
-              actionError, and never rethrows). */}
-          {composerError ?? actionError}
+          {composerError}
+        </div>
+      ) : null}
+
+      {/* Inspector-action failures (pause/resume/archive/delete/fork/restart/
+          validate/add-agent/stop-agent/tier-flip): useOrchestratorData's
+          runMutation catches instead of rethrowing and surfaces the message as
+          `actionError` — without this banner every failed action is silent. */}
+      {actionError ? (
+        <div
+          role="alert"
+          data-testid="cockpit-session-action-error"
+          className="shrink-0 border-destructive/40 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          {actionError}
         </div>
       ) : null}
 

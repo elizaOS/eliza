@@ -451,7 +451,6 @@ export class CalendarService extends Service {
       args.timeMax,
       googleEvents.map((event) => event.id),
       grant.side,
-      grant.id,
     );
     await this.deleteCalendarReminderPlansForEvents(removedEventIds);
     for (const event of nextEvents) {

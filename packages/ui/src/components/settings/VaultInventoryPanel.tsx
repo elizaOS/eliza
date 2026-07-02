@@ -44,6 +44,11 @@ import {
   useState,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -173,7 +178,9 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch("/api/secrets/inventory");
+      const res = await client.rawRequest("/api/secrets/inventory", undefined, {
+        allowNonOk: true,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { entries: VaultEntryMeta[] };
       setInternalEntries(body.entries);
@@ -406,8 +413,10 @@ const EntryRow = memo(function EntryRow({
   const reveal = useCallback(async () => {
     setRevealing(true);
     setRevealError(null);
-    const res = await fetch(
+    const res = await client.rawRequest(
       `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
+      undefined,
+      { allowNonOk: true },
     );
     if (!res.ok) {
       setRevealError(`HTTP ${res.status}`);
@@ -437,9 +446,10 @@ const EntryRow = memo(function EntryRow({
       `Delete "${entry.label}"? This drops the value, every profile, and the metadata.`,
     );
     if (!confirmed) return;
-    const res = await fetch(
+    const res = await client.rawRequest(
       `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
       { method: "DELETE" },
+      { allowNonOk: true },
     );
     if (res.ok) onChanged();
   }, [entry.key, entry.label, onChanged]);
@@ -659,7 +669,7 @@ function ProfilesPanel({
       if (!newId || !newValue) return;
       setSubmitting(true);
       setErr(null);
-      const res = await fetch(
+      const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(entry.key)}/profiles`,
         {
           method: "POST",
@@ -670,6 +680,7 @@ function ProfilesPanel({
             value: newValue,
           }),
         },
+        { allowNonOk: true },
       );
       setSubmitting(false);
       if (!res.ok) {
@@ -687,13 +698,14 @@ function ProfilesPanel({
 
   const onActivate = useCallback(
     async (profileId: string) => {
-      const res = await fetch(
+      const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(entry.key)}/active-profile`,
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ profileId }),
         },
+        { allowNonOk: true },
       );
       if (res.ok) onChanged();
     },
@@ -704,9 +716,10 @@ function ProfilesPanel({
     async (profileId: string) => {
       const confirmed = window.confirm(`Delete profile "${profileId}"?`);
       if (!confirmed) return;
-      const res = await fetch(
+      const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(entry.key)}/profiles/${encodeURIComponent(profileId)}`,
         { method: "DELETE" },
+        { allowNonOk: true },
       );
       if (res.ok) onChanged();
     },
@@ -716,11 +729,15 @@ function ProfilesPanel({
   const onMigrate = useCallback(async () => {
     setMigrating(true);
     setErr(null);
-    const res = await fetch("/api/secrets/inventory/migrate-to-profiles", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key: entry.key }),
-    });
+    const res = await client.rawRequest(
+      "/api/secrets/inventory/migrate-to-profiles",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key: entry.key }),
+      },
+      { allowNonOk: true },
+    );
     setMigrating(false);
     if (!res.ok) {
       setErr(`HTTP ${res.status}`);
@@ -1110,7 +1127,7 @@ function AddSecretForm({
       if (!key.trim() || !value) return;
       setSubmitting(true);
       setErr(null);
-      const res = await fetch(
+      const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(key.trim())}`,
         {
           method: "PUT",
@@ -1122,6 +1139,7 @@ function AddSecretForm({
             category,
           }),
         },
+        { allowNonOk: true },
       );
       setSubmitting(false);
       if (!res.ok) {

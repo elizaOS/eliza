@@ -504,7 +504,11 @@ export class EvaluatorService extends BaseService {
 				? evaluator.parse(rawSection)
 				: (rawSection as JsonValue);
 			if (parsed === null || parsed === undefined) {
-				// No caller reads the returned `errors`, so this log is the only trace of a parse failure.
+				// The returned `errors` array is not read by every caller, so this
+				// structured warn is the field-visible trace of a parse failure
+				// (#11239/#11253). stringifyForPrompt (safe try/catch) — a raw
+				// JSON.stringify throws on a circular/bigint section and would turn
+				// one evaluator's parse failure into an abort of the whole run.
 				this.runtime.logger.warn(
 					{
 						src: "service:evaluator",

@@ -1933,24 +1933,75 @@ async function runControl(
     });
   }
 
-  // Archive / reopen / pause are durable task-lifecycle operations, not ACP
-  // session controls — route them to the durable task service (see
-  // runTaskLifecycleControl). Previously this branch hard-failed with
-  // UNSUPPORTED_OPERATION even though the service supports all three.
   if (action === "archive" || action === "reopen" || action === "pause") {
-    return runTaskLifecycleControl(runtime, params, content, callback, action);
+    const msg =
+      "Task thread archive/pause controls are unavailable in ACP-only mode. Use ACP session stop, send, or spawn operations.";
+    if (callback) await callback({ text: msg });
+    return failureResult("TASKS:control", "UNSUPPORTED_OPERATION", msg, {
+      reason: "acp_only",
+      action,
+    });
   }
 
   const instruction =
     textValue(params.instruction) ??
     textValue(content.instruction) ??
     (action === "continue" || action === "resume" ? text : undefined);
+
+  // Resume/continue must clear the durable paused flag before any ACP send:
+  // the pause branch above routes to pauseTask, which stops the task's
+  // sessions and sets paused:true — freezing advanceTaskStatus. A bare
+  // session send can never unpause the task (and after a pause there is
+  // usually no live session left to send to), so without this pause would be
+  // a one-way door from the action surface. Session-only calls (no
+  // taskId/threadId, or no task service) keep the plain ACP-send fallback.
+  const controlTaskId =
+    action === "resume" || action === "continue"
+      ? (pickString(params, content, "taskId") ??
+        pickString(params, content, "threadId"))
+      : undefined;
+  let resumedTask: Awaited<ReturnType<OrchestratorTaskService["resumeTask"]>> =
+    null;
+  if (controlTaskId) {
+    const taskService = runtime.getService?.(
+      OrchestratorTaskService.serviceType,
+    ) as OrchestratorTaskService | null | undefined;
+    if (taskService) {
+      try {
+        resumedTask = await taskService.resumeTask(controlTaskId);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        coreLogger.warn(`[TASKS:control] resume failed: ${errMsg}`);
+        const out = `Failed to resume coding task ${controlTaskId}: ${errMsg}`;
+        if (callback) await callback({ text: out });
+        return failureResult("TASKS:control", "LIFECYCLE_FAILED", out, {
+          reason: "lifecycle_failed",
+          taskId: controlTaskId,
+        });
+      }
+    }
+  }
+
   const target = await resolveSession(
     service,
     pickString(params, content, "sessionId"),
     state,
   );
   if (!target.session) {
+    if (resumedTask && controlTaskId) {
+      const out = `Resumed coding task ${controlTaskId}. No active ACP session to instruct — the task is unpaused.`;
+      if (callback) await callback({ text: out });
+      return {
+        success: true,
+        text: out,
+        data: {
+          actionName: "TASKS:control",
+          action,
+          taskId: controlTaskId,
+          task: resumedTask,
+        },
+      };
+    }
     const msg = target.missingId
       ? `Session ${target.missingId} not found.`
       : "No active ACP session found.";
@@ -1966,6 +2017,9 @@ async function runControl(
     sessionId: target.session.id,
     action,
   };
+  if (resumedTask && controlTaskId) {
+    data = { ...data, taskId: controlTaskId };
+  }
 
   let responseText = "";
   if (action === "stop") {
@@ -2709,103 +2763,72 @@ async function runManageIssues(
 
 // ── action: archive / reopen (ARCHIVE_CODING_TASK / REOPEN_CODING_TASK) ────
 
-type TaskLifecycleOp = "archive" | "reopen" | "pause";
-
-/**
- * Archive / reopen / pause a durable task via OrchestratorTaskService. These are
- * first-class operations on the durable task store — the
- * `/api/orchestrator/tasks/:id/{archive,reopen}` routes already expose them, and
- * `archiveTask`/`reopenTask`/`pauseTask` all exist. The old action paths returned
- * `UNSUPPORTED_OPERATION` ("ACP-only mode") from before the task service existed,
- * which then failed the very calls the archive/reopen similes train the planner
- * to make. Only a genuinely ACP-only runtime (no task service registered) still
- * reports the operation as unavailable.
- */
-async function runTaskLifecycleControl(
-  runtime: IAgentRuntime,
+async function runArchive(
+  _runtime: IAgentRuntime,
+  _message: Memory,
+  _state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
-  op: TaskLifecycleOp,
 ): Promise<ActionResult> {
-  const actionName = `TASKS:${op}`;
   const taskId =
     pickString(params, content, "taskId") ??
     pickString(params, content, "threadId");
   if (!taskId) {
     const msg = "taskId is required.";
     await callbackText(callback, msg);
-    return failureResult(actionName, "MISSING_TASK_ID", msg, {
-      reason: "missing_task_id",
-    });
-  }
-  const taskService = runtime.getService?.(
-    OrchestratorTaskService.serviceType,
-  ) as OrchestratorTaskService | null | undefined;
-  if (!taskService) {
-    const msg = `Task ${op} is unavailable without the orchestrator task service.`;
-    await callbackText(callback, msg);
-    return failureResult(actionName, "UNSUPPORTED_OPERATION", msg, {
-      reason: "acp_only",
-      action: op,
-    });
-  }
-  try {
-    const result =
-      op === "archive"
-        ? await taskService.archiveTask(taskId)
-        : op === "reopen"
-          ? await taskService.reopenTask(taskId)
-          : await taskService.pauseTask(taskId);
-    if (!result) {
-      const msg = `Task ${taskId} not found.`;
-      await callbackText(callback, msg);
-      return failureResult(actionName, "TASK_NOT_FOUND", msg, {
-        reason: "task_not_found",
-        taskId,
-      });
-    }
-    const verb =
-      op === "archive" ? "Archived" : op === "reopen" ? "Reopened" : "Paused";
-    const out = `${verb} coding task ${taskId}.`;
-    await callbackText(callback, out);
     return {
-      success: true,
-      text: out,
-      data: { actionName, taskId, task: result },
+      success: false,
+      text: msg,
+      values: { error: "MISSING_TASK_ID" },
     };
+  }
+
+  try {
+    const msg = "Task thread archives are unavailable in ACP-only mode.";
+    await callbackText(callback, msg);
+    return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    coreLogger.warn(`[${actionName}] failed: ${errMsg}`);
-    const out = `Failed to ${op} coding task ${taskId}: ${errMsg}`;
+    coreLogger.warn(`[TASKS:archive] failed: ${errMsg}`);
+    const out = `Failed to archive coding task ${taskId}: ${errMsg}`;
     await callbackText(callback, out);
-    return failureResult(actionName, "LIFECYCLE_FAILED", out, {
-      reason: "lifecycle_failed",
-      taskId,
-    });
+    return { success: false, text: out, error: errMsg };
   }
-}
-
-async function runArchive(
-  runtime: IAgentRuntime,
-  _message: Memory,
-  _state: State | undefined,
-  params: Record<string, unknown>,
-  content: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
-): Promise<ActionResult> {
-  return runTaskLifecycleControl(runtime, params, content, callback, "archive");
 }
 
 async function runReopen(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   _message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  return runTaskLifecycleControl(runtime, params, content, callback, "reopen");
+  const taskId =
+    pickString(params, content, "taskId") ??
+    pickString(params, content, "threadId");
+  if (!taskId) {
+    const msg = "taskId is required.";
+    await callbackText(callback, msg);
+    return {
+      success: false,
+      text: msg,
+      values: { error: "MISSING_TASK_ID" },
+    };
+  }
+
+  try {
+    const msg = "Task thread reopen is unavailable in ACP-only mode.";
+    await callbackText(callback, msg);
+    return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    coreLogger.warn(`[TASKS:reopen] failed: ${errMsg}`);
+    const out = `Failed to reopen coding task ${taskId}: ${errMsg}`;
+    await callbackText(callback, out);
+    return { success: false, text: out, error: errMsg };
+  }
 }
 
 // ── parent action ──────────────────────────────────────────────────────

@@ -31,22 +31,28 @@
 //   __ARM_FEATURE_DOTPROD, so this never produces an undefined symbol.
 //
 // Floor rationale:
-//   armv8.2-a is the floor that introduced dotprod + fp16 vector arithmetic;
-//   i8mm arrived at armv8.6-a but is back-portable as a `+i8mm` feature
-//   suffix on an armv8.2-a base (the toolchain emits the i8mm instructions;
-//   the runtime only executes them on hardware that has them, and the QJL/ggml
-//   kernels self-guard on the corresponding __ARM_FEATURE_* macros). The
-//   Pixel 9a / Tensor G4 reports asimddp + i8mm + asimdhp/fphp, so this floor
-//   is safe for the only Android arm64 device we ship to today. Devices below
-//   armv8.2-a (pre-2017 SoCs) are not a target; if that changes, switch to the
-//   GGML_CPU_ALL_VARIANTS=ON + GGML_BACKEND_DL=ON runtime-dispatch route (as
-//   the riscv64 build already does) instead of lowering this floor.
+//   armv8.2-a is the floor that introduced dotprod + fp16 vector arithmetic.
+//   i8mm arrived at armv8.6-a and is NOT in the default floor. The
+//   __ARM_FEATURE_* kernel self-guards are compile-time macros, not runtime
+//   checks — `-march=...+i8mm` defines __ARM_FEATURE_MATMUL_INT8
+//   unconditionally, so smmla lands ungated in the quantized matmul kernels.
+//   Device-proven SIGILL (exit 132) on a physical Pixel 6a (Tensor G1 —
+//   /proc/cpuinfo has asimddp, no i8mm): pure-CPU decode, the ASR q4_K matmul
+//   path, and the clip/mmproj encoder all crash, i.e. every Tensor G1/G2
+//   phone (Pixel 6/6a/6 Pro/7). The Pixel 9a (Tensor G4, has i8mm) is why
+//   9a-only verification never caught it. Keep i8mm as an explicit opt-in
+//   (ELIZA_ANDROID_ARM64_I8MM=1) for controlled perf runs on devices known to
+//   support it. Devices below armv8.2-a (pre-2017 SoCs) are not a target; if
+//   that changes, switch to the GGML_CPU_ALL_VARIANTS=ON + GGML_BACKEND_DL=ON
+//   runtime-dispatch route (as the riscv64 build already does) instead of
+//   lowering this floor.
 
 /**
  * The fixed Android arm64-v8a SIMD architecture string passed to
  * `-DGGML_CPU_ARM_ARCH=`. Exported for tests / logging.
  */
-export const ANDROID_ARM64_CPU_ARCH = "armv8.2-a+dotprod+fp16+i8mm";
+export const ANDROID_ARM64_CPU_ARCH = "armv8.2-a+dotprod+fp16";
+export const ANDROID_ARM64_CPU_ARCH_I8MM = "armv8.2-a+dotprod+fp16+i8mm";
 
 /**
  * CMake `-D` flags that raise an Android arm64-v8a fork build from the bare
@@ -62,8 +68,12 @@ export const ANDROID_ARM64_CPU_ARCH = "armv8.2-a+dotprod+fp16+i8mm";
  */
 export function androidArm64SimdCmakeFlags(abi) {
   if (abi !== "arm64-v8a") return [];
+  const arch =
+    process.env.ELIZA_ANDROID_ARM64_I8MM?.trim() === "1"
+      ? ANDROID_ARM64_CPU_ARCH_I8MM
+      : ANDROID_ARM64_CPU_ARCH;
   return [
-    `-DGGML_CPU_ARM_ARCH=${ANDROID_ARM64_CPU_ARCH}`,
+    `-DGGML_CPU_ARM_ARCH=${arch}`,
     // Flip the QJL_HAVE_NEON_DOTPROD dispatch define (ggml-cpu/CMakeLists.txt
     // ~L161). Without this the live dotprod kernel body compiles but the QJL
     // dispatcher never routes to it.

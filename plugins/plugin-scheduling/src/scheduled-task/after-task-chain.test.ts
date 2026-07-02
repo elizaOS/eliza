@@ -1,21 +1,18 @@
 /**
- * `trigger.kind: "after_task"` — chain-after-terminal contract.
+ * A9 — `trigger.kind: "after_task"` chain-after-terminal coverage.
  *
- * CONTRACT CHANGE (#10721/#10723 trigger-realness wave): the previous
- * revision of this file pinned that the runner does NOT auto-fire `after_task`
- * children, making the trigger kind contract larp — schema-accepted, never
- * fired by anything. The trigger is live in the SCHEDULED_TASKS action (users
- * create chains from chat without editing the parent) and is NOT redundant
- * with `pipeline.on*`: pipeline refs are declared on the PARENT and only
- * propagate completed/skipped/failed, while `after_task` is declared on the
- * CHILD and covers all five terminal outcomes. The runner now fires matching
- * children on the parent's terminal transition (`settleTerminal` /
- * `fireAfterTaskChildren` in runner.ts), race-safe via the store's atomic
- * fire claim.
+ * The spine schema accepts `trigger: { kind: "after_task"; taskId; outcome }`
+ * with `outcome: TerminalState` (`completed | skipped | expired | failed |
+ * dismissed`). The runner does NOT auto-fire from `after_task` triggers — the
+ * scheduler tick is the entry point, and the in-memory test fixture has no
+ * tick. These tests therefore lock down the **structural acceptance** plus
+ * the schedule-time semantics: the child task is persisted with the
+ * `after_task` trigger pointing at the parent, and remains in `scheduled`
+ * even after the parent reaches the recorded terminal outcome.
  *
- * These tests lock the new contract: structural acceptance, auto-fire on the
- * matching outcome, no fire on mismatched outcome/parent, and the documented
- * global-pause exception (pause suppresses chaining).
+ * If the runner gains an `after_task` evaluator, the
+ * "child does not auto-fire" assertion below is the contract that needs to
+ * change first — making this file the canonical seam.
  */
 
 import { describe, expect, it } from "vitest";
@@ -45,7 +42,7 @@ import {
 import { createInMemoryScheduledTaskLogStore } from "./state-log.js";
 import type { GlobalPauseView, ScheduledTask, TerminalState } from "./types.js";
 
-function makeRunner(opts: { pauseActive?: boolean } = {}): {
+function makeRunner(): {
   runner: ScheduledTaskRunnerHandle;
   setNow: (iso: string) => void;
 } {
@@ -68,7 +65,7 @@ function makeRunner(opts: { pauseActive?: boolean } = {}): {
     consolidation: createConsolidationRegistry(),
     ownerFacts: () => ({}),
     globalPause: {
-      current: async () => ({ active: opts.pauseActive === true }),
+      current: async () => ({ active: false }),
     } as GlobalPauseView,
     activity: { hasSignalSince: () => false },
     subjectStore: { wasUpdatedSince: () => false },
@@ -125,15 +122,6 @@ async function forceParentTerminal(
   }
 }
 
-async function getTask(
-  runner: ScheduledTaskRunnerHandle,
-  taskId: string,
-): Promise<ScheduledTask> {
-  const found = (await runner.list()).find((t) => t.taskId === taskId);
-  if (!found) throw new Error(`task ${taskId} not found`);
-  return found;
-}
-
 const TERMINAL_OUTCOMES: TerminalState[] = [
   "completed",
   "skipped",
@@ -162,11 +150,9 @@ describe("ScheduledTaskRunner — after_task trigger structural acceptance (A9)"
       expect(child.trigger.outcome).toBe(outcome);
     });
   }
-});
 
-describe("ScheduledTaskRunner — after_task children fire on the parent's terminal transition", () => {
   for (const outcome of TERMINAL_OUTCOMES) {
-    it(`auto-fires the child when the parent reaches ${outcome}`, async () => {
+    it(`child does NOT auto-fire when the parent reaches ${outcome} (no scheduler-tick in fixture)`, async () => {
       const { runner } = makeRunner();
       const parent = await runner.schedule(baseInput());
       const child = await runner.schedule(
@@ -178,139 +164,18 @@ describe("ScheduledTaskRunner — after_task children fire on the parent's termi
 
       await forceParentTerminal(runner, parent.taskId, outcome);
 
-      expect((await getTask(runner, parent.taskId)).state.status).toBe(outcome);
-      const reloadedChild = await getTask(runner, child.taskId);
-      expect(reloadedChild.state.status).toBe("fired");
-      expect(reloadedChild.state.firedAt).toBe("2026-05-09T12:00:00.000Z");
+      const reloadedParent = (await runner.list()).find(
+        (t) => t.taskId === parent.taskId,
+      );
+      expect(reloadedParent?.state.status).toBe(outcome);
+
+      const reloadedChild = (await runner.list()).find(
+        (t) => t.taskId === child.taskId,
+      );
+      expect(reloadedChild?.state.status).toBe("scheduled");
+      expect(reloadedChild?.state.firedAt).toBeUndefined();
     });
   }
-
-  it("does not fire a child whose recorded outcome mismatches the transition", async () => {
-    const { runner } = makeRunner();
-    const parent = await runner.schedule(baseInput());
-    const onFailure = await runner.schedule(
-      baseInput({
-        promptInstructions: "chain after failed",
-        trigger: {
-          kind: "after_task",
-          taskId: parent.taskId,
-          outcome: "failed",
-        },
-      }),
-    );
-
-    await runner.apply(parent.taskId, "complete", { reason: "test" });
-
-    expect((await getTask(runner, onFailure.taskId)).state.status).toBe(
-      "scheduled",
-    );
-  });
-
-  it("does not fire a child pointing at a different parent", async () => {
-    const { runner } = makeRunner();
-    const parent = await runner.schedule(baseInput());
-    const otherParent = await runner.schedule(baseInput());
-    const child = await runner.schedule(
-      baseInput({
-        trigger: {
-          kind: "after_task",
-          taskId: otherParent.taskId,
-          outcome: "completed",
-        },
-      }),
-    );
-
-    await runner.apply(parent.taskId, "complete", { reason: "test" });
-
-    expect((await getTask(runner, child.taskId)).state.status).toBe(
-      "scheduled",
-    );
-  });
-
-  it("fires every child chained on the same parent + outcome", async () => {
-    const { runner } = makeRunner();
-    const parent = await runner.schedule(baseInput());
-    const first = await runner.schedule(
-      baseInput({
-        trigger: {
-          kind: "after_task",
-          taskId: parent.taskId,
-          outcome: "completed",
-        },
-      }),
-    );
-    const second = await runner.schedule(
-      baseInput({
-        trigger: {
-          kind: "after_task",
-          taskId: parent.taskId,
-          outcome: "completed",
-        },
-      }),
-    );
-
-    await runner.apply(parent.taskId, "complete", { reason: "test" });
-
-    expect((await getTask(runner, first.taskId)).state.status).toBe("fired");
-    expect((await getTask(runner, second.taskId)).state.status).toBe("fired");
-  });
-
-  it("chains transitively: grandchild fires when the fired child later completes", async () => {
-    const { runner } = makeRunner();
-    const parent = await runner.schedule(baseInput());
-    const child = await runner.schedule(
-      baseInput({
-        trigger: {
-          kind: "after_task",
-          taskId: parent.taskId,
-          outcome: "completed",
-        },
-      }),
-    );
-    const grandchild = await runner.schedule(
-      baseInput({
-        trigger: {
-          kind: "after_task",
-          taskId: child.taskId,
-          outcome: "completed",
-        },
-      }),
-    );
-
-    await runner.apply(parent.taskId, "complete", { reason: "test" });
-    expect((await getTask(runner, child.taskId)).state.status).toBe("fired");
-    expect((await getTask(runner, grandchild.taskId)).state.status).toBe(
-      "scheduled",
-    );
-
-    await runner.apply(child.taskId, "complete", { reason: "test" });
-    expect((await getTask(runner, grandchild.taskId)).state.status).toBe(
-      "fired",
-    );
-  });
-
-  it("global-pause skip does NOT chain: pause suppresses proactive behavior", async () => {
-    const { runner } = makeRunner({ pauseActive: true });
-    const parent = await runner.schedule(
-      baseInput({ respectsGlobalPause: true }),
-    );
-    const child = await runner.schedule(
-      baseInput({
-        trigger: {
-          kind: "after_task",
-          taskId: parent.taskId,
-          outcome: "skipped",
-        },
-      }),
-    );
-
-    const result = await runner.fireWithResult(parent.taskId);
-    expect(result.kind).toBe("skipped");
-    expect((await getTask(runner, parent.taskId)).state.status).toBe("skipped");
-    expect((await getTask(runner, child.taskId)).state.status).toBe(
-      "scheduled",
-    );
-  });
 });
 
 describe("ScheduledTaskRunner — after_task trigger fire path is verb-driven (A9)", () => {

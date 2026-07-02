@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { rotationEnabled, withAccountRotation } from "./src/account-rotation";
+import {
+  type RotationSubprocessEnv,
+  rotationEnabled,
+  withAccountRotation,
+} from "./src/account-rotation";
 import { ClaudeCli } from "./src/claude-cli";
 import { ClaudeSdkSession } from "./src/claude-sdk-session";
 import {
@@ -159,7 +163,8 @@ function getSdkSession(
   runtime: IAgentRuntime,
   model: string,
   systemPrompt: string,
-  router: boolean
+  router: boolean,
+  subprocessEnv?: RotationSubprocessEnv
 ): ClaudeSdkSession {
   const key = claudeSessionKey(model, systemPrompt, router);
   const existing = sdkSessions.get(key);
@@ -178,6 +183,7 @@ function getSdkSession(
     turnTimeoutMs:
       parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
       parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
+    subprocessEnv,
   });
   sdkSessions.set(key, session);
   // Evict least-recently-used past the cap (each session is a live process).
@@ -236,7 +242,8 @@ function evictCodexSdkSession(key: string): void {
 function getCodexSdkSession(
   runtime: IAgentRuntime,
   model: string,
-  router: boolean
+  router: boolean,
+  subprocessEnv?: RotationSubprocessEnv
 ): CodexSdkSession {
   const key = codexSessionKey(model, router);
   let session = codexSdkSessions.get(key);
@@ -247,6 +254,7 @@ function getCodexSdkSession(
       reasoningEffort: getSetting(runtime, "ELIZA_CLI_CODEX_REASONING_EFFORT"),
       codexBinPath: getSetting(runtime, "ELIZA_CLI_CODEX_BIN"),
       restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
+      subprocessEnv,
     });
     codexSdkSessions.set(key, session);
   }
@@ -313,7 +321,7 @@ async function generateViaCli(
     // (evicting the warm session so it re-auths as the new account), then retry;
     // fall through to provider failover only when the pool is exhausted.
     return withAccountRotation(
-      () => getSdkSession(runtime, model, framedSystem, false).generate(framedBody),
+      (env) => getSdkSession(runtime, model, framedSystem, false, env).generate(framedBody),
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -330,7 +338,7 @@ async function generateViaCli(
     const framedBody = appendTextDirective(`${frameTextSystemPrompt(system)}\n\n${body}`);
     const key = codexSessionKey(model, false);
     return withAccountRotation(
-      () => getCodexSdkSession(runtime, model, false).generate(framedBody),
+      (env) => getCodexSdkSession(runtime, model, false, env).generate(framedBody),
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -373,7 +381,7 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
     const routerBody = buildRouterBody(params);
     const key = claudeSessionKey(model, ROUTER_SYSTEM_PROMPT, true);
     return withAccountRotation(
-      () => getSdkSession(runtime, model, ROUTER_SYSTEM_PROMPT, true).route(routerBody),
+      (env) => getSdkSession(runtime, model, ROUTER_SYSTEM_PROMPT, true, env).route(routerBody),
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -391,12 +399,15 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
     const clean = buildCleanRoutingParams(params);
     const routeBody = `${clean.system ?? ""}\n\n${clean.prompt ?? ""}`;
     const key = codexSessionKey(model, true);
-    return withAccountRotation(() => getCodexSdkSession(runtime, model, true).route(routeBody), {
-      backend,
-      getValue: (k) => getSetting(runtime, k),
-      sessionKey: `cli-inference:${key}`,
-      onRotate: () => evictCodexSdkSession(key),
-    });
+    return withAccountRotation(
+      (env) => getCodexSdkSession(runtime, model, true, env).route(routeBody),
+      {
+        backend,
+        getValue: (k) => getSetting(runtime, k),
+        sessionKey: `cli-inference:${key}`,
+        onRotate: () => evictCodexSdkSession(key),
+      }
+    );
   }
   return generateViaCli(runtime, buildCleanRoutingParams(params), ModelType.ACTION_PLANNER);
 }
@@ -486,6 +497,7 @@ export const cliInferencePlugin: Plugin = {
 };
 
 export {
+  buildRotatedSubprocessEnv,
   isSubscriptionLimitError,
   rotationAgentTypeForBackend,
   rotationEnabled,

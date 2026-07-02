@@ -66,15 +66,6 @@ mock.module("@/lib/services/provisioning-worker-health", () => ({
   }),
 }));
 
-const checkAgentCreditGate = mock(async () => ({
-  allowed: true,
-  balance: 10,
-  error: undefined as string | undefined,
-}));
-mock.module("@/lib/services/agent-billing-gate", () => ({
-  checkAgentCreditGate,
-}));
-
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,
   handleCorsOptions: () => new Response(null, { status: 204 }),
@@ -124,12 +115,6 @@ describe("eliza agent pairing token route", () => {
     generateToken.mockClear();
     enqueueAgentProvisionOnce.mockClear();
     checkProvisioningWorkerHealth.mockClear();
-    checkAgentCreditGate.mockClear();
-    checkAgentCreditGate.mockResolvedValue({
-      allowed: true,
-      balance: 10,
-      error: undefined,
-    });
     publicBaseDomain = "elizacloud.ai";
   });
 
@@ -237,66 +222,5 @@ describe("eliza agent pairing token route", () => {
       code: "AGENT_WEB_UI_NOT_READY",
     });
     expect(generateToken).not.toHaveBeenCalled();
-  });
-
-  test("#11224: pairing a STOPPED shared-runtime agent does not credit-gate or provision", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      ...runningSandbox("shared"),
-      status: "stopped",
-    });
-
-    const response = await postPairingToken();
-
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
-      success: false,
-      code: "AGENT_WEB_UI_NOT_READY",
-    });
-    expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
-    expect(checkAgentCreditGate).not.toHaveBeenCalled();
-    expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
-    expect(generateToken).not.toHaveBeenCalled();
-  });
-
-  test("#11224: pairing a STOPPED dedicated agent for a suspended org is blocked 402 — no free re-provision", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      ...runningSandbox("dedicated-lazy"),
-      status: "stopped",
-    });
-    checkAgentCreditGate.mockResolvedValueOnce({
-      allowed: false,
-      balance: 0,
-      error: "Insufficient credits",
-    });
-
-    const response = await postPairingToken();
-
-    expect(response.status).toBe(402);
-    expect(await response.json()).toMatchObject({
-      code: "insufficient_credits",
-    });
-    // The paid re-provision must NOT be enqueued for a suspended org.
-    expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
-  });
-
-  test("#11224: pairing a STOPPED dedicated agent for a FUNDED org still re-provisions (no regression)", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      ...runningSandbox("dedicated-lazy"),
-      status: "stopped",
-    });
-    checkAgentCreditGate.mockResolvedValue({
-      allowed: true,
-      balance: 10,
-      error: undefined,
-    });
-    enqueueAgentProvisionOnce.mockResolvedValue({
-      job: { id: "job-1" },
-      created: true,
-    });
-
-    await postPairingToken();
-
-    expect(checkAgentCreditGate).toHaveBeenCalledTimes(1);
-    expect(enqueueAgentProvisionOnce).toHaveBeenCalledTimes(1);
   });
 });
