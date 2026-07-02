@@ -29,11 +29,15 @@ export function buildAggregate(
     skipped: 0,
     flakyPassed: 0,
     costUsd: 0,
+    finalChecksSkipped: 0,
   };
   for (const s of scenarios) {
     if (s.status === "passed") totals.passed += 1;
     else if (s.status === "failed") totals.failed += 1;
     else totals.skipped += 1;
+    for (const check of s.finalChecks) {
+      if (check.status === "skipped") totals.finalChecksSkipped += 1;
+    }
   }
   return {
     runId,
@@ -504,6 +508,18 @@ export function printStdoutSummary(report: AggregateReport): void {
   lines.push(
     `Totals: ${report.totals.passed} passed, ${report.totals.failed} failed, ${report.totals.skipped} skipped of ${report.totalCount}`,
   );
+  if (report.totals.finalChecksSkipped > 0) {
+    lines.push(
+      `WARNING: ${report.totals.finalChecksSkipped} finalCheck(s) skipped (dependency missing) — those checks proved nothing this run:`,
+    );
+    for (const s of report.scenarios) {
+      for (const check of s.finalChecks) {
+        if (check.status === "skipped") {
+          lines.push(`  - ${s.id} :: ${check.label}: ${check.detail}`);
+        }
+      }
+    }
+  }
   for (const line of lines) {
     process.stdout.write(`${line}\n`);
   }

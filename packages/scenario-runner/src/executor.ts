@@ -29,14 +29,16 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
-import type {
-  CapturedAction,
-  ScenarioContext,
-  ScenarioDefinition,
-  ScenarioFinalCheck,
-  ScenarioJudgeRubric,
-  ScenarioTurn,
-  ScenarioTurnExecution,
+import {
+  type CapturedAction,
+  type ScenarioContext,
+  type ScenarioDefinition,
+  type ScenarioFinalCheck,
+  type ScenarioJudgeRubric,
+  type ScenarioLane,
+  type ScenarioTurn,
+  type ScenarioTurnExecution,
+  scenarioLane,
 } from "@elizaos/scenario-runner/schema";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
@@ -56,6 +58,23 @@ export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
   turnTimeoutMs: number;
+}
+
+/**
+ * A finalCheck whose runtime dependency was missing (status `skipped`) must
+ * never silently pass. In the pr-deterministic lane it fails the scenario —
+ * that lane is the merge-blocking PR gate and a skipped check there is lost
+ * coverage on every PR. Live lanes keep the scenario green but the skip is
+ * loudly logged and counted in report totals (`finalChecksSkipped`).
+ */
+export function skippedFinalCheckFailure(
+  lane: ScenarioLane,
+  result: Pick<FinalCheckReport, "status" | "label" | "detail">,
+): string | null {
+  if (result.status !== "skipped" || lane !== "pr-deterministic") {
+    return null;
+  }
+  return `finalCheck "${result.label}" skipped (${result.detail}) — a missing dependency is a failure in the pr-deterministic lane`;
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
@@ -134,14 +153,14 @@ function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
   return pattern.test(value);
 }
 
+/**
+ * The "planner trace" that `plannerIncludesAll`/`plannerIncludesAny`/
+ * `plannerExcludes` match against: the executed action names plus their
+ * parameters. There is no separate planner-text channel — the action trace IS
+ * the observable plan.
+ */
 function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
   const parts: string[] = [];
-  if (
-    typeof execution.plannerText === "string" &&
-    execution.plannerText.trim().length > 0
-  ) {
-    parts.push(execution.plannerText);
-  }
   for (const action of execution.actionsCalled) {
     if (isSynthesizedReplyAction(action)) {
       continue;
@@ -2333,6 +2352,19 @@ export async function runScenario(
           label: result.label,
           detail: result.detail,
         });
+      } else if (result.status === "skipped") {
+        const failure = skippedFinalCheckFailure(scenarioLane(scenario), result);
+        if (failure) {
+          report.status = "failed";
+          report.failedAssertions.push({
+            label: result.label,
+            detail: failure,
+          });
+        } else {
+          logger.warn(
+            `[scenario-runner] ${scenario.id} finalCheck "${result.label}" skipped — ${result.detail}. This check proved nothing this run.`,
+          );
+        }
       }
     }
 
