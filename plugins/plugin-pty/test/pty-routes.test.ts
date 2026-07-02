@@ -257,7 +257,7 @@ describe("POST /api/pty/sessions", () => {
   it("400 on an unsupported session kind", async () => {
     const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     const res = await routeByName("pty-spawn-session")(
-      ctx(h.runtime, { kind: "claude" }),
+      ctx(h.runtime, { kind: "bash" }),
     );
     expect(res.status).toBe(400);
     expect((res.body as { error: string }).error).toMatch(/unsupported/i);
@@ -358,6 +358,201 @@ describe("POST /api/pty/sessions", () => {
     expect(allowed.calls[0].opts.env?.OPENAI_BASE_URL).toBe(
       "https://staging.example/v1",
     );
+  });
+});
+
+// The experimental vendor-CLI tier (#10832 Phase 2): interactive claude/codex
+// on the user's own subscription. Gated by PTY_VENDOR_CLI_ENABLED — a SEPARATE
+// gate from PTY_INTERACTIVE_ENABLED that defaults OFF.
+describe("POST /api/pty/sessions — vendor CLI tier (kind claude/codex)", () => {
+  // Pin the launcher overrides and clear any host credential env so results
+  // don't depend on what happens to be installed/configured on this machine.
+  const vendorEnvKeys = [
+    "PTY_CLAUDE_BIN",
+    "PTY_CODEX_BIN",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CODEX_HOME",
+    "PTY_VENDOR_CLI_ENABLED",
+  ] as const;
+  const savedVendorEnv = new Map<string, string | undefined>();
+  beforeEach(() => {
+    for (const key of vendorEnvKeys) {
+      savedVendorEnv.set(key, process.env[key]);
+      delete process.env[key];
+    }
+    process.env.PTY_CLAUDE_BIN = EXISTING_FILE;
+    process.env.PTY_CODEX_BIN = EXISTING_FILE;
+  });
+  afterEach(() => {
+    for (const [key, value] of savedVendorEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    savedVendorEnv.clear();
+  });
+
+  it("403s kind claude/codex by default (gate off) even though interactive spawning is on", async () => {
+    for (const kind of ["claude", "codex"]) {
+      const h = makeHarness({ settings: {} });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { kind, cwd: process.cwd() }),
+      );
+      expect(res.status, kind).toBe(403);
+      expect((res.body as { error: string }).error, kind).toMatch(
+        /PTY_VENDOR_CLI_ENABLED/,
+      );
+      expect(h.calls, kind).toHaveLength(0);
+    }
+  });
+
+  it("fails closed on truthy-looking but unrecognized gate values", async () => {
+    for (const value of ["enabled", "yep", "2", "y", "TRUE!"]) {
+      const h = makeHarness({
+        settings: { PTY_VENDOR_CLI_ENABLED: value },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { kind: "claude", cwd: process.cwd() }),
+      );
+      expect(res.status, value).toBe(403);
+      expect(h.calls, value).toHaveLength(0);
+    }
+  });
+
+  it("spawns an interactive claude session when the gate is explicitly on", async () => {
+    for (const value of ["true", "1", "on", " YES "]) {
+      const h = makeHarness({
+        settings: { PTY_VENDOR_CLI_ENABLED: value },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { kind: "claude", cwd: process.cwd() }),
+      );
+      expect(res.status, value).toBe(200);
+      expect(h.calls, value).toHaveLength(1);
+      // The plain interactive TUI — the resolved launcher, zero one-shot args.
+      expect(h.calls[0].file, value).toBe(EXISTING_FILE);
+      expect(h.calls[0].args, value).toEqual([]);
+    }
+  });
+
+  it("spawns an interactive codex session when the gate is on", async () => {
+    const h = makeHarness({
+      settings: { PTY_VENDOR_CLI_ENABLED: "true" },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "codex", cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0].file).toBe(EXISTING_FILE);
+    expect(h.calls[0].args).toEqual([]);
+    const session = (res.body as { session: { kind?: string; label?: string } })
+      .session;
+    expect(session.kind).toBe("codex");
+    expect(session.label).toBe("codex · interactive");
+  });
+
+  it("vendor kinds do not require the Eliza Cloud API key", async () => {
+    // No PTY_ELIZA_CLOUD_API_KEY configured anywhere — the vendor CLIs
+    // authenticate with the user's own subscription, not Eliza Cloud.
+    const h = makeHarness({
+      settings: { PTY_VENDOR_CLI_ENABLED: "true" },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "claude", cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBeUndefined();
+  });
+
+  it("passes the claude OAuth token through to the child env when configured", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_VENDOR_CLI_ENABLED: "true",
+        CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-test",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "claude", cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    // Proves the whole pipeline: route → spec builder → store env allowlist.
+    expect(h.calls[0].opts.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe(
+      "sk-ant-oat-test",
+    );
+  });
+
+  it("omits the claude OAuth token when none is configured (CLI uses ~/.claude credentials)", async () => {
+    const h = makeHarness({ settings: { PTY_VENDOR_CLI_ENABLED: "true" } });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "claude", cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls[0].opts.env?.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    // HOME survives the safe inherited-env allowlist so the CLI can read its
+    // own credential file.
+    expect(h.calls[0].opts.env?.HOME).toBe(process.env.HOME);
+  });
+
+  it("passes CODEX_HOME through to the codex child env when configured", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_VENDOR_CLI_ENABLED: "true",
+        CODEX_HOME: "/accounts/codex-a1",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "codex", cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls[0].opts.env?.CODEX_HOME).toBe("/accounts/codex-a1");
+  });
+
+  it("403s vendor kinds on store builds even with the gate explicitly on", async () => {
+    for (const kind of ["claude", "codex"]) {
+      const h = makeHarness({
+        settings: {
+          PTY_VENDOR_CLI_ENABLED: "true",
+          PTY_INTERACTIVE_ENABLED: "true",
+          ELIZA_BUILD_VARIANT: "store",
+        },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { kind, cwd: process.cwd() }),
+      );
+      expect(res.status, kind).toBe(403);
+      expect(h.calls, kind).toHaveLength(0);
+    }
+  });
+
+  it("403s vendor kinds when interactive spawning is disabled, regardless of the vendor gate", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_VENDOR_CLI_ENABLED: "true",
+        PTY_INTERACTIVE_ENABLED: "false",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "claude", cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(403);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("400s with actionable guidance when the vendor CLI is not installed", async () => {
+    delete process.env.PTY_CLAUDE_BIN;
+    const h = makeHarness({ settings: { PTY_VENDOR_CLI_ENABLED: "true" } });
+    // Pin PATH lookup to an empty dir so a real host install can't satisfy it.
+    const savedPath = process.env.PATH;
+    process.env.PATH = "/nonexistent-dir-for-pty-test";
+    try {
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { kind: "claude", cwd: process.cwd() }),
+      );
+      expect(res.status).toBe(400);
+      expect((res.body as { error: string }).error).toMatch(/PTY_CLAUDE_BIN/);
+    } finally {
+      process.env.PATH = savedPath;
+    }
   });
 });
 

@@ -56,7 +56,7 @@ const SAFE_INHERITED_ENV_KEYS = new Set([
   "XDG_DATA_HOME",
 ]);
 
-/** Explicit spawn-spec env the eliza-code PTY is allowed to receive. */
+/** Explicit spawn-spec env the interactive-CLI PTYs are allowed to receive. */
 const ALLOWED_SPEC_ENV_KEYS = new Set([
   "ELIZA_CODE_PROVIDER",
   "ELIZA_CODE_CODING_ONLY",
@@ -67,6 +67,10 @@ const ALLOWED_SPEC_ENV_KEYS = new Set([
   "OPENAI_LARGE_MODEL",
   "CODING_TOOLS_WORKSPACE_ROOTS",
   "SHELL_ALLOWED_DIRECTORY",
+  // Vendor-CLI tier (kind claude/codex, gated by PTY_VENDOR_CLI_ENABLED):
+  // opaque subscription credential handles the CLIs consume themselves.
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "CODEX_HOME",
   "TERM",
   "COLORTERM",
   "FORCE_COLOR",

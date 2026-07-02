@@ -98,6 +98,24 @@ describe("PtySessionStore.start", () => {
     expect(env?.ELIZA_API_TOKEN).toBeUndefined();
   });
 
+  it("allows the vendor-CLI credential handles through the spec-env allowlist", async () => {
+    const { store, fake } = makeStore();
+    await store.start(
+      spec({
+        env: {
+          CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-1",
+          CODEX_HOME: "/accounts/codex-a1",
+          NOT_ALLOWLISTED: "dropped",
+        },
+      }),
+    );
+
+    const env = fake.calls[0].opts.env;
+    expect(env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-1");
+    expect(env?.CODEX_HOME).toBe("/accounts/codex-a1");
+    expect(env?.NOT_ALLOWLISTED).toBeUndefined();
+  });
+
   it("streams PTY output through the bridge as session_output {sessionId,data}", async () => {
     const { store, bridge, fake } = makeStore();
     const events: SessionOutputEvent[] = [];

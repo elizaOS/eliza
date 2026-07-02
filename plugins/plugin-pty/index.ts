@@ -39,6 +39,15 @@ export {
   type ElizaCodeCerebrasOptions,
   resolveElizaCodeBin,
 } from "./lib/eliza-code-spec";
+export {
+  buildClaudeCliSpec,
+  buildCodexCliSpec,
+  type ClaudeCliSpecOptions,
+  type CodexCliSpecOptions,
+  type PtyVendorCliKind,
+  resolveClaudeCliBin,
+  resolveCodexCliBin,
+} from "./lib/vendor-cli-spec";
 export { bunTruePtySpawn, isBunRuntime } from "./services/bun-pty-spawn";
 export type {
   ConsoleBridge,

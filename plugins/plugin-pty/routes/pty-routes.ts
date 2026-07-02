@@ -11,7 +11,15 @@ import {
   ELIZA_CLOUD_DEFAULT_BASE_URL,
   resolveElizaCodeBin,
 } from "../lib/eliza-code-spec";
+import {
+  buildClaudeCliSpec,
+  buildCodexCliSpec,
+  type PtyVendorCliKind,
+  resolveClaudeCliBin,
+  resolveCodexCliBin,
+} from "../lib/vendor-cli-spec";
 import type { PtyService } from "../services/pty-service";
+import type { PtySpawnSpec } from "../services/pty-types";
 
 // --- small helpers -------------------------------------------------------
 
@@ -171,6 +179,20 @@ function interactiveEnabled(runtime: IAgentRuntime): boolean {
 }
 
 /**
+ * The experimental vendor-CLI tier (#10832 Phase 2): the real interactive
+ * Claude Code / Codex CLIs on the user's own subscription. Inherently
+ * TOS-unsafe, so it is a SEPARATE gate from PTY_INTERACTIVE_ENABLED and
+ * defaults OFF — only the exact truthy allowlist enables it, and store builds
+ * never do.
+ */
+function vendorCliEnabled(runtime: IAgentRuntime): boolean {
+  const variant = (getStr(runtime, "ELIZA_BUILD_VARIANT") ?? "").toLowerCase();
+  if (variant === "store") return false;
+  const flag = getStr(runtime, "PTY_VENDOR_CLI_ENABLED")?.trim().toLowerCase();
+  return flag === "true" || flag === "1" || flag === "on" || flag === "yes";
+}
+
+/**
  * The Eliza Cloud API key eliza-code will authenticate with. Do not fall back
  * to the agent's primary OPENAI_API_KEY; terminal users can inspect their env.
  */
@@ -188,9 +210,65 @@ function defaultCwd(runtime: IAgentRuntime): string {
 // --- handlers ------------------------------------------------------------
 
 /**
- * POST /api/pty/sessions — spawn an interactive session. Currently supports
- * `kind: "eliza-code"` (real slash-command CLI on Eliza Cloud/cerebras).
- * Never logs the request body (it may carry an API key).
+ * Builds the eliza-code spawn spec from a validated request. `apiKey` is
+ * pre-resolved by the route so the missing-key rejection carries the
+ * config-specific guidance.
+ */
+function elizaCodeSpecFromRequest(
+  runtime: IAgentRuntime,
+  body: Record<string, unknown>,
+  cwd: string,
+  apiKey: string,
+): PtySpawnSpec {
+  return buildElizaCodeCerebrasSpec({
+    cwd,
+    apiKey,
+    binPath: resolveElizaCodeBin(),
+    tier: str(body.tier) === "smart" ? "smart" : "fast",
+    baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
+    // Deployment knob (like PTY_ELIZA_CLOUD_API_KEY): pin the tier models
+    // without a client change, e.g. while the deployed cloud's model
+    // registry lags the repo's DEFAULT_CEREBRAS_TEXT_MODEL.
+    fastModel:
+      str(body.fastModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_FAST_MODEL"),
+    smartModel:
+      str(body.smartModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_SMART_MODEL"),
+  });
+}
+
+/**
+ * Builds a vendor-CLI spawn spec (gate already checked). Credentials are the
+ * user's own subscription handles, passed through opaquely — the claude token
+ * via plugin-anthropic-proxy's `CLAUDE_CODE_OAUTH_TOKEN` env path, the codex
+ * auth dir via the `CODEX_HOME` convention; with neither configured, each CLI
+ * reads its own credential file (`~/.claude/.credentials.json` /
+ * `~/.codex/auth.json`) through the inherited HOME.
+ */
+function vendorCliSpecFromRequest(
+  runtime: IAgentRuntime,
+  kind: PtyVendorCliKind,
+  cwd: string,
+): PtySpawnSpec {
+  if (kind === "claude") {
+    return buildClaudeCliSpec({
+      cwd,
+      binPath: resolveClaudeCliBin(),
+      oauthToken: getStr(runtime, "CLAUDE_CODE_OAUTH_TOKEN"),
+    });
+  }
+  return buildCodexCliSpec({
+    cwd,
+    binPath: resolveCodexCliBin(),
+    codexHome: getStr(runtime, "CODEX_HOME"),
+  });
+}
+
+/**
+ * POST /api/pty/sessions — spawn an interactive session. `kind: "eliza-code"`
+ * (real slash-command CLI on Eliza Cloud/cerebras) is the default; the
+ * experimental `kind: "claude" | "codex"` vendor tier additionally requires
+ * PTY_VENDOR_CLI_ENABLED. Never logs the request body (it may carry an API
+ * key).
  */
 async function spawnHandler(
   ctx: RouteHandlerContext,
@@ -210,39 +288,36 @@ async function spawnHandler(
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
 
   const kind = str(body.kind) ?? "eliza-code";
-  if (kind !== "eliza-code") {
+  if (kind !== "eliza-code" && kind !== "claude" && kind !== "codex") {
     return json(400, {
-      error: `Unsupported session kind "${kind}". Only "eliza-code" is supported.`,
+      error: `Unsupported session kind "${kind}". Supported kinds: "eliza-code", "claude", "codex".`,
     });
   }
 
-  const apiKey = resolveCloudApiKey(runtime, str(body.apiKey));
-  if (!apiKey) {
-    return json(400, {
+  if (kind !== "eliza-code" && !vendorCliEnabled(runtime)) {
+    return json(403, {
       error:
-        "No dedicated Eliza Cloud API key available. Pass { apiKey } or configure PTY_ELIZA_CLOUD_API_KEY.",
+        `Interactive "${kind}" CLI sessions are an experimental tier that is off by default ` +
+        "(runs the real vendor CLI on your own subscription). Set PTY_VENDOR_CLI_ENABLED=true to enable it.",
     });
   }
 
   const cwd = str(body.cwd) ?? defaultCwd(runtime);
-  const tier = str(body.tier) === "smart" ? "smart" : "fast";
 
   try {
-    const binPath = resolveElizaCodeBin();
-    const spec = buildElizaCodeCerebrasSpec({
-      cwd,
-      apiKey,
-      binPath,
-      tier,
-      baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
-      // Deployment knob (like PTY_ELIZA_CLOUD_API_KEY): pin the tier models
-      // without a client change, e.g. while the deployed cloud's model
-      // registry lags the repo's DEFAULT_CEREBRAS_TEXT_MODEL.
-      fastModel:
-        str(body.fastModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_FAST_MODEL"),
-      smartModel:
-        str(body.smartModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_SMART_MODEL"),
-    });
+    let spec: PtySpawnSpec;
+    if (kind === "eliza-code") {
+      const apiKey = resolveCloudApiKey(runtime, str(body.apiKey));
+      if (!apiKey) {
+        return json(400, {
+          error:
+            "No dedicated Eliza Cloud API key available. Pass { apiKey } or configure PTY_ELIZA_CLOUD_API_KEY.",
+        });
+      }
+      spec = elizaCodeSpecFromRequest(runtime, body, cwd, apiKey);
+    } else {
+      spec = vendorCliSpecFromRequest(runtime, kind, cwd);
+    }
     spec.ownerClientId = header(ctx, "x-elizaos-client-id");
     const cols = num(body.cols);
     const rows = num(body.rows);
@@ -251,7 +326,7 @@ async function spawnHandler(
 
     const session = await svc.startSession(spec);
     logger.info(
-      `[plugin-pty] spawned interactive session ${session.sessionId} kind=${kind} tier=${tier} cwd=${cwd}`,
+      `[plugin-pty] spawned interactive session ${session.sessionId} kind=${kind} label=${spec.label} cwd=${cwd}`,
     );
     return json(200, { session });
   } catch (err) {

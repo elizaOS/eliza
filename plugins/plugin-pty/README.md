@@ -26,6 +26,10 @@ This plugin is that missing keystone.
   agent server's primary `OPENAI_API_KEY`.
 - **Coding-only REPL** — cockpit sessions pass `--coding-only` so the terminal
   cannot recursively spawn orchestrator sub-agents.
+- **Experimental vendor-CLI tier** — `kind: "claude" | "codex"` spawns the real
+  interactive Claude Code / Codex CLI on the user's own subscription
+  credentials. Off by default: requires `PTY_VENDOR_CLI_ENABLED=true` (a
+  separate gate from `PTY_INTERACTIVE_ENABLED`); store builds always reject.
 
 See [CLAUDE.md](./CLAUDE.md) for architecture, the cerebras wiring, config, and
 the evidence standard.

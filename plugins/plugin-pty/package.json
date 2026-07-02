@@ -90,6 +90,25 @@
         "description": "Absolute path to the interactive eliza-code binary (dist/index.js). Auto-resolved from the workspace when unset.",
         "required": false,
         "sensitive": false
+      },
+      "PTY_VENDOR_CLI_ENABLED": {
+        "type": "boolean",
+        "description": "Enable the experimental vendor-CLI tier (interactive claude/codex on the user's own subscription). Default off; store builds always reject.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "PTY_CLAUDE_BIN": {
+        "type": "string",
+        "description": "Absolute path to the claude CLI launcher. Resolved from PATH when unset.",
+        "required": false,
+        "sensitive": false
+      },
+      "PTY_CODEX_BIN": {
+        "type": "string",
+        "description": "Absolute path to the codex CLI launcher. Resolved from PATH when unset.",
+        "required": false,
+        "sensitive": false
       }
     }
   },
