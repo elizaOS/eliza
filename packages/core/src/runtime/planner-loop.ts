@@ -81,6 +81,8 @@ import type {
 } from "./trajectory-recorder";
 import { captureToolStageIO } from "./trajectory-recorder";
 
+const EMPTY_TOOL_PARAMS: Readonly<Record<string, unknown>> = Object.freeze({});
+
 export {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
@@ -641,7 +643,7 @@ export async function runPlannerLoop(
 					...validNonTerminalCalls.map((toolCall) => ({
 						id: toolCall.id,
 						name: toolCall.name,
-						args: stringifyForModel(toolCall.params ?? {}),
+						args: stringifyForModel(toolCall.params ?? EMPTY_TOOL_PARAMS),
 						status: "queued" as const,
 						sourceStageId: `planner:${iteration}`,
 					})),
@@ -657,7 +659,7 @@ export async function runPlannerLoop(
 						iteration,
 						toolCallId: toolCall.id,
 						name: toolCall.name,
-						params: stringifyForModel(toolCall.params ?? {}),
+						params: stringifyForModel(toolCall.params ?? EMPTY_TOOL_PARAMS),
 						status: "queued",
 					},
 				});
@@ -2113,7 +2115,7 @@ async function executeQueuedToolCall(params: {
 			iteration: params.iteration,
 			toolCallId: params.toolCall.id,
 			name: params.toolCall.name,
-			params: stringifyForModel(params.toolCall.params ?? {}),
+			params: stringifyForModel(params.toolCall.params ?? EMPTY_TOOL_PARAMS),
 			result: stringifyForModel(result),
 			status: result.success ? "completed" : "failed",
 		},
@@ -2143,7 +2145,10 @@ async function recordToolStage(args: {
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
 	try {
-		const inputParams = (args.toolCall.params ?? {}) as Record<string, unknown>;
+		const inputParams = (args.toolCall.params ?? EMPTY_TOOL_PARAMS) as Record<
+			string,
+			unknown
+		>;
 		const io = captureToolStageIO({
 			input: inputParams,
 			output: args.result,
@@ -2184,7 +2189,7 @@ function plannerToolCallToStreamingToolCall(
 	return {
 		id: toolCall.id ?? toolCall.name,
 		name: toolCall.name,
-		arguments: (toolCall.params ?? {}) as ToolCall["arguments"],
+		arguments: (toolCall.params ?? EMPTY_TOOL_PARAMS) as ToolCall["arguments"],
 		status,
 	};
 }
@@ -2557,7 +2562,7 @@ function canonicalParamsString(value: unknown): string {
 }
 
 function toolCallIdentity(toolCall: PlannerToolCall): string {
-	return `${toolCall.name} ${canonicalParamsString(toolCall.params ?? {})}`;
+	return `${toolCall.name} ${canonicalParamsString(toolCall.params ?? EMPTY_TOOL_PARAMS)}`;
 }
 
 /**
@@ -2943,7 +2948,7 @@ function splitUnavailableToolCalls(
 }
 
 function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
-	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
+	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? EMPTY_TOOL_PARAMS)}`;
 }
 
 /**

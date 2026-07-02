@@ -538,8 +538,8 @@ function byPriorityThenAge(
   b: LinkedAccountConfig,
 ): number {
   if (a.priority !== b.priority) return a.priority - b.priority;
-  const aLast = a.lastUsedAt ?? 0;
-  const bLast = b.lastUsedAt ?? 0;
+  const aLast = a.lastUsedAt === undefined ? 0 : a.lastUsedAt;
+  const bLast = b.lastUsedAt === undefined ? 0 : b.lastUsedAt;
   return aLast - bLast; // older first
 }
 

@@ -114,6 +114,10 @@ function isTestFile(filePath) {
   return TEST_FILE_PATTERN.test(normalizeRepoPath(filePath));
 }
 
+function isNestedGitCheckout(dir) {
+  return fs.existsSync(path.join(dir, ".git"));
+}
+
 function* walkFiles(dir) {
   let entries;
   try {
@@ -125,7 +129,9 @@ function* walkFiles(dir) {
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
-      yield* walkFiles(path.join(dir, entry.name));
+      const childDir = path.join(dir, entry.name);
+      if (isNestedGitCheckout(childDir)) continue;
+      yield* walkFiles(childDir);
       continue;
     }
     if (entry.isFile() && isTestFile(entry.name)) {
