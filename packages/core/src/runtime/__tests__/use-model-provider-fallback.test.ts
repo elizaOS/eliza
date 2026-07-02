@@ -56,6 +56,26 @@ describe("AgentRuntime.useModel provider fallback", () => {
 		expect(directApiOk).toHaveBeenCalledTimes(1);
 	});
 
+	it("falls through on Anthropic 529 overloaded provider failures", async () => {
+		const runtime = makeRuntime();
+		const overloaded = vi.fn(async () => {
+			throw statusError(
+				529,
+				"API Error: 529 Overloaded. This is a server-side issue.",
+			);
+		});
+		const openRouterOk = vi.fn(async () => "openrouter-response");
+
+		runtime.registerModel(ModelType.TEXT_LARGE, overloaded, "claude-sdk", 100);
+		runtime.registerModel(ModelType.TEXT_LARGE, openRouterOk, "openrouter", 10);
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+		).resolves.toBe("openrouter-response");
+		expect(overloaded).toHaveBeenCalledTimes(1);
+		expect(openRouterOk).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not fall through for non-retryable provider errors", async () => {
 		const runtime = makeRuntime();
 		const badRequest = vi.fn(async () => {
