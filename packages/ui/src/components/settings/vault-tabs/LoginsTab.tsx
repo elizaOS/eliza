@@ -7,6 +7,11 @@
 import { Bot, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useAgentElement } from "../../../agent-surface";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -136,8 +141,10 @@ export function LoginsTab() {
       const unique = Array.from(new Set(domains.filter(Boolean)));
       const responses = await Promise.all(
         unique.map(async (d): Promise<readonly [string, boolean]> => {
-          const res = await fetch(
+          const res = await client.rawRequest(
             `/api/secrets/logins/${encodeURIComponent(d)}/autoallow`,
+            undefined,
+            { allowNonOk: true },
           );
           if (!res.ok) return [d, false] as const;
           const json = (await res.json()) as {
@@ -157,7 +164,9 @@ export function LoginsTab() {
     setError(null);
     setLogins(null);
     try {
-      const res = await fetch("/api/secrets/logins");
+      const res = await client.rawRequest("/api/secrets/logins", undefined, {
+        allowNonOk: true,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as {
         logins: SavedLogin[];
@@ -190,13 +199,14 @@ export function LoginsTab() {
     async (domain: string, next: boolean) => {
       // Optimistic update; reverted on error.
       setAutoallowMap((prev) => ({ ...prev, [domain]: next }));
-      const res = await fetch(
+      const res = await client.rawRequest(
         `/api/secrets/logins/${encodeURIComponent(domain)}/autoallow`,
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ allowed: next }),
         },
+        { allowNonOk: true },
       );
       if (!res.ok) {
         setError(`HTTP ${res.status} (autoallow update failed)`);
@@ -216,15 +226,19 @@ export function LoginsTab() {
       if (!addDomain.trim() || !addUsername || !addPassword) return;
       setSubmitting(true);
       setError(null);
-      const res = await fetch("/api/secrets/logins", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          domain: addDomain.trim(),
-          username: addUsername,
-          password: addPassword,
-        }),
-      });
+      const res = await client.rawRequest(
+        "/api/secrets/logins",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            domain: addDomain.trim(),
+            username: addUsername,
+            password: addPassword,
+          }),
+        },
+        { allowNonOk: true },
+      );
       setSubmitting(false);
       if (!res.ok) {
         setError(`HTTP ${res.status}`);
@@ -255,7 +269,11 @@ export function LoginsTab() {
       const domainPart = colon > 0 ? login.identifier.slice(0, colon) : "";
       const userPart = colon > 0 ? login.identifier.slice(colon + 1) : "";
       const path = `/api/secrets/logins/${encodeURIComponent(domainPart)}/${encodeURIComponent(userPart)}`;
-      const res = await fetch(path, { method: "DELETE" });
+      const res = await client.rawRequest(
+        path,
+        { method: "DELETE" },
+        { allowNonOk: true },
+      );
       if (!res.ok) {
         setError(`HTTP ${res.status}`);
         return;

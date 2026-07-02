@@ -9,7 +9,5 @@ export const DEFAULT_VAD_AUTO_STOP_PREFS: VadAutoStopPrefs = {
 
 export const DEFAULT_VOICE_SECTION_PREFS: VoiceSectionPrefs = {
   continuous: DEFAULT_VOICE_CONTINUOUS_MODE,
-  cloudFirstLineCache: false,
-  autoLearnVoices: true,
   vadAutoStop: DEFAULT_VAD_AUTO_STOP_PREFS,
 };
