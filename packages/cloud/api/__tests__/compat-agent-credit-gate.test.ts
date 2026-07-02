@@ -473,4 +473,29 @@ describe("compat agent create credit + quota gate (elizaOS/eliza#11678)", () => 
     ).toBeUndefined();
     expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
   });
+
+  test("does not gate or cap trusted service-jwt (waifu-bridge S2S) creates", async () => {
+    authenticateWaifuBridge.mockResolvedValue({
+      user: { id: "waifu-user-1", organization_id: "org-1" },
+    });
+
+    const response = await app.fetch(
+      createRequest({ Authorization: "Bearer waifu-jwt" }),
+      {},
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: { agentId: "agent-new" },
+    });
+    expect(authenticateWaifuBridge).toHaveBeenCalled();
+    // Trusted bridge path: no credit gate, no quota cap (waifu-core must not break).
+    expect(checkAgentCreditGate).not.toHaveBeenCalled();
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    expect(
+      (createAgent.mock.calls[0]?.[0] as Record<string, unknown>)
+        .maxNonTerminalAgents,
+    ).toBeUndefined();
+  });
 });
