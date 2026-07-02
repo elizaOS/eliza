@@ -197,9 +197,14 @@ export function getImageDescriptionModel(runtime: IAgentRuntime): string {
 }
 
 export function getImageGenerationModel(runtime: IAgentRuntime): string {
+  // Must be a cloud SUPPORTED_IMAGE_MODELS id with an image:generation price;
+  // the retired BitRouter default (google/gemini-2.5-flash-image) 500'd (#11005).
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL", "google/gemini-2.5-flash-image") ??
-    "google/gemini-2.5-flash-image"
+    getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL",
+      "google/nano-banana-2/text-to-image",
+    ) ?? "google/nano-banana-2/text-to-image"
   );
 }
 

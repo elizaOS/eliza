@@ -91,7 +91,6 @@ export const PRICING_MODEL_ALIASES = {
   "vertex/claude-4-sonnet-20250514": ["anthropic/claude-sonnet-4"],
   "vertex/gemini-2.0-flash-001": ["google/gemini-2.0-flash"],
   "vertex/gemini-2.0-flash-lite-001": ["google/gemini-2.0-flash-lite"],
-  "google/gemini-3-pro-image": ["google/gemini-3-pro-image-preview"],
   "xai/grok-2-1212": ["xai/grok-3"],
   "xai/grok-2-vision-1212": ["xai/grok-3"],
   "xai/grok-2": ["xai/grok-3"],
@@ -192,60 +191,18 @@ export interface ElevenLabsSnapshotEntry {
   metadata?: Record<string, unknown>;
 }
 
+// Every entry here MUST have an `image:generation` pricing row emitted by its
+// billing source's catalog builder (atlascloud.ts / fal.ts). The former
+// BitRouter image models (gemini-*-image*, gpt-5*-image*) were removed because
+// BitRouter's pricing builder only emits token input/output rows — the image
+// routes call calculateImageGenerationCostFromCatalog() BEFORE dispatch, so an
+// unpriced model 500s "Pricing unavailable for image:generation" (#11005) —
+// and BitRouter is no longer in the routing path.
 export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
-  {
-    modelId: "google/gemini-2.5-flash-image",
-    provider: "google",
-    billingSource: "bitrouter",
-    label: "Gemini 2.5 Flash Image",
-    sourceUrl: "https://api.bitrouter.ai/v1/models",
-    defaultDimensions: { size: "default" },
-  },
-  {
-    modelId: "google/gemini-3-pro-image-preview",
-    provider: "google",
-    billingSource: "bitrouter",
-    label: "Gemini 3 Pro Image Preview",
-    sourceUrl: "https://api.bitrouter.ai/v1/models",
-    defaultDimensions: { size: "default" },
-  },
-  {
-    modelId: "google/gemini-3.1-flash-image-preview",
-    provider: "google",
-    billingSource: "bitrouter",
-    label: "Gemini 3.1 Flash Image Preview",
-    sourceUrl: "https://api.bitrouter.ai/v1/models",
-    defaultDimensions: { size: "default" },
-  },
-  {
-    modelId: "openai/gpt-5.4-image-2",
-    provider: "openai",
-    billingSource: "bitrouter",
-    label: "GPT-5.4 Image 2",
-    sourceUrl: "https://api.bitrouter.ai/v1/models",
-    defaultDimensions: { size: "1024x1024", quality: "high" },
-  },
-  {
-    modelId: "openai/gpt-5-image-mini",
-    provider: "openai",
-    billingSource: "bitrouter",
-    label: "GPT-5 Image Mini",
-    sourceUrl: "https://api.bitrouter.ai/v1/models",
-    defaultDimensions: { size: "1024x1024", quality: "medium" },
-  },
-  {
-    modelId: "openai/gpt-5-image",
-    provider: "openai",
-    billingSource: "bitrouter",
-    label: "GPT-5 Image",
-    sourceUrl: "https://api.bitrouter.ai/v1/models",
-    defaultDimensions: { size: "1024x1024", quality: "high" },
-  },
   // Atlas Cloud image models. Atlas serves images via its async predict/poll
   // API (/api/v1/model/generateImage); model ids are task-suffixed
   // (e.g. "openai/gpt-image-2/text-to-image"). Native, un-marked-up provider
-  // pricing. These are Atlas-only model ids so they do not collide with the
-  // BitRouter entries above (getSupportedImageModelDefinition keys on modelId).
+  // pricing.
   {
     modelId: "openai/gpt-image-2/text-to-image",
     provider: "openai",
@@ -295,6 +252,15 @@ export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
     defaultDimensions: { image_size: "square_hd" },
   },
 ] as const;
+
+/**
+ * Canonical default image-generation model, used by /v1/generate-image,
+ * /v1/apps/[id]/generate-image, the A2A image skill, promotion assets, and the
+ * agent-runtime image setting. Nano Banana 2 (Google via Atlas Cloud) is the
+ * closest analog to the retired BitRouter Gemini Flash Image default and has a
+ * confirmed `image:generation` catalog row (see ai-pricing/providers/atlascloud.ts).
+ */
+export const DEFAULT_IMAGE_MODEL_ID = "google/nano-banana-2/text-to-image";
 
 export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   {

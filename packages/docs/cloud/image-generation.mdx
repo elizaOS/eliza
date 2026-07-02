@@ -30,7 +30,7 @@ curl -X POST "https://elizacloud.ai/api/v1/generate-image" \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "A futuristic cityscape at sunset, cyberpunk style",
-    "model": "google/gemini-2.5-flash-image",
+    "model": "google/nano-banana-2/text-to-image",
     "aspectRatio": "16:9",
     "numImages": 1
   }'
@@ -47,7 +47,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-image', {
   },
   body: JSON.stringify({
     prompt: 'A futuristic cityscape at sunset, cyberpunk style',
-    model: 'google/gemini-2.5-flash-image',
+    model: 'google/nano-banana-2/text-to-image',
     aspectRatio: '16:9',
     numImages: 1,
   }),
@@ -71,7 +71,7 @@ response = requests.post(
     },
     json={
         'prompt': 'A futuristic cityscape at sunset, cyberpunk style',
-        'model': 'google/gemini-2.5-flash-image',
+        'model': 'google/nano-banana-2/text-to-image',
         'aspectRatio': '16:9',
         'numImages': 1,
     },
@@ -110,7 +110,7 @@ the current model catalog and pricing-sensitive defaults.
 | Parameter       | Type    | Required | Description                                               |
 | --------------- | ------- | -------- | --------------------------------------------------------- |
 | `prompt`      | string  | ✓        | Text description of the image                             |
-| `model`       | string  |          | Model to use (default: `google/gemini-2.5-flash-image`) |
+| `model`       | string  |          | Model to use (default: `google/nano-banana-2/text-to-image`) |
 | `aspectRatio` | string  |          | Output aspect ratio (default: `1:1`)                    |
 | `numImages`   | integer |          | Number of images (1-4, default: 1)                        |
 | `stylePreset` | string  |          | Style preset to apply                                     |
