@@ -328,7 +328,7 @@ export function createPinnedLookup(params: {
 export type PinnedHostname = {
 	hostname: string;
 	addresses: string[];
-	lookup: unknown;
+	lookup: PinnedLookup;
 };
 
 /**

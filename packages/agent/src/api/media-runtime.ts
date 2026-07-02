@@ -9,7 +9,12 @@
  */
 
 import type { IAgentRuntime, Memory, Route } from "@elizaos/core";
-import { fetchRemoteMedia, logger } from "@elizaos/core";
+import {
+  fetchRemoteMedia,
+  logger,
+  nodeLookupFn,
+  nodePinnedFetch,
+} from "@elizaos/core";
 import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,
@@ -43,6 +48,8 @@ async function rehostRemoteMediaUrl(url: string): Promise<string | null> {
     const { buffer, contentType } = await fetchRemoteMedia({
       url,
       maxBytes: REHOST_MAX_BYTES,
+      lookupFn: nodeLookupFn,
+      pinnedFetchImpl: nodePinnedFetch,
     });
     return persistMediaBytes(buffer, contentType ?? "application/octet-stream")
       .url;
