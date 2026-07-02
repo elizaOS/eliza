@@ -556,9 +556,12 @@ describe("POST /apps/:id/domains/buy — idempotency single-flights the purchase
 
   test("retried duplicate of a completed purchase → replays the cached 200 without re-charging", async () => {
     idempotencyReturning.mockResolvedValue([]);
+    // app_id is NOT NULL on the real claim row; the cached replay is app-scoped,
+    // so the fixture must carry the SAME app the retry posts to ("app-1").
     dbReadLimit.mockResolvedValue([
       {
         status: "completed",
+        app_id: "app-1",
         expires_at: new Date(Date.now() + 3_600_000),
         response_body: { success: true, domain: "example.com", replayed: true },
       },
