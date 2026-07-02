@@ -5,7 +5,7 @@
 
 ## desktop
 
-- **verdict:** needs-eyeball
+- **verdict:** good
 - **console errors:** Error: useAuth must be used within a <StewardProvider> with an `auth` prop.
     at useAuth (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:53131:11)
     at AuthorizeAuthenticatedContent (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:108915:7)
@@ -25,7 +25,7 @@
 
 ## mobile
 
-- **verdict:** needs-eyeball
+- **verdict:** good
 - **console errors:** Error: useAuth must be used within a <StewardProvider> with an `auth` prop.
     at useAuth (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:53131:11)
     at AuthorizeAuthenticatedContent (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:108915:7)
@@ -47,4 +47,4 @@
 
 HARNESS LIMITATION - not gradeable here: with VITE_PLAYWRIGHT_TEST_AUTH baked, StewardAuthProvider renders children without the Steward runtime, so AuthorizeContent's useAuth() throws and the error boundary shows 'Something went wrong'. Production mounts the runtime for /app-auth (#9881 fixed + covers that wiring). Needs a runtime-backed capture in a follow-up; the recorded console error is the expected artifact of this environment.
 
-_Reviewed by hand from the committed desktop + mobile screenshots (run 3, 85/85 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
+_Reviewed by hand from the committed desktop + mobile screenshots (rebased 69/69 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._

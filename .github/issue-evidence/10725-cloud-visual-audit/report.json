@@ -53,7 +53,7 @@
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 55,
+      "colorBuckets": 54,
       "dominantRatio": 0.5335069444444445
     },
     "qualityIssues": [],
@@ -120,126 +120,6 @@
     "verdict": "needs-eyeball"
   },
   {
-    "slug": "dashboard-account",
-    "viewport": "desktop",
-    "path": "/dashboard/account",
-    "route": "dashboard/account",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 950,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 57,
-      "dominantRatio": 0.41180555555555554
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-account",
-    "viewport": "mobile",
-    "path": "/dashboard/account",
-    "route": "dashboard/account",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 950,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 44,
-      "dominantRatio": 0.6441761363636364
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-security",
-    "viewport": "desktop",
-    "path": "/dashboard/security",
-    "route": "dashboard/security",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 1359,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 60,
-      "dominantRatio": 0.36770833333333336
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-security",
-    "viewport": "mobile",
-    "path": "/dashboard/security",
-    "route": "dashboard/security",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 1359,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 62,
-      "dominantRatio": 0.48792613636363635
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-security-permissions",
-    "viewport": "desktop",
-    "path": "/dashboard/security/permissions",
-    "route": "dashboard/security/permissions",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 67,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 14,
-      "dominantRatio": 0.8503472222222223
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-security-permissions",
-    "viewport": "mobile",
-    "path": "/dashboard/security/permissions",
-    "route": "dashboard/security/permissions",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 67,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 20,
-      "dominantRatio": 0.84375
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
     "slug": "dashboard-analytics",
     "viewport": "desktop",
     "path": "/dashboard/analytics",
@@ -275,52 +155,6 @@
       "sampledPixels": 4224,
       "colorBuckets": 46,
       "dominantRatio": 0.5279356060606061
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-billing",
-    "viewport": "desktop",
-    "path": "/dashboard/billing",
-    "route": "dashboard/billing",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [
-      "\"Buy credits\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
-      "\"Save\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
-    ],
-    "readableChars": 972,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 52,
-      "dominantRatio": 0.4204861111111111
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-billing",
-    "viewport": "mobile",
-    "path": "/dashboard/billing",
-    "route": "dashboard/billing",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [
-      "\"Buy credits\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
-      "\"Save\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
-    ],
-    "readableChars": 972,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 59,
-      "dominantRatio": 0.4424715909090909
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -374,13 +208,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 306,
+    "readableChars": 187,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 56,
-      "dominantRatio": 0.5847222222222223
+      "colorBuckets": 38,
+      "dominantRatio": 0.8539930555555556
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -394,13 +228,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 306,
+    "readableChars": 187,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 92,
-      "dominantRatio": 0.2928503787878788
+      "colorBuckets": 45,
+      "dominantRatio": 0.4831912878787879
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -441,52 +275,6 @@
       "sampledPixels": 4224,
       "colorBuckets": 100,
       "dominantRatio": 0.25804924242424243
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-settings-connections",
-    "viewport": "desktop",
-    "path": "/dashboard/settings/connections",
-    "route": "dashboard/settings/connections",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [
-      "\"Connect Discord Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
-      "\"Connect Telegram Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
-    ],
-    "readableChars": 3312,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 81,
-      "dominantRatio": 0.24965277777777778
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-settings-connections",
-    "viewport": "mobile",
-    "path": "/dashboard/settings/connections",
-    "route": "dashboard/settings/connections",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [
-      "\"Connect Discord Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded.",
-      "\"Connect Telegram Bot\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
-    ],
-    "readableChars": 3312,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 87,
-      "dominantRatio": 0.2871685606060606
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -545,7 +333,7 @@
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 33,
+      "colorBuckets": 34,
       "dominantRatio": 0.8079861111111111
     },
     "qualityIssues": [],
@@ -580,13 +368,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 148,
+    "readableChars": 187,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 33,
-      "dominantRatio": 0.8645833333333334
+      "colorBuckets": 38,
+      "dominantRatio": 0.8539930555555556
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -600,13 +388,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 148,
+    "readableChars": 187,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 39,
-      "dominantRatio": 0.5229640151515151
+      "colorBuckets": 45,
+      "dominantRatio": 0.4831912878787879
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -646,7 +434,7 @@
       "height": 96,
       "sampledPixels": 4224,
       "colorBuckets": 34,
-      "dominantRatio": 0.4322916666666667
+      "dominantRatio": 0.4325284090909091
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -665,7 +453,7 @@
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 43,
+      "colorBuckets": 42,
       "dominantRatio": 0.8668402777777777
     },
     "qualityIssues": [],
@@ -706,7 +494,7 @@
       "height": 60,
       "sampledPixels": 5760,
       "colorBuckets": 19,
-      "dominantRatio": 0.9574652777777778
+      "dominantRatio": 0.9576388888888889
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -900,13 +688,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 148,
+    "readableChars": 187,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 33,
-      "dominantRatio": 0.8645833333333334
+      "colorBuckets": 38,
+      "dominantRatio": 0.8539930555555556
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -920,13 +708,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 148,
+    "readableChars": 187,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 39,
-      "dominantRatio": 0.5229640151515151
+      "colorBuckets": 45,
+      "dominantRatio": 0.4831912878787879
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -1060,13 +848,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 72,
+    "readableChars": 63,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
       "colorBuckets": 17,
-      "dominantRatio": 0.9828125
+      "dominantRatio": 0.9866319444444445
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -1080,13 +868,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 72,
+    "readableChars": 63,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
       "colorBuckets": 20,
-      "dominantRatio": 0.9521780303030303
+      "dominantRatio": 0.9569128787878788
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -1096,44 +884,40 @@
     "viewport": "desktop",
     "path": "/app-auth/authorize?app_id=app-smoke-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcb",
     "route": "app-auth/authorize",
-    "consoleErrors": [
-      "Error: useAuth must be used within a <StewardProvider> with an `auth` prop.\n    at useAuth (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:53131:11)\n    at AuthorizeAuthenticatedContent (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:108915:7)\n    at renderWithHooks (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:4142:23)\n    at updateFunctionComponent (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:5771:17)\n    at beginWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:6382:16)\n    at performUnitOfWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9148:16)\n    at workLoopSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9046:39)\n    at renderRootSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9030:9)\n    at performWorkOnRoot (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:8705:42)\n    at performWorkOnRootViaSchedulerTask (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9703:5)"
-    ],
+    "consoleErrors": [],
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 99,
+    "readableChars": 170,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 18,
-      "dominantRatio": 0.9883680555555555
+      "colorBuckets": 49,
+      "dominantRatio": 0.4822916666666667
     },
     "qualityIssues": [],
-    "verdict": "broken"
+    "verdict": "needs-eyeball"
   },
   {
     "slug": "app-auth-authorize",
     "viewport": "mobile",
     "path": "/app-auth/authorize?app_id=app-smoke-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcb",
     "route": "app-auth/authorize",
-    "consoleErrors": [
-      "Error: useAuth must be used within a <StewardProvider> with an `auth` prop.\n    at useAuth (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:53131:11)\n    at AuthorizeAuthenticatedContent (http://127.0.0.1:59796/assets/vendor-crypto-C3acyo1E.js:108915:7)\n    at renderWithHooks (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:4142:23)\n    at updateFunctionComponent (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:5771:17)\n    at beginWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:6382:16)\n    at performUnitOfWork (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9148:16)\n    at workLoopSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9046:39)\n    at renderRootSync (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9030:9)\n    at performWorkOnRoot (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:8705:42)\n    at performWorkOnRootViaSchedulerTask (http://127.0.0.1:59796/assets/vendor-react-CGhIJj0G.js:9703:5)"
-    ],
+    "consoleErrors": [],
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 99,
+    "readableChars": 170,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 26,
-      "dominantRatio": 0.9618844696969697
+      "colorBuckets": 55,
+      "dominantRatio": 0.5975378787878788
     },
     "qualityIssues": [],
-    "verdict": "broken"
+    "verdict": "needs-eyeball"
   },
   {
     "slug": "terms-of-service",
@@ -1416,130 +1200,6 @@
     "verdict": "needs-eyeball"
   },
   {
-    "slug": "dashboard-monetization",
-    "viewport": "desktop",
-    "path": "/dashboard/monetization",
-    "route": "dashboard/monetization",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 743,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 56,
-      "dominantRatio": 0.546875
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-monetization",
-    "viewport": "mobile",
-    "path": "/dashboard/monetization",
-    "route": "dashboard/monetization",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 743,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 67,
-      "dominantRatio": 0.6221590909090909
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-earnings",
-    "viewport": "desktop",
-    "path": "/dashboard/earnings",
-    "route": "dashboard/earnings",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 723,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 47,
-      "dominantRatio": 0.5208333333333334
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-earnings",
-    "viewport": "mobile",
-    "path": "/dashboard/earnings",
-    "route": "dashboard/earnings",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [],
-    "readableChars": 723,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 39,
-      "dominantRatio": 0.6863162878787878
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-affiliates",
-    "viewport": "desktop",
-    "path": "/dashboard/affiliates",
-    "route": "dashboard/affiliates",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [
-      "\"Save Config\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
-    ],
-    "readableChars": 1769,
-    "quality": {
-      "width": 96,
-      "height": 60,
-      "sampledPixels": 5760,
-      "colorBuckets": 21,
-      "dominantRatio": 0.4557291666666667
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
-    "slug": "dashboard-affiliates",
-    "viewport": "mobile",
-    "path": "/dashboard/affiliates",
-    "route": "dashboard/affiliates",
-    "consoleErrors": [],
-    "blueColors": [],
-    "hoverViolations": [],
-    "hoverFailures": [
-      "\"Save Config\" hover probe failed: locator.hover: Timeout 1000ms exceeded."
-    ],
-    "readableChars": 1769,
-    "quality": {
-      "width": 44,
-      "height": 96,
-      "sampledPixels": 4224,
-      "colorBuckets": 17,
-      "dominantRatio": 0.803030303030303
-    },
-    "qualityIssues": [],
-    "verdict": "needs-eyeball"
-  },
-  {
     "slug": "dashboard-admin",
     "viewport": "desktop",
     "path": "/dashboard/admin",
@@ -1634,7 +1294,7 @@
       "height": 60,
       "sampledPixels": 5760,
       "colorBuckets": 53,
-      "dominantRatio": 0.7626736111111111
+      "dominantRatio": 0.7630208333333334
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"

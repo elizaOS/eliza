@@ -27,4 +27,4 @@
 
 White marketing page: 'Buy cloud credit on BSC', amount presets, You pay/You receive, black Sign in CTA (neutral — allowed; no blue).
 
-_Reviewed by hand from the committed desktop + mobile screenshots (run 3, 85/85 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
+_Reviewed by hand from the committed desktop + mobile screenshots (rebased 69/69 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._

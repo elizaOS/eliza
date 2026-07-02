@@ -27,4 +27,4 @@
 
 White invite page: org/email/role/inviter details card, amber expiry banner, orange 'Sign In to Accept' + Decline. Fully legible.
 
-_Reviewed by hand from the committed desktop + mobile screenshots (run 3, 85/85 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
+_Reviewed by hand from the committed desktop + mobile screenshots (rebased 69/69 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._

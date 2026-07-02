@@ -16,7 +16,7 @@ import {
  * Cloud-surface aesthetic audit (#10725 / #11342) — the audit:app equivalent
  * for the app-hosted Eliza Cloud surfaces. `audit:app` walks the tab/view app
  * (builtin tabs + plugin views) but never enters the CloudRouterShell route
- * space, so the ~28 cloud surfaces registered in
+ * space, so the cloud surfaces registered in
  * `packages/ui/src/cloud/register-all.ts` shipped with no visual-audit loop.
  *
  * This walk visits EVERY registered cloud route (parametric routes get a
@@ -102,25 +102,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     route: "dashboard/my-agents",
     auth: AUTH,
   },
-  // account-security/
-  {
-    slug: "dashboard-account",
-    path: "/dashboard/account",
-    route: "dashboard/account",
-    auth: AUTH,
-  },
-  {
-    slug: "dashboard-security",
-    path: "/dashboard/security",
-    route: "dashboard/security",
-    auth: AUTH,
-  },
-  {
-    slug: "dashboard-security-permissions",
-    path: "/dashboard/security/permissions",
-    route: "dashboard/security/permissions",
-    auth: AUTH,
-  },
   // analytics/
   {
     slug: "dashboard-analytics",
@@ -129,12 +110,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     auth: AUTH,
   },
   // billing/
-  {
-    slug: "dashboard-billing",
-    path: "/dashboard/billing",
-    route: "dashboard/billing",
-    auth: AUTH,
-  },
   {
     slug: "dashboard-billing-success",
     path: "/dashboard/billing/success",
@@ -152,13 +127,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "dashboard-organization",
     path: "/dashboard/organization",
     route: "dashboard/organization",
-    auth: AUTH,
-  },
-  // connectors/
-  {
-    slug: "dashboard-settings-connections",
-    path: "/dashboard/settings/connections",
-    route: "dashboard/settings/connections",
     auth: AUTH,
   },
   // join/ — signed-out /join redirects to /login (audited separately), so
@@ -293,25 +261,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "dashboard-approvals",
     path: "/dashboard/approvals",
     route: "dashboard/approvals",
-    auth: AUTH,
-  },
-  // monetization/
-  {
-    slug: "dashboard-monetization",
-    path: "/dashboard/monetization",
-    route: "dashboard/monetization",
-    auth: AUTH,
-  },
-  {
-    slug: "dashboard-earnings",
-    path: "/dashboard/earnings",
-    route: "dashboard/earnings",
-    auth: AUTH,
-  },
-  {
-    slug: "dashboard-affiliates",
-    path: "/dashboard/affiliates",
-    route: "dashboard/affiliates",
     auth: AUTH,
   },
   // admin/

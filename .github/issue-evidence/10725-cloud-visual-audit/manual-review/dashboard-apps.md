@@ -27,4 +27,4 @@
 
 Stat cards are legible (dark text on cream), the app row renders name/URL/stats/menu, Create App CTA on top. Minor notes: purple trend + blue-ish users glyphs in tiny stat icons (SVG tints, not flagged by the DOM scan), green ACTIVE badge is low-contrast on the orange row.
 
-_Reviewed by hand from the committed desktop + mobile screenshots (run 3, 85/85 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
+_Reviewed by hand from the committed desktop + mobile screenshots (rebased 69/69 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
