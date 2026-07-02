@@ -13,6 +13,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import { getDefaultTriageService } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -375,6 +376,187 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(select).toContain("resolved = FALSE");
       expect(select).toContain("snoozed_until IS NULL");
       expect(select).toContain("LIMIT 5");
+    });
+
+    it("runs the triage classifier over fresh messages and persists one entry per message", async () => {
+      setInboxFetchers({
+        gmail: async () => [
+          makeItem({
+            platform: "gmail",
+            id: "gmail-fresh-1",
+            senderName: "Priya",
+            snippet: "PROD IS DOWN — approve the rollback now",
+            receivedAt: "2026-05-11T10:05:00.000Z",
+          }),
+          makeItem({
+            platform: "gmail",
+            id: "gmail-fresh-2",
+            senderName: "ShoeDeals Weekly",
+            snippet: "50% OFF SNEAKERS this weekend only",
+            receivedAt: "2026-05-11T10:00:00.000Z",
+          }),
+        ],
+      });
+      // Full canonical ref in the core store for the first item — the
+      // classifier input must carry the full body, not just the snippet.
+      getDefaultTriageService()
+        .getStore()
+        .saveMessage({
+          id: "gmail-fresh-1",
+          source: "gmail",
+          externalId: "gmail-fresh-1",
+          from: { identifier: "priya@example.com", displayName: "Priya" },
+          to: [{ identifier: "owner@example.com" }],
+          snippet: "PROD IS DOWN — approve the rollback now",
+          body: "PROD IS DOWN — checkout is returning 500s for every customer. Approve the emergency rollback right now.",
+          receivedAtMs: Date.parse("2026-05-11T10:05:00.000Z"),
+          hasAttachments: false,
+          isRead: false,
+        });
+
+      const { runtime, calls } = makeDbRuntime((sql) => {
+        if (sql.includes("SELECT source_message_id")) return [];
+        if (sql.includes("WHERE source_message_id =")) return [];
+        if (sql.includes("life_inbox_triage_examples")) return [];
+        if (sql.startsWith("INSERT")) return [];
+        return [makeTriageRow({ id: "entry-fresh-1" })];
+      });
+      const useModel = vi.fn(async (_type: string, _params: unknown) =>
+        JSON.stringify({
+          results: [
+            {
+              classification: "urgent",
+              urgency: "high",
+              confidence: 0.95,
+              reasoning: "production outage",
+              suggestedResponse: null,
+            },
+            {
+              classification: "ignore",
+              urgency: "low",
+              confidence: 0.9,
+              reasoning: "automated promotion",
+              suggestedResponse: null,
+            },
+          ],
+        }),
+      );
+      (runtime as { useModel?: unknown }).useModel = useModel;
+      (runtime as { getService?: unknown }).getService = () => null;
+
+      const result = await callInbox(runtime, makeMessage("triage my inbox"), {
+        subaction: "triage",
+        platforms: ["gmail"],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("Triaged 2 new messages");
+      expect(result.data).toMatchObject({ subaction: "triage", classified: 2 });
+
+      // Exactly one classifier call, carrying the full stored body (not just
+      // the fetched snippet) for the store-backed message.
+      expect(useModel).toHaveBeenCalledTimes(1);
+      const prompt = (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt;
+      expect(prompt).toContain("Classify each message");
+      expect(prompt).toContain("checkout is returning 500s for every customer");
+      expect(prompt).toContain("50% OFF SNEAKERS");
+
+      const inserts = calls.filter((call) => call.sql.startsWith("INSERT"));
+      expect(inserts).toHaveLength(2);
+      expect(inserts[0]?.sql).toContain("'urgent'");
+      expect(inserts[1]?.sql).toContain("'ignore'");
+    });
+
+    it("classifies only messages without a persisted triage entry", async () => {
+      setInboxFetchers({
+        gmail: async () => [
+          makeItem({
+            platform: "gmail",
+            id: "gmail-old-1",
+            snippet: "already triaged",
+            receivedAt: "2026-05-11T10:05:00.000Z",
+          }),
+          makeItem({
+            platform: "gmail",
+            id: "gmail-new-1",
+            snippet: "brand new question about the launch",
+            receivedAt: "2026-05-11T10:00:00.000Z",
+          }),
+        ],
+      });
+
+      const { runtime, calls } = makeDbRuntime((sql) => {
+        if (sql.includes("SELECT source_message_id"))
+          return [{ source_message_id: "gmail-old-1" }];
+        if (sql.includes("WHERE source_message_id =")) return [];
+        if (sql.includes("life_inbox_triage_examples")) return [];
+        if (sql.startsWith("INSERT")) return [];
+        return [makeTriageRow({ id: "entry-new-1" })];
+      });
+      const useModel = vi.fn(async () =>
+        JSON.stringify({
+          results: [
+            {
+              classification: "needs_reply",
+              urgency: "medium",
+              confidence: 0.8,
+              reasoning: "direct question",
+              suggestedResponse: null,
+            },
+          ],
+        }),
+      );
+      (runtime as { useModel?: unknown }).useModel = useModel;
+      (runtime as { getService?: unknown }).getService = () => null;
+
+      const result = await callInbox(runtime, makeMessage("triage my inbox"), {
+        subaction: "triage",
+        platforms: ["gmail"],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({ classified: 1 });
+      expect(useModel).toHaveBeenCalledTimes(1);
+      const prompt = (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt;
+      expect(prompt).toContain("brand new question about the launch");
+      expect(prompt).not.toContain("already triaged");
+      expect(
+        calls.filter((call) => call.sql.startsWith("INSERT")),
+      ).toHaveLength(1);
+    });
+
+    it("surfaces a classifier failure as an action failure instead of silently degrading", async () => {
+      setInboxFetchers({
+        gmail: async () => [
+          makeItem({
+            platform: "gmail",
+            id: "gmail-fail-1",
+            snippet: "will not classify",
+            receivedAt: "2026-05-11T10:00:00.000Z",
+          }),
+        ],
+      });
+
+      const { runtime, calls } = makeDbRuntime((sql) => {
+        if (sql.includes("SELECT source_message_id")) return [];
+        if (sql.includes("life_inbox_triage_examples")) return [];
+        return [];
+      });
+      (runtime as { useModel?: unknown }).useModel = vi.fn(async () => {
+        throw new Error("model unavailable");
+      });
+      (runtime as { getService?: unknown }).getService = () => null;
+
+      const result = await callInbox(runtime, makeMessage("triage my inbox"), {
+        subaction: "triage",
+        platforms: ["gmail"],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "INBOX_OPERATION_FAILED" });
+      expect(
+        calls.filter((call) => call.sql.startsWith("INSERT")),
+      ).toHaveLength(0);
     });
 
     it("snoozes a persisted triage entry until the provided timestamp", async () => {

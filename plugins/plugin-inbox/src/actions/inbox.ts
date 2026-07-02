@@ -10,7 +10,10 @@
  *   - `list`       — list recent messages across selected platforms
  *   - `search`     — search across selected platforms by `query`
  *   - `summarize`  — return a per-platform count + a single rolled-up summary
- *   - `triage`     — list persisted triage queue entries
+ *   - `triage`     — run the AI triage classifier over fresh cross-channel
+ *                    messages (`InboxService.triage` → `classifyMessages`, the
+ *                    `inbox_triage` optimized-prompt consumer), persist one
+ *                    entry per new message, then return the pending queue
  *   - `reply`      — draft or send a connector-backed reply
  *   - `snooze`     — hide a triage entry until a future timestamp
  *   - `archive`    — archive through the connector adapter and resolve
@@ -40,7 +43,12 @@ import type {
 } from "@elizaos/core";
 import { getDefaultTriageService, logger } from "@elizaos/core";
 import { InboxRepository } from "../inbox/repository.ts";
-import type { TriageClassification, TriageEntry } from "../inbox/types.ts";
+import { InboxService } from "../inbox/service.ts";
+import type {
+  InboundMessage,
+  TriageClassification,
+  TriageEntry,
+} from "../inbox/types.ts";
 
 const ACTION_NAME = "INBOX";
 
@@ -322,6 +330,64 @@ function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
   });
 }
 
+/**
+ * Fan out to the per-platform fetchers and return the deduped, recency-ordered
+ * merge. Shared by the `list` / `search` / `summarize` reads and the `triage`
+ * classification path.
+ */
+async function fetchInboxItems(args: {
+  runtime: IAgentRuntime;
+  platforms: readonly InboxPlatform[];
+  since?: string;
+  limit: number;
+  query?: string;
+}): Promise<{
+  merged: readonly InboxItem[];
+  totalBeforeDedupe: number;
+}> {
+  const fetched = await Promise.all(
+    args.platforms.map(async (platform) => {
+      const fetcher = activeFetchers[platform];
+      return fetcher({
+        runtime: args.runtime,
+        ...(args.since ? { since: args.since } : {}),
+        limit: args.limit,
+        ...(args.query ? { query: args.query } : {}),
+      });
+    }),
+  );
+  const flat = fetched.flat();
+  return { merged: dedupeAndOrder(flat), totalBeforeDedupe: flat.length };
+}
+
+/**
+ * Project a fetched inbox item onto the classifier's {@link InboundMessage}
+ * contract, enriching from the canonical {@link MessageRef} in the core triage
+ * store when one exists (full body text, group/DM shape, thread + room ids).
+ */
+function toInboundMessage(item: InboxItem): InboundMessage {
+  const ref = getDefaultTriageService().getStore().getMessage(item.id);
+  const timestamp = ref?.receivedAtMs ?? Date.parse(item.receivedAt);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(
+      `inbox item ${item.id} has an invalid receivedAt timestamp`,
+    );
+  }
+  return {
+    id: item.id,
+    source: item.platform,
+    senderName: item.senderName,
+    channelName: item.threadTopic ?? item.channel,
+    channelType: ref && ref.to.length > 1 ? "group" : "dm",
+    text: ref?.body ?? item.snippet,
+    snippet: item.snippet,
+    timestamp,
+    ...(ref?.channelId ? { roomId: ref.channelId } : {}),
+    ...(ref?.threadId ? { threadId: ref.threadId } : {}),
+    ...(item.deepLink ? { deepLink: item.deepLink } : {}),
+  };
+}
+
 function buildSummary(
   items: readonly InboxItem[],
   platforms: readonly InboxPlatform[],
@@ -570,6 +636,36 @@ export async function executeInboxQueueOperation(args: {
         typeof args.params.limit === "number" && args.params.limit > 0
           ? Math.floor(args.params.limit)
           : 50;
+      // 1. Pull fresh cross-channel messages through the same fan-out `list`
+      //    uses, then classify only the ones without a persisted entry yet.
+      //    `InboxService.triage` runs the LLM triage classifier
+      //    (`classifyMessages`, model calls tagged `purpose: "inbox_triage"`)
+      //    and persists one triage entry per new message.
+      const since =
+        typeof args.params.since === "string" &&
+        args.params.since.trim().length > 0
+          ? args.params.since.trim()
+          : undefined;
+      const { merged } = await fetchInboxItems({
+        runtime: args.runtime,
+        platforms: resolvePlatforms(args.params.platforms),
+        ...(since ? { since } : {}),
+        limit,
+      });
+      const alreadyTriaged = await repo.getBySourceMessageIds(
+        merged.map((item) => item.id),
+      );
+      const freshMessages = merged
+        .filter((item) => !alreadyTriaged.has(item.id))
+        .map((item) => toInboundMessage(item));
+      let classifiedCount = 0;
+      if (freshMessages.length > 0) {
+        const service = new InboxService(args.runtime);
+        const { triaged } = await service.triage(freshMessages);
+        classifiedCount = triaged.length;
+      }
+      // 2. Return the pending queue, which now includes the rows the
+      //    classifier just persisted.
       const classification = parseClassification(args.params.classification);
       const entries = classification
         ? await repo.getByClassification(classification, {
@@ -580,13 +676,16 @@ export async function executeInboxQueueOperation(args: {
             limit,
             includeSnoozed: args.params.includeSnoozed === true,
           });
+      const text =
+        classifiedCount > 0
+          ? `Triaged ${classifiedCount} new message${classifiedCount === 1 ? "" : "s"}; ${entries.length} pending inbox item${entries.length === 1 ? "" : "s"}.`
+          : entries.length === 0
+            ? "No inbox triage items are pending."
+            : `Loaded ${entries.length} pending inbox triage items.`;
       return {
         success: true,
-        text:
-          entries.length === 0
-            ? "No inbox triage items are pending."
-            : `Loaded ${entries.length} pending inbox triage items.`,
-        data: { subaction: "triage", entries },
+        text,
+        data: { subaction: "triage", classified: classifiedCount, entries },
       };
     }
     case "snooze": {
@@ -686,6 +785,19 @@ const examples: ActionExample[][] = [
       },
     },
   ],
+  [
+    {
+      name: "{{name1}}",
+      content: { text: "Triage my inbox — what needs my attention?" },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: "Triaged your inbox and flagged what needs a reply.",
+        action: ACTION_NAME,
+      },
+    },
+  ],
 ];
 
 export const inboxAction: Action & {
@@ -701,11 +813,11 @@ export const inboxAction: Action & {
     "surface:internal",
   ],
   description:
-    "Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage, reply, snooze, archive, approve.",
+    "Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage (AI-classify new messages into urgent / needs_reply / notify / info / ignore, then return the prioritized queue), reply, snooze, archive, approve.",
   descriptionCompressed:
-    "INBOX list|search|summarize|triage|reply|snooze|archive|approve gmail|slack|discord|telegram|signal|imessage|whatsapp",
+    "INBOX list|search|summarize|triage(classify urgent/needs_reply/noise)|reply|snooze|archive|approve gmail|slack|discord|telegram|signal|imessage|whatsapp",
   routingHint:
-    'cross-channel inbox ("show inbox", "all messages", "search every channel", "summarize inboxes") -> INBOX; per-channel -> MESSAGE',
+    'cross-channel inbox ("show inbox", "all messages", "search every channel", "summarize inboxes") -> INBOX; "triage my inbox" / "what needs my attention" -> INBOX triage; per-channel -> MESSAGE',
   contexts: ["inbox", "messaging", "cross-channel"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -714,7 +826,7 @@ export const inboxAction: Action & {
     {
       name: "action",
       description:
-        "Inbox op: list | search | summarize | triage | reply | snooze | archive | approve.",
+        "Inbox op: list | search | summarize | triage (classify new messages with the AI triage classifier, then return the pending queue) | reply | snooze | archive | approve.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -852,26 +964,19 @@ export const inboxAction: Action & {
         ? params.since.trim()
         : undefined;
 
-    const fetched = await Promise.all(
-      platforms.map(async (platform) => {
-        const fetcher = activeFetchers[platform];
-        const items = await fetcher({
-          runtime,
-          ...(since ? { since } : {}),
-          limit,
-          ...(query ? { query } : {}),
-        });
-        return items;
-      }),
-    );
-    const flat = fetched.flat();
-    const merged = dedupeAndOrder(flat);
+    const { merged, totalBeforeDedupe } = await fetchInboxItems({
+      runtime,
+      platforms,
+      ...(since ? { since } : {}),
+      limit,
+      ...(query ? { query } : {}),
+    });
     const items: readonly InboxItem[] = subaction === "summarize" ? [] : merged;
     const summary: readonly InboxSummaryEntry[] | undefined =
       subaction === "summarize" ? buildSummary(merged, platforms) : undefined;
 
     logger.info(
-      `[INBOX] ${subaction} platforms=${platforms.join(",")} pre=${flat.length} post=${merged.length}`,
+      `[INBOX] ${subaction} platforms=${platforms.join(",")} pre=${totalBeforeDedupe} post=${merged.length}`,
     );
 
     let text: string;
@@ -909,7 +1014,7 @@ export const inboxAction: Action & {
         ...(summary ? { summary } : {}),
         ...(query ? { query } : {}),
         ...(since ? { since } : {}),
-        totalBeforeDedupe: flat.length,
+        totalBeforeDedupe,
       },
     };
   },
