@@ -5,7 +5,11 @@ inputs:
   bun-version:
     description: Bun version to install (pinned to avoid GitHub API rate-limit flakes).
     required: false
-    default: "canary"
+    # pinned: floating canary hangs `bun install` on hosted CI runners and
+    # writes lockfileVersion 2 which breaks --frozen-lockfile (#11184/#9454).
+    # Cloud Tests + cloud-e2e call this action without an override, so this
+    # default is what actually runs on those (queue-starved) lanes.
+    default: "1.3.14"
   setup-db:
     description: Start PGlite TCP server and run migrations.
     required: false
