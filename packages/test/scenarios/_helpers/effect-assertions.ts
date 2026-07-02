@@ -65,3 +65,47 @@ export function successfulCalls(
       !isSynthesizedReply(action),
   );
 }
+
+/**
+ * Lowercased JSON blob of every captured call to `actionName` — parameters,
+ * result data, and result text. The house pattern for "the action payload
+ * must carry the domain artifact" predicates (seeded tokens, computed times,
+ * op signals) that echo replies can never satisfy.
+ */
+export function callPayloadBlob(
+  ctx: ScenarioContext,
+  actionName: string | string[],
+): string {
+  const accepted = Array.isArray(actionName) ? actionName : [actionName];
+  const calls = ctx.actionsCalled.filter((action) =>
+    accepted.includes(action.actionName),
+  );
+  return JSON.stringify(
+    calls.map((call) => ({
+      parameters: call.parameters ?? null,
+      data: call.result?.data ?? null,
+      text: call.result?.text ?? null,
+    })),
+  ).toLowerCase();
+}
+
+/**
+ * Negative side-effect proof: fails with a precise message when ANY captured
+ * call (across every turn) hit one of `actionNames`. Turn-level
+ * `forbiddenActions` only guards its own turn; this closes the whole run.
+ */
+export function expectNoActionCalled(
+  ctx: ScenarioContext,
+  actionNames: readonly string[],
+): string | undefined {
+  const forbidden = new Set(actionNames);
+  const hits = ctx.actionsCalled.filter((action) =>
+    forbidden.has(action.actionName),
+  );
+  if (hits.length > 0) {
+    return `expected none of [${actionNames.join(", ")}] to fire, saw: ${describeCalls(
+      { actionsCalled: hits } as ScenarioContext,
+    )}`;
+  }
+  return undefined;
+}

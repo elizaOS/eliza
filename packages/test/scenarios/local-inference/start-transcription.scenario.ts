@@ -21,12 +21,21 @@ import {
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const START_TRANSCRIPTION = "START_TRANSCRIPTION";
+const VOICE_CONTROL_STREAM = "voice-control";
 
 type R = AgentRuntime & {
   scenarioLlmFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
+
+type BusEvent = { stream?: string; data?: unknown };
+type SubscribableBus = {
+  subscribe?: (listener: (event: BusEvent) => void) => () => void;
+};
+
+/** Every event the live AGENT_EVENT bus emitted during the run. */
+const observedBusEvents: BusEvent[] = [];
 
 export default scenario({
   lane: "pr-deterministic",
@@ -52,6 +61,16 @@ export default scenario({
         // force-start it so the synchronous getService() in validate resolves.
         await runtime.registerService(AgentEventService);
         await runtime.getServiceLoadPromise(ServiceType.AGENT_EVENT);
+
+        // Tap the live bus (the same subscribe() the renderer uses) so the
+        // final check can prove the voice-control command actually crossed it.
+        observedBusEvents.length = 0;
+        const bus = runtime.getService(
+          ServiceType.AGENT_EVENT,
+        ) as SubscribableBus | null;
+        bus?.subscribe?.((event) => {
+          observedBusEvents.push(event);
+        });
 
         runtime.scenarioLlmFixtures?.register(
           {
@@ -152,6 +171,26 @@ export default scenario({
       actionName: START_TRANSCRIPTION,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the action's whole job is a one-way
+      // `voice-control` command on the AGENT_EVENT bus. The seed subscribed
+      // to the live bus; a `start` command must have actually been emitted —
+      // handler-returned success without the bus event fails here.
+      type: "custom",
+      name: "voice-control-start-emitted-on-bus",
+      predicate: () => {
+        const hit = observedBusEvents.find((event) => {
+          if (event.stream !== VOICE_CONTROL_STREAM) return false;
+          const data = event.data as
+            | { type?: string; command?: string }
+            | undefined;
+          return data?.type === "voice-control" && data?.command === "start";
+        });
+        if (!hit) {
+          return `no {type:"voice-control", command:"start"} event observed on the "${VOICE_CONTROL_STREAM}" stream; saw ${observedBusEvents.length} bus event(s): ${JSON.stringify(observedBusEvents.map((e) => e.stream)).slice(0, 200)}`;
+        }
+      },
     },
   ],
 });

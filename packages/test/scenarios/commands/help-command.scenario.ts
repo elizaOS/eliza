@@ -11,6 +11,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { initForRuntime, useRuntime } from "@elizaos/plugin-commands";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { describeCalls, successfulCalls } from "../_helpers/effect-assertions.ts";
 
 const HELP_COMMAND = "HELP_COMMAND";
 
@@ -76,6 +77,26 @@ export default scenario({
       actionName: HELP_COMMAND,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): /help's contract is the serialized live command
+      // registry. The reply must be the real formatted list containing the
+      // built-in commands the seed registered — an empty or unregistered
+      // registry (initForRuntime not run) fails here.
+      type: "custom",
+      name: "help-reply-lists-live-registry",
+      predicate: (ctx) => {
+        const call = successfulCalls(ctx, HELP_COMMAND)[0];
+        const reply = call?.result?.text ?? "";
+        if (!reply.includes("Available commands:")) {
+          return `expected the help reply to start the registry listing; calls: ${describeCalls(ctx)}`;
+        }
+        for (const builtin of ["/help", "/commands", "/status"]) {
+          if (!reply.includes(builtin)) {
+            return `expected built-in "${builtin}" in the serialized registry, reply: ${reply.slice(0, 300)}`;
+          }
+        }
+      },
     },
   ],
 });

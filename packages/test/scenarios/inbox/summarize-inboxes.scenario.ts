@@ -12,6 +12,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const INBOX = "INBOX";
 type R = AgentRuntime & {
@@ -133,6 +138,40 @@ export default scenario({
       actionName: INBOX,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): summarize's contract is a per-platform rollup
+      // (`summary[]` — one {platform, count, latestAt} entry per fanned-out
+      // platform). A handler that "succeeds" without actually fanning out and
+      // building the rollup fails here.
+      type: "custom",
+      name: "inbox-summary-rollup-built",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, INBOX);
+        if (!data) {
+          return `no successful ${INBOX} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.subaction !== "summarize") {
+          return `expected subaction "summarize", saw ${JSON.stringify(data.subaction)}`;
+        }
+        const platforms = Array.isArray(data.platforms) ? data.platforms : [];
+        const summary = Array.isArray(data.summary) ? data.summary : null;
+        if (platforms.length === 0 || !summary) {
+          return `expected non-empty platforms + summary rollup, saw ${JSON.stringify(data).slice(0, 200)}`;
+        }
+        if (summary.length !== platforms.length) {
+          return `expected one summary entry per platform (${platforms.length}), saw ${summary.length}`;
+        }
+        for (const entry of summary) {
+          const record = toRecord(entry);
+          if (
+            typeof record?.platform !== "string" ||
+            typeof record?.count !== "number"
+          ) {
+            return `summary entry missing {platform, count}: ${JSON.stringify(entry).slice(0, 120)}`;
+          }
+        }
+      },
     },
   ],
 });

@@ -10,6 +10,10 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const TASK_INPUT = "Run the OSWorld benchmark step: save the open document.";
 const OSWORLD = "OSWORLD";
@@ -131,6 +135,24 @@ export default scenario({
       actionName: OSWORLD,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): OSWORLD is a bench-side router whose contract
+      // is the structured envelope it hands the OSWorld environment. The
+      // planner tool call carried `action: "screenshot"`; the handler must
+      // round-trip that exact op into `result.data.action`. A broken
+      // parameter pipeline (op dropped/renamed) fails here.
+      type: "custom",
+      name: "osworld-envelope-carries-parsed-op",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, OSWORLD);
+        if (!data) {
+          return `no successful ${OSWORLD} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.action !== "screenshot") {
+          return `expected result.data.action "screenshot" (the planner-issued op), saw ${JSON.stringify(data).slice(0, 200)}`;
+        }
+      },
     },
   ],
 });

@@ -13,6 +13,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 process.env.COMPUTER_USE_ENABLED = "1";
 
@@ -190,6 +195,27 @@ export default scenario({
       actionName: COMPUTER_USE,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the param-resolution → service → result-mapping
+      // path must carry the device boundary's answer back out. The stub
+      // returns (640, 360) only for the `get_cursor_position` op, so a wrong
+      // op, dropped params, or broken result mapping all fail here.
+      type: "custom",
+      name: "cursor-position-round-trips-device-boundary",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, COMPUTER_USE);
+        if (!data) {
+          return `no successful ${COMPUTER_USE} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.computerUseAction !== "get_cursor_position") {
+          return `expected computerUseAction "get_cursor_position", saw ${JSON.stringify(data.computerUseAction)}`;
+        }
+        const cursor = toRecord(toRecord(data.result)?.cursorPosition);
+        if (cursor?.x !== 640 || cursor?.y !== 360) {
+          return `expected result.cursorPosition {x:640,y:360} from the stubbed device boundary, saw ${JSON.stringify(data.result).slice(0, 200)}`;
+        }
+      },
     },
   ],
 });

@@ -1,6 +1,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { describeCalls, successfulCalls, toRecord } from "../_helpers/effect-assertions.ts";
 
 const PROXY_STATUS = "PROXY_STATUS";
 type R = AgentRuntime & {
@@ -92,6 +93,28 @@ export default scenario({
       actionName: PROXY_STATUS,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): success only means the handler ran; the
+      // status contract is `values` carrying the live service's report —
+      // available:true plus the mode/listening fields read from
+      // AnthropicProxyService.getStatus(). A missing service or an empty
+      // status envelope fails here.
+      type: "custom",
+      name: "proxy-status-reports-live-service-state",
+      predicate: (ctx) => {
+        const call = successfulCalls(ctx, PROXY_STATUS)[0];
+        const values = toRecord(call?.result?.values);
+        if (!values) {
+          return `no ${PROXY_STATUS} result values; calls: ${describeCalls(ctx)}`;
+        }
+        if (values.available !== true) {
+          return `expected values.available true (service loaded), saw ${JSON.stringify(values).slice(0, 200)}`;
+        }
+        if (typeof values.mode !== "string" || typeof values.listening !== "boolean") {
+          return `expected live status fields {mode:string, listening:boolean}, saw ${JSON.stringify(values).slice(0, 200)}`;
+        }
+      },
     },
   ],
 });
