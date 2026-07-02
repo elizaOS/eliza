@@ -50,6 +50,9 @@ const aiActual = require("ai") as Record<string, unknown>;
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
+const CLIENT_REQUEST_ID = "req-optimistic-test";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // --- per-test knobs the mocks read by reference -----------------------------
 let billingEnabled = true;
@@ -183,7 +186,7 @@ function makeRequest(): Request {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-request-id": "req-optimistic-test",
+      "x-request-id": CLIENT_REQUEST_ID,
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
@@ -219,6 +222,24 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
     // The synchronous reserve write (the latency we are removing) is skipped.
     expect(reserveCredits).not.toHaveBeenCalled();
+  });
+
+  test("billing requestId is server-generated, not copied from x-request-id", async () => {
+    await drive();
+
+    const pendingCalls = writePendingInferenceCharge.mock
+      .calls as unknown as Array<[{ requestId: string }, number]>;
+    const settlerCalls = createOptimisticDebitSettler.mock
+      .calls as unknown as Array<[{ requestId: string }]>;
+    const pending = pendingCalls[0]?.[0];
+    const settler = settlerCalls[0]?.[0];
+    expect(pending).toBeDefined();
+    expect(settler).toBeDefined();
+    if (!pending || !settler) throw new Error("billing path was not reached");
+
+    expect(pending.requestId).toMatch(UUID_RE);
+    expect(pending.requestId).not.toBe(CLIENT_REQUEST_ID);
+    expect(settler.requestId).toBe(pending.requestId);
   });
 
   test("balance below SAFE_BALANCE_THRESHOLD falls back to the synchronous reserve", async () => {
