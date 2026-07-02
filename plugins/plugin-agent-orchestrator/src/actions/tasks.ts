@@ -1844,10 +1844,11 @@ async function runHistory(
 
 // ── action: control (TASK_CONTROL) ──────────────────────────────────────────
 
-function inferControlAction(
-  text: string,
-  value?: string,
-): ControlAction | null {
+// Structural only: the planner emits `controlAction` or a legacy structured
+// action value when the user asks to pause, stop, resume, continue, archive, or
+// reopen. Do not regex over message text; phrases like "stop using axios" and
+// "make it so" appear in ordinary task prose.
+function normalizeControlAction(value?: string): ControlAction | null {
   const normalized = value?.trim().toLowerCase();
   if (
     normalized === "pause" ||
@@ -1859,14 +1860,6 @@ function inferControlAction(
   ) {
     return normalized;
   }
-  if (/\barchive\b/i.test(text)) return "archive";
-  if (/\breopen\b/i.test(text)) return "reopen";
-  if (/\bpause\b|\bhold on\b|\bthat's not right\b/i.test(text)) return "pause";
-  if (/\bstop\b|\bcancel\b|\bkill\b/i.test(text)) return "stop";
-  if (/\bresume\b|\bmake it so\b|\bdo it\b|\byea(h)? i'm down\b/i.test(text)) {
-    return "resume";
-  }
-  if (/\bcontinue\b|\bgo ahead\b/i.test(text)) return "continue";
   return null;
 }
 
@@ -1907,8 +1900,7 @@ async function runControl(
     topLevelAction && normalizedTopLevelAction !== "control"
       ? topLevelAction
       : undefined;
-  const action = inferControlAction(
-    text,
+  const action = normalizeControlAction(
     textValue(params.controlAction) ??
       textValue(content.controlAction) ??
       legacyControlAction,

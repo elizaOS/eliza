@@ -1,6 +1,14 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { requireTaskAgentAccess } from "../../src/services/task-policy.js";
+
+vi.mock("@elizaos/core", () => ({
+  checkSenderRole: vi.fn(async () => ({
+    role: "ADMIN",
+    isAdmin: true,
+    isOwner: false,
+  })),
+}));
 
 /**
  * A partial TASK_AGENT_ROLE_POLICY override (e.g. only tightening slack) must
@@ -30,6 +38,21 @@ const discordMessage = {
 } as unknown as Memory;
 
 describe("requireTaskAgentAccess — policy merge", () => {
+  const previousSkipLocalPluginRoles =
+    process.env.ELIZA_SKIP_LOCAL_PLUGIN_ROLES;
+
+  beforeAll(() => {
+    process.env.ELIZA_SKIP_LOCAL_PLUGIN_ROLES = "1";
+  });
+
+  afterAll(() => {
+    if (previousSkipLocalPluginRoles === undefined) {
+      delete process.env.ELIZA_SKIP_LOCAL_PLUGIN_ROLES;
+    } else {
+      process.env.ELIZA_SKIP_LOCAL_PLUGIN_ROLES = previousSkipLocalPluginRoles;
+    }
+  });
+
   it("keeps the built-in Discord ADMIN gate when only another connector is overridden", async () => {
     const result = await requireTaskAgentAccess(
       runtimeWith({ connectors: { slack: "ADMIN" } }),
