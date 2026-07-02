@@ -1,6 +1,8 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import defaultAgent from "../eliza/agent";
 import { getConditionalPlugins } from "../eliza/agent-mode-types";
+import { WebSearchService } from "../eliza/plugin-web-search/src/services/searchService";
 import { getDefaultElizaCharacterData } from "./default-eliza-character";
 
 /**
@@ -9,7 +11,8 @@ import { getDefaultElizaCharacterData } from "./default-eliza-character";
  * coherent with each other and with what the agent loader actually wires up —
  * a bio that promises months-later memory next to a rule that forbids recalling
  * anything outside the current conversation ships a self-contradicting agent,
- * and a tool-first system prompt with zero enabled tools ships a liar.
+ * and a settings key that loads a plugin whose service can never start ships
+ * an error on every runtime creation.
  */
 
 describe("getDefaultElizaCharacterData", () => {
@@ -42,10 +45,26 @@ describe("getDefaultElizaCharacterData", () => {
     expect(reply).not.toContain("i don't have anything from last month");
   });
 
-  test("web search is enabled and resolves to the plugin the loader injects", () => {
-    expect(character.settings).toMatchObject({ webSearch: { enabled: true } });
-    // Same code path AgentLoader.resolvePlugins uses for character settings.
-    expect(getConditionalPlugins(character.settings)).toContain("@elizaos/plugin-web-search");
+  test("never injects a web-search service that cannot start", async () => {
+    // WebSearchService.initialize() throws unless runtime.getSetting() can see
+    // a Google key, and the runtime only injects those keys for the
+    // request-level webSearchEnabled toggle (buildSettings in
+    // lib/eliza/runtime/settings.ts) — never from this character. Prove that
+    // with the real service against exactly what this character's settings
+    // make visible: the service cannot start from character settings alone.
+    const settings = character.settings as Record<string, unknown>;
+    const runtimeStub = {
+      getSetting: (key: string) => (settings[key] as string | undefined) ?? null,
+    } as unknown as IAgentRuntime;
+    await expect(WebSearchService.start(runtimeStub)).rejects.toThrow(/GOOGLE_API_KEY/);
+
+    // Therefore the character must not carry the settings key that makes the
+    // agent loader inject @elizaos/plugin-web-search — same code path
+    // AgentLoader.resolvePlugins uses — or every runtime creation logs a
+    // "Service start failed" error for a dead plugin. Web search still works
+    // for this character via the request-level toggle, which injects the
+    // plugin and the keys together.
+    expect(getConditionalPlugins(settings)).not.toContain("@elizaos/plugin-web-search");
   });
 
   test("topics are third-person — no second-person referent confusion", () => {

@@ -121,11 +121,15 @@ someone wants to think out loud, direct when they just want an answer.
     ] as string[],
     adjectives: ["warm", "curious", "grounded", "direct", "present", "honest"] as string[],
     plugins: [] as string[],
-    // webSearch.enabled is the settings key the agent loader honors
-    // (SETTINGS_PLUGIN_MAP in lib/eliza/agent-mode-types.ts): it injects
-    // @elizaos/plugin-web-search so the tool-first system prompt can actually
-    // fetch current info instead of shipping with zero tools.
-    settings: { webSearch: { enabled: true } } as Record<string, unknown>,
+    // Do NOT enable settings.webSearch here. That key makes the agent loader
+    // inject @elizaos/plugin-web-search (SETTINGS_PLUGIN_MAP in
+    // lib/eliza/agent-mode-types.ts), but the Google keys its WebSearchService
+    // needs are only injected for the request-level webSearchEnabled toggle
+    // (buildSettings in lib/eliza/runtime/settings.ts) — never provisioned with
+    // this character. A character-level enable ships a service whose start()
+    // throws on every runtime creation. Web search for this character works via
+    // the request toggle, which injects the plugin and the keys together.
+    settings: {} as Record<string, unknown>,
     style: {
       all: [
         "keep responses concise and conversational",
