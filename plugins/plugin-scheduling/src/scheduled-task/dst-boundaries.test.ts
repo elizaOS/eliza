@@ -300,13 +300,11 @@ describe("cron with tz across DST transitions", () => {
     );
   });
 
-  it("KNOWN LIMIT (pinned): a cron inside the repeated hour double-fires on fall-back day", async () => {
-    // `computeNextCronRunAtMs` (@elizaos/core) matches wall-clock fields on
-    // both passes through the repeated 01:00-01:59 hour, so "30 1 * * *"
-    // fires at 01:30 EDT AND 01:30 EST on 2026-11-01 — twice on one local
-    // day. Fixing this means deduplicating ambiguous-hour matches in core's
-    // cron scan; out of scope for the scheduling spine (documented residual).
-    // This test pins the current behavior so a core-side fix flips it loudly.
+  it("a cron inside the repeated fall-back hour fires ONCE (first instant), not twice (#11046)", async () => {
+    // `computeNextCronRunAtMs` (@elizaos/core) now dedupes the ambiguous
+    // fall-back hour: "30 1 * * *" fires at 01:30 EDT on 2026-11-01 (the first
+    // pass) but NOT again at 01:30 EST the same day — matching common cron
+    // implementations. Then it resumes firing at 01:30 EST from Nov 2 onward.
     const occurrences = await occurrenceChain(
       "30 1 * * *",
       NY,
@@ -315,10 +313,14 @@ describe("cron with tz across DST transitions", () => {
       3,
     );
     expect(occurrences).toEqual([
-      "2026-11-01T05:30:00.000Z", // 01:30 EDT (first pass)
-      "2026-11-01T06:30:00.000Z", // 01:30 EST (second pass — the double fire)
-      "2026-11-02T06:30:00.000Z",
+      "2026-11-01T05:30:00.000Z", // 01:30 EDT (first pass — the only fall-back-day fire)
+      "2026-11-02T06:30:00.000Z", // 01:30 EST (next day)
+      "2026-11-03T06:30:00.000Z", // 01:30 EST
     ]);
+    // Every fire is a distinct local day (no double-fire on the transition day).
+    expect(new Set(occurrences.map((iso) => localDate(iso, NY))).size).toBe(
+      occurrences.length,
+    );
   });
 
   it("daily 03:00 Berlin lands exactly on the spring-forward transition instant", async () => {

@@ -49,3 +49,57 @@ describe("computeNextCronRunAtMs - `N/step` schedules recurringly", () => {
 		expect(after).toBe(Date.UTC(2024, 0, 1, 0, 35, 0));
 	});
 });
+
+describe("computeNextCronRunAtMs - DST fall-back dedupe (#11046)", () => {
+	// America/New_York falls back 2026-11-01 02:00 EDT -> 01:00 EST, so local
+	// 01:30 occurs twice: 05:30Z (EDT) and 06:30Z (EST). A daily `30 1 * * *`
+	// must fire ONCE that day (the first instant), not once per pass.
+	const NY = "America/New_York";
+	const at = (iso: string) => Date.parse(iso);
+
+	it("fires the FIRST instant of the repeated hour", () => {
+		// From the prior day's fire, the next run is the EDT (first) pass.
+		expect(computeNextCronRunAtMs("30 1 * * *", at("2026-10-31T05:30:00.000Z"), NY)).toBe(
+			at("2026-11-01T05:30:00.000Z"),
+		);
+	});
+
+	it("does NOT double-fire at the repeated hour's second instant", () => {
+		// Immediately after the EDT fire, the next run skips the EST duplicate
+		// (06:30Z same day) and lands on the next local day (01:30 EST).
+		expect(computeNextCronRunAtMs("30 1 * * *", at("2026-11-01T05:30:00.000Z"), NY)).toBe(
+			at("2026-11-02T06:30:00.000Z"),
+		);
+	});
+
+	it("resumes normal once-per-day firing after the transition", () => {
+		expect(computeNextCronRunAtMs("30 1 * * *", at("2026-11-02T06:30:00.000Z"), NY)).toBe(
+			at("2026-11-03T06:30:00.000Z"),
+		);
+	});
+});
+
+describe("computeNextCronRunAtMs - non-representable base guard (#11046)", () => {
+	it("returns null immediately for a base at/over the max representable Date", () => {
+		// Number.MAX_SAFE_INTEGER (~9.007e15) exceeds the max Date (±8.64e15), so
+		// every scanned candidate would be an Invalid Date. The guard bails instead
+		// of scanning ~366 days of Invalid-Date minutes.
+		const started = performance.now();
+		const result = computeNextCronRunAtMs(
+			"0 0 29 2 *",
+			Number.MAX_SAFE_INTEGER,
+			"America/New_York",
+		);
+		const elapsedMs = performance.now() - started;
+		expect(result).toBeNull();
+		// Was a ~26s Invalid-Date scan without the guard; a generous ceiling.
+		expect(elapsedMs).toBeLessThan(2000);
+	});
+
+	it("returns null for non-finite bases", () => {
+		expect(computeNextCronRunAtMs("* * * * *", Number.NaN)).toBeNull();
+		expect(
+			computeNextCronRunAtMs("* * * * *", Number.POSITIVE_INFINITY),
+		).toBeNull();
+	});
+});
