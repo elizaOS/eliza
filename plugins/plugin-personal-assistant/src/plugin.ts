@@ -7,6 +7,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  type MessagePayload,
   messagingTriageActions,
   type Plugin,
   promoteSubactionsToActions,
@@ -69,6 +70,7 @@ import {
   PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
+import { registerDefaultPackCatalog } from "./default-packs/spine-registration.js";
 import {
   ensureFollowupTrackerTask,
   FOLLOWUP_TRACKER_TASK_NAME,
@@ -130,7 +132,11 @@ import {
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
-import { registerLifeOpsScheduledTaskRunnerDeps } from "./lifeops/scheduled-task/runtime-wiring.js";
+import { completeFiredTasksOnOwnerReply } from "./lifeops/scheduled-task/inbound-reply-completion.js";
+import {
+  installLifeOpsScheduledTaskEventBridge,
+  registerLifeOpsScheduledTaskRunnerDeps,
+} from "./lifeops/scheduled-task/runtime-wiring.js";
 import { handleScheduledTaskInboundMessage } from "./lifeops/scheduled-task/scheduler.js";
 import { getScheduledTaskRunner as getProductionScheduledTaskRunner } from "./lifeops/scheduled-task/service.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
@@ -157,7 +163,11 @@ import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { BrowserBridgePluginService } from "./service.js";
-import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
+import {
+  BLOCK_RULE_RECONCILE_TASK_NAME,
+  ensureBlockRuleReconcileTask,
+  registerBlockRuleReconcilerWorker,
+} from "./website-blocker/chat-integration/index.js";
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
@@ -825,7 +835,33 @@ const rawPersonalAssistantPlugin: Plugin = {
   // overview"). Domain views live in the per-domain plugins; the personal
   // assistant is the chat itself (PERSONAL_ASSISTANT action).
   events: {
-    [EventType.MESSAGE_RECEIVED]: [handleScheduledTaskInboundMessage],
+    // Deterministic completion for fired scheduled tasks awaiting an owner
+    // reply — no LLM verb required. Two passes with distinct coverage:
+    // `handleScheduledTaskInboundMessage` walks the pending-prompts store for
+    // the room (user_replied_within + stale-prompt cleanup);
+    // `completeFiredTasksOnOwnerReply` matches fired tasks by their own
+    // pending-prompt room and re-evaluates every check kind (incl.
+    // subject_updated). Both are owner-gated and idempotent. Boundary catch:
+    // an inbound chat message must never fail because the scheduled-task
+    // store or runner host is broken.
+    [EventType.MESSAGE_RECEIVED]: [
+      handleScheduledTaskInboundMessage,
+      async (payload: MessagePayload): Promise<void> => {
+        try {
+          await completeFiredTasksOnOwnerReply(
+            payload.runtime,
+            payload.message,
+          );
+        } catch (error) {
+          logger.error(
+            { src: "lifeops:inbound-reply-completion", error },
+            `[lifeops] inbound-reply completion pass failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      },
+    ],
     // Fold recognized voice turns into the entity/relationship graph via
     // the merge engine, then round-trip the binding to the voice-profile
     // owner. See lifeops/entities/voice-observer-bridge.ts.
@@ -924,6 +960,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         eventKindRegistry?: typeof eventKindRegistry;
       }
     ).eventKindRegistry = eventKindRegistry;
+    // Bridge runtime.emitEvent onto {kind:"event"} scheduled-task fires for
+    // every registered event kind. Must run after registerEventKindRegistry;
+    // the runner resolves lazily per event through the cached service host.
+    installLifeOpsScheduledTaskEventBridge(runtime);
 
     const familyRegistry = createFamilyRegistry();
     registerBuiltinTelemetryFamilies(familyRegistry);
@@ -1004,7 +1044,13 @@ const rawPersonalAssistantPlugin: Plugin = {
     triage.register(new CalendlyAdapter());
     triage.register(new BrowserBridgeAdapter());
 
-    // Register the proactive activity-profile task worker.
+    // Register the activity-profile maintenance worker. One scheduler
+    // (#10721 H1): this tick only maintains the owner activity profile and
+    // runs the WS5 background-planner observability loop — owner-facing
+    // proactive dispatch (GM/GN, nudges, check-ins) is owned by the
+    // scheduled-task runner via the first-run defaults pack + default-pack
+    // catalog below. ELIZA_DISABLE_PROACTIVE_AGENT keeps its historical
+    // semantics: it gates this worker (never the spine-seeded records).
     const proactiveAgentDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_PROACTIVE_AGENT",
     );
@@ -1037,6 +1083,14 @@ const rawPersonalAssistantPlugin: Plugin = {
     });
 
     registerBlockRuleReconcilerWorker(runtime);
+    scheduleTaskEnsureAfterRuntimeInit({
+      runtime,
+      prefix: "[block-rule-reconciler]",
+      label: "task",
+      ensure: async () => {
+        await ensureBlockRuleReconcileTask(runtime);
+      },
+    });
 
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,
@@ -1060,13 +1114,23 @@ const rawPersonalAssistantPlugin: Plugin = {
           await ensureLifeOpsSchedulerTask(runtime);
         },
       });
+      // Register the default-pack catalog (quiet-user watcher, cadence
+      // follow-ups, …) as PA's consumer pack on the spine seed registry.
+      // The spine's boot seeder materializes it once per idempotency key
+      // after runtime init. Records whose logical slot the first-run pack
+      // below already owns (gm/gn/check-in/morning-brief) are reconciled
+      // out — see src/default-packs/spine-registration.ts for the upgrade
+      // story.
+      registerDefaultPackCatalog(runtime);
       // Seed the first-run defaults pack idempotently on EVERY boot — not
       // gated behind first-run completion — so devices that predate the pack
       // still receive the paused weekly-review starter + default routines.
       // The per-key seeded marker makes this seed-once: a default the user
       // deletes is never recreated, and fresh first-run installs are covered
       // by the same marker so there is no double-seed. Uses the production
-      // DB-backed runner so seeded rows reach the scheduler tick.
+      // DB-backed runner so seeded rows reach the scheduler tick. (The
+      // first-run pack keeps its own marker store + keys; the catalog pack
+      // above seeds disjoint keys through the spine registry.)
       scheduleTaskEnsureAfterRuntimeInit({
         runtime,
         prefix: "[lifeops]",
@@ -1105,6 +1169,7 @@ const rawPersonalAssistantPlugin: Plugin = {
       PROACTIVE_TASK_NAME,
       LIFEOPS_TASK_NAME,
       FOLLOWUP_TRACKER_TASK_NAME,
+      BLOCK_RULE_RECONCILE_TASK_NAME,
     ];
 
     // Delete persisted Task rows so the scheduler doesn't try to run them

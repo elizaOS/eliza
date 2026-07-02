@@ -2,6 +2,7 @@ import {
   GoalsService,
   scoreGoalSimilarity,
 } from "@elizaos/plugin-goals/goals-service";
+import { getGoalsCheckinService } from "@elizaos/plugin-goals/services/checkin";
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsActivitySignal,
@@ -149,6 +150,7 @@ export class GoalsDomain {
           ),
         normalizeOwnership: (input, current) =>
           this.ctx.normalizeOwnership(input, current),
+        checkinSync: () => getGoalsCheckinService(this.ctx.runtime),
       });
     }
     return this.goalsServiceInstance;

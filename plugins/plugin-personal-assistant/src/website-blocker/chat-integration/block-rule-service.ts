@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
-import { activateBlockRule } from "./block-activator.js";
+import { syncOsBlockToRules } from "./block-activator.js";
 import {
   BLOCK_RULES_TABLE,
   type BlockRule,
@@ -62,6 +62,14 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
   if (input.gateType === "until_todo" && !input.gateTodoId) {
     throw new Error("[BlockRuleWriter] until_todo gate requires gateTodoId");
   }
+  // A harsh rule refuses every manual bypass (confirmed release, chat unblock,
+  // HTTP DELETE) and the reconciler only releases it via its gate todo. Without
+  // a gateTodoId it would be a permanent lock with no exit path at all.
+  if (input.gateType === "harsh_no_bypass" && !input.gateTodoId) {
+    throw new Error(
+      "[BlockRuleWriter] harsh_no_bypass gate requires gateTodoId",
+    );
+  }
   if (input.gateType === "until_iso" && input.gateUntilMs === undefined) {
     throw new Error("[BlockRuleWriter] until_iso gate requires gateUntilMs");
   }
@@ -73,22 +81,6 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
       "[BlockRuleWriter] fixed_duration gate requires fixedDurationMs",
     );
   }
-}
-
-function computeActivationDurationMinutes(
-  input: CreateBlockRuleInput,
-): number | null {
-  if (input.gateType === "fixed_duration") {
-    if (input.fixedDurationMs === null || input.fixedDurationMs === undefined) {
-      return null;
-    }
-    return Math.max(1, Math.round(input.fixedDurationMs / 60_000));
-  }
-  if (input.gateType === "until_iso" && input.gateUntilMs != null) {
-    const remaining = input.gateUntilMs - nowMs();
-    return remaining > 0 ? Math.max(1, Math.round(remaining / 60_000)) : 1;
-  }
-  return null;
 }
 
 export class BlockRuleWriter {
@@ -123,21 +115,19 @@ export class BlockRuleWriter {
        )`,
     );
 
-    const durationMinutes = computeActivationDurationMinutes(input);
-    const activation = await activateBlockRule({
-      runtime: this.runtime,
-      websites: input.websites,
-      durationMinutes,
-    });
-
-    if (activation.success === false) {
+    const reader = new BlockRuleReader(this.runtime);
+    const sync = await syncOsBlockToRules(
+      this.runtime,
+      await reader.listActiveBlocks(),
+      createdAt,
+    );
+    if (!sync.ok) {
       // The rule is the source of truth. Activation failures
       // (missing admin permission, unsupported platform, no helper binary)
-      // are logged but do not tear down the rule — the reconciler keeps
-      // the lifecycle and a retry on rule creation will re-attempt
-      // activation.
+      // are logged but do not tear down the rule — the reconciler re-runs
+      // this same OS sync on every tick until it succeeds.
       logger.warn(
-        `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${activation.error}`,
+        `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${sync.error}`,
       );
     }
 
@@ -190,8 +180,26 @@ export class BlockRuleWriter {
           AND agent_id = ${sqlQuote(agentId)}`,
     );
     logger.info(`[BlockRuleWriter] Released block rule ${id} (${reason})`);
+
+    // Releasing the rule must release the OS-level block too — a user who
+    // hears "released" and still hits a hosts-file sinkhole has been lied to.
+    const reader = new BlockRuleReader(this.runtime);
+    const sync = await syncOsBlockToRules(
+      this.runtime,
+      await reader.listActiveBlocks(),
+    );
+    if (!sync.ok) {
+      throw new Error(
+        `[BlockRuleWriter] Block rule ${id} was released, but updating the OS-level website block failed: ${sync.error} The reconciler retries within a minute.`,
+      );
+    }
   }
 
+  /**
+   * DB-only release used by the reconciler's gate evaluation. The reconciler
+   * runs one `syncOsBlockToRules` pass after evaluating every rule, so this
+   * writer intentionally does not touch OS state itself.
+   */
   async updateGateFulfilled(id: string, reason: string): Promise<void> {
     const agentId = String(this.runtime.agentId);
     await executeRawSql(

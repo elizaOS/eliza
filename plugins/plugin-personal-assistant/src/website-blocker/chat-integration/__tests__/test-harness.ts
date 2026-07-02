@@ -12,7 +12,12 @@ import { drizzle } from "drizzle-orm/pglite";
 
 export interface BlockRuleTestHarness {
   runtime: IAgentRuntime;
+  /** Temp hosts file backing the real SelfControl engine for this harness. */
+  hostsFilePath: string;
+  /** In-memory Task rows behind the runtime's task API. */
+  tasks: Map<UUID, Task>;
   execute: (statement: string) => Promise<unknown>;
+  readHosts: () => string;
   close: () => Promise<void>;
 }
 
@@ -74,11 +79,10 @@ const BOOTSTRAP_STATEMENTS = [
 ];
 
 /**
- * Minimal runtime fixture with task-worker and getTasks hooks so the BlockWriter's call
- * into websiteBlockAction handler can complete synchronously. The
- * SelfControl engine degrades gracefully on non-macOS test hosts; when engine
- * is unavailable the action returns `success: false`, which we catch in tests
- * that need to skip the SelfControl side-effect path.
+ * Runtime fixture backed by PGlite for the LifeOps tables, a temp hosts file
+ * for the real SelfControl engine, and an in-memory Task store so the core
+ * `TaskService.runTick` and the plugin-blocker expiry-task sync can run
+ * against it unmodified.
  */
 export async function createBlockRuleHarness(
   agentId: UUID = "00000000-0000-0000-0000-000000000042" as UUID,
@@ -114,10 +118,15 @@ export async function createBlockRuleHarness(
   >();
   const tasks = new Map<UUID, Task>();
   const confirmationCache = new Map<string, unknown>();
+  let taskCounter = 0;
 
   const runtime = {
     agentId,
     adapter: { db },
+    // The real TaskService.startTimer is a wall-clock interval; tests drive
+    // ticks explicitly via runTick, so report serverless to keep it off.
+    serverless: true,
+    getService: () => null,
     getCache: async (key: string) => confirmationCache.get(key),
     setCache: async (key: string, value: unknown) => {
       confirmationCache.set(key, value);
@@ -143,15 +152,39 @@ export async function createBlockRuleHarness(
       taskWorkers.set(worker.name, worker);
     },
     getTaskWorker: (name: string) => taskWorkers.get(name) ?? null,
-    getTasks: async () => [],
-    createTask: async () => `00000000-0000-0000-0000-0000000000aa` as UUID,
-    updateTask: async () => undefined,
-    deleteTask: async () => undefined,
-  } as IAgentRuntime;
+    getTasks: async (params?: { tags?: string[] }) => {
+      const wanted = params?.tags ?? [];
+      return [...tasks.values()].filter((task) =>
+        wanted.every((tag) => task.tags?.includes(tag)),
+      );
+    },
+    getTask: async (id: UUID) => tasks.get(id) ?? null,
+    createTask: async (task: Omit<Task, "id"> & { id?: UUID }) => {
+      taskCounter += 1;
+      const id =
+        task.id ??
+        (`00000000-0000-0000-0000-${String(taskCounter).padStart(12, "0")}` as UUID);
+      tasks.set(id, { ...task, id, updatedAt: Date.now() } as Task);
+      return id;
+    },
+    updateTask: async (id: UUID, patch: Partial<Task>) => {
+      const existing = tasks.get(id);
+      if (!existing) {
+        throw new Error(`[BlockRuleTestHarness] task ${id} not found`);
+      }
+      tasks.set(id, { ...existing, ...patch, id });
+    },
+    deleteTask: async (id: UUID) => {
+      tasks.delete(id);
+    },
+  } as unknown as IAgentRuntime;
 
   return {
     runtime,
+    hostsFilePath,
+    tasks,
     execute: (statement: string) => db.execute(sql.raw(statement)),
+    readHosts: () => fs.readFileSync(hostsFilePath, "utf8"),
     close: async () => {
       tasks.clear();
       taskWorkers.clear();

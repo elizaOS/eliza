@@ -125,8 +125,31 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
     ok: false,
     reason: "transport_error",
     userActionable: false,
-    message: formatError(error),
+    message: safeFormatError(error),
   };
+}
+
+/**
+ * Crash-safe wrapper around {@link formatError}. A dispatch failure must never
+ * itself throw while being turned into a `DispatchResult` — the runner would
+ * then strand the fire instead of recording a typed transport error. But
+ * `formatError` coerces non-Error values with `String(value)`, which throws
+ * on a hostile rejection value: a null-prototype object (no `toString` on the
+ * chain), or an object whose `toString` / `Symbol.toPrimitive` throws. Fall
+ * back to `Object.prototype.toString.call`, which reports the type tag
+ * (`"[object Object]"`) without invoking any of the object's own coercion
+ * hooks.
+ */
+function safeFormatError(error: unknown): string {
+  try {
+    return formatError(error);
+  } catch {
+    try {
+      return Object.prototype.toString.call(error);
+    } catch {
+      return "[object Object]";
+    }
+  }
 }
 
 /**

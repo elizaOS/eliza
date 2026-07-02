@@ -6,6 +6,11 @@ vi.mock("../block-activator.js", () => ({
     success: true,
     endsAt: null,
   })),
+  syncOsBlockToRules: vi.fn(async () => ({
+    ok: true,
+    changed: false,
+    error: null,
+  })),
 }));
 
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
@@ -75,6 +80,21 @@ describe("BlockRuleWriter + BlockRuleReader", () => {
     await expect(
       writer.releaseBlockRule(id, { confirmed: false }),
     ).rejects.toThrow(/confirmed:true/);
+  });
+
+  it("createBlockRule refuses a harsh_no_bypass rule without a gate todo (permanent lock)", async () => {
+    const writer = new BlockRuleWriter(harness.runtime);
+    const reader = new BlockRuleReader(harness.runtime);
+    // Every manual bypass is refused for harsh rules and the reconciler only
+    // releases them via the gate todo — without one the rule could never end.
+    await expect(
+      writer.createBlockRule({
+        profile: "focus",
+        websites: ["x.com"],
+        gateType: "harsh_no_bypass",
+      }),
+    ).rejects.toThrow(/harsh_no_bypass gate requires gateTodoId/);
+    expect(await reader.listActiveBlocks()).toHaveLength(0);
   });
 
   it("releaseBlockRule with harsh_no_bypass cannot be released even when confirmed", async () => {

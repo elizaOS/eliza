@@ -1,12 +1,17 @@
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
+import { logger, stringToUuid } from "@elizaos/core";
 import { executeRawSql, sqlQuote } from "../../lifeops/sql.js";
+import {
+  type OsBlockSyncResult,
+  syncOsBlockToRules,
+} from "./block-activator.js";
 import type { BlockRule } from "./block-rule-schema.js";
 import { BlockRuleReader, BlockRuleWriter } from "./block-rule-service.js";
 
 export const BLOCK_RULE_RECONCILE_TASK_NAME = "BLOCK_RULE_RECONCILE" as const;
 export const BLOCK_RULE_RECONCILE_TASK_TAGS = [
   "queue",
+  "repeat",
   "website-blocker",
   "block-rule-reconciler",
 ] as const;
@@ -15,9 +20,12 @@ export const BLOCK_RULE_RECONCILE_INTERVAL_MS = 60_000;
 /**
  * T7g — Website blocker chat integration reconciler (plan §6.8).
  *
- * Walks the `app_lifeops.life_block_rules` table every tick and releases rules whose
- * gates have been fulfilled. `harsh_no_bypass` rules behave like
- * `until_todo` but also reject manual release attempts in the writer.
+ * Walks the `app_lifeops.life_block_rules` table every tick and releases rules
+ * whose gates have been fulfilled, then converges the OS-level hosts-file
+ * block onto the rules that remain active (releasing it when the last rule
+ * goes, re-asserting it when activation previously failed or the block was
+ * removed out-of-band). `harsh_no_bypass` rules behave like `until_todo` but
+ * also reject manual release attempts in the writer and the HTTP DELETE route.
  */
 
 async function isTodoCompleted(
@@ -70,36 +78,37 @@ function shouldReleaseByTime(
   return { release: false, reason: "" };
 }
 
+/** Returns true when the rule was released this pass. */
 async function evaluateRule(
   runtime: IAgentRuntime,
   writer: BlockRuleWriter,
   rule: BlockRule,
   nowMs: number,
-): Promise<void> {
+): Promise<boolean> {
   if (rule.gateType === "until_todo" || rule.gateType === "harsh_no_bypass") {
-    if (!rule.gateTodoId) return;
+    if (!rule.gateTodoId) return false;
     const completed = await isTodoCompleted(runtime, rule.gateTodoId);
-    if (!completed) return;
+    if (!completed) return false;
     await writer.updateGateFulfilled(rule.id, "todo_completed");
     logger.info(
       `[BlockRuleReconciler] Released rule ${rule.id}: gate todo ${rule.gateTodoId} completed`,
     );
     if (rule.unlockDurationMs !== null && rule.unlockDurationMs > 0) {
-      await scheduleAutoReLock(runtime, writer, rule, nowMs);
+      await scheduleAutoReLock(writer, rule, nowMs);
     }
-    return;
+    return true;
   }
 
   const decision = shouldReleaseByTime(rule, nowMs);
-  if (!decision.release) return;
+  if (!decision.release) return false;
   await writer.updateGateFulfilled(rule.id, decision.reason);
   logger.info(
     `[BlockRuleReconciler] Released rule ${rule.id}: ${decision.reason}`,
   );
+  return true;
 }
 
 async function scheduleAutoReLock(
-  _runtime: IAgentRuntime,
   writer: BlockRuleWriter,
   rule: BlockRule,
   nowMs: number,
@@ -117,16 +126,37 @@ async function scheduleAutoReLock(
   );
 }
 
+export interface BlockRuleReconcileResult {
+  releasedRuleIds: string[];
+  osSync: OsBlockSyncResult;
+}
+
 export async function reconcileBlockRulesOnce(
   runtime: IAgentRuntime,
   nowMs: number = Date.now(),
-): Promise<void> {
+): Promise<BlockRuleReconcileResult> {
   const reader = new BlockRuleReader(runtime);
   const writer = new BlockRuleWriter(runtime);
   const active = await reader.listActiveBlocks();
+  const releasedRuleIds: string[] = [];
   for (const rule of active) {
-    await evaluateRule(runtime, writer, rule, nowMs);
+    if (await evaluateRule(runtime, writer, rule, nowMs)) {
+      releasedRuleIds.push(rule.id);
+    }
   }
+
+  // Converge OS state onto whatever is active after this pass. This is what
+  // releases the hosts-file block when gates fulfill, retries activations
+  // that failed at rule-creation time, and re-asserts blocks that were
+  // removed out-of-band while a rule (harsh or not) is still active.
+  const remaining = await reader.listActiveBlocks();
+  const osSync = await syncOsBlockToRules(runtime, remaining, nowMs);
+  if (!osSync.ok) {
+    logger.error(
+      `[BlockRuleReconciler] OS block sync failed for ${remaining.length} active rule(s): ${osSync.error}`,
+    );
+  }
+  return { releasedRuleIds, osSync };
 }
 
 export function registerBlockRuleReconcilerWorker(
@@ -142,5 +172,66 @@ export function registerBlockRuleReconcilerWorker(
       await reconcileBlockRulesOnce(rt);
       return undefined;
     },
+  });
+}
+
+function isBlockRuleReconcileTask(task: Task): boolean {
+  return task.name === BLOCK_RULE_RECONCILE_TASK_NAME;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function buildBlockRuleReconcileMetadata(
+  previous?: TaskMetadata | null,
+): TaskMetadata {
+  return {
+    ...(isRecord(previous) ? previous : {}),
+    updateInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS,
+  };
+}
+
+type AutonomyServiceLike = {
+  getAutonomousRoomId?: () => UUID;
+};
+
+/**
+ * Persist the repeating Task row that drives the reconciler through the core
+ * task tick. Without this row the registered worker never runs: `until_todo`
+ * gates never release, `fixed_duration` rules never deactivate, and auto
+ * re-lock is unreachable. Mirrors `ensureFollowupTrackerTask`.
+ */
+export async function ensureBlockRuleReconcileTask(
+  runtime: IAgentRuntime,
+): Promise<UUID> {
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [...BLOCK_RULE_RECONCILE_TASK_TAGS],
+  });
+  const existing = tasks.find(isBlockRuleReconcileTask);
+  const metadata = buildBlockRuleReconcileMetadata(
+    isRecord(existing?.metadata) ? existing.metadata : null,
+  );
+  if (existing?.id) {
+    await runtime.updateTask(existing.id, {
+      description: "Reconcile website block rules against gates and OS state",
+      metadata,
+    });
+    return existing.id;
+  }
+
+  const autonomy = runtime.getService("AUTONOMY") as AutonomyServiceLike | null;
+  const roomId =
+    autonomy?.getAutonomousRoomId?.() ??
+    stringToUuid(`block-rule-reconciler-room-${runtime.agentId}`);
+
+  return runtime.createTask({
+    name: BLOCK_RULE_RECONCILE_TASK_NAME,
+    description: "Reconcile website block rules against gates and OS state",
+    roomId,
+    tags: [...BLOCK_RULE_RECONCILE_TASK_TAGS],
+    metadata,
+    dueAt: Date.now(),
   });
 }
