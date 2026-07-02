@@ -593,7 +593,8 @@ describe("RuntimeDbTaskStore", () => {
     const seenSql: string[] = [];
     const adapter = new FakeSqlAdapter();
     const capturing = {
-      execute: (sql: string, params?: unknown[]) => adapter.execute(sql, params),
+      execute: (sql: string, params?: unknown[]) =>
+        adapter.execute(sql, params),
       all: (sql: string, params?: unknown[]) => {
         seenSql.push(sql);
         return adapter.all(sql, params);
@@ -608,9 +609,7 @@ describe("RuntimeDbTaskStore", () => {
     expect(found?.taskId).toBe(task.id);
 
     // The targeted, indexed prefilter ran...
-    expect(
-      seenSql.some((s) => /search_text LIKE/.test(s)),
-    ).toBe(true);
+    expect(seenSql.some((s) => /search_text LIKE/.test(s))).toBe(true);
     // ...and the unbounded full-table scan fallback did NOT.
     expect(
       seenSql.some((s) => /FROM orchestrator_tasks\s*$/.test(s.trim())),

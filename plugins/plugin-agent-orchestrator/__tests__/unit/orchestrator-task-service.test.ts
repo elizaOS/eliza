@@ -1377,7 +1377,9 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
     // The recording failure is logged (once), not swallowed silently.
     expect(
       warn.mock.calls.some((c) =>
-        String(c[0]).includes("spawn succeeded but recording the session failed"),
+        String(c[0]).includes(
+          "spawn succeeded but recording the session failed",
+        ),
       ),
     ).toBe(true);
   });
@@ -1410,8 +1412,12 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
 
     const before = warn.mock.calls.length;
     await drive(acp, sessionId, "ready");
-    await drive(acp, sessionId, "tool_running", { toolCall: { title: "edit" } });
-    await drive(acp, sessionId, "tool_running", { toolCall: { title: "read" } });
+    await drive(acp, sessionId, "tool_running", {
+      toolCall: { title: "edit" },
+    });
+    await drive(acp, sessionId, "tool_running", {
+      toolCall: { title: "read" },
+    });
     await drive(acp, sessionId, "message", { text: "hi" });
 
     const recordWarns = warn.mock.calls
