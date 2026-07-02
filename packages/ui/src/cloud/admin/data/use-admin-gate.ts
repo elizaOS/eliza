@@ -30,7 +30,7 @@ import type {
 } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api-client";
-import { useSessionAuth } from "../../public-pages/lib/use-session-auth";
+import { useSessionAuth } from "../../lib/use-session-auth";
 
 export type AdminGateStatus = AdminModerationStatusResponse;
 

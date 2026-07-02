@@ -33,12 +33,7 @@ import { registerCloudRoute } from "../shell/cloud-route-registry";
 export { AccountSurface, default as AccountRoute } from "./AccountRoute";
 // Zero-prop settings-section adapters (Wave-3 mount points).
 export { AccountSection } from "./AccountSection";
-export {
-  type SessionAuthState,
-  useSessionAuth,
-  useStewardAuth,
-} from "./data/use-session-auth";
-// Data hook + session glue reused by the surfaces.
+// Data hook reused by the surfaces.
 export { type UserProfile, useUserProfile } from "./data/user";
 export {
   default as PermissionsRoute,

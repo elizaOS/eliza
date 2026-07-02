@@ -55,7 +55,7 @@ import { ApiTester } from "./api-tester";
 import { AuthManager } from "./auth-manager";
 import { toast } from "./toast";
 import { useExplorerApiKey } from "./use-explorer-api-key";
-import { useRequireAuth } from "./use-session-auth";
+import { useRequireAuth } from "../lib/use-session-auth";
 
 const categoryDescriptions: Record<string, string> = {
   All: "Explore the complete set of API endpoints available in the Eliza platform.",

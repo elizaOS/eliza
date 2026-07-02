@@ -14,7 +14,7 @@ import { api } from "../../../lib/api-client";
 import {
   authenticatedQueryKey,
   useAuthenticatedQueryGate,
-} from "../auth-query";
+} from "../../../lib/auth-query";
 
 export type AgentListItem = AgentListItemDto;
 

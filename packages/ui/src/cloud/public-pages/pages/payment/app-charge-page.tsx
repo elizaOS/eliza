@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError, api } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { useSessionAuth } from "../../lib/use-session-auth";
+import { useSessionAuth } from "../../../lib/use-session-auth";
 import { navigateToExternalPayment } from "./payment-navigation";
 
 type TFn = ReturnType<typeof useCloudT>;

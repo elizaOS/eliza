@@ -14,12 +14,6 @@
  */
 
 export { useMetaTag, usePageTitle } from "./lib/use-page-title";
-export {
-  type SessionAuthState,
-  type StewardSessionUser,
-  useSessionAuth,
-  useStewardAuth,
-} from "./lib/use-session-auth";
 export { default as AppAuthAuthorizePage } from "./pages/app-auth/app-authorize-page";
 export { default as ApprovalPage } from "./pages/approve/approval-page";
 export { default as AuthErrorPage } from "./pages/auth/auth-error-page";

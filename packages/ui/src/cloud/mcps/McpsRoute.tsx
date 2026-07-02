@@ -11,7 +11,7 @@
 
 import { PageHeaderProvider } from "../../cloud-ui";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
-import { useSessionAuth } from "../public-pages/lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { McpsView } from "./McpsView";
 

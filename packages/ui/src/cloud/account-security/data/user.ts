@@ -13,7 +13,7 @@ import type {
 } from "@elizaos/cloud-shared/types";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
-import { useSessionAuth } from "./use-session-auth";
+import { useSessionAuth } from "../../lib/use-session-auth";
 
 /**
  * `UserWithOrganization`-compatible record consumed by the account components.

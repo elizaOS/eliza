@@ -11,7 +11,7 @@ import {
 import { useDocumentTitle } from "../lib/use-document-title";
 import { MyAgentsClient } from "./components/my-agents";
 import { useT } from "./lib/i18n";
-import { useRequireAuth } from "./lib/use-session-auth";
+import { useRequireAuth } from "../lib/use-session-auth";
 
 export default function MyAgentsPage() {
   const t = useT();

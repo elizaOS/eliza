@@ -26,7 +26,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { CreditBalanceDisplay } from "./components/success-client";
 import { useVerifyCheckout } from "./data/billing-data";
-import { useSessionAuth } from "./use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 
 export default function BillingSuccessPage() {
   const t = useCloudT();

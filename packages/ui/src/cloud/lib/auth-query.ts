@@ -1,14 +1,7 @@
 /**
- * Canonical React-Query auth gate for app-hosted cloud domains.
- *
- * Ported from `@elizaos/cloud-frontend/src/lib/data/auth-query.ts`. Gates the
- * domain's queries on a resolved Steward session and namespaces query keys by the
- * authenticated user id so a session switch invalidates cached data.
- *
- * Shared by the applications, approvals, and documents domains (previously three
- * byte-identical copies). The instances and analytics domains keep their own
- * gate: instances binds to its Playwright-aware session hook, and analytics reads
- * the Steward context directly — both are genuinely different implementations.
+ * Canonical React-Query auth gate for app-hosted cloud domains. Gates a
+ * domain's queries on a resolved Steward session and namespaces query keys by
+ * the authenticated user id so a session switch invalidates cached data.
  */
 
 import { useSessionAuth } from "./use-session-auth";

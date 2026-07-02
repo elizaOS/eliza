@@ -17,7 +17,7 @@ import type {
   InvoiceDto,
   VerifyCheckoutResult,
 } from "../types";
-import { useSessionAuth } from "../use-session-auth";
+import { useSessionAuth } from "../../lib/use-session-auth";
 
 interface AuthGate {
   enabled: boolean;

@@ -42,7 +42,7 @@ import {
 import { ApiError, api } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { DEFAULT_LOGIN_RETURN_TO } from "../../lib/login-return-to";
-import { useSessionAuth } from "../../lib/use-session-auth";
+import { useSessionAuth } from "../../../lib/use-session-auth";
 
 interface InviteDetails {
   organization_name: string;

@@ -24,7 +24,7 @@ const sessionAuthRef = vi.hoisted(() => ({
     user: null as { id: string; email: string } | null,
   },
 }));
-vi.mock("../../lib/use-session-auth", () => ({
+vi.mock("../../../lib/use-session-auth", () => ({
   useSessionAuth: () => sessionAuthRef.current,
 }));
 

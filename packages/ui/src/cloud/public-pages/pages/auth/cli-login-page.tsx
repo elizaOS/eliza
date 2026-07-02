@@ -15,7 +15,7 @@ import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { clearStaleStewardSession } from "../../../shell/StewardProvider";
 import { getErrorMessage } from "../../lib/error-message";
 import { usePageTitle } from "../../lib/use-page-title";
-import { useSessionAuth } from "../../lib/use-session-auth";
+import { useSessionAuth } from "../../../lib/use-session-auth";
 
 type TFn = ReturnType<typeof useCloudT>;
 

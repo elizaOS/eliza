@@ -1,20 +1,16 @@
 /**
- * Canonical "is the user logged in" hook for app-hosted cloud domains that only
- * need the minimal `{ ready, authenticated, user }` contract.
+ * Canonical "is the user logged in" hook for every app-hosted cloud domain.
  *
- * Ported from `@elizaos/cloud-frontend/src/hooks/use-session-auth.ts`, adapted to
- * read the Steward auth context the cloud shell exposes
+ * Reads the Steward auth context the cloud shell exposes
  * (`LocalStewardAuthContext` in `../shell/StewardProvider`). The shell only
  * mounts the heavy `@stwd/*` runtime on demand, so this hook also falls back to
- * reading the JWT directly from `localStorage` (decoded, expiry-checked) when the
- * provider isn't mounted — keeping authed cloud views able to gate on
+ * reading the JWT directly from `localStorage` (decoded, expiry-checked) when
+ * the provider isn't mounted — keeping authed cloud views able to gate on
  * `{ ready, authenticated, user }` without forcing the runtime to load.
  *
- * Shared by the applications, approvals, and documents domains (previously three
- * byte-identical copies). Domains that also need Steward-runtime accessors
- * (`useStewardAuth`), the Playwright test-auth bypass, or the extended
- * `authSource`/`stewardUser` fields keep their own divergent hook — those are
- * genuinely different implementations, not subsets of this one.
+ * Test builds (`VITE_PLAYWRIGHT_TEST_AUTH` / `NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH`)
+ * also honor the Playwright `eliza-test-auth` marker cookie so browser-driven
+ * suites can exercise authed surfaces against a mock stack.
  */
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
@@ -39,6 +35,43 @@ const STEWARD_AUTH_FALLBACK: Pick<
   isLoading: false,
   user: null,
 };
+
+const PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE = "eliza-test-auth";
+const PLAYWRIGHT_TEST_USER_ID = "22222222-2222-4222-8222-222222222222";
+const PLAYWRIGHT_TEST_USER_EMAIL = "local-live-test-user@agent.local";
+
+/**
+ * Read each env var by its literal name — Vite inlines custom `VITE_*` vars only
+ * on literal property access; a dynamic lookup returns `undefined` in prod and
+ * silently disables the Playwright test-auth bypass.
+ */
+function isPlaywrightTestAuthEnabled(): boolean {
+  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
+  if (
+    typeof process !== "undefined" &&
+    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function hasCookie(name: string, value?: string): boolean {
+  if (typeof document === "undefined") return false;
+  const expected = value ? `${name}=${value}` : `${name}=`;
+  return document.cookie
+    .split(";")
+    .some((part) => part.trim().startsWith(expected));
+}
+
+function readPlaywrightTestSession(): StewardSessionUser {
+  if (!isPlaywrightTestAuthEnabled()) return null;
+  if (!hasCookie(PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE, "1")) return null;
+  return {
+    id: PLAYWRIGHT_TEST_USER_ID,
+    email: PLAYWRIGHT_TEST_USER_EMAIL,
+  };
+}
 
 function decodeStewardToken(token: string): {
   id: string;
@@ -99,10 +132,16 @@ export function useSessionAuth(): SessionAuthState {
   const [storageUser, setStorageUser] = useState<StewardSessionUser>(
     readStewardSessionFromStorage,
   );
+  const [testUser, setTestUser] = useState<StewardSessionUser>(
+    readPlaywrightTestSession,
+  );
 
   useEffect(() => {
-    setStorageUser(readStewardSessionFromStorage());
-    const handler = () => setStorageUser(readStewardSessionFromStorage());
+    const handler = () => {
+      setStorageUser(readStewardSessionFromStorage());
+      setTestUser(readPlaywrightTestSession());
+    };
+    handler();
     window.addEventListener("storage", handler);
     window.addEventListener("steward-token-sync", handler);
     const timer = setTimeout(handler, 250);
@@ -121,13 +160,15 @@ export function useSessionAuth(): SessionAuthState {
       }
     : null;
 
-  const user = providerUser ?? storageUser;
-  const authenticated = providerAuth.isAuthenticated || storageUser !== null;
-  const ready = !providerAuth.isLoading;
+  const user = providerUser ?? storageUser ?? testUser;
+  const authenticated =
+    providerAuth.isAuthenticated || storageUser !== null || testUser !== null;
+  const ready = !providerAuth.isLoading || isPlaywrightTestAuthEnabled();
 
   return { ready, authenticated, user };
 }
 
+/** The session state for protected pages (gate rendering on `authenticated`). */
 export function useRequireAuth(): SessionAuthState {
   return useSessionAuth();
 }

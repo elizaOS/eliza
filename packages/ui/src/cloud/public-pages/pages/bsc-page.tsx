@@ -27,7 +27,7 @@ import {
 } from "../../../components/primitives";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { usePageTitle } from "../lib/use-page-title";
-import { useSessionAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../../lib/use-session-auth";
 
 export default function BscPromoPage() {
   const t = useCloudT();

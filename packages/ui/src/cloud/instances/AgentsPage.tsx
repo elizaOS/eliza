@@ -19,7 +19,7 @@ import {
 import { useCreditsBalance } from "./lib/data/credits";
 import { type AgentListItem, useAgents } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
-import { useRequireAuth } from "./lib/use-session-auth";
+import { useRequireAuth } from "../lib/use-session-auth";
 
 function toAgentRow(a: AgentListItem): ElizaAgentRow {
   return {

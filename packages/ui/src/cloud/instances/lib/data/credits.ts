@@ -11,7 +11,7 @@ import { api } from "../../../lib/api-client";
 import {
   authenticatedQueryKey,
   useAuthenticatedQueryGate,
-} from "../auth-query";
+} from "../../../lib/auth-query";
 
 /**
  * GET /api/credits/balance — cached for 30s by default. Pass `fresh: true` to
