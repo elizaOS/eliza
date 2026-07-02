@@ -10,11 +10,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import {
-  DEFAULT_LAUNCHER_FAVORITES,
-  LAUNCHER_DOCK_LIMIT,
-  LAUNCHER_STORAGE_KEY,
-} from "../../state/launcher-layout";
 import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { Launcher } from "./Launcher";
 
@@ -40,10 +35,9 @@ const FEW = [entry("chat", "Chat"), entry("settings", "Settings")];
 const LEGACY_SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
 
 /**
- * Enter edit mode the only way the launcher now offers it — a long-press on a
- * tile (the visible Edit button was removed per product). Self-contained: it
- * installs fake timers just for the long-press window so callers that otherwise
- * run on real timers stay unaffected.
+ * Enter edit mode the only way the launcher offers it — a long-press on a tile.
+ * Self-contained: it installs fake timers just for the long-press window so
+ * callers that otherwise run on real timers stay unaffected.
  */
 function longPressToEdit(label: string): void {
   vi.useFakeTimers();
@@ -64,19 +58,18 @@ afterEach(() => {
 });
 
 describe("Launcher", () => {
-  it("renders the default Chat and Settings dock without duplicating page tiles", () => {
+  it("renders every view as a page tile (no dock)", () => {
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    const dock = within(screen.getByTestId("launcher-dock"));
-    expect(dock.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(dock.getByTestId("launcher-tile-settings")).toBeTruthy();
+    // The featured-views dock was removed: every view lives on the pages.
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
     const page = within(screen.getByTestId("launcher-page-0"));
-    expect(page.queryByTestId("launcher-tile-chat")).toBeNull();
-    expect(page.queryByTestId("launcher-tile-settings")).toBeNull();
+    expect(page.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(page.getByTestId("launcher-tile-settings")).toBeTruthy();
     // Label text is present (names below icons), no descriptions.
     expect(screen.getByText("Chat")).toBeTruthy();
   });
 
-  it("renders the seeded dock in grouped curated mode and keeps docked apps off the page", () => {
+  it("renders all curated ids on the page in grouped mode (no dock)", () => {
     render(
       <Launcher
         entries={[
@@ -89,48 +82,41 @@ describe("Launcher", () => {
       />,
     );
 
-    const dock = within(screen.getByTestId("launcher-dock"));
-    expect(dock.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(dock.getByTestId("launcher-tile-settings")).toBeTruthy();
-
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
     const page = within(screen.getByTestId("launcher-page-0"));
-    expect(page.queryByTestId("launcher-tile-chat")).toBeNull();
-    expect(page.queryByTestId("launcher-tile-settings")).toBeNull();
+    expect(page.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(page.getByTestId("launcher-tile-settings")).toBeTruthy();
     expect(page.getByTestId("launcher-tile-wallet")).toBeTruthy();
   });
 
-  it("re-seeds the dock when migrating a dock-less Springboard layout (upgrade path)", () => {
-    // A springboard-era layout has favorites [] with no dockCleared marker —
-    // that predates the dock feature, so migration re-seeds chat+settings into
-    // the dock instead of suppressing it forever (#10800 QA). The seeded ids
-    // leave the page grid (an icon lives in exactly one surface).
+  it("migrates a Springboard layout onto the pages (legacy favorites flow back to the grid)", () => {
+    // A pre-removal layout carried a `favorites` array; parsing drops it, so any
+    // previously-docked id flows back onto the grid via reconcile while the
+    // manual page order is preserved.
     window.localStorage.setItem(
       LEGACY_SPRINGBOARD_STORAGE_KEY,
       JSON.stringify({
-        favorites: [],
-        pages: [["settings", "chat"]],
+        favorites: ["chat"],
+        pages: [["settings"]],
         manual: true,
       }),
     );
 
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
 
-    const dockIds = Array.from(
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    const tileIds = Array.from(
       screen
-        .getByTestId("launcher-dock")
+        .getByTestId("launcher-page-0")
         .querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
     ).map((node) =>
       node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
     );
-    expect(dockIds).toEqual(["chat", "settings"]);
-    expect(
-      screen
-        .queryByTestId("launcher-page-0")
-        ?.querySelectorAll('[data-testid^="launcher-tile-"]').length ?? 0,
-    ).toBe(0);
+    // Manual order preserved (settings first), legacy-docked chat appended.
+    expect(tileIds).toEqual(["settings", "chat"]);
   });
 
-  it("preserves the manual page order of non-dock ids from a migrated Springboard layout", () => {
+  it("preserves the manual page order from a migrated Springboard layout", () => {
     window.localStorage.setItem(
       LEGACY_SPRINGBOARD_STORAGE_KEY,
       JSON.stringify({
@@ -190,21 +176,6 @@ describe("Launcher", () => {
     longPressToEdit("Settings");
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(onLaunch).not.toHaveBeenCalled();
-  });
-
-  it("favorites a view into the dock and persists the layout", () => {
-    // `notes` is not in DEFAULT_LAUNCHER_FAVORITES (#9144), so favoriting it
-    // genuinely adds it to the dock rather than toggling off a pre-seeded id.
-    const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
-    render(<Launcher entries={entries} onLaunch={() => {}} />);
-    longPressToEdit("Notes");
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    // The dock now contains a Notes tile (keyed dock-notes).
-    expect(screen.getByTestId("launcher-tile-notes")).toBeTruthy();
-    const stored = JSON.parse(
-      window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
-    );
-    expect(stored.favorites).toContain("notes");
   });
 
   it("shows page dots when there is more than one page", () => {
@@ -417,16 +388,20 @@ describe("Launcher long-press to edit", () => {
   it("enters edit mode after a long press on a tile", () => {
     vi.useFakeTimers();
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    // Resting: no per-tile pin affordances (there is no Edit button anymore).
-    expect(screen.queryByTestId("launcher-fav-chat")).toBeNull();
+    // Resting: tiles are not animated.
+    expect(
+      screen.getByRole("button", { name: "Chat" }).className,
+    ).not.toContain("animate-pulse");
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Chat" }));
     act(() => {
       vi.advanceTimersByTime(450);
     });
 
-    // Edit mode is on: per-tile pin affordances appear.
-    expect(screen.getByTestId("launcher-fav-chat")).toBeTruthy();
+    // Edit mode is on: tiles animate (the iOS-style jiggle proxy).
+    expect(screen.getByRole("button", { name: "Chat" }).className).toContain(
+      "animate-pulse",
+    );
   });
 
   it("does not enter edit mode when the press is released early", () => {
@@ -441,8 +416,10 @@ describe("Launcher long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    // Still resting: no pin affordances surfaced.
-    expect(screen.queryByTestId("launcher-fav-chat")).toBeNull();
+    // Still resting: no animation.
+    expect(
+      screen.getByRole("button", { name: "Chat" }).className,
+    ).not.toContain("animate-pulse");
   });
 
   it("cancels the long-press when the pointer is cancelled (touch scroll)", () => {
@@ -459,92 +436,8 @@ describe("Launcher long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(screen.queryByTestId("launcher-fav-chat")).toBeNull();
-  });
-});
-
-describe("Launcher controlled favorites (desktop tabs)", () => {
-  it("clamps the dock to LAUNCHER_DOCK_LIMIT even when more are supplied", () => {
-    // Controlled mode (onToggleFavorite set) renders the caller's favoriteIds.
-    // A caller that supplies more than the cap must still render at most
-    // LAUNCHER_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock), and those
-    // docked ids must not duplicate in the page grid.
-    const ids = ["a", "b", "c", "d", "e", "f"];
-    render(
-      <Launcher
-        entries={ids.map((id) => entry(id, id.toUpperCase()))}
-        onLaunch={() => {}}
-        favoriteIds={ids}
-        onToggleFavorite={() => {}}
-      />,
-    );
-    const dockTiles = screen
-      .getByTestId("launcher-dock")
-      .querySelectorAll('[data-testid^="launcher-tile-"]');
-    expect(dockTiles).toHaveLength(LAUNCHER_DOCK_LIMIT);
     expect(
-      within(screen.getByTestId("launcher-dock")).getByTestId(
-        "launcher-tile-a",
-      ),
-    ).toBeTruthy();
-
-    const page = within(screen.getByTestId("launcher-page-0"));
-    expect(page.queryByTestId("launcher-tile-a")).toBeNull();
-    expect(page.queryByTestId("launcher-tile-d")).toBeNull();
-    expect(page.getByTestId("launcher-tile-e")).toBeTruthy();
-    expect(page.getByTestId("launcher-tile-f")).toBeTruthy();
-  });
-});
-
-describe("Launcher dock favorites (local, uncontrolled)", () => {
-  // None of these ids are in DEFAULT_LAUNCHER_FAVORITES, so the seeded dock
-  // reconciles to empty and each favorite is a genuine add.
-  const MANY = ["a", "b", "c", "d", "e"].map((id) =>
-    entry(id, id.toUpperCase()),
-  );
-
-  it("keeps the seed list stable for standalone favorite tests", () => {
-    expect(DEFAULT_LAUNCHER_FAVORITES).toEqual(["chat", "settings"]);
-  });
-
-  it("unpins a favorited view from the dock", () => {
-    // `notes` and `archive` are not default-dock ids (#9144), so the seeded dock
-    // reconciles to empty and the dock only exists once we pin `notes`.
-    render(
-      <Launcher
-        entries={[entry("notes", "Notes"), entry("archive", "Archive")]}
-        onLaunch={() => {}}
-      />,
-    );
-    longPressToEdit("Notes");
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    expect(
-      within(screen.getByTestId("launcher-dock")).getByText("Notes"),
-    ).toBeTruthy();
-
-    // Toggle it off again → the dock empties and unmounts.
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    expect(screen.queryByTestId("launcher-dock")).toBeNull();
-    const stored = JSON.parse(
-      window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
-    );
-    expect(stored.favorites).not.toContain("notes");
-  });
-
-  it("evicts the oldest favorite when the dock is full", () => {
-    render(<Launcher entries={MANY} onLaunch={() => {}} />);
-    longPressToEdit("A");
-    for (const id of ["a", "b", "c", "d", "e"]) {
-      fireEvent.click(screen.getByTestId(`launcher-fav-${id}`));
-    }
-    // Dock caps at 4 → the first-added ("A") is evicted, B–E remain.
-    const dock = within(screen.getByTestId("launcher-dock"));
-    expect(dock.queryByText("A")).toBeNull();
-    expect(dock.getByText("B")).toBeTruthy();
-    expect(dock.getByText("E")).toBeTruthy();
-    const stored = JSON.parse(
-      window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
-    );
-    expect(stored.favorites).toEqual(["b", "c", "d", "e"]);
+      screen.getByRole("button", { name: "Chat" }).className,
+    ).not.toContain("animate-pulse");
   });
 });

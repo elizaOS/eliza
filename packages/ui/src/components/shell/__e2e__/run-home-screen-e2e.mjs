@@ -470,17 +470,15 @@ try {
       `curated app "${id}" renders on the launcher apps page`,
     );
   }
-  // ── Default favorites stay in the dock and out of the page grid.
+  // ── No dock: every view (Chat included) tiles on the page grid. The
+  // featured-views dock was removed, so there is no `launcher-dock` element.
   assert(
-    await mobile.getByTestId("launcher-dock").getByText("Chat").isVisible(),
-    "default favorite Chat renders in the launcher dock",
+    (await mobile.getByTestId("launcher-dock").count()) === 0,
+    "the launcher renders no dock (featured-views header removed)",
   );
   assert(
-    (await mobile
-      .getByTestId("launcher-page-0")
-      .getByTestId("launcher-tile-chat")
-      .count()) === 0,
-    "default favorite Chat is absent from the page grid (docked instead)",
+    await mobile.getByTestId("launcher-tile-chat").isVisible(),
+    "Chat renders as a page tile on the launcher (no dock)",
   );
   // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
   // and the deduped duplicate registrations.
@@ -560,11 +558,15 @@ try {
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
-  // (fixed placement, no reorder/pin affordances). #3
+  // (fixed placement, no reorder). Edit mode animates tiles with `animate-pulse`,
+  // so its absence after a stationary hold is the real read-only signal. #3
   await longPressHold(mobile, "launcher-tile-wallet");
   await mobile.waitForTimeout(150);
   assert(
-    (await mobile.getByTestId("launcher-fav-wallet").count()) === 0,
+    (await mobile
+      .getByTestId("launcher-tile-wallet")
+      .locator("button.animate-pulse")
+      .count()) === 0,
     "a stationary long-press does NOT enter edit mode (curated launcher is read-only)",
   );
   // A REAL touch right-swipe still returns HOME cleanly (at the launcher's

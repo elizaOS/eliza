@@ -203,15 +203,16 @@ describe("Home ↔ Launcher composed surface", () => {
     renderComposed();
     openLauncher();
 
-    // A stationary hold past the long-press threshold must NOT surface pin/edit
-    // affordances — the curated launcher has a fixed placement, no reordering.
+    // A stationary hold past the long-press threshold must NOT enter edit mode —
+    // the curated launcher has a fixed placement, no reordering. Edit mode
+    // animates tiles with `animate-pulse`, so its absence is the read-only proof.
     const tile = screen
       .getByTestId("launcher-tile-settings")
       .querySelector("button");
     if (!tile) throw new Error("settings tile button missing");
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
-    expect(screen.queryByTestId("launcher-fav-settings")).toBeNull();
+    expect(tile.className).not.toContain("animate-pulse");
     vi.useRealTimers();
   });
 

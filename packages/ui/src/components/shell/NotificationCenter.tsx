@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { categoryIcon } from "../../state/notifications/category-icon";
@@ -54,6 +55,27 @@ const CATEGORY_ORDER: NotificationCategory[] = [
 ];
 
 type CategoryFilter = NotificationCategory | "all";
+
+/**
+ * The controlled overlay renders as one of two surface-appropriate shells.
+ * Mouse-driven wide surfaces (desktop shell + desktop browser) get a native
+ * top-RIGHT anchored `panel`; touch phones/tablets and narrow windows get the
+ * full-width top pull-down `sheet` (#10706).
+ *
+ * Detection reuses the fine-pointer convention already used for the pager edge
+ * buttons ({@link ../shell/PagerEdgeButtons}); the `min-width` gate keeps a
+ * narrow desktop window (where a 400px right-anchored panel would crowd the
+ * viewport) on the centered sheet instead.
+ */
+const DESKTOP_PANEL_QUERY =
+  "(hover: hover) and (pointer: fine) and (min-width: 640px)";
+
+/**
+ * Short landscape phones: shrink the pull-down sheet so it floats over the
+ * (already short) viewport instead of covering nearly all of it.
+ */
+const SHORT_LANDSCAPE_QUERY =
+  "(orientation: landscape) and (max-height: 520px)";
 
 function NotificationRow({
   notification,
@@ -210,11 +232,16 @@ function FilterChip({
  * overlay region so it is reachable from every view.
  *
  * `headless` boots the store + toast routing but renders no bell — used to keep
- * interrupt toasts flowing while the visible button is hidden.
+ * interrupt toasts flowing while the visible button is hidden. It is also the
+ * single listener for {@link OPEN_NOTIFICATION_CENTER_EVENT}: on that event it
+ * reveals the notification list in the surface-appropriate shell — the desktop
+ * `panel` on mouse-driven wide surfaces, the pull-down `sheet` on touch.
  *
- * `variant="sheet"` renders the same panel as a controlled top sheet (opened by
- * the home pull-DOWN gesture, #10706) instead of the bell + popover; `open` /
- * `onOpenChange` drive it.
+ * The controlled overlay shares one body across three shells: `variant="sheet"`
+ * is the full-width top pull-down (home pull-DOWN gesture on mobile, #10706),
+ * `variant="panel"` is the top-right anchored desktop/web dropdown, and the
+ * default `variant="bell"` is the bell + popover. `open` / `onOpenChange` drive
+ * the two controlled shells.
  */
 export function NotificationCenter({
   className,
@@ -225,7 +252,7 @@ export function NotificationCenter({
 }: {
   className?: string;
   headless?: boolean;
-  variant?: "bell" | "sheet";
+  variant?: "bell" | "sheet" | "panel";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }): ReactNode {
@@ -235,6 +262,17 @@ export function NotificationCenter({
   // Default to attention-first (unread → priority → recency); the user can flip
   // to a plain most-recent-first timeline (#10706).
   const [sortMode, setSortMode] = useState<NotificationSortMode>("priority");
+
+  // Surface detection — drives which shell the headless owner opens and how the
+  // pull-down sheet sizes itself. Both are reactive, so a resize/rotate while
+  // the overlay is open re-picks the appropriate treatment.
+  const isDesktopSurface = useMediaQuery(DESKTOP_PANEL_QUERY);
+  const isShortLandscape = useMediaQuery(SHORT_LANDSCAPE_QUERY);
+
+  // The two controlled shells (pull-down sheet + desktop panel) share the body,
+  // an Escape/close contract, and a scrolling list; the bell popover is
+  // self-bounded.
+  const isControlled = variant === "sheet" || variant === "panel";
 
   // Categories actually present in the inbox, in a stable display order. Drives
   // the filter chips — empty/single-category inboxes get no filter clutter.
@@ -268,10 +306,11 @@ export function NotificationCenter({
   // the store guards against re-init; the toast sink is re-pointed on remount.
   useEffect(() => {
     initNotifications();
-    // Only the bell/headless owner routes interrupt toasts — the pull-down sheet
-    // is a transient reader and must not hijack (or null on unmount) the single
+    // Only the bell/headless owner (variant="bell") routes interrupt toasts —
+    // the controlled shells the headless owner spawns (sheet + panel) are
+    // transient readers and must not hijack (or null on unmount) the single
     // shared toast sink the always-mounted headless instance owns.
-    if (variant === "sheet") return;
+    if (variant !== "bell") return;
     registerNotificationToastSink(setActionNotice);
     return () => registerNotificationToastSink(null);
   }, [setActionNotice, variant]);
@@ -283,15 +322,16 @@ export function NotificationCenter({
     void clearNotifications();
   }, []);
 
-  // Escape closes the pull-down sheet (mirrors the popover's dismiss).
+  // Escape closes the controlled shells — sheet + panel (mirrors the popover's
+  // dismiss).
   useEffect(() => {
-    if (variant !== "sheet" || !open) return;
+    if (!isControlled || !open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onOpenChange?.(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [variant, open, onOpenChange]);
+  }, [isControlled, open, onOpenChange]);
 
   // Surface-agnostic open (#10706): the single always-mounted headless instance
   // listens for OPEN_NOTIFICATION_CENTER_EVENT and reveals the pull-down sheet.
@@ -314,12 +354,14 @@ export function NotificationCenter({
   // Hidden for now: keep the store + toast routing live (the effect above) but
   // render no bell. Drop the `headless` prop to bring the button back. When an
   // OPEN_NOTIFICATION_CENTER_EVENT has fired, the headless owner renders the
-  // pull-down sheet as a child (one level, variant="sheet" — no recursion).
+  // surface-appropriate controlled shell as a child (one level — no recursion):
+  // the top-right desktop panel on mouse-driven wide surfaces, the full-width
+  // pull-down sheet on touch/narrow ones.
   if (headless) {
     if (!selfOpen) return null;
     return (
       <NotificationCenter
-        variant="sheet"
+        variant={isDesktopSurface ? "panel" : "sheet"}
         open
         onOpenChange={setSelfOpen}
         className={className}
@@ -329,10 +371,18 @@ export function NotificationCenter({
 
   const panelBody = (
     <>
-      {/* Flat — no divider lines between panel rows; whitespace separates. */}
-      <div className="flex items-center justify-between px-3 py-2.5">
-        <span className="text-sm font-semibold text-txt">Notifications</span>
-        <div className="flex items-center gap-1">
+      {/* Flat — no divider line under the header; whitespace + the type
+          hierarchy separate it from the list (app-wide flat direction). */}
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-sm font-semibold text-txt">Notifications</span>
+          {hasUnread && (
+            <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-2xs font-semibold leading-none text-accent">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-0.5">
           {hasUnread && (
             <Button
               variant="ghost"
@@ -355,13 +405,17 @@ export function NotificationCenter({
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
-          {variant === "sheet" && (
+          {isControlled && (
             <Button
               variant="ghost"
               size="icon-sm"
               aria-label="Close notifications"
               title="Close"
-              data-testid="notification-sheet-close"
+              data-testid={
+                variant === "panel"
+                  ? "notification-panel-close"
+                  : "notification-sheet-close"
+              }
               onClick={() => onOpenChange?.(false)}
             >
               <X className="h-4 w-4" />
@@ -408,19 +462,34 @@ export function NotificationCenter({
         </div>
       )}
       {notifications.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center gap-2 px-4 py-12 text-center",
+            // Give the controlled shells a comfortable floor so an empty
+            // overlay is not a razor-thin strip; the bell popover sizes tight.
+            isControlled && "min-h-[9rem]",
+          )}
+        >
           <Inbox className="h-7 w-7 text-muted/70" />
           <span className="text-sm text-muted">You're all caught up</span>
         </div>
       ) : (
-        <ul className="max-h-[min(440px,60vh)] overflow-y-auto p-1.5">
+        <ul
+          className={cn(
+            "overflow-y-auto p-1.5",
+            // Controlled shells are flex columns capped at a max height, so the
+            // list is the flex scroller: it sizes to content but `min-h-0` lets
+            // it shrink and scroll when the list overflows, keeping header +
+            // close pinned (robust in short landscape). The bell popover is not
+            // height-bounded by a parent, so it self-bounds.
+            isControlled ? "min-h-0" : "max-h-[min(440px,60vh)]",
+          )}
+        >
           {visibleNotifications.map((notification) => (
             <NotificationRow
               key={notification.id}
               notification={notification}
-              onClose={() =>
-                variant === "sheet" ? onOpenChange?.(false) : undefined
-              }
+              onClose={() => (isControlled ? onOpenChange?.(false) : undefined)}
             />
           ))}
         </ul>
@@ -428,8 +497,11 @@ export function NotificationCenter({
     </>
   );
 
-  // Pull-down sheet: a top-anchored panel the home surface reveals with a
-  // downward pull (#10706). Backdrop dismisses; a grabber hints the gesture.
+  // Mobile pull-down sheet: a full-width, top-anchored panel the home surface
+  // reveals with a downward pull (#10706), rounded at the bottom and safe-area
+  // aware. Backdrop dismisses; a grabber hints the gesture. In short landscape
+  // it caps lower so it floats over the (already short) viewport instead of
+  // swallowing it — the list stays the flex scroller.
   if (variant === "sheet") {
     if (!open) return null;
     return (
@@ -448,17 +520,55 @@ export function NotificationCenter({
           data-testid="notification-sheet"
           data-above-shell-overlay
           className={cn(
-            // Floating sheet: the popover scrim + one outer edge stay (self-
-            // contained contrast); shadows are flat app-wide.
-            "fixed inset-x-0 top-0 z-[9501] mx-auto flex max-h-[85vh] w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover",
+            // Floating sheet: flat (no drop shadow, app-wide direction); the
+            // popover scrim + one outer edge give self-contained contrast. Short
+            // landscape caps lower so it floats over the (already short) viewport.
+            "fixed inset-x-0 top-0 z-[9501] mx-auto flex w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover",
+            isShortLandscape ? "max-h-[75vh]" : "max-h-[85vh]",
             "pt-[var(--safe-area-top,0px)]",
             className,
           )}
         >
           {panelBody}
-          <div className="flex justify-center py-1.5">
+          <div className="flex shrink-0 justify-center py-1.5">
             <div className="h-1 w-9 rounded-full bg-muted/40" aria-hidden />
           </div>
+        </div>
+      </>
+    );
+  }
+
+  // Desktop / web panel: a native top-RIGHT anchored dropdown (constrained
+  // width, content-sized up to a max height then the list scrolls). Opened by
+  // the desktop-native "Notifications" menu/tray + the <scheme>://notifications
+  // deep link via OPEN_NOTIFICATION_CENTER_EVENT. A transparent full-screen
+  // click-catcher dismisses on outside click (no modal scrim — this reads as a
+  // panel, not a dialog); Escape also dismisses (effect above).
+  if (variant === "panel") {
+    if (!open) return null;
+    return (
+      <>
+        <button
+          type="button"
+          aria-label="Dismiss notifications"
+          data-testid="notification-panel-backdrop"
+          data-above-shell-overlay
+          onClick={() => onOpenChange?.(false)}
+          className="fixed inset-0 z-[9500]"
+        />
+        <div
+          role="dialog"
+          aria-label="Notifications"
+          data-testid="notification-panel"
+          data-above-shell-overlay
+          className={cn(
+            // Flat like the app's PopoverContent (border + bg, no shadow): the
+            // 1px border defines the floating panel over content.
+            "fixed right-3 top-3 z-[9501] flex max-h-[min(560px,calc(100vh-1.5rem))] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover",
+            className,
+          )}
+        >
+          {panelBody}
         </div>
       </>
     );

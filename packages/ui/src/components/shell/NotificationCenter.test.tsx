@@ -93,8 +93,28 @@ function seedNotifications(notifications: AgentNotification[]): void {
   }
 }
 
+/**
+ * jsdom ships no `window.matchMedia`, so `useMediaQuery` reads `false` for every
+ * query by default. Install a deterministic stub whose `matches` is decided per
+ * query — this is what selects the desktop panel vs the mobile pull-down sheet.
+ */
+function mockMatchMedia(matches: (query: string) => boolean): void {
+  window.matchMedia = ((query: string) => ({
+    matches: matches(query),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+}
+
 describe("NotificationCenter", () => {
   beforeEach(() => {
+    // Default surface: coarse pointer / narrow viewport → mobile sheet shell.
+    mockMatchMedia(() => false);
     __resetNotificationStoreForTests();
     mocks.appState.setActionNotice.mockReset();
     mocks.listNotifications.mockReset().mockResolvedValue({
@@ -270,5 +290,64 @@ describe("NotificationCenter", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("notification-sheet")).toBeNull();
     });
+  });
+
+  it("desktop surface: OPEN event reveals the anchored panel, not the pull-down sheet", async () => {
+    // Fine pointer + wide viewport → desktop/web panel shell.
+    mockMatchMedia((q) => q.includes("pointer: fine"));
+    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
+    seedNotifications([notification("d1", "Deploy finished", "system")]);
+    const user = userEvent.setup();
+
+    render(<NotificationCenter headless />);
+    expect(screen.queryByTestId("notification-panel")).toBeNull();
+
+    window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-panel")).toBeTruthy();
+    });
+    // The desktop shell is the panel — never the mobile pull-down sheet.
+    expect(screen.queryByTestId("notification-sheet")).toBeNull();
+    expect(screen.getByText("Deploy finished")).toBeTruthy();
+
+    // The panel-specific close control dismisses it.
+    await user.click(screen.getByTestId("notification-panel-close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("notification-panel")).toBeNull();
+    });
+  });
+
+  it("desktop panel: dismisses on an outside (backdrop) click", async () => {
+    mockMatchMedia((q) => q.includes("pointer: fine"));
+    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
+    seedNotifications([notification("d1", "Deploy finished", "system")]);
+    const user = userEvent.setup();
+
+    render(<NotificationCenter headless />);
+    window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
+    await screen.findByTestId("notification-panel");
+
+    await user.click(screen.getByTestId("notification-panel-backdrop"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("notification-panel")).toBeNull();
+    });
+  });
+
+  it("mobile surface: OPEN event reveals the pull-down sheet, not the desktop panel", async () => {
+    // Coarse pointer / narrow viewport → mobile sheet shell (beforeEach default,
+    // set explicitly here for clarity).
+    mockMatchMedia(() => false);
+    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
+    seedNotifications([notification("m1", "Reminder due", "reminder")]);
+
+    render(<NotificationCenter headless />);
+    window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-sheet")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("notification-panel")).toBeNull();
+    expect(screen.getByText("Reminder due")).toBeTruthy();
   });
 });
