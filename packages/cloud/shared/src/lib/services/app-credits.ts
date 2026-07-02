@@ -697,6 +697,26 @@ export class AppCreditsService {
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
 
+    // #11512: stable per-charge key — the SAME derivation the creator-earnings
+    // dedup uses (recordCreatorEarnings / reverseCreatorEarnings) — threaded
+    // into the org-credit legs below as a synthetic, namespaced
+    // stripePaymentIntentId. creditsService dedupes on the
+    // credit_transactions.stripe_payment_intent_id unique index, so a
+    // re-invoked reconcile (a settle retry after a mid-reconcile throw, where
+    // the org refund already COMMITTED before reverseCreatorEarnings / the
+    // apps-counter update threw) returns the first transaction as a no-op
+    // instead of refunding or charging the org a second time. The
+    // `reconcile-refund:` / `reconcile-charge:` prefixes keep the synthetic
+    // keys disjoint from real Stripe intent ids (`pi_…`) and from the
+    // org-credits path's `recon:<txid>:<phase>` keys. Without any per-charge
+    // key we keep the prior non-idempotent behavior — the settler's
+    // first-call-wins guard (createCreditReservationSettler) is the backstop.
+    const chargeKey =
+      (typeof metadata?.idempotencyKey === "string" && metadata.idempotencyKey) ||
+      (typeof metadata?.stripePaymentIntentId === "string" && metadata.stripePaymentIntentId) ||
+      getRequestIdempotencyKey() ||
+      null;
+
     const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
     // Resolve the user's organization once — every branch below charges or
@@ -762,6 +782,10 @@ export class AppCreditsService {
         organizationId,
         amount: refundAmount,
         description: `App reconciliation refund (${app.name ?? appId})`,
+        // Idempotent per charge (#11512): a re-invoked reconcile must not
+        // credit the org a second refund (2×reserved − actual = minted,
+        // cashable credit).
+        stripePaymentIntentId: chargeKey ? `reconcile-refund:${chargeKey}` : undefined,
         metadata: {
           appId,
           userId,
@@ -833,6 +857,9 @@ export class AppCreditsService {
       organizationId,
       amount: additionalCharge,
       description: `App reconciliation charge (${app.name ?? appId})`,
+      // Symmetric idempotency (#11512): a re-invoked reconcile must not debit
+      // the overage from the org twice.
+      stripePaymentIntentId: chargeKey ? `reconcile-charge:${chargeKey}` : undefined,
       metadata: {
         appId,
         userId,

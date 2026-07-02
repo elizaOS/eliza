@@ -1594,14 +1594,17 @@ async function handleStreamingRequest(
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
 
+  // First-call-wins EVEN on throw (#11512): the settlement promise is cached
+  // unconditionally, so a rejected settlement can never be re-run by a later
+  // callback (onAbort/onError racing a thrown onFinish). Resetting on throw
+  // let a second call re-invoke reconcile after its org refund had already
+  // committed — a second full refund, i.e. minted cashable credit. Subsequent
+  // callers observe the same resolution or the same rejection.
   const settleStreamingOnce = (
     factory: () => Promise<CreditReconciliationResult | null>,
   ): Promise<CreditReconciliationResult | null> => {
     if (!streamingSettlementPromise) {
-      streamingSettlementPromise = factory().catch((error) => {
-        streamingSettlementPromise = null;
-        throw error;
-      });
+      streamingSettlementPromise = factory();
     }
     return streamingSettlementPromise;
   };
