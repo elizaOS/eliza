@@ -43,6 +43,13 @@
  */
 
 import { logger } from "@elizaos/core";
+import {
+  buildRotatedSubprocessEnv,
+  type ChatAccountRotator,
+  type ChatAccountSelection,
+  createChatAccountRotator,
+  isAccountLimitError,
+} from "./chat-account-rotation";
 import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -170,6 +177,11 @@ export interface ClaudeSdkSessionConfig {
   /** Injected for tests; defaults to the real SDK + zod. */
   sdkModule?: SdkModule;
   zodModule?: ZodModule;
+  /**
+   * Multi-account rotation hooks (Gap A, elizaOS/eliza#11180). Defaults to the
+   * AccountPool bridge rotator; pass `null` to disable rotation entirely.
+   */
+  accountRotator?: ChatAccountRotator | null;
 }
 
 // Resolved at runtime from the hoisted workspace node_modules (the Agent SDK
@@ -231,10 +243,13 @@ export class ClaudeSdkSession {
   private readonly turnTimeoutMs: number;
   private readonly sdkOverride?: SdkModule;
   private readonly zodOverride?: ZodModule;
+  private readonly rotator: ChatAccountRotator | null;
 
   private query: SdkQuery | null = null;
   private feed: ((msg: SdkUserMessage) => void) | null = null;
   private iterator: AsyncIterator<SdkMessage> | null = null;
+  // The pool account serving this warm process (null = ambient ~/.claude creds).
+  private account: ChatAccountSelection | null = null;
   private turns = 0;
   private chain: Promise<unknown> = Promise.resolve();
   // ROUTE mode: the MCP tool handler writes the current turn's decision here.
@@ -258,6 +273,13 @@ export class ClaudeSdkSession {
         : DEFAULT_TURN_TIMEOUT_MS;
     this.sdkOverride = config.sdkModule;
     this.zodOverride = config.zodModule;
+    this.rotator =
+      config.accountRotator !== undefined
+        ? config.accountRotator
+        : createChatAccountRotator(
+            "claude",
+            `cli-inference:claude:${this.model}:${this.router ? "route" : "text"}`
+          );
   }
 
   /** TEXT mode: generate one completion's text. Serialized. */
@@ -300,11 +322,68 @@ export class ClaudeSdkSession {
     } catch (err) {
       // Self-heal: a dead/erroring session must not poison the next turn.
       await this.dispose();
+      // Gap A (#11180): a limit-classed failure rotates to the next healthy
+      // pool account and retries ONCE, BEFORE the throw reaches tier-failover.
+      const rotated = await this.rotateOnLimit(err);
+      if (rotated) {
+        try {
+          await this.start(rotated);
+          this.turns += 1;
+          return await this.sendAndRead(body, mode);
+        } catch (retryErr) {
+          await this.dispose();
+          // The replacement limited too — record it, then fall to the next tier.
+          if (this.rotator && isAccountLimitError(retryErr)) {
+            await this.rotator.markLimited(
+              rotated,
+              retryErr instanceof Error ? retryErr.message : String(retryErr)
+            );
+          }
+          throw retryErr instanceof Error
+            ? retryErr
+            : new Error(`[cli-inference:sdk] ${String(retryErr)}`);
+        }
+      }
       throw err instanceof Error ? err : new Error(`[cli-inference:sdk] ${String(err)}`);
     }
   }
 
-  private async start(): Promise<void> {
+  /**
+   * On a limit-classed failure: record the limit (+ parsed reset) against the
+   * serving account and pick the next healthy one (breaking pool session
+   * affinity via `exclude`). Returns the replacement selection, or null when
+   * rotation is impossible — no rotator, non-limit error, or the pool has no
+   * other healthy account — in which case the caller throws so `useModel`
+   * falls to the next model TIER (the pre-existing behavior).
+   */
+  private async rotateOnLimit(err: unknown): Promise<ChatAccountSelection | null> {
+    if (!this.rotator || !isAccountLimitError(err)) return null;
+    const limited = this.account;
+    const detail = err instanceof Error ? err.message : String(err);
+    if (limited) await this.rotator.markLimited(limited, detail);
+    const next = await this.rotator.select(limited ? [limited.accountId] : undefined);
+    if (!next) {
+      if (limited) {
+        logger.warn(
+          `[cli-inference:sdk] account "${limited.label}" hit its limit and no other healthy account is available — failing over to the next model tier`
+        );
+      }
+      return null;
+    }
+    logger.info(
+      `[cli-inference:sdk] rotating chat brain from ${limited ? `account "${limited.label}"` : "ambient credentials"} to account "${next.label}" after a subscription limit`
+    );
+    return next;
+  }
+
+  private async start(account?: ChatAccountSelection | null): Promise<void> {
+    // Pin a pool account for this warm process. Re-selected on every (re)start
+    // so a restarted session gets a FRESH access token (the injected token
+    // cannot refresh itself mid-run); pool session-affinity keeps the account
+    // stable across restarts. When no pool/bridge exists this resolves null and
+    // the subprocess inherits the ambient creds (~/.claude /
+    // CLAUDE_CODE_OAUTH_TOKEN) exactly as before.
+    this.account = account !== undefined ? account : ((await this.rotator?.select()) ?? null);
     const sdk = this.sdkOverride ?? (await loadSdk());
     // A pull-based async generator the SDK drains; we push the next user message
     // into it via `this.feed`.
@@ -342,6 +421,14 @@ export class ClaudeSdkSession {
       // "I'll fetch it…" preamble-then-act pattern that leaks when maxTurns>1.
       maxTurns: this.router ? 1 : this.textMaxTurns,
     };
+    if (this.account) {
+      // Authenticate the SDK subprocess AS the selected pool account. The token
+      // flows ONLY into this subprocess env — never into the runtime's own
+      // process.env (TOS invariant, mirroring coding-account-bridge). `env`
+      // REPLACES the subprocess environment, so the helper spreads process.env
+      // (PATH/HOME survive) and drops competing ambient auth vars first.
+      options.env = buildRotatedSubprocessEnv("claude", this.account.envPatch);
+    }
     if (this.systemPrompt) options.systemPrompt = this.systemPrompt;
     if (this.claudeExecutablePath) {
       options.pathToClaudeCodeExecutable = this.claudeExecutablePath;

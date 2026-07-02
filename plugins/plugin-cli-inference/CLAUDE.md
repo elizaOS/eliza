@@ -179,7 +179,7 @@ bun run --cwd plugins/plugin-cli-inference build
 - **Isolated cwd per call.** Created with `mkdtemp` under `tmpdir()`, validated by `resolveSafeCwd`, removed in a `finally`. Keeps the CLI out of real projects (suppresses Claude Code repo-context identity).
 - **`/dev/null` stdin is REQUIRED** — without it the CLI waits ~3s for stdin.
 - **sandbox.ts is a copy.** Keep in sync with `packages/plugin-remote-manifest/src/sub-agent-claude-code/sandbox.ts` if `SENSITIVE_ENV_RE` / `SAFE_ENV_KEYS` change upstream.
-- **Multi-account/AccountPool failover is OUT of v1** — the CLI owns one on-disk cred set. Single-token chat-inference is a documented gap.
+- **Multi-account rotation (SDK backends).** On a subscription-limit throw the warm `claude-sdk` / `codex-sdk` sessions rotate to the next healthy AccountPool account (read off the `eliza.account-pool.coding-agent.v1` globalThis bridge — see `src/chat-account-rotation.ts`), swap the subprocess `CLAUDE_CODE_OAUTH_TOKEN` / `CODEX_HOME`, and retry once; tier-failover only fires when the pool is exhausted. The token flows into the SDK subprocess env only, never `process.env`. The cold `claude`/`codex` CLI backends still use the single on-disk cred set.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->

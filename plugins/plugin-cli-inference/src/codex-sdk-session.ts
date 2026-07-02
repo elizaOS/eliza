@@ -37,6 +37,13 @@
  */
 
 import { logger } from "@elizaos/core";
+import {
+  buildRotatedSubprocessEnv,
+  type ChatAccountRotator,
+  type ChatAccountSelection,
+  createChatAccountRotator,
+  isAccountLimitError,
+} from "./chat-account-rotation";
 
 const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_RESTART_AFTER_TURNS = 20;
@@ -99,6 +106,11 @@ export interface CodexSdkSessionConfig {
   restartAfterTurns?: number;
   /** Injected for tests; defaults to the real SDK. */
   codexModule?: CodexModule;
+  /**
+   * Multi-account rotation hooks (Gap A, elizaOS/eliza#11180). Defaults to the
+   * AccountPool bridge rotator; pass `null` to disable rotation entirely.
+   */
+  accountRotator?: ChatAccountRotator | null;
 }
 
 const SDK_PACKAGE = "@openai/codex-sdk";
@@ -145,8 +157,11 @@ export class CodexSdkSession {
   private readonly codexBinPath: string | null;
   private readonly restartAfterTurns: number;
   private readonly codexOverride?: CodexModule;
+  private readonly rotator: ChatAccountRotator | null;
 
   private thread: CodexThread | null = null;
+  // The pool account serving this warm thread (null = ambient ~/.codex creds).
+  private account: ChatAccountSelection | null = null;
   private turns = 0;
   private chain: Promise<unknown> = Promise.resolve();
 
@@ -160,6 +175,13 @@ export class CodexSdkSession {
         ? config.restartAfterTurns
         : DEFAULT_RESTART_AFTER_TURNS;
     this.codexOverride = config.codexModule;
+    this.rotator =
+      config.accountRotator !== undefined
+        ? config.accountRotator
+        : createChatAccountRotator(
+            "codex",
+            `cli-inference:codex:${this.model}:${this.router ? "route" : "text"}`
+          );
   }
 
   /** TEXT mode: generate one completion's text. Serialized. */
@@ -189,32 +211,92 @@ export class CodexSdkSession {
     if (this.thread && this.turns >= this.restartAfterTurns) {
       this.dispose();
     }
-    if (!this.thread) {
-      await this.start();
-    }
-    this.turns += 1;
     try {
-      const thread = this.thread;
-      if (!thread) throw new Error("[cli-inference:codex-sdk] thread not started");
-      // ROUTE: constrain output to {action, params:json-string} via the codex
-      // native output schema (reliable shape; needs the system codex binary).
-      const turn = await thread.run(
-        body,
-        mode === "route" ? { outputSchema: ROUTE_OUTPUT_SCHEMA } : undefined
-      );
-      const text = turnToText(turn);
-      if (mode === "route") {
-        return this.normalizeRoute(text);
-      }
-      if (!text) {
-        throw new Error("[cli-inference:codex-sdk] empty completion");
-      }
-      return text;
+      return await this.runTurn(body, mode);
     } catch (err) {
       // Self-heal: a dead/erroring thread must not poison the next turn.
       this.dispose();
+      // Gap A (#11180): a limit-classed failure rotates to the next healthy
+      // pool account and retries ONCE, BEFORE the throw reaches tier-failover.
+      const rotated = await this.rotateOnLimit(err);
+      if (rotated) {
+        try {
+          return await this.runTurn(body, mode, rotated);
+        } catch (retryErr) {
+          this.dispose();
+          // The replacement limited too — record it, then fall to the next tier.
+          if (this.rotator && isAccountLimitError(retryErr)) {
+            await this.rotator.markLimited(
+              rotated,
+              retryErr instanceof Error ? retryErr.message : String(retryErr)
+            );
+          }
+          throw retryErr instanceof Error
+            ? retryErr
+            : new Error(`[cli-inference:codex-sdk] ${String(retryErr)}`);
+        }
+      }
       throw err instanceof Error ? err : new Error(`[cli-inference:codex-sdk] ${String(err)}`);
     }
+  }
+
+  /**
+   * Run one turn, starting the warm thread if needed — optionally pinned to a
+   * pre-selected account (the rotate-on-limit retry).
+   */
+  private async runTurn(
+    body: string,
+    mode: "text" | "route",
+    account?: ChatAccountSelection | null
+  ): Promise<string> {
+    if (!this.thread) {
+      await this.start(account);
+    }
+    this.turns += 1;
+    const thread = this.thread;
+    if (!thread) throw new Error("[cli-inference:codex-sdk] thread not started");
+    // ROUTE: constrain output to {action, params:json-string} via the codex
+    // native output schema (reliable shape; needs the system codex binary).
+    const turn = await thread.run(
+      body,
+      mode === "route" ? { outputSchema: ROUTE_OUTPUT_SCHEMA } : undefined
+    );
+    const text = turnToText(turn);
+    if (mode === "route") {
+      return this.normalizeRoute(text);
+    }
+    if (!text) {
+      throw new Error("[cli-inference:codex-sdk] empty completion");
+    }
+    return text;
+  }
+
+  /**
+   * On a limit-classed failure: record the limit (+ parsed reset) against the
+   * serving account and pick the next healthy one (breaking pool session
+   * affinity via `exclude`). Returns the replacement selection, or null when
+   * rotation is impossible — no rotator, non-limit error, or the pool has no
+   * other healthy account — in which case the caller throws so `useModel`
+   * falls to the next model TIER (the pre-existing behavior).
+   */
+  private async rotateOnLimit(err: unknown): Promise<ChatAccountSelection | null> {
+    if (!this.rotator || !isAccountLimitError(err)) return null;
+    const limited = this.account;
+    const detail = err instanceof Error ? err.message : String(err);
+    if (limited) await this.rotator.markLimited(limited, detail);
+    const next = await this.rotator.select(limited ? [limited.accountId] : undefined);
+    if (!next) {
+      if (limited) {
+        logger.warn(
+          `[cli-inference:codex-sdk] account "${limited.label}" hit its limit and no other healthy account is available — failing over to the next model tier`
+        );
+      }
+      return null;
+    }
+    logger.info(
+      `[cli-inference:codex-sdk] rotating chat brain from ${limited ? `account "${limited.label}"` : "ambient credentials"} to account "${next.label}" after a subscription limit`
+    );
+    return next;
   }
 
   /** Coerce the structured-output JSON into a bare {action, params} string. */
@@ -257,11 +339,28 @@ export class CodexSdkSession {
     });
   }
 
-  private async start(): Promise<void> {
+  private async start(account?: ChatAccountSelection | null): Promise<void> {
+    // Pin a pool account for this warm thread. Re-selected on every (re)start
+    // so a restarted thread gets fresh account credentials; pool
+    // session-affinity keeps the account stable across restarts. When no
+    // pool/bridge exists this resolves null and the subprocess inherits the
+    // ambient creds (~/.codex) exactly as before.
+    this.account = account !== undefined ? account : ((await this.rotator?.select()) ?? null);
     const { Codex } = this.codexOverride ?? (await loadCodex());
     // Drive the system codex binary (not the SDK's bundled-and-often-stale one)
     // when a path is configured, so current models work.
-    const codex = new Codex(this.codexBinPath ? { codexPathOverride: this.codexBinPath } : {});
+    const codexOptions: Record<string, unknown> = {};
+    if (this.codexBinPath) codexOptions.codexPathOverride = this.codexBinPath;
+    if (this.account) {
+      // Authenticate the codex subprocess AS the selected pool account (its
+      // per-account CODEX_HOME). The credential flows ONLY into this subprocess
+      // env — never into the runtime's own process.env (TOS invariant,
+      // mirroring coding-account-bridge). `env` REPLACES the subprocess
+      // environment, so the helper spreads process.env (PATH/HOME survive) and
+      // drops competing ambient auth vars first.
+      codexOptions.env = buildRotatedSubprocessEnv("codex", this.account.envPatch);
+    }
+    const codex = new Codex(codexOptions);
     // Pure inference: read-only, no network, no approvals, no git-repo coupling —
     // a warm completion engine, not a coding agent.
     const options: Record<string, unknown> = {
