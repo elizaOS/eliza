@@ -1133,6 +1133,18 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       const args = argParts.join(" ");
       const handled = await this.handleSlashCommand(command, args);
       if (handled) return;
+      // An unknown "/command" must NOT fall through to the LLM (it burns a turn
+      // and confuses the model). Report it and stop — unless it's the "//literal"
+      // escape hatch for genuinely sending slash-prefixed text.
+      if (!text.startsWith("//")) {
+        state.addMessage(
+          state.currentRoomId,
+          "system",
+          `Unknown command: /${command} — type /help for the list.`,
+        );
+        this.tui.requestRender();
+        return;
+      }
     }
 
     if (this.activeTurnAbortController) {

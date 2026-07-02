@@ -224,6 +224,9 @@ export class ChatPane implements Focusable {
     this.editor.onSubmit = async (text: string) => {
       const trimmed = text.trim();
       if (trimmed.length > 0) {
+        // Record the prompt so ↑/↓ recalls it — the Editor implements history
+        // browsing but never had anything added to it, so up-arrow did nothing.
+        this.editor.addToHistory(trimmed);
         this.editor.setText("");
         this.scrollOffset = 0;
         await props.onSubmit(trimmed);

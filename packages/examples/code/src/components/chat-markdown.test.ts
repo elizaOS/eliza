@@ -6,10 +6,11 @@
 // overflow guarantee holds. Uses the same VirtualTerminal harness as
 // narrow-terminal.test.ts.
 
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AgentRuntime } from "@elizaos/core";
 import { TUI, visibleWidth } from "@elizaos/tui";
 import { VirtualTerminal } from "@elizaos/tui/testing";
-import { afterEach, describe, expect, test } from "bun:test";
+import chalk from "chalk";
 import { useStore } from "../lib/store.js";
 import { ChatPane } from "./ChatPane.js";
 import { MainScreen } from "./MainScreen.js";
@@ -29,7 +30,24 @@ function makeScreen(cols: number) {
   return { chatPane, mainScreen };
 }
 
+const prevChalkLevel = chalk.level;
+
+beforeEach(() => {
+  // Pin color OFF: this suite asserts markdown MARKER consumption (# / ** /
+  // backticks stripped), which is color-independent. Forcing level 0 makes the
+  // substring assertions ("const x = 1;") stable regardless of any chalk.level
+  // another test file leaked (syntax highlighting inserts SGR mid-token).
+  chalk.level = 0;
+  // The store is a cross-file singleton; a sibling test file may have left it
+  // with rooms:[] (dangling currentRoomId). Establish our own fresh room so
+  // addMessage(currentRoomId, …) actually lands.
+  useStore.setState({ rooms: [] });
+  const room = useStore.getState().createRoom("Main");
+  useStore.getState().switchRoom(room.id);
+});
+
 afterEach(() => {
+  chalk.level = prevChalkLevel;
   useStore.setState({ rooms: [] });
   useStore.getState().setInputValue("");
 });
