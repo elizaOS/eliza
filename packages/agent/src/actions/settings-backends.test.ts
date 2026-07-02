@@ -1,8 +1,41 @@
+import { satisfiesRoleGate } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   normalizeCodingBackend,
   readBackendRouting,
+  settingsAction,
 } from "./settings-actions.ts";
+
+describe("owner gate on SETTINGS (show_backends / set_backend)", () => {
+  // show_backends/set_backend are ops of the SETTINGS action, whose roleGate
+  // core enforces structurally (satisfiesRoleGate in execute-planned-tool-call)
+  // before the handler runs. Pair the declared gate with the enforcing
+  // predicate so a gate regression on either side fails here.
+  it("declares an OWNER-minimum role gate", () => {
+    expect(settingsAction.roleGate).toEqual({ minRole: "OWNER" });
+  });
+
+  it("denies every non-owner role under the enforcing predicate", () => {
+    expect(satisfiesRoleGate(undefined, settingsAction.roleGate)).toBe(false);
+    for (const roles of [[], ["GUEST"], ["USER"], ["MEMBER"], ["ADMIN"]]) {
+      expect(
+        satisfiesRoleGate(
+          roles as Parameters<typeof satisfiesRoleGate>[0],
+          settingsAction.roleGate,
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("allows the owner", () => {
+    expect(
+      satisfiesRoleGate(
+        ["OWNER"] as Parameters<typeof satisfiesRoleGate>[0],
+        settingsAction.roleGate,
+      ),
+    ).toBe(true);
+  });
+});
 
 describe("normalizeCodingBackend", () => {
   it("accepts known coding backends", () => {
