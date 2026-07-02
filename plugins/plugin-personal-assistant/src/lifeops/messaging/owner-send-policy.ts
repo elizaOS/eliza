@@ -85,18 +85,24 @@ export function registerOwnerSendApprovalWorker(runtime: IAgentRuntime): void {
           `[OwnerSendPolicy] refusing to execute send approval ${taskId}: unknown action ${JSON.stringify(actionName)}; nothing was sent`,
         );
       }
+      // Atomically CLAIM the executor before awaiting the send. A Map get+delete
+      // runs to completion synchronously (single-threaded event loop) before any
+      // await, so a concurrent CHOOSE_OPTION confirm for the same task sees no
+      // executor and takes the "lost executor" path below instead of sending a
+      // second time. Deleting only after the awaited send left a window in which
+      // two overlapping confirms both fetched the executor and double-sent.
       const executor = executorsFor(rt).get(taskId);
       if (!executor) {
-        // The executor closure over the triage draft does not survive a
-        // restart. Delete the dead task and fail loudly — the owner must
-        // re-issue the send.
+        // Either the draft executor closure did not survive a restart, or a
+        // concurrent confirm already claimed it. Delete the dead task and fail
+        // loudly — the owner must re-issue the send.
         await rt.deleteTask(task.id);
         throw new Error(
-          `[OwnerSendPolicy] approved send ${taskId} can no longer execute (draft executor lost, e.g. after a restart); nothing was sent — please re-send the draft`,
+          `[OwnerSendPolicy] approved send ${taskId} can no longer execute (draft executor lost, e.g. after a restart or a duplicate confirm); nothing was sent — please re-send the draft`,
         );
       }
-      const { externalId } = await executor();
       executorsFor(rt).delete(taskId);
+      const { externalId } = await executor();
       await rt.deleteTask(task.id);
       logger.info(
         `[OwnerSendPolicy] approved send ${taskId} executed (externalId=${externalId})`,

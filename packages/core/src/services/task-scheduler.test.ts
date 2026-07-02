@@ -70,6 +70,31 @@ describe("task-scheduler", () => {
 		expect(errorSpy).toHaveBeenCalledTimes(2);
 	});
 
+	it("re-arms a still-registered agent after a transient getTasks rejection (no re-register)", async () => {
+		let getTasksCalls = 0;
+		const adapter = {
+			getTasks: vi.fn(async () => {
+				getTasksCalls += 1;
+				if (getTasksCalls === 1) throw new Error("db outage");
+				return [] as Task[];
+			}),
+		} as unknown as IDatabaseAdapter;
+
+		startTaskScheduler(adapter);
+		registerTaskSchedulerRuntime(makeRuntime(), {
+			runTick: vi.fn(async () => undefined),
+		});
+
+		await runOneTick();
+		expect(getTasksCalls).toBe(1);
+
+		// No re-register: a transient rejection must re-arm the still-registered
+		// agent so the next tick queries again. Without the re-arm the agent is
+		// drained on the failing tick and stays silent forever (getTasksCalls stuck at 1).
+		await runOneTick();
+		expect(getTasksCalls).toBe(2);
+	});
+
 	it("keeps re-querying while an agent's queue is non-empty and goes quiet when it empties", async () => {
 		const task = { id: "t1", agentId: AGENT_ID } as unknown as Task;
 		const queues: Task[][] = [[task], [task], []];
