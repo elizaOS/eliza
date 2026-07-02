@@ -629,6 +629,32 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps a real answer that merely CONTAINS a repeated-character run", async () => {
+		// The junk check flags a reply that IS a glitch run ("aaaaa"), anchored.
+		// A real answer containing a run — aligned `df -h` columns, a "-----"
+		// divider, an "XXXXXXXX" placeholder — must not be blanked to the
+		// generic deferral.
+		for (const goodReply of [
+			"Filesystem      Size  Used Avail Use%\n/dev/sda1       387G  381G  5.8G  99%",
+			"Results\n--------\nAll checks passed.",
+			"Use the placeholder XXXXXXXX until the key arrives.",
+		]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: goodReply }),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "how full is the disk?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(goodReply);
+			}
+		}
+	});
+
 	it("uses a compact response-handler schema for direct channels", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
