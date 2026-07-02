@@ -1,0 +1,61 @@
+{
+  "task": "health_checkin",
+  "optimizer": "gepa",
+  "baseline": "Plan the HEALTH action for this request.\nThe user may speak in any language.\nReturn JSON only as a single object with exactly these fields:\nsubaction: today|trend|by_metric|status|null\nmetric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes|null\ndays: number|null\nshouldAct: true|false\nresponse: string|null\n\nChoose status when the user asks about health backend connection or availability.\nChoose trend when the user asks for fitness/health activity over a window of days, a week, or recent history.\nChoose by_metric when the user names a specific metric and wants its current or recent value.\nChoose today (default) when the user asks for today's overall summary.\nmetric must be one of the listed enum values when subaction=by_metric, otherwise null.\ndays must be a positive integer the user implies (e.g. 7 for 'this week'); null when not stated.\nSet shouldAct=false only when the request is too vague to choose any subaction.\nWhen shouldAct=false, response must be a short clarifying question in the user's language.\n\nExample: {\"subaction\":\"today\",\"metric\":null,\"days\":null,\"shouldAct\":true,\"response\":null}",
+  "prompt": "Plan the HEALTH action for this request.\nThe user may speak in any language.\nReturn raw JSON only as a single object without markdown formatting. Exclude any keys with null values.\nThe potential fields are:\nsubaction: today|trend|by_metric|status|null\nmetric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes|null\ndays: number|null\nshouldAct: true|false\nresponse: string|null\n\nChoose status when the user asks about health backend connection or availability.\nChoose trend when the user asks for fitness/health activity over a window of days, a week, or recent history.\nChoose by_metric when the user names a specific metric and wants its current or recent value.\nChoose today (default) when the user asks for today's overall summary.\nmetric must be one of the listed enum values when subaction=by_metric, otherwise null.\ndays must be a positive integer the user implies (e.g. 7 for 'this week'); null when not stated.\nSet shouldAct=false only when the request is too vague to choose any subaction.\nWhen shouldAct=false, response must be a short clarifying question in the user's language.\n\nExample: {\"subaction\":\"today\",\"shouldAct\":true}",
+  "score": 0.975,
+  "baselineScore": 0.925,
+  "datasetId": "seed:health_checkin",
+  "datasetSize": 10,
+  "generatedAt": "2026-07-02T17:56:14.361Z",
+  "lineage": [
+    {
+      "round": 0,
+      "variant": 0,
+      "score": 0.925,
+      "notes": "baseline"
+    },
+    {
+      "round": 0,
+      "variant": 1,
+      "score": 0.975,
+      "notes": "seed-feedback | Failure mode: The model is over-optimizing the instruction to exclude null values, omitting keys that are explicitly re…"
+    },
+    {
+      "round": 0,
+      "variant": 2,
+      "score": 0.925,
+      "notes": "seed-compress | tokens=135"
+    },
+    {
+      "round": 0,
+      "variant": 3,
+      "score": 0.975,
+      "notes": "seed-feedback | Failure mode: The model is over-optimizing the instruction to exclude null values, removing required keys that the expe…"
+    },
+    {
+      "round": 1,
+      "variant": 2,
+      "score": 0.925,
+      "notes": "feedback-mut | Failure mode: The model is strictly following the instruction to include all potential fields, whereas the expected out…"
+    },
+    {
+      "round": 1,
+      "variant": 3,
+      "score": 0.875,
+      "notes": "compress-mut | tokens=123"
+    },
+    {
+      "round": 2,
+      "variant": 3,
+      "score": 0.925,
+      "notes": "feedback-mut | Failure mode: The model is strictly following the instruction to include all potential fields, whereas the expected out…"
+    },
+    {
+      "round": 3,
+      "variant": 3,
+      "score": 0.925,
+      "notes": "feedback-mut | Failure mode: The model is including null fields despite the expected output requiring their omission. Change the promp…"
+    }
+  ]
+}
