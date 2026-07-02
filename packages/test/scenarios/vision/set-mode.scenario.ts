@@ -10,6 +10,10 @@
 import type { AgentRuntime, Provider } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const VISION = "VISION";
 type R = AgentRuntime & {
@@ -151,6 +155,38 @@ export default scenario({
       actionName: VISION,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the set_mode op really flipped the live
+      // VisionService — the service's own getVisionMode() must report "off"
+      // after the turn, and the result payload must carry the applied mode.
+      type: "custom",
+      name: "vision-mode-applied-effect",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, VISION);
+        if (!data) {
+          return `no successful ${VISION} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (
+          data.op !== "set_mode" ||
+          String(data.visionMode).toLowerCase() !== "off"
+        ) {
+          return `expected result.data op "set_mode" with visionMode OFF, saw ${JSON.stringify(data).slice(0, 200)}`;
+        }
+        const runtime = ctx.runtime as {
+          getService?: (
+            type: string,
+          ) => { getVisionMode?: () => string } | null;
+        };
+        const service = runtime.getService?.("VISION");
+        if (!service || typeof service.getVisionMode !== "function") {
+          return "VisionService is not registered — cannot verify the live mode";
+        }
+        const liveMode = service.getVisionMode();
+        if (String(liveMode).toLowerCase() !== "off") {
+          return `live VisionService.getVisionMode() must be OFF after the turn, saw ${JSON.stringify(liveMode)}`;
+        }
+      },
     },
   ],
 });

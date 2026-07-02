@@ -15,6 +15,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { executeRawSql } from "../../../../plugins/plugin-goals/src/db/sql.ts";
+import { createOwnerGoalsService } from "../../../../plugins/plugin-goals/src/goals-runtime.ts";
 
 const GOAL_INPUT = "Add a goal to run a marathon next year.";
 const OWNER_GOALS = "OWNER_GOALS";
@@ -164,6 +165,31 @@ export default scenario({
       actionName: OWNER_GOALS,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the create action's result must carry the
+      // created goal record (goalCountDelta reads result.data.record.goal).
+      type: "goalCountDelta",
+      title: "Run a marathon",
+      delta: 1,
+    },
+    {
+      // Effect proof (#11381): the goal row really exists in the live goals
+      // store — read it back through the same repository the action wrote to.
+      type: "custom",
+      name: "goal-row-persisted-effect",
+      predicate: async (ctx) => {
+        const service = createOwnerGoalsService(ctx.runtime as AgentRuntime);
+        const goals = await service.listGoals();
+        const created = goals.find(
+          (record) => record.goal.title === "Run a marathon",
+        );
+        if (!created) {
+          const titles =
+            goals.map((record) => record.goal.title).join(", ") || "(none)";
+          return `goal "Run a marathon" not found in the goals store; stored titles: ${titles}`;
+        }
+      },
     },
   ],
 });

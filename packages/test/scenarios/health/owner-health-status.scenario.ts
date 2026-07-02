@@ -25,6 +25,11 @@ import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/test-harness/action-route-fixtures";
+import {
+  describeCalls,
+  successfulActionData,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const OWNER_HEALTH = "OWNER_HEALTH";
 const STATUS_INPUT = "Run OWNER_HEALTH to check my health backend status.";
@@ -119,6 +124,30 @@ export default scenario({
       actionName: OWNER_HEALTH,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the status op really ran the health-backend
+      // detection — with no connector configured it must surface the real
+      // "no backend" connector status in the result payload, not just
+      // handler success.
+      type: "custom",
+      name: "health-backend-detection-effect",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, OWNER_HEALTH);
+        if (!data) {
+          return `no successful ${OWNER_HEALTH} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.subaction !== "status") {
+          return `expected result.data.subaction "status", saw ${String(data.subaction ?? "(missing)")}`;
+        }
+        const status = toRecord(data.status);
+        if (!status) {
+          return `expected the detected connector status in result.data.status; saw ${JSON.stringify(data).slice(0, 300)}`;
+        }
+        if (status.available !== false) {
+          return `keyless runtime has no health connector, so status.available must be false; saw ${JSON.stringify(status).slice(0, 300)}`;
+        }
+      },
     },
   ],
 });

@@ -13,8 +13,16 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const MUSIC = "MUSIC";
+
+/** POST bodies the Suno API mock actually served. */
+let sunoMockRequests: string[] = [];
 type R = AgentRuntime & {
   setSetting?: (k: string, v: string) => void;
   scenarioLlmFixtures?: {
@@ -42,6 +50,7 @@ export default scenario({
       name: "suno-mock-and-config",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
+        sunoMockRequests = [];
 
         // Scoped fetch interceptor: redirect SunoProvider's REST calls to a mock.
         const realFetch = globalThis.fetch;
@@ -62,6 +71,7 @@ export default scenario({
                 ? input.url
                 : input.toString();
           if (url.includes("api.suno.ai")) {
+            sunoMockRequests.push(String(init?.body ?? ""));
             return new Response(
               JSON.stringify({
                 id: "suno-gen-1",
@@ -183,6 +193,35 @@ export default scenario({
       actionName: MUSIC,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the generate subaction really submitted the
+      // prompt to the Suno REST mock and surfaced the mock's pending
+      // generation (id suno-gen-1) in the action result — not just
+      // "the handler returned success".
+      type: "custom",
+      name: "suno-generation-submitted-effect",
+      predicate: (ctx) => {
+        const submitted = sunoMockRequests.find((body) =>
+          body.includes("lofi"),
+        );
+        if (!submitted) {
+          return `Suno API mock never received the generation prompt; served ${sunoMockRequests.length} request(s): ${sunoMockRequests
+            .map((body) => body.slice(0, 120))
+            .join(" | ")}`;
+        }
+        const data = successfulActionData(ctx, MUSIC);
+        if (!data) {
+          return `no successful ${MUSIC} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (data.subaction !== "generate") {
+          return `expected result.data.subaction "generate", saw ${String(data.subaction ?? "(missing)")}`;
+        }
+        const response = toRecord(data.response);
+        if (response?.id !== "suno-gen-1" || response.status !== "pending") {
+          return `expected the mock's submitted generation (id suno-gen-1, status pending) in result.data.response; saw ${JSON.stringify(data.response ?? null).slice(0, 200)}`;
+        }
+      },
     },
   ],
 });

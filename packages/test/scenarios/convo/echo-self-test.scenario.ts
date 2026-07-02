@@ -152,5 +152,26 @@ export default scenario({
       status: "success",
       minCount: 1,
     },
+    {
+      // Effect proof (#11381): the handler really received the inbound
+      // message content through the pipeline — its result text must be the
+      // exact echo of the user's utterance, not merely success=true.
+      type: "custom",
+      name: "echo-payload-roundtrip-effect",
+      predicate: (ctx) => {
+        const call = ctx.actionsCalled.find(
+          (action) =>
+            action.actionName === "ECHO_TEST" &&
+            action.result?.success === true,
+        );
+        if (!call) {
+          return "no successful ECHO_TEST call captured";
+        }
+        const expected = `Echo: ${ECHO_INPUT}`;
+        if (call.result?.text !== expected) {
+          return `expected the echoed message ${JSON.stringify(expected)} in result.text, saw ${JSON.stringify(call.result?.text ?? null)}`;
+        }
+      },
+    },
   ],
 });
