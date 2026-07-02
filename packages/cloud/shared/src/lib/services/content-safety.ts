@@ -89,6 +89,12 @@ const HARD_BLOCK_THRESHOLDS: Partial<Record<OpenAIModerationCategory, number>> =
 let loggedMissingKey = false;
 let loggedDisabled = false;
 
+function redactProviderErrorDetail(detail: string): string {
+  return detail
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "sk-[REDACTED]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]");
+}
+
 function compactText(input: ContentSafetyInput["text"]): string {
   const values = Array.isArray(input) ? input : [input];
   return values
@@ -267,30 +273,60 @@ export class ContentSafetyService {
     }
 
     const model = env.OPENAI_MODERATION_MODEL?.trim() || DEFAULT_MODERATION_MODEL;
-    const response = await fetch(OPENAI_MODERATIONS_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        input: moderationInput,
-      }),
-    });
-
-    if (!response.ok) {
-      const issue = `moderation_unavailable_${response.status}`;
+    let response: Response;
+    try {
+      response = await fetch(OPENAI_MODERATIONS_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          input: moderationInput,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (error) {
+      const issue = "moderation_unavailable_transport";
+      const message = error instanceof Error ? error.message : String(error);
       if (env.CONTENT_SAFETY_FAIL_OPEN === "true") {
-        logger.error("[ContentSafety] Moderation unavailable; allowing because fail-open is set", {
-          surface: input.surface,
-          status: response.status,
-          statusText: response.statusText,
-        });
+        logger.error(
+          `[ContentSafety] Moderation transport unavailable on surface ${input.surface}; allowing because fail-open is set: ${message}`,
+        );
         const review = emptyReview(input, mode);
         review.issues.push(issue);
         return review;
       }
+      logger.error(
+        `[ContentSafety] Moderation transport unavailable on surface ${input.surface}; failing closed: ${message}`,
+      );
+      throw new ApiError(503, "internal_error", "Content safety moderation is unavailable", {
+        transport: "fetch",
+      });
+    }
+
+    if (!response.ok) {
+      const issue = `moderation_unavailable_${response.status}`;
+      // OpenAI's error body says WHY (invalid key vs quota vs org block) —
+      // inline it in the log MESSAGE: Workers Logs drops context objects, and
+      // this fail-closed path blocked staging image-gen with zero log trace
+      // of the upstream rejection.
+      const upstreamDetail = await response
+        .text()
+        .then((t) => redactProviderErrorDetail(t).slice(0, 300))
+        .catch(() => "");
+      if (env.CONTENT_SAFETY_FAIL_OPEN === "true") {
+        logger.error(
+          `[ContentSafety] Moderation unavailable (${response.status} ${response.statusText}) on surface ${input.surface}; allowing because fail-open is set: ${upstreamDetail}`,
+        );
+        const review = emptyReview(input, mode);
+        review.issues.push(issue);
+        return review;
+      }
+      logger.error(
+        `[ContentSafety] Moderation unavailable (${response.status} ${response.statusText}) on surface ${input.surface}; failing closed: ${upstreamDetail}`,
+      );
       throw new ApiError(503, "internal_error", "Content safety moderation is unavailable", {
         status: response.status,
         statusText: response.statusText,

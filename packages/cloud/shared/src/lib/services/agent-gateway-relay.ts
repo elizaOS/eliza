@@ -87,24 +87,24 @@ function parseJson<T>(value: unknown): T | null {
   }
 }
 
-let redisClient: CompatibleRedis | null = null;
-let redisInitialized = false;
+// NOTE: no module-level Redis client here, on purpose. `cloudflare:sockets`
+// connections are bound to the I/O context of the request that opened them
+// and are closed when that request ends — a cached client poisons the whole
+// isolate after its first request (every later relay op 500s with
+// "Cannot perform I/O on behalf of a different request"; observed live as the
+// e2e relay disconnect 500 on staging). SocketRedis is cheap to construct
+// (lazy connect), so each call builds a fresh one in the CURRENT request's
+// context — the same pattern as rate-limit-hono-cloudflare and siwe-helpers.
+let loggedMissingRedis = false;
 
 function getRedisClient(): CompatibleRedis | null {
-  if (redisInitialized) {
-    return redisClient;
-  }
-
-  redisClient = buildRedisClient();
-  if (redisClient) {
-    logger.info?.("[agent-gateway-relay] Redis relay store initialized");
-  } else {
+  const client = buildRedisClient();
+  if (!client && !loggedMissingRedis) {
+    loggedMissingRedis = true;
     assertPersistentCloudStateConfigured("agent-gateway-relay", false);
     logger.warn?.("[agent-gateway-relay] Redis unavailable, using in-memory relay store");
   }
-
-  redisInitialized = true;
-  return redisClient;
+  return client;
 }
 
 class InMemoryRelayStore implements RelaySessionStore {
@@ -253,9 +253,14 @@ class RedisRelayStore implements RelaySessionStore {
   }
 }
 
+// The in-memory fallback IS module-scoped: without Redis (local dev), relay
+// state must survive across requests, and plain objects (unlike I/O handles)
+// may do so on Workers.
+const sharedInMemoryStore = new InMemoryRelayStore();
+
 function createStore(): RelaySessionStore {
   const redis = getRedisClient();
-  return redis ? new RedisRelayStore(redis) : new InMemoryRelayStore();
+  return redis ? new RedisRelayStore(redis) : sharedInMemoryStore;
 }
 
 class AgentGatewayRelayService {
@@ -266,11 +271,10 @@ class AgentGatewayRelayService {
   }
 
   private getStore(): RelaySessionStore {
-    if (!this.store) {
-      this.store = createStore();
-    }
-
-    return this.store;
+    // `this.store` is only ever a test override (resetForTests/constructor).
+    // In production the store is built PER CALL so the Redis connection lives
+    // in the calling request's I/O context — never cache it back.
+    return this.store ?? createStore();
   }
 
   resetForTests(store: RelaySessionStore | null = new InMemoryRelayStore()): void {
