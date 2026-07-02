@@ -121,9 +121,9 @@ test.describe("creator-monetization journey (real LLM)", () => {
       "POST",
       "/api/v1/messages",
       {
-        // gpt-oss-120b is a reasoning model — give it the model's full output
-        // budget so reasoning doesn't starve the visible completion (a small
-        // cap is spent entirely on reasoning and returns empty content).
+        // gemma-4-31b is non-reasoning by default, but give it the model's
+        // full output budget (40k on the paid tier) so long completions are
+        // never truncated.
         model: REAL_LLM_MODEL,
         max_tokens: REAL_LLM_MAX_TOKENS,
         messages: [

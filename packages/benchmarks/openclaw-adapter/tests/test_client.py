@@ -199,7 +199,7 @@ def test_build_argv_includes_model_thinking_message(client: OpenClawClient) -> N
     assert "--local" in argv
     assert "--json" in argv
     assert "--model" in argv
-    assert argv[argv.index("--model") + 1] == "openai/gpt-oss-120b"
+    assert argv[argv.index("--model") + 1] == "openai/gemma-4-31b"
     assert "--thinking" in argv
     assert argv[argv.index("--thinking") + 1] == "medium"
     assert "--message" in argv
@@ -255,6 +255,7 @@ def test_build_argv_passes_session_and_agent(client: OpenClawClient) -> None:
 def test_build_openai_body_includes_generation_options(fake_binary: Path) -> None:
     c = OpenClawClient(
         binary_path=fake_binary,
+        model="gpt-oss-120b",
         temperature=0.2,
         reasoning_effort="low",
         max_tokens=512,

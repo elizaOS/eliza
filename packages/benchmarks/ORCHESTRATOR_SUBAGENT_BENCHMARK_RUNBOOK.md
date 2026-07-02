@@ -64,7 +64,7 @@ token, LLM-call, result-path, and trajectory artifacts as the default matrix.
 Keep provider keys in the process environment or a secret manager only.
 Do not commit keys into profiles, `.env`, run artifacts, or docs.
 
-For Cerebras gpt-oss-120b:
+For Cerebras gemma-4-31b:
 
 ```bash
 export CEREBRAS_API_KEY=...
@@ -87,7 +87,7 @@ python -m benchmarks.orchestrator.code_agent_matrix \
   --benchmarks swe_bench,swe_bench_multilingual,terminal_bench,mind2web,visualwebbench,webshop,osworld \
   --adapters elizaos,opencode,pi-agent \
   --provider cerebras \
-  --model gpt-oss-120b \
+  --model gemma-4-31b \
   --run-root /tmp/eliza-code-agent-matrix-smoke
 ```
 
@@ -112,7 +112,7 @@ python -m benchmarks.orchestrator.code_agent_matrix \
   --benchmarks swe_bench,swe_bench_multilingual,terminal_bench,mind2web,visualwebbench,webshop,osworld \
   --adapters elizaos,opencode,pi-agent \
   --provider cerebras \
-  --model gpt-oss-120b \
+  --model gemma-4-31b \
   --max-tasks 1 \
   --no-docker \
   --require-publishable-live
@@ -135,7 +135,7 @@ python -m benchmarks.orchestrator.code_agent_matrix \
   --benchmarks swe_bench,swe_bench_multilingual,terminal_bench,mind2web,visualwebbench,webshop,osworld \
   --adapters elizaos,opencode,pi-agent \
   --provider cerebras \
-  --model gpt-oss-120b \
+  --model gemma-4-31b \
   --max-tasks 1 \
   --no-docker \
   --timeout-seconds 3600
@@ -149,7 +149,7 @@ for i in 1 2 3; do
     --benchmarks swe_bench,swe_bench_multilingual,terminal_bench,mind2web,visualwebbench,webshop,osworld \
     --adapters elizaos,opencode,pi-agent \
     --provider cerebras \
-    --model gpt-oss-120b \
+    --model gemma-4-31b \
     --max-tasks 1 \
     --no-docker \
     --force

@@ -542,7 +542,7 @@ async function generateWithCerebras(
   if (!apiKey) {
     throw new Error("CEREBRAS_API_KEY is required for local-cerebras profile");
   }
-  const model = process.env.CEREBRAS_MODEL || "gpt-oss-120b";
+  const model = process.env.CEREBRAS_MODEL || "gemma-4-31b";
   const prompt = `${transcript}\n\n${responsePrompt}`;
   const startedAt = nowMs();
   const response = await fetch("https://api.cerebras.ai/v1/chat/completions", {

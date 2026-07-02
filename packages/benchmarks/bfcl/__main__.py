@@ -321,10 +321,10 @@ async def run_benchmark(args: argparse.Namespace) -> int:
                 else arg_provider
             )
             if display_provider == "hermes":
-                print(f"\n🤖 Model: {args.model or 'gpt-oss-120b'}")
+                print(f"\n🤖 Model: {args.model or 'gemma-4-31b'}")
                 print("   Provider: hermes (hermes-adapter)")
             elif display_provider == "smithers":
-                print(f"\n🤖 Model: {args.model or 'gpt-oss-120b'}")
+                print(f"\n🤖 Model: {args.model or 'gemma-4-31b'}")
                 print("   Provider: smithers (smithers-adapter)")
             elif display_provider == "eliza":
                 print(f"\n🤖 Model: {args.model or 'eliza-ts-bridge'}")

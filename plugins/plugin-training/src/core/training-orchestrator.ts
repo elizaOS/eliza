@@ -649,7 +649,7 @@ async function extractUseModel(
   runtime: RuntimeLike,
 ): Promise<UseModelLike | null> {
   // Standing direction: training optimizer / variant generation runs on
-  // Cerebras gpt-oss-120b, NOT through the agent's primary provider.
+  // Cerebras (default gemma-4-31b), NOT through the agent's primary provider.
   const trainProvider =
     process.env.TRAIN_MODEL_PROVIDER?.trim() ??
     process.env.TRAINING_PROVIDER?.trim();

@@ -298,12 +298,12 @@ echo "[voicebench] groq-transcription-model=${GROQ_TRANSCRIPTION_MODEL}"
 echo "[voicebench] groq-tts-model=${GROQ_TTS_MODEL} voice=${GROQ_TTS_VOICE} format=${GROQ_TTS_RESPONSE_FORMAT}"
 echo "[voicebench] elevenlabs-model=${ELEVENLABS_MODEL_ID} voice=${ELEVENLABS_VOICE_ID} latency=${ELEVENLABS_OPTIMIZE_STREAMING_LATENCY} format=${ELEVENLABS_OUTPUT_FORMAT}"
 if [[ "${PROFILE}" == "local-cerebras" ]]; then
-  echo "[voicebench] local-cerebras-model=${CEREBRAS_MODEL:-gpt-oss-120b}"
+  echo "[voicebench] local-cerebras-model=${CEREBRAS_MODEL:-gemma-4-31b}"
   echo "[voicebench] local-stt=faster-whisper model=${VOICEBENCH_FASTER_WHISPER_MODEL:-tiny.en}"
   echo "[voicebench] local-tts=${VOICEBENCH_SAY_BIN:-/usr/bin/say}"
 fi
 if [[ "${PROFILE}" == "local-eliza1" ]]; then
-  echo "[voicebench] local-eliza1-model=${CEREBRAS_MODEL:-gpt-oss-120b}"
+  echo "[voicebench] local-eliza1-model=${CEREBRAS_MODEL:-gemma-4-31b}"
   echo "[voicebench] local-stt=eliza-1-asr (llama-mtmd-cli)"
   echo "[voicebench] local-tts=${VOICEBENCH_SAY_BIN:-/usr/bin/say}"
 fi

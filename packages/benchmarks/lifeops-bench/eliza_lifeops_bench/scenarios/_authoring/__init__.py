@@ -4,7 +4,7 @@ Operator workflow:
 
 1. ``python -m eliza_lifeops_bench.scenarios._authoring.generate_candidates
    --domain calendar --n 20 --output candidates/calendar_batch_001.json``
-   - Calls Cerebras gpt-oss-120b with the spec, the action manifest, the
+   - Calls Cerebras gemma-4-31b with the spec, the action manifest, the
      world snapshot, and a sample of hand-authored scenarios as seed
      prompts. Validates each candidate; only valid ones land in JSON.
 2. Human reviews ``candidates/calendar_batch_001.json``, deletes anything

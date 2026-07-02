@@ -16,7 +16,7 @@
 # Required repo secret (self-documented):
 #   HL_PRIVATE_KEY        — Hyperliquid signing key (0x...) for --no-demo runs.
 # Optional repo secret:
-#   CEREBRAS_API_KEY      — gpt-oss-120b plan generation for the eliza/hermes/
+#   CEREBRAS_API_KEY      — gemma-4-31b plan generation for the eliza/hermes/
 #                           openclaw harnesses. Without it the harnesses cannot
 #                           generate live plans; the run still skips when the
 #                           private key is absent.
@@ -43,7 +43,7 @@ on:
         description: "Model name for plan generation"
         required: false
         type: string
-        default: "gpt-oss-120b"
+        default: "gemma-4-31b"
 
 concurrency:
   group: hyperliquid-bench-live-${{ github.ref }}
@@ -153,7 +153,7 @@ jobs:
         env:
           NETWORK: ${{ inputs.network || 'testnet' }}
           PROVIDER: ${{ inputs.provider || 'cerebras' }}
-          MODEL: ${{ inputs.model || 'gpt-oss-120b' }}
+          MODEL: ${{ inputs.model || 'gemma-4-31b' }}
           PYTHONUNBUFFERED: "1"
         run: |
           set -e

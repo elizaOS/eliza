@@ -131,7 +131,7 @@ def build_custom_query_fn(config: RLMBenchConfig, backend: str) -> Callable[[str
     if not api_key:
         raise RuntimeError("--mode custom --backend cerebras requires CEREBRAS_API_KEY")
 
-    model = (config.root_model or config.subcall_model or "gpt-oss-120b").strip()
+    model = (config.root_model or config.subcall_model or "gemma-4-31b").strip()
 
     def query(context: str, question: str) -> str:
         try:

@@ -128,8 +128,8 @@ Examples:
     run_parser.add_argument(
         "--model",
         type=str,
-        default="gpt-oss-120b",
-        help="Model to use (default: gpt-oss-120b)",
+        default="gemma-4-31b",
+        help="Model to use (default: gemma-4-31b)",
     )
     run_parser.add_argument(
         "--provider",

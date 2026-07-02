@@ -23,7 +23,7 @@ def build_smithers_woobench_agent_fn(
 ) -> Callable[[list[dict[str, str]]], Awaitable[dict[str, Any]]]:
     from hermes_adapter.woobench import build_hermes_woobench_agent_fn
 
-    bridge = client or SmithersClient(model=model_name or "gpt-oss-120b")
+    bridge = client or SmithersClient(model=model_name or "gemma-4-31b")
     # The hermes builder is generic over any client with the MessageResponse
     # contract; SmithersClient satisfies it.
     return build_hermes_woobench_agent_fn(client=bridge, model_name=model_name)

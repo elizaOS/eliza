@@ -262,7 +262,7 @@ class HarnessClient:
 
             self._client = HermesClient(
                 provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
                 base_url=os.environ.get("BENCHMARK_BASE_URL")
                 or os.environ.get("OPENAI_BASE_URL")
                 or os.environ.get("CEREBRAS_BASE_URL")
@@ -279,7 +279,7 @@ class HarnessClient:
 
             self._client = OpenClawClient(
                 provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
                 base_url=os.environ.get("BENCHMARK_BASE_URL")
                 or os.environ.get("OPENAI_BASE_URL")
                 or os.environ.get("CEREBRAS_BASE_URL")
@@ -295,7 +295,7 @@ class HarnessClient:
 
             self._client = SmithersClient(
                 provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
                 base_url=os.environ.get("BENCHMARK_BASE_URL")
                 or os.environ.get("OPENAI_BASE_URL")
                 or os.environ.get("CEREBRAS_BASE_URL")

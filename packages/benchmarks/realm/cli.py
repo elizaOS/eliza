@@ -348,7 +348,7 @@ async def run_benchmark(
 
             client = SmithersClient(
                 provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
             )
             client.wait_until_ready(timeout=120)
         elif harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):

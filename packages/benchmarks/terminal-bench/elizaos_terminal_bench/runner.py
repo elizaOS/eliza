@@ -515,7 +515,7 @@ class TerminalBenchRunner:
         if "/" in model_name:
             prefix, bare_model = model_name.split("/", 1)
             return provider or prefix.lower(), bare_model
-        return provider or default_provider, model_name or "gpt-oss-120b"
+        return provider or default_provider, model_name or "gemma-4-31b"
 
     def _openclaw_provider_model(self) -> tuple[str, str]:
         """Resolve OpenClaw provider/model from Terminal-Bench config."""

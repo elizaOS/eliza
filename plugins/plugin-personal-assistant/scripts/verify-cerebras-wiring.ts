@@ -2,7 +2,8 @@
 // Run: bun run plugins/plugin-personal-assistant/scripts/verify-cerebras-wiring.ts
 //
 // Confirms that getEvalModelClient and getTrainingModelClient can both
-// reach Cerebras gpt-oss-120b and that the response shape is parsed.
+// reach the Cerebras eval model (default gemma-4-31b) and that the response
+// shape is parsed.
 
 import {
   getEvalModelClient,
@@ -15,7 +16,7 @@ async function main(): Promise<void> {
   console.log("[verify-cerebras] env:", {
     CEREBRAS_BASE_URL:
       process.env.CEREBRAS_BASE_URL ?? "(default https://api.cerebras.ai/v1)",
-    CEREBRAS_MODEL: process.env.CEREBRAS_MODEL ?? "(default gpt-oss-120b)",
+    CEREBRAS_MODEL: process.env.CEREBRAS_MODEL ?? "(default gemma-4-31b)",
     EVAL_MODEL: process.env.EVAL_MODEL,
     TRAIN_MODEL: process.env.TRAIN_MODEL,
     EVAL_MODEL_PROVIDER: process.env.EVAL_MODEL_PROVIDER,
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
   console.log("[verify-cerebras] judge text:", judged);
 
   console.log(
-    "[verify-cerebras] OK — Cerebras gpt-oss-120b is reachable for both eval and training",
+    "[verify-cerebras] OK — the Cerebras eval model is reachable for both eval and training",
   );
 }
 

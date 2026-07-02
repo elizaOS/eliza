@@ -136,7 +136,7 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Model name for plan generation. Defaults to gpt-oss-120b for "
+            "Model name for plan generation. Defaults to gemma-4-31b for "
             "Cerebras and openai/gpt-oss-120b otherwise."
         ),
     )
@@ -473,7 +473,7 @@ def _detect_model_provider() -> str:
 
 def _default_model_for_provider(provider: str) -> str:
     if provider.strip().lower() == "cerebras":
-        return "gpt-oss-120b"
+        return "gemma-4-31b"
     return "openai/gpt-oss-120b"
 
 

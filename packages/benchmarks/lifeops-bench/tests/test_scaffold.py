@@ -143,7 +143,7 @@ def test_runner_instantiates_with_noop_agent_fn() -> None:
     assert runner.concurrency == 2
     assert runner.seeds == 1
     assert len(runner.scenarios) == len(ALL_SCENARIOS)
-    assert runner.evaluator_model == "gpt-oss-120b"
+    assert runner.evaluator_model == "gemma-4-31b"
     assert runner.judge_model == "claude-opus-4-7"
 
 

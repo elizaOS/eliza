@@ -67,7 +67,7 @@ Flags:
                                       choose LLM provider (default: scripted)
   --scenario=<id>                     run only this scenario id
   --judge                             enable LLM-as-judge bonus (requires CEREBRAS_API_KEY)
-  --model=<id>                        override Cerebras model (default: gpt-oss-120b)
+  --model=<id>                        override Cerebras model (default: gemma-4-31b)
   --out=<dir>                         write report.md and report.json to <dir>
   --count-scenarios                   print scenario expansion counts
   --validate-scenarios                validate expanded scenario structure
@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     mode: args.mode,
     model:
       args.mode === "cerebras" || args.mode === "harness"
-        ? (args.cerebrasModel ?? "gpt-oss-120b")
+        ? (args.cerebrasModel ?? "gemma-4-31b")
         : undefined,
     startedAt,
     finishedAt,

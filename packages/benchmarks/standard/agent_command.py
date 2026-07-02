@@ -44,7 +44,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--task", required=True)
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--provider", default="cerebras")
-    parser.add_argument("--model", default="gpt-oss-120b")
+    parser.add_argument("--model", default="gemma-4-31b")
     parser.add_argument("--timeout-seconds", type=int, default=3600)
     parser.add_argument("--result-json", required=True)
     parser.add_argument("--dry-run", action="store_true")
