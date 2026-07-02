@@ -504,6 +504,20 @@ export class EvaluatorService extends BaseService {
 				? evaluator.parse(rawSection)
 				: (rawSection as JsonValue);
 			if (parsed === null || parsed === undefined) {
+				// The returned `errors` array is not read by every caller, so this
+				// structured warn is the field-visible trace of a parse failure
+				// (#11239/#11253). stringifyForPrompt (safe try/catch) — a raw
+				// JSON.stringify throws on a circular/bigint section and would turn
+				// one evaluator's parse failure into an abort of the whole run.
+				this.runtime.logger.warn(
+					{
+						src: "service:evaluator",
+						agentId: this.runtime.agentId,
+						evaluator: evaluator.name,
+						rawSection: stringifyForPrompt(rawSection).slice(0, 500),
+					},
+					"Evaluator output section did not validate",
+				);
 				errors.push({
 					evaluatorName: evaluator.name,
 					error: "Evaluator output section did not validate",
