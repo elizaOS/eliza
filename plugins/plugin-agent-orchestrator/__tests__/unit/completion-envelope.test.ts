@@ -42,6 +42,54 @@ describe("parseCompletionEnvelope (#8895)", () => {
     }
   });
 
+  it("carries the real workdir and disk-verified changed files", () => {
+    const res = parseCompletionEnvelope(
+      fenced({
+        ...validEnvelope(),
+        realWorkdir: "/workspace/task-real",
+        verifiedChangedFiles: [
+          {
+            path: "src/a.ts",
+            exists: true,
+            absolutePath: "/workspace/task-real/src/a.ts",
+            sizeBytes: 12,
+          },
+        ],
+        artifactsVerified: true,
+        missingArtifacts: [],
+      }),
+    );
+    expect(res.present).toBe(true);
+    expect(res.ok).toBe(true);
+    if (res.present && res.ok) {
+      expect(res.envelope.realWorkdir).toBe("/workspace/task-real");
+      expect(res.envelope.verifiedChangedFiles?.[0]).toMatchObject({
+        path: "src/a.ts",
+        exists: true,
+      });
+      expect(res.envelope.artifactsVerified).toBe(true);
+    }
+  });
+
+  it("marks missing artifacts as unverified", () => {
+    const res = parseCompletionEnvelope(
+      fenced({
+        ...validEnvelope(),
+        realWorkdir: "/workspace/task-real",
+        verifiedChangedFiles: [{ path: "index.html", exists: false }],
+        artifactsVerified: false,
+        missingArtifacts: ["index.html"],
+      }),
+    );
+    expect(res.present).toBe(true);
+    expect(res.ok).toBe(true);
+    if (res.present && res.ok) {
+      expect(res.envelope.artifactsVerified).toBe(false);
+      expect(res.envelope.missingArtifacts).toEqual(["index.html"]);
+      expect(summarizeEnvelope(res.envelope)).toContain("UNVERIFIED missing");
+    }
+  });
+
   it("flags a present-but-incomplete envelope (missing testResults)", () => {
     const { testResults, ...partial } = validEnvelope();
     void testResults;

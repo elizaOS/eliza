@@ -36,6 +36,8 @@ import type { SessionEventName, SessionInfo } from "./types.js";
 import {
   captureChangeSet,
   summarizeChangeSet,
+  verifyChangedFilesOnDisk,
+  type WorkspaceArtifactVerification,
   type WorkspaceChangeSet,
 } from "./workspace-diff.js";
 
@@ -952,6 +954,7 @@ export class SubAgentRouter extends Service {
     // is persisted so "what did you change / show me the diff" can be
     // answered from the actual change set instead of a confabulated edit.
     let changeSet: WorkspaceChangeSet | undefined;
+    let artifactVerification: WorkspaceArtifactVerification | undefined;
     if (event === "task_complete" && this.acp) {
       try {
         const meta = session.metadata as Record<string, unknown> | undefined;
@@ -969,8 +972,13 @@ export class SubAgentRouter extends Service {
         // so the provider — which selects the most-recently-completed session
         // and reads ITS change set — can't bleed an older task's diff.
         if (changeSet) {
+          artifactVerification = verifyChangedFilesOnDisk(
+            session.workdir,
+            changeSet.changedFiles,
+          );
           await this.acp.updateSessionMetadata(sessionId, {
             lastChangeSet: changeSet,
+            lastArtifactVerification: artifactVerification,
           });
         }
       } catch (err) {
@@ -992,7 +1000,14 @@ export class SubAgentRouter extends Service {
           ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.loopState.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
           : capExceeded
             ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.loopState.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-            : composeNarration(event, origin.label, session, data, changeSet),
+            : composeNarration(
+                event,
+                origin.label,
+                session,
+                data,
+                changeSet,
+                artifactVerification,
+              ),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
     // routinely report "the app is live at <url>" without writing the
@@ -1132,7 +1147,13 @@ export class SubAgentRouter extends Service {
           deliverable,
         });
       }
-      const preview = (deliverable ?? text).trim().slice(0, 200);
+      // Strip the planner-only `[sub-agent: …]` header before previewing so
+      // the notification body shows the actual result (e.g. "PR opened"),
+      // not the relay/do-not-respawn directive. The header can now be long
+      // (it carries the actual-workdir + requested-vs-actual-agent note), so a
+      // naive slice(0,200) of the raw text would capture only the directive.
+      const previewSource = (deliverable ?? stripSubAgentHeaderLine(text)).trim();
+      const preview = previewSource.slice(0, 200);
       void getNotifier(this.runtime)
         ?.notify({
           title: `${origin.label || "Agent task"} finished`,
@@ -1239,6 +1260,21 @@ export class SubAgentRouter extends Service {
                 ? "stopped"
                 : session.status,
             subAgentAgentType: session.agentType,
+            subAgentActualAgentType: session.agentType,
+            ...(pickPlainString(sessionMeta?.requestedType)
+              ? {
+                  subAgentRequestedType: pickPlainString(
+                    sessionMeta?.requestedType,
+                  ),
+                }
+              : {}),
+            subAgentWorkdir: session.workdir,
+            ...(artifactVerification
+              ? {
+                  subAgentArtifactVerification:
+                    artifactVerificationMetadata(artifactVerification),
+                }
+              : {}),
             subAgentRoundTrip: nextCount,
             subAgentRoundTripCap: this.loopState.roundTripCap,
             subAgentRoutingKind: routingKind,
@@ -2378,6 +2414,7 @@ function composeNarration(
   session: SessionInfo,
   data: unknown,
   changeSet?: WorkspaceChangeSet,
+  artifactVerification?: WorkspaceArtifactVerification,
 ): string {
   // For task_complete the LABEL is the original (often imperative) task text —
   // e.g. "Use the webfetch tool on this exact URL: …". A literal planner reads
@@ -2387,9 +2424,17 @@ function composeNarration(
   // that each sub-agent had already returned). The directive below is INSIDE
   // the bracketed header, so every `[sub-agent:`-prefix stripper (user-facing
   // reply, deliverable extraction) still removes it — only the planner sees it.
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const requestedType = pickPlainString(meta?.requestedType);
+  const agentTypeNote =
+    event === "task_complete" &&
+    requestedType &&
+    requestedType !== session.agentType
+      ? ` Requested agent type was ${requestedType}; actual agent type was ${session.agentType}.`
+      : "";
   const header =
     event === "task_complete"
-      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, do NOT start another sub-agent for it]`
+      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, state the actual workdir (${session.workdir}), do NOT substitute or repeat a requested path unless it matches the actual workdir, and do NOT start another sub-agent for it.${agentTypeNote}]`
       : `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
     const message =
@@ -2436,15 +2481,32 @@ function composeNarration(
     // transcript, so the leak/respawn problems the diff-summary path solved
     // stay solved.
     const capturedDeliverable = extractShortToolDeliverable(data);
+    // Only surface a disk-verification LINE when it carries a real signal —
+    // i.e. a claimed changed file was MISSING at completion. A clean, verified
+    // change set stays silent here: `summarizeChangeSet(..., verification)`
+    // already appends a `(verified on disk)` suffix, and adding a separate
+    // "verified" body line would pollute the completion body that downstream
+    // consumers (notification preview, verified-URL fallback, the completion
+    // evaluator's reply) read from, regressing existing narration tests. The
+    // authoritative workdir + requested-vs-actual-agent note lives in the
+    // planner-only header (stripped by every `[sub-agent:`-prefix reader), so
+    // it never leaks into the user-facing body.
+    const missing = artifactVerification?.missingFiles ?? [];
+    const unverifiedLine =
+      artifactVerification && !artifactVerification.verified && missing.length > 0
+        ? `Artifact verification: UNVERIFIED at completion; missing ${missing.join(", ")}.`
+        : undefined;
     const lines = [
       ...(capturedDeliverable ? [capturedDeliverable] : []),
-      summarizeChangeSet(changeSet),
+      summarizeChangeSet(changeSet, artifactVerification),
+      unverifiedLine,
       changeSet.diffStat,
       ...urls,
     ].filter((line) => typeof line === "string" && line.trim().length > 0);
     return `${header}\n${lines.join("\n")}`;
   }
-  // Genuinely no captured output — keep the explicit note.
+  // Genuinely no captured output — keep the explicit note. The workdir lives
+  // in the planner-only header, not the body.
   if (response === undefined) {
     return `${header}\nsub-agent reports task complete (no captured output).`;
   }
@@ -2477,6 +2539,40 @@ function stripRoutingKindBanner(text: string): string {
       "",
     )
     .trimStart();
+}
+
+// Flatten a disk-verification result into a JSON-safe metadata shape so it
+// satisfies the Content metadata index signature (a plain object of
+// JsonValue-compatible fields, no optional-undefined members).
+function artifactVerificationMetadata(
+  verification: WorkspaceArtifactVerification,
+): Record<string, unknown> {
+  return {
+    workdir: verification.workdir,
+    verified: verification.verified,
+    missingFiles: [...verification.missingFiles],
+    files: verification.files.map((file) => ({
+      path: file.path,
+      absolutePath: file.absolutePath,
+      exists: file.exists,
+      ...(typeof file.sizeBytes === "number"
+        ? { sizeBytes: file.sizeBytes }
+        : {}),
+      ...(file.kind ? { kind: file.kind } : {}),
+      ...(file.error ? { error: file.error } : {}),
+    })),
+  };
+}
+
+// Drop the leading planner-only `[sub-agent: …]` directive line so a preview or
+// body reader sees the actual result, not the relay/do-not-respawn header.
+// Mirrors the evaluator's `stripRouterAnnotations` header handling; kept local
+// so the router has no cross-module import for a one-line string op.
+function stripSubAgentHeaderLine(text: string): string {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  return (lines[0]?.startsWith("[sub-agent:") ? lines.slice(1) : lines)
+    .join("\n")
+    .trim();
 }
 
 function routingKindFromPayloadBanner(data: unknown): string | undefined {

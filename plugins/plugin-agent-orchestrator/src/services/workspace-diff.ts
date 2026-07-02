@@ -37,6 +37,24 @@ export interface WorkspaceChangeSet {
   capturedAt: number;
 }
 
+/** Disk-level verification for one path the sub-agent claims changed. */
+export interface WorkspaceChangedFileVerification {
+  path: string;
+  absolutePath: string;
+  exists: boolean;
+  sizeBytes?: number;
+  kind?: "file" | "directory" | "other";
+  error?: string;
+}
+
+/** Completion-time artifact verification rooted in the real session workdir. */
+export interface WorkspaceArtifactVerification {
+  workdir: string;
+  verified: boolean;
+  files: WorkspaceChangedFileVerification[];
+  missingFiles: string[];
+}
+
 async function git(
   workdir: string,
   args: string[],
@@ -296,11 +314,57 @@ function captureToolPathOnlyChangeSet(
   };
 }
 
+export function verifyChangedFilesOnDisk(
+  workdir: string,
+  changedFiles: readonly string[],
+): WorkspaceArtifactVerification {
+  const files = changedFiles.map((file) => {
+    const rel = toWorkdirRelative(workdir, file) || file;
+    const absolutePath = resolve(workdir, rel);
+    try {
+      const stat = statSync(absolutePath);
+      return {
+        path: rel,
+        absolutePath,
+        exists: true,
+        sizeBytes: stat.size,
+        kind: stat.isFile()
+          ? ("file" as const)
+          : stat.isDirectory()
+            ? ("directory" as const)
+            : ("other" as const),
+      };
+    } catch (err) {
+      return {
+        path: rel,
+        absolutePath,
+        exists: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+  const missingFiles = files.filter((file) => !file.exists).map((file) => file.path);
+  return {
+    workdir,
+    verified: missingFiles.length === 0,
+    files,
+    missingFiles,
+  };
+}
+
 /** One-line, human-facing summary of a change set for a completion banner. */
-export function summarizeChangeSet(changeSet: WorkspaceChangeSet): string {
+export function summarizeChangeSet(
+  changeSet: WorkspaceChangeSet,
+  verification?: WorkspaceArtifactVerification,
+): string {
   const count = changeSet.changedFiles.length;
   const noun = count === 1 ? "file" : "files";
   const shown = changeSet.changedFiles.slice(0, 6).join(", ");
   const more = count > 6 ? ` (+${count - 6} more)` : "";
-  return `Changed ${count} ${noun}: ${shown}${more}`;
+  const verifiedSuffix = verification
+    ? verification.verified
+      ? " (verified on disk)"
+      : ` (UNVERIFIED: missing ${verification.missingFiles.join(", ")})`
+    : "";
+  return `Changed ${count} ${noun}: ${shown}${more}${verifiedSuffix}`;
 }
