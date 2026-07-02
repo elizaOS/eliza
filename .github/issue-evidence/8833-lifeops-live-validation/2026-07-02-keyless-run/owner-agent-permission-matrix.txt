@@ -1,0 +1,11 @@
+
+ RUN  v4.1.5 /home/shaw/eliza-worktrees/8833-lifeops-live-validation
+
+(node:1714050) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+   Start at  13:44:35
+   Duration  167.21s (transform 90.98s, setup 369ms, import 131.68s, tests 34.47s, environment 0ms)
+

@@ -1,0 +1,36 @@
+PA integration lane — e2e-global-setup repo-root bug fix verification.
+
+Bug (recorded on #8833, 2026-07-01 comment): `bun run --cwd
+plugins/plugin-personal-assistant test:integration` never reached assertions —
+`packages/app-core/test/e2e-global-setup.ts` resolved "repo root" as
+path.resolve(packageRoot, '..', '..', '..'), which from packages/app-core lands
+on the *parent of the checkout*. With dist/ missing it ran `bunx tsdown` there:
+  No input files, try "tsdown <your-file>" or create src/index.ts
+followed by the unhandled setup error at e2e-global-setup.ts:30.
+
+Fix: build @elizaos/app-core via its own package build (`bun run build`,
+cwd = packages/app-core). Commit on this branch:
+  fix(app-core): e2e-global-setup resolves repo root one level too far — build app-core in-package
+
+Verification (2026-07-02, worktree /home/shaw/eliza-worktrees/8833-lifeops-live-validation):
+exercised the exact failure path — moved packages/app-core/dist aside, then ran
+the lane that uses integration.config.ts (globalSetup line 184):
+
+$ bunx vitest run --config packages/test/vitest/integration.config.ts \
+    plugins/plugin-personal-assistant/test/life-smoke.integration.test.ts
+
+ RUN  v4.1.5 /home/shaw/eliza-worktrees/8833-lifeops-live-validation
+[e2e-global-setup] dist/ not found — building @elizaos/app-core…
+$ bun run build:dist
+$ node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && ...
+[rewrite-dist-relative-imports] rewrote 122 file(s)
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Duration  69.65s
+EXIT=0
+
+globalSetup now rebuilds app-core in-package and the integration lane reaches
+its assertions (life-smoke 14/14). The owner-agent permission-matrix half of the
+same lane is covered separately (owner-agent-permission-matrix.txt: 20/20 with
+LIFEOPS_PERMISSION_MATRIX=1; clean 1-skip without it).

@@ -1,0 +1,46 @@
+Keyless connector suites — LifeOps-relevant connector plugins, no credentials.
+Worktree: test/8833-lifeops-keyless-validation-matrix (base origin/develop d9d1a47ccd, 2026-07-02).
+Default lanes = `bun run --cwd plugins/<plugin> test [files]`; harness lanes = `bun run test:harness`
+(real PGLite AgentRuntime connector loop, `*.harness.test.ts` — the #8801 / PR #10569 keyless pattern).
+
+===== plugin-google :: full suite =====
+ Test Files  2 passed (2)
+      Tests  21 passed (21)
+===== plugin-telegram :: test:harness (__tests__/keyless-harness.harness.test.ts, real-PGLite runtime) =====
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Duration  20.00s
+===== plugin-discord :: test:harness (__tests__/connector-loop.harness.test.ts, real-PGLite runtime) =====
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Duration  27.33s
+===== plugin-whatsapp :: __tests__ =====
+ Test Files  7 passed (7)
+      Tests  35 passed (35)
+===== plugin-imessage :: __tests__ =====
+ Test Files  4 passed (4)
+      Tests  100 passed (100)
+===== plugin-slack :: full suite =====
+ Test Files  5 passed (5)
+      Tests  34 passed (34)
+===== plugin-signal :: full suite =====
+First run (2026-07-02 ~13:45 PT, ~10 concurrent agents on the host):
+ FAIL  src/setup-routes.test.ts > Signal setup routes > cancels pairing, logs out, and removes only the requested account config
+ AssertionError: expected "vi.fn()" to be called at least once
+ Test Files  1 failed | 3 passed (4)
+      Tests  3 failed | 22 passed (25)
+Re-run (same tree, ~15:01 PT):
+ Test Files  4 passed (4)
+      Tests  25 passed (25)
+src/setup-routes.test.ts isolated x3 consecutive: 5 passed / 5 passed / 5 passed.
+Verdict: load flake, not a product defect — this suite has known re-import
+timing sensitivity under CI load (see commit 79396e4269 "give setup-routes
+re-import headroom under CI load"). Green on an idle host.
+===== plugin-x :: full suite =====
+ Test Files  18 passed | 1 skipped (19)
+      Tests  67 passed | 15 skipped (82)
+(15 skips = live-credential X API cases; skip-clean behavior is the designed
+credential gate.)
+===== plugin-phone :: src/twilio.test.ts src/providers/call-log.test.ts src/components/call-log-contract.test.ts =====
+ Test Files  3 passed (3)
+      Tests  13 passed (13)

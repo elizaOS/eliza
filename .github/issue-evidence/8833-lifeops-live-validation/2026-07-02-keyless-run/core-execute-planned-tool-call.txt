@@ -1,0 +1,10 @@
+$ node ../scripts/run-vitest.mjs run src/runtime/__tests__/execute-planned-tool-call.test.ts
+
+ RUN  v4.1.5 /home/shaw/eliza-worktrees/8833-lifeops-live-validation/packages/core
+
+
+ Test Files  1 passed (1)
+      Tests  28 passed (28)
+   Start at  13:45:09
+   Duration  2.46s (transform 1.41s, setup 0ms, import 1.89s, tests 49ms, environment 14ms)
+
