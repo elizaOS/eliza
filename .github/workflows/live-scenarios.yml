@@ -14,6 +14,11 @@
 #     ANTHROPIC_API_KEY
 #     GOOGLE_GENERATIVE_AI_API_KEY or GOOGLE_API_KEY
 #     GROQ_API_KEY
+#   Independent LLM judge (judge-independence, #9310):
+#     CEREBRAS_API_KEY — grades judgeRubric/responseJudge checks on Cerebras
+#     instead of the model under test. SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1 is
+#     set below, so runs without this secret FAIL their judged scenarios
+#     (visible judge-availability gap) rather than silently self-grading.
 #   Connector credentials (presence gates the relevant scenarios):
 #     GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN
 #     GMAIL_TEST_ACCOUNT_EMAIL, GMAIL_TEST_ACCOUNT_REFRESH_TOKEN
@@ -182,6 +187,11 @@ jobs:
           GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Independent LLM judge (#9310): judge on Cerebras, never the model
+          # under test. Strict mode fails self-graded scenarios so a missing
+          # key is a visible judge-availability gap, not silent self-grading.
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           # Google Workspace
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}

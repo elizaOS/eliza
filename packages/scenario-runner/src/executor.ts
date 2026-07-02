@@ -43,6 +43,11 @@ import {
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
+import {
+  deterministicJudgeFixturesActive,
+  isJudgeIndependent,
+  judgeIndependenceRequired,
+} from "./judge-independence.ts";
 import { judgeTextWithLlm } from "./judge.ts";
 import { redactForScenarioReport } from "./redaction.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
@@ -2402,6 +2407,24 @@ export async function runScenario(
 
   if (judgeScores.length > 0) {
     report.judgeScore = Math.min(...judgeScores);
+    // Judge-independence governance (#9310): a judge score produced without
+    // independent judge credentials (and outside the deterministic-proxy
+    // fixture lanes) came from the model under test grading itself. Stamp it
+    // fail-loud-visible; strict mode turns it into a failure.
+    if (!deterministicJudgeFixturesActive() && !(await isJudgeIndependent())) {
+      report.judgeSelfGraded = true;
+      logger.warn(
+        `[scenario-runner] ${scenario.id}: judge scores were produced by the model under test (self-graded) — set CEREBRAS_API_KEY for an independent judge`,
+      );
+      if (judgeIndependenceRequired()) {
+        report.status = "failed";
+        report.failedAssertions.push({
+          label: "judgeIndependence",
+          detail:
+            "SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1: judge scores came from the model under test (self-graded); configure CEREBRAS_API_KEY / EVAL_CEREBRAS_API_KEY so scenarios are graded independently",
+        });
+      }
+    }
   }
   return report;
 }

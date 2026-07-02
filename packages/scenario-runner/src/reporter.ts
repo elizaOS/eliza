@@ -520,6 +520,17 @@ export function printStdoutSummary(report: AggregateReport): void {
       }
     }
   }
+  const selfGraded = report.scenarios.filter((s) => s.judgeSelfGraded);
+  if (selfGraded.length > 0) {
+    lines.push(
+      `WARNING: ${selfGraded.length} scenario(s) were JUDGED BY THE MODEL UNDER TEST (judgeSelfGraded) — no independent judge configured. ` +
+        "Set CEREBRAS_API_KEY (or EVAL_CEREBRAS_API_KEY) so scores are independent; " +
+        "SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1 fails these scenarios instead (#9310):",
+    );
+    for (const s of selfGraded) {
+      lines.push(`  - ${s.id}`);
+    }
+  }
   for (const line of lines) {
     process.stdout.write(`${line}\n`);
   }

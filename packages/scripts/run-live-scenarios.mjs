@@ -17,6 +17,13 @@
  * Optional env:
  *   - LIFEOPS_JUDGE_THRESHOLD: minimum LLM judge score (default 0.8). Forwarded
  *     to the CLI via LIFEOPS_LIVE_JUDGE_MIN_SCORE.
+ *   - CEREBRAS_API_KEY / EVAL_CEREBRAS_API_KEY: independent LLM-judge
+ *     credentials. Without them the judge falls back to the runtime's own
+ *     TEXT_LARGE model — the model under test grades itself. Such scenarios
+ *     are stamped judgeSelfGraded:true in the report (#9310).
+ *   - SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1: fail any scenario whose judge
+ *     self-graded instead of silently accepting the self-assigned score. Set
+ *     in the nightly live-scenarios workflow.
  *   - SCENARIO_FILTER: comma-separated scenario IDs (forwards as --scenario).
  *   - SCENARIO_ROOT: scenario directory, relative to repo root or absolute
  *     (default: packages/test/scenarios).
@@ -134,9 +141,20 @@ const env = {
   LIFEOPS_LIVE_JUDGE_MIN_SCORE: judgeThreshold,
 };
 
-console.log(
-  `[run-live-scenarios] threshold=${judgeThreshold} enforce=${enforceGate ? "yes" : "no"} pending=${env.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} report=${reportPath} runDir=${runDir} args=${args.slice(2).join(" ")}`,
+const independentJudge = Boolean(
+  (process.env.CEREBRAS_API_KEY ?? "").trim() ||
+    (process.env.EVAL_CEREBRAS_API_KEY ?? "").trim(),
 );
+const requireIndependentJudge =
+  (process.env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT ?? "").trim() === "1";
+console.log(
+  `[run-live-scenarios] threshold=${judgeThreshold} enforce=${enforceGate ? "yes" : "no"} pending=${env.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} judge=${independentJudge ? "independent (cerebras)" : "SELF-GRADED (model under test — set CEREBRAS_API_KEY)"} requireIndependentJudge=${requireIndependentJudge ? "yes" : "no"} report=${reportPath} runDir=${runDir} args=${args.slice(2).join(" ")}`,
+);
+if (!independentJudge && !requireIndependentJudge) {
+  console.warn(
+    "[run-live-scenarios] WARNING: no independent judge credentials — every judgeRubric/responseJudge score will be self-graded by the model under test (#9310).",
+  );
+}
 
 const child = spawn(process.execPath, args, {
   cwd: REPO_ROOT,

@@ -80,6 +80,13 @@ export interface ScenarioReport {
    * `metadata.judge_score` for reward-weighted training (#8795).
    */
   judgeScore?: number;
+  /**
+   * True when the LLM-judge scores above were produced by the model under
+   * test itself (no independent Cerebras judge configured and no
+   * deterministic judge fixtures active) — the run self-graded (#9310).
+   * `SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1` turns this into a failure.
+   */
+  judgeSelfGraded?: boolean;
 }
 
 export interface AggregateReport {
