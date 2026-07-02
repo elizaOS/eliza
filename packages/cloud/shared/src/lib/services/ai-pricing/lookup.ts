@@ -212,6 +212,76 @@ function quantityForEntryUnit(
   }
 }
 
+/**
+ * Conservative per-token price for a token charge whose exact catalog row is
+ * missing (#11532). A servable request must never be *under-billed* just because
+ * its model id isn't catalogued yet (new releases, ingest lag). Order:
+ *
+ *   1. The provider's **most expensive** catalogued rate for the same
+ *      family+chargeType — an upper bound that can only over-estimate.
+ *   2. The env default `AI_PRICING_FALLBACK_{INPUT,OUTPUT}_USD_PER_M`
+ *      (USD per million tokens → per-token) when the provider has no rows.
+ *
+ * Returns null only when neither source yields a positive price, in which case
+ * the caller keeps the historical $0 (logged loudly) rather than failing the
+ * request.
+ */
+async function resolveConservativeFallbackUnitPrice(params: {
+  billingSource?: PricingBillingSource;
+  provider: string;
+  productFamily: PricingProductFamily;
+  chargeType: "input" | "output";
+}): Promise<{ unitPrice: Decimal; source: string } | null> {
+  // 1) Provider's most-expensive catalogued rate for the same family+chargeType.
+  try {
+    const providerEntries = await aiPricingRepository.listActiveEntries({
+      billingSource: params.billingSource,
+      provider: params.provider,
+      productFamily: params.productFamily,
+      chargeType: params.chargeType,
+    });
+    let max: Decimal | null = null;
+    for (const raw of providerEntries) {
+      const price = asDecimal(aiEntryToPrepared(raw).unitPrice);
+      if (price.isFinite() && (!max || price.gt(max))) {
+        max = price;
+      }
+    }
+    if (max?.gt(0)) {
+      return { unitPrice: max, source: "provider-max" };
+    }
+  } catch (error) {
+    logger.warn("ai-pricing: provider-max fallback query failed", {
+      provider: params.provider,
+      productFamily: params.productFamily,
+      chargeType: params.chargeType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  // 2) Env-configured default (USD per million tokens → per-token).
+  const envKey =
+    params.chargeType === "input"
+      ? "AI_PRICING_FALLBACK_INPUT_USD_PER_M"
+      : "AI_PRICING_FALLBACK_OUTPUT_USD_PER_M";
+  const rawEnv = process.env[envKey]?.trim();
+  if (rawEnv) {
+    try {
+      const perMillion = new Decimal(rawEnv);
+      if (perMillion.isFinite() && perMillion.gt(0)) {
+        return { unitPrice: perMillion.div(1_000_000), source: envKey };
+      }
+    } catch {
+      logger.warn("ai-pricing: invalid pricing-fallback env value", {
+        envKey,
+        rawEnv,
+      });
+    }
+  }
+
+  return null;
+}
+
 export async function calculateTextCostFromCatalog(params: {
   model: string;
   provider: string;
@@ -220,6 +290,9 @@ export async function calculateTextCostFromCatalog(params: {
   outputTokens: number;
 }): Promise<TokenCostBreakdown> {
   const canonicalModel = canonicalModelId(params.model, params.provider);
+  const productFamily: PricingProductFamily = params.model.includes("embedding")
+    ? "embedding"
+    : "language";
   // Both lookups degrade to null on a catalog miss. A missing INPUT price used
   // to throw uncaught here (the OUTPUT lookup was already guarded), and the
   // throw propagated through calculateCost → the chat-completions reserve →
@@ -231,31 +304,72 @@ export async function calculateTextCostFromCatalog(params: {
     billingSource: params.billingSource,
     provider: params.provider,
     model: canonicalModel,
-    productFamily: params.model.includes("embedding") ? "embedding" : "language",
+    productFamily,
     chargeType: "input",
   }).catch(() => null);
   const outputEntry = await resolvePreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
     model: canonicalModel,
-    productFamily: params.model.includes("embedding") ? "embedding" : "language",
+    productFamily,
     chargeType: "output",
   }).catch(() => null);
 
+  // #11532: never under-bill a servable-but-uncatalogued model. On a miss, fall
+  // back to a conservative price (provider-max, else env default) instead of $0.
+  const inputFallback = inputEntry
+    ? null
+    : await resolveConservativeFallbackUnitPrice({
+        billingSource: params.billingSource,
+        provider: params.provider,
+        productFamily,
+        chargeType: "input",
+      });
+  const outputFallback = outputEntry
+    ? null
+    : await resolveConservativeFallbackUnitPrice({
+        billingSource: params.billingSource,
+        provider: params.provider,
+        productFamily,
+        chargeType: "output",
+      });
+
   if (!inputEntry) {
-    logger.warn("ai-pricing: input pricing unavailable; billing input at $0", {
-      canonicalModel,
-      provider: params.provider,
-      billingSource: params.billingSource,
-    });
+    logger.warn(
+      inputFallback
+        ? "ai-pricing: input pricing unavailable; using conservative fallback"
+        : "ai-pricing: input pricing unavailable and no fallback; billing input at $0",
+      {
+        canonicalModel,
+        provider: params.provider,
+        billingSource: params.billingSource,
+        fallbackSource: inputFallback?.source,
+      },
+    );
+  }
+  if (!outputEntry) {
+    logger.warn(
+      outputFallback
+        ? "ai-pricing: output pricing unavailable; using conservative fallback"
+        : "ai-pricing: output pricing unavailable and no fallback; billing output at $0",
+      {
+        canonicalModel,
+        provider: params.provider,
+        billingSource: params.billingSource,
+        fallbackSource: outputFallback?.source,
+      },
+    );
   }
 
-  const baseInputCost = inputEntry
-    ? asDecimal(inputEntry.unitPrice).mul(params.inputTokens)
-    : new Decimal(0);
-  const baseOutputCost = outputEntry
-    ? asDecimal(outputEntry.unitPrice).mul(params.outputTokens)
-    : new Decimal(0);
+  const inputUnitPrice = inputEntry
+    ? asDecimal(inputEntry.unitPrice)
+    : (inputFallback?.unitPrice ?? new Decimal(0));
+  const outputUnitPrice = outputEntry
+    ? asDecimal(outputEntry.unitPrice)
+    : (outputFallback?.unitPrice ?? new Decimal(0));
+
+  const baseInputCost = inputUnitPrice.mul(params.inputTokens);
+  const baseOutputCost = outputUnitPrice.mul(params.outputTokens);
 
   const inputTotals = applyPlatformMarkup(baseInputCost);
   const outputTotals = applyPlatformMarkup(baseOutputCost);
