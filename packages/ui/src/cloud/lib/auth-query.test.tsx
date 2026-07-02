@@ -3,15 +3,16 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The analytics + api-keys query gates must resolve the session the same way
+// The query gate every cloud domain shares (analytics, api-keys, mcps,
+// applications, approvals, instances) must resolve the session the same way
 // the rest of the console does. Gating on the raw Steward SDK context (whose
-// MemoryStorage session is empty on every full page load) left the gate
+// MemoryStorage session is empty on every full page load) left a gate
 // permanently disabled for a signed-in user — analytics stuck on its loading
-// skeleton, keys never fetched. These tests reproduce the page-reload reality:
-// ONLY a persisted localStorage JWT, no Steward provider mounted.
+// skeleton, keys never fetched (#11558). These tests reproduce the
+// page-reload reality: ONLY a persisted localStorage JWT, no Steward provider
+// mounted.
 
-import { useAuthenticatedQueryGate as useApiKeysGate } from "../../api-keys/auth-gate";
-import { useAuthenticatedQueryGate as useAnalyticsGate } from "./auth-query";
+import { useAuthenticatedQueryGate } from "./auth-query";
 
 function makeJwt(payload: Record<string, unknown>): string {
   const b64url = (value: object) =>
@@ -55,24 +56,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe.each([
-  ["analytics", useAnalyticsGate],
-  ["api-keys", useApiKeysGate],
-])("%s query gate — session from persisted JWT only (page-reload reality)", (_name, useGate) => {
+describe("shared cloud query gate — session from persisted JWT only (page-reload reality)", () => {
   it("enables the query and exposes the user id when a valid JWT is persisted", () => {
     storage.setItem(
       "steward_session_token",
       makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) + 600 }),
     );
 
-    const { result } = renderHook(() => useGate());
+    const { result } = renderHook(() => useAuthenticatedQueryGate());
 
     expect(result.current.enabled).toBe(true);
     expect(result.current.userId).toBe("u1");
   });
 
   it("stays disabled with no persisted session", () => {
-    const { result } = renderHook(() => useGate());
+    const { result } = renderHook(() => useAuthenticatedQueryGate());
     expect(result.current.enabled).toBe(false);
   });
 
@@ -82,7 +80,17 @@ describe.each([
       makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) - 600 }),
     );
 
-    const { result } = renderHook(() => useGate());
+    const { result } = renderHook(() => useAuthenticatedQueryGate());
+    expect(result.current.enabled).toBe(false);
+  });
+
+  it("stays disabled when the caller's own enabled flag is false", () => {
+    storage.setItem(
+      "steward_session_token",
+      makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) + 600 }),
+    );
+
+    const { result } = renderHook(() => useAuthenticatedQueryGate(false));
     expect(result.current.enabled).toBe(false);
   });
 });
