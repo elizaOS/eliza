@@ -162,6 +162,60 @@ export function getCoTBudget(runtime: IAgentRuntime, modelSize: ModelSize): numb
   return 0;
 }
 
+/**
+ * Capability overrides for model ids the name-substring heuristics in
+ * models/text.ts don't know about. New Claude releases can ship hard request
+ * constraints (temperature locked to 1, tighter output-token ceilings); listing
+ * an id here applies the constraint without a code release. Unlisted ids keep
+ * the existing heuristics.
+ */
+export function isTemperatureLockedModel(runtime: IAgentRuntime, modelName: ModelName): boolean {
+  const raw = getRawSetting(runtime, "ANTHROPIC_TEMPERATURE_LOCKED_MODELS");
+  if (!raw) {
+    return false;
+  }
+  const target = modelName.toLowerCase();
+  return raw.split(",").some((entry) => entry.trim().toLowerCase() === target);
+}
+
+/**
+ * ANTHROPIC_MAX_OUTPUT_TOKENS accepts comma-separated `model-id:tokens` pairs
+ * and/or a bare token count that applies to models without a per-model entry
+ * (e.g. "claude-unknown-test-9:32000" or "16000"). Returns the output-token cap
+ * for `modelName`, or undefined to use the built-in heuristic.
+ */
+export function getMaxOutputTokensOverride(
+  runtime: IAgentRuntime,
+  modelName: ModelName
+): number | undefined {
+  const raw = getRawSetting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS");
+  if (!raw) {
+    return undefined;
+  }
+  const target = modelName.toLowerCase();
+  let fallback: number | undefined;
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const separator = trimmed.lastIndexOf(":");
+    const parsed = Number.parseInt(
+      separator === -1 ? trimmed : trimmed.slice(separator + 1),
+      10
+    );
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      continue;
+    }
+    if (separator === -1) {
+      fallback = parsed;
+    } else if (trimmed.slice(0, separator).trim().toLowerCase() === target) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
 export function getAuthMode(runtime: IAgentRuntime): "cli" | "oauth" | "apikey" {
   const mode = getRawSetting(runtime, "ANTHROPIC_AUTH_MODE");
   if (mode === "claude-cli") return "cli";
