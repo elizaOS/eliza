@@ -281,8 +281,14 @@ export const RATE_LIMIT_COOLOFF_MS = 15 * 60_000;
 // never a bare "api key" / "login" token (those appear in ordinary build
 // output). A false positive evicts a HEALTHY account from the pool, so the bar
 // is intentionally high.
+// "exceeded your current quota" / "check your plan and billing details" /
+// `insufficient_quota` = OpenAI's CLASSIC quota envelope ("You exceeded your
+// current quota, please check your plan and billing details"), which contains
+// neither "quota exceeded" (inverted word order) nor a literal 429. Exact
+// envelope phrases / error code only — generic quota/billing prose must NOT
+// match. Keep in lockstep with plugin-cli-inference's isSubscriptionLimitError.
 const RATE_LIMIT_RE =
-  /\b429\b|rate[\s-]?limit(?:ed|ing)?|too many requests|quota (?:exceeded|exhausted)|usage limit reached/i;
+  /\b429\b|rate[\s-]?limit(?:ed|ing)?|too many requests|quota (?:exceeded|exhausted)|exceeded your current quota|check your plan and billing details|insufficient_quota|usage limit reached/i;
 const NEEDS_REAUTH_RE =
   /\b401\b|\b403\b|unauthorized|invalid_grant|authentication failed|token (?:has )?expired|expired token|invalid token|please (?:re-?authenticate|log ?in again)/i;
 

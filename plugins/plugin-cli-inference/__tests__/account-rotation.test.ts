@@ -92,6 +92,41 @@ describe("isSubscriptionLimitError", () => {
     expect(isSubscriptionLimitError(new Error("too many requests"))).toBe(true);
   });
 
+  it("classifies OpenAI's classic quota envelope (inverted word order, no 429 literal)", () => {
+    // The real envelope: message text alone, no statusCode on the thrown error —
+    // the exact shape a codex-sdk turn surfaces. Must rotate, not tier-failover.
+    expect(
+      isSubscriptionLimitError(
+        new Error(
+          "You exceeded your current quota, please check your plan and billing details. " +
+            "For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors."
+        )
+      )
+    ).toBe(true);
+    // Truncated variants: either envelope half alone still classifies.
+    expect(isSubscriptionLimitError(new Error("You exceeded your current quota"))).toBe(true);
+    expect(isSubscriptionLimitError(new Error("please check your plan and billing details"))).toBe(
+      true
+    );
+    // The machine-readable error code from the JSON envelope body.
+    expect(
+      isSubscriptionLimitError(
+        new Error('{"error":{"type":"insufficient_quota","code":"insufficient_quota"}}')
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT classify prose that merely talks about quotas / billing", () => {
+    expect(
+      isSubscriptionLimitError(
+        new Error("the user asked how quotas work and whether billing resets monthly")
+      )
+    ).toBe(false);
+    expect(
+      isSubscriptionLimitError(new Error("your quota looks fine; billing details are unchanged"))
+    ).toBe(false);
+  });
+
   it("does NOT classify non-limit errors (would burn a healthy account)", () => {
     expect(
       isSubscriptionLimitError(new Error("[cli-inference:sdk] empty completion (subtype=success)"))
@@ -164,6 +199,25 @@ describe("withAccountRotation", () => {
     expect(c.onRotate).toHaveBeenCalledTimes(1);
     // Usage recorded against the account we rotated INTO on success.
     expect(bridge.recordUsage).toHaveBeenCalledWith("anthropic-subscription", "b", { ok: true });
+  });
+
+  it("rotates on OpenAI's classic quota envelope (the pre-fix silent tier-failover)", async () => {
+    const bridge = installFakeBridge([account("b")]);
+    let calls = 0;
+    const attempt = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error(
+          "You exceeded your current quota, please check your plan and billing details."
+        );
+      }
+      return "answer-on-account-b";
+    });
+    const c = ctx({ backend: "codex-sdk" });
+    await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-b");
+    expect(attempt).toHaveBeenCalledTimes(2);
+    expect(bridge.select).toHaveBeenCalledTimes(1);
+    expect(c.onRotate).toHaveBeenCalledTimes(1);
   });
 
   it("does NOT rotate on a non-limit error — rethrows immediately to failover", async () => {

@@ -26,6 +26,41 @@ describe("classifyAccountFailure", () => {
     expect(classifyAccountFailure("quota exhausted")).toBe("rate-limited");
   });
 
+  it("flags OpenAI's classic quota envelope (inverted word order, no 429 literal)", () => {
+    expect(
+      classifyAccountFailure(
+        "You exceeded your current quota, please check your plan and billing details. " +
+          "For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.",
+      ),
+    ).toBe("rate-limited");
+    // Truncated variants: either envelope half alone still classifies.
+    expect(classifyAccountFailure("You exceeded your current quota")).toBe(
+      "rate-limited",
+    );
+    expect(
+      classifyAccountFailure("please check your plan and billing details"),
+    ).toBe("rate-limited");
+    // The machine-readable error code from the JSON envelope body.
+    expect(
+      classifyAccountFailure(
+        '{"error":{"type":"insufficient_quota","code":"insufficient_quota"}}',
+      ),
+    ).toBe("rate-limited");
+  });
+
+  it("does NOT flag prose that merely talks about quotas / billing", () => {
+    expect(
+      classifyAccountFailure(
+        "the user asked how quotas work and whether billing resets monthly",
+      ),
+    ).toBeNull();
+    expect(
+      classifyAccountFailure(
+        "your quota looks fine; billing details are unchanged",
+      ),
+    ).toBeNull();
+  });
+
   it("flags unambiguous auth signals", () => {
     expect(classifyAccountFailure("401 Unauthorized")).toBe("needs-reauth");
     expect(classifyAccountFailure("invalid_grant")).toBe("needs-reauth");
