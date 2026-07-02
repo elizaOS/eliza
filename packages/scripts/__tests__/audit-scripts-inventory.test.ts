@@ -32,7 +32,9 @@ const FILE_CATEGORIES = [
   "reachable-from-test",
   "reachable-from-build",
   "reachable-from-ci-workflow",
+  "reachable-from-operator-script",
   "reachable-from-package-script",
+  "reachable-from-docs",
   "orphan",
 ];
 
@@ -111,5 +113,50 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
       inv.summary.filesByCategory["reachable-from-package-script"],
     ).toBeGreaterThan(0);
     expect(inv.summary.packageScriptFileReferences).toBeGreaterThan(0);
+  });
+
+  test("named root operator scripts keep their entrypoint files out of the orphan bucket", () => {
+    const byFile = (name: string) => inv.files.find((f) => f.file === name);
+    const byRoot = (name: string) => inv.roots.find((r) => r.name === name);
+
+    expect(byRoot("dev:all")?.category).toBe("reachable-from-operator-script");
+    expect(byFile("dev-all.mjs")?.category).toBe(
+      "reachable-from-operator-script",
+    );
+    expect(byFile("dev-all.mjs")?.operatorScriptCallers).toContainEqual({
+      packageJson: "package.json",
+      script: "dev:all",
+    });
+    expect(byRoot("audit:scripts:inventory")?.category).toBe(
+      "reachable-from-operator-script",
+    );
+    expect(byFile("audit-scripts-inventory.mjs")?.category).toBe(
+      "reachable-from-operator-script",
+    );
+    expect(
+      byFile("audit-scripts-inventory.mjs")?.operatorScriptCallers,
+    ).toContainEqual({
+      packageJson: "package.json",
+      script: "audit:scripts:inventory",
+    });
+    expect(
+      inv.summary.filesByCategory["reachable-from-operator-script"],
+    ).toBeGreaterThan(0);
+    expect(inv.summary.operatorScriptFileReferences).toBeGreaterThan(0);
+  });
+
+  test("documented standalone scripts are tracked separately from true orphans", () => {
+    const byFile = (name: string) => inv.files.find((f) => f.file === name);
+
+    expect(byFile("ensure-skills.mjs")?.category).toBe("reachable-from-docs");
+    expect(byFile("run-scenarios-isolated.mjs")?.category).toBe(
+      "reachable-from-docs",
+    );
+    expect(byFile("validate-tee-local-stack.mjs")?.category).toBe(
+      "reachable-from-docs",
+    );
+    expect(inv.summary.filesByCategory.orphan).toBe(0);
+    expect(inv.summary.orphanFiles).toBe(0);
+    expect(inv.summary.documentationFileReferences).toBeGreaterThan(0);
   });
 });
