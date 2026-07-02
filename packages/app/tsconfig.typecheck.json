@@ -18,6 +18,9 @@
         "./src/types/app-plugin-modules.d.ts"
       ],
       "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-blocker/native": [
+        "../../plugins/plugin-blocker/src/native.ts"
+      ],
       "@elizaos/plugin-messages/register": [
         "../../plugins/plugin-messages/src/register.ts"
       ],

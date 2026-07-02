@@ -42,6 +42,14 @@ import {
   loadDialogueScenario,
   validateDialogueScenarios,
 } from "./scenarios.ts";
+import {
+  computeVerification,
+  detectEmotionFromText,
+  type TurnOutcome,
+  type VerificationResult,
+} from "./verification.ts";
+
+export type { VerificationResult } from "./verification.ts";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -62,9 +70,13 @@ export interface TranscriptEntry {
   speaker: string;
   /** Ground-truth prompt text from the scenario. */
   gtText: string;
-  /** ASR transcription of the TTS audio (if transcription ran). */
+  /** Real ASR transcription of the TTS audio; null when no real ASR ran. */
   asrText: string | null;
-  /** Emotion detected from the TTS audio. */
+  /** True when the audio came from the real TTS provider (not sine-wave). */
+  ttsReal: boolean;
+  /** True when asrText came from a real transcription call. */
+  asrReal: boolean;
+  /** Emotion detected from the real ASR text (null without real ASR). */
   emotion: string | null;
   /** Confidence of turn-detection / diarization. */
   turnConfidence: number;
@@ -84,18 +96,6 @@ export interface TurnEvent {
   eventType: "turn-start" | "tts-complete" | "asr-complete" | "turn-end";
   timestampMs: number;
   details?: string;
-}
-
-export interface VerificationResult {
-  transcriptNotNull: boolean;
-  audioNotBlank: boolean;
-  distinctSpeakersDetected: number;
-  emotionsDetected: number;
-  emotionDetectedFraction: number;
-  turnsTaken: number;
-  durationSec: number;
-  pass: boolean;
-  failures: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -295,51 +295,13 @@ function coerceToBuffer(output: unknown): Buffer {
 }
 
 // ---------------------------------------------------------------------------
-// Simple emotion heuristic (text-level, since we may not have ONNX in CI)
-// ---------------------------------------------------------------------------
-
-const EMOTION_KEYWORDS: Record<string, string[]> = {
-  joy: [
-    "excited",
-    "wonderful",
-    "love",
-    "great",
-    "happy",
-    "touched",
-    "warmth",
-    "enjoy",
-  ],
-  sadness: ["gently", "held", "sad", "hurt", "empathy", "care"],
-  anger: ["frustrated", "angry", "wrong", "unfair"],
-  surprise: ["actually", "shifted", "concede", "unexpected", "wait"],
-  curiosity: [
-    "think",
-    "question",
-    "wonder",
-    "interesting",
-    "explore",
-    "consider",
-  ],
-  neutral: [],
-};
-
-function detectEmotionFromText(text: string): string {
-  const lower = text.toLowerCase();
-  for (const [emotion, keywords] of Object.entries(EMOTION_KEYWORDS)) {
-    if (emotion === "neutral") continue;
-    if (keywords.some((kw) => lower.includes(kw))) return emotion;
-  }
-  return "neutral";
-}
-
-// ---------------------------------------------------------------------------
 // Synthetic TTS fallback — generates real non-blank WAV audio locally.
 //
 // When the cloud TTS provider is unavailable (no API key or billing issue),
-// we generate a sine-wave WAV at a speaker-specific frequency. This produces
-// genuinely non-blank audio so audio-level assertions still pass.
-// Documented fallback per W3-2 spec: "gracefully fall back to local providers
-// but document."
+// we generate a sine-wave WAV at a speaker-specific frequency so the
+// structural audio pipeline can still be smoke-tested. Runs that use this
+// fallback are NEVER scored: computeVerification demotes them to
+// "synthetic-smoke" mode.
 // ---------------------------------------------------------------------------
 
 /** Sine-wave frequencies used as distinct "voices" per agent. */
@@ -542,11 +504,11 @@ export async function runDialogue(options: {
       details: ttsError ?? `bytes=${ttsBytes.length}`,
     });
 
-    // --- ASR: transcribe the audio back ---
+    // --- ASR: transcribe the audio back (real ASR on real audio only) ---
     let asrText: string | null = null;
+    let asrReal = false;
 
     if (groqPlugin !== null && ttsBytes.length > 0 && !ttsSynthetic) {
-      // Only attempt real ASR when we have a Groq plugin and real (non-synthetic) audio.
       try {
         const asrResult = await runtime.useModel(
           ModelType.TRANSCRIPTION,
@@ -557,6 +519,7 @@ export async function runDialogue(options: {
           typeof asrResult === "string"
             ? asrResult.trim()
             : String(asrResult).trim();
+        asrReal = true;
         console.log(`[three-agent-dialogue]   ASR: "${asrText}"`);
       } catch (err) {
         console.warn(
@@ -564,17 +527,12 @@ export async function runDialogue(options: {
         );
       }
     }
-
-    if (asrText === null) {
-      // Fallback: use the ground-truth scenario prompt as the ASR text.
-      // For synthetic audio this is correct (we know what was "said").
-      // For real audio this should not occur unless ASR is broken.
-      asrText = ttsSynthetic ? `[synthetic] ${prompt}` : null;
-      if (ttsSynthetic) {
-        console.log(
-          `[three-agent-dialogue]   ASR (gt-fallback for synthetic): "${prompt.slice(0, 60)}..."`,
-        );
-      }
+    if (!asrReal && ttsSynthetic) {
+      // No ground-truth fallback: a synthetic turn has no ASR output and the
+      // run is demoted to synthetic-smoke mode (never scored).
+      console.log(
+        `[three-agent-dialogue]   ASR skipped (synthetic audio, turn not scored)`,
+      );
     }
 
     turnEvents.push({
@@ -585,19 +543,16 @@ export async function runDialogue(options: {
       details: asrText ?? "no-asr",
     });
 
-    // --- Emotion detection (text heuristic + note from ASR/prompt) ---
-    const detectedEmotion = detectEmotionFromText(prompt);
-    const emotionMatches =
-      detectedEmotion === expectedEmotion ||
-      (expectedEmotion === "curiosity" && detectedEmotion === "curiosity") ||
-      (expectedEmotion === "joy" && detectedEmotion === "joy");
+    // --- Emotion detection (text heuristic on the REAL ASR output only) ---
+    const detectedEmotion =
+      asrReal && asrText ? detectEmotionFromText(asrText) : null;
 
     emotionLog.push({
       turnIdx,
       speaker,
       expectedEmotion,
       detectedEmotion,
-      matches: emotionMatches,
+      matches: detectedEmotion === expectedEmotion,
     });
 
     // --- Record transcript entry ---
@@ -606,8 +561,10 @@ export async function runDialogue(options: {
       speaker,
       gtText: prompt,
       asrText,
+      ttsReal: !ttsSynthetic,
+      asrReal,
       emotion: detectedEmotion,
-      turnConfidence: asrText ? 1.0 : 0.0,
+      turnConfidence: asrReal && asrText ? 1.0 : 0.0,
     });
 
     turnEvents.push({
@@ -644,10 +601,6 @@ export async function runDialogue(options: {
   );
 
   // --- Run verification ---
-  const nonEmptyTranscripts = transcripts.filter(
-    (t) => typeof t.gtText === "string" && t.gtText.trim().length > 0,
-  ).length;
-
   // Load mix.wav for audio checks
   let mixWavBytes = new Uint8Array();
   try {
@@ -657,55 +610,26 @@ export async function runDialogue(options: {
     // ignore if file doesn't exist yet
   }
 
-  const mixDurationSec = estimateWavDurationSec(mixWavBytes);
-  const mixNonBlank = isAudioNonBlank(mixWavBytes);
-  const distinctSpeakers = bus.getSpeakers().length;
-  const emotionsDetected = emotionLog.filter(
-    (e) => e.detectedEmotion !== null,
-  ).length;
-  const emotionFraction =
-    emotionLog.length > 0 ? emotionsDetected / emotionLog.length : 0;
+  const turnOutcomes: TurnOutcome[] = transcripts.map((t) => ({
+    turnIdx: t.turnIdx,
+    speaker: t.speaker,
+    gtText: t.gtText,
+    asrText: t.asrText,
+    ttsReal: t.ttsReal,
+    asrReal: t.asrReal,
+    detectedEmotion: t.emotion,
+    expectedEmotion:
+      emotionLog.find((e) => e.turnIdx === t.turnIdx)?.expectedEmotion ?? "",
+  }));
 
-  const thresholds = scenario.verificationThresholds;
-  const failures: string[] = [];
-
-  if (nonEmptyTranscripts < thresholds.minNonEmptyTranscripts) {
-    failures.push(
-      `transcripts: got ${nonEmptyTranscripts}, need ≥ ${thresholds.minNonEmptyTranscripts}`,
-    );
-  }
-  if (!mixNonBlank) {
-    failures.push("mix.wav is blank (RMS below noise floor or empty)");
-  }
-  if (mixDurationSec < thresholds.minAudioDurationSec) {
-    failures.push(
-      `audio duration ${mixDurationSec.toFixed(2)}s < min ${thresholds.minAudioDurationSec}s`,
-    );
-  }
-  if (distinctSpeakers < thresholds.minDistinctSpeakers) {
-    failures.push(
-      `distinct speakers: got ${distinctSpeakers}, need ≥ ${thresholds.minDistinctSpeakers}`,
-    );
-  }
-  if (emotionFraction < thresholds.emotionDetectedMinFraction) {
-    failures.push(
-      `emotion detected fraction ${(emotionFraction * 100).toFixed(0)}% < ` +
-        `${(thresholds.emotionDetectedMinFraction * 100).toFixed(0)}% threshold`,
-    );
-  }
-
-  const verification: VerificationResult = {
-    transcriptNotNull: nonEmptyTranscripts >= thresholds.minNonEmptyTranscripts,
-    audioNotBlank:
-      mixNonBlank && mixDurationSec >= thresholds.minAudioDurationSec,
-    distinctSpeakersDetected: distinctSpeakers,
-    emotionsDetected,
-    emotionDetectedFraction: Math.round(emotionFraction * 100) / 100,
-    turnsTaken: turnsToRun.length,
-    durationSec: Math.round(mixDurationSec * 100) / 100,
-    pass: failures.length === 0,
-    failures,
-  };
+  const verification = computeVerification({
+    turns: turnOutcomes,
+    thresholds: scenario.verificationThresholds,
+    mixDurationSec: estimateWavDurationSec(mixWavBytes),
+    mixNonBlank: isAudioNonBlank(mixWavBytes),
+    distinctSpeakers: bus.getSpeakers().length,
+    smokeRequested: isSmoke,
+  });
 
   writeFileSync(
     join(outputDir, "verification.json"),
@@ -719,18 +643,29 @@ export async function runDialogue(options: {
   // --- Summary ---
   console.log("\n[three-agent-dialogue] === RUN COMPLETE ===");
   console.log(`  Output dir:    ${outputDir}`);
+  console.log(`  Mode:          ${verification.mode}`);
+  console.log(`  Scored:        ${verification.scored}`);
   console.log(`  Turns taken:   ${verification.turnsTaken}`);
-  console.log(`  Speakers:      ${distinctSpeakers}`);
+  console.log(
+    `  Real turns:    ${verification.realTurns}/${verification.turnsTaken}`,
+  );
+  console.log(`  Speakers:      ${verification.distinctSpeakersDetected}`);
   console.log(`  Audio dur:     ${verification.durationSec}s`);
   console.log(`  Audio blank:   ${!verification.audioNotBlank}`);
-  console.log(`  Emotions:      ${emotionsDetected}/${emotionLog.length}`);
   console.log(
-    `  Transcripts:   ${nonEmptyTranscripts}/${transcripts.length} non-empty`,
+    `  Emotions:      ${verification.emotionsDetected}/${emotionLog.length}`,
+  );
+  console.log(
+    `  Transcripts:   ${transcripts.filter((t) => t.asrReal && t.asrText).length}/${transcripts.length} real ASR`,
   );
   console.log(`  PASS:          ${verification.pass}`);
-  if (failures.length > 0) {
+  if (verification.skippedChecks.length > 0) {
+    console.log("  SKIPPED (not scored):");
+    for (const s of verification.skippedChecks) console.log(`    - ${s}`);
+  }
+  if (verification.failures.length > 0) {
     console.log("  FAILURES:");
-    for (const f of failures) console.log(`    - ${f}`);
+    for (const f of verification.failures) console.log(`    - ${f}`);
   }
 
   console.log("\n[three-agent-dialogue] Artefact paths:");

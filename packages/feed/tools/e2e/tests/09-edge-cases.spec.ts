@@ -40,14 +40,14 @@ test.describe("Edge Cases - Security", () => {
       SELECTORS.SEARCH_INPUT,
       "'; DROP TABLE users; --",
     );
-    if (result !== null) {
-      await page.waitForTimeout(1000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-      expect(body?.length).toBeGreaterThan(0);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      result === null,
+      "no search input rendered on the markets dashboard",
+    );
+    await page.waitForTimeout(1000);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
+    expect(body?.length).toBeGreaterThan(0);
   });
 
   test("no stack traces exposed in production errors", async ({ page }) => {
@@ -84,12 +84,11 @@ test.describe("Edge Cases - Input Validation", () => {
     const isVisible = await submitBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const isDisabled = await submitBtn.isDisabled().catch(() => false);
-      expect(isDisabled).toBe(true);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      !isVisible,
+      "no Post/Submit button rendered on the feed page",
+    );
+    await expect(submitBtn).toBeDisabled();
   });
 
   test("unicode characters handled in post", async ({ page }) => {
@@ -99,15 +98,12 @@ test.describe("Edge Cases - Input Validation", () => {
     const isVisible = await composer
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await composer.fill(
-        "Testing unicode: \u{1F680}\u{1F30D}\u{2764}\u{FE0F} \u4F60\u597D \u0645\u0631\u062D\u0628\u0627",
-      );
-      const value = await composer.inputValue().catch(() => "");
-      expect(value.length).toBeGreaterThan(0);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no inline composer rendered on the feed page");
+    await composer.fill(
+      "Testing unicode: \u{1F680}\u{1F30D}\u{2764}\u{FE0F} \u4F60\u597D \u0645\u0631\u062D\u0628\u0627",
+    );
+    const value = await composer.inputValue().catch(() => "");
+    expect(value.length).toBeGreaterThan(0);
   });
 
   test("long input handled gracefully", async ({ page }) => {
@@ -117,15 +113,12 @@ test.describe("Edge Cases - Input Validation", () => {
     const isVisible = await composer
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const longText = "A".repeat(10000);
-      await composer.fill(longText);
-      await page.waitForTimeout(500);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no inline composer rendered on the feed page");
+    const longText = "A".repeat(10000);
+    await composer.fill(longText);
+    await page.waitForTimeout(500);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 
   test("rapid clicks do not cause errors", async ({ page }) => {
@@ -135,16 +128,13 @@ test.describe("Edge Cases - Input Validation", () => {
     const isVisible = await likeBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      for (let i = 0; i < 10; i++) {
-        await likeBtn.click({ force: true }).catch(() => {});
-      }
-      await page.waitForTimeout(1000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
+    test.skip(!isVisible, "no post with a like button rendered in the feed");
+    for (let i = 0; i < 10; i++) {
+      await likeBtn.click({ force: true }).catch(() => {});
     }
+    await page.waitForTimeout(1000);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 });
 
@@ -166,35 +156,35 @@ test.describe("Edge Cases - Markets Validation", () => {
 
   test("negative amount rejected", async ({ page }) => {
     const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "-100");
-    if (result !== null) {
-      await page.waitForTimeout(300);
-      const hasError = await pageContainsText(
-        page,
-        "invalid",
-        "error",
-        "positive",
-        "minimum",
-      );
-      const inputValue = await page
-        .locator(SELECTORS.QUANTITY_INPUT)
-        .first()
-        .inputValue()
-        .catch(() => "");
-      // Either the negative value is rejected or an error message shows
-      expect(hasError || !inputValue.startsWith("-") || true).toBe(true);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      result === null,
+      "no quantity input rendered on the perp trading page",
+    );
+    await page.waitForTimeout(300);
+    const hasError = await pageContainsText(
+      page,
+      "invalid",
+      "error",
+      "positive",
+      "minimum",
+    );
+    const inputValue = await page
+      .locator(SELECTORS.QUANTITY_INPUT)
+      .first()
+      .inputValue()
+      .catch(() => "");
+    // Either the negative value is rejected or an error message shows.
+    expect(hasError || !inputValue.startsWith("-")).toBe(true);
   });
 
   test("non-numeric input rejected", async ({ page }) => {
     const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "abc");
-    if (result !== null) {
-      // Number inputs typically reject non-numeric values
-      expect(result === "" || result === "abc" || result === null).toBe(true);
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      result === null,
+      "no quantity input rendered on the perp trading page",
+    );
+    // A quantity field must not accept a non-numeric value.
+    expect(result).not.toBe("abc");
   });
 
   test("decimal precision handled", async ({ page }) => {
@@ -203,11 +193,13 @@ test.describe("Edge Cases - Markets Validation", () => {
       SELECTORS.QUANTITY_INPUT,
       "10.12345678",
     );
-    if (result !== null) {
-      expect(typeof result).toBe("string");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      result === null,
+      "no quantity input rendered on the perp trading page",
+    );
+    const parsed = Number.parseFloat(result ?? "");
+    expect(Number.isNaN(parsed)).toBe(false);
+    expect(parsed).toBeGreaterThan(0);
   });
 });
 
@@ -233,13 +225,13 @@ test.describe("Edge Cases - Profile Validation", () => {
       'input[name="username"], input[placeholder*="username" i]',
       "has spaces here",
     );
-    if (result !== null) {
-      await page.waitForTimeout(300);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      result === null,
+      "no username input rendered on the settings page",
+    );
+    await page.waitForTimeout(300);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 
   test("username minimum length enforced", async ({ page }) => {
@@ -248,13 +240,13 @@ test.describe("Edge Cases - Profile Validation", () => {
       'input[name="username"], input[placeholder*="username" i]',
       "a",
     );
-    if (result !== null) {
-      await page.waitForTimeout(300);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(
+      result === null,
+      "no username input rendered on the settings page",
+    );
+    await page.waitForTimeout(300);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 });
 

@@ -62,6 +62,21 @@ interface RepositoryBackedStores {
   logStore: ScheduledTaskLogStore;
 }
 
+const subjectStoresByRuntime = new WeakMap<IAgentRuntime, SubjectStoreView>();
+
+export function registerLifeOpsScheduledTaskSubjectStore(
+  runtime: IAgentRuntime,
+  subjectStore: SubjectStoreView,
+): void {
+  subjectStoresByRuntime.set(runtime, subjectStore);
+}
+
+function getLifeOpsScheduledTaskSubjectStore(
+  runtime: IAgentRuntime,
+): SubjectStoreView | null {
+  return subjectStoresByRuntime.get(runtime) ?? null;
+}
+
 /**
  * Bind the in-memory facade to the LifeOpsRepository SQL methods. Each
  * call routes through the repository so the runner is DB-backed but
@@ -208,10 +223,14 @@ function makeMissingActivityBusView(
  * Same warn-once semantics as the activity-bus shim; `subject_updated`
  * completion-checks will report no-update until a real store is wired.
  */
-function makeMissingSubjectStoreView(runtime: IAgentRuntime): SubjectStoreView {
+function makeRuntimeSubjectStoreView(runtime: IAgentRuntime): SubjectStoreView {
   let warned = false;
   return {
-    wasUpdatedSince() {
+    wasUpdatedSince(args) {
+      const registered = getLifeOpsScheduledTaskSubjectStore(runtime);
+      if (registered) {
+        return registered.wasUpdatedSince(args);
+      }
       if (!warned) {
         warned = true;
         logger.warn(
@@ -544,7 +563,7 @@ function buildLifeOpsRunnerDeps(
     getActivitySignalBus(opts.runtime) ??
     makeMissingActivityBusView(opts.runtime);
   const subjectStore: SubjectStoreView =
-    opts.subjectStore ?? makeMissingSubjectStoreView(opts.runtime);
+    opts.subjectStore ?? makeRuntimeSubjectStoreView(opts.runtime);
 
   return {
     store: stores.store,

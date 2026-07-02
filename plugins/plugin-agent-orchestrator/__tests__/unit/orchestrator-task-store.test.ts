@@ -767,6 +767,35 @@ describe("orchestrator-task-store audit follow-ups (#11028)", () => {
     expect(ids).toContain(x.task.id);
   });
 
+  it("FileTaskStore keeps mutating after the state file is corrupted externally", async () => {
+    const path = await tempFile();
+    const warnings: string[] = [];
+    const store = new FileTaskStore(path, {
+      warn: (message) => warnings.push(message),
+    });
+    const a = await store.createTask(createInput({ title: "A" }));
+    const b = await store.createTask(createInput({ title: "B" }));
+    // Corrupt the file behind the store's back. JSON.parse throws a
+    // SyntaxError with no .code, which the persist path used to rethrow —
+    // bricking EVERY subsequent mutation while ensureLoaded warned-and-continued
+    // for the same condition.
+    await writeFile(path, "{not json[[", "utf8");
+
+    const updated = await store.updateTask(a.task.id, { status: "done" });
+    expect(updated?.status).toBe("done");
+    expect(warnings.some((m) => m.includes("task file unreadable"))).toBe(true);
+    // The recovery must not drop non-dirty in-memory tasks: B was untouched by
+    // the update, and both memory and the rewritten file must still carry it.
+    expect((await store.getTask(b.task.id))?.task.title).toBe("B");
+    const c = await store.createTask(createInput({ title: "C" }));
+
+    const reader = new FileTaskStore(path);
+    const titles = (await reader.listTasks()).map((t) => t.title).sort();
+    expect(titles).toEqual(["A", "B", "C"]);
+    expect((await reader.getTask(a.task.id))?.task.status).toBe("done");
+    expect((await reader.getTask(c.task.id))?.task.title).toBe("C");
+  });
+
   it("FileTaskStore write does not revert another process's update to a task it did not touch", async () => {
     const path = await tempFile();
     const a = new FileTaskStore(path);

@@ -13038,72 +13038,54 @@
     open: {
       icon: Circle,
       fg: "text-accent",
-      tint: "bg-accent-subtle",
-      ring: "ring-accent/25",
       dot: "bg-accent",
       pulse: false
     },
     active: {
       icon: CirclePlay,
       fg: "text-ok",
-      tint: "bg-ok/12",
-      ring: "ring-ok/25",
       dot: "bg-ok",
       pulse: true
     },
     validating: {
       icon: CircleDashed,
       fg: "text-accent",
-      tint: "bg-accent-subtle",
-      ring: "ring-accent/25",
       dot: "bg-accent",
       pulse: true
     },
     waiting_on_user: {
       icon: UserRound,
       fg: "text-warn",
-      tint: "bg-warn/12",
-      ring: "ring-warn/25",
       dot: "bg-warn",
       pulse: false
     },
     blocked: {
       icon: OctagonX,
       fg: "text-warn",
-      tint: "bg-warn/12",
-      ring: "ring-warn/25",
       dot: "bg-warn",
       pulse: false
     },
     interrupted: {
       icon: CircleAlert,
       fg: "text-warn",
-      tint: "bg-warn/12",
-      ring: "ring-warn/25",
       dot: "bg-warn",
       pulse: false
     },
     done: {
       icon: CircleCheck,
       fg: "text-ok",
-      tint: "bg-ok/12",
-      ring: "ring-ok/25",
       dot: "bg-ok",
       pulse: false
     },
     failed: {
       icon: CircleX,
       fg: "text-danger",
-      tint: "bg-danger/12",
-      ring: "ring-danger/25",
       dot: "bg-danger",
       pulse: false
     },
     archived: {
       icon: Archive,
       fg: "text-muted",
-      tint: "bg-surface",
-      ring: "ring-border",
       dot: "bg-muted",
       pulse: false
     }
@@ -13118,15 +13100,15 @@
   }
   function TaskStatusMedallion({
     status,
-    size = "h-11 w-11",
-    iconSize = "h-5 w-5"
+    size = "h-8 w-8",
+    iconSize = "h-4 w-4"
   }) {
     const visual = statusVisual(status);
     const Icon2 = visual.icon;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "span",
       {
-        className: `relative inline-flex shrink-0 items-center justify-center rounded-2xl ring-1 ${size} ${visual.tint} ${visual.ring}`,
+        className: `relative inline-flex shrink-0 items-center justify-center ${size}`,
         children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           Icon2,
           {
@@ -13145,7 +13127,7 @@
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "span",
       {
-        className: `inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-semibold ${visual.tint} ${visual.fg}`,
+        className: `inline-flex items-center gap-1.5 text-2xs font-medium ${visual.fg}`,
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "span",
@@ -13170,12 +13152,12 @@
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
       {
-        className: `relative flex h-9 items-center rounded-full border border-border/50 bg-surface/60 transition-colors focus-within:border-accent/50 focus-within:bg-surface ${className ?? "flex-1"}`,
+        className: `relative flex h-9 items-center border-border/35 border-b transition-colors focus-within:border-accent/60 ${className ?? "flex-1"}`,
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             Search,
             {
-              className: "pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted",
+              className: "pointer-events-none absolute left-1 h-3.5 w-3.5 text-muted",
               "aria-hidden": true
             }
           ),
@@ -13188,7 +13170,7 @@
               placeholder,
               "aria-label": placeholder,
               "data-testid": testId,
-              className: "h-full w-full bg-transparent pl-9 pr-3 text-sm text-txt outline-none placeholder:text-muted",
+              className: "h-full w-full bg-transparent pl-7 pr-1 text-sm text-txt outline-none placeholder:text-muted",
               ...agentProps
             }
           )
@@ -13206,7 +13188,6 @@
     onOpen,
     t: t2
   }) {
-    const visual = statusVisual(status);
     const { ref, agentProps } = useAgentElement({
       id: `task-card-${id}`,
       role: "list-item",
@@ -13221,16 +13202,9 @@
         type: "button",
         onClick: () => onOpen(id),
         "data-testid": "task-card",
-        className: "group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl bg-bg-accent/20 p-3 text-left transition-colors hover:bg-bg-hover/50",
+        className: "group relative flex w-full items-start gap-2 px-1 py-2 text-left transition-colors hover:bg-bg-hover/30",
         ...agentProps,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "span",
-            {
-              className: `absolute inset-y-0 left-0 w-1 ${visual.dot}`,
-              "aria-hidden": true
-            }
-          ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TaskStatusMedallion, { status }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-1.5", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-2", children: [
@@ -13270,7 +13244,7 @@
         type: "button",
         onClick,
         "data-testid": testId,
-        className: "inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-bg-accent/40 px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt",
+        className: "inline-flex items-center gap-1.5 py-1 text-xs font-medium text-muted transition-colors hover:text-txt",
         ...agentProps,
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u2190" }),

@@ -743,6 +743,26 @@ export class AgentSandboxesRepository {
     return row?.count ?? 0;
   }
 
+  /**
+   * Count retained user-owned agent rows for an organization. Used by org-vacate
+   * guards where deleting the org would cascade agent state without going
+   * through the provisioning teardown path.
+   */
+  async countRetainedByOrganization(organizationId: string): Promise<number> {
+    await ensureAgentSandboxSchema();
+    const [row] = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.organization_id, organizationId),
+          sql`${agentSandboxes.pool_status} is null`,
+          sql`${agentSandboxes.deleted_at} is null`,
+        ),
+      );
+    return row?.count ?? 0;
+  }
+
   async countUserProvisionsSince(sinceMs: number): Promise<number> {
     await ensureAgentSandboxSchema();
     const since = new Date(Date.now() - sinceMs);

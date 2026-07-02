@@ -38,6 +38,22 @@ class Scenario:
 
 
 @dataclass
+class TurnRecord:
+    """What the agent actually did on one user turn.
+
+    ``events`` are the typed lifecycle events extracted from the planner's
+    selected actions + params (see ``events.extract_lifecycle_events``);
+    ``reply_text`` is the user-facing prose. The evaluator scores these —
+    never keyword matches on the prose.
+    """
+
+    reply_text: str = ""
+    actions: list[str] = field(default_factory=list)
+    params: dict[str, object] = field(default_factory=dict)
+    events: list[str] = field(default_factory=list)
+
+
+@dataclass
 class ScenarioResult:
     scenario_id: str
     title: str

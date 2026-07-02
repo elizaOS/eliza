@@ -36,33 +36,19 @@ const DEFAULT_STATUS_CACHE_TTL_MS = 5_000;
 // `createNativeWebsiteBlockerBackend` for the precise bridge boundary.
 // ---------------------------------------------------------------------------
 
-export interface NativeWebsiteBlockerBackend {
-  getStatus(): Promise<SelfControlStatus>;
-  startBlock(
-    request: SelfControlBlockRequest,
-  ): Promise<
-    | { success: true; endsAt: string | null }
-    | { success: false; error: string; status?: SelfControlStatus }
-  >;
-  stopBlock(): Promise<
-    | { success: true; removed: boolean; status: SelfControlStatus }
-    | { success: false; error: string; status?: SelfControlStatus }
-  >;
-  getPermissionState(): Promise<SelfControlPermissionState>;
-  requestPermission(): Promise<SelfControlPermissionState>;
-}
+// The registry itself lives in `./native-backend.ts` (a browser-safe module
+// with no node:* imports) so the WebView realm can register the Capacitor
+// adapter via `@elizaos/plugin-blocker/native` without pulling this
+// server-only engine into the renderer bundle. Re-exported here so existing
+// engine/barrel consumers keep working.
+import { getNativeWebsiteBlockerBackend } from "./native-backend.ts";
 
-let nativeBackend: NativeWebsiteBlockerBackend | null = null;
+export {
+  getNativeWebsiteBlockerBackend,
+  type NativeWebsiteBlockerBackend,
+  registerNativeWebsiteBlockerBackend,
+} from "./native-backend.ts";
 
-export function registerNativeWebsiteBlockerBackend(
-  backend: NativeWebsiteBlockerBackend,
-): void {
-  nativeBackend = backend;
-}
-
-export function getNativeWebsiteBlockerBackend(): NativeWebsiteBlockerBackend | null {
-  return nativeBackend;
-}
 const MAX_BLOCK_MINUTES = 7 * 24 * 60;
 const PRIVILEGED_WRITE_TMP_PREFIX = "eliza-selfcontrol-write-";
 const WINDOWS_WORKER_SCRIPT_NAME = "write-hosts.ps1";
@@ -560,6 +546,7 @@ export async function reconcileSelfControlBlockState(
 export async function getSelfControlStatus(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<SelfControlStatus> {
+  const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     return await nativeBackend.getStatus();
   }
@@ -585,6 +572,7 @@ export async function getCachedSelfControlStatus(
 export async function getSelfControlPermissionState(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<SelfControlPermissionState> {
+  const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     return await nativeBackend.getPermissionState();
   }
@@ -613,6 +601,7 @@ export async function getSelfControlPermissionState(
 export async function requestSelfControlPermission(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<SelfControlPermissionState> {
+  const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     return await nativeBackend.requestPermission();
   }
@@ -697,6 +686,7 @@ export async function startSelfControlBlock(
     }
 > {
   // Dispatch to native backend (iOS/Android) when registered
+  const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     resetSelfControlStatusCache();
     return await nativeBackend.startBlock(request);
@@ -858,6 +848,7 @@ export async function stopSelfControlBlock(
     }
 > {
   // Dispatch to native backend (iOS/Android) when registered
+  const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     resetSelfControlStatusCache();
     return await nativeBackend.stopBlock();

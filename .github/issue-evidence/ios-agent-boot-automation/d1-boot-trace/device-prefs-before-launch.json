@@ -1,0 +1,6 @@
+{
+  "eliza.background.config": "{\"localRouteKernel\": \"bun-host-ipc\", \"platform\": \"ios\", \"apiBase\": \"https://67ae7b68-6351-41db-a79a-a1d157265018.elizacloud.ai\", \"localApiBase\": \"eliza-local-agent://ipc\", \"mode\": \"cloud\", \"configuredAt\": \"2026-07-02T03:39:00.054Z\", \"authToken\": \"<REDACTED eliza_...>\"}",
+  "CapacitorStorage.eliza:mobile-runtime-mode": "cloud",
+  "eliza.background.lastWake": "{\"event\":\"wake\",\"source\":\"capacitor-background-runner\",\"firedAt\":\"2026-07-01T22:18:57.751Z\",\"mode\":\"cloud\",\"platform\":\"ios\"}",
+  "eliza.background.lastResult": "{\"event\":\"wake\",\"source\":\"capacitor-background-runner\",\"firedAt\":\"2026-07-01T22:18:57.751Z\",\"mode\":\"cloud\",\"platform\":\"ios\",\"ok\":false,\"status\":503,\"body\":{\"success\":false,\"error\":\"Agent is in an error state. Resolve the failure before connecting.\",\"data\":{\"status\":\"error\"}}}"
+}

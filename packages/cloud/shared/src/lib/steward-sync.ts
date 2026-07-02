@@ -11,6 +11,7 @@
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import { usersRepository } from "../db/repositories/users";
 import { getClientIp } from "./runtime/request-context";
+import { getInitialCredits } from "./signup-credits";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { creditsService } from "./services/credits";
@@ -25,17 +26,7 @@ import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";
 import { logger } from "./utils/logger";
 
-export const DEFAULT_INITIAL_CREDITS = 5.0;
-export const getInitialCredits = (): number => {
-  const envValue = process.env.INITIAL_FREE_CREDITS;
-  if (envValue) {
-    const parsed = parseFloat(envValue);
-    if (!isNaN(parsed) && parsed >= 0) {
-      return parsed;
-    }
-  }
-  return DEFAULT_INITIAL_CREDITS;
-};
+export { DEFAULT_INITIAL_CREDITS, getInitialCredits } from "./signup-credits";
 
 const STEWARD_IDENTITY_UNIQUE_CONSTRAINT = "user_identities_steward_user_id_unique";
 
@@ -684,11 +675,15 @@ export async function syncUserFromSteward(
       logger.error("[StewardSync] Discord signup log failed:", { error });
     });
 
-  // Auto-generate default API key (fire-and-forget)
-  void ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
-
-  // Auto-create default Eliza character (fire-and-forget)
-  void ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
+  // Await default provisioning: on Cloudflare Workers an un-awaited promise is
+  // cancelled once the response returns unless registered via
+  // executionCtx.waitUntil, which this shared-lib function cannot reach — and a
+  // cancelled create leaves the new user permanently without a default
+  // character/API key (this one-time new-user path is the only caller; later
+  // logins return at the existing-user branch). Both helpers are idempotent and
+  // swallow their own errors, so awaiting cannot fail the signup.
+  await ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
+  await ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
 
   return userWithOrg;
 }

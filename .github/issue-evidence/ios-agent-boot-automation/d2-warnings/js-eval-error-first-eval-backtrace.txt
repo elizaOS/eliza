@@ -1,0 +1,60 @@
+(lldb) process attach --pid 77613
+Process 77613 stopped
+* thread #1, stop reason = signal SIGSTOP
+    frame #0: 0x0000000100d209c0 dyld`_dyld_start
+dyld`_dyld_start:
+->  0x100d209c0 <+0>:  mov    x0, sp
+    0x100d209c4 <+4>:  and    sp, x0, #0xfffffffffffffff0
+    0x100d209c8 <+8>:  mov    x29, #0x0                 ; =0 
+    0x100d209cc <+12>: mov    x30, #0x0                 ; =0 
+Target 0: (App) stopped.
+Executable binary set to "/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/71561B6C-5BA3-4B58-95AE-D3855FE37E47/App.app/App".
+Architecture set to: arm64-apple-ios-simulator.
+(lldb) command source -s 0 '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/jseval.lldb'
+Executing commands in '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/jseval.lldb'.
+(lldb) br set -n "-[WKWebView evaluateJavaScript:completionHandler:]"
+Breakpoint 1: no locations (pending).
+WARNING:  Unable to resolve breakpoint to any actual locations.
+(lldb) br command add 1
+(lldb) continue
+1 location added to breakpoint 1
+(lldb)  po (id)$x2
+window.Capacitor.triggerEvent('resume', 'document')
+(lldb)  bt 14
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
+  * frame #0: 0x000000018c21309c WebKit`-[WKWebView evaluateJavaScript:completionHandler:]
+    frame #1: 0x0000000102226d7c App.debug.dylib`closure #1 in CapacitorBridge.eval(, js="window.Capacitor.triggerEvent(\'resume\', \'document\')") at CapacitorBridge.swift:659:32
+    frame #3: 0x00000001801774ec libdispatch.dylib`_dispatch_call_block_and_release + 24
+    frame #4: 0x0000000180178de0 libdispatch.dylib`_dispatch_client_callout + 16
+    frame #5: 0x0000000180187c60 libdispatch.dylib`_dispatch_main_queue_drain + 1272
+    frame #6: 0x0000000180187758 libdispatch.dylib`_dispatch_main_queue_callback_4CF + 40
+    frame #7: 0x000000018041b2dc CoreFoundation`__CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__ + 12
+    frame #8: 0x0000000180415838 CoreFoundation`__CFRunLoopRun + 1944
+    frame #9: 0x0000000180414c24 CoreFoundation`CFRunLoopRunSpecific + 552
+    frame #10: 0x000000019020ab10 GraphicsServices`GSEventRunModal + 160
+    frame #11: 0x0000000185ad82fc UIKitCore`-[UIApplication _run] + 796
+    frame #12: 0x0000000185adc4f4 UIKitCore`UIApplicationMain + 124
+    frame #13: 0x00000001021ea4d0 App.debug.dylib`main at AppDelegate.swift:8:7
+(lldb)  continue
+Process 77613 resuming
+Command #3 'continue' continued the target.
+(lldb)  po (id)$x2
+ window.Capacitor.fromNative({
+ callbackId: '90219125',
+ pluginId: 'Preferences',
+ methodName: 'get',
+ save: false,
+ success: true,
+ data: {"value":null}
+ })
+(lldb)  bt 14
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
+  * frame #0: 0x000000018c21309c WebKit`-[WKWebView evaluateJavaScript:completionHandler:]
+    frame #1: 0x00000001022256ec App.debug.dylib`closure #1 in CapacitorBridge.toJs(, result=Capacitor.JSResult @ 0x0000600002156e00, save=false, resultJson="{\"value\":null}") at CapacitorBridge.swift:585:27
+    frame #3: 0x00000001801774ec libdispatch.dylib`_dispatch_call_block_and_release + 24
+    frame #4: 0x0000000180178de0 libdispatch.dylib`_dispatch_client_callout + 16
+    frame #5: 0x0000000180187c60 libdispatch.dylib`_dispatch_main_queue_drain + 1272
+    frame #6: 0x0000000180187758 libdispatch.dylib`_dispatch_main_queue_callback_4CF + 40
+    frame #7: 0x000000018041b2dc CoreFoundation`__CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__ + 12
+    frame #8: 0x0000000180415838 CoreFoundation`__CFRunLoopRun + 1944
+    frame #9: 0x0000000180414c24 CoreFoundation`CFRunLoopRunSpecific + 552

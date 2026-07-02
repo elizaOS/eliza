@@ -78,8 +78,13 @@ declare module "@elizaos/plugin-personal-assistant" {
 }
 
 declare module "@elizaos/plugin-blocker" {
-  export function registerNativeWebsiteBlockerBackend(backend: unknown): void;
-  export function registerNativeAppBlockerBackend(backend: unknown): void;
+  // Renderer builds alias this bare specifier to plugin-blocker's
+  // src/register.ts — a side-effect-only module with NO exports (see
+  // resolveAppPluginBrowserEntry in vite.config.ts). Keep this declaration
+  // empty so tsc rejects any attempt to consume engine exports through the
+  // root specifier; the native-backend registrars are typed for real via the
+  // `@elizaos/plugin-blocker/native` tsconfig path.
+  export {};
 }
 
 declare module "@elizaos/app-phone" {

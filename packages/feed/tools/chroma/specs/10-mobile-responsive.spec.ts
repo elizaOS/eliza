@@ -20,10 +20,10 @@ test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
 test.describe("Mobile Responsiveness", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.MOBILE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -114,10 +114,10 @@ test.describe("Mobile Responsiveness", () => {
 
 test.describe("Mobile - Navigation", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.MOBILE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -192,10 +192,10 @@ test.describe("Mobile - Navigation", () => {
 
 test.describe("Mobile - Markets", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.MOBILE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -237,10 +237,10 @@ test.describe("Mobile - Markets", () => {
 
 test.describe("Mobile - Wallet", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.MOBILE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -275,10 +275,10 @@ test.describe("Mobile - Wallet", () => {
 
 test.describe("Mobile - Feed", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.MOBILE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -319,10 +319,10 @@ test.describe("Mobile - Feed", () => {
 
 test.describe("Mobile - Settings", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.MOBILE);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -359,10 +359,10 @@ test.describe("Mobile - Settings", () => {
 
 test.describe("Tablet Responsiveness", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.TABLET);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -385,10 +385,10 @@ test.describe("Tablet Responsiveness", () => {
 
 test.describe("Small Mobile Edge Cases", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize(VIEWPORTS.MOBILE_SMALL);
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);

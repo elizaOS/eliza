@@ -14,18 +14,20 @@
  * mobile `/api/background/run-due-tasks` route both call.
  */
 
-import { logger } from "@elizaos/core";
+import { EventType, logger, type Memory, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
 import { createGlobalPauseStore } from "../global-pause/store.ts";
+import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import {
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type ScheduledTask,
 } from "./index.ts";
+import { registerLifeOpsScheduledTaskSubjectStore } from "./runtime-wiring.ts";
 import { processDueScheduledTasks } from "./scheduler.ts";
 import { getScheduledTaskRunner } from "./service.ts";
 
@@ -450,6 +452,177 @@ describe("processDueScheduledTasks — production wiring", () => {
     );
     expect(recorded?.roomId).toBe("room-approval");
     expect(recorded?.expectedReplyKind).toBe("approval");
+  });
+
+  it("completes a fired user_replied_within task from an owner MESSAGE_RECEIVED event", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const ownerId = "owner-11354";
+    const roomId = "room-11354-reply";
+    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId, false);
+
+    const fireAt = "2026-05-09T12:00:00.000Z";
+    const tickAt = new Date("2026-05-09T12:01:00.000Z");
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => tickAt,
+    });
+    const scheduled = await runner.schedule({
+      kind: "checkin",
+      promptInstructions: "How is the morning going?",
+      trigger: { kind: "once", atIso: fireAt },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      completionCheck: {
+        kind: "user_replied_within",
+        followupAfterMinutes: 30,
+      },
+      metadata: { pendingPromptRoomId: roomId },
+    });
+
+    const fireResult = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: tickAt,
+      limit: 5,
+    });
+    expect(fireResult.errors).toEqual([]);
+    expect(
+      fireResult.fires.find((f) => f.taskId === scheduled.taskId)?.status,
+    ).toBe("fired");
+    expect(
+      (
+        await resolvePendingPromptsStore(runtime).list(roomId, {
+          now: tickAt,
+        })
+      ).map((prompt) => prompt.taskId),
+    ).toContain(scheduled.taskId);
+
+    const replyAt = "2026-05-09T12:02:00.000Z";
+    const message: Memory = {
+      id: "msg-11354-reply" as UUID,
+      entityId: ownerId as UUID,
+      roomId: roomId as UUID,
+      createdAt: Date.parse(replyAt),
+      content: { text: "I am back online." },
+    };
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+      message,
+      source: "client_chat",
+    });
+
+    const repo = new LifeOpsRepository(runtime);
+    const completed = await repo.getScheduledTask(
+      runtime.agentId,
+      scheduled.taskId,
+    );
+    expect(completed?.state.status).toBe("completed");
+    expect(completed?.state.completedAt).toBe(replyAt);
+    expect(completed?.state.lastDecisionLog).toBe(
+      "completion-check:user_replied_within",
+    );
+    expect(
+      await resolvePendingPromptsStore(runtime).list(roomId, {
+        now: new Date(replyAt),
+      }),
+    ).toEqual([]);
+  });
+
+  it("leaves a fired user_replied_within task open when no reply arrived before timeout", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+
+    const firedAt = "2026-05-09T12:00:00.000Z";
+    const seed = await seedScheduledTask(runtime, {
+      kind: "checkin",
+      promptInstructions: "Check in with the owner.",
+      trigger: { kind: "once", atIso: firedAt },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      ownerVisible: true,
+      completionCheck: {
+        kind: "user_replied_within",
+        followupAfterMinutes: 30,
+      },
+      metadata: { pendingPromptRoomId: "room-11354-no-reply" },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt,
+      },
+    });
+
+    const result = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-09T12:10:00.000Z"),
+      limit: 5,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.completions).toEqual([]);
+    expect(result.completionTimeouts).toEqual([]);
+    const repo = new LifeOpsRepository(runtime);
+    const persisted = await repo.getScheduledTask(runtime.agentId, seed.taskId);
+    expect(persisted?.state.status).toBe("fired");
+  });
+
+  it("completes subject_updated during the production tick before timeout skip", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    registerLifeOpsScheduledTaskSubjectStore(runtime, {
+      wasUpdatedSince: async ({ subject, sinceIso }) =>
+        subject.kind === "document" &&
+        subject.id === "doc-11354" &&
+        sinceIso === "2026-05-09T12:00:00.000Z",
+    });
+
+    const firedAt = "2026-05-09T12:00:00.000Z";
+    const seed = await seedScheduledTask(runtime, {
+      kind: "watcher",
+      promptInstructions: "Watch the document until it changes.",
+      trigger: { kind: "event", eventKind: "document.updated" },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "plugin",
+      ownerVisible: true,
+      subject: { kind: "document", id: "doc-11354" },
+      completionCheck: {
+        kind: "subject_updated",
+        followupAfterMinutes: 1,
+      },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt,
+      },
+    });
+
+    const result = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-09T12:02:00.000Z"),
+      limit: 5,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.completions).toEqual([
+      {
+        taskId: seed.taskId,
+        status: "completed",
+        reason: "completion-check:subject_updated",
+        completionCheckKind: "subject_updated",
+      },
+    ]);
+    expect(result.completionTimeouts).toEqual([]);
+    const repo = new LifeOpsRepository(runtime);
+    const persisted = await repo.getScheduledTask(runtime.agentId, seed.taskId);
+    expect(persisted?.state.status).toBe("completed");
+    expect(persisted?.state.completedAt).toBe("2026-05-09T12:02:00.000Z");
   });
 
   it("fires a watcher (event) via a due scheduled-override", async () => {

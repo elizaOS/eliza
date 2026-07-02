@@ -2442,6 +2442,16 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-facewear/register",
           "plugins/plugin-facewear/src/register.ts",
         ],
+        // The browser-safe native-backend registration seam. The bare
+        // `@elizaos/plugin-blocker` specifier is aliased (via the dynamic
+        // app-plugin aliases above) to src/register.ts — a side-effect-only
+        // module with no exports — so `main.tsx` registers the Capacitor
+        // blocker adapters through this subpath. Resolve from source so the
+        // renderer build does not require plugin-blocker's dist.
+        [
+          "@elizaos/plugin-blocker/native",
+          "plugins/plugin-blocker/src/native.ts",
+        ],
         // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
         // bundle. Resolve from source so the app build does not require
         // plugin-calendar to be built first (its dist is absent during the

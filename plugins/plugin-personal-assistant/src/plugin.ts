@@ -132,6 +132,7 @@ import {
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 import { registerLifeOpsScheduledTaskRunnerDeps } from "./lifeops/scheduled-task/runtime-wiring.js";
+import { handleScheduledTaskInboundMessage } from "./lifeops/scheduled-task/scheduler.js";
 import { getScheduledTaskRunner as getProductionScheduledTaskRunner } from "./lifeops/scheduled-task/service.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
@@ -821,6 +822,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   // overview"). Domain views live in the per-domain plugins; the personal
   // assistant is the chat itself (PERSONAL_ASSISTANT action).
   events: {
+    [EventType.MESSAGE_RECEIVED]: [handleScheduledTaskInboundMessage],
     // Fold recognized voice turns into the entity/relationship graph via
     // the merge engine, then round-trip the binding to the voice-profile
     // owner. See lifeops/entities/voice-observer-bridge.ts.
@@ -1283,8 +1285,11 @@ export type {
   GateDecision,
   ProcessDueScheduledTasksRequest,
   ProcessDueScheduledTasksResult,
+  ProcessScheduledTaskInboundMessageRequest,
+  ProcessScheduledTaskInboundMessageResult,
   ScheduledTask,
   ScheduledTaskCompletionCheck,
+  ScheduledTaskCompletionResult,
   ScheduledTaskContextRequest,
   ScheduledTaskDueContext,
   ScheduledTaskDueDecision,
@@ -1320,6 +1325,7 @@ export {
   DEFAULT_ESCALATION_LADDERS,
   PRIORITY_DEFAULT_LADDER_KEYS,
   processDueScheduledTasks,
+  processScheduledTaskInboundMessage,
   registerBuiltInCompletionChecks,
   registerBuiltInGates,
   registerDefaultEscalationLadders,
@@ -1327,7 +1333,10 @@ export {
   STATE_LOG_DEFAULT_RETENTION_DAYS,
 } from "./lifeops/scheduled-task/index.js";
 export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";
-export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
+export {
+  createRuntimeScheduledTaskRunner,
+  registerLifeOpsScheduledTaskSubjectStore,
+} from "./lifeops/scheduled-task/runtime-wiring.js";
 export type { GetScheduledTaskRunnerOptions } from "./lifeops/scheduled-task/service.js";
 export {
   getScheduledTaskRunner,

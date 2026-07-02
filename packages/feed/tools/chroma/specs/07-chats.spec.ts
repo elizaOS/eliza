@@ -24,10 +24,10 @@ test.setTimeout(90000);
 
 test.describe("Chats Page - Layout", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize({ width: 1920, height: 1080 });
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -126,10 +126,10 @@ test.describe("Chats Page - Layout", () => {
 
 test.describe("Chat Messaging", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize({ width: 1920, height: 1080 });
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -198,10 +198,10 @@ test.describe("Chat Messaging", () => {
 
 test.describe("Chat - Group Creation", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize({ width: 1920, height: 1080 });
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -295,10 +295,10 @@ test.describe("Chat - Group Creation", () => {
 
 test.describe("Chat - Search", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize({ width: 1920, height: 1080 });
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -354,10 +354,10 @@ test.describe("Chat - Search", () => {
 
 test.describe("Chat - Mobile", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize({ width: 375, height: 667 });
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
@@ -390,10 +390,10 @@ test.describe("Chat - Mobile", () => {
 
 test.describe("Profile Message Button", () => {
   test.beforeEach(async ({ page }) => {
-    if (!(await isServerHealthy())) {
-      test.skip();
-      return;
-    }
+    test.skip(
+      !(await isServerHealthy()),
+      "feed server is not healthy at /api/health",
+    );
     await page.setViewportSize({ width: 1920, height: 1080 });
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);

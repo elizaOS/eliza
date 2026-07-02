@@ -39,6 +39,7 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "chat", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLocalAgentToken", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "request", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "appendBootTrace", returnType: CAPPluginReturnPromise),
     ]
 
     private static var conversationIdByBaseURL: [String: String] = [:]
@@ -61,11 +62,22 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func start(_ call: CAPPluginCall) {
         if isLocalAgentMode(call: call) {
             Self.localStartedAt = Self.localStartedAt ?? Date()
+            // "running" here means "local mode is active; the in-process agent
+            // lifecycle is renderer-owned" — it does NOT prove the ElizaBunRuntime
+            // engine is up. Mark the trace entry optimistic so on-device boot
+            // triage never mistakes this for engine readiness (#11030: the engine
+            // was never started while this kept reporting running).
+            postBootTrace(stage: "start", detail: ["mode": "local", "state": "running", "optimistic": true])
             call.resolve(localAgentStatus(state: "running", error: nil))
             return
         }
 
         guard let endpoint = resolveEndpoint(call: call) else {
+            postBootTrace(stage: "start", detail: [
+                "mode": "remote",
+                "state": "error",
+                "error": missingEndpointMessage(),
+            ])
             call.reject(missingEndpointMessage())
             return
         }
@@ -117,11 +129,20 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func getStatus(_ call: CAPPluginCall) {
         if isLocalAgentMode(call: call) {
             Self.localStartedAt = Self.localStartedAt ?? Date()
+            // Optimistic: local mode is active, but engine readiness is owned by
+            // ElizaBunRuntime (see its engine-* boot-trace stages). Marked so the
+            // boot trace never reads as "agent running" while the engine is down.
+            postBootTrace(stage: "get-status", detail: ["mode": "local", "state": "running", "optimistic": true])
             call.resolve(localAgentStatus(state: "running", error: nil))
             return
         }
 
         guard let endpoint = resolveEndpoint(call: call) else {
+            postBootTrace(stage: "get-status", detail: [
+                "mode": "remote",
+                "state": "error",
+                "error": missingEndpointMessage(),
+            ])
             call.resolve(status(state: "error", agentName: nil, port: nil, startedAt: nil, error: missingEndpointMessage()))
             return
         }
@@ -130,18 +151,32 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
             switch result {
             case .success(let response):
                 guard self.isHTTPSuccess(response.status) else {
+                    let message = self.httpErrorMessage(prefix: "Agent status unavailable", response: response)
+                    self.postBootTrace(stage: "get-status", detail: [
+                        "mode": "remote",
+                        "state": "error",
+                        "endpointHost": endpoint.baseURL.host ?? "",
+                        "httpStatus": response.status,
+                        "error": message,
+                    ])
                     call.resolve(self.status(
                         state: "error",
                         agentName: nil,
                         port: self.port(from: endpoint.baseURL),
                         startedAt: nil,
-                        error: self.httpErrorMessage(prefix: "Agent status unavailable", response: response)
+                        error: message
                     ))
                     return
                 }
                 let payload = self.parseJSONObject(response.body) ?? [:]
                 call.resolve(self.normalizedStatus(payload, fallbackState: "running", endpoint: endpoint, error: nil))
             case .failure(let error):
+                self.postBootTrace(stage: "get-status", detail: [
+                    "mode": "remote",
+                    "state": "error",
+                    "endpointHost": endpoint.baseURL.host ?? "",
+                    "error": "Agent status unavailable: \(error.localizedDescription)",
+                ])
                 call.resolve(self.status(
                     state: "error",
                     agentName: nil,
@@ -913,5 +948,42 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func pluginError(_ message: String) -> NSError {
         return NSError(domain: "AgentPlugin", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    /// Renderer-side boot-trace entries: the startup coordinator/poll in the
+    /// WebView appends its phases + failures into the SAME persistent trace
+    /// file the native side writes (Documents/eliza-boot-trace.jsonl), so an
+    /// unattended launch is fully reconstructable from one file. The renderer
+    /// pre-redacts detail values (never tokens).
+    @objc func appendBootTrace(_ call: CAPPluginCall) {
+        let stage = call.getString("stage") ?? "event"
+        let detail: [String: Any] = call.getObject("detail") ?? [:]
+        NotificationCenter.default.post(
+            name: Notification.Name("ElizaBootTraceAppend"),
+            object: nil,
+            userInfo: [
+                "source": "renderer",
+                "stage": stage,
+                "detail": detail,
+            ]
+        )
+        call.resolve()
+    }
+
+    /// Boot-trace bridge: this pod cannot link against the app target, so it
+    /// posts the app's `ElizaBootTraceAppend` notification; the app-side
+    /// `ElizaStartupTrace` observer persists the entry to
+    /// Documents/eliza-boot-trace.jsonl. Detail values must never include
+    /// tokens — callers pass hosts and messages only.
+    private func postBootTrace(stage: String, detail: [String: Any]) {
+        NotificationCenter.default.post(
+            name: Notification.Name("ElizaBootTraceAppend"),
+            object: nil,
+            userInfo: [
+                "source": "agent-plugin",
+                "stage": stage,
+                "detail": detail,
+            ]
+        )
     }
 }

@@ -71,6 +71,215 @@ type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
 };
 
+// ---------------------------------------------------------------------------
+// iOS boot trace (renderer side) — persisted startup observability
+// ---------------------------------------------------------------------------
+//
+// The native shell appends its stage events to Documents/eliza-boot-trace.jsonl
+// (packages/app-core/platforms/ios/App/App/ElizaStartupTrace.swift). The
+// renderer appends to the SAME file through the native Agent plugin's
+// `appendBootTrace` bridge method (the Filesystem pod is not shipped in the
+// iOS app), so a single serialized native writer owns the file and lines
+// never interleave. Retrieval WITHOUT an attached console:
+//
+//   xcrun devicectl device copy from --device <id> \
+//     --domain-type appDataContainer --domain-identifier ai.elizaos.app \
+//     --source Documents/eliza-boot-trace.jsonl --destination <out>
+
+const IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION = 400;
+
+interface AgentBootTracePluginLike {
+  appendBootTrace(options: {
+    stage: string;
+    detail: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+let agentPluginForBootTrace: AgentBootTracePluginLike | null | undefined;
+let bootTraceDisabled = false;
+let bootTraceConsecutiveFailures = 0;
+let bootTraceEntryCount = 0;
+const bootTraceLaunchedAtMs = Date.now();
+/** Bridge rejections tolerated before the trace sink turns itself off. A
+ * single transient rejection must NOT silence startup telemetry forever —
+ * that blindness is exactly what made the #11030 device hang unreadable. */
+const BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES = 3;
+
+function resolveBootTraceBridge(): AgentBootTracePluginLike | null {
+  if (agentPluginForBootTrace !== undefined) {
+    return agentPluginForBootTrace;
+  }
+  try {
+    const capacitor = Capacitor as typeof Capacitor & {
+      isPluginAvailable?: (name: string) => boolean;
+    };
+    if (!isNativeIos() || capacitor.isPluginAvailable?.("Agent") !== true) {
+      agentPluginForBootTrace = null;
+      return null;
+    }
+    agentPluginForBootTrace = registerPlugin<AgentBootTracePluginLike>("Agent");
+  } catch {
+    agentPluginForBootTrace = null;
+  }
+  return agentPluginForBootTrace;
+}
+
+/**
+ * Append one structured entry to the on-device iOS boot trace
+ * (Documents/eliza-boot-trace.jsonl, written natively by ElizaStartupTrace).
+ * No-op off native iOS, after a bridge failure (telemetry must never break
+ * startup), and past the per-session entry cap (bounded growth; the native
+ * writer additionally rotates the file at ~1 MB). Detail values must never
+ * include tokens or credentials.
+ */
+export function appendIosBootTrace(
+  stage: string,
+  detail: Record<string, unknown> = {},
+): void {
+  const bridge = resolveBootTraceBridge();
+  if (!bridge || bootTraceDisabled) return;
+  if (bootTraceEntryCount >= IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION) return;
+  bootTraceEntryCount += 1;
+  let safeDetail: Record<string, unknown>;
+  try {
+    // Round-trip through JSON so only serializable values cross the bridge.
+    safeDetail = JSON.parse(
+      JSON.stringify({
+        sinceLaunchMs: Date.now() - bootTraceLaunchedAtMs,
+        ...detail,
+      }),
+    ) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  bridge
+    .appendBootTrace({ stage, detail: safeDetail })
+    .then(() => {
+      bootTraceConsecutiveFailures = 0;
+    })
+    .catch((error: unknown) => {
+      // Older native shells without the method reject with "not implemented";
+      // disable immediately for those. Otherwise tolerate a bounded number of
+      // transient bridge failures before going quiet.
+      const message =
+        error instanceof Error ? error.message : String(error ?? "");
+      bootTraceConsecutiveFailures += 1;
+      if (
+        /not implemented|is not available|method not found/i.test(message) ||
+        bootTraceConsecutiveFailures >=
+          BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES
+      ) {
+        bootTraceDisabled = true;
+      }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// iOS native agent boot progress — heartbeat state for the startup poll
+// ---------------------------------------------------------------------------
+//
+// While the in-process Bun engine boots (CPU-bound, no JIT on iOS), startup
+// probes either queue behind the start promise or receive structured 503s
+// from the not-yet-ready agent kernel. Neither is a TRANSPORT failure — the
+// bridge is alive and the agent is making progress. This state lets
+// state/startup-phase-poll.ts keep its consecutive-failure budget from
+// burning while boot progress is provable, without touching the overall
+// backend deadline. Only a terminal engine error or heartbeat silence lets
+// the budget resume.
+
+export type IosNativeAgentBootPhase = "idle" | "starting" | "ready" | "error";
+
+export interface IosNativeAgentBootProgress {
+  phase: IosNativeAgentBootPhase;
+  startedAt: number | null;
+  lastHeartbeatAt: number | null;
+  lastError: string | null;
+}
+
+/**
+ * Silence budget while the engine start promise is pending. The engine start
+ * itself is bounded natively by ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS (300s in
+ * IOS_FULL_BUN_ENV) — mirror it so a genuinely hung start eventually lets the
+ * failure budget burn.
+ */
+const IOS_ENGINE_START_SILENCE_BUDGET_MS = 300_000;
+
+/** Freshness window for post-start heartbeats (structured bridge responses). */
+const IOS_BOOT_HEARTBEAT_SILENCE_MS = 30_000;
+
+let iosAgentBootProgress: IosNativeAgentBootProgress = {
+  phase: "idle",
+  startedAt: null,
+  lastHeartbeatAt: null,
+  lastError: null,
+};
+
+/** Record a native-agent boot phase transition (also traced + heartbeat). */
+export function recordIosNativeAgentBootPhase(
+  phase: IosNativeAgentBootPhase,
+  error?: string | null,
+): void {
+  const now = Date.now();
+  iosAgentBootProgress = {
+    phase,
+    startedAt:
+      phase === "starting" ? now : (iosAgentBootProgress.startedAt ?? now),
+    lastHeartbeatAt: now,
+    lastError:
+      error ?? (phase === "error" ? iosAgentBootProgress.lastError : null),
+  };
+  appendIosBootTrace("agent-boot-phase", {
+    phase,
+    ...(error ? { error } : {}),
+  });
+}
+
+/** Record liveness proof: a structured response crossed the native bridge. */
+export function recordIosNativeAgentBootHeartbeat(): void {
+  iosAgentBootProgress = {
+    ...iosAgentBootProgress,
+    lastHeartbeatAt: Date.now(),
+  };
+}
+
+export function getIosNativeAgentBootProgress(): IosNativeAgentBootProgress {
+  return { ...iosAgentBootProgress };
+}
+
+/**
+ * True while the on-device agent is provably booting or alive: the engine
+ * start is pending within its own timeout, or the engine reported ready and
+ * the bridge produced a structured response recently. False on terminal
+ * error and on heartbeat silence — exactly the two conditions that should
+ * let the startup poll's consecutive-failure budget burn.
+ */
+export function isIosNativeAgentBootInProgress(now = Date.now()): boolean {
+  const progress = iosAgentBootProgress;
+  if (progress.phase === "starting") {
+    return (
+      progress.startedAt !== null &&
+      now - progress.startedAt < IOS_ENGINE_START_SILENCE_BUDGET_MS
+    );
+  }
+  if (progress.phase === "ready") {
+    return (
+      progress.lastHeartbeatAt !== null &&
+      now - progress.lastHeartbeatAt < IOS_BOOT_HEARTBEAT_SILENCE_MS
+    );
+  }
+  return false;
+}
+
+/** Test-only reset of the module-level boot-progress state. */
+export function resetIosNativeAgentBootProgressForTests(): void {
+  iosAgentBootProgress = {
+    phase: "idle",
+    startedAt: null,
+    lastHeartbeatAt: null,
+    lastError: null,
+  };
+}
+
 export interface IosLocalAgentNativeRequestOptions {
   method?: string;
   path: string;
@@ -492,11 +701,24 @@ function normalizeNativeResult(
   };
 }
 
+let tracedEngineAcquire = false;
+
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   const strict = shouldRequireFullBunRuntime();
+  const pluginAvailable = isFullBunRuntimePluginAvailable();
+  if (!tracedEngineAcquire && isNativeIos()) {
+    tracedEngineAcquire = true;
+    appendIosBootTrace("engine-acquire", {
+      copy: "ui",
+      strict,
+      builtIn: isFullBunRuntimeBuiltIn(),
+      pluginAvailable,
+      runtimeMode: readRuntimeMode(),
+    });
+  }
   if (!isNativeIos() && !strict) return null;
   if (!strict && !isFullBunRuntimeBuiltIn()) return null;
-  if (!isFullBunRuntimePluginAvailable()) {
+  if (!pluginAvailable) {
     if (strict) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
     }
@@ -517,11 +739,21 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       // letting the import error escape to the strict handler and fail iOS local
       // startup with "Backend Timeout" (the reported first-run hang). A genuine
       // failure still surfaces below: runtime.start() throwing is NOT caught here.
-      const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
+      // importFullBunRuntimePlugin resolves to a plain wrapped object (never
+      // the raw Capacitor proxy — awaiting the proxy deadlocks; see the
+      // comment inside it).
+      const runtime = await importFullBunRuntimePlugin();
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
+        recordIosNativeAgentBootPhase("ready");
+        appendIosBootTrace("engine-adopted-running", {
+          engine: currentStatus.engine,
+        });
         return runtime;
       }
+      recordIosNativeAgentBootPhase("starting");
+      appendIosBootTrace("engine-start-requested", { copy: "ui" });
+      const startRequestedAt = Date.now();
       const started = await runtime.start({
         engine: "bun",
         argv: IOS_FULL_BUN_ARGV,
@@ -538,8 +770,15 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
           }`,
         );
       }
+      recordIosNativeAgentBootPhase("ready");
+      appendIosBootTrace("engine-start-ok", {
+        durationMs: Date.now() - startRequestedAt,
+        engine: status.engine,
+      });
       return runtime;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      recordIosNativeAgentBootPhase("error", message);
       if (strict) {
         throw fullBunStartupError("startup failed", error);
       }
@@ -568,6 +807,7 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
 }
 
 async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  appendIosBootTrace("engine-import-start", { copy: "ui" });
   let mod: Partial<FullBunRuntimeModule> | null = null;
   try {
     mod = (await import(
@@ -576,9 +816,22 @@ async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
   } catch {
     mod = null;
   }
-  return (
+  appendIosBootTrace("engine-import-done", {
+    copy: "ui",
+    viaModule: Boolean(mod?.ElizaBunRuntime),
+  });
+  // CRITICAL (#11030 device boot hang): never return the raw Capacitor plugin
+  // proxy across an `await` boundary. registerPlugin's Proxy fabricates a
+  // native-method wrapper for ANY property — including `then` — so promise
+  // resolution treats the proxy as a thenable whose `then(resolve, reject)`
+  // is a Capacitor method wrapper that NEVER invokes its callbacks. Every
+  // caller of this async function then awaits forever, the engine never
+  // starts, and the phone dead-ends on the startup-timeout card. Wrapping
+  // into a plain bound-method object BEFORE returning makes the resolved
+  // value thenable-free and safe to await.
+  return wrapFullBunRuntime(
     mod?.ElizaBunRuntime ??
-    registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime")
+      registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime"),
   );
 }
 
@@ -601,6 +854,11 @@ async function tryFullBunNativeRequest(
   if (!result) {
     throw new Error("Full Bun iOS bridge returned an invalid HTTP response");
   }
+  // Any structured response over the bridge — including a 503 from a
+  // mid-boot agent kernel — proves the in-process runtime is alive. The
+  // startup poll uses this heartbeat to keep boot-time 503s from burning
+  // its consecutive-failure budget.
+  recordIosNativeAgentBootHeartbeat();
   return result;
 }
 
@@ -662,9 +920,19 @@ async function dispatchIosLocalAgentRequest(
   );
 }
 
+let tracedNativeRequests = 0;
+
 export async function handleIosLocalAgentNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
 ): Promise<IosLocalAgentNativeRequestResult> {
+  if (tracedNativeRequests < 3) {
+    tracedNativeRequests += 1;
+    appendIosBootTrace("native-request", {
+      copy: "ui",
+      n: tracedNativeRequests,
+      path: options.path?.slice(0, 120) ?? null,
+    });
+  }
   const path = options.path?.trim();
   if (!path || !isSafeLocalPath(path)) {
     throw new Error(

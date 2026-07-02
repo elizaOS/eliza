@@ -6,6 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const testDir = path.resolve(__dirname, "tests");
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
+const chromaDir = path.resolve(__dirname, "../chroma");
+const readyURL = new URL("/api/health", baseURL).toString();
 
 export default defineConfig({
   testDir,
@@ -34,4 +36,15 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
+  // Keyless localnet harness: boots anvil + contracts + the app when nothing
+  // is already listening on the target port; reuses an externally started
+  // app otherwise. Readiness is the real signal: /api/health returning 200.
+  webServer: {
+    command: `cd ${chromaDir} && PLAYWRIGHT_BASE_URL=${baseURL} bun run dev-server.ts`,
+    url: readyURL,
+    reuseExistingServer: true,
+    timeout: 300_000,
+    stdout: "pipe",
+    stderr: "pipe",
+  },
 });

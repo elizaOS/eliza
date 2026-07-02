@@ -6,9 +6,18 @@ import {
   type NewOrganizationInvite,
   type OrganizationInvite,
   organizationInvitesRepository,
+  type User,
 } from "../../db/repositories";
+import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { appsRepository } from "../../db/repositories/apps";
+import { userCharactersRepository } from "../../db/repositories/characters";
+import { containersRepository } from "../../db/repositories/containers";
+import { conversationsRepository } from "../../db/repositories/conversations";
+import { getInitialCredits } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
+import { logger } from "../utils/logger";
 import { emailService } from "./email";
+import { managedDomainsService } from "./managed-domains";
 import { organizationsService } from "./organizations";
 import { usersService } from "./users";
 
@@ -169,13 +178,18 @@ export class InvitesService {
       throw new Error("You are already a member of this organization");
     }
 
-    if (user.role === "owner") {
-      throw new Error(
-        "Organization owners cannot join other organizations. Contact support for assistance.",
-      );
+    // Every self-signup provisions its user as the OWNER of a fresh solo org
+    // (steward-sync), so a blanket owner block would dead-end every existing
+    // account (#11332). An owner may accept iff their current org is an empty
+    // solo org: no other members, no deployed apps/agents/domains, and no more
+    // credits than the signup grant. Anything richer keeps the block with an
+    // actionable error — abandoning a real org needs an explicit path.
+    const vacatedSoloOrgId = user.role === "owner" ? user.organization_id : null;
+    if (vacatedSoloOrgId) {
+      await this.assertOwnerCanVacateSoloOrganization(user, vacatedSoloOrgId);
     }
 
-    await usersService.update(userId, {
+    const movedUser = await usersService.update(userId, {
       organization_id: invite.organization_id,
       role: invite.invited_role,
       updated_at: new Date(),
@@ -187,7 +201,97 @@ export class InvitesService {
       throw new Error("Failed to mark invite as accepted");
     }
 
+    if (vacatedSoloOrgId && movedUser?.organization_id === invite.organization_id) {
+      await this.cleanUpVacatedSoloOrganization(userId, vacatedSoloOrgId, invite.organization_id);
+    }
+
     return updatedInvite;
+  }
+
+  /**
+   * Gate for an owner accepting an invite: their current org must be an empty
+   * solo org (the auto-provisioned signup artifact), not a real organization.
+   */
+  private async assertOwnerCanVacateSoloOrganization(
+    user: User,
+    organizationId: string,
+  ): Promise<void> {
+    const members = await usersService.listByOrganization(organizationId);
+    if (members.some((member) => member.id !== user.id)) {
+      throw new Error(
+        "You cannot join another organization while your current organization has other members. Transfer ownership or remove them first.",
+      );
+    }
+
+    const [appCount, containers, retainedAgentCount, managedDomainCount] = await Promise.all([
+      appsRepository.countByOrganization(organizationId),
+      containersRepository.listByOrganization(organizationId),
+      agentSandboxesRepository.countRetainedByOrganization(organizationId),
+      managedDomainsService.countForOrganization(organizationId),
+    ]);
+    const deployedContainers = containers.filter(
+      (container) => container.status !== "deleted" && container.status !== "deleting",
+    );
+    if (
+      appCount > 0 ||
+      deployedContainers.length > 0 ||
+      retainedAgentCount > 0 ||
+      managedDomainCount > 0
+    ) {
+      throw new Error(
+        "You cannot join another organization while your current organization has deployed apps, agents, or managed domains. Delete or transfer them first.",
+      );
+    }
+
+    const organization = await organizationsService.getById(organizationId);
+    if (organization && Number(organization.credit_balance) > getInitialCredits()) {
+      throw new Error(
+        "You cannot join another organization while your current organization holds credits beyond the signup grant. Contact support to transfer them first.",
+      );
+    }
+  }
+
+  /**
+   * After a sole-member owner moved into the inviting org: re-home their
+   * characters and conversations (the org cascade would destroy them), then
+   * delete the now-empty solo org. The accept itself has already committed, so
+   * cleanup failure is logged, never surfaced as a request failure.
+   */
+  private async cleanUpVacatedSoloOrganization(
+    userId: string,
+    previousOrganizationId: string,
+    newOrganizationId: string,
+  ): Promise<void> {
+    try {
+      const remaining = await usersService.listByOrganization(previousOrganizationId);
+      if (remaining.some((member) => member.id !== userId)) {
+        logger.warn(
+          "[InvitesService] Vacated org gained a member mid-accept; leaving it in place",
+          {
+            previousOrganizationId,
+            userId,
+          },
+        );
+        return;
+      }
+      await userCharactersRepository.reassignUserOrganization(
+        userId,
+        previousOrganizationId,
+        newOrganizationId,
+      );
+      await conversationsRepository.reassignUserOrganization(
+        userId,
+        previousOrganizationId,
+        newOrganizationId,
+      );
+      await organizationsService.delete(previousOrganizationId);
+    } catch (error) {
+      logger.warn("[InvitesService] Failed to clean up vacated solo organization", {
+        previousOrganizationId,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async revokeInvite(inviteId: string, organizationId: string): Promise<OrganizationInvite> {

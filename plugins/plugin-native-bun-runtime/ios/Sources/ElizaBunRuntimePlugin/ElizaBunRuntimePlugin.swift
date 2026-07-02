@@ -69,6 +69,9 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
 
         let startedAt = Date()
         NSLog("[ElizaBunRuntimePlugin] start requested engine=\(engine) bundlePath=\(bundlePath ?? "default") argv=\(argv) envKeys=\(env.keys.sorted())")
+        ElizaBunRuntimeBootTrace.post(stage: "engine-plugin-start-requested", detail: [
+            "engine": engine,
+        ])
         let runtime = ensureRuntime()
         runtime.start(
             bundlePath: bundlePath,
@@ -81,6 +84,11 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             switch result {
             case .success(let outcome):
                 NSLog("[ElizaBunRuntimePlugin] start succeeded engine=\(engine) bridgeVersion=\(outcome.bridgeVersion) durationMs=\(durationMs)")
+                ElizaBunRuntimeBootTrace.post(stage: "engine-plugin-start-ok", detail: [
+                    "engine": engine,
+                    "bridgeVersion": outcome.bridgeVersion,
+                    "durationMs": durationMs,
+                ])
                 self.runNativeFullBunSmokeAfterSuccessfulStartIfRequested(runtime: runtime)
                 DispatchQueue.main.async {
                     call.resolve([
@@ -90,6 +98,11 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                 }
             case .failure(let error):
                 NSLog("[ElizaBunRuntimePlugin] start failed engine=\(engine) durationMs=\(durationMs) error=\(error)")
+                ElizaBunRuntimeBootTrace.post(stage: "engine-plugin-start-failed", detail: [
+                    "engine": engine,
+                    "durationMs": durationMs,
+                    "error": "\(error)",
+                ])
                 DispatchQueue.main.async {
                     call.resolve([
                         "ok": false,

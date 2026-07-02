@@ -426,6 +426,30 @@ export class UserCharactersRepository {
   }
 
   /**
+   * Moves a user's characters from one organization to another. Used when a
+   * sole-member owner accepts an invite into another org (#11332): the vacated
+   * solo org is deleted, and without this re-home the org cascade would
+   * destroy the user's characters.
+   */
+  async reassignUserOrganization(
+    userId: string,
+    fromOrganizationId: string,
+    toOrganizationId: string,
+  ): Promise<number> {
+    const moved = await dbWrite
+      .update(userCharacters)
+      .set({ organization_id: toOrganizationId, updated_at: new Date() })
+      .where(
+        and(
+          eq(userCharacters.user_id, userId),
+          eq(userCharacters.organization_id, fromOrganizationId),
+        ),
+      )
+      .returning({ id: userCharacters.id });
+    return moved.length;
+  }
+
+  /**
    * Builds the sort order expression for search queries.
    */
   private buildSortOrder(sortOptions: SortOptions) {

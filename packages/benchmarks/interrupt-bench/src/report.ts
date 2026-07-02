@@ -79,10 +79,14 @@ export function renderMarkdown(report: BenchmarkReport): string {
     "| ID | Category | Weight | Score | Boundary | State | Intent | Routing | Trace | Latency | Judge |",
   );
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
+  const axisCell = (axis: {
+    raw: number;
+    excluded?: boolean;
+  }): string => (axis.excluded ? "excl" : (axis.raw * 100).toFixed(0));
   for (const r of report.scenarios) {
     const judgeCell = r.judge ? (r.judge.pass ? "PASS" : "fail") : "—";
     lines.push(
-      `| ${r.scenarioId} | ${r.category} | ${r.weight} | ${(r.score * 100).toFixed(1)} | ${r.boundaryViolated ? "VIOLATED" : "ok"} | ${(r.axes.state.raw * 100).toFixed(0)} | ${(r.axes.intent.raw * 100).toFixed(0)} | ${(r.axes.routing.raw * 100).toFixed(0)} | ${(r.axes.trace.raw * 100).toFixed(0)} | ${(r.axes.latency.raw * 100).toFixed(0)} | ${judgeCell} |`,
+      `| ${r.scenarioId} | ${r.category} | ${r.weight} | ${(r.score * 100).toFixed(1)} | ${r.boundaryViolated ? "VIOLATED" : "ok"} | ${axisCell(r.axes.state)} | ${axisCell(r.axes.intent)} | ${axisCell(r.axes.routing)} | ${axisCell(r.axes.trace)} | ${axisCell(r.axes.latency)} | ${judgeCell} |`,
     );
   }
   lines.push("");

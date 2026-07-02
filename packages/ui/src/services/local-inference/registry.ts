@@ -14,13 +14,101 @@ import { scanExternalModels } from "./external-scanner";
 import { isWithinElizaRoot, localInferenceRoot, registryPath } from "./paths";
 import type { InstalledModel } from "./types";
 
+type StoredInstalledModel = Omit<
+  InstalledModel,
+  "path" | "bundleRoot" | "manifestPath"
+> & {
+  /** Relative to localInferenceRoot() for Eliza-owned rows; legacy JSON may be absolute. */
+  path: string;
+  bundleRoot?: string;
+  manifestPath?: string;
+};
+
 interface RegistryFile {
   version: 1;
-  models: InstalledModel[];
+  models: StoredInstalledModel[];
 }
 
 async function ensureRootDir(): Promise<void> {
   await fs.mkdir(localInferenceRoot(), { recursive: true });
+}
+
+function normalizeStoredPathSeparator(target: string): string {
+  return target.split(/[\\/]+/).join(path.sep);
+}
+
+function storedRelativePath(target: string): string {
+  const root = path.resolve(localInferenceRoot());
+  const resolved = path.resolve(target);
+  if (!isWithinElizaRoot(resolved)) return target;
+  return path.relative(root, resolved).split(path.sep).join("/");
+}
+
+function reanchorLegacyAbsolutePath(target: string): string {
+  const resolved = path.resolve(target);
+  if (isWithinElizaRoot(resolved)) return resolved;
+
+  const parts = normalizeStoredPathSeparator(resolved).split(path.sep);
+  const markerIndex = parts.lastIndexOf("local-inference");
+  if (markerIndex < 0 || markerIndex === parts.length - 1) {
+    return resolved;
+  }
+
+  const candidate = path.resolve(
+    localInferenceRoot(),
+    ...parts.slice(markerIndex + 1),
+  );
+  return isWithinElizaRoot(candidate) ? candidate : resolved;
+}
+
+function resolveStoredElizaPath(target: string): string | null {
+  if (typeof target !== "string" || target.trim().length === 0) return null;
+  if (path.isAbsolute(target) || /^[a-zA-Z]:[\\/]/.test(target)) {
+    return reanchorLegacyAbsolutePath(target);
+  }
+
+  const resolved = path.resolve(
+    localInferenceRoot(),
+    normalizeStoredPathSeparator(target),
+  );
+  return isWithinElizaRoot(resolved) ? resolved : null;
+}
+
+function hydrateStoredModel(
+  model: StoredInstalledModel,
+): InstalledModel | null {
+  const modelPath = resolveStoredElizaPath(model.path);
+  if (!modelPath) return null;
+
+  const bundleRoot = model.bundleRoot
+    ? resolveStoredElizaPath(model.bundleRoot)
+    : undefined;
+  const manifestPath = model.manifestPath
+    ? resolveStoredElizaPath(model.manifestPath)
+    : undefined;
+
+  if (model.bundleRoot && !bundleRoot) return null;
+  if (model.manifestPath && !manifestPath) return null;
+
+  return {
+    ...model,
+    path: modelPath,
+    ...(bundleRoot ? { bundleRoot } : {}),
+    ...(manifestPath ? { manifestPath } : {}),
+  };
+}
+
+function dehydrateStoredModel(model: InstalledModel): StoredInstalledModel {
+  return {
+    ...model,
+    path: storedRelativePath(model.path),
+    ...(model.bundleRoot
+      ? { bundleRoot: storedRelativePath(model.bundleRoot) }
+      : {}),
+    ...(model.manifestPath
+      ? { manifestPath: storedRelativePath(model.manifestPath) }
+      : {}),
+  };
 }
 
 async function readElizaOwned(): Promise<InstalledModel[]> {
@@ -30,10 +118,13 @@ async function readElizaOwned(): Promise<InstalledModel[]> {
     if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
       return [];
     }
-    return parsed.models.filter(
-      (m): m is InstalledModel =>
-        m && typeof m === "object" && m.source === "eliza-download",
-    );
+    return parsed.models
+      .filter(
+        (m): m is InstalledModel =>
+          m && typeof m === "object" && m.source === "eliza-download",
+      )
+      .map(hydrateStoredModel)
+      .filter((m): m is InstalledModel => m !== null);
   } catch {
     return [];
   }
@@ -42,7 +133,10 @@ async function readElizaOwned(): Promise<InstalledModel[]> {
 async function writeElizaOwned(models: InstalledModel[]): Promise<void> {
   await ensureRootDir();
   const tmp = `${registryPath()}.tmp`;
-  const payload: RegistryFile = { version: 1, models };
+  const payload: RegistryFile = {
+    version: 1,
+    models: models.map(dehydrateStoredModel),
+  };
   await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
   await fs.rename(tmp, registryPath());
 }

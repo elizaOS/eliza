@@ -28,6 +28,7 @@
 		DAREP000100000000000002 /* DeviceActivityReportExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000101 /* DeviceActivityReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		WBCB00010000000000000001 /* ActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000102 /* ActionRequestHandler.swift */; };
 		WBCB00010000000000000002 /* WebsiteBlockerContentExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000002 /* BootCaptureUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -51,6 +52,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = WBCB00010000000000000401;
 			remoteInfo = WebsiteBlockerContentExtension;
+		};
+		AUIT00010000000000000701 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 504EC3031FED79650016851F;
+			remoteInfo = App;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -103,6 +111,8 @@
 		WBCB00010000000000000102 /* ActionRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRequestHandler.swift; sourceTree = "<group>"; };
 		WBCB00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		WBCB00010000000000000104 /* WebsiteBlockerContentExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WebsiteBlockerContentExtension.entitlements; sourceTree = "<group>"; };
+		AUIT00010000000000000002 /* BootCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootCaptureUITests.swift; sourceTree = "<group>"; };
+		AUIT00010000000000000101 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +145,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AUIT00010000000000000202 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -150,6 +167,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3061FED79650016851F /* App */,
+				AUIT00010000000000000301 /* AppUITests */,
 				504EC3051FED79650016851F /* Products */,
 				7F8756D8B27F46E3366F6CEA /* Pods */,
 				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
@@ -163,6 +181,7 @@
 				WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */,
 				DAMON000100000000000101 /* DeviceActivityMonitorExtension.appex */,
 				DAREP000100000000000101 /* DeviceActivityReportExtension.appex */,
+				AUIT00010000000000000101 /* AppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -230,6 +249,14 @@
 				DAREP000100000000000104 /* DeviceActivityReportExtension.entitlements */,
 			);
 			path = DeviceActivityReportExtension;
+			sourceTree = "<group>";
+		};
+		AUIT00010000000000000301 /* AppUITests */ = {
+			isa = PBXGroup;
+			children = (
+				AUIT00010000000000000002 /* BootCaptureUITests.swift */,
+			);
+			path = AppUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -310,6 +337,24 @@
 			productReference = DAREP000100000000000101 /* DeviceActivityReportExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AUIT00010000000000000401 /* AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AUIT00010000000000000601 /* Build configuration list for PBXNativeTarget "AppUITests" */;
+			buildPhases = (
+				AUIT00010000000000000203 /* Sources */,
+				AUIT00010000000000000202 /* Frameworks */,
+				AUIT00010000000000000204 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AUIT00010000000000000702 /* PBXTargetDependency */,
+			);
+			name = AppUITests;
+			productName = AppUITests;
+			productReference = AUIT00010000000000000101 /* AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -336,6 +381,11 @@
 						CreatedOnToolsVersion = 16.1;
 						ProvisioningStyle = Automatic;
 					};
+					AUIT00010000000000000401 = {
+						CreatedOnToolsVersion = 16.1;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 504EC3031FED79650016851F;
+					};
 				};
 			};
 			buildConfigurationList = 504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */;
@@ -355,6 +405,7 @@
 				WBCB00010000000000000401 /* WebsiteBlockerContentExtension */,
 				DAMON000100000000000401 /* DeviceActivityMonitorExtension */,
 				DAREP000100000000000401 /* DeviceActivityReportExtension */,
+				AUIT00010000000000000401 /* AppUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -389,6 +440,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		DAREP000100000000000204 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AUIT00010000000000000204 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -489,6 +547,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AUIT00010000000000000203 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -506,6 +572,11 @@
 			isa = PBXTargetDependency;
 			target = DAREP000100000000000401 /* DeviceActivityReportExtension */;
 			targetProxy = DAREP000100000000000701 /* PBXContainerItemProxy */;
+		};
+		AUIT00010000000000000702 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 504EC3031FED79650016851F /* App */;
+			targetProxy = AUIT00010000000000000701 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -810,6 +881,45 @@
 			};
 			name = Release;
 		};
+		AUIT00010000000000000501 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25877RY2EH;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.AppUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = App;
+			};
+			name = Debug;
+		};
+		AUIT00010000000000000502 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25877RY2EH;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.AppUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = App;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -854,6 +964,15 @@
 			buildConfigurations = (
 				DAREP000100000000000501 /* Debug */,
 				DAREP000100000000000502 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AUIT00010000000000000601 /* Build configuration list for PBXNativeTarget "AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AUIT00010000000000000501 /* Debug */,
+				AUIT00010000000000000502 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

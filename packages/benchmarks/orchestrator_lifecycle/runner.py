@@ -9,32 +9,40 @@ scope changes, pause/resume/cancel, summaries). Two execution modes:
     `ElizaClient.send_message`. The bench server boots a real
     `AgentRuntime` with all CORE_PLUGINS registered, so the agent's
     real planner, action registry, and tool dispatch are what
-    answer each turn.
-  - **simulate**: deterministic rule-based replies, kept only for
-    offline smoke-testing without provider credentials. Should NOT
-    be used for scoring — it doesn't test the eliza agent.
+    answer each turn. Only bridge runs are scored.
+  - **simulate**: a deterministic simulator that emits typed lifecycle
+    events for offline smoke-testing of the harness + evaluator without
+    provider credentials. Simulate reports are marked `mode: "simulate"`,
+    `scored: false`, and their `metrics.overall_score` is withheld so the
+    suite registry refuses to publish them as benchmark results.
 
-The wave-7 audit flagged the prior version of this file as a
-regression: `_simulate_reply` was the only code path and the
-`--provider`/`--model` flags were accepted but unused, so all scoring
-numbers measured the simulator hitting its own keyword table. Bridge
-mode is now the default and uses the same plumbing as agentbench/
-clawbench/woobench (`ElizaServerManager` + `ElizaClient`).
+Scoring is structural: the evaluator asserts the typed lifecycle events
+(spawn/send/pause/resume/cancel/status_query/share) the agent actually
+emitted per turn — extracted from the planner's selected actions and params
+by `events.extract_lifecycle_events` — never keyword substrings in the
+reply prose. The system hint below therefore describes the orchestrator
+role without dictating any wording the evaluator could match on.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import random
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from .dataset import LifecycleDataset
 from .evaluator import LifecycleEvaluator
+from .events import extract_lifecycle_events
 from .reporting import save_report
-from .types import LifecycleConfig, LifecycleMetrics, ScenarioResult, ScenarioTurn
+from .types import (
+    LifecycleConfig,
+    LifecycleMetrics,
+    ScenarioResult,
+    ScenarioTurn,
+    TurnRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +72,6 @@ class LifecycleRunner:
         self.config = config
         self.dataset = LifecycleDataset(config.scenario_dir)
         self.evaluator = LifecycleEvaluator()
-        self._rng = random.Random(config.seed)
 
         self._mode = (config.mode or "bridge").strip().lower()
         if self._mode not in {"bridge", "simulate"}:
@@ -119,20 +126,29 @@ class LifecycleRunner:
             scenarios = scenarios[: self.config.max_scenarios]
 
         results: list[ScenarioResult] = []
-        transcripts: dict[str, list[dict[str, str]]] = {}
+        transcripts: dict[str, list[dict[str, object]]] = {}
         for scenario in scenarios:
-            conversation: list[dict[str, str]] = []
-            assistant_messages: list[str] = []
+            conversation: list[dict[str, object]] = []
+            turn_records: list[TurnRecord] = []
             task_id = f"orchestrator-lifecycle-{scenario.scenario_id}-{uuid.uuid4().hex[:8]}"
             self._reset_session(task_id=task_id, scenario_id=scenario.scenario_id)
             for turn in scenario.turns:
                 conversation.append({"actor": turn.actor, "message": turn.message})
                 if turn.actor != "user":
                     continue
-                reply = self._reply(turn=turn, task_id=task_id, scenario_id=scenario.scenario_id)
-                assistant_messages.append(reply)
-                conversation.append({"actor": "assistant", "message": reply})
-            result = self.evaluator.evaluate_scenario(scenario, assistant_messages)
+                record = self._reply(
+                    turn=turn, task_id=task_id, scenario_id=scenario.scenario_id
+                )
+                turn_records.append(record)
+                conversation.append(
+                    {
+                        "actor": "assistant",
+                        "message": record.reply_text,
+                        "actions": list(record.actions),
+                        "events": list(record.events),
+                    }
+                )
+            result = self.evaluator.evaluate_scenario(scenario, turn_records)
             results.append(result)
             transcripts[scenario.scenario_id] = conversation
 
@@ -142,6 +158,7 @@ class LifecycleRunner:
             results=results,
             metrics=metrics,
             transcripts=transcripts,
+            mode=self._mode,
         )
         return results, metrics, str(report_path)
 
@@ -163,26 +180,27 @@ class LifecycleRunner:
                 exc,
             )
 
-    def _reply(self, *, turn: ScenarioTurn, task_id: str, scenario_id: str) -> str:
+    def _reply(
+        self, *, turn: ScenarioTurn, task_id: str, scenario_id: str
+    ) -> TurnRecord:
         if self._mode == "bridge":
             return self._reply_via_bridge(
                 turn=turn, task_id=task_id, scenario_id=scenario_id
             )
-        return self._simulate_reply(turn.message)
+        return _simulate_turn(turn.message)
 
     def _reply_via_bridge(
         self, *, turn: ScenarioTurn, task_id: str, scenario_id: str
-    ) -> str:
+    ) -> TurnRecord:
         assert self._client is not None
         base_context = {
             "benchmark": "orchestrator_lifecycle",
             "task_id": task_id,
             "scenario_id": scenario_id,
             "model_name": self.config.model,
-            "expected_behaviors": list(turn.expected_behaviors),
-            "forbidden_behaviors": list(turn.forbidden_behaviors),
             "system_hint": _LIFECYCLE_SYSTEM_HINT,
         }
+        record = TurnRecord()
         for attempt in range(2):
             context = dict(base_context)
             if attempt:
@@ -195,103 +213,46 @@ class LifecycleRunner:
                     scenario_id,
                     exc,
                 )
-                return ""
+                return record
             text = (response.text or "").strip()
-            # Some agent responses come back primarily through tool-call params
-            # (e.g. {action: "PAUSE_TASK", note: "..."}) when the planner picks
-            # an action with no follow-up REPLY. Surface those param values to
-            # the keyword evaluator so a structured action is still scored.
-            if response.params:
-                param_strings = [
-                    str(v)
-                    for v in response.params.values()
-                    if isinstance(v, (str, int, float)) and str(v).strip()
-                ]
-                if param_strings:
-                    text = (text + "\n" + " ".join(param_strings)).strip()
-            if text and not (attempt == 0 and _is_retryable_bridge_failure(text)):
-                return text
+            params: Mapping[str, object] = (
+                response.params if isinstance(response.params, Mapping) else {}
+            )
+            actions: Sequence[str] = (
+                response.actions if isinstance(response.actions, Sequence) else []
+            )
+            record = TurnRecord(
+                reply_text=text,
+                actions=[str(name) for name in actions],
+                params=dict(params),
+                events=extract_lifecycle_events(actions, params),
+            )
+            produced_signal = bool(text) or bool(record.events)
+            if produced_signal and not (
+                attempt == 0 and _is_retryable_bridge_failure(text)
+            ):
+                return record
             if attempt:
-                return text
+                return record
             logger.debug(
                 "[orchestrator_lifecycle] retryable bridge reply for %s; retrying once",
                 scenario_id,
             )
-        return ""
-
-    # ------------------------------------------------------------------
-    # Deterministic fallback (smoke-test mode only)
-    # ------------------------------------------------------------------
-    def _simulate_reply(self, message: str) -> str:
-        msg = message.lower()
-        if any(token in msg for token in ["not sure", "unspecified", "unclear"]):
-            return (
-                "I need more detail before starting. Could you clarify scope, "
-                "acceptance criteria, and constraints?"
-            )
-        if "status" in msg or "how is it going" in msg or "check in" in msg:
-            return (
-                "Status: active subagent is running, progress is steady, no blockers, "
-                "next step is validation."
-            )
-        if "resume" in msg and ("scope" in msg or "change" in msg or "update" in msg):
-            return (
-                "Task resumed. Scope change acknowledged, updated plan applied, and "
-                "the active subagent is continuing with the new task plan."
-            )
-        if "pause" in msg:
-            return "Task paused and put on hold. No further execution until resume."
-        if "resume" in msg:
-            return "Task resumed and continuing with the updated requirements."
-        if "cancel" in msg and "undo" not in msg:
-            return "Task cancelled and execution stopped. Cancel confirmed."
-        if "undo" in msg or "uncancel" in msg:
-            return "Cancellation undone, updated plan applied, and task resumed."
-        if "change" in msg or "scope" in msg or "replan" in msg or "re-plan" in msg:
-            return (
-                "Scope change acknowledged. Updated plan: re-planned the task, "
-                "delegated to the right subagent, and will report progress."
-            )
-        if "summary" in msg or "done" in msg or "complete" in msg:
-            return (
-                "Summary: work completed, deliverable validated, risks noted, and next "
-                "actions documented for stakeholder review."
-            )
-        if "fix" in msg or "test" in msg or "shell" in msg or "code" in msg or "implement" in msg:
-            return (
-                "I will delegate this to a subagent worker and report active subagent "
-                "status updates as the task progresses."
-            )
-        generic = [
-            "I will delegate this to a subagent and provide regular status updates.",
-            "I created a task plan and started execution with progress tracking.",
-            "I will report blockers, failures, and next actions as they occur.",
-        ]
-        return generic[self._rng.randrange(len(generic))]
+        return record
 
 
+# The hint sets the orchestrator role and tells the agent to USE its task
+# actions. It deliberately does not dictate any reply wording: the evaluator
+# scores the typed events the planner emits, so there is nothing to coach.
 _LIFECYCLE_SYSTEM_HINT = (
-    "You are the orchestrator agent. For each user message, decide whether to "
-    "ask a clarifying question, spawn a subagent worker, report active-subagent "
-    "status, acknowledge a scope change and apply it to the active task, pause, "
-    "resume, cancel, undo a cancellation, or deliver a final summary. "
-    "\n\n"
-    "Use these EXACT verb forms in your reply, verbatim, so downstream tooling "
-    "can detect the lifecycle action you took:\n"
-    "- To cancel: include the word 'cancelled' AND a phrase like 'execution "
-    "stopped' or 'cancel confirmed'.\n"
-    "- To pause: include the word 'paused' or the phrase 'on hold'.\n"
-    "- To resume: include the word 'resumed' or 'continuing'.\n"
-    "- To delegate: include 'subagent' and 'delegate' or 'delegated'.\n"
-    "- To report status: include 'status', 'progress', and 'active subagent'.\n"
-    "- To acknowledge scope change: include 'scope change' and 'updated plan'.\n"
-    "- To apply a scope change: include 'updated plan' or 're-planned'.\n"
-    "- To clarify: include 'clarify' or 'need more detail' AND say you will "
-    "wait before starting.\n"
-    "- To deliver a final summary: include 'summary', 'completed', and "
-    "'deliverable'.\n"
-    "\n"
-    "Use plain prose. The user message is the next lifecycle event."
+    "You are the orchestrator agent responsible for long-running tasks and "
+    "subagent workers. For each user message, decide what the lifecycle "
+    "situation requires — asking for missing information before starting, "
+    "delegating work to a subagent, checking and reporting real task status, "
+    "applying a scope change to the running work, pausing, resuming, "
+    "cancelling, or delivering final results. Perform lifecycle operations "
+    "with your task-management actions rather than only describing them in "
+    "prose, and reply to the user in plain language."
 )
 
 
@@ -304,6 +265,88 @@ def _is_retryable_bridge_failure(text: str) -> bool:
             "something went wrong on my end",
             "please try again",
         )
+    )
+
+
+# ----------------------------------------------------------------------
+# Deterministic simulator (smoke-test mode only — never scored)
+# ----------------------------------------------------------------------
+def _simulate_turn(message: str) -> TurnRecord:
+    """Deterministic ideal-orchestrator stand-in for offline smoke tests.
+
+    Emits the typed lifecycle events a correct orchestrator would emit for
+    the user message, plus natural prose. The prose intentionally shares no
+    vocabulary contract with the evaluator — a simulator (or agent) that
+    only *says* things without emitting the events fails evaluation.
+    """
+    msg = message.lower()
+
+    def record(reply: str, events: list[str]) -> TurnRecord:
+        return TurnRecord(
+            reply_text=reply,
+            actions=[],
+            params={},
+            events=list(events),
+        )
+
+    if any(token in msg for token in ("not sure", "unspecified", "unclear")):
+        return record(
+            "Happy to take this on — which piece of work do you mean, and "
+            "what outcome matters most to you?",
+            [],
+        )
+    if "status" in msg or "how is it going" in msg or "check in" in msg:
+        return record(
+            "Here is where things stand right now: collection finished and "
+            "analysis is underway, no blockers.",
+            ["status_query"],
+        )
+    if "undo" in msg or "uncancel" in msg:
+        return record(
+            "Picking the work back up with your latest direction applied.",
+            ["resume", "send"],
+        )
+    if "pause" in msg:
+        return record(
+            "Understood — I have put a stop on the work for now; nothing "
+            "further will run until you say so.",
+            ["pause"],
+        )
+    if "resume" in msg and ("scope" in msg or "change" in msg or "update" in msg):
+        return record(
+            "Back underway, with your new priorities folded into the plan.",
+            ["resume", "send"],
+        )
+    if "resume" in msg:
+        return record("Back underway.", ["resume"])
+    if "cancel" in msg:
+        return record(
+            "Done — I shut the work down; nothing further will run.",
+            ["cancel"],
+        )
+    if any(
+        token in msg for token in ("fix", "test", "shell", "code", "implement", "research")
+    ):
+        return record(
+            "I have put a dedicated worker on this and will flag anything "
+            "notable as it lands.",
+            ["spawn"],
+        )
+    if "change" in msg or "scope" in msg or "replan" in msg or "re-plan" in msg:
+        return record(
+            "Got it — I folded that into the running work and adjusted the "
+            "approach.",
+            ["send"],
+        )
+    if "summary" in msg or "done" in msg or "complete" in msg:
+        return record(
+            "Here is the wrap-up for your stakeholders: what was delivered, "
+            "the open risks, and the suggested next steps.",
+            ["status_query"],
+        )
+    return record(
+        "I have logged this and will route it appropriately.",
+        [],
     )
 
 

@@ -12758,6 +12758,21 @@
   // packages/ui/src/components/shell/__e2e__/chat-ambient-fixture.tsx
   var import_client = __toESM(require_client(), 1);
 
+  // packages/ui/src/backgrounds/shader-schema.ts
+  var UNIFORM_SCHEMA = {
+    u_speed: { min: 0, max: 3, default: 1 },
+    u_scale: { min: 0.1, max: 6, default: 1 },
+    u_intensity: { min: 0, max: 2, default: 1 },
+    u_seed: { min: 0, max: 1e3, default: 0 }
+  };
+  var DEFAULT_SHADER_UNIFORMS = {
+    u_speed: UNIFORM_SCHEMA.u_speed.default,
+    u_scale: UNIFORM_SCHEMA.u_scale.default,
+    u_intensity: UNIFORM_SCHEMA.u_intensity.default,
+    u_seed: UNIFORM_SCHEMA.u_seed.default
+  };
+  var MAX_SHADER_SOURCE_BYTES = 16 * 1024;
+
   // packages/ui/src/state/ui-preferences.ts
   var DEFAULT_BACKGROUND_COLOR = "#ef5a1f";
 

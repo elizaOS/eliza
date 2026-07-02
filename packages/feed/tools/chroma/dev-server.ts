@@ -130,7 +130,16 @@ async function main(): Promise<void> {
   );
   await waitForExit(bootstrap, "local chain bootstrap");
 
-  const next = spawnInherited("bun", ["run", "dev"], appsWebRoot, localEnv);
+  // Force the webpack dev pipeline: Next 16 turbopack dev never compiles the
+  // app-router pages in this workspace (every page 500s with a
+  // build-manifest.json ENOENT), while the webpack pipeline — which
+  // next.config.ts extensively configures — renders correctly.
+  const next = spawnInherited(
+    "bun",
+    ["x", "next", "dev", "--webpack"],
+    appsWebRoot,
+    localEnv,
+  );
   const exitCode = await new Promise<number>((resolve) => {
     next.on("exit", (code) => resolve(code ?? 0));
   });

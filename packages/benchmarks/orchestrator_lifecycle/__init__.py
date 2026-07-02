@@ -7,6 +7,7 @@ from .types import (
     Scenario,
     ScenarioResult,
     ScenarioTurn,
+    TurnRecord,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "Scenario",
     "ScenarioResult",
     "ScenarioTurn",
+    "TurnRecord",
 ]

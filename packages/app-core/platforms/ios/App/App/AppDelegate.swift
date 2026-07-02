@@ -10,6 +10,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Boot-trace sink first: every later stage (watchdog, Agent plugin,
+        // renderer poll) appends to Documents/eliza-boot-trace.jsonl so an
+        // unattended launch (icon tap / XCUITest) is fully observable via
+        // `devicectl device copy from` — no console required.
+        ElizaStartupTrace.bootstrap()
         ElizaHomeIndicator.install()
         UNUserNotificationCenter.current().delegate = self
         BackgroundRunnerPlugin.registerBackgroundTask()
