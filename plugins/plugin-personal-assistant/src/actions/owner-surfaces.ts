@@ -154,10 +154,20 @@ function makeOwnerLifeAction(args: {
         schema: { type: "string" as const, enum: [...allowedActions] },
       },
       {
+        // The backing store is structural per umbrella (reminders/alarms/
+        // todos/routines -> definitions; goals -> goals), so the kind is
+        // pinned rather than offered as a union. Observed live (gemma-4-31b,
+        // #10722 brush-teeth-basic): the planner set kind:"goal" on
+        // OWNER_ROUTINES and silently rerouted a habit save into the goals
+        // store, so the definitionCountDelta contract never saw the save.
         name: "kind",
-        description: "Optional backing kind override.",
+        description: `Backing kind (fixed to "${args.defaultKind}" for this surface; do not change).`,
         required: false,
-        schema: { type: "string" as const, enum: ["definition", "goal"] },
+        schema: {
+          type: "string" as const,
+          enum: [args.defaultKind],
+          default: args.defaultKind,
+        },
       },
       {
         name: "intent",
@@ -185,6 +195,13 @@ function makeOwnerLifeAction(args: {
         schema: { type: "number" as const },
       },
       {
+        name: "confirmed",
+        description:
+          'create-only: set true ONLY when the owner is confirming a save the assistant previously previewed ("yes, save that") — it saves immediately instead of previewing. Never set on the first request.',
+        required: false,
+        schema: { type: "boolean" as const },
+      },
+      {
         name: "details",
         description: "Structured schedule/cadence/notes/details.",
         required: false,
@@ -196,7 +213,9 @@ function makeOwnerLifeAction(args: {
       const action = normalizeOwnerActionFromAllowed(options, allowedActions);
       const merged = {
         ...params,
-        ...(params.kind ? {} : { kind: args.defaultKind }),
+        // Pinned, not defaulted: a planner-supplied kind must not flip the
+        // umbrella onto the other backing store (see the kind parameter note).
+        kind: args.defaultKind,
         ...(action ? { action, subaction: action } : {}),
         ownerSurface: args.name,
       };
@@ -220,6 +239,9 @@ export const ownerRemindersAction: Action = {
       "SET_REMINDER",
       "REMIND_ME",
       "REMIND_ME_TO",
+      "CREATE_REMINDER",
+      "DAILY_REMINDER",
+      "RECURRING_REMINDER",
     ],
     description:
       "Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
@@ -234,6 +256,9 @@ export const ownerRemindersAction: Action = {
     "SET_REMINDER",
     "REMIND_ME",
     "REMIND_ME_TO",
+    "CREATE_REMINDER",
+    "DAILY_REMINDER",
+    "RECURRING_REMINDER",
   ],
   description:
     "Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
@@ -333,13 +358,21 @@ export const ownerRoutinesAction: Action = {
       "HABITS",
       "ROUTINE",
       "ROUTINES",
+      "SAVE_HABIT",
+      "CREATE_HABIT",
+      "NEW_HABIT",
+      "DAILY_HABIT",
+      "TRACK_HABIT",
+      "CREATE_ROUTINE",
+      "RECURRING_TASK",
+      "CREATE_RECURRING_TASK",
       "DAILY_TASK",
       "WEEKLY_TASK",
     ],
     description:
-      "Owner routines/habits: recurring routines; passive schedule inference.",
+      'Owner habits & routines: save a new recurring habit/routine from chat ("brush my teeth at 8 am and 9 pm every day", "meditate daily") — builds the habit definition + reminder plan; also update/delete/complete/skip/snooze/review; passive schedule inference.',
     descriptionCompressed:
-      "owner routines create|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
+      "owner habits/routines: create new habit from chat (daily/weekly times + reminder plan)|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
     defaultKind: "definition",
   }),
   name: "OWNER_ROUTINES",
@@ -348,13 +381,51 @@ export const ownerRoutinesAction: Action = {
     "HABITS",
     "ROUTINE",
     "ROUTINES",
+    "SAVE_HABIT",
+    "CREATE_HABIT",
+    "NEW_HABIT",
+    "DAILY_HABIT",
+    "TRACK_HABIT",
+    "CREATE_ROUTINE",
+    "RECURRING_TASK",
+    "CREATE_RECURRING_TASK",
     "DAILY_TASK",
     "WEEKLY_TASK",
   ],
   description:
-    "Owner routines/habits: recurring routines; passive schedule inference.",
+    'Owner habits & routines: save a new recurring habit/routine from chat ("brush my teeth at 8 am and 9 pm every day", "meditate daily") — builds the habit definition + reminder plan; also update/delete/complete/skip/snooze/review; passive schedule inference.',
   descriptionCompressed:
-    "owner routines create|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
+    "owner habits/routines: create new habit from chat (daily/weekly times + reminder plan)|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Help me brush my teeth at 8 am and 9 pm every day.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll set that up as a brushing habit at 8:00 am and 9:00 pm daily — confirm and I'll save it.",
+          action: "OWNER_ROUTINES",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Yes, save that brushing routine." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Saved — I'll remind you at 8 am and 9 pm every day.",
+          action: "OWNER_ROUTINES",
+        },
+      },
+    ],
+  ],
   parameters: [
     {
       name: "action",
@@ -393,7 +464,10 @@ export const ownerRoutinesAction: Action = {
     const params = readParameters(options);
     const merged = {
       ...params,
-      ...(params.kind ? {} : { kind: "definition" }),
+      // Pinned: routines/habits are definition-backed. Live gemma-4-31b set
+      // kind:"goal" here and rerouted a habit save into the goals store
+      // (#10722 brush-teeth-basic).
+      kind: "definition",
       ...(action ? { action, subaction: action } : {}),
       ownerSurface: "OWNER_ROUTINES",
     };

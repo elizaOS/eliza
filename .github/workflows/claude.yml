@@ -41,7 +41,7 @@ jobs:
         # (low credit balance, rate limit, transient outage). @claude is a
         # best-effort assistant; an unavailable run must not turn the CI red.
         continue-on-error: true
-        uses: anthropics/claude-code-action@80b31826338489861333dc17217865dfe8085cdc
+        uses: anthropics/claude-code-action@fad22eb3fa582b7357fc0ea48af6645851b884fd
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 

@@ -3,6 +3,7 @@
  * (`service-mixin-discord.ts`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
   errorToDispatchResult,
@@ -38,7 +39,7 @@ export function createDiscordConnectorContribution(
       } catch (error) {
         return {
           state: "disconnected",
-          message: error instanceof Error ? error.message : String(error),
+          message: formatError(error),
           observedAt: new Date().toISOString(),
         };
       }
@@ -46,12 +47,16 @@ export function createDiscordConnectorContribution(
     async send(payload: unknown): Promise<DispatchResult> {
       if (!isConnectorSendPayload(payload)) return rejectInvalidPayload();
       try {
-        const result = await service.sendDiscordMessage({
+        // `sendDiscordMessage` returns a channelId, not a per-message id, so we
+        // do not surface a `messageId` here (mislabeling a channel id as a
+        // message id corrupts the dispatch state log). `messageId` is optional
+        // on the success variant, matching the Google connector.
+        await service.sendDiscordMessage({
           side: "owner",
           channelId: payload.target,
           text: payload.message,
         });
-        return { ok: true, messageId: result.channelId };
+        return { ok: true };
       } catch (error) {
         return errorToDispatchResult(error);
       }

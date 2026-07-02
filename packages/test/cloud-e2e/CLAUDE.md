@@ -57,11 +57,12 @@ bun run cloud:login:test-wallet --base <local-stack-url>
 
 ## Conventions / gotchas
 
-- **Bun + `eliza-source` condition is mandatory.** The `test` scripts pass
-  `--conditions=eliza-source --bun`, and the config / `buildSharedEnv` re-inject
-  `--conditions=eliza-source` into `BUN_OPTIONS` so spawned subprocesses resolve
-  workspace source (notably plugin-sql's peer dep on core). Running Playwright
-  without it will mis-resolve packages.
+- **Bun + `eliza-source` condition is mandatory.** The `test` scripts run
+  `bun --conditions=eliza-source playwright ...` so Bun drives the package
+  command while Playwright workers use Node. The config / `buildSharedEnv`
+  re-inject `--conditions=eliza-source` into `BUN_OPTIONS` so spawned Bun
+  subprocesses resolve workspace source (notably plugin-sql's peer dep on core).
+  Running Playwright without it will mis-resolve packages.
 - **`NODE_ENV=test` and KMS pinned in config.** `playwright.config.ts` sets
   `NODE_ENV ??= "test"` and `ELIZA_KMS_BACKEND ??= "memory"` before cloud-shared
   crypto is imported — the runner seeds/encrypts keys in-process (not a

@@ -22,12 +22,14 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { removeAppDeployFact } from "../app-facts.js";
 import {
   extractAppReference,
   getCloudClient,
   resolveApp,
   resolveCloudApiKey,
 } from "../client.js";
+import { invalidateAppsCache } from "../providers/cloud-apps.js";
 import {
   confirmationPrompt,
   confirmationRoomId,
@@ -154,6 +156,40 @@ export const deleteAppAction: Action = {
       };
       try {
         const result = await client.deleteApp(target.id);
+        // Any delete attempt can change the app inventory — force the provider to
+        // re-fetch so it never serves the just-deleted app from its 60s cache.
+        invalidateAppsCache(runtime);
+
+        // The DELETE route runs cleanup with continueOnError and returns HTTP 200
+        // with { success:false, errors } on PARTIAL failure (e.g. container
+        // teardown failed because the node was unreachable). Don't claim
+        // everything is gone in that case — the tenant DB / container may survive.
+        if (result.success === false || (result.errors?.length ?? 0) > 0) {
+          const detail = result.errors?.length
+            ? ` (${result.errors.join("; ")})`
+            : "";
+          const partial =
+            `I hit a problem deleting "${target.name}" — some resources may not ` +
+            `have been fully torn down${detail}. Check your Eliza Cloud dashboard ` +
+            `to confirm what remains.`;
+          await callback?.({ text: partial, actions: ["DELETE_APP"] });
+          return {
+            success: false,
+            text: result.message || `Partial delete for ${target.name}.`,
+            userFacingText: partial,
+            data: {
+              app: { id: target.id, name: target.name, slug: target.slug },
+              deleted: false,
+              partial: true,
+              errors: result.errors ?? [],
+              cleaned: result.cleaned,
+            },
+          };
+        }
+
+        // Clean success: purge the durable "app is live" fact so the agent stops
+        // recalling the deleted app as live at its old URL.
+        await removeAppDeployFact(runtime, message, target.id);
         const reply = `Deleted "${target.name}". Its container and tenant database are gone.`;
         await callback?.({ text: reply, actions: ["DELETE_APP"] });
         return {
@@ -219,8 +255,9 @@ export const deleteAppAction: Action = {
 
     let app: AppDto | null;
     let available: string[];
+    let ambiguous: string[] | undefined;
     try {
-      ({ app, available } = await resolveApp(client, reference));
+      ({ app, available, ambiguous } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
         `[DELETE_APP] Failed to resolve app "${reference}": ${
@@ -238,13 +275,22 @@ export const deleteAppAction: Action = {
     }
 
     if (!app) {
-      const msg = notFoundMessage(reference, available);
+      const candidates = ambiguous && ambiguous.length > 1 ? ambiguous : null;
+      const msg = candidates
+        ? `Which app do you mean? "${reference}" matches ${candidates.length}: ${candidates.join(", ")}. Reply with the exact name so I don't delete the wrong one.`
+        : notFoundMessage(reference, available);
       await callback?.({ text: msg, actions: ["DELETE_APP"] });
       return {
         success: false,
-        text: `No app matched "${reference}".`,
+        text: candidates
+          ? `Ambiguous reference "${reference}" (${candidates.length} matches).`
+          : `No app matched "${reference}".`,
         userFacingText: msg,
-        data: { reason: "not_found", reference },
+        data: {
+          reason: candidates ? "ambiguous" : "not_found",
+          reference,
+          ...(candidates ? { candidates } : {}),
+        },
       };
     }
 

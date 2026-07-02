@@ -343,19 +343,45 @@ function buildRunner(
   });
 }
 
+const SYSTEM_CLOCK = (): Date => new Date();
+
+interface RunnerCacheEntry {
+  runner: ScheduledTaskRunnerHandle;
+  /** Mutable clock the cached runner reads through on every `now()` call. */
+  clock: { now: () => Date };
+}
+
 /**
- * Long-lived runner host. Builds the runner ONCE per `(agentId, now-mode)` from
- * the injected deps provider and caches it. The runner construction work
+ * Long-lived runner host. Builds the runner ONCE per `agentId` from the
+ * injected deps provider and caches it. The runner construction work
  * (registry wiring, dispatcher binding) is stable across ticks, so the tick
  * reads the cached runner instead of rebuilding it every minute.
+ *
+ * Clock semantics: the cached runner never captures a caller's `now` closure
+ * directly — it reads through a mutable clock ref that EVERY
+ * {@link getRunner} call rebinds (to `opts.now` when provided, back to the
+ * system clock otherwise). The previous design cached the FIRST override
+ * closure forever, freezing the runner's clock at the boot tick's instant:
+ * every later fire stamped `firedAt` with boot time, completion timeouts
+ * became instantly due once uptime exceeded `followupAfterMinutes`, and
+ * quiet-hours/weekend gates evaluated the boot instant forever.
+ *
+ * Single-threaded tick assumption: the clock is one shared ref per agent, so
+ * the value in effect is whatever the MOST RECENT `getRunner` call bound.
+ * The scheduler tick (the only production override caller) fetches the runner
+ * at tick entry and PA ticks run sequentially per agent; a concurrent
+ * no-override caller (REST routes, actions) rebinds to the system clock,
+ * which in production is within seconds of any in-flight tick's `now`.
+ * Callers must re-fetch the runner per operation rather than holding a
+ * long-lived handle with a stale clock expectation.
  */
 export class ScheduledTaskRunnerService extends Service {
   static override serviceType = SERVICE_TYPE;
 
   override capabilityDescription =
-    "Long-lived ScheduledTask runner host. Builds the runner from the runtime-injected deps provider (or the built-in default deps) once and caches it; the scheduler tick reads the cached runner instead of reconstructing it every minute.";
+    "Long-lived ScheduledTask runner host. Builds the runner from the runtime-injected deps provider (or the built-in default deps) once per agent and caches it with a rebindable clock; the scheduler tick reads the cached runner instead of reconstructing it every minute.";
 
-  private readonly runners = new Map<string, ScheduledTaskRunnerHandle>();
+  private readonly runners = new Map<string, RunnerCacheEntry>();
 
   override async stop(): Promise<void> {
     this.runners.clear();
@@ -372,18 +398,26 @@ export class ScheduledTaskRunnerService extends Service {
   }
 
   getRunner(opts: GetScheduledTaskRunnerOptions): ScheduledTaskRunnerHandle {
-    const cacheKey = `${opts.agentId}::${opts.now ? "now-override" : "system-clock"}`;
-    const cached = this.runners.get(cacheKey);
-    if (cached) return cached;
-    const runtime = this.runtime;
-    if (!runtime) {
-      throw new Error(
-        "ScheduledTaskRunnerService: runtime is not bound; was the service started?",
-      );
+    let entry = this.runners.get(opts.agentId);
+    if (!entry) {
+      const runtime = this.runtime;
+      if (!runtime) {
+        throw new Error(
+          "ScheduledTaskRunnerService: runtime is not bound; was the service started?",
+        );
+      }
+      const clock = { now: SYSTEM_CLOCK };
+      // The runner captures the REF, not the caller's closure — rebinding
+      // `clock.now` below retargets the cached runner's clock per call.
+      const runner = buildRunner(runtime, {
+        agentId: opts.agentId,
+        now: () => clock.now(),
+      });
+      entry = { runner, clock };
+      this.runners.set(opts.agentId, entry);
     }
-    const runner = buildRunner(runtime, opts);
-    this.runners.set(cacheKey, runner);
-    return runner;
+    entry.clock.now = opts.now ?? SYSTEM_CLOCK;
+    return entry.runner;
   }
 }
 

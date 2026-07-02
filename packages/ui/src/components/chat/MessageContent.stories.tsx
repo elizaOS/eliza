@@ -181,6 +181,45 @@ export const SecretRequestImageField: Story = {
   },
 };
 
+/**
+ * #8910 — a sensitive request can also collect a non-image file (e.g. a
+ * keystore/backup). Renders a plain file input scoped by `mimeTypes`, without
+ * the camera-capture hint reserved for image fields.
+ */
+export const SecretRequestFileField: Story = {
+  args: {
+    message: makeMessage({
+      text: "",
+      secretRequest: {
+        key: "WALLET_KEYSTORE",
+        reason: "Attach the encrypted keystore file to import.",
+        status: "pending",
+        delivery: {
+          mode: "inline_owner_app",
+          instruction: "Attach the .json keystore file.",
+          canCollectValueInCurrentChannel: true,
+        },
+        form: {
+          type: "sensitive_request_form",
+          kind: "secret",
+          mode: "inline_owner_app",
+          submitLabel: "Upload",
+          fields: [
+            {
+              name: "keystore",
+              label: "Keystore file",
+              input: "file",
+              required: true,
+              mimeTypes: ["application/json"],
+              maxBytes: 1_000_000,
+            },
+          ],
+        },
+      },
+    }),
+  },
+};
+
 /** Analysis mode surfaces XML reasoning blocks + action-name footer. */
 export const AnalysisMode: Story = {
   args: {

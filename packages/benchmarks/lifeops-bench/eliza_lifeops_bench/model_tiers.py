@@ -64,9 +64,11 @@ DEFAULT_TIERS: dict[ModelTier, TierSpec] = {
     "large": TierSpec(
         tier="large",
         provider="cerebras",
-        model_name="gpt-oss-120b",
+        model_name="gemma-4-31b",
         base_url="https://api.cerebras.ai/v1",
-        context_window=131_072,
+        # Cerebras enforces a 131 000-token window for gemma-4-31b on the paid
+        # tier (live-verified: 200k prompts fail with context_length_exceeded).
+        context_window=131_000,
         notes="Default eval provider; prompt caching enabled",
     ),
     "frontier": TierSpec(

@@ -89,7 +89,15 @@ function getDefaultKey(c: AppContext): string {
     null;
   if (anon) return `anon:${anon}`;
 
-  return "public";
+  // Unauthenticated public traffic buckets PER-IP, not a global constant.
+  // Returning the literal "public" put ALL anonymous traffic worldwide into one
+  // window, so a single flooder (600/min) 429-locked every anonymous client on
+  // every route using the default key generator (#11087). Per-IP confines the
+  // limit to the abuser. "public" survives only as the last resort when the IP
+  // is unresolvable (e.g. a proxy stripped forwarding headers) — still bounded,
+  // but no longer the common path.
+  const ip = getRequestIp(c);
+  return ip ? `ip:${ip}` : "public";
 }
 
 interface CheckResult {
@@ -122,7 +130,7 @@ function applyRateLimitHeaders(c: Context, headers: Record<string, string>): voi
   }
 }
 
-async function checkUpstash(
+export async function checkUpstash(
   redis: CompatibleRedis,
   key: string,
   windowMs: number,
@@ -130,11 +138,20 @@ async function checkUpstash(
 ): Promise<CheckResult> {
   const fullKey = `ratelimit:${key}`;
   const count = await redis.incr(fullKey);
-  if (count === 1) {
+  let ttl = count === 1 ? null : await redis.pttl(fullKey);
+  if (count === 1 || ttl === null || ttl < 0) {
+    // First request of a window — or an ORPHANED counter: if the pexpire after
+    // a previous window's first incr ever failed (Workers sub-request drop),
+    // the key has no TTL (pttl -1), so the counter grows forever and the
+    // client is permanently 429'd while resetAt/retryAfter keep promising a
+    // 60s reset that never happens (observed live: an IP at ~26 req/hour
+    // locked out of every endpoint, including public /models). Always re-arm
+    // the window here so a missed expiry heals on the next request instead of
+    // bricking the key.
     await redis.pexpire(fullKey, windowMs);
+    ttl = windowMs;
   }
-  const ttl = await redis.pttl(fullKey);
-  const resetAt = Date.now() + (ttl !== null && ttl > 0 ? ttl : windowMs);
+  const resetAt = Date.now() + (ttl > 0 ? ttl : windowMs);
   const allowed = count <= maxRequests;
   return {
     allowed,

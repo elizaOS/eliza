@@ -26,6 +26,13 @@ import {
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared/character-presets";
+import {
+  CHAT_UPLOAD_MIME_TYPES,
+  MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
+  MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
+  MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
+  MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
+} from "@elizaos/shared/chat-upload-limits";
 import type { ConversationMetadata } from "@elizaos/shared/contracts/conversation-routes";
 import {
   normalizeFirstRunProviderId,
@@ -445,38 +452,15 @@ export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
 // Chat image validation
 // ---------------------------------------------------------------------------
 
-const MAX_CHAT_IMAGES = 4;
-const MAX_IMAGE_DATA_BYTES = 5 * 1_048_576; // 5 MB for images
-const MAX_MEDIA_DATA_BYTES = 15 * 1_048_576; // 15 MB for audio/video/pdf
-const MAX_IMAGE_NAME_LENGTH = 255;
+// Caps + allowlist live in @elizaos/shared/chat-upload-limits (imported above,
+// aliased to the historical local names) so the UI composer enforces the exact
+// same numbers pre-send and the two sides cannot drift.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
-const ALLOWED_IMAGE_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-]);
-const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set([
-  ...ALLOWED_IMAGE_MIME_TYPES,
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/wave",
-  "audio/ogg",
-  "audio/webm",
-  "audio/mp4",
-  "audio/aac",
-  "audio/flac",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/ogg",
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "text/markdown",
-]);
+
+// Re-exported for chat-routes and for parity tests against the client side.
+export { CHAT_UPLOAD_MIME_TYPES };
+
+const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set<string>(CHAT_UPLOAD_MIME_TYPES);
 
 export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
   "Please review the attached file.";
@@ -575,13 +559,14 @@ export async function buildChatAttachments(
       // attachment carries a durable served URL (renderable from chat history),
       // not a throwaway `attachment:img-N` placeholder. `_data` is retained for
       // the in-memory vision/description pass so it needs no re-fetch.
+      const bytes = Buffer.from(img.data, "base64");
       let url = `attachment:img-${i}`;
+      let checksum: string | undefined;
       let thumbnailUrl: string | undefined;
       try {
-        url = persistMediaBytes(
-          Buffer.from(img.data, "base64"),
-          img.mimeType,
-        ).url;
+        const persisted = persistMediaBytes(bytes, img.mimeType);
+        url = persisted.url;
+        checksum = persisted.hash;
         if (img.thumbnail?.data) {
           // Client already produced a thumbnail (browser/webview canvas) — persist it.
           thumbnailUrl = persistMediaBytes(
@@ -591,14 +576,11 @@ export async function buildChatAttachments(
         } else if (img.mimeType.toLowerCase().startsWith("image/")) {
           // No client thumbnail (non-webview client) — pre-compute one server-side.
           thumbnailUrl =
-            (await persistImageThumbnail(
-              Buffer.from(img.data, "base64"),
-              img.mimeType,
-            )) ?? undefined;
+            (await persistImageThumbnail(bytes, img.mimeType)) ?? undefined;
         }
       } catch (err) {
         logger.warn(
-          `[buildChatAttachments] failed to persist uploaded image: ${
+          `[buildChatAttachments] failed to persist uploaded attachment: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
@@ -609,6 +591,10 @@ export async function buildChatAttachments(
         title: img.name,
         source: "client_chat",
         contentType: contentTypeForUploadMime(img.mimeType),
+        mimeType: img.mimeType,
+        filename: img.name,
+        size: bytes.length,
+        ...(checksum ? { checksum } : {}),
         ...(thumbnailUrl ? { thumbnailUrl } : {}),
         _data: img.data,
         _mimeType: img.mimeType,

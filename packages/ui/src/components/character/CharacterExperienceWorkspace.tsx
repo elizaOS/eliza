@@ -292,15 +292,7 @@ function StatTile({
   );
 }
 
-function ScoreBar({
-  label,
-  value,
-  explanation,
-}: {
-  label: string;
-  value: number;
-  explanation: string;
-}) {
+function ScoreBar({ label, value }: { label: string; value: number }) {
   const percent = formatPercent(value);
   return (
     <div className="min-w-0">
@@ -314,7 +306,6 @@ function ScoreBar({
           style={{ width: percent }}
         />
       </div>
-      <p className="mt-1 text-xs leading-relaxed text-muted">{explanation}</p>
     </div>
   );
 }
@@ -444,7 +435,7 @@ function ExperienceGraphNode({
       type="button"
       aria-label={`Select experience: ${nodeLabel}`}
       data-testid={`experience-graph-node-${experience.id}`}
-      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125  "
+      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125"
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,
@@ -501,9 +492,9 @@ const ExperienceGraphPanel = memo(function ExperienceGraphPanel({
   return (
     <div
       data-testid="experience-graph-panel"
+      /* bg kept: functional canvas bounds for the clickable graph nodes, not card chrome */
       className="relative h-[24rem] overflow-hidden rounded-sm bg-bg-muted/20"
     >
-      <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] [background-size:34px_34px] [background-blend-mode:normal] [opacity:0.25]" />
       <svg
         aria-hidden="true"
         className="absolute inset-0 h-full w-full"
@@ -574,7 +565,7 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
       ref={ref}
       type="button"
       data-testid={`experience-row-${experience.id}`}
-      className={`flex min-w-0 flex-col items-start gap-2 border-b border-border/15 px-4 py-4 text-left transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
+      className={`flex min-w-0 flex-col items-start gap-2 px-4 py-4 text-left transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
@@ -624,7 +615,7 @@ function RelatedExperienceButton({
     <button
       ref={ref}
       type="button"
-      className="block w-full rounded-sm border border-border/30 px-3 py-2 text-left hover:bg-bg-muted/20"
+      className="block w-full rounded-sm px-3 py-2 text-left hover:bg-bg-muted/20"
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
@@ -829,7 +820,8 @@ export function CharacterExperienceWorkspace({
 
   if (experiences.length === 0) {
     return (
-      <section className="rounded-sm border border-dashed border-border/40 bg-bg-muted/20 px-5 py-8 text-sm text-muted">
+      /* Flat — no card/border. The shell owns the page's horizontal padding. */
+      <section className="py-8 text-sm text-muted">
         <div className="text-base font-semibold text-txt">
           I haven&rsquo;t learned anything yet.
         </div>
@@ -843,8 +835,9 @@ export function CharacterExperienceWorkspace({
   }
 
   return (
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
     <section className="flex min-w-0 flex-col gap-4">
-      <div className="rounded-sm border border-border/40 bg-bg/70 p-4">
+      <div>
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
           <h3 className="text-base font-semibold text-txt">Experience</h3>
           <div className="text-xs font-medium text-muted">
@@ -904,8 +897,8 @@ export function CharacterExperienceWorkspace({
       />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
-        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-sm border border-border/40 bg-bg/70">
-          <div className="border-b border-border/30 px-4 py-3">
+        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden">
+          <div className="px-4 py-3">
             <div className="text-sm font-semibold text-txt">Review queue</div>
           </div>
           <div className="custom-scrollbar flex min-w-0 flex-1 flex-col overflow-y-auto">
@@ -927,7 +920,7 @@ export function CharacterExperienceWorkspace({
         </div>
 
         {visibleSelectedExperience ? (
-          <div className="flex min-w-0 flex-col gap-4 rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
+          <div className="flex min-w-0 flex-col gap-4 px-4 py-4">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-start gap-2">
@@ -1019,57 +1012,38 @@ export function CharacterExperienceWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-4 lg:border-l lg:border-border/20 lg:pl-4">
+              <div className="space-y-4 lg:pl-4">
                 <ScoreBar
                   label="Importance"
                   value={visibleSelectedExperience.importance}
-                  explanation="Higher values rank this learning as more likely to affect future behavior."
                 />
                 <ScoreBar
                   label="Confidence"
                   value={visibleSelectedExperience.confidence}
-                  explanation="Lower confidence keeps this item in the review queue until evidence improves."
                 />
                 <div>
                   <div className="text-xs text-muted">Tags</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {visibleSelectedExperience.tags.length > 0 ? (
-                      visibleSelectedExperience.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full border border-border/40 px-2 py-0.5 text-xs text-muted-strong"
-                        >
-                          {tag}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-sm text-muted">
-                        No tags recorded.
-                      </span>
-                    )}
-                  </div>
+                  {visibleSelectedExperience.tags.length > 0 ? (
+                    <p className="mt-2 text-sm text-muted-strong">
+                      {visibleSelectedExperience.tags.join(" · ")}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-muted">No tags recorded.</p>
+                  )}
                 </div>
                 <div>
                   <div className="text-xs text-muted">Keywords</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {experienceKeywords(visibleSelectedExperience).length >
-                    0 ? (
-                      experienceKeywords(visibleSelectedExperience).map(
-                        (keyword) => (
-                          <span
-                            key={keyword}
-                            className="rounded-full border border-border/40 bg-bg/50 px-2 py-0.5 text-xs text-muted-strong"
-                          >
-                            {keyword}
-                          </span>
-                        ),
-                      )
-                    ) : (
-                      <span className="text-sm text-muted">
-                        No keywords recorded.
-                      </span>
-                    )}
-                  </div>
+                  {experienceKeywords(visibleSelectedExperience).length > 0 ? (
+                    <p className="mt-2 text-sm text-muted-strong">
+                      {experienceKeywords(visibleSelectedExperience).join(
+                        " · ",
+                      )}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-muted">
+                      No keywords recorded.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <div className="text-xs text-muted">Graph metadata</div>
@@ -1128,7 +1102,7 @@ export function CharacterExperienceWorkspace({
 
             <ProvenancePanel experience={visibleSelectedExperience} />
 
-            <div className="min-w-0 border-t border-border/20 pt-4">
+            <div className="min-w-0 pt-4">
               <div className="mb-3 text-sm font-semibold text-txt">
                 Review edit
               </div>
@@ -1149,7 +1123,7 @@ export function CharacterExperienceWorkspace({
                       learning: event.target.value,
                     }))
                   }
-                  className="min-h-[8rem] resize-y rounded-sm border-border/40 bg-bg-muted/15 font-mono text-sm leading-relaxed"
+                  className="min-h-[8rem] resize-y rounded-none border-0 border-b border-border/40 bg-transparent px-0 font-mono text-sm leading-relaxed"
                   {...learningAgentProps}
                 />
               </label>
@@ -1174,7 +1148,7 @@ export function CharacterExperienceWorkspace({
                         importance: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-sm border-border/40 bg-bg-muted/15"
+                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...importanceAgentProps}
                   />
                 </label>
@@ -1197,7 +1171,7 @@ export function CharacterExperienceWorkspace({
                         confidence: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-sm border-border/40 bg-bg-muted/15"
+                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...confidenceAgentProps}
                   />
                 </label>
@@ -1217,7 +1191,7 @@ export function CharacterExperienceWorkspace({
                         tags: event.target.value,
                       }))
                     }
-                    className="rounded-sm border-border/40 bg-bg-muted/15"
+                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...tagsAgentProps}
                   />
                 </label>

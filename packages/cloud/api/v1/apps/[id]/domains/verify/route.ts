@@ -12,6 +12,7 @@
 import { promises as dns } from "node:dns";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appsService } from "@/lib/services/apps";
 import { managedDomainsService } from "@/lib/services/managed-domains";
@@ -32,6 +33,9 @@ app.post("/", async (c) => {
     if (!appRow || appRow.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "App not found" }, 404);
     }
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
 
     const parsed = VerifySchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -44,7 +48,7 @@ app.post("/", async (c) => {
       );
     }
 
-    const md = await managedDomainsService.getDomainByName(parsed.data.domain);
+    const md = await managedDomainsService.getOwnDomainRow(user.organization_id, parsed.data.domain);
     if (
       !md ||
       md.organizationId !== user.organization_id ||

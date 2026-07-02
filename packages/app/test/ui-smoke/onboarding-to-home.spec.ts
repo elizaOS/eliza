@@ -7,8 +7,11 @@ import {
   seedAppStorage,
 } from "./helpers";
 import {
+  completeCloudInferenceOnboardingToHome,
   completeCloudOnboardingToHome,
   completeOnboardingToHome,
+  completeOtherProviderSettingsHandoff,
+  connectRemoteFirstRunToHome,
   expectChatFirstOnboarding,
   injectCloudAuthToken,
   injectFullCapabilityHost,
@@ -21,10 +24,10 @@ import {
 } from "./onboarding-to-home.shared";
 
 // CRITICAL FLOW (#9952) — onboarding is now PART OF THE CHAT. A fresh profile
-// (firstRunComplete=false) paints the homescreen + floating runtime chooser. The
-// headless conductor still seeds transcript-only follow-ups like Cloud OAuth,
-// cloud-agent picks, and the tutorial CHOICE. There is NO separate full-screen
-// onboarding surface anymore.
+// (firstRunComplete=false) paints the homescreen + the real chat overlay. The
+// headless conductor seeds runtime/provider choices, Cloud OAuth, cloud-agent
+// picks, and the tutorial CHOICE into the transcript. There is NO separate
+// full-screen onboarding surface anymore.
 //
 // These specs boot a fresh device (no first-run-complete) and drive the in-chat
 // flow in the REAL shell to completion, then assert the post-onboarding landing
@@ -70,8 +73,17 @@ test.describe("in-chat onboarding → home → launcher", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    // Capture the chat-first onboarding landing before driving it.
+    // Capture the chat-first onboarding landing before driving it. The helper
+    // also asserts the onboarding lock: composer disabled ("Choose an option
+    // to continue") and Escape NOT collapsing the pinned-open sheet.
     await expectChatFirstOnboarding(page);
+    // NEGATIVE, restated at the spec level: mid-onboarding the sheet cannot be
+    // dismissed — the old Escape-collapse-to-reach-the-launcher step is gone.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+      "data-open",
+      "true",
+    );
     await screenshot(page, "onboarding-chat-first");
 
     const { surface } = await completeOnboardingToHome(page, desktopClick, {
@@ -79,11 +91,18 @@ test.describe("in-chat onboarding → home → launcher", () => {
       tutorial: "skip",
     });
 
+    // Completion auto-collapsed the sheet (the launcher swipe below needs no
+    // manual collapse) and unlocked the composer.
+    await expect(
+      page.getByTestId("continuous-chat-overlay"),
+    ).not.toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled();
+
     // Capture the populated home.
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    await swipeLeftToLauncher(page, surface);
+    await swipeLeftToLauncher(page, surface, { input: "mouse" });
     await screenshot(page, "launcher");
   });
 
@@ -109,6 +128,89 @@ test.describe("in-chat onboarding → home → launcher", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "cloud-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
+  });
+
+  test("Local cloud-inference onboarding completes in chat", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    await injectCloudAuthToken(page);
+    const state = await installHomeRoutes(page);
+    await installCloudRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeCloudInferenceOnboardingToHome(
+      page,
+      desktopClick,
+      {
+        state,
+        tutorial: "skip",
+      },
+    );
+    await settleHomeEntrance(page);
+    await screenshot(page, "cloud-inference-home");
+    expect(await surface.getAttribute("data-page")).toBe("home");
+    expect(JSON.stringify(state.firstRunPosts[0])).toContain("elizacloud");
+  });
+
+  test("Other provider completes in chat and hands off to Settings without model download", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    const state = await installHomeRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    let localDownloadStarted = false;
+    await page.route("**/api/local-inference/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (
+        request.method() === "POST" &&
+        (url.pathname.endsWith("/downloads") ||
+          url.pathname.endsWith("/active"))
+      ) {
+        localDownloadStarted = true;
+      }
+      await route.fallback();
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeOtherProviderSettingsHandoff(
+      page,
+      desktopClick,
+      {
+        state,
+        tutorial: "skip",
+      },
+    );
+    await settleHomeEntrance(page);
+    await screenshot(page, "other-settings-handoff");
+    expect(await surface.getAttribute("data-page")).toBe("home");
+    expect(localDownloadStarted).toBe(false);
+  });
+
+  test("Remote connect adopts a host and replaces onboarding without the old screen", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    const state = await installHomeRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const apiBase = await page.evaluate(() => window.location.origin);
+    const { surface, activeServer } = await connectRemoteFirstRunToHome(page, {
+      state,
+      apiBase,
+    });
+
+    await settleHomeEntrance(page);
+    await screenshot(page, "remote-home");
+    expect(await surface.getAttribute("data-page")).toBe("home");
+    expect(activeServer).toContain(apiBase);
   });
 
   test("tutorial CHOICE 'Take the tutorial' completes onboarding and launches the tour", async ({

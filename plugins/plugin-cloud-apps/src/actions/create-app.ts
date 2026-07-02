@@ -25,6 +25,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getCloudClient, resolveCloudApiKey } from "../client.js";
+import { invalidateAppsCache } from "../providers/cloud-apps.js";
 
 /**
  * Draft sentinel URL the server recognizes as "not yet deployed" (suppresses the
@@ -245,6 +246,8 @@ export const createAppAction: Action = {
     try {
       const body = buildCreateBody(intent);
       const { app, warnings } = await client.createApp(body);
+      // A new app now exists — drop the provider cache so it shows up this turn.
+      invalidateAppsCache(runtime);
 
       const lines = [`Created "${app.name}" on Eliza Cloud (status: draft).`];
       if (intent.description) lines.push(intent.description);

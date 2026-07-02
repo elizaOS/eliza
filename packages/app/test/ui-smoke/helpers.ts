@@ -109,9 +109,20 @@ function shouldIgnoreRequestFailure(url: string, failureText: string): boolean {
   return false;
 }
 
+// Avatar / background EXISTENCE probes: the client's `hasCustomVrm` /
+// `hasCustomBackground` issue a HEAD to `/api/avatar/vrm|background` with
+// `allowNonOk` and treat any non-ok response as "no custom asset" (falls back
+// to the default avatar/background). In the zero-key smoke stack that probe
+// legitimately answers non-2xx, which is the expected zero-state — the client
+// handles it and renders the default — not a diagnostic error.
+function isOptionalAssetProbeUrl(url: string): boolean {
+  return /\/api\/avatar\/(vrm|background)(\?|$)/.test(url);
+}
+
 function shouldIgnoreHttpError(url: string, status: number): boolean {
   if (status < 400) return true;
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
+  if (isOptionalAssetProbeUrl(url)) return true;
   return false;
 }
 
@@ -127,6 +138,12 @@ export function installPageDiagnosticsGuard(page: Page): void {
 
   page.on("console", (message) => {
     if (message.type() !== "error") return;
+    // The browser logs an automatic "Failed to load resource" console error for
+    // every non-2xx response; its text carries no URL — the resource URL is the
+    // message *location*. Skip it only for the optional-asset probes whose
+    // non-2xx answer is the expected zero-state (same contract as
+    // shouldIgnoreHttpError above); every other console.error still fails.
+    if (isOptionalAssetProbeUrl(message.location().url ?? "")) return;
     issues.push(`console.error: ${message.text()}`);
   });
 
@@ -153,6 +170,31 @@ export async function expectNoPageDiagnostics(
   expect(
     issues,
     `[playwright-ui-smoke] ${label}: expected no browser console.error/pageerror/requestfailed diagnostics; actual=${JSON.stringify(
+      issues,
+      null,
+      2,
+    )}`,
+  ).toEqual([]);
+}
+
+/**
+ * Fault-injection variant of {@link expectNoPageDiagnostics}: a spec that
+ * deliberately makes the backend fail (e.g. a 500 on POST /api/first-run to
+ * drive the error-recovery flow) allowlists exactly those diagnostics; any
+ * UNRELATED console.error/pageerror/requestfailed still fails the spec.
+ */
+export async function expectOnlyAllowedPageDiagnostics(
+  page: Page,
+  label: string,
+  allowed: RegExp[],
+): Promise<void> {
+  const issues = browserDiagnosticIssuesByPage.get(page) ?? [];
+  const unexpected = issues.filter(
+    (issue) => !allowed.some((pattern) => pattern.test(issue)),
+  );
+  expect(
+    unexpected,
+    `[playwright-ui-smoke] ${label}: diagnostics beyond the injected fault; all=${JSON.stringify(
       issues,
       null,
       2,
@@ -353,8 +395,8 @@ async function expectMainShellReadyForRoute(
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
   if (!options.allowOnboardingToast) {
-    // Runtime/provider setup is owned by the floating first-run chooser. Its
-    // absence proves the main shell is past onboarding.
+    // Runtime/provider setup is owned by in-chat first-run choices. The removed
+    // standalone chooser must never intercept normal route loads.
     await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,
     });
@@ -691,6 +733,15 @@ function smokePolymarketStatus() {
       reason: null,
       gammaApiBase: "https://gamma-api.polymarket.com",
       dataApiBase: "https://data-api.polymarket.com",
+    },
+    // Required by PolymarketStatusResponse — usePolymarketState reads
+    // `status.account.ready` before fetching positions; omitting the block
+    // made the view render a caught TypeError as its error banner.
+    account: {
+      ready: false,
+      reason:
+        "No Polymarket wallet address configured. Set POLYMARKET_WALLET_ADDRESS (or a managed EVM address) to read positions.",
+      address: null,
     },
     trading: {
       ready: false,
@@ -1910,6 +1961,58 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ data: [] }),
     });
   });
+
+  // LifeOps scheduled-tasks poller — a shell/home-surface GET behind the lifeops
+  // widget that sits under many views. The zero-key smoke stack returns 501; a
+  // fresh agent has no scheduled tasks, so the canonical empty list matches real
+  // zero-state and keeps the diagnostics guard clean.
+  await page.route("**/api/lifeops/scheduled-tasks**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ scheduledTasks: [], tasks: [] }),
+    });
+  });
+
+  // Files view poller — `GET /api/files` lists stored files (files-routes.ts);
+  // the zero-key smoke stack returns 501. A fresh agent has no stored files, so
+  // the canonical empty list matches real zero-state and keeps diagnostics clean.
+  await page.route("**/api/files", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ files: [] }),
+    });
+  });
+
+  // Avatar / background EXISTENCE probes — `hasCustomVrm` / `hasCustomBackground`
+  // do a HEAD (with `allowNonOk`) and treat any non-ok as "no custom asset"
+  // (falls back to the default). The zero-key smoke stack answers 501 — a 5xx
+  // the per-view diagnostics collectors flag as a server error. A fresh agent
+  // has no custom avatar, so answer a clean 404: the client still falls back to
+  // the default, and a 4xx is the expected zero-state, not a server error.
+  for (const asset of ["vrm", "background"]) {
+    await page.route(`**/api/avatar/${asset}**`, async (route) => {
+      const method = route.request().method();
+      if (method !== "GET" && method !== "HEAD") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ error: `no custom ${asset}` }),
+      });
+    });
+  }
 
   // Approval/needs-attention poller — shell-level GET on the home surface. The
   // zero-key smoke stack has no approval queue, so return the canonical empty

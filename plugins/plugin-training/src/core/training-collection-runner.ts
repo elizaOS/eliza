@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
+import { toLocalFileUrl } from "../util/local-file-url.js";
 import {
   type ActionBenchmarkRunOptions,
   type ActionBenchmarkRunResult,
@@ -2176,7 +2177,9 @@ function escapeHtml(value: unknown): string {
 }
 
 function fileHref(path: string): string {
-  return encodeURI(`file://${path}`);
+  // `file://${path}` yields a broken URL for Windows drive paths (C:\… →
+  // file://C:%5C…). toLocalFileUrl produces file:///C:/… on both platforms.
+  return toLocalFileUrl(path);
 }
 
 function compactCollectionIndexValue(value: unknown): string {

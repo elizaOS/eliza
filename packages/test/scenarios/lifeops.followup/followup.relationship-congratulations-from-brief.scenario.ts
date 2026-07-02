@@ -50,7 +50,11 @@ export default scenario({
         description: "personalized congrats draft via primary channel",
         includesAny: ["Alex", "VP", "Engineering", "Acme", "congrats"],
       }),
-      responseIncludesAny: ["Alex", "VP", "Engineering", "Acme", "congrats"],
+      // Seeded-token grounding: the rolodex entity carries the primary
+      // channel (telegram, @arivera) — neither token appears in any user
+      // turn ("her primary channel" is all the prompt says), so correct
+      // routing requires reading the seeded contact.
+      responseIncludesAny: ["telegram", "arivera"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

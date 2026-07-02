@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useNow } from "../../../hooks/useNow";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
@@ -195,9 +196,12 @@ function financesEqual(
 function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
   const [data, setData] = useState<FinancesWidgetData | null>(null);
   const nav = useWidgetNavigation();
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the money polls must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
 
   const load = useCallback(async () => {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+    if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setData(null);
       return;
     }
@@ -219,7 +223,7 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
     } catch {
       // Transient/poll failure: keep the last good snapshot (todo.tsx pattern).
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void load();

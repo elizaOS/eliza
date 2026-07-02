@@ -25,7 +25,11 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  CalendarService,
+  CalendarServiceError,
+} from "@elizaos/plugin-calendar";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 
 const ACTION_NAME = "CONFLICT_DETECT";
 
@@ -102,12 +106,26 @@ export interface ConflictDetectLoader {
   }) => Promise<readonly ConflictDetectEvent[]>;
 }
 
-const defaultLoader: ConflictDetectLoader = {
-  loadFeed: async () => [],
-  loadFreeBusy: async () => [],
-};
+/**
+ * `loadFeed` has no default: scanning against an empty feed when no calendar
+ * source is wired would report a confident "No conflicts detected" that is a
+ * lie. When no feed loader is registered the handler fails honestly with
+ * `CALENDAR_UNAVAILABLE`. Attendee free/busy stays an optional enrichment —
+ * empty means "not injected" and proposal scans still run against the feed.
+ */
+interface LoaderState {
+  loadFeed: ConflictDetectLoader["loadFeed"] | null;
+  loadFreeBusy: ConflictDetectLoader["loadFreeBusy"];
+}
 
-let activeLoader: ConflictDetectLoader = defaultLoader;
+function unwiredLoaderState(): LoaderState {
+  return {
+    loadFeed: null,
+    loadFreeBusy: async () => [],
+  };
+}
+
+let activeLoader: LoaderState = unwiredLoaderState();
 
 export function setConflictDetectLoader(
   next: Partial<ConflictDetectLoader>,
@@ -116,7 +134,56 @@ export function setConflictDetectLoader(
 }
 
 export function __resetConflictDetectLoaderForTests(): void {
-  activeLoader = defaultLoader;
+  activeLoader = unwiredLoaderState();
+}
+
+/**
+ * Production feed loader: reads the owner's live calendar feed from
+ * `CalendarService` (the same source the CALENDAR umbrella reads) and maps it
+ * onto conflict-scan windows. All-day events are excluded — they do not block
+ * time, so pairing them against every timed event that day would fabricate
+ * conflicts. Throws `CalendarServiceError` when the calendar service is not
+ * registered; the handler translates that into an honest failure.
+ */
+export function createCalendarFeedConflictLoader(): Pick<
+  ConflictDetectLoader,
+  "loadFeed"
+> {
+  return {
+    loadFeed: async ({ runtime, range }) => {
+      const service = runtime.getService<CalendarService>(
+        CalendarService.serviceType,
+      );
+      if (!service) {
+        throw new CalendarServiceError(
+          503,
+          "Calendar service is not available.",
+          "CALENDAR_SERVICE_UNAVAILABLE",
+        );
+      }
+      const feed = await service.getCalendarFeed(INTERNAL_URL, {
+        timeMin: range.start,
+        timeMax: range.end,
+      });
+      return feed.events
+        .filter((event) => !event.isAllDay)
+        .map((event) => {
+          const attendees = event.attendees
+            .map((attendee) => attendee.email)
+            .filter(
+              (email): email is string =>
+                typeof email === "string" && email.length > 0,
+            );
+          return {
+            id: event.id,
+            title: event.title,
+            startISO: event.startAt,
+            endISO: event.endAt,
+            ...(attendees.length > 0 ? { attendees } : {}),
+          };
+        });
+    },
+  };
 }
 
 function getParams(
@@ -410,12 +477,15 @@ export const conflictDetectAction: Action & {
       };
     }
 
+    // Validate input before checking calendar availability: a malformed
+    // request is the caller's error regardless of connected sources.
+    let proposal: ConflictDetectProposal | null = null;
     if (subaction === "scan_event_proposal") {
-      const proposal = params.proposal;
+      const candidate = params.proposal;
       if (
-        !proposal ||
-        typeof proposal.startISO !== "string" ||
-        typeof proposal.endISO !== "string"
+        !candidate ||
+        typeof candidate.startISO !== "string" ||
+        typeof candidate.endISO !== "string"
       ) {
         return {
           success: false,
@@ -423,10 +493,46 @@ export const conflictDetectAction: Action & {
           data: { subaction, error: "MISSING_PROPOSAL" },
         };
       }
-      const [feed, freeBusy] = await Promise.all([
-        activeLoader.loadFeed({ runtime, range }),
-        activeLoader.loadFreeBusy({ runtime, proposal, range }),
-      ]);
+      proposal = candidate;
+    }
+
+    const loadFeed = activeLoader.loadFeed;
+    if (!loadFeed) {
+      const text =
+        "I can't scan for conflicts — no calendar source is connected.";
+      await callback?.({ text, source: "action", action: ACTION_NAME });
+      return {
+        success: false,
+        text,
+        data: { subaction, error: "CALENDAR_UNAVAILABLE" },
+      };
+    }
+    // Boundary translation: a failed calendar read must surface as an honest
+    // "calendar unavailable" failure, never as a clean zero-conflict scan.
+    const calendarUnavailable = async (error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      logger.warn(`[CONFLICT_DETECT] ${subaction} feed load failed: ${detail}`);
+      const text =
+        "The calendar is unavailable right now, so I can't scan for conflicts.";
+      await callback?.({ text, source: "action", action: ACTION_NAME });
+      return {
+        success: false,
+        text,
+        data: { subaction, error: "CALENDAR_UNAVAILABLE", detail },
+      };
+    };
+
+    if (subaction === "scan_event_proposal" && proposal) {
+      let feed: readonly ConflictDetectEvent[];
+      let freeBusy: readonly ConflictDetectEvent[];
+      try {
+        [feed, freeBusy] = await Promise.all([
+          loadFeed({ runtime, range }),
+          activeLoader.loadFreeBusy({ runtime, proposal, range }),
+        ]);
+      } catch (error) {
+        return calendarUnavailable(error);
+      }
       const conflicts = detectProposalConflicts({ proposal, feed, freeBusy });
       const summary = summarize(conflicts);
       const checkedEvents = feed.length + freeBusy.length;
@@ -451,7 +557,12 @@ export const conflictDetectAction: Action & {
       };
     }
 
-    const feed = await activeLoader.loadFeed({ runtime, range });
+    let feed: readonly ConflictDetectEvent[];
+    try {
+      feed = await loadFeed({ runtime, range });
+    } catch (error) {
+      return calendarUnavailable(error);
+    }
     const conflicts = detectConflicts(feed);
     const summary = summarize(conflicts);
     logger.info(

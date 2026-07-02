@@ -44,6 +44,10 @@ import {
 } from "../auth/account-storage.ts";
 import { getAccessToken } from "../auth/credentials.ts";
 import {
+  directProviderBaseUrl,
+  probeDirectApiKey,
+} from "../auth/direct-api-probe.ts";
+import {
   cancelFlow,
   getFlowState,
   startAnthropicOAuthFlow,
@@ -393,37 +397,6 @@ function asDirectProvider(
     : null;
 }
 
-function directProviderBaseUrl(providerId: DirectAccountProvider): string {
-  switch (providerId) {
-    case "anthropic-api":
-      return (
-        process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com/v1"
-      );
-    case "openai-api":
-      return process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
-    case "deepseek-api":
-      return (
-        process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com"
-      );
-    case "zai-api":
-      return (
-        process.env.ZAI_BASE_URL?.trim() ||
-        process.env.Z_AI_BASE_URL?.trim() ||
-        "https://api.z.ai/api/paas/v4"
-      );
-    case "moonshot-api":
-      return (
-        process.env.MOONSHOT_BASE_URL?.trim() ||
-        process.env.KIMI_BASE_URL?.trim() ||
-        "https://api.moonshot.ai/v1"
-      );
-    case "cerebras-api":
-      return (
-        process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1"
-      );
-  }
-}
-
 function codingPlanProviderBaseUrl(
   providerId: Extract<SubscriptionProvider, "zai-coding" | "kimi-coding">,
 ): string {
@@ -461,60 +434,6 @@ async function probeCodingPlanKey(
         Authorization: `Bearer ${apiKey}`,
       },
     });
-    const latencyMs = Date.now() - start;
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      return {
-        ok: false,
-        status: response.status,
-        error: `${providerId} ${response.status}: ${text.slice(0, 200)}`,
-        latencyMs,
-      };
-    }
-    return { ok: true, status: response.status, latencyMs };
-  } catch (err) {
-    return {
-      ok: false,
-      status: 0,
-      error: err instanceof Error ? err.message : String(err),
-      latencyMs: Date.now() - start,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function probeDirectApiKey(
-  providerId: DirectAccountProvider,
-  apiKey: string,
-): Promise<{
-  ok: boolean;
-  status: number;
-  error?: string;
-  latencyMs: number;
-}> {
-  const start = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const baseUrl = directProviderBaseUrl(providerId).replace(/\/+$/, "");
-    const response =
-      providerId === "anthropic-api"
-        ? await fetch(`${baseUrl}/models?limit=1`, {
-            method: "GET",
-            signal: controller.signal,
-            headers: {
-              "anthropic-version": "2023-06-01",
-              "x-api-key": apiKey,
-            },
-          })
-        : await fetch(`${baseUrl}/models`, {
-            method: "GET",
-            signal: controller.signal,
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-            },
-          });
     const latencyMs = Date.now() - start;
     if (!response.ok) {
       const text = await response.text().catch(() => "");

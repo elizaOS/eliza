@@ -205,4 +205,35 @@ describe("ConversationsSidebar jump-to-message (#9955)", () => {
     });
     expect(loadConversationMessagesAround).not.toHaveBeenCalled();
   });
+
+  it("clears an active terminal/inbox surface and lands on chat before jumping", async () => {
+    // ChatView renders the terminal branch first and the inbox branch second,
+    // so with either active a jump switched the conversation invisibly beneath
+    // it and the anchor never mounted. jumpToMessage must clear both and set
+    // the chat tab (mirroring handleRowSelect).
+    const scroll = scrollSpy();
+    const el = document.createElement("div");
+    el.id = getChatMessageAnchorId(OLD_MESSAGE_ID);
+    document.body.appendChild(el);
+
+    const setState = vi.fn();
+    const setTab = vi.fn();
+    appMock.value = makeAppState({
+      activeTerminalSessionId: "pty-1",
+      activeInboxChat: null,
+      loadConversationMessagesAround: vi.fn(async () => true),
+      setState,
+      setTab,
+    });
+
+    render(<ConversationsSidebar />);
+    await openSearchAndJump();
+
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1), {
+      timeout: 3000,
+    });
+    expect(setState).toHaveBeenCalledWith("activeTerminalSessionId", null);
+    expect(setState).toHaveBeenCalledWith("activeInboxChat", null);
+    expect(setTab).toHaveBeenCalledWith("chat");
+  });
 });

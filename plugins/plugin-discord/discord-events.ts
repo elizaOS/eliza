@@ -150,7 +150,13 @@ function parseEventListenerConfig(
 
 	// How long a recent unaddressed message stays eligible to be folded into a
 	// following pointer's "[Recent channel context]". Tunable like its siblings;
-	// the debouncer clamps it up to the channel debounce window.
+	// the debouncer clamps it up to the channel debounce window. Default 90s:
+	// humans split a question across messages and add the bare "@bot" pointer
+	// tens of seconds later (live #11118: question at :2x, pointer at :51 — a
+	// 10s TTL had already pruned the question, so the bot answered the bare
+	// mention with a contextless greeting). The fold buffer stays bounded
+	// (50 entries, pointer-gated), so the longer window costs no unbounded
+	// growth.
 	const recentContextTtlMsSetting = service.runtime.getSetting(
 		"DISCORD_RECENT_CONTEXT_TTL_MS",
 	) as string | number | undefined;
@@ -159,8 +165,8 @@ function parseEventListenerConfig(
 			? recentContextTtlMsSetting
 			: typeof recentContextTtlMsSetting === "string" &&
 					recentContextTtlMsSetting.trim()
-				? Number.parseInt(recentContextTtlMsSetting, 10) || 10000
-				: 10000;
+				? Number.parseInt(recentContextTtlMsSetting, 10) || 90000
+				: 90000;
 
 	const shouldRespondOnlyToMentions =
 		service.discordSettings.shouldRespondOnlyToMentions !== false;

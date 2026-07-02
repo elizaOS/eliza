@@ -38,6 +38,26 @@ let serverReachable = false;
 let hasTestApiKey = false;
 let hasMemberApiKey = false;
 const createdAppIds: string[] = [];
+const createdCharacterIds: string[] = [];
+
+/**
+ * Create a REAL character owned by the test user and return its id. The generic
+ * app-update path enforces character ownership (cross-tenant disclosure guard,
+ * #10852-class) — so `linked_character_ids` must reference characters that
+ * exist AND belong to the caller, not fabricated UUIDs.
+ */
+async function createTestCharacter(): Promise<string> {
+  const res = await api.post(
+    "/api/my-agents/characters",
+    { name: uniqueName("Linked Char"), bio: ["e2e linked-character fixture"] },
+    { headers: bearerHeaders() },
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { id?: string };
+  expect(body.id).toBeTruthy();
+  createdCharacterIds.push(body.id as string);
+  return body.id as string;
+}
 
 // A syntactically valid UUID that should never resolve to a real app.
 const MISSING_UUID = "00000000-0000-4000-8000-0000000000ff";
@@ -146,6 +166,11 @@ afterAll(async () => {
   if (!shouldRunAuthed()) return;
   for (const appId of createdAppIds) {
     await api.delete(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+      headers: bearerHeaders(),
+    });
+  }
+  for (const characterId of createdCharacterIds) {
+    await api.delete(`/api/my-agents/characters/${characterId}`, {
       headers: bearerHeaders(),
     });
   }
@@ -439,9 +464,11 @@ describe("PUT /api/v1/apps/:id", () => {
   test("happy path: sets linked_character_ids", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createTestApp();
+    // Real, caller-owned characters — the update path enforces ownership, so
+    // fabricated UUIDs correctly 404 ("Character not found").
     const characters = [
-      "00000000-0000-4000-8000-000000000010",
-      "00000000-0000-4000-8000-000000000011",
+      await createTestCharacter(),
+      await createTestCharacter(),
     ];
 
     const res = await api.put(

@@ -48,7 +48,18 @@ export default scenario({
         description: "telegram follow-up draft",
         includesAny: ["Alice", "telegram", "follow-up", "approval"],
       }),
-      responseIncludesAny: ["Alice", "draft", "approval", "Telegram"],
+      // De-echoed (#9310): the old keywords ("Alice", "draft", "approval",
+      // "Telegram") all appeared in the user's own turn text. The hold-for-
+      // approval contract is asserted in derived words (invite review, never
+      // claim delivery); `draftExists` stays the load-bearing outcome.
+      responseIncludesAny: ["review", "approve", "sign off", "take a look"],
+      responseExcludes: [
+        "already sent",
+        "has been sent",
+        "i've sent",
+        "i have sent",
+        "sent it",
+      ],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

@@ -51,6 +51,99 @@ export interface TeamTradingPerformanceRow {
   agentCount: number;
 }
 
+type DbRow = Record<string, unknown>;
+
+function malformedRow(key: string, expected: string): TypeError {
+  return new TypeError(
+    `TradingPerformanceService query returned invalid ${key}; expected ${expected}`,
+  );
+}
+
+function stringValue(row: DbRow, key: string): string {
+  const value = row[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "bigint") {
+    return String(value);
+  }
+  throw malformedRow(key, "string-compatible value");
+}
+
+function nullableStringValue(row: DbRow, key: string): string | null {
+  const value = row[key];
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  throw malformedRow(key, "string or null");
+}
+
+function numberValue(row: DbRow, key: string): number {
+  const value = row[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  throw malformedRow(key, "finite number");
+}
+
+function nullableNumberValue(row: DbRow, key: string): number | null {
+  const value = row[key];
+  if (value === null || value === undefined) return null;
+  return numberValue(row, key);
+}
+
+function booleanValue(row: DbRow, key: string): boolean {
+  const value = row[key];
+  if (typeof value === "boolean") return value;
+  throw malformedRow(key, "boolean");
+}
+
+function dateOrStringValue(row: DbRow, key: string): Date | string {
+  const value = row[key];
+  if (typeof value === "string" || value instanceof Date) return value;
+  throw malformedRow(key, "Date or string");
+}
+
+function mapWalletTradingPerformanceRow(
+  row: DbRow,
+): WalletTradingPerformanceRow {
+  return {
+    id: stringValue(row, "id"),
+    username: nullableStringValue(row, "username"),
+    displayName: nullableStringValue(row, "displayName"),
+    profileImageUrl: nullableStringValue(row, "profileImageUrl"),
+    reputationPoints: stringValue(row, "reputationPoints"),
+    balance: stringValue(row, "balance"),
+    lifetimePnL: stringValue(row, "lifetimePnL"),
+    capitalBase: stringValue(row, "capitalBase"),
+    effectiveCapitalBase: stringValue(row, "effectiveCapitalBase"),
+    tradingReturn: stringValue(row, "tradingReturn"),
+    createdAt: dateOrStringValue(row, "createdAt"),
+    nftTokenId: nullableNumberValue(row, "nftTokenId"),
+    isAgent: booleanValue(row, "isAgent"),
+    managedBy: nullableStringValue(row, "managedBy"),
+  };
+}
+
+function mapTeamTradingPerformanceRow(row: DbRow): TeamTradingPerformanceRow {
+  return {
+    id: stringValue(row, "id"),
+    username: nullableStringValue(row, "username"),
+    displayName: nullableStringValue(row, "displayName"),
+    profileImageUrl: nullableStringValue(row, "profileImageUrl"),
+    reputationPoints: stringValue(row, "reputationPoints"),
+    balance: stringValue(row, "balance"),
+    userLifetimePnL: stringValue(row, "userLifetimePnL"),
+    agentLifetimePnL: stringValue(row, "agentLifetimePnL"),
+    teamLifetimePnL: stringValue(row, "teamLifetimePnL"),
+    teamCapitalBase: stringValue(row, "teamCapitalBase"),
+    teamEffectiveCapitalBase: stringValue(row, "teamEffectiveCapitalBase"),
+    teamTradingReturn: stringValue(row, "teamTradingReturn"),
+    createdAt: dateOrStringValue(row, "createdAt"),
+    nftTokenId: nullableNumberValue(row, "nftTokenId"),
+    agentCount: numberValue(row, "agentCount"),
+  };
+}
+
 export class TradingPerformanceService {
   static calculateTradingReturnMetrics(
     lifetimePnL: number,
@@ -146,7 +239,7 @@ export class TradingPerformanceService {
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    return result as unknown as WalletTradingPerformanceRow[];
+    return result.map(mapWalletTradingPerformanceRow);
   }
 
   static async getWalletEntry(
@@ -184,7 +277,7 @@ export class TradingPerformanceService {
       LIMIT 1
     `);
 
-    const rows = result as unknown as WalletTradingPerformanceRow[];
+    const rows = result.map(mapWalletTradingPerformanceRow);
     return rows[0] ?? null;
   }
 
@@ -227,8 +320,8 @@ export class TradingPerformanceService {
         )
     `);
 
-    const rows = result as unknown as Array<{ count: number }>;
-    return rows[0]?.count ?? 0;
+    const row = result[0];
+    return row ? numberValue(row, "count") : 0;
   }
 
   static async getTeamLeaderboardRows(
@@ -275,7 +368,7 @@ export class TradingPerformanceService {
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    return result as unknown as TeamTradingPerformanceRow[];
+    return result.map(mapTeamTradingPerformanceRow);
   }
 
   static async getTeamEntry(
@@ -320,7 +413,7 @@ export class TradingPerformanceService {
       LIMIT 1
     `);
 
-    const rows = result as unknown as TeamTradingPerformanceRow[];
+    const rows = result.map(mapTeamTradingPerformanceRow);
     return rows[0] ?? null;
   }
 
@@ -367,7 +460,7 @@ export class TradingPerformanceService {
         )
     `);
 
-    const rows = result as unknown as Array<{ count: number }>;
-    return rows[0]?.count ?? 0;
+    const row = result[0];
+    return row ? numberValue(row, "count") : 0;
   }
 }

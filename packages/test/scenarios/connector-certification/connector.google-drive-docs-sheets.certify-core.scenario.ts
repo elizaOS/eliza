@@ -11,10 +11,12 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "google-docs-core",
-      text: "Fetch the shared doc, upload the updated sheet, and give me the Drive provenance or tell me if auth is degraded.",
-      responseIncludesAny: ["drive", "doc", "sheet", "upload", "auth"],
-      acceptedActions: ["COMPUTER_USE"],
-      includesAny: ["drive", "doc", "sheet", "upload", "auth"],
+      text: "Fetch the shared doc and push the updated sheet up to Drive, then show me exactly where it landed and how you got it there.",
+      // Derived-output tokens: a real completion reports the uploaded artifact
+      // and its provenance; none of these appear in the prompt text.
+      responseIncludesAny: ["uploaded", "provenance", "version", "revision"],
+      expectedActions: ["COMPUTER_USE"],
+      actionPayloadIncludesAny: ["drive", "doc", "sheet", "upload", "auth"],
     },
   ],
   finalChecks: [

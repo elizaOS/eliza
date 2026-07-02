@@ -7396,6 +7396,7 @@
   "desktop.tray.openPlugins": "Abrir plugins",
   "desktop.tray.openDesktopWorkspace": "Abrir workspace desktop",
   "desktop.tray.openVoiceControls": "Abrir controles de voz",
+  "desktop.tray.notifications": "Notificações",
   "desktop.tray.toggleLifecycle": "Iniciar/Parar agente",
   "desktop.tray.restartAgent": "Reiniciar agente",
   "desktop.tray.sendTestNotification": "Enviar notificação de teste",

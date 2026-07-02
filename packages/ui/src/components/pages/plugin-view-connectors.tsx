@@ -109,6 +109,18 @@ interface ConnectorPluginCardProps
   plugin: PluginInfo;
 }
 
+export function shouldRenderConnectorPluginConfig({
+  hasParams,
+  isCloudOAuthMode,
+  isDiscordManagedMode,
+}: {
+  hasParams: boolean;
+  isCloudOAuthMode: boolean;
+  isDiscordManagedMode: boolean;
+}): boolean {
+  return hasParams && !isDiscordManagedMode && !isCloudOAuthMode;
+}
+
 type CloudOAuthConnectorCopy = {
   platform: "slack" | "twitter" | "google";
   /**
@@ -902,11 +914,11 @@ function ConnectorPluginCard({
   ) : null;
   const supportsConnectorSetupPanel =
     Boolean(setupPanelPluginId) && hasConnectorSetupPanel(setupPanelPluginId);
-  const showPluginConfig =
-    hasParams &&
-    setupPanelPluginId === plugin.id &&
-    !isDiscordManagedMode &&
-    !isCloudOAuthMode;
+  const showPluginConfig = shouldRenderConnectorPluginConfig({
+    hasParams,
+    isCloudOAuthMode,
+    isDiscordManagedMode,
+  });
 
   return (
     <div key={plugin.id} data-testid={`connector-section-${plugin.id}`}>
@@ -916,7 +928,7 @@ function ConnectorPluginCard({
         data-testid={`connector-card-${plugin.id}`}
         expanded={isExpanded}
         expandOnCollapsedSurfaceClick
-        className={`border-transparent transition-all ${isSelected ? "" : ""}`}
+        className="border-transparent transition-all"
         onExpandedChange={(nextExpanded) =>
           handleConnectorExpandedChange(plugin.id, nextExpanded)
         }
@@ -1284,13 +1296,11 @@ export function ConnectorPluginGroups(props: ConnectorPluginGroupsProps) {
   }
 
   return groups.map((group) => (
-    <div
-      key={group.id}
-      className="relative rounded-sm border border-border/30 px-2 pb-2 pt-5"
-    >
-      <span className="absolute -top-2.5 left-3 bg-bg px-2 text-2xs font-semibold uppercase tracking-wider text-muted">
+    /* Flat — no card/border. The group label + whitespace do the separation. */
+    <div key={group.id} className="pt-2">
+      <div className="mb-3 text-2xs font-semibold uppercase tracking-wider text-muted">
         {group.label}
-      </span>
+      </div>
       <div className="space-y-4">
         {group.plugins.map((plugin) => (
           <ConnectorPluginCard key={plugin.id} {...props} plugin={plugin} />

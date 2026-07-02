@@ -109,6 +109,7 @@ function parseTriageEntry(row: Record<string, unknown>): TriageEntry {
     suggestedResponse: toText(row.suggested_response) || null,
     draftResponse: toText(row.draft_response) || null,
     autoReplied: toBoolean(row.auto_replied, false),
+    snoozedUntil: toText(row.snoozed_until) || null,
     resolved: toBoolean(row.resolved, false),
     resolvedAt: toText(row.resolved_at) || null,
     createdAt: toText(row.created_at),
@@ -228,6 +229,7 @@ export class InboxRepository {
       suggestedResponse: opts.suggestedResponse ?? null,
       draftResponse: null,
       autoReplied: false,
+      snoozedUntil: null,
       resolved: false,
       resolvedAt: null,
       createdAt: now,
@@ -235,13 +237,20 @@ export class InboxRepository {
     };
   }
 
-  async getUnresolved(opts?: { limit?: number }): Promise<TriageEntry[]> {
+  async getUnresolved(opts?: {
+    limit?: number;
+    includeSnoozed?: boolean;
+  }): Promise<TriageEntry[]> {
     const limit = opts?.limit ?? 50;
+    const snoozeClause = opts?.includeSnoozed
+      ? ""
+      : `AND (snoozed_until IS NULL OR snoozed_until <= ${sqlText(isoNow())})`;
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_inbox.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND resolved = FALSE
+         ${snoozeClause}
        ORDER BY
          CASE urgency WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          created_at DESC
@@ -255,9 +264,15 @@ export class InboxRepository {
     senderName?: string | null;
     excludeSource?: string | null;
     limit?: number;
+    includeSnoozed?: boolean;
   }): Promise<TriageEntry[]> {
     const limit = opts.limit ?? 50;
     const clauses = [`agent_id = ${sqlText(this.agentId)}`, "resolved = FALSE"];
+    if (!opts.includeSnoozed) {
+      clauses.push(
+        `(snoozed_until IS NULL OR snoozed_until <= ${sqlText(isoNow())})`,
+      );
+    }
 
     if (opts.excludeSource) {
       clauses.push(`source != ${sqlText(opts.excludeSource)}`);
@@ -293,17 +308,26 @@ export class InboxRepository {
 
   async getByClassification(
     classification: TriageClassification,
-    opts?: { limit?: number; unresolvedOnly?: boolean },
+    opts?: {
+      limit?: number;
+      unresolvedOnly?: boolean;
+      includeSnoozed?: boolean;
+    },
   ): Promise<TriageEntry[]> {
     const limit = opts?.limit ?? 50;
     const unresolvedOnly = opts?.unresolvedOnly !== false;
     const resolvedClause = unresolvedOnly ? "AND resolved = FALSE" : "";
+    const snoozeClause =
+      unresolvedOnly && !opts?.includeSnoozed
+        ? `AND (snoozed_until IS NULL OR snoozed_until <= ${sqlText(isoNow())})`
+        : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_inbox.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND classification = ${sqlText(classification)}
          ${resolvedClause}
+         ${snoozeClause}
        ORDER BY created_at DESC
        LIMIT ${limit}`,
     );
@@ -369,6 +393,40 @@ export class InboxRepository {
       this.runtime,
       `UPDATE app_inbox.life_inbox_triage_entries
        SET ${sets.join(", ")}
+       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
+    );
+  }
+
+  async updateDraftResponse(id: string, draftResponse: string): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_inbox.life_inbox_triage_entries
+       SET draft_response = ${sqlText(draftResponse)},
+           updated_at = ${sqlText(now)}
+       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
+    );
+  }
+
+  async snoozeUntil(id: string, snoozedUntil: string): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_inbox.life_inbox_triage_entries
+       SET snoozed_until = ${sqlText(snoozedUntil)},
+           resolved = FALSE,
+           updated_at = ${sqlText(now)}
+       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
+    );
+  }
+
+  async clearSnooze(id: string): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_inbox.life_inbox_triage_entries
+       SET snoozed_until = NULL,
+           updated_at = ${sqlText(now)}
        WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
     );
   }

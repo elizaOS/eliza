@@ -528,7 +528,10 @@ export default scenario({
             {
               action: "delete",
               view: "remote-ledger",
-              confirm: "true",
+              // The VIEWS action declares `confirm` as schema type boolean; the
+              // strict LLM proxy validates fixture toolCalls against that
+              // schema, so a string "true" is rejected before the handler runs.
+              confirm: true,
             },
             "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
           ),
@@ -803,7 +806,7 @@ export default scenario({
           parameters: {
             action: "delete",
             view: "remote-ledger",
-            confirm: "true",
+            confirm: true,
           },
           resultFields: {
             "values.mode": "delete",

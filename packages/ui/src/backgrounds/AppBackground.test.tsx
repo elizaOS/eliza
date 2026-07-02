@@ -43,6 +43,35 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
+  it("renders the programmable shader (or its color-field fallback) for glsl mode", () => {
+    seed({
+      mode: "glsl",
+      color: "#059669",
+      shader: {
+        presetId: "aurora",
+        source:
+          "precision highp float; void main(){ gl_FragColor = vec4(1.0); }",
+        uniforms: { u_speed: 1, u_scale: 1, u_intensity: 1, u_seed: 0 },
+      },
+    });
+    const { container } = render(<AppBackground />);
+    // In jsdom there's no WebGL, so the glsl layer's safety path swaps in the
+    // color field — either way a background layer must be present (no blank/crash).
+    const glsl = container.querySelector('[data-testid="app-background-glsl"]');
+    const shader = container.querySelector(
+      '[data-testid="app-background-shader"]',
+    );
+    expect(glsl || shader).not.toBeNull();
+  });
+
+  it("falls back to the color field when a glsl config has no shader payload", () => {
+    seed({ mode: "glsl", color: "#059669" });
+    const { container } = render(<AppBackground />);
+    expect(
+      container.querySelector('[data-testid="app-background-shader"]'),
+    ).not.toBeNull();
+  });
+
   it("falls back to the shader when the config slice is missing", () => {
     __setAppValueForTests({} as never);
     const { container } = render(<AppBackground />);

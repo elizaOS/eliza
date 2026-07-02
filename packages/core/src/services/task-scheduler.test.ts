@@ -5,9 +5,11 @@ import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { Task } from "../types/task";
 import {
+	markTaskSchedulerDirty,
 	registerTaskSchedulerRuntime,
 	startTaskScheduler,
 	stopTaskScheduler,
+	unregisterTaskSchedulerRuntime,
 } from "./task-scheduler.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -66,6 +68,84 @@ describe("task-scheduler", () => {
 		await runOneTick();
 		expect(getTasksCalls).toBe(2);
 		expect(errorSpy).toHaveBeenCalledTimes(2);
+	});
+
+	it("re-arms a still-registered agent after a transient getTasks rejection (no re-register)", async () => {
+		let getTasksCalls = 0;
+		const adapter = {
+			getTasks: vi.fn(async () => {
+				getTasksCalls += 1;
+				if (getTasksCalls === 1) throw new Error("db outage");
+				return [] as Task[];
+			}),
+		} as unknown as IDatabaseAdapter;
+
+		startTaskScheduler(adapter);
+		registerTaskSchedulerRuntime(makeRuntime(), {
+			runTick: vi.fn(async () => undefined),
+		});
+
+		await runOneTick();
+		expect(getTasksCalls).toBe(1);
+
+		// No re-register: a transient rejection must re-arm the still-registered
+		// agent so the next tick queries again. Without the re-arm the agent is
+		// drained on the failing tick and stays silent forever (getTasksCalls stuck at 1).
+		await runOneTick();
+		expect(getTasksCalls).toBe(2);
+	});
+
+	it("keeps re-querying while an agent's queue is non-empty and goes quiet when it empties", async () => {
+		const task = { id: "t1", agentId: AGENT_ID } as unknown as Task;
+		const queues: Task[][] = [[task], [task], []];
+		const getTasks = vi.fn(async () => queues.shift() ?? []);
+		startTaskScheduler({ getTasks } as unknown as IDatabaseAdapter);
+		const runTick = vi.fn(async () => undefined);
+		registerTaskSchedulerRuntime(makeRuntime(), { runTick });
+
+		// Tick 1: initial registration marked the agent dirty.
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(1);
+		expect(runTick).toHaveBeenCalledTimes(1);
+
+		// Tick 2: nothing called markTaskSchedulerDirty, but the queue was
+		// non-empty — repeat tasks become due purely by time passing, so the
+		// scheduler must re-query on its own.
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(2);
+		expect(runTick).toHaveBeenCalledTimes(2);
+
+		// Tick 3: queue drains to empty — the agent goes quiet after this query.
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(3);
+		expect(runTick).toHaveBeenCalledTimes(2);
+
+		// Tick 4: quiet — no query until something marks the agent dirty again.
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(3);
+
+		// markTaskSchedulerDirty (runtime.createTask path) wakes the agent up.
+		markTaskSchedulerDirty(AGENT_ID);
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(4);
+	});
+
+	it("does not re-arm an agent that unregistered during its own runTick", async () => {
+		const task = { id: "t1", agentId: AGENT_ID } as unknown as Task;
+		const getTasks = vi.fn(async () => [task]);
+		startTaskScheduler({ getTasks } as unknown as IDatabaseAdapter);
+		const runTick = vi.fn(async () => {
+			// Simulates TaskService.stop() racing the shared tick.
+			unregisterTaskSchedulerRuntime(AGENT_ID);
+		});
+		registerTaskSchedulerRuntime(makeRuntime(), { runTick });
+
+		await runOneTick();
+		expect(runTick).toHaveBeenCalledTimes(1);
+
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(1);
+		expect(runTick).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not log when getTasks succeeds", async () => {

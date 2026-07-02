@@ -14,12 +14,17 @@ import { streamText } from "ai";
 import { calculateCost, estimateRequestCost, getProviderFromModel } from "../../pricing";
 import {
   mergeAnthropicCotProviderOptions,
-  mergeGoogleImageModalitiesWithAnthropicCot,
   resolveAnthropicThinkingBudgetTokens,
 } from "../../providers/anthropic-thinking";
+import { getImageProvider } from "../../providers/image/registry";
 import { getLanguageModel } from "../../providers/language-model";
+import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { agentsService } from "../../services/agents/agents";
 import { calculateImageGenerationCostFromCatalog } from "../../services/ai-pricing";
+import {
+  DEFAULT_IMAGE_MODEL_ID,
+  getSupportedImageModelDefinition,
+} from "../../services/ai-pricing-definitions";
 import {
   createHostedBrowserSession,
   deleteHostedBrowserSession,
@@ -337,11 +342,16 @@ export async function executeSkillImageGeneration(
   const aspectRatio = (dataContent.aspectRatio as string) || "1:1";
 
   if (!prompt) throw new Error("Image prompt required");
+  const definition = getSupportedImageModelDefinition(DEFAULT_IMAGE_MODEL_ID);
+  if (!definition) {
+    throw new Error(`Unsupported image model: ${DEFAULT_IMAGE_MODEL_ID}`);
+  }
   const imageCost = await calculateImageGenerationCostFromCatalog({
-    model: "google/gemini-2.5-flash-image",
-    provider: "google",
+    model: definition.modelId,
+    provider: definition.provider,
+    billingSource: definition.billingSource,
     imageCount: 1,
-    dimensions: { size: "default" },
+    dimensions: definition.defaultDimensions,
   });
 
   // Reserve credits BEFORE the operation (TOCTOU-safe)
@@ -366,44 +376,32 @@ export async function executeSkillImageGeneration(
       user_id: ctx.user.id,
       api_key_id: ctx.apiKeyId,
       type: "image",
-      model: "google/gemini-2.5-flash-image",
-      provider: "google",
+      model: definition.modelId,
+      provider: definition.provider,
       prompt,
       status: "pending",
       credits: String(imageCost.totalCost),
       cost: String(imageCost.totalCost),
     });
 
-    const aspectDesc: Record<string, string> = {
-      "1:1": "square",
-      "16:9": "wide landscape",
-      "9:16": "tall portrait",
-      "4:3": "landscape",
-      "3:4": "portrait",
-    };
-
-    const imageModelId = "google/gemini-2.5-flash-image";
-    const result = streamText({
-      model: imageModelId,
-      ...mergeGoogleImageModalitiesWithAnthropicCot(imageModelId),
-      prompt: `Generate an image: ${prompt}, ${aspectDesc[aspectRatio] || "square"} composition`,
+    // Dispatch through the priced image-provider registry (atlas/fal) — the
+    // old streamText/BitRouter image-modality path had no image:generation
+    // pricing row and 500'd before dispatch (#11005). Provider throws on
+    // failure; the outer catch refunds the reservation.
+    const env = getCloudAwareEnv();
+    const generated = await getImageProvider(definition.billingSource).generate({
+      model: definition.modelId,
+      prompt,
+      aspectRatio,
+      apiKeys: {
+        ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
+        ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
+        FAL_KEY: env.FAL_KEY,
+        FAL_API_KEY: env.FAL_API_KEY,
+      },
     });
-
-    let imageBase64: string | null = null;
-    let mimeType = "image/png";
-
-    for await (const delta of result.fullStream) {
-      if (delta.type === "file" && delta.file.mediaType.startsWith("image/")) {
-        mimeType = delta.file.mediaType || "image/png";
-        imageBase64 = `data:${mimeType};base64,${Buffer.from(delta.file.uint8Array).toString("base64")}`;
-        break;
-      }
-    }
-
-    if (!imageBase64) {
-      await reservation.reconcile(0); // Full refund
-      throw new Error("No image generated");
-    }
+    const imageBase64 = generated.dataUrl;
+    const mimeType = generated.mimeType;
 
     await generationsService.update(generation.id, {
       status: "completed",

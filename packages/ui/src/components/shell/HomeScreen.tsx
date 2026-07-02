@@ -14,6 +14,8 @@ import { cn } from "../../lib/utils";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
+import { NotificationCenter } from "./NotificationCenter";
+import { usePullGesture } from "./use-pull-gesture";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -93,7 +95,7 @@ interface HomeTile {
 }
 
 // The home screen carries NO general quick-access tiles: Launcher is the
-// adjacent launcher page, with Settings in its dock, so pinning those actions
+// adjacent launcher page, with Settings in its grid, so pinning those actions
 // here too would be redundant clutter. The only tiles left are the AOSP ElizaOS
 // fork's native-OS surfaces (messages, phone, contacts, camera) — real OS apps,
 // `nativeOs` so they stay hidden on every non-AOSP build (where the tile grid
@@ -173,88 +175,142 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
-  return (
-    <div
-      data-testid="home-screen"
-      className={cn(
-        "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-        // The shell root already reserves the status-bar safe area (its
-        // paddingTop: var(--safe-area-top)); adding it again here double-padded
-        // the content and left a large empty band above the dashboard. Just a
-        // small gutter — the notch is already cleared by the root.
-        "px-4",
-        // Clear the floating chat composer at the bottom.
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
-      )}
-    >
-      <style>{HOME_ENTER_CSS}</style>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        {clockAccessory ? (
-          <div className={cn(enterClass, "flex justify-end")}>
-            {clockAccessory}
-          </div>
-        ) : null}
+  // Pull-DOWN from the top edge opens the notification center (#10706), iOS-style.
+  // The gesture lives on a thin non-scrolling top strip — deliberately NOT the
+  // scrollable widget list — so it can never fight the list's vertical scroll.
+  // The strip is a real button: click/tap and Enter/Space open the center too,
+  // so desktop fine-pointer and keyboard/AT users aren't locked out of the
+  // only notification entry point.
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationPull = usePullGesture({
+    onPullDown: () => setNotificationsOpen(true),
+  });
 
-        {/* The always-on base: a naked sized grid with the time + weather as
+  return (
+    <>
+      {/* Thin top-edge pull affordance. Sits above the home surface (z-[2]) but
+          only over the status-bar-adjacent band, so widget taps/scroll below
+          are untouched. A faint grabber hints the gesture.
+
+          Height math: the shell root already pads the status bar away with
+          paddingTop: max(var(--safe-area-top) − 1.25rem, 1.25rem) (App.tsx), so
+          this strip must NOT add the full safe-area again (that double-count
+          deadened ~70px of home content on notched iPhones). It only spans the
+          residual tucked band — the part of the safe area the root deliberately
+          shaves, capped at 1.25rem — plus a 30px grab margin. */}
+      <button
+        type="button"
+        data-testid="home-notification-pull-zone"
+        aria-label="Open notifications"
+        className="absolute inset-x-0 top-0 z-[2] flex h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default items-end justify-center rounded-none border-0 bg-transparent p-0 pb-1 outline-none"
+        style={{ touchAction: "none" }}
+        onClick={() => setNotificationsOpen(true)}
+        {...notificationPull}
+      >
+        <div
+          className="h-1 w-9 rounded-full bg-white/25"
+          aria-hidden
+          data-testid="home-notification-grabber"
+        />
+      </button>
+      {/* `auto`: the home notification affordance renders the surface-appropriate
+          shell — the top-right panel on desktop/web (mouse-driven wide surfaces),
+          the full-width pull-down sheet on touch/narrow — instead of forcing the
+          mobile sheet everywhere. */}
+      <NotificationCenter
+        variant="auto"
+        open={notificationsOpen}
+        onOpenChange={setNotificationsOpen}
+      />
+      <div
+        data-testid="home-screen"
+        className={cn(
+          // `touch-pan-y`: this scroller covers the whole home half, and a
+          // scroll container's OWN touch-action governs which pans the browser
+          // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
+          // so with the default `auto` the browser ate horizontal touch drags
+          // as a scroll attempt — pointercancel — and the home → launcher rail
+          // flick never fired on real touch). Keep vertical panning native for
+          // the widget list; hand every horizontal gesture to the rail.
+          "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-y-auto",
+          // The shell root already reserves the status-bar safe area (its
+          // paddingTop: var(--safe-area-top)); adding it again here double-padded
+          // the content and left a large empty band above the dashboard. Just a
+          // small gutter — the notch is already cleared by the root.
+          "px-4",
+          // Clear the floating chat composer at the bottom.
+          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
+        )}
+      >
+        <style>{HOME_ENTER_CSS}</style>
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+          {clockAccessory ? (
+            <div className={cn(enterClass, "flex justify-end")}>
+              {clockAccessory}
+            </div>
+          ) : null}
+
+          {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours and the week strip — no card, white text on the
             ambient field. */}
-        <div className={enterClass} style={{ animationDelay: "70ms" }}>
-          <DefaultHomeWidgets />
-        </div>
+          <div className={enterClass} style={{ animationDelay: "70ms" }}>
+            <DefaultHomeWidgets />
+          </div>
 
-        {/* The prioritized data widgets (#9143) flow in below the base. Each
+          {/* The prioritized data widgets (#9143) flow in below the base. Each
             self-hides when empty, so the host renders nothing until a widget has
             something to show — the base above keeps the dashboard from ever
             being just the floating chat. */}
-        <div className={enterClass} style={{ animationDelay: "110ms" }}>
-          <WidgetHost
-            slot="home"
-            layout="grid"
-            events={events}
-            clearEvents={clearEvents}
-          />
-        </div>
+          <div className={enterClass} style={{ animationDelay: "110ms" }}>
+            <WidgetHost
+              slot="home"
+              layout="grid"
+              events={events}
+              clearEvents={clearEvents}
+            />
+          </div>
 
-        {tiles.length > 0 ? (
-          <nav
-            aria-label="Apps"
-            data-testid="home-tiles"
-            className={cn(enterClass, "mt-2")}
-            style={{ animationDelay: "150ms" }}
-          >
-            <div className="grid grid-cols-4 gap-3">
-              {tiles.map((tile) => {
-                const Icon = tile.icon;
-                return (
-                  <button
-                    key={tile.id}
-                    type="button"
-                    data-testid={`home-tile-${tile.id}`}
-                    onClick={() => onOpenTile(tile.target)}
-                    className={cn(
-                      // Naked tile: icon + label sit directly on the ambient
-                      // orange field — no fill, no border.
-                      "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
-                      // Tactile press: a quick scale-down on tap (stilled for
-                      // reduce-motion users), plus a faint white wash on hover.
-                      "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                      "hover:bg-white/8",
-                    )}
-                  >
-                    <Icon
-                      className="h-[22px] w-[22px] text-white"
-                      aria-hidden
-                    />
-                    <span className="max-w-full truncate text-[11px] font-medium text-white">
-                      {tile.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-        ) : null}
+          {tiles.length > 0 ? (
+            <nav
+              aria-label="Apps"
+              data-testid="home-tiles"
+              className={cn(enterClass, "mt-2")}
+              style={{ animationDelay: "150ms" }}
+            >
+              <div className="grid grid-cols-4 gap-3">
+                {tiles.map((tile) => {
+                  const Icon = tile.icon;
+                  return (
+                    <button
+                      key={tile.id}
+                      type="button"
+                      data-testid={`home-tile-${tile.id}`}
+                      onClick={() => onOpenTile(tile.target)}
+                      className={cn(
+                        // Naked tile: icon + label sit directly on the ambient
+                        // orange field — no fill, no border.
+                        "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                        // Tactile press: a quick scale-down on tap (stilled for
+                        // reduce-motion users), plus a faint white wash on hover.
+                        "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
+                        "hover:bg-white/8",
+                      )}
+                    >
+                      <Icon
+                        className="h-[22px] w-[22px] text-white"
+                        aria-hidden
+                      />
+                      <span className="max-w-full truncate text-[11px] font-medium text-white">
+                        {tile.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

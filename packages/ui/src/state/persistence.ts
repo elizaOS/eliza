@@ -1,6 +1,16 @@
 import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
+import {
+  isPlausibleFragmentSource,
+  normalizeUniforms,
+} from "../backgrounds/shader-schema";
+import { MAX_BACKGROUND_HISTORY } from "./background-history";
+
+// Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
+// sites keep working; the single source is the pure reducer module.
+export { MAX_BACKGROUND_HISTORY } from "./background-history";
+
 import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
@@ -93,6 +103,27 @@ export function loadUiThemeMode(): UiThemeMode {
   }, "system");
 }
 
+/* ── Home time/date widget visibility (#10706) ───────────────────────── */
+
+const HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY = "eliza:home-time-widget-hidden";
+
+/** Load whether the home time/date tile is hidden. Defaults to shown (false). */
+export function loadHomeTimeWidgetHidden(): boolean {
+  return tryLocalStorage(
+    () => localStorage.getItem(HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY) === "1",
+    false,
+  );
+}
+
+export function saveHomeTimeWidgetHidden(hidden: boolean): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY,
+      hidden ? "1" : "0",
+    );
+  }, undefined);
+}
+
 export function saveUiThemeMode(mode: UiThemeMode): void {
   tryLocalStorage(() => {
     localStorage.setItem(UI_THEME_MODE_STORAGE_KEY, normalizeUiThemeMode(mode));
@@ -160,6 +191,29 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
   }
+  // GLSL mode requires a plausible fragment source; a malformed/oversized/absent
+  // source (or a hostile persisted value) falls back to the color field so a bad
+  // shader can never wedge the background on load.
+  if (record.mode === "glsl") {
+    const shaderRecord = asRecord(record.shader);
+    const source = shaderRecord?.source;
+    if (isPlausibleFragmentSource(source)) {
+      const presetId =
+        typeof shaderRecord?.presetId === "string"
+          ? shaderRecord.presetId
+          : undefined;
+      return {
+        mode: "glsl",
+        color,
+        shader: {
+          presetId,
+          source,
+          uniforms: normalizeUniforms(shaderRecord?.uniforms),
+        },
+      };
+    }
+    return { mode: "shader", color };
+  }
   return { mode: "shader", color };
 }
 
@@ -190,13 +244,34 @@ export function saveBackgroundConfig(config: BackgroundConfig): void {
  * configs carry a data/media URL so the cap is deliberately small.
  */
 const UI_BACKGROUND_HISTORY_STORAGE_KEY = "eliza:ui-background-history";
-export const MAX_BACKGROUND_HISTORY = 10;
+/**
+ * Data-URL image entries are the quota hazard: one downscaled photo is 1–4 MB
+ * against localStorage's ~5 MB total, and `tryLocalStorage` swallows
+ * QuotaExceededError — the write silently fails and the wallpaper reverts on
+ * reload. Media-store (`/api/media/<hash>`) entries are tiny, so only inline
+ * data URLs are capped: keep the single most recent one (uploads are re-hosted
+ * to the media store on the primary path; a data URL only persists as the
+ * offline fallback).
+ */
+export const MAX_BACKGROUND_HISTORY_DATA_URLS = 1;
 
 export function normalizeBackgroundHistory(value: unknown): BackgroundConfig[] {
   if (!Array.isArray(value)) return [];
-  return value
+  const bounded = value
     .map((entry) => normalizeBackgroundConfig(entry))
     .slice(-MAX_BACKGROUND_HISTORY);
+  let dataUrlBudget = MAX_BACKGROUND_HISTORY_DATA_URLS;
+  const kept: BackgroundConfig[] = [];
+  // Walk newest → oldest so the retained data-URL entry is the most recent.
+  for (let i = bounded.length - 1; i >= 0; i--) {
+    const entry = bounded[i];
+    if (entry.imageUrl?.startsWith("data:")) {
+      if (dataUrlBudget === 0) continue;
+      dataUrlBudget--;
+    }
+    kept.unshift(entry);
+  }
+  return kept;
 }
 
 export function loadBackgroundHistory(): BackgroundConfig[] {
@@ -211,6 +286,27 @@ export function saveBackgroundHistory(history: BackgroundConfig[]): void {
     localStorage.setItem(
       UI_BACKGROUND_HISTORY_STORAGE_KEY,
       JSON.stringify(normalizeBackgroundHistory(history)),
+    );
+  }, undefined);
+}
+
+// Redo stack (#10694) — persisted symmetrically with the undo history (the issue
+// deliverable is "undo + redo, bounded, persisted") so "step forward" survives a
+// reload just like "step back" does. Same bound + data-URL quota cap.
+const UI_BACKGROUND_REDO_STORAGE_KEY = "eliza:ui-background-redo";
+
+export function loadBackgroundRedo(): BackgroundConfig[] {
+  return tryLocalStorage(() => {
+    const raw = localStorage.getItem(UI_BACKGROUND_REDO_STORAGE_KEY);
+    return raw ? normalizeBackgroundHistory(JSON.parse(raw)) : [];
+  }, []);
+}
+
+export function saveBackgroundRedo(redo: BackgroundConfig[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      UI_BACKGROUND_REDO_STORAGE_KEY,
+      JSON.stringify(normalizeBackgroundHistory(redo)),
     );
   }, undefined);
 }
@@ -688,6 +784,28 @@ export function loadContinuousChatMode(): ContinuousChatModeValue {
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
   tryLocalStorage(() => {
     localStorage.setItem(CONTINUOUS_CHAT_MODE_KEY, mode);
+  }, undefined);
+}
+
+/* ── Wake-word listening persistence ────────────────────────────────────── */
+// Device-local master switch for the "hey <name>" wake-word listening window
+// (see useWakeListenWindow). Stored here — not under `messages.voice` — because
+// it gates a device-local capture loop the shell reads synchronously on render,
+// the same dual-store pattern continuous-chat-mode and vad-auto-stop use. It
+// defaults ON so existing installs keep the always-available wake entry ramp;
+// the Settings → Voice toggle is what lets a user turn it off.
+const WAKE_WORD_ENABLED_KEY = "eliza:voice:wake-word-enabled";
+
+export function loadWakeWordEnabled(): boolean {
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(WAKE_WORD_ENABLED_KEY);
+    return stored === null ? true : stored === "true";
+  }, true);
+}
+
+export function saveWakeWordEnabled(value: boolean): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(WAKE_WORD_ENABLED_KEY, String(value));
   }, undefined);
 }
 

@@ -143,3 +143,110 @@ describe("expirePastForOrg (least-privilege expire, #10117)", () => {
     );
   });
 });
+
+/**
+ * In-memory settlement state machine — backs the webhook-replay idempotency
+ * tests. Settlement webhooks (Stripe + OxaPay) rely on these exact semantics
+ * for "user is credited exactly once" under provider redelivery.
+ */
+class SettlementRepository extends PaymentRequestsRepository {
+  row: PaymentRequestRow;
+  events: NewPaymentRequestEvent[] = [];
+  updateCalls = 0;
+
+  constructor(row: PaymentRequestRow) {
+    super();
+    this.row = row;
+  }
+
+  override async getPaymentRequest(id: string): Promise<PaymentRequestRow | null> {
+    return this.row.id === id ? this.row : null;
+  }
+
+  override async updatePaymentRequestStatus(
+    id: string,
+    status: Parameters<PaymentRequestsRepository["updatePaymentRequestStatus"]>[1],
+    patch: Parameters<PaymentRequestsRepository["updatePaymentRequestStatus"]>[2] = {},
+  ): Promise<PaymentRequestRow | null> {
+    if (this.row.id !== id) return null;
+    this.updateCalls += 1;
+    this.row = {
+      ...this.row,
+      ...(status ? { status } : {}),
+      ...(patch?.settledAt !== undefined ? { settledAt: patch.settledAt } : {}),
+      ...(patch?.settlementTxRef !== undefined ? { settlementTxRef: patch.settlementTxRef } : {}),
+      ...(patch?.settlementProof !== undefined ? { settlementProof: patch.settlementProof } : {}),
+    };
+    return this.row;
+  }
+
+  override async recordPaymentRequestEvent(
+    input: NewPaymentRequestEvent,
+  ): Promise<PaymentRequestEventRow> {
+    this.events.push(input);
+    return { id: `evt-${this.events.length}` } as unknown as PaymentRequestEventRow;
+  }
+}
+
+function pendingRow(id: string): PaymentRequestRow {
+  return { ...fakeRow(id, "org-1"), status: "pending" };
+}
+
+describe("settlement idempotency under webhook replay (#10732)", () => {
+  test("markSettled replay with the same txRef is a no-op: one update, one settled event", async () => {
+    const repository = new SettlementRepository(pendingRow("pr-settle"));
+    const service = createPaymentRequestsService({ repository, adapters: [] });
+
+    const first = await service.markSettled("pr-settle", "trk-1", { provider: "oxapay" });
+    expect(first.status).toBe("settled");
+    expect(repository.updateCalls).toBe(1);
+    expect(repository.events.map((e) => e.eventName)).toEqual(["payment.settled"]);
+
+    // Provider redelivers the identical callback (same txRef): no second
+    // update, no second settled event → no double credit downstream.
+    const replay = await service.markSettled("pr-settle", "trk-1", { provider: "oxapay" });
+    expect(replay.status).toBe("settled");
+    expect(replay.settlementTxRef).toBe("trk-1");
+    expect(repository.updateCalls).toBe(1);
+    expect(repository.events.map((e) => e.eventName)).toEqual(["payment.settled"]);
+  });
+
+  test("markSettled with a DIFFERENT txRef after settlement throws (terminal CAS)", async () => {
+    const repository = new SettlementRepository(pendingRow("pr-settle-2"));
+    const service = createPaymentRequestsService({ repository, adapters: [] });
+
+    await service.markSettled("pr-settle-2", "trk-a", {});
+    await expect(service.markSettled("pr-settle-2", "trk-b", {})).rejects.toThrow(
+      'already in terminal status "settled"',
+    );
+    expect(repository.updateCalls).toBe(1);
+  });
+
+  test("a late failure callback cannot clobber a settled request", async () => {
+    const repository = new SettlementRepository(pendingRow("pr-settle-3"));
+    const service = createPaymentRequestsService({ repository, adapters: [] });
+
+    await service.markSettled("pr-settle-3", "trk-c", {});
+    await expect(service.markFailed("pr-settle-3", "late failure")).rejects.toThrow(
+      'already in terminal status "settled"',
+    );
+    expect(repository.row.status).toBe("settled");
+  });
+
+  test("markFailed replay is a no-op and a late settle after failure throws", async () => {
+    const repository = new SettlementRepository(pendingRow("pr-fail"));
+    const service = createPaymentRequestsService({ repository, adapters: [] });
+
+    await service.markFailed("pr-fail", "invoice expired");
+    expect(repository.updateCalls).toBe(1);
+
+    const replay = await service.markFailed("pr-fail", "invoice expired");
+    expect(replay.status).toBe("failed");
+    expect(repository.updateCalls).toBe(1);
+    expect(repository.events.map((e) => e.eventName)).toEqual(["payment.failed"]);
+
+    await expect(service.markSettled("pr-fail", "trk-x", {})).rejects.toThrow(
+      'already in terminal status "failed"',
+    );
+  });
+});

@@ -515,15 +515,35 @@ async function readCurrentBrowserUrl(
 
   try {
     const state = await run({ subaction: "state", id: tabId });
-    return currentUrlFromResult(state);
+    const url = currentUrlFromResult(state);
+    if (url) {
+      return url;
+    }
   } catch (error) {
     logger.debug(
       `[BROWSER] wait_for_url state poll could not read URL: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    return null;
   }
+
+  try {
+    const tabs = await run({ subaction: "list" });
+    if (Array.isArray(tabs.tabs)) {
+      const tab = tabId
+        ? tabs.tabs.find((entry) => entry.id === tabId)
+        : (tabs.tabs.find((entry) => entry.visible) ?? tabs.tabs[0]);
+      return tab?.url ?? null;
+    }
+  } catch (error) {
+    logger.debug(
+      `[BROWSER] wait_for_url tab-list poll could not read URL: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  return null;
 }
 
 /**

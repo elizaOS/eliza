@@ -18,6 +18,18 @@ export interface ExtractedUpdateFields {
   everyMinutes: number | null;
   priority: number | null;
   description: string | null;
+  /**
+   * Date-level reschedules for "once" tasks, mirroring the create
+   * extractor (`extract-task-plan.ts`): "move it to april 17" →
+   * `dueDate: "2026-04-17"`; "push it to tomorrow" → `dueInDays: 1`;
+   * "make it Friday instead" → `dueWeekday: 5`; "in 2 hours" →
+   * `dueInMinutes: 120`. At most one is set; all null when the user only
+   * changed the time-of-day or other fields.
+   */
+  dueDate: string | null;
+  dueInDays: number | null;
+  dueWeekday: number | null;
+  dueInMinutes: number | null;
 }
 
 const EMPTY_UPDATE_FIELDS: ExtractedUpdateFields = {
@@ -29,7 +41,35 @@ const EMPTY_UPDATE_FIELDS: ExtractedUpdateFields = {
   everyMinutes: null,
   priority: null,
   description: null,
+  dueDate: null,
+  dueInDays: null,
+  dueWeekday: null,
+  dueInMinutes: null,
 };
+
+const LOCAL_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function validateDueDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = LOCAL_DATE_RE.exec(value.trim());
+  if (!match) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return match[0];
+}
+
+function validateNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    return null;
+  }
+  return value;
+}
+
+function validateDueWeekday(value: unknown): number | null {
+  const validated = validateNonNegativeInteger(value);
+  return validated !== null && validated <= 6 ? validated : null;
+}
 
 function promptText(value: string): string {
   const trimmed = value.trim();
@@ -152,6 +192,10 @@ function buildUpdateFields(
     everyMinutes: validatePositiveNumber(parsed.everyMinutes),
     priority: validatePriority(parsed.priority),
     description: validateTitle(parsed.description),
+    dueDate: validateDueDate(parsed.dueDate),
+    dueInDays: validateNonNegativeInteger(parsed.dueInDays),
+    dueWeekday: validateDueWeekday(parsed.dueWeekday),
+    dueInMinutes: validateNonNegativeInteger(parsed.dueInMinutes),
   };
 }
 
@@ -165,11 +209,12 @@ function buildRepairPrompt(args: {
   return [
     "Your last reply for the LifeOps update extractor was invalid.",
     "Return ONLY a valid JSON object with exactly these fields:",
-    "title, cadenceKind, windows, weekdays, timeOfDay, everyMinutes, priority, description",
+    "title, cadenceKind, windows, weekdays, timeOfDay, everyMinutes, priority, description, dueDate, dueInDays, dueWeekday, dueInMinutes",
     "",
     "Use null for any field the user did not ask to change.",
     "cadenceKind must be one of: once, daily, weekly, times_per_day, interval.",
     'timeOfDay must be HH:MM 24h format like "06:00" when present.',
+    'dueDate must be "YYYY-MM-DD"; dueInDays/dueWeekday/dueInMinutes must be integers; set at most ONE of the four.',
     "",
     `Current task: ${promptText(args.currentTitle)}`,
     `Current cadence kind: ${promptText(args.currentCadenceKind)}`,
@@ -214,9 +259,15 @@ export async function extractUpdateFieldsWithLlm(args: {
     "- everyMinutes: new interval if changing",
     "- priority: new priority 1-5 if changing",
     "- description: new description if changing",
+    '- dueDate: for one-off tasks, the new local calendar date "YYYY-MM-DD" when the user names a specific date ("move it to april 17" — infer the next future occurrence)',
+    '- dueInDays: whole days from today for relative day words ("push it to tomorrow" -> 1)',
+    '- dueWeekday: weekday number (0=Sun..6=Sat) when the user names a weekday ("make it Friday instead" -> 5)',
+    '- dueInMinutes: minutes from now for offsets ("in 2 hours" -> 120)',
+    "  Set at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes; all null unless the user moved a one-off task's date.",
     "",
-    'Example time change: {"title":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":"06:00","everyMinutes":null,"priority":null,"description":null}',
-    'Example rename: {"title":"Morning run","cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"everyMinutes":null,"priority":null,"description":null}',
+    'Example time change: {"title":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":"06:00","everyMinutes":null,"priority":null,"description":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
+    'Example rename: {"title":"Morning run","cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"everyMinutes":null,"priority":null,"description":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
+    'Example date move ("move the dentist reminder to friday at 3pm"): {"title":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":"15:00","everyMinutes":null,"priority":null,"description":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
     "",
     "Return ONLY valid JSON. No prose, markdown, code fences, or any other format.",
     "",

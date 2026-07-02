@@ -16,7 +16,8 @@
  * or computes — it displays label/value rows and dispatches actions.
  */
 
-import { Button, Card, HStack, List, Text } from "@elizaos/ui/spatial";
+import { Button, Card, Escape, HStack, List, Text } from "@elizaos/ui/spatial";
+import type { CSSProperties } from "react";
 
 /** A single label/value summary row, already projected to display strings. */
 export interface StatRow {
@@ -80,7 +81,7 @@ export function HealthSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} grow={1}>
       <WindowRange windowDays={snapshot.windowDays} dispatch={dispatch} />
 
       {snapshot.state === "loading" ? (
@@ -106,7 +107,7 @@ function WindowRange({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <HStack gap={1} align="center">
+    <HStack gap={1} align="center" padding={{ left: 12 }}>
       {WINDOW_OPTIONS.map((days) => {
         const selected = days === windowDays;
         return (
@@ -153,6 +154,24 @@ function HealthEmptyBody() {
 
 function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {
   return (
+    <Escape grow={1} tui={<SpatialReadyBody snapshot={snapshot} />}>
+      <div style={readyShellStyle}>
+        {snapshot.proactive ? (
+          <p style={proactiveLineStyle}>{snapshot.proactive}</p>
+        ) : null}
+        <div style={readyGridStyle}>
+          <DomSection label="Last sleep" rows={snapshot.lastSleep} />
+          <DomSection label="Regularity" rows={snapshot.regularity} />
+          <DomSection label="Baseline" rows={snapshot.baseline} />
+          <DomSection label="Window summary" rows={snapshot.windowSummary} />
+        </div>
+      </div>
+    </Escape>
+  );
+}
+
+function SpatialReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {
+  return (
     <>
       {snapshot.proactive ? (
         <Text tone="warning" style="caption">
@@ -164,6 +183,116 @@ function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {
       <Section label="Baseline" rows={snapshot.baseline} />
       <Section label="Window summary" rows={snapshot.windowSummary} />
     </>
+  );
+}
+
+const readyShellStyle: CSSProperties = {
+  boxSizing: "border-box",
+  display: "flex",
+  flex: "1 1 auto",
+  flexDirection: "column",
+  gap: "0.5rem",
+  height: "100%",
+  minHeight: 0,
+  minWidth: 0,
+  overflowX: "hidden",
+  overflowY: "auto",
+  padding: "0.125rem 0.125rem 4.5rem",
+};
+
+const proactiveLineStyle: CSSProperties = {
+  color: "var(--warning, #c98a00)",
+  fontSize: "0.85rem",
+  lineHeight: 1.35,
+  margin: 0,
+};
+
+const readyGridStyle: CSSProperties = {
+  alignItems: "start",
+  display: "grid",
+  gap: "0.5rem",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(12rem, 100%), 1fr))",
+  minWidth: 0,
+};
+
+const domSectionStyle: CSSProperties = {
+  background:
+    "color-mix(in srgb, var(--background, #fff) 96%, var(--muted, #888))",
+  border: "1px solid var(--border, rgba(128,128,128,0.28))",
+  borderRadius: "0.5rem",
+  boxSizing: "border-box",
+  minWidth: 0,
+  padding: "0.45rem",
+};
+
+const domSectionTitleStyle: CSSProperties = {
+  color: "var(--muted-foreground, #777)",
+  fontSize: "0.72rem",
+  fontWeight: 600,
+  lineHeight: 1.15,
+  margin: "0 0 0.25rem",
+};
+
+const definitionListStyle: CSSProperties = {
+  display: "grid",
+  gap: "0.16rem",
+  margin: 0,
+  minWidth: 0,
+};
+
+const domRowStyle: CSSProperties = {
+  alignItems: "baseline",
+  display: "grid",
+  gap: "0.45rem",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(4rem, auto)",
+  minWidth: 0,
+};
+
+const domLabelStyle: CSSProperties = {
+  color: "var(--muted-foreground, #777)",
+  fontSize: "0.82rem",
+  lineHeight: 1.15,
+  margin: 0,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const domValueStyle: CSSProperties = {
+  fontSize: "0.82rem",
+  fontWeight: 600,
+  lineHeight: 1.15,
+  margin: 0,
+  maxWidth: "14rem",
+  minWidth: 0,
+  overflow: "hidden",
+  textAlign: "right",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+function DomSection({ label, rows }: { label: string; rows: StatRow[] }) {
+  if (rows.length === 0) return null;
+
+  return (
+    <section style={domSectionStyle} aria-label={label}>
+      <h2 style={domSectionTitleStyle}>{label}</h2>
+      <dl style={definitionListStyle}>
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            data-agent-id={`row-${row.label}`}
+            style={domRowStyle}
+          >
+            <dt style={domLabelStyle}>{row.label}</dt>
+            <dd style={domValueStyle} title={row.value}>
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

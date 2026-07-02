@@ -150,6 +150,62 @@ function getStaticStringProperty(objectLiteral, propertyName) {
   return undefined;
 }
 
+/** Return the object-literal initializer of a nested object property, or null. */
+function getStaticObjectProperty(objectLiteral, propertyName) {
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    if (propertyNameText(property.name) !== propertyName) continue;
+    if (ts.isObjectLiteralExpression(property.initializer)) {
+      return property.initializer;
+    }
+    return null;
+  }
+  return null;
+}
+
+// OS values for which a self-hosted CI runner currently exists. A scenario that
+// requires an OS NOT in this set is platform-gated and cannot run in any lane
+// until that runner is provisioned — it is reported as "deferred platform-gated"
+// so the inventory stays honest instead of conflating it with live-only. When an
+// `eliza-e2e-macos` runner lands, add "macos" here and the shard un-defers. (#10757)
+const AVAILABLE_OS_RUNNERS = new Set();
+
+/** Human-readable deferral for a required-but-unavailable OS. */
+function deferralForOs(os) {
+  if (os === "macos") {
+    return {
+      reason:
+        "requires a macOS host for native integrations (SelfControl/Screen Time, iMessage/BlueBubbles, mac remote-control); no self-hosted macOS runner yet",
+      runner: "eliza-e2e-macos",
+    };
+  }
+  return { reason: `requires OS "${os}"; no self-hosted runner yet` };
+}
+
+/**
+ * Classify a scenario's coverage lane into the three inventory classes the
+ * #10757 acceptance criteria call for: keyless PR-deterministic, deferred
+ * platform-gated, or credentialed live-only. Derives platform-gating from the
+ * existing `requires.os` gate (authoritative) plus any explicit `deferred`
+ * annotation. Returns { class, os?, deferral? }.
+ */
+function classifyScenarioLane(meta) {
+  if (meta.lane === "pr-deterministic") {
+    return { class: "pr-deterministic" };
+  }
+  if (meta.deferred) {
+    return { class: "deferred-platform", deferral: meta.deferred };
+  }
+  if (meta.platformOs && !AVAILABLE_OS_RUNNERS.has(meta.platformOs)) {
+    return {
+      class: "deferred-platform",
+      os: meta.platformOs,
+      deferral: deferralForOs(meta.platformOs),
+    };
+  }
+  return { class: "live-only" };
+}
+
 function scenarioObjectFromExpression(expression) {
   if (ts.isObjectLiteralExpression(expression)) {
     return expression;
@@ -211,13 +267,30 @@ function loadScenarioMetadataFile(file) {
       `[scenario-catalog] ${file}: no statically readable scenario id in default export or exported 'scenario' value.`,
     );
   }
-  return {
+  const requiresObj = getStaticObjectProperty(objectLiteral, "requires");
+  const platformOs = requiresObj
+    ? getStaticStringProperty(requiresObj, "os")
+    : undefined;
+  const deferredObj = getStaticObjectProperty(objectLiteral, "deferred");
+  const deferred = deferredObj
+    ? {
+        reason: getStaticStringProperty(deferredObj, "reason"),
+        ...(getStaticStringProperty(deferredObj, "runner")
+          ? { runner: getStaticStringProperty(deferredObj, "runner") }
+          : {}),
+      }
+    : undefined;
+  const meta = {
     file,
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
     lane: getStaticStringProperty(objectLiteral, "lane"),
+    platformOs,
+    deferred,
   };
+  meta.laneClass = classifyScenarioLane(meta);
+  return meta;
 }
 
 function listScenarioMetadata(root, { includePending = false } = {}) {
@@ -327,6 +400,25 @@ function workflowScenarioGlobs() {
     )
     .filter((item) => item !== "**/*.scenario.ts");
 }
+
+const KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE = [
+  {
+    glob: "packages/test/scenarios/activity/**/*.scenario.ts",
+    issue: "#10757",
+  },
+  {
+    glob: "packages/test/scenarios/selfcontrol/**/*.scenario.ts",
+    issue: "#10757",
+  },
+  {
+    glob: "packages/test/scenarios/backup/**/*.scenario.ts",
+    issue: "#10757",
+  },
+  {
+    glob: "packages/test/scenarios/security/**/*.scenario.ts",
+    issue: "#10757",
+  },
+];
 
 function writeList(reportDir, fileName, rows) {
   writeFileSync(path.join(reportDir, fileName), `${rows.join("\n")}\n`, "utf8");
@@ -493,7 +585,7 @@ function scenarioCatalogHtml() {
       <h2>Catalogs</h2>
       <div class="controls">
         <input id="search" type="search" placeholder="Search scenario id..." />
-        <select id="coverage"><option value="">all coverage states</option><option value="covered">covered</option><option value="missing">missing</option><option value="cataloged">cataloged outside default workflow gate</option></select>
+        <select id="coverage"><option value="">all coverage states</option><option value="covered">covered</option><option value="deferred">deferred with follow-up</option><option value="missing">missing</option><option value="cataloged">cataloged outside default workflow gate</option></select>
       </div>
       <div id="tabs" class="tabs"></div>
     </aside>
@@ -526,7 +618,9 @@ function scenarioCatalogHtml() {
         ["plugin-agent-orchestrator", s.pluginAgentOrchestratorCount || 0],
         ["runner tests", s.scenarioRunnerCount || 0],
         ["All catalog entries", s.allScenarioCount || 0],
+        ["Default pr-deterministic", s.prDeterministicDefaultCount || 0],
         ["Covered default", (s.coveredDefaultCount || 0) + "/" + (s.defaultScenarioCount || 0)],
+        ["Deferred default", (s.deferredDefaultIds || []).length],
         ["Missing default", (s.missingDefaultIds || []).length],
         ["Run artifacts", (data.runArtifacts || []).length],
       ];
@@ -542,8 +636,10 @@ function scenarioCatalogHtml() {
     }
     function coverageState(item) {
       const defaultSet = new Set(data.defaultScenarios || []);
+      const deferredSet = new Set(data.summary?.deferredDefaultIds || []);
       if ((item.scope || "") && item.scope !== "packages/test/scenarios") return "cataloged";
       if (!defaultSet.has(item.id || "")) return "cataloged";
+      if (deferredSet.has(item.id || "")) return "deferred";
       return isCovered(item.id) ? "covered" : "missing";
     }
     function renderScenarioRows(key, label) {
@@ -555,7 +651,7 @@ function scenarioCatalogHtml() {
         return (!q || id.toLowerCase().includes(q)) && (!coverage || state === coverage);
       });
       document.getElementById("title").textContent = label + " (" + rows.length + ")";
-      document.getElementById("content").innerHTML = '<table><thead><tr><th>#</th><th>scope</th><th>scenario id</th><th>workflow/live coverage</th></tr></thead><tbody>' + rows.map((item,i) => { const state = coverageState(item); return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(item.scope || "") + '</code></td><td><code>' + esc(item.id) + '</code></td><td class="' + (state === "missing" ? 'bad' : 'ok') + '">' + esc(state) + '</td></tr>'; }).join("") + '</tbody></table>';
+      document.getElementById("content").innerHTML = '<table><thead><tr><th>#</th><th>scope</th><th>scenario id</th><th>workflow coverage</th></tr></thead><tbody>' + rows.map((item,i) => { const state = coverageState(item); return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(item.scope || "") + '</code></td><td><code>' + esc(item.id) + '</code></td><td class="' + (state === "missing" ? 'bad' : 'ok') + '">' + esc(state) + '</td></tr>'; }).join("") + '</tbody></table>';
     }
     function renderArtifacts() {
       document.getElementById("title").textContent = "Run artifacts";
@@ -620,12 +716,45 @@ function renderMarkdown(summary, runArtifacts = []) {
     `scenario-runner test scenarios: ${summary.scenarioRunnerCount}`,
     `Unified scenario catalog entries: ${summary.allScenarioCount}`,
     "",
-    `Workflow/live covered default package scenarios: ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}`,
-    `Missing default package scenarios from current workflow/live globs: ${summary.missingDefaultIds.length}`,
+    "## Corpus coverage split (#10757)",
     "",
-    "## Missing IDs",
+    "Honest three-way split across the full scenario corpus, so deterministic PR",
+    "coverage, credentialed live-matrix coverage, and platform-gated coverage that",
+    "is deferred (no runner yet) are counted separately rather than lumped together:",
+    "",
+    `- keyless PR-deterministic: ${summary.corpusLaneSplit.prDeterministicCount}`,
+    `- credentialed live-only (live matrix): ${summary.corpusLaneSplit.liveOnlyCount}`,
+    `- deferred platform-gated (no runner yet): ${summary.corpusLaneSplit.deferredPlatformCount}`,
+    `- total corpus: ${summary.corpusLaneSplit.total}`,
+    "",
+    "### Deferred platform-gated scenarios",
+    "",
+    ...(summary.deferredPlatformScenarios.length === 0
+      ? ["- none"]
+      : summary.deferredPlatformScenarios.map(
+          (s) =>
+            `- \`${s.id}\`${s.os ? ` (os: ${s.os})` : ""} — ${s.reason ?? "platform-gated"}${s.runner ? ` [runner: ${s.runner}]` : ""}`,
+        )),
+    "",
+    `Default package pr-deterministic scenarios: ${summary.prDeterministicDefaultCount}`,
+    `Workflow covered default package scenarios: ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}`,
+    `Deferred default package scenarios tracked by follow-up: ${summary.deferredDefaultIds.length}`,
+    `Missing default package scenarios from current workflow coverage: ${summary.missingDefaultIds.length}`,
+    "",
+    "## Deferred IDs",
     "",
   ];
+  if (summary.deferredDefaultIds.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const id of summary.deferredDefaultIds) {
+      const reason =
+        summary.deferredDefaultReasons?.[id] ??
+        "known deferred coverage tracked separately";
+      lines.push(`- \`${id}\` - ${reason}`);
+    }
+  }
+  lines.push("", "## Missing IDs", "");
   if (summary.missingDefaultIds.length === 0) {
     lines.push("- none");
   } else {
@@ -732,17 +861,76 @@ function main() {
     "packages/test/scenarios/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
+  const prDeterministicDefaultIds = defaultScenarios
+    .filter((scenario) => scenario.lane === "pr-deterministic")
+    .map((scenario) => scenario.id)
+    .sort();
+  const deferred = new Map();
   for (const scenario of defaultScenarios) {
-    if (matchesScenarioFileGlobs(scenario.file, coverageGlobs)) {
+    const match = KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE.find((entry) =>
+      matchesScenarioFileGlobs(scenario.file, [entry.glob]),
+    );
+    if (match) {
+      deferred.set(
+        scenario.id,
+        `tracked in ${match.issue}; not currently part of the PR/live matrix`,
+      );
+    }
+  }
+  for (const scenario of defaultScenarios) {
+    if (
+      scenario.lane === "pr-deterministic" ||
+      matchesScenarioFileGlobs(scenario.file, coverageGlobs)
+    ) {
       covered.add(scenario.id);
     }
   }
 
   const defaultSet = new Set(defaultIds);
   const missingDefaultIds = [...defaultSet]
-    .filter((id) => !covered.has(id))
+    .filter((id) => !covered.has(id) && !deferred.has(id))
     .sort();
+  const deferredDefaultIds = [...deferred.keys()].sort();
+  const deferredDefaultReasons = Object.fromEntries(
+    deferredDefaultIds.map((id) => [id, deferred.get(id)]),
+  );
+  // #10757: honest three-way corpus split — keyless PR-deterministic vs
+  // credentialed live-only vs deferred platform-gated (needs an OS/runner that
+  // does not exist yet). Derived from `lane` + `requires.os` + explicit
+  // `deferred`, so the checked-in counts cannot drift from the actual gates.
+  const corpusMeta = laneScanRoots.flatMap((root) =>
+    listScenarioMetadata(root, { includePending: true }),
+  );
+  const laneClassBuckets = {
+    "pr-deterministic": [],
+    "live-only": [],
+    "deferred-platform": [],
+  };
+  const deferredPlatformScenarios = [];
+  for (const meta of corpusMeta) {
+    const cls = meta.laneClass?.class ?? "live-only";
+    (laneClassBuckets[cls] ?? laneClassBuckets["live-only"]).push(meta.id);
+    if (cls === "deferred-platform") {
+      deferredPlatformScenarios.push({
+        id: meta.id,
+        file: toPosixPath(path.relative(REPO_ROOT, meta.file)),
+        os: meta.platformOs ?? null,
+        reason: meta.laneClass?.deferral?.reason ?? null,
+        runner: meta.laneClass?.deferral?.runner ?? null,
+      });
+    }
+  }
+  deferredPlatformScenarios.sort((a, b) => a.id.localeCompare(b.id));
+  const corpusLaneSplit = {
+    total: corpusMeta.length,
+    prDeterministicCount: laneClassBuckets["pr-deterministic"].length,
+    liveOnlyCount: laneClassBuckets["live-only"].length,
+    deferredPlatformCount: laneClassBuckets["deferred-platform"].length,
+  };
+
   const summary = {
+    corpusLaneSplit,
+    deferredPlatformScenarios,
     defaultScenarioCount: defaultIds.length,
     includePendingScenarioCount: includePendingIds.length,
     pluginLifeopsCount: pluginLifeopsIds.length,
@@ -750,7 +938,12 @@ function main() {
     pluginAgentOrchestratorCount: pluginAgentOrchestratorIds.length,
     scenarioRunnerCount: scenarioRunnerIds.length,
     allScenarioCount: allScenarioRows.length,
+    prDeterministicDefaultCount: prDeterministicDefaultIds.length,
+    prDeterministicDefaultIds,
     coveredDefaultCount: defaultIds.filter((id) => covered.has(id)).length,
+    deferredDefaultCount: deferredDefaultIds.length,
+    deferredDefaultIds,
+    deferredDefaultReasons,
     missingDefaultIds,
     untaggedLaneScenarios,
   };
@@ -814,7 +1007,7 @@ function main() {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   } else {
     process.stdout.write(
-      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
+      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; deferred ${summary.deferredDefaultIds.length}; missing ${summary.missingDefaultIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
     );
     if (summary.untaggedLaneScenarios.length > 0) {
       process.stderr.write(

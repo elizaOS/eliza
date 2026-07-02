@@ -23,6 +23,9 @@ interface ServiceTrajectoryListItem {
   id: string;
   agentId?: string;
   source?: string;
+  roomId?: string | null;
+  entityId?: string | null;
+  metadata?: Record<string, unknown>;
   status: "active" | "completed" | "error" | "timeout";
   startTime?: number;
   endTime?: number | null;
@@ -70,6 +73,15 @@ interface ServiceTrajectory {
   endTime?: number;
   steps?: ServiceTrajectoryStep[];
   metrics?: { finalStatus?: string };
+  metadata?: Record<string, unknown>;
+}
+
+interface ResolvedRoomContext {
+  id: string;
+  name?: string;
+  type?: string;
+  worldId?: string;
+  serverId?: string;
 }
 
 interface TrajectoriesServiceLike {
@@ -106,15 +118,33 @@ function normalizeStatus(
   return status === "active" ? "active" : "completed";
 }
 
+function metadataRoomId(
+  metadata: Record<string, unknown> | undefined,
+): string | null {
+  return typeof metadata?.roomId === "string" ? metadata.roomId : null;
+}
+
+function metadataEntityId(
+  metadata: Record<string, unknown> | undefined,
+): string | null {
+  return typeof metadata?.entityId === "string" ? metadata.entityId : null;
+}
+
 function listItemToUi(
   item: ServiceTrajectoryListItem,
+  roomContext?: ResolvedRoomContext | null,
 ): Record<string, unknown> {
+  const metadata = item.metadata ?? {};
   return {
     id: item.id,
     status: normalizeStatus(item.status),
     llmCallCount: item.llmCallCount ?? 0,
     agentId: item.agentId,
     source: item.source ?? "chat",
+    roomId: item.roomId ?? metadataRoomId(metadata),
+    entityId: item.entityId ?? metadataEntityId(metadata),
+    metadata,
+    ...(roomContext ? { roomContext } : {}),
     startTime: item.startTime,
     endTime: item.endTime ?? null,
     durationMs: item.durationMs ?? null,
@@ -126,8 +156,12 @@ function listItemToUi(
 // Flatten the recorded steps into the flat UI arrays the viewer's phase
 // classifier (`summarizePhases`) reads: llmCalls keyed by stepType/purpose drive
 // HANDLE/PLAN/EVALUATE; the per-step action drives the ACTION phase.
-function detailToUi(traj: ServiceTrajectory): Record<string, unknown> {
+function detailToUi(
+  traj: ServiceTrajectory,
+  roomContext?: ResolvedRoomContext | null,
+): Record<string, unknown> {
   const id = String(traj.trajectoryId);
+  const metadata = traj.metadata ?? {};
   const llmCalls: Array<Record<string, unknown>> = [];
   const providerAccesses: Array<Record<string, unknown>> = [];
   const toolEvents: Array<Record<string, unknown>> = [];
@@ -192,7 +226,11 @@ function detailToUi(traj: ServiceTrajectory): Record<string, unknown> {
     trajectory: {
       id,
       agentId: traj.agentId ?? "",
-      source: "chat",
+      source: typeof metadata.source === "string" ? metadata.source : "chat",
+      roomId: metadataRoomId(metadata),
+      entityId: metadataEntityId(metadata),
+      metadata,
+      ...(roomContext ? { roomContext } : {}),
       status,
       startTime,
       endTime,
@@ -206,6 +244,37 @@ function detailToUi(traj: ServiceTrajectory): Record<string, unknown> {
     toolEvents,
     evaluationEvents: [],
   };
+}
+
+async function resolveRoomContext(
+  runtime: AgentRuntime | null | undefined,
+  roomId: string | null | undefined,
+  cache: Map<string, ResolvedRoomContext | null>,
+): Promise<ResolvedRoomContext | null> {
+  if (!roomId) return null;
+  if (cache.has(roomId)) return cache.get(roomId) ?? null;
+  const room = await runtime?.getRoom?.(
+    roomId as `${string}-${string}-${string}-${string}-${string}`,
+  );
+  const record =
+    room && typeof room === "object"
+      ? (room as unknown as Record<string, unknown>)
+      : null;
+  const context = record
+    ? {
+        id: String(record.id ?? roomId),
+        ...(typeof record.name === "string" ? { name: record.name } : {}),
+        ...(typeof record.type === "string" ? { type: record.type } : {}),
+        ...(typeof record.worldId === "string"
+          ? { worldId: record.worldId }
+          : {}),
+        ...(typeof record.serverId === "string"
+          ? { serverId: record.serverId }
+          : {}),
+      }
+    : null;
+  cache.set(roomId, context);
+  return context;
 }
 
 export async function tryHandleTrajectoryFallback(options: {
@@ -245,6 +314,9 @@ export async function tryHandleTrajectoryFallback(options: {
     return true;
   }
 
+  const shouldResolveRooms = url.searchParams.get("resolve") === "1";
+  const roomCache = new Map<string, ResolvedRoomContext | null>();
+
   try {
     if (isStats) {
       const stats = (await service.getStats?.()) ?? { totalTrajectories: 0 };
@@ -270,8 +342,22 @@ export async function tryHandleTrajectoryFallback(options: {
         // search box returned the full unfiltered list.
         search: url.searchParams.get("search") || undefined,
       })) ?? { trajectories: [], total: 0 };
+      const trajectories = shouldResolveRooms
+        ? await Promise.all(
+            result.trajectories.map(async (item) =>
+              listItemToUi(
+                item,
+                await resolveRoomContext(
+                  runtime,
+                  item.roomId ?? metadataRoomId(item.metadata),
+                  roomCache,
+                ),
+              ),
+            ),
+          )
+        : result.trajectories.map((item) => listItemToUi(item));
       sendJson(res, 200, {
-        trajectories: result.trajectories.map(listItemToUi),
+        trajectories,
         total: result.total,
         offset,
         limit,
@@ -286,7 +372,20 @@ export async function tryHandleTrajectoryFallback(options: {
       sendJson(res, 404, { error: `Trajectory "${detailId}" not found` });
       return true;
     }
-    sendJson(res, 200, detailToUi(traj));
+    sendJson(
+      res,
+      200,
+      detailToUi(
+        traj,
+        shouldResolveRooms
+          ? await resolveRoomContext(
+              runtime,
+              metadataRoomId(traj.metadata),
+              roomCache,
+            )
+          : null,
+      ),
+    );
     return true;
   } catch (err) {
     sendJson(res, 500, {

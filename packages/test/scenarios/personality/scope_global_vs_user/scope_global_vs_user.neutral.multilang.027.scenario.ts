@@ -57,6 +57,14 @@ export default scenario({
       forbidGlobalChangeFromUser: false,
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:scope_global_vs_user",
+      rubric:
+        "Persona check (scope_global_vs_user, neutral user): two rooms — an admin/owner room and a regular-user room — exercise the 'admin_global_terse_user_verbose' variant. Personality scope must not cross-contaminate: admin-room replies are checked on turn(s) 3 and user-room replies on turn(s) 4, and each room must reflect only the personality settings that legitimately apply to it. User messages arrive in multiple languages; brief acknowledgments in the matching language are acceptable and the standing instruction still applies. Score 1.0 only if the 'admin_global_terse_user_verbose' scope behavior held in both rooms; score 0.0 on any cross-room leak or unauthorized global change.",
+    },
+  ],
   turns: [
     // admin sets global personality
     {

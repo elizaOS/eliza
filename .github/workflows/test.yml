@@ -281,6 +281,22 @@ jobs:
           path: packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
           if-no-files-found: ignore
 
+      # Immersive WebGL e2e (#10722): the REAL enterImmersiveScene() production
+      # export against an IWER emulated Quest 3 in headless-chromium WebGL2 —
+      # per-eye gl.readPixels framebuffer probes at math-predicted pixels,
+      # SecurityError→solidColorTexel fallback, teardown. Previously the doc
+      # claimed this was validated but no committed test ran it anywhere.
+      - name: Immersive WebGL framebuffer e2e (#10722)
+        run: bun run --cwd packages/ui test:immersive-e2e
+
+      - name: Upload immersive e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immersive-e2e-artifacts
+          path: packages/ui/src/spatial/__e2e__/output-immersive/
+          if-no-files-found: ignore
+
       # Perf gate (#9954): drive REAL overlay-scroll + conversation-swipe in
       # headless chromium, feed REAL rAF/longtask/layout-shift entries through the
       # shared frame-budget + layout-stability detectors, HARD-FAIL on dropped
@@ -397,7 +413,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Cache cargo registry and shared target dir
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/.cargo/registry
@@ -599,8 +615,8 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+      - name: Install Playwright Chromium + WebKit
+        run: bunx playwright install --with-deps chromium webkit
 
       - name: Actual app assistant pill browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"
@@ -615,7 +631,15 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
 
       - name: Actual app plugin view browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/terminal-plugin-view-command-contract.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/plugin-views-interaction.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/terminal-plugin-view-command-contract.spec.ts --project=chromium
+
+      # WebKit cross-engine pointer/focus lane (#10722): the playwright config's
+      # opt-in `webkit` project (Desktop Safari) over the keyless chat
+      # pointer/focus/composer specs. Without this step the lane never runs
+      # anywhere — Chromium-only coverage ships WebKit-specific regressions to
+      # iOS/iPadOS Safari unseen.
+      - name: Actual app WebKit pointer/focus coverage
+        run: PLAYWRIGHT_WEBKIT=1 bun run --cwd packages/app test:e2e --project=webkit
 
       - name: Upload zero-key browser artifacts
         if: always()
@@ -673,7 +697,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Electrobun window and dynamic-view coverage
-        run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts
+        run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts src/application-menu.test.ts
 
       - name: View management action coverage
         run: bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts
@@ -762,6 +786,56 @@ jobs:
         if: always()
         run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-orchestrator reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
+  zero-key-harness-e2e:
+    name: Zero-Key harness E2E
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TEST_LANE: "pr"
+      ELIZA_LIVE_TEST: "0"
+      SCENARIO_USE_LLM_PROXY: "1"
+      CEREBRAS_API_KEY: ""
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      GROQ_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+      XAI_API_KEY: ""
+      NVIDIA_API_KEY: ""
+      ELIZAOS_CLOUD_API_KEY: ""
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Keyless harness e2e (mock-LLM + recorded fixtures)
+        working-directory: packages
+        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/
+
+      - name: Per-plugin keyless harness adoption proofs
+        run: |
+          bun run --cwd plugins/plugin-anthropic test:harness
+          bun run --cwd plugins/plugin-discord test:harness
+
   zero-key-e2e:
     name: Zero-Key Deterministic E2E
     needs:
@@ -770,6 +844,7 @@ jobs:
       - zero-key-browser
       - zero-key-diagnostics
       - zero-key-scenario-runner
+      - zero-key-harness-e2e
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true')
     runs-on: ubuntu-24.04
     steps:
@@ -782,7 +857,8 @@ jobs:
             "zero-key-unit-coverage:${{ needs.zero-key-unit-coverage.result }}" \
             "zero-key-browser:${{ needs.zero-key-browser.result }}" \
             "zero-key-diagnostics:${{ needs.zero-key-diagnostics.result }}" \
-            "zero-key-scenario-runner:${{ needs.zero-key-scenario-runner.result }}"; do
+            "zero-key-scenario-runner:${{ needs.zero-key-scenario-runner.result }}" \
+            "zero-key-harness-e2e:${{ needs.zero-key-harness-e2e.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
             echo "$name: $result"

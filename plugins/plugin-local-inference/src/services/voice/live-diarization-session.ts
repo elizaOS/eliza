@@ -110,9 +110,22 @@ export interface LiveDiarizationStatus {
 	framesDropped: number;
 	/** Turns segmented + attributed so far. */
 	turnsObserved: number;
-	/** Live AEC wiring status. Echo cancellation runs only when this is true. */
+	/** Live AEC wiring status. */
 	aec: {
+		/**
+		 * True only when a real far-end source exists: a host-registered echo
+		 * reference provider, or at least one playback frame with samples actually
+		 * delivered via `/api/voice/playback-frames`. Cancellation is active only
+		 * when this AND `ready` are both true. Cumulative — a playback reset does
+		 * not un-prove that the far-end transport delivered (#9583).
+		 */
 		echoReferenceWired: boolean;
+		/** Far-end playback frames delivered via /api/voice/playback-frames. */
+		playbackFramesReceived: number;
+		/** Total decoded far-end samples delivered (@16 kHz). */
+		playbackSamplesReceived: number;
+		/** Wall-clock epoch ms of the last delivered playback frame (null = never). */
+		lastPlaybackFrameAt: number | null;
 		/** Playback→mic delay (samples @16 kHz) currently applied to align the
 		 * far-end reference — self-calibrated from real echo when confident,
 		 * otherwise the `ELIZA_VOICE_ECHO_DELAY_MS` seed (default 0). */
@@ -295,6 +308,16 @@ export class LiveDiarizationSession {
 	private echoDelaySamples = resolveEchoDelaySamples();
 	private echoDelayConfidence = 0;
 	private echoDelayCalibrated = false;
+	/**
+	 * Far-end delivery evidence (#9583): frames/samples actually pushed through
+	 * {@link pushPlayback} and the wall-clock time of the last one. These drive
+	 * the truthful `aec.echoReferenceWired` status — the wiring is only "live"
+	 * once a real far-end source has delivered samples, never merely because the
+	 * consumer built. Cumulative across {@link resetPlayback}.
+	 */
+	private playbackFramesReceived = 0;
+	private playbackSamplesReceived = 0;
+	private lastPlaybackFrameAt: number | null = null;
 	/** Rolling near/far windows accumulated only while the far-end is active, used
 	 * once to estimate the playback→mic delay. Cleared after a confident estimate
 	 * and on {@link resetPlayback}. */
@@ -535,7 +558,11 @@ export class LiveDiarizationSession {
 	 */
 	pushPlayback(frames: AudioFrameEvent[]): void {
 		for (const frame of frames) {
-			this.echoBuffer.pushAt(frame.timestamp, decodeAudioFramePcm(frame));
+			const pcm = decodeAudioFramePcm(frame);
+			this.echoBuffer.pushAt(frame.timestamp, pcm);
+			this.playbackFramesReceived += 1;
+			this.playbackSamplesReceived += pcm.length;
+			this.lastPlaybackFrameAt = Date.now();
 		}
 	}
 
@@ -589,8 +616,16 @@ export class LiveDiarizationSession {
 			framesDropped: this.consumer?.droppedFrames ?? 0,
 			turnsObserved: this.turnsObserved,
 			aec: {
+				// Truthful wiring signal (#9583): a host provider is registered, or a
+				// real far-end source actually delivered samples. A merely-built
+				// consumer is NOT a far-end — with no delivery the reference reads
+				// zeros and the NLMS canceller is a passthrough.
 				echoReferenceWired:
-					this.consumer != null || this.options.echoReference != null,
+					this.options.echoReference != null ||
+					this.playbackSamplesReceived > 0,
+				playbackFramesReceived: this.playbackFramesReceived,
+				playbackSamplesReceived: this.playbackSamplesReceived,
+				lastPlaybackFrameAt: this.lastPlaybackFrameAt,
 				echoDelaySamples: this.echoDelaySamples,
 				echoDelayConfidence: this.echoDelayConfidence,
 			},

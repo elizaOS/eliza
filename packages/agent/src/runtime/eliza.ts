@@ -94,6 +94,7 @@ import {
   createBasicCapabilitiesPlugin,
   createMessageMemory,
   drainAppRoutePluginLoaders,
+  EmbeddingDimensionProbeError,
   type Entity,
   type LogEntry,
   logger,
@@ -909,10 +910,22 @@ export async function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
   config?: ElizaConfig,
 ): Promise<void> {
-  const { detectEmbeddingPreset } = await import(
-    "@elizaos/plugin-local-inference/runtime/embedding-presets"
-  );
-  const detectedPreset = detectEmbeddingPreset();
+  const { detectEmbeddingPreset, selectEmbeddingPresetFromHardware } =
+    await import("@elizaos/plugin-local-inference/runtime/embedding-presets");
+  let detectedPreset = detectEmbeddingPreset();
+  let detectedGpuBackend: "cuda" | "metal" | "vulkan" | null = null;
+  try {
+    const { probeHardware } = await import(
+      "@elizaos/plugin-local-inference/services"
+    );
+    const hardware = await probeHardware();
+    detectedPreset = selectEmbeddingPresetFromHardware(hardware);
+    detectedGpuBackend = hardware.gpu?.backend ?? null;
+  } catch (err) {
+    logger.warn(
+      `[eliza] Local embedding hardware probe failed; using sync preset fallback: ${formatError(err)}`,
+    );
+  }
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
     384, 512, 768, 1024, 1536, 2048, 3072,
   ]);
@@ -1001,10 +1014,18 @@ export async function configureLocalEmbeddingPlugin(
   }
 
   // Performance tuning
-  // Disable mmap on Metal to prevent "different text" errors with some models
+  // Disable mmap on Metal to prevent "different text" errors with some models.
+  // CUDA/Vulkan keep mmap enabled; the model is tiny and the file-backed load is
+  // the safer default there.
+  const resolvedGpuLayers =
+    configuredGpuLayers ?? process.env.LOCAL_EMBEDDING_GPU_LAYERS;
+  const shouldDisableMmap =
+    resolvedGpuLayers === "auto" &&
+    (detectedGpuBackend === "metal" ||
+      (detectedGpuBackend === null && process.platform === "darwin"));
   setEnvIfMissing(
     "LOCAL_EMBEDDING_USE_MMAP",
-    detectedPreset.gpuLayers === "auto" ? "false" : "true",
+    shouldDisableMmap ? "false" : "true",
   );
 
   setEnvIfMissing("MODELS_DIR", path.join(resolveStateDir(), "models"));
@@ -1147,6 +1168,20 @@ function isProvisionedCloudContainer(env: NodeJS.ProcessEnv = process.env) {
   return env.ELIZA_CLOUD_PROVISIONED === "1";
 }
 
+function isExplicitFalseEnvValue(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "false";
+}
+
+function hasExplicitEmbeddingProviderConfig(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return Boolean(
+    readEffectiveEnvValue(config, "EMBEDDING_BASE_URL", env) ||
+      readEffectiveEnvValue(config, "EMBEDDING_API_KEY", env),
+  );
+}
+
 const CLOUD_ROUTING_MODEL_ENV: ReadonlyArray<[string, string]> = [
   ["ELIZAOS_CLOUD_NANO_MODEL", "nanoModel"],
   ["ELIZAOS_CLOUD_SMALL_MODEL", "smallModel"],
@@ -1254,6 +1289,12 @@ export function ensureProvisionedCloudContainerConfig(
     );
     const cloudRouting = buildDefaultElizaCloudServiceRouting({
       includeInference: true,
+      excludeServices:
+        isExplicitFalseEnvValue(
+          readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_EMBEDDINGS", env),
+        ) && hasExplicitEmbeddingProviderConfig(config, env)
+          ? ["embeddings"]
+          : undefined,
       nanoModel: readEffectiveEnvValue(config, "ELIZAOS_CLOUD_NANO_MODEL", env),
       smallModel: readEffectiveEnvValue(
         config,
@@ -2091,6 +2132,17 @@ export async function autoFetchCloudGithubToken(
 }
 
 /**
+ * Non-secret fingerprint of a cloud API key for boot logs and mismatch
+ * warnings (#11038): first 6 chars + length, so `hasApiKey=true` can never
+ * mean "yes, a 31-char placeholder" without the log showing it.
+ */
+export function cloudApiKeyFingerprint(value: string | undefined): string {
+  const v = value?.trim();
+  if (!v) return "(none)";
+  return `${v.slice(0, 6)}…(len ${v.length})`;
+}
+
+/**
  * Propagate cloud config from Eliza config into process.env so the
  * ElizaCloud plugin can discover settings at startup.
  */
@@ -2124,22 +2176,51 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     );
   }
 
-  setCloudUsageEnv("ELIZAOS_CLOUD_USE_INFERENCE", effectivelyEnabled);
+  // USE_INFERENCE is a TRI-state contract with plugin-elizacloud's chat-brain
+  // registration (registerTextInferenceModels): "true" → Cloud serves the text
+  // slots; explicit "false" → the plugin is loaded for its capabilities only
+  // (image/media/TTS/embeddings/research) and must NOT register the chat-brain
+  // handlers another provider owns; unset → no host policy (standalone plugin
+  // use keeps its historical register-everything behavior). Deleting the var
+  // when inference is off (the old behavior) was indistinguishable from "no
+  // policy", so the plugin could never load capability-only — the host nuked
+  // the API key instead and lost image generation as collateral (#10819).
+  if (effectivelyEnabled) {
+    process.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  } else if (shouldLoadCloudPlugin) {
+    process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
+  } else {
+    delete process.env.ELIZAOS_CLOUD_USE_INFERENCE;
+  }
   setCloudUsageEnv(
     "ELIZAOS_CLOUD_USE_TTS",
     topology.services.tts || isCloudContainer,
   );
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_MEDIA", topology.services.media);
-  // Cloud containers always use cloud embeddings: the cloud TEXT_EMBEDDING
+  // Cloud containers normally use cloud embeddings: the cloud TEXT_EMBEDDING
   // handler (1536-dim) must win over plugin-local-inference's gte-small
   // (384-dim CPU GGUF). Without this, a dedicated cloud agent warms up and
   // serves local 384-dim embeddings while the SQL column is provisioned for the
   // cloud dimension → every memory insert is dropped on a dimension mismatch,
-  // and the CPU embedding warmup wastes boot time.
-  setCloudUsageEnv(
-    "ELIZAOS_CLOUD_USE_EMBEDDINGS",
-    topology.services.embeddings || isCloudContainer,
+  // and the CPU embedding warmup wastes boot time. The exception is an explicit
+  // BYO embedding endpoint plus ELIZAOS_CLOUD_USE_EMBEDDINGS=false: that is an
+  // operator-owned override, so preserve it instead of forcing cloud back on.
+  const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
+  const cloudEmbeddingsExplicitlyDisabled = isExplicitFalseEnvValue(
+    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_EMBEDDINGS"),
   );
+  const byoEmbeddingProviderOverridesCloud =
+    isCloudContainer &&
+    cloudEmbeddingsExplicitlyDisabled &&
+    hasByoEmbeddingProvider;
+  if (byoEmbeddingProviderOverridesCloud) {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+  } else {
+    setCloudUsageEnv(
+      "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+      topology.services.embeddings || isCloudContainer,
+    );
+  }
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
 
   if (effectivelyEnabled) {
@@ -2150,19 +2231,41 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
 
   if (shouldLoadCloudPlugin) {
     logger.info(
-      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}, baseUrl=${cloud?.baseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
+      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}, apiKey=${cloudApiKeyFingerprint(cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY)}, baseUrl=${cloud?.baseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
     );
-    // Only propagate the API key when cloud is enabled AND it is a real
-    // credential — never set the literal "[REDACTED]" placeholder (which can
-    // leak into the config via UI round-trips through the redacted GET → PUT
-    // cycle). WHY: when enabled is false (BYOK / disconnected), leaving the key
-    // in process.env still auto-loads @elizaos/plugin-elizacloud and steals
-    // TEXT_LARGE even if the JSON says cloud is off.
+    // Only propagate the API key from config when it is a real credential —
+    // never set the literal "[REDACTED]" placeholder (which can leak into the
+    // config via UI round-trips through the redacted GET → PUT cycle). When
+    // config carries no key, an env-provided key is KEPT: this branch means at
+    // least one cloud service is selected, and the selected capabilities need
+    // the credential. The historical wholesale delete here existed to stop the
+    // key from auto-loading @elizaos/plugin-elizacloud and stealing TEXT_LARGE;
+    // that is now prevented structurally by ELIZAOS_CLOUD_USE_INFERENCE=false
+    // (the plugin skips chat-brain registration), so deleting the key — and
+    // losing image/media/TTS with it — is no longer necessary (#10819). Only a
+    // leaked placeholder is still scrubbed.
     const isRealApiKey =
       cloud?.apiKey && cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
     if (isRealApiKey) {
+      // #11038: a stale/placeholder vault entry resolved into config here
+      // silently CLOBBERS a valid key already in the service env, and the
+      // resulting 401s are indistinguishable from a server-side auth outage
+      // (env inspection lies — /proc shows the spawn-time value). The config
+      // key still wins (by design), but a mismatch against a non-empty env
+      // value is loudly fingerprinted so the operator can see which credential
+      // is actually on the wire.
+      const configKey = (cloud?.apiKey ?? "").trim();
+      const envKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
+      if (envKey && configKey && envKey !== configKey) {
+        logger.warn(
+          `[eliza] Cloud API key from config (${cloudApiKeyFingerprint(configKey)}) differs from process.env.ELIZAOS_CLOUD_API_KEY (${cloudApiKeyFingerprint(envKey)}) — the config/vault value wins and will OVERRIDE the env key. If cloud calls start returning 401 "Invalid or expired API key", the vault likely holds a stale/placeholder entry (#11038).`,
+        );
+      }
       process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
-    } else if (!isCloudContainer) {
+    } else if (
+      !isCloudContainer &&
+      process.env.ELIZAOS_CLOUD_API_KEY?.trim().toUpperCase() === "[REDACTED]"
+    ) {
       delete process.env.ELIZAOS_CLOUD_API_KEY;
     }
     if (cloud?.baseUrl) {
@@ -4576,6 +4679,17 @@ export async function startEliza(
   const initializeCoreRuntime = async (): Promise<void> => {
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
+    // runtime.initialize() survives a total TEXT_EMBEDDING dimension-probe
+    // failure (EmbeddingDimensionProbeError is caught in core, which flips the
+    // runtime into embedding-disabled mode instead of writing vectors the SQL
+    // adapter would silently drop). Surface the degraded state at the boot
+    // layer too — the deferred re-probe below re-enables embeddings if a
+    // provider recovers once late plugins register.
+    if (runtime.isEmbeddingGenerationDisabled()) {
+      logger.warn(
+        "[eliza] boot continuing with embedding generation disabled: every registered TEXT_EMBEDDING provider failed the dimension probe; memory writes persist without vectors until the deferred re-probe finds a working provider",
+      );
+    }
     await prepareRuntimeForTrajectoryCapture(
       runtime,
       "runtime.initialize()",
@@ -5205,11 +5319,22 @@ export async function startEliza(
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {
-      logger.warn(
-        `[eliza] deferred embedding-dimension re-probe failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      if (err instanceof EmbeddingDimensionProbeError) {
+        // Non-fatal: core already disabled embedding generation for this
+        // runtime, so memory writes skip vectors instead of being silently
+        // dropped on dimension mismatch. Log the per-provider failures so the
+        // degraded state is diagnosable from boot logs.
+        logger.warn(
+          { attempts: err.attempts },
+          "[eliza] deferred embedding-dimension re-probe: every registered TEXT_EMBEDDING provider failed; embedding generation stays disabled (memory writes persist without vectors)",
+        );
+      } else {
+        logger.warn(
+          `[eliza] deferred embedding-dimension re-probe failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
     await seedBundledDocumentsIfEnabled();
     await installServerSideWebSearchIfAvailable();

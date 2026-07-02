@@ -464,7 +464,13 @@ export type ScheduledTaskLogTransition =
    * carries `{ originalProfile, substituteProfile: "notify-only", reason }`
    * so dashboards can show why a heavy task became a notification.
    */
-  | "substituted";
+  | "substituted"
+  /**
+   * A typed connector `DispatchResult { ok: false }` scheduled a bounded
+   * retry of the SAME escalation step after a backoff. `detail` carries
+   * `{ attempt, maxAttempts, retryAfterMinutes, nextAttemptAtIso }`.
+   */
+  | "dispatch_retried";
 
 export interface ScheduledTaskLogEntry {
   logId: string;

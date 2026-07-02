@@ -143,7 +143,7 @@ export function buildBenchmarkVsCerebrasArgs(
     "--variants",
     options.variants ?? "trained",
     "--cerebras-model",
-    options.cerebrasModel ?? "gpt-oss-120b",
+    options.cerebrasModel ?? "gemma-4-31b",
     "--max-samples",
     String(
       typeof options.maxSamples === "number"

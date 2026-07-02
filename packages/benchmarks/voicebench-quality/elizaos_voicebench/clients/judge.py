@@ -1,6 +1,6 @@
 """LLM judge client.
 
-Defaults to Cerebras ``gpt-oss-120b`` — the same model used by
+Defaults to Cerebras ``gemma-4-31b`` — the same model used by
 LifeOpsBench's simulated user / judge. We reuse the existing
 :class:`eliza_lifeops_bench.clients.cerebras.CerebrasClient` to keep one
 canonical Cerebras call site in the repo (retry policy, pricing,
@@ -41,7 +41,7 @@ class Judge(Protocol):
 
 
 class CerebrasJudge:
-    """Real LLM judge backed by Cerebras gpt-oss-120b."""
+    """Real LLM judge backed by Cerebras gemma-4-31b."""
 
     def __init__(
         self,

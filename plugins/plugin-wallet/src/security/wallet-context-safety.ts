@@ -3,7 +3,12 @@ import type { Memory } from "@elizaos/core";
 /** GHSA-7qxr-x6cg-r9cc — embedded addresses in token metadata must not become transfer recipients. */
 /** GHSA-gh63-5vpj-39qp — block financial writes on injection-flagged channel messages. */
 
-const FINANCIAL_WRITE_SUBACTIONS = new Set(["transfer", "swap", "bridge"]);
+const FINANCIAL_WRITE_SUBACTIONS = new Set([
+  "transfer",
+  "swap",
+  "bridge",
+  "pump_fun_buy",
+]);
 
 function messageHasPromptInjectionFlag(message: Memory): boolean {
   const metadata = message.content?.metadata;

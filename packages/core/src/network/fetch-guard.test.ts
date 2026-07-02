@@ -90,3 +90,49 @@ describe("fetchWithSsrfGuard without a lookupFn (literal-host checks)", () => {
 		await release();
 	});
 });
+
+describe("fetchWithSsrfGuard with DNS pinning", () => {
+	it("passes the vetted pinned lookup to the transport", async () => {
+		let lookupCalls = 0;
+		const lookupFn = async () => {
+			lookupCalls += 1;
+			return [{ address: "93.184.216.34", family: 4 }];
+		};
+		const pinnedFetchImpl = vi.fn(async ({ lookup }) => {
+			const resolved = await new Promise<{ address: string; family: number }>(
+				(resolve, reject) => {
+					lookup("example.com", (error, address, family) => {
+						if (error) {
+							reject(error);
+							return;
+						}
+						if (typeof address !== "string" || typeof family !== "number") {
+							reject(new Error("expected single pinned address"));
+							return;
+						}
+						resolve({ address, family });
+					});
+				},
+			);
+			expect(resolved).toEqual({ address: "93.184.216.34", family: 4 });
+			return new Response("ok", { status: 200 });
+		});
+
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://example.com/resource",
+			lookupFn,
+			pinnedFetchImpl,
+		});
+
+		expect(response.status).toBe(200);
+		expect(lookupCalls).toBe(1);
+		expect(pinnedFetchImpl).toHaveBeenCalledTimes(1);
+		expect(pinnedFetchImpl).toHaveBeenCalledWith(
+			expect.objectContaining({
+				addresses: ["93.184.216.34"],
+				url: expect.objectContaining({ hostname: "example.com" }),
+			}),
+		);
+		await release();
+	});
+});

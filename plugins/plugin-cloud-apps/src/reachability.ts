@@ -51,9 +51,33 @@ export function healthUrl(base: string, path = "/health"): string {
 }
 
 /**
- * Probe a URL with a bounded HTTP GET. Never throws — a network error, abort, or
- * non-2xx all resolve to `{ ok: false, … }` so the caller can report a clear
- * "deployed but not reachable" failure instead of crashing the action.
+ * Caddy gateway statuses: the ingress is up but the upstream app isn't serving.
+ * Any OTHER completed status (200/3xx/401/403/404/…) means the app answered.
+ */
+const GATEWAY_DOWN_STATUSES = new Set([502, 503, 504]);
+
+/**
+ * Whether a probe result means the app ANSWERED — the SAME rule the server uses
+ * to mark an app READY (`isReachableStatus`: reachable unless the status is a
+ * Caddy gateway error 502/503/504). A 401/403 auth gate or a 404 still proves
+ * the container is up and serving; a network error / abort (no status at all) is
+ * NOT reachable. Using this instead of a strict-2xx check keeps the DEPLOY_APP
+ * completion gate from contradicting the server's own live decision (an
+ * auth-gated app, or one with no `/health` route, is live per the server but was
+ * previously reported "not live").
+ */
+export function respondedLive(result: ReachabilityResult): boolean {
+  return (
+    typeof result.status === "number" &&
+    !GATEWAY_DOWN_STATUSES.has(result.status)
+  );
+}
+
+/**
+ * Probe a URL with a bounded HTTP GET. Never throws — a network error or abort
+ * resolves to `{ ok: false }` with no `status`; any HTTP response resolves with
+ * its `status` (and `ok` reflecting a strict 2xx). Callers that want the
+ * server's "the app answered" rule should use {@link respondedLive}.
  */
 export async function probeReachable(
   url: string,

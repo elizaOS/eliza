@@ -81,6 +81,7 @@ const appMock = vi.hoisted(() => ({
     conversations: [] as Array<{ id: string }>,
     setTab: vi.fn(),
     handleChatStop: vi.fn(),
+    setActionNotice: vi.fn(),
     uiLanguage: "en",
     elizaCloudVoiceProxyAvailable: false,
   },
@@ -146,9 +147,30 @@ const voiceOutputMock = vi.hoisted(() => ({
   toggleAgentVoiceMute: vi.fn(),
   needsAudioUnlock: false,
   unlockAudio: vi.fn(),
+  // Captures the `lastTurnVoice` the controller feeds its voice-output consumer
+  // each render — lastTurnVoice is internal (not on the public controller
+  // return), so this real consumer boundary is where the flag is observable.
+  lastTurnVoiceSeen: undefined as boolean | undefined,
 }));
 vi.mock("../useShellVoiceOutput", () => ({
-  useShellVoiceOutput: () => voiceOutputMock,
+  useShellVoiceOutput: (opts?: { lastTurnVoice?: boolean }) => {
+    voiceOutputMock.lastTurnVoiceSeen = opts?.lastTurnVoice;
+    return voiceOutputMock;
+  },
+}));
+
+// Wake-listen window is stubbed to a capture-only surface: it records the
+// `enabled` option (the Settings wake-word toggle → persisted pref → shell) and
+// otherwise stays inert, so the wake-gating assertions are deterministic and the
+// real native subscription never runs in jsdom.
+const wakeListenMock = vi.hoisted(() => ({
+  lastEnabled: undefined as boolean | undefined,
+}));
+vi.mock("../../../voice/useWakeListenWindow", () => ({
+  useWakeListenWindow: (opts: { enabled: boolean }) => {
+    wakeListenMock.lastEnabled = opts.enabled;
+    return { phase: "idle" as const };
+  },
 }));
 
 afterEach(() => {
@@ -161,11 +183,18 @@ afterEach(() => {
   appMock.value.chatFirstTokenReceived = false;
   appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
+  appMock.value.setActionNotice.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
   appMock.value.handleNewConversation = vi.fn(() => Promise.resolve());
   appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
   appMock.value.activeConversationId = null;
   appMock.value.conversations = [];
+  voiceOutputMock.stopSpeaking.mockClear();
+  voiceOutputMock.lastTurnVoiceSeen = undefined;
+  wakeListenMock.lastEnabled = undefined;
+  try {
+    window.localStorage.clear();
+  } catch {}
 });
 
 describe("useShellController", () => {
@@ -1161,5 +1190,165 @@ describe("useShellController — transcription mode", () => {
     });
     expect(result.current.transcriptionMode).toBe(false);
     expect(captureHandles[0]?.stop).toHaveBeenCalled();
+  });
+});
+
+// ── FIX 1: conversation switch/clear stops in-flight TTS + resets the latch ───
+// A voice reply that is still being spoken must not bleed into the conversation
+// the user swipes/clears into, and the "speak the next turn" latch (lastTurnVoice)
+// must not be inherited by the target thread. Both the swipe/select path and the
+// clear path must (a) stop in-flight TTS and (b) reset lastTurnVoice.
+describe("useShellController — conversation change stops TTS + resets voice latch", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    voiceOutputMock.speaking = false;
+    voiceOutputMock.stopSpeaking.mockClear();
+    voiceOutputMock.lastTurnVoiceSeen = undefined;
+    appMock.value.sendChatText.mockClear();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("swiping to another conversation stops in-flight TTS and clears lastTurnVoice", async () => {
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }];
+    appMock.value.activeConversationId = "a";
+
+    const { result } = renderHook(() => useShellController());
+
+    // The last turn was voice → the latch is set (the reply gets spoken).
+    act(() =>
+      result.current.send("what's the weather", { channelType: "VOICE_DM" }),
+    );
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(true);
+
+    voiceOutputMock.stopSpeaking.mockClear();
+    await act(async () => {
+      result.current.conversationNav.goNext();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(appMock.value.handleSelectConversation).toHaveBeenCalledWith("b");
+    // (a) in-flight speech is stopped, (b) the latch is reset for the new thread.
+    expect(voiceOutputMock.stopSpeaking).toHaveBeenCalled();
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(false);
+  });
+
+  it("clearing the conversation stops in-flight TTS and clears lastTurnVoice", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    act(() =>
+      result.current.send("remind me later", { channelType: "VOICE_DM" }),
+    );
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(true);
+
+    voiceOutputMock.stopSpeaking.mockClear();
+    await act(async () => {
+      result.current.clearConversation();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(voiceOutputMock.stopSpeaking).toHaveBeenCalled();
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(false);
+  });
+});
+
+// ── FIX 2: a swallowed mic permission / capture-start failure surfaces a notice ─
+describe("useShellController — mic capture-failure notice", () => {
+  beforeEach(() => {
+    createVoiceCaptureMock.mockReset();
+    appMock.value.setActionNotice.mockClear();
+    appMock.value.agentStatus = { ...READY_STATUS };
+    voiceOutputMock.speaking = false;
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+
+  /** Install a capture whose start() rejects with the given error. */
+  function installRejectingCapture(err: unknown): void {
+    createVoiceCaptureMock.mockImplementation(
+      () =>
+        ({
+          start: vi.fn(() => Promise.reject(err)),
+          stop: vi.fn(() => Promise.resolve()),
+          dispose: vi.fn(),
+          getAnalyser: vi.fn(() => null),
+        }) as never,
+    );
+  }
+
+  /** Let the start() promise chain (.then → .catch) settle under real timers. */
+  async function flushCaptureStart(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it("surfaces a permission-denied notice (NotAllowedError) instead of failing silently", async () => {
+    const denied = new Error("Permission denied");
+    denied.name = "NotAllowedError";
+    installRejectingCapture(denied);
+
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.startRecording();
+    });
+    await flushCaptureStart();
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+    const [text, tone] = appMock.value.setActionNotice.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(text.toLowerCase()).toContain("permission");
+    expect(tone).toBe("error");
+    // Recording state is cleaned up (not stuck "on").
+    expect(result.current.recording).toBe(false);
+  });
+
+  it("distinguishes a missing device (NotFoundError) from a denial", async () => {
+    const missing = new Error("Requested device not found");
+    missing.name = "NotFoundError";
+    installRejectingCapture(missing);
+
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.startRecording();
+    });
+    await flushCaptureStart();
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+    const [text, tone] = appMock.value.setActionNotice.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(text.toLowerCase()).toContain("microphone");
+    expect(text.toLowerCase()).not.toContain("permission");
+    expect(tone).toBe("error");
+  });
+});
+
+// ── FIX 3: the Settings wake-word toggle actually gates wake listening ────────
+describe("useShellController — wake-word enablement", () => {
+  afterEach(() => {
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+
+  it("enables wake listening by default (no stored pref)", () => {
+    renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(true);
+  });
+
+  it("disables wake listening when the persisted pref is off", () => {
+    window.localStorage.setItem("eliza:voice:wake-word-enabled", "false");
+    renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(false);
+  });
+
+  it("re-enables wake listening when the pref is on", () => {
+    window.localStorage.setItem("eliza:voice:wake-word-enabled", "true");
+    renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(true);
   });
 });

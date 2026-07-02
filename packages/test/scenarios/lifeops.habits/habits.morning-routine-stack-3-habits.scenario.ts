@@ -28,13 +28,25 @@ export default scenario({
       kind: "message",
       name: "morning 3-stack preview",
       text: "Set up a quick morning routine: brush teeth, drink a big glass of water, and meditate for 5 minutes.",
-      responseIncludesAny: ["brush", "water", "meditate"],
+      // Derived schedule: the user gave no time, so any concrete morning
+      // clock time in the preview is computed, not echoed ("three" cannot
+      // anchor this file — it appears in the confirm turn's text).
+      responseIncludesAny: [" am", ":00", ":30"],
+      // Two-phase commit: no completion claim before the owner confirms.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose three distinct morning habits (brush teeth, glass of water, 5-minute meditation) anchored to a concrete morning time and ask the owner to confirm before saving. Claiming they are already saved fails.",
+      },
     },
     {
       kind: "message",
       name: "morning 3-stack confirm",
       text: "Yes, save all three as morning habits.",
-      responseIncludesAny: ["saved", "morning"],
+      // Save-confirmation semantics in words the prompt never used ("set
+      // up" is omitted because the preview prompt itself says "Set up").
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "recorded"],
     },
   ],
   finalChecks: [

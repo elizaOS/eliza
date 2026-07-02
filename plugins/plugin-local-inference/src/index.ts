@@ -59,4 +59,6 @@ export {
 	EMBEDDING_PRESETS,
 	type EmbeddingPreset,
 	type EmbeddingTier,
+	selectEmbeddingPresetFromHardware,
+	selectEmbeddingTierFromHardware,
 } from "./runtime/embedding-presets.js";

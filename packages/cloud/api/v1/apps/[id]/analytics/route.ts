@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
@@ -38,6 +39,9 @@ app.get("/", async (c) => {
     }
 
     if (existingApp.organization_id !== user.organization_id) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), id)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 

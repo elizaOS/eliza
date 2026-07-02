@@ -413,7 +413,7 @@ export function createOpenAITeacher(
 }
 
 /**
- * Create a teacher model that talks to Cerebras (gpt-oss-120b by default).
+ * Create a teacher model that talks to Cerebras (gemma-4-31b by default).
  *
  * This is the standing default for lifeops training: the teacher generates
  * synthetic conversations, not the agent's responses. The agent under test
@@ -424,7 +424,7 @@ export function createCerebrasTeacher(runtime?: IAgentRuntime): TeacherModel {
   const model =
     process.env.TRAIN_MODEL?.trim() ??
     process.env.CEREBRAS_MODEL?.trim() ??
-    "gpt-oss-120b";
+    "gemma-4-31b";
   return {
     name: `cerebras/${model}`,
     async generate(systemPrompt: string, userPrompt: string): Promise<string> {

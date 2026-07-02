@@ -168,31 +168,35 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 // When `ELIZA_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
 // tighter token budget on the available-actions block.
 const COMPRESS_MODE_TOP_K_CAP = 8;
-const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, string> = {
-	CROSS_CHANNEL_SEARCH: "MESSAGE",
-	SEARCH_EMAIL: "MESSAGE",
-	SEARCH_INBOX: "MESSAGE",
-	SEARCH_MESSAGES: "MESSAGE",
-	MESSAGE_SEARCH: "MESSAGE",
-	SEARCH_CHATS: "MESSAGE",
-	SEARCH_CHAT: "MESSAGE",
-	FIND_MESSAGES: "MESSAGE",
-	FIND_MESSAGE: "MESSAGE",
-	ARRANGE_VIEWS: "VIEWS",
-	CLOSE_ALL_VIEWS: "VIEWS",
-	CLOSE_VIEW: "VIEWS",
-	LIST_VIEWS: "VIEWS",
-	OPEN_APP: "VIEWS",
-	OPEN_APPLICATION: "VIEWS",
-	OPEN_VIEW: "VIEWS",
-	SHOW_APP: "VIEWS",
-	SHOW_APPLICATION: "VIEWS",
-	SHOW_VIEW: "VIEWS",
-	SPLIT_VIEW: "VIEWS",
-	SPLIT_VIEWS: "VIEWS",
-	SWITCH_VIEW: "VIEWS",
-	TILE_VIEWS: "VIEWS",
-	VIEW_MANAGER: "VIEWS",
+// A candidate name can hint MORE than one parent when the phrasing is genuinely
+// ambiguous between surfaces. "OPEN_APP" can mean the apps *page* (VIEWS) or
+// launching the application itself (APP) — hint both and let the planner
+// arbitrate from the exposed descriptions (#9950).
+const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
+	CROSS_CHANNEL_SEARCH: ["MESSAGE"],
+	SEARCH_EMAIL: ["MESSAGE"],
+	SEARCH_INBOX: ["MESSAGE"],
+	SEARCH_MESSAGES: ["MESSAGE"],
+	MESSAGE_SEARCH: ["MESSAGE"],
+	SEARCH_CHATS: ["MESSAGE"],
+	SEARCH_CHAT: ["MESSAGE"],
+	FIND_MESSAGES: ["MESSAGE"],
+	FIND_MESSAGE: ["MESSAGE"],
+	ARRANGE_VIEWS: ["VIEWS"],
+	CLOSE_ALL_VIEWS: ["VIEWS"],
+	CLOSE_VIEW: ["VIEWS"],
+	LIST_VIEWS: ["VIEWS"],
+	OPEN_APP: ["VIEWS", "APP"],
+	OPEN_APPLICATION: ["VIEWS", "APP"],
+	OPEN_VIEW: ["VIEWS"],
+	SHOW_APP: ["VIEWS", "APP"],
+	SHOW_APPLICATION: ["VIEWS", "APP"],
+	SHOW_VIEW: ["VIEWS"],
+	SPLIT_VIEW: ["VIEWS"],
+	SPLIT_VIEWS: ["VIEWS"],
+	SWITCH_VIEW: ["VIEWS"],
+	TILE_VIEWS: ["VIEWS"],
+	VIEW_MANAGER: ["VIEWS"],
 };
 
 const VIEW_SURFACE_TOKENS = new Set([
@@ -823,10 +827,57 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	const parent = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
-	if (parent) return [parent];
-	if (looksLikeViewCandidateAction(normalized)) return ["VIEWS"];
-	return [];
+	const aliases: string[] = [
+		...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? []),
+	];
+	if (aliases.length === 0 && looksLikeViewCandidateAction(normalized)) {
+		aliases.push("VIEWS");
+	}
+	// App-operation candidates (LIST_APPS, GET_INSTALLED_APPS, LAUNCH_APP, …)
+	// hint the APP parent alongside any views hint: Stage-1 models routinely
+	// describe an installed-apps request with such names, and without this hint
+	// the VIEWS token overlap (APP/APPS are also view-surface words) routed
+	// every app ask to the views catalog (#9950).
+	if (looksLikeAppCandidateAction(normalized) && !aliases.includes("APP")) {
+		aliases.push("APP");
+	}
+	return aliases;
+}
+
+const APP_SURFACE_TOKENS = new Set([
+	"APP",
+	"APPS",
+	"APPLICATION",
+	"APPLICATIONS",
+]);
+
+const APP_OPERATION_TOKENS = new Set([
+	"BUILD",
+	"CREATE",
+	"GET",
+	"INSTALL",
+	"INSTALLED",
+	"LAUNCH",
+	"LIST",
+	"OPEN",
+	"REGISTER",
+	"RELAUNCH",
+	"RESTART",
+	"RUN",
+	"RUNNING",
+	"SCAFFOLD",
+	"SHOW",
+	"START",
+	"STOP",
+]);
+
+function looksLikeAppCandidateAction(normalizedActionName: string): boolean {
+	if (!normalizedActionName) return false;
+	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
+	return (
+		hasAnyToken(tokens, APP_SURFACE_TOKENS) &&
+		hasAnyToken(tokens, APP_OPERATION_TOKENS)
+	);
 }
 
 function looksLikeViewCandidateAction(normalizedActionName: string): boolean {

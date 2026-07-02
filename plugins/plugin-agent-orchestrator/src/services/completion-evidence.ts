@@ -105,6 +105,10 @@ export interface CompletionEvidenceBundle {
   toolOutput?: ToolOutputEvidence;
   /** URLs the router probed/verified at completion (loopback-flagged on render). */
   verifiedUrls: string[];
+  /** URLs the sub-agent merely MENTIONED in prose (never probed). Rendered in a
+   *  distinct, explicitly-unverified section so the judge can not mistake a
+   *  claimed link for a reachable deploy. */
+  mentionedUrls?: string[];
   /** Screenshot artifact paths found on the task/session. */
   screenshots: string[];
   /** Path to the persisted trajectory JSONL artifact for this completion. */
@@ -275,6 +279,25 @@ function renderUrlsSection(urls: readonly string[]): string {
   return lines.join("\n");
 }
 
+/** Render URLs the sub-agent only claimed, under a header that makes their
+ *  UN-verified status explicit — so the judge treats a pasted link as a claim,
+ *  not as proof of a reachable deploy. */
+function renderMentionedUrlsSection(urls: readonly string[]): string {
+  const unique = [...new Set(urls.map((u) => u.trim()).filter(Boolean))].slice(
+    0,
+    MAX_URLS,
+  );
+  const lines = [
+    "## CLAIMED URLS (mentioned by the sub-agent — NOT probe-verified; treat as an unproven claim)",
+  ];
+  for (const url of unique) {
+    lines.push(
+      `- ${url}${isLoopbackUrl(url) ? " (LOOPBACK — not publicly reachable)" : ""}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 function renderArtifactsSection(
   artifacts: readonly EvidenceArtifactRef[],
 ): string {
@@ -349,6 +372,16 @@ export function buildCompletionEvidenceString(
   if (bundle.verifiedUrls.length > 0) {
     sections.push(renderUrlsSection(bundle.verifiedUrls));
     hasRicherSection = true;
+  }
+
+  // Claimed-but-unverified URLs are informational only — surfaced so the judge
+  // sees them, but explicitly NOT counted as "richer" evidence (a pasted link
+  // is not proof), unlike a probe-verified URL above.
+  const mentioned = (bundle.mentionedUrls ?? []).filter(
+    (url) => !bundle.verifiedUrls.includes(url),
+  );
+  if (mentioned.length > 0) {
+    sections.push(renderMentionedUrlsSection(mentioned));
   }
 
   if (bundle.toolOutput && hasToolOutput(bundle.toolOutput)) {

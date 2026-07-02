@@ -160,7 +160,7 @@ export function MessageSearchPanel({
                 type="button"
                 data-testid="message-search-result"
                 onClick={() => handleJump(result)}
-                className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60 focus:bg-muted/60 focus:outline-none"
+                className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60"
               >
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   {result.role === "assistant" ? "Agent" : "You"} ·{" "}

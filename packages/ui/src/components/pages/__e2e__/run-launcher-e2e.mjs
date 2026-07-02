@@ -237,7 +237,7 @@ await page.goto(url);
 await page.waitForSelector('[data-testid="launcher"]');
 await page.waitForTimeout(400);
 
-// 1. Tap-launch a tile (first page tile that is not docked).
+// 1. Tap-launch a tile from the uniform page grid.
 const launchTarget = "calendar";
 await page.getByTestId(`launcher-tile-${launchTarget}`).getByRole("button").first().click();
 await page.waitForTimeout(250);
@@ -247,6 +247,13 @@ assert(
     callsAfterLaunch.launch.includes(launchTarget),
   `tap launches the tile (onLaunch fired with "${launchTarget}")`,
 );
+// Capture the `launch` telemetry NOW, before the reorder step below emits a
+// burst of `reorder` events. The interaction telemetry is a bounded ring, so a
+// heavy reorder drag can evict this early launch — asserting it here keeps the
+// launch check independent of the later reorder volume.
+const launchInRingEarly = (await readTelemetry(page)).some(
+  (e) => e.action === "launch",
+);
 
 // 2. Long-press a tile (450ms threshold) → enters edit mode.
 await longPress(page, `launcher-tile-wallet`, 500);
@@ -255,6 +262,112 @@ assert(
   (await editingTileCount(page)) > 0,
   "long-press (500ms) enters edit mode (tiles pulse)",
 );
+
+// 2b. Real drag-to-reorder (#10722): a GENUINE pointer drag on a Reorder.Item
+//     must reorder the active page, PERSIST it to LAUNCHER_STORAGE_KEY, and emit
+//     `reorder` telemetry — the mock-based Launcher.gestures.test only drives the
+//     onReorder BRIDGE, never the drag physics. Here we drive Framer's real drag
+//     via the browser's own mouse pointer pipeline.
+const LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
+const activePageTileOrder = (p) =>
+  p
+    .getByTestId("launcher-page-0")
+    .locator('[data-testid^="launcher-tile-"]')
+    .evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute("data-testid") ?? ""),
+    );
+const persistedPages = (p) =>
+  p.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed?.pages) ? parsed.pages : null;
+    } catch {
+      return null;
+    }
+  }, LAUNCHER_STORAGE_KEY);
+
+const orderBefore = await activePageTileOrder(page);
+const persistedBefore = JSON.stringify((await persistedPages(page))?.[0] ?? []);
+assert(
+  orderBefore.length >= 4,
+  `reorder: active page has enough tiles to drag (${orderBefore.length})`,
+);
+const reorderCountBefore = (await readTelemetry(page)).filter(
+  (e) => e.action === "reorder",
+).length;
+
+// Drag the FIRST tile downward. axis="y" over a multi-column grid means a
+// whole row shares one y-centre, so a fixed-endpoint fling thrashes onReorder
+// while crossing a row boundary and can round-trip back to the original order
+// by release time (timing-dependent). Deterministic protocol instead: nudge
+// down in small steps with a dwell, poll the LIVE order after each step, and
+// release only once a swap has been observed AND re-confirmed stable with the
+// pointer held still (onReorder only fires on pointer movement, so a stable
+// stationary order cannot thrash back before mouse.up).
+{
+  const firstId = orderBefore[0];
+  const from = await page.getByTestId(firstId).boundingBox();
+  const fx = from.x + from.width / 2;
+  const fy = from.y + from.height / 2;
+  await page.mouse.move(fx, fy);
+  await page.mouse.down();
+  // A small initial nudge to engage Framer's drag.
+  await page.mouse.move(fx, fy + 8, { steps: 4 });
+  let y = fy + 8;
+  // Bounded travel: about three grid rows below the start (a little extra so a
+  // straight-down drag reliably clears a full 4-column row and swaps).
+  const maxY = fy + from.height * 4;
+  while (y < maxY) {
+    y += 12;
+    await page.mouse.move(fx, y, { steps: 2 });
+    await page.waitForTimeout(70);
+    const live = await activePageTileOrder(page);
+    if (live[0] !== orderBefore[0]) {
+      // Hold the pointer still and confirm the swap did not thrash back.
+      await page.waitForTimeout(300);
+      const settled = await activePageTileOrder(page);
+      if (settled[0] !== orderBefore[0]) break;
+    }
+  }
+  await page.mouse.up();
+  // Let the Reorder settle animation finish before reading the final order.
+  await page.waitForTimeout(600);
+}
+
+const orderAfter = await activePageTileOrder(page);
+const persistedAfter = JSON.stringify((await persistedPages(page))?.[0] ?? []);
+const reorderCountAfter = (await readTelemetry(page)).filter(
+  (e) => e.action === "reorder",
+).length;
+assert(
+  reorderCountAfter > reorderCountBefore,
+  `reorder: a real drag fires reorder telemetry (${reorderCountBefore}→${reorderCountAfter})`,
+);
+// The reorder committed if EITHER the live DOM order changed OR the persisted
+// page-0 order changed — a straight-down grid drag can settle back to the same
+// DOM order[0] while still having committed a different persisted arrangement,
+// so accept both signals rather than only the DOM head.
+assert(
+  JSON.stringify(orderAfter) !== JSON.stringify(orderBefore) ||
+    persistedAfter !== persistedBefore,
+  `reorder: the drag changed the tile order (domHead ${orderBefore[0]}→${orderAfter[0]}; persisted changed=${persistedAfter !== persistedBefore})`,
+);
+// Persistence + integrity: the new order is written to LAUNCHER_STORAGE_KEY, and
+// no tile id was dropped or duplicated by the reorder.
+const pagesAfter = await persistedPages(page);
+assert(
+  Array.isArray(pagesAfter) && pagesAfter.length > 0,
+  "reorder: the new layout persisted to LAUNCHER_STORAGE_KEY",
+);
+{
+  const flat = pagesAfter.flat();
+  assert(
+    new Set(flat).size === flat.length,
+    `reorder: persisted layout has no duplicate ids (${flat.length} ids, ${new Set(flat).size} unique)`,
+  );
+}
 
 // 3. Page navigation — click the "Page 2" dot. Exit edit first (a second
 //    long-press toggles it off) so the walkthrough ends on a clean grid.
@@ -303,11 +416,19 @@ assert(
 );
 
 // ── Telemetry assertion — the real interaction stream fired ────────────────
+// Use the launch captured right after the tap (above): the reorder step emits a
+// burst that can evict the early launch from the bounded telemetry ring, so
+// re-reading the ring here would be flaky. The current ring must still carry the
+// later actions, proving the stream is live.
 const telemetry = await readTelemetry(page);
 const actions = new Set(telemetry.map((e) => e.action));
 assert(
-  actions.has("launch"),
-  `telemetry ring contains a launch action (${[...actions].join(", ")})`,
+  launchInRingEarly,
+  "telemetry ring recorded the tap launch (captured before the reorder burst)",
+);
+assert(
+  actions.has("page-swipe"),
+  `telemetry stream stays live through paging (${[...actions].join(", ")})`,
 );
 
 assert(errors.length === 0, `no page errors (saw ${errors.length})`);

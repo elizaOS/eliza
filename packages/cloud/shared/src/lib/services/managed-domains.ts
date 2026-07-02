@@ -12,7 +12,7 @@
  * work, not wrapping a one-line insert.
  */
 
-import { and, eq, isNotNull, lte } from "drizzle-orm";
+import { and, eq, isNotNull, lte, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {
   type DomainRegistrantInfo,
@@ -97,10 +97,14 @@ export async function upsertCloudflareRegisteredDomain(
   input: UpsertCloudflareDomainInput,
 ): Promise<ManagedDomain> {
   const normalized = input.domain.toLowerCase().trim();
-  const existing = await getDomainByName(normalized);
-  if (existing && existing.organizationId !== input.organizationId) {
+  // Block if ANOTHER org already holds the exclusive slot; otherwise operate on
+  // THIS org's own row (which may be an unverified external pending row that
+  // getDomainByName intentionally hides — we upgrade it to cloudflare here).
+  const exclusive = await getDomainByName(normalized);
+  if (exclusive && exclusive.organizationId !== input.organizationId) {
     throw new Error("managed domain belongs to a different organization");
   }
+  const existing = await getOwnDomainRow(input.organizationId, normalized);
 
   const now = new Date();
   const status = input.status ?? (input.cloudflareZoneId ? "active" : "pending");
@@ -208,12 +212,76 @@ export async function getDomainById(domainId: string): Promise<ManagedDomain | n
   return row ?? null;
 }
 
+/**
+ * The globally EXCLUSIVE row for a domain: a verified row, or a cloudflare
+ * registrar row. At most one exists (enforced by the partial unique index).
+ * Returns null when only unverified external pending rows exist — those never
+ * own the domain globally, so an unverified squat can't be mistaken for the
+ * rightful owner (#11024). Serving/resolution callers want exactly this: they
+ * already gate on `verified && status==='active'`, and must never resolve a host
+ * to another org's unproven pending row.
+ */
 export async function getDomainByName(domain: string): Promise<ManagedDomain | null> {
   const normalized = domain.toLowerCase().trim();
   const row = await dbRead.query.managedDomains.findFirst({
-    where: eq(managedDomains.domain, normalized),
+    where: and(
+      eq(managedDomains.domain, normalized),
+      or(eq(managedDomains.verified, true), eq(managedDomains.registrar, "cloudflare")),
+    ),
   });
   return row ?? null;
+}
+
+/**
+ * The caller org's OWN row for a domain (verified or not). App-management routes
+ * (attach/verify/dns/status/rename/buy) operate on the caller's own pending row,
+ * which `getDomainByName` intentionally hides while it is unverified. Scoped to
+ * `(organization_id, domain)`, which is unique — so at most one row.
+ */
+export async function getOwnDomainRow(
+  organizationId: string,
+  domain: string,
+): Promise<ManagedDomain | null> {
+  const normalized = domain.toLowerCase().trim();
+  const row = await dbRead.query.managedDomains.findFirst({
+    where: and(
+      eq(managedDomains.domain, normalized),
+      eq(managedDomains.organizationId, organizationId),
+    ),
+  });
+  return row ?? null;
+}
+
+/**
+ * Hard-delete a managed-domain row (the reclaim primitive #11024's expiry cron
+ * needs — `unassignFromResource` only nulls resource FKs and keeps the row, so
+ * before this there was no way to release a stale unverified pending row). Only
+ * ever call for rows the caller owns or for expired unverified externals.
+ */
+export async function releaseDomain(domainId: string): Promise<void> {
+  await dbWrite.delete(managedDomains).where(eq(managedDomains.id, domainId));
+}
+
+/**
+ * Delete external rows that are still unverified after `olderThanMs` — the
+ * reclaim path that stops an unproven attach from squatting a domain forever.
+ * Returns the number of rows released. Intended for a periodic cron.
+ */
+export async function releaseStaleUnverifiedExternals(
+  olderThanMs: number,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const deleted = await dbWrite
+    .delete(managedDomains)
+    .where(
+      and(
+        eq(managedDomains.verified, false),
+        eq(managedDomains.registrar, "external"),
+        lte(managedDomains.createdAt, cutoff),
+      ),
+    )
+    .returning({ id: managedDomains.id });
+  return deleted.length;
 }
 
 export async function listForOrganization(organizationId: string): Promise<ManagedDomain[]> {
@@ -411,6 +479,9 @@ export const managedDomainsService = {
   syncStatus,
   getDomainById,
   getDomainByName,
+  getOwnDomainRow,
+  releaseDomain,
+  releaseStaleUnverifiedExternals,
   listForOrganization,
   listForApp,
   listVerifiedAppOrigins,

@@ -84,7 +84,7 @@ export interface TaskMetadata {
 	paused?: boolean;
 	/** Optional. Consecutive failure count; reset to 0 on success. WHY: drive backoff and auto-pause after maxFailures. */
 	failureCount?: number;
-	/** Optional. Auto-pause after this many consecutive failures. undefined = 5. Use -1 (not Infinity; JSON loses it) to never auto-pause. WHY: prevent infinite retry storms; operators can resume after fixing. */
+	/** Optional. Auto-pause after this many consecutive failures. undefined = 5. Any value <= 0 (use 0 or -1, not Infinity; JSON loses it) = never auto-pause — for critical heartbeats that must survive failure storms. WHY: prevent infinite retry storms; operators can resume after fixing. */
 	maxFailures?: number;
 	/** Optional. Last error message for debugging. WHY: getTaskStatus and logs show why a task failed. */
 	lastError?: string;

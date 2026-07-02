@@ -29,7 +29,9 @@ import type {
   Handedness,
   HitResult,
   InputEventRecord,
+  InputSourceSnapshot,
   Quat,
+  RaySource,
   TelemetrySnapshot,
   Vec3,
   XREmulatorAPI,
@@ -121,7 +123,18 @@ navigator.mediaDevices.getUserMedia = async (
 
 // ── IWER XR device ────────────────────────────────────────────────────────
 
-const xrDevice = new XRDevice(metaQuest3);
+// IWER reparents the session's base-layer canvas into this container as a
+// fixed fullscreen overlay when a baseLayer is set (XRDevice onBaseLayerSet).
+// The harness drives the page's real DOM, so the emulated immersive layer must
+// never intercept document.elementFromPoint hit-testing or show up in
+// screenshots — keep it hit-transparent and hidden.
+const immersiveOverlay = document.createElement("div");
+immersiveOverlay.style.pointerEvents = "none";
+immersiveOverlay.style.visibility = "hidden";
+
+const xrDevice = new XRDevice(metaQuest3, {
+  canvasContainer: immersiveOverlay,
+});
 xrDevice.installRuntime();
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -134,6 +147,9 @@ const selectLog: InputEventRecord[] = [];
 const squeezeLog: InputEventRecord[] = [];
 /** Controllers we've given a default hand position (so we don't re-place them). */
 const controllerPlaced = new Set<Handedness>();
+/** Hand-tracking inputs the harness has activated (IWER hands default to
+ * connected, so telemetry only reports hands a test explicitly drives). */
+const handPlaced = new Set<Handedness>();
 
 function handednessOf(
   source: XRInputSource | undefined,
@@ -144,9 +160,25 @@ function handednessOf(
   return "unknown";
 }
 
+/** A session input event, recorded with enough source detail for assertions. */
+function inputEventRecord(event: Event): InputEventRecord {
+  const source = (event as XRInputSourceEvent).inputSource;
+  return {
+    handedness: handednessOf(source),
+    viaHand: Boolean(source?.hand),
+    targetRayMode: source?.targetRayMode ?? "unknown",
+    t: performance.now() - installedAt,
+  };
+}
+
 /** IWER remote device id for a controller. */
 function remoteDevice(handedness: Handedness): string {
   return `controller-${handedness}`;
+}
+
+/** IWER remote device id for a hand-tracking input. */
+function handRemoteDevice(handedness: Handedness): string {
+  return `hand-${handedness}`;
 }
 
 /** Run a remote dispatch with a timeout guard so input never hangs the test. */
@@ -215,6 +247,10 @@ function controller(handedness: Handedness) {
   return xrDevice.controllers?.[handedness];
 }
 
+function hand(handedness: Handedness) {
+  return xrDevice.hands?.[handedness];
+}
+
 function elementIdOf(el: Element | null): string | null {
   if (!el) return null;
   const tagged = el.closest("[data-agent-id]") as HTMLElement | null;
@@ -238,6 +274,13 @@ function controllerRay(handedness: Handedness): DeviceRay | null {
   return { origin: vec3(c.position), direction: forward(quat(c.quaternion)) };
 }
 
+/** An activated hand-tracking input's world-space ray. */
+function handRay(handedness: Handedness): DeviceRay | null {
+  const h = hand(handedness);
+  if (!h?.connected || !handPlaced.has(handedness)) return null;
+  return { origin: vec3(h.position), direction: forward(quat(h.quaternion)) };
+}
+
 /** The headset's world-space ray. */
 function headRay(): DeviceRay {
   return {
@@ -253,24 +296,47 @@ function selectorToElementId(selector: string): string | null {
   return el.dataset.agentId ?? el.id ?? null;
 }
 
-/** Place a controller at a natural hand offset from the head (once), if unset. */
-function ensureControllerPlaced(handedness: Handedness): void {
-  const c = controller(handedness);
-  if (!c) return;
-  c.connected = true;
-  if (controllerPlaced.has(handedness)) return;
+/** World position at a natural hand offset from the current head pose. */
+function naturalHandPosition(handedness: Handedness): Vec3 {
   const lateral = handedness === "left" ? -0.2 : 0.2;
   const off = rotateByQuat(quat(xrDevice.quaternion), {
     x: lateral,
     y: -0.25,
     z: -0.15,
   });
-  c.position.set(
-    xrDevice.position.x + off.x,
-    xrDevice.position.y + off.y,
-    xrDevice.position.z + off.z,
-  );
+  return {
+    x: xrDevice.position.x + off.x,
+    y: xrDevice.position.y + off.y,
+    z: xrDevice.position.z + off.z,
+  };
+}
+
+/** Place a controller at a natural hand offset from the head (once), if unset. */
+function ensureControllerPlaced(handedness: Handedness): void {
+  const c = controller(handedness);
+  if (!c) return;
+  c.connected = true;
+  if (controllerPlaced.has(handedness)) return;
+  const p = naturalHandPosition(handedness);
+  c.position.set(p.x, p.y, p.z);
   controllerPlaced.add(handedness);
+}
+
+/**
+ * Connect a hand-tracking input, make hands the primary modality (IWER routes
+ * frame-loop input processing + session select events through
+ * `primaryInputMode`, mirroring a Quest switching controllers → hands), and
+ * place it at a natural offset from the head (once).
+ */
+function ensureHandActive(handedness: Handedness): void {
+  const h = hand(handedness);
+  if (!h) return;
+  h.connected = true;
+  xrDevice.primaryInputMode = "hand";
+  if (handPlaced.has(handedness)) return;
+  const p = naturalHandPosition(handedness);
+  h.position.set(p.x, p.y, p.z);
+  handPlaced.add(handedness);
 }
 
 /** Rotate a vector by a quaternion (shared convention with the scene math). */
@@ -330,21 +396,32 @@ const api: XREmulatorAPI = {
   async startSession(mode: XRSessionMode = "immersive-vr"): Promise<boolean> {
     if (!navigator.xr) return false;
     if (activeSession) return true;
-    const session = await navigator.xr.requestSession(mode);
+    const session = await navigator.xr.requestSession(mode, {
+      optionalFeatures: ["hand-tracking"],
+    });
     session.addEventListener("end", () => {
       activeSession = null;
     });
     session.addEventListener("select", (event) => {
-      selectLog.push({
-        handedness: handednessOf((event as XRInputSourceEvent).inputSource),
-        t: performance.now() - installedAt,
-      });
+      selectLog.push(inputEventRecord(event));
     });
     session.addEventListener("squeeze", (event) => {
-      squeezeLog.push({
-        handedness: handednessOf((event as XRInputSourceEvent).inputSource),
-        t: performance.now() - installedAt,
-      });
+      squeezeLog.push(inputEventRecord(event));
+    });
+    // IWER's per-frame pipeline (input processing, select/squeeze event
+    // dispatch, remote command queue) only runs once the session has a base
+    // layer. Attach an offscreen WebGL layer so the emulated device behaves
+    // like a real one; the DOM stays the rendering surface under test (the
+    // overlay IWER mounts is hit-transparent + hidden, see immersiveOverlay).
+    const glCanvas = document.createElement("canvas");
+    const gl = glCanvas.getContext("webgl");
+    if (!gl) {
+      throw new Error(
+        "[XR Emulator] WebGL unavailable — cannot attach the XRWebGLLayer that drives IWER's frame loop",
+      );
+    }
+    await session.updateRenderState({
+      baseLayer: new XRWebGLLayer(session, gl),
     });
     activeSession = session;
     return true;
@@ -372,11 +449,11 @@ const api: XREmulatorAPI = {
   },
 
   setHandPose(handedness: Handedness, poseId: string): void {
-    const h = xrDevice.hands?.[handedness];
+    const h = hand(handedness);
     if (!h) return;
-    h.connected = true;
+    ensureHandActive(handedness);
     h.poseId = poseId;
-    h.updateHandPose?.();
+    h.updateHandPose();
   },
 
   aimControllerAt(handedness: Handedness, selector: string): boolean {
@@ -405,18 +482,69 @@ const api: XREmulatorAPI = {
     return true;
   },
 
+  aimHandAt(handedness: Handedness, selector: string): boolean {
+    ensureHandActive(handedness);
+    const h = hand(handedness);
+    if (!h) return false;
+    const s = scene();
+    if (s) {
+      // 3D mode: aim the hand's world ray at the element's world position.
+      const elementId = selectorToElementId(selector);
+      if (!elementId) return false;
+      const q = s.aimFor(vec3(h.position), elementId);
+      if (!q) return false;
+      h.quaternion.set(q.x, q.y, q.z, q.w);
+      return true;
+    }
+    // Flat mode: aim the pinhole reticle at the element's screen center.
+    const el = document.querySelector(selector);
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    const q = quatFromCenter(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    h.quaternion.set(q.x, q.y, q.z, q.w);
+    return true;
+  },
+
+  aimHeadAt(selector: string): boolean {
+    const s = scene();
+    if (s) {
+      // 3D mode: turn the head so its gaze ray hits the element's world position.
+      const elementId = selectorToElementId(selector);
+      if (!elementId) return false;
+      const q = s.aimFor(vec3(xrDevice.position), elementId);
+      if (!q) return false;
+      xrDevice.quaternion.set(q.x, q.y, q.z, q.w);
+      return true;
+    }
+    // Flat mode: aim the head's pinhole reticle at the element's screen center.
+    const el = document.querySelector(selector);
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    const q = quatFromCenter(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    xrDevice.quaternion.set(q.x, q.y, q.z, q.w);
+    return true;
+  },
+
   async pressSelect(handedness: Handedness): Promise<void> {
     const c = controller(handedness);
     if (!c) return;
     c.connected = true;
+    xrDevice.primaryInputMode = "controller";
     // In 3D-scene mode, resolve the controller ray to a DOM element and click it
     // so the authored view's real handler fires (the SpatialSurface dispatches
     // the `press` SpatialAction). This is the actual user-facing press path.
     const s = scene();
     const ray = controllerRay(handedness);
     if (s && ray) s.pressRay(ray);
-    // Also drive IWER's input: `select` is a session action processed in capture
-    // mode (it self-drives the frame queue), firing selectstart→select→selectend.
+    // Also drive IWER's input: `select` pulses the trigger across real frames
+    // (the base layer set in startSession keeps the frame loop live), firing
+    // selectstart→select→selectend on the session from the controller source.
     await dispatchGuarded("select", { device: remoteDevice(handedness) });
   },
 
@@ -424,14 +552,30 @@ const api: XREmulatorAPI = {
     const c = controller(handedness);
     if (!c) return;
     c.connected = true;
-    await dispatchGuarded("set_select_value", {
+    xrDevice.primaryInputMode = "controller";
+    // Pulse the grip (gamepad button index 1, eventTrigger "squeeze") across
+    // two frames so IWER fires squeezestart→squeeze→squeezeend for real.
+    await dispatchGuarded("set_gamepad_state", {
       device: remoteDevice(handedness),
-      value: 1,
+      buttons: [{ index: 1, value: 1 }],
     });
-    await dispatchGuarded("set_select_value", {
+    await dispatchGuarded("set_gamepad_state", {
       device: remoteDevice(handedness),
-      value: 0,
+      buttons: [{ index: 1, value: 0 }],
     });
+  },
+
+  async pressHandSelect(handedness: Handedness): Promise<void> {
+    ensureHandActive(handedness);
+    // In 3D-scene mode, resolve the hand ray to a DOM element and click it so
+    // the authored view's real handler fires — same press path as pressSelect.
+    const s = scene();
+    const ray = handRay(handedness);
+    if (s && ray) s.pressRay(ray);
+    // Drive IWER's hand input: `select` pulses the hand's analog "pinch"
+    // gamepad button (eventTrigger "select") across real frames, firing
+    // selectstart→select→selectend on the session from the HAND input source.
+    await dispatchGuarded("select", { device: handRemoteDevice(handedness) });
   },
 
   getElementTelemetry(selector = "[data-agent-id]"): TelemetrySnapshot {
@@ -463,7 +607,7 @@ const api: XREmulatorAPI = {
 
     if (s) {
       // ── 3D-scene mode: cast world rays, intersect panel planes in world space.
-      const addSceneRay = (source: "headset" | Handedness, ray: DeviceRay) => {
+      const addSceneRay = (source: RaySource, ray: DeviceRay) => {
         const hit = s.hitTest(ray);
         const reticle = hit ? hit.screen : project(ray.direction);
         rays.push({
@@ -483,14 +627,12 @@ const api: XREmulatorAPI = {
       for (const handedness of ["left", "right"] as Handedness[]) {
         const ray = controllerRay(handedness);
         if (ray) addSceneRay(handedness, ray);
+        const hRay = handRay(handedness);
+        if (hRay) addSceneRay(`hand-${handedness}`, hRay);
       }
     } else {
       // ── Flat mode: pinhole-project the device forward ray to a screen reticle.
-      const addRay = (
-        source: "headset" | Handedness,
-        q: Quat,
-        origin: Vec3,
-      ) => {
+      const addRay = (source: RaySource, q: Quat, origin: Vec3) => {
         const direction = forward(q);
         const reticle = project(direction);
         rays.push({ source, origin, direction, reticle });
@@ -502,6 +644,9 @@ const api: XREmulatorAPI = {
         const c = controller(handedness);
         if (c?.connected)
           addRay(handedness, quat(c.quaternion), vec3(c.position));
+        const h = hand(handedness);
+        if (h?.connected && handPlaced.has(handedness))
+          addRay(`hand-${handedness}`, quat(h.quaternion), vec3(h.position));
       }
     }
 
@@ -528,12 +673,14 @@ const api: XREmulatorAPI = {
           : undefined,
       },
       hands: {
-        left: xrDevice.hands?.left?.connected
-          ? xrDevice.hands.left.poseId
-          : undefined,
-        right: xrDevice.hands?.right?.connected
-          ? xrDevice.hands.right.poseId
-          : undefined,
+        left:
+          handPlaced.has("left") && hand("left")?.connected
+            ? hand("left")?.poseId
+            : undefined,
+        right:
+          handPlaced.has("right") && hand("right")?.connected
+            ? hand("right")?.poseId
+            : undefined,
       },
       elements,
       rays,
@@ -583,6 +730,16 @@ const api: XREmulatorAPI = {
 
   getSqueezeLog(): InputEventRecord[] {
     return squeezeLog;
+  },
+
+  getInputSources(): InputSourceSnapshot[] {
+    if (!activeSession) return [];
+    return Array.from(activeSession.inputSources).map((source) => ({
+      handedness: source.handedness,
+      targetRayMode: source.targetRayMode,
+      hasHand: Boolean(source.hand),
+      profiles: [...source.profiles],
+    }));
   },
 
   simulateDisconnect() {

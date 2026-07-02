@@ -335,6 +335,9 @@ export interface AppState {
   backgroundConfig: BackgroundConfig;
   /** True when there is a previous background config to undo to. */
   canUndoBackground: boolean;
+  canRedoBackground: boolean;
+  /** When true, the home time/date tile is hidden (user pref, #10706). */
+  homeTimeWidgetHidden: boolean;
   ownerName: string | null;
   connected: boolean;
   agentStatus: AgentStatus | null;
@@ -773,6 +776,9 @@ export interface AppActions {
   setBackgroundConfig: (config: BackgroundConfig) => void;
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
+  redoBackgroundConfig: () => void;
+  /** Show/hide the home time/date tile (#10706). */
+  setHomeTimeWidgetHidden: (hidden: boolean) => void;
 
   // Lifecycle
   handleStart: () => Promise<void>;
@@ -856,10 +862,11 @@ export interface AppActions {
   loadPlugins: (options?: { silent?: boolean }) => Promise<void>;
   ensurePluginsLoaded: () => Promise<void>;
   handlePluginToggle: (pluginId: string, enabled: boolean) => Promise<void>;
+  /** Resolves true only when the config actually persisted (false = save failed; the caller must keep the user's typed draft). */
   handlePluginConfigSave: (
     pluginId: string,
     config: Record<string, string>,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 
   // Skills
   loadSkills: () => Promise<void>;

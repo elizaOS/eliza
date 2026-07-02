@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
-import { expectCreatedEntityIds, expectNoCreatedEntityIds } from "./entity-create-assertions";
+import { expectCreatedEntityIds } from "./entity-create-assertions";
 
 describe("Entity CRUD Operations", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
@@ -215,9 +215,39 @@ describe("Entity CRUD Operations", () => {
       const firstResult = await adapter.createEntities([entity]);
       expectCreatedEntityIds(firstResult, [entity]);
 
-      // Second creation should fail
-      const secondResult = await adapter.createEntities([entity]);
-      expectNoCreatedEntityIds(secondResult);
+      // Re-creating the same id is idempotent: the existing id is reported as
+      // success, and the stored row is NOT clobbered (create is not upsert —
+      // that's upsertEntities' job).
+      const duplicate: Entity = { ...entity, names: ["Duplicate Test Renamed"] };
+      const secondResult = await adapter.createEntities([duplicate]);
+      expectCreatedEntityIds(secondResult, [entity]);
+
+      const retrieved = await adapter.getEntitiesByIds([entity.id as UUID]);
+      expect(retrieved).toHaveLength(1);
+      expect(retrieved[0].names).toEqual(["Duplicate Test"]);
+    });
+
+    it("should still insert new entities in a batch containing a duplicate", async () => {
+      const existing: Entity = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        names: ["Existing Batch Entity"],
+        metadata: {},
+      };
+      expectCreatedEntityIds(await adapter.createEntities([existing]), [existing]);
+
+      // A duplicate in the batch must not roll back the new rows.
+      const fresh: Entity = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        names: ["Fresh Batch Entity"],
+        metadata: {},
+      };
+      const result = await adapter.createEntities([existing, fresh]);
+      expectCreatedEntityIds(result, [existing, fresh]);
+
+      const retrieved = await adapter.getEntitiesByIds([existing.id as UUID, fresh.id as UUID]);
+      expect(retrieved).toHaveLength(2);
     });
 
     it("should handle batch entity operations", async () => {

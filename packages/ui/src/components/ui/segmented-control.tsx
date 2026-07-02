@@ -34,7 +34,9 @@ export function SegmentedControl<T extends string>({
     <div
       data-segmented-control
       className={cn(
-        "flex w-fit max-w-full self-start items-center gap-1 rounded-sm border border-border bg-card p-1",
+        // Borderless segmented tabs (#10710): no outer box — the active
+        // segment's accent wash is the state signal.
+        "flex w-fit max-w-full self-start items-center gap-1 rounded-sm",
         className,
       )}
       {...props}
@@ -52,8 +54,8 @@ export function SegmentedControl<T extends string>({
             className={cn(
               "relative inline-flex items-center gap-1.5 rounded-sm px-3.5 py-2 text-xs font-semibold transition-colors",
               isActive
-                ? "border border-accent/30 bg-accent-subtle text-txt "
-                : "border border-transparent text-muted hover:bg-bg-hover hover:text-txt",
+                ? "bg-accent-subtle text-txt"
+                : "text-muted hover:bg-bg-hover hover:text-txt",
               buttonClassName,
               isActive ? activeButtonClassName : inactiveButtonClassName,
             )}

@@ -1,6 +1,37 @@
 import type http from "node:http";
+import { _resetAuthRateLimiter } from "@elizaos/app-core/api/auth";
 import type { AgentRuntime, Route } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../lifeops/scheduled-task/service.js", () => ({
+  getScheduledTaskRunner: () => null,
+}));
+
+vi.mock("./entities.js", () => ({
+  handleEntityRoutes: async () => false,
+}));
+
+vi.mock("./lifeops-routes.js", () => ({
+  handleLifeOpsRoutes: async () => undefined,
+}));
+
+vi.mock("./relationships.js", () => ({
+  handleRelationshipRoutes: async () => false,
+}));
+
+vi.mock("./scheduled-tasks.js", () => ({
+  DEV_REGISTRIES_ROUTE_PATHS: [],
+  makeScheduledTasksRouteHandler: () => async () => false,
+}));
+
+vi.mock("./sleep-routes.js", () => ({
+  handleSleepRoutes: async () => undefined,
+}));
+
+vi.mock("./website-blocker-routes.js", () => ({
+  handleWebsiteBlockerRoutes: async () => undefined,
+}));
+
 import {
   personalAssistantRoutesPlugin,
   requireLifeOpsRouteOwnerAdminAccess,
@@ -15,11 +46,18 @@ type CapturedResponse = http.ServerResponse & {
 function createRequest(
   url: string,
   headers: http.IncomingHttpHeaders = {},
+  options: { method?: string; remoteAddress?: string; host?: string } = {},
 ): http.IncomingMessage {
   return {
-    method: "GET",
+    method: options.method ?? "GET",
     url,
-    headers,
+    headers: {
+      host: options.host ?? "example.test",
+      ...headers,
+    },
+    socket: {
+      remoteAddress: options.remoteAddress ?? "203.0.113.10",
+    },
   } as http.IncomingMessage;
 }
 
@@ -82,30 +120,81 @@ function findRoute(
 }
 
 describe("LifeOps raw route owner/admin gate", () => {
-  it("allows actors with an ADMIN role", async () => {
+  beforeEach(() => {
+    _resetAuthRateLimiter();
+    delete process.env.ELIZA_API_TOKEN;
+    delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+  });
+
+  afterEach(() => {
+    _resetAuthRateLimiter();
+    delete process.env.ELIZA_API_TOKEN;
+    delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+  });
+
+  it("allows configured owner bearer tokens without trusting actor headers", async () => {
+    process.env.ELIZA_API_TOKEN = "owner-token";
     const res = createResponse();
     const allowed = await requireLifeOpsRouteOwnerAdminAccess({
       req: createRequest("/api/lifeops/app-state", {
-        "x-eliza-entity-id": "admin-1",
+        authorization: "Bearer owner-token",
+        "x-eliza-entity-id": "spoofed-admin",
       }),
       res,
-      runtime: createRuntime({ roles: { "admin-1": "ADMIN" } }),
+      runtime: createRuntime({ roles: { "spoofed-admin": "GUEST" } }),
     });
 
     expect(allowed).toBe(true);
     expect(res.writableEnded).toBe(false);
   });
 
-  it("keeps existing local UI calls mapped to the default owner when no actor header is present", async () => {
+  it("allows trusted local UI calls without an actor header", async () => {
     const res = createResponse();
     const allowed = await requireLifeOpsRouteOwnerAdminAccess({
-      req: createRequest("/api/lifeops/app-state"),
+      req: createRequest(
+        "/api/lifeops/app-state",
+        {},
+        { remoteAddress: "127.0.0.1", host: "localhost:3000" },
+      ),
       res,
       runtime: createRuntime({ ownerId: null }),
     });
 
     expect(allowed).toBe(true);
     expect(res.writableEnded).toBe(false);
+  });
+
+  it("denies remote headerless raw routes instead of defaulting to owner", async () => {
+    const res = createResponse();
+    const runtime = createRuntime({ ownerId: null });
+    const allowed = await requireLifeOpsRouteOwnerAdminAccess({
+      req: createRequest("/api/lifeops/app-state"),
+      res,
+      runtime,
+    });
+
+    expect(allowed).toBe(false);
+    expect(runtime.getAllWorlds).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
+  });
+
+  it("denies spoofed actor headers even when they name the canonical owner", async () => {
+    const res = createResponse();
+    const runtime = createRuntime();
+    const allowed = await requireLifeOpsRouteOwnerAdminAccess({
+      req: createRequest("/api/lifeops/app-state", {
+        "x-eliza-entity-id": "owner-1",
+        "x-eliza-actor-entity-id": "owner-1",
+      }),
+      res,
+      runtime,
+    });
+
+    expect(allowed).toBe(false);
+    expect(runtime.getAllWorlds).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
   });
 
   it("denies private raw routes for explicit non-admin actors before the route handler runs", async () => {
@@ -120,9 +209,9 @@ describe("LifeOps raw route owner/admin gate", () => {
       createRuntime({ roles: { "user-1": "USER" } }) as never,
     );
 
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(401);
     expect(JSON.parse(res.body)).toEqual({
-      error: "LifeOps routes require OWNER or ADMIN access",
+      error: "Unauthorized",
     });
   });
 

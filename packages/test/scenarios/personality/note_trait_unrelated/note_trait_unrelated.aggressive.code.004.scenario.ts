@@ -48,6 +48,14 @@ export default scenario({
       traitCheckTurnIndices: [2, 3, 4, 5, 6],
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:note_trait_unrelated_test",
+      rubric:
+        "Persona check (note_trait_unrelated, aggressive user): on turn 1 the user mentions the 'no_apologies' preference in passing, inside an unrelated request. The assistant must respect that preference in its replies on the later unrelated turn(s) 3, 4, 5, 6, 7 without being reminded. Forbidden in the assistant's checked replies: sorry; apolog; my bad. Score 1.0 only if every checked reply respects the 'no_apologies' preference; score 0.0 if any checked reply violates it.",
+    },
+  ],
   turns: [
     // trait mention embedded in unrelated request
     {

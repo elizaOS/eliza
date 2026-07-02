@@ -35,14 +35,25 @@ The desktop OpenXR runtime (the end-user dependency below) is detected + install
 
 - `webxr-runtime` availability contract — **vitest** (native-present, absent, per-mode support, throwing `isSessionSupported`).
 - `panel-texture` word-wrap; `arrangeOnArc` arc symmetry.
-- The **production** `enterImmersiveScene()` end-to-end against the IWER emulator (headless chromium, WebGL2): entered an `immersive-vr` session, ran the loop, and **read back two textured quads from the session framebuffer** — a green canvas (texture path, not the red fallback) and a `rasterizePanelToCanvas` content panel (reads the rendered card background, not the fallback). The foreignObject route was tried and **refused** by the GPU (`SecurityError`) — which is why content is drawn to a 2D canvas.
+- The **production** `enterImmersiveScene()` end-to-end against the IWER emulator (headless chromium, real WebGL2) — **committed, re-runnable**: `bun run --cwd packages/ui test:immersive-e2e` (`src/spatial/__e2e__/run-immersive-e2e.mjs` + `immersive-fixture.ts`). It enters an `immersive-vr` session on an emulated Quest 3 (stereo), runs the loop, and **reads the session framebuffer back with `gl.readPixels()` at math-predicted per-eye pixels**: a green canvas quad (texture path, not the red fallback), a `rasterizePanelToCanvas` content panel proven by TWO texture-space landmarks (card background + the drawn title accent rule — impossible for a 1×1 fallback texel), ipd parallax between the eyes, the `SecurityError` → `solidColorTexel` tone fallback for an origin-unclean source (cross-origin image without CORS; note: an SVG `foreignObject` snapshot **no longer taints** in current Chromium, though it still does in WebKit — the 2D-canvas content path remains the only portable choice), `refreshTextures()` re-upload, and teardown (frame counter frozen after `end()`, session released).
 - `webxr-polyfill` enabling `navigator.xr` + `immersive-vr` on a real Pixel 9a (CDP).
 - WebKitGTK 2.52.3 WebXR build presence — `.so` symbols + feature enumeration (`WebXREnabled` is stable/default-on).
 - OpenXR runtime detector — **9/9** (`plugin-facewear`): Linux active/stale/XDG/env, Windows registry, macOS-native, parse/identify.
-- Full `packages/ui` spatial suite — **139/139**, no regression.
+- Full `packages/ui` spatial suite, no regression.
+
+## NOT yet validated (#10722 — do not claim otherwise)
+
+- **The immersive render path (`enterImmersiveScene` / `enterImmersiveFromSpecs`)
+  is not covered end-to-end.** The only committed test exercises the mocked
+  `navigator.xr` availability contract; there is **no** IWER-emulator run that
+  opens an `immersive-vr` session and reads back the session framebuffer, and no
+  `setHandPose`/gaze interaction test. `enterImmersiveScene` also has **no
+  production caller** today. Before advertising immersive as shipped, either add
+  the framebuffer-readback + hand-pose e2e (IWER, headless chromium, WebGL2) or
+  wire/remove the unused entry points.
 
 ## Remaining to ship desktop-immersive — all three done ✅
 
 1. **OpenXR runtime** end-user dependency on Linux/Windows — ✅ detected + installed via **plugin-facewear** (`SETUP_XR_RUNTIME`, `GET /api/facewear/xr-runtime`, `setup:openxr`, FacewearView "vr/ar runtime" row). The user still installs Monado/SteamVR once; the plugin guides + automates the no-root path.
 2. **Electrobun WebKit `permission-request` grant** — ✅ merged in our fork (`elizaOS/electrobun#1`); lands here via the `upstreams/electrobun` submodule bump (#10095).
-3. **DOM→texture panel content** — ✅ `enterImmersiveScene` textures each panel from its rasterized DOM; `enterImmersiveFromSpecs` is the one-call author→immersive bridge.
+3. **DOM→texture panel content** — code exists (`enterImmersiveScene` textures each panel from its rasterized DOM; `enterImmersiveFromSpecs` is the one-call author→immersive bridge) but is **not yet validated end-to-end and has no production caller** — see "NOT yet validated" above (#10722).

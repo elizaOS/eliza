@@ -23,7 +23,7 @@ function assertApiBody(options: {
  * comparison deterministic.
  */
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "reminder-daily-recurrence-outcome",
   title: "A daily reminder fires on consecutive days",
   domain: "reminders",

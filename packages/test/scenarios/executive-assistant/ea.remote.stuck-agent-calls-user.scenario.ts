@@ -37,7 +37,10 @@ export default scenario({
         description: "stuck-agent escalation",
         includesAny: ["call", "stuck", "browser", "computer", "unblock"],
       }),
-      responseIncludesAny: ["call", "stuck", "browser", "computer", "unblock"],
+      // Derived channel naming: the escalation channel must be spelled out
+      // — "phone"/"voice"/"dial" appear in no user turn (the prompt only
+      // says "call me"), so a parroted reply cannot pass.
+      responseIncludesAny: ["phone", "voice", "dial"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

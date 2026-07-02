@@ -100,6 +100,15 @@ export class UnsafeGitRemoteError extends Error {
 // followed by `::`. Deliberately does NOT match IPv6 URL literals such as
 // `https://[::1]/repo` (there the `::` is not preceded by a bare leading token).
 const GIT_TRANSPORT_HELPER_RE = /^[A-Za-z][A-Za-z0-9+.-]*::/;
+// Shell metacharacters and whitespace have no place in a real git remote URL
+// (`https://host/owner/repo.git` or scp-style `user@host:path`). The lower-level
+// `git-workspace-service` clones public repos through a SHELL
+// (`promisify(exec)`, no quoting), so a remote like
+// `https://x/y; touch /tmp/pwned` is command-injection RCE even though its
+// `https://` prefix looks valid. Rejecting these keeps a single validated string
+// safe whether the downstream spawn uses `execFile` (argv) or a shell. `[`/`]`
+// are intentionally allowed so IPv6 URL literals (`https://[2001:db8::1]/…`) pass.
+const SHELL_UNSAFE_RE = /[\s"'`\\;|&$(){}<>*?~#!]/;
 // Only https / http / ssh URL transports are allowed. `file:` (local repo
 // disclosure) and `git:` (unauthenticated, MITM-able) are rejected.
 const ALLOWED_GIT_URL_SCHEME_RE = /^(?:https?|ssh):\/\//i;
@@ -114,19 +123,19 @@ const SCP_LIKE_REMOTE_RE = /^[^\s@:]+@[^\s:]+:(?!:)[^\s]+$/;
  *
  * The coding orchestrator clones repos on behalf of sub-agents whose task text
  * is model/attacker-influenced. Without this gate a repo string reaches
- * `git clone` / `git ls-remote` verbatim — including the underlying
- * git-workspace-service unauthenticated clone path, which interpolates the
- * remote into a shell `git clone` — and git exposes several code-exec /
+ * `git clone` / `git ls-remote` verbatim, and git exposes several code-exec /
  * disclosure vectors through the remote argument:
  *  - `ext::sh -c "…"` (and any `<helper>::…`) runs an arbitrary command;
  *  - a leading `-` (e.g. `--upload-pack=…`) is parsed as a git *option*
- *    (argument injection);
+ *    (argument injection), since `execFile` does not add a `--` separator;
  *  - `file://…` clones an arbitrary local repository (info disclosure);
- *  - shell metacharacters (`;`, `|`, `$(…)`, backticks, whitespace) reach the
- *    shell used by the dependency's unauthenticated clone.
+ *  - shell metacharacters / whitespace (`https://x/y; touch /tmp/pwned`) inject
+ *    commands on the unauthenticated clone path, which the lower-level
+ *    `git-workspace-service` runs through a shell (`promisify(exec)`).
  *
- * This is the application-level allowlist half of a defense-in-depth pair;
- * callers should also spawn git with `GIT_ALLOW_PROTOCOL` restricted.
+ * Callers MUST also spawn git with `GIT_ALLOW_PROTOCOL` restricted and a `--`
+ * separator — this function is the application-level allowlist half of that
+ * defense-in-depth pair.
  */
 export function assertSafeGitRemote(repo: string): string {
   const value = repo.trim();
@@ -143,20 +152,9 @@ export function assertSafeGitRemote(repo: string): string {
       `Git remote uses an unsupported transport helper (e.g. ext::/fd::): ${repo}`,
     );
   }
-  if (/\s/.test(value)) {
+  if (SHELL_UNSAFE_RE.test(value)) {
     throw new UnsafeGitRemoteError(
-      `Git remote may not contain whitespace: ${repo}`,
-    );
-  }
-  // Shell command-substitution / metacharacters have no legitimate place in a
-  // git remote. The unauthenticated clone path in git-workspace-service runs
-  // `git clone … <remote> …` through a shell (promisify(exec)), and URL
-  // normalization percent-encodes some but NOT all of these (a literal `$(…)`
-  // survives), so reject them at the allowlist. Backtick, `$`, `;`, `|`, `&`,
-  // `<`, `>`, quotes, and parens are all disallowed.
-  if (/[`$;|&<>()'"\\]/.test(value)) {
-    throw new UnsafeGitRemoteError(
-      `Git remote contains shell metacharacters: ${repo}`,
+      `Git remote contains shell metacharacters or whitespace (command injection): ${repo}`,
     );
   }
   if (ALLOWED_GIT_URL_SCHEME_RE.test(value) || SCP_LIKE_REMOTE_RE.test(value)) {
@@ -165,6 +163,48 @@ export function assertSafeGitRemote(repo: string): string {
   throw new UnsafeGitRemoteError(
     `Git remote is not an https/http/ssh URL or an ssh scp-style remote: ${repo}`,
   );
+}
+
+/** Thrown by {@link assertSafeGitRef} when a branch / ref name is unsafe to
+ * interpolate into a git command. */
+export class UnsafeGitRefError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsafeGitRefError";
+  }
+}
+
+// A conservative allowlist for git branch / ref names: a leading alphanumeric
+// followed by alphanumerics and `. _ / -`. This is a strict subset of what
+// `git check-ref-format` permits, chosen so the value is safe to interpolate
+// into a shell command. It rejects a leading `-` (argument injection), all
+// whitespace, and every shell metacharacter, while accepting ordinary names
+// like `main`, `develop`, `feature/foo-bar`, and `release/1.2.3`.
+const SAFE_GIT_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+/**
+ * Validate that a branch / ref name is safe to interpolate into a git command,
+ * returning it unchanged when safe and throwing {@link UnsafeGitRefError}
+ * otherwise.
+ *
+ * The orchestrator auto-mints branch names through a sanitizer, but callers can
+ * also supply `baseBranch` / `branchName` directly (HTTP `POST /api/workspace/
+ * provision` body, action content). Those bypass the mint and flow raw into
+ * `git clone --branch …`, `git fetch origin …`, `git checkout -b …`, and
+ * `git worktree add -b …`, which the lower-level `git-workspace-service` runs
+ * through a shell — so an unvalidated ref like `main; touch /tmp/pwned` is
+ * command-injection RCE.
+ */
+export function assertSafeGitRef(ref: string, label = "git ref"): string {
+  if (typeof ref !== "string" || ref.length === 0) {
+    throw new UnsafeGitRefError(`${label} is empty.`);
+  }
+  if (!SAFE_GIT_REF_RE.test(ref)) {
+    throw new UnsafeGitRefError(
+      `${label} contains characters that are not allowed in a git ref name (letters, digits, ".", "_", "/", "-"; no leading "-"): ${ref}`,
+    );
+  }
+  return ref;
 }
 
 export function diagnoseWorkspaceBootstrapFailure(

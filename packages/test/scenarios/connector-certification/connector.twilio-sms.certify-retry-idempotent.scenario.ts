@@ -20,10 +20,22 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "twilio-sms-retry-safe",
-      text: "Send an SMS to +15555550101 saying 'Running 10 minutes late for lunch.' If Twilio fails once transiently, retry safely but do not deliver duplicates.",
-      responseIncludesAny: ["sms", "retry", "twilio", "late"],
-      acceptedActions: ["MESSAGE"],
-      includesAny: ["sms", "retry", "twilio", "15555550101"],
+      // The prompt never names the seeded fault; the agent must discover the
+      // transient first-attempt failure itself and report the safe retry.
+      text: "Send an SMS to +15555550101 saying 'Running 10 minutes late for lunch.' Make sure exactly one copy reaches them, and report how the delivery actually went.",
+      responseIncludesAny: [
+        "retried",
+        "second attempt",
+        "transient",
+        "delivered",
+      ],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["sms", "retry", "twilio", "15555550101"],
+      responseJudge: {
+        rubric:
+          "The reply reports that the first Twilio attempt failed transiently and that a safe retry delivered exactly one SMS, with no duplicate sends.",
+        minimumScore: 0.6,
+      },
     },
   ],
   finalChecks: [

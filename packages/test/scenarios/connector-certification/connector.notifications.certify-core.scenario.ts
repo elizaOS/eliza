@@ -12,9 +12,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "notifications-core",
       text: "Send the reminder to my desktop and phone, and stop the ladder everywhere once I acknowledge it.",
-      responseIncludesAny: ["desktop", "phone", "acknowledge", "reminder"],
-      acceptedActions: ["DEVICE_INTENT", "DEVICE_INTENT"],
-      includesAny: ["desktop", "phone", "acknowledge", "reminder"],
+      // Completion-state tokens the prompt never uses; parroting "send the
+      // reminder" cannot satisfy any of them.
+      responseIncludesAny: ["delivered", "pushed", "both devices", "sent"],
+      expectedActions: ["DEVICE_INTENT"],
+      actionPayloadIncludesAny: ["desktop", "phone", "acknowledge", "reminder"],
     },
   ],
   finalChecks: [

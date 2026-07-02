@@ -22,7 +22,7 @@
  * in-process PGlite. Only the chain clients (viem) and the RPC/env helpers are
  * stubbed — the DB selectors, the lock, the recovery SQL, the broadcast-hash
  * persistence, and the per-redemption try/catch all run for real, so each test
- * fails if the real logic regresses. Self-skips if PGlite is unavailable.
+ * fails if the real logic regresses. Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -30,7 +30,8 @@ import * as realViem from "viem";
 import * as realViemAccounts from "viem/accounts";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 
@@ -181,6 +182,32 @@ async function readRedemption(id: string): Promise<{
   };
 }
 
+/** Read the redeeming user's earnings balances via the redemption's user_id. */
+async function readEarnings(
+  redemptionId: string,
+): Promise<{ available_balance: number; total_pending: number }> {
+  const r = await dbWrite.execute(
+    `SELECT re.available_balance, re.total_pending
+       FROM redeemable_earnings re
+       JOIN token_redemptions tr ON tr.user_id = re.user_id
+      WHERE tr.id = '${redemptionId}';`,
+  );
+  const row = r.rows[0] as { available_balance: string; total_pending: string };
+  return {
+    available_balance: Number(row.available_balance),
+    total_pending: Number(row.total_pending),
+  };
+}
+
+/** Count refund ledger entries for a redemption (idempotency assertion). */
+async function refundLedgerCount(redemptionId: string): Promise<number> {
+  const r = await dbWrite.execute(
+    `SELECT count(*)::int AS n FROM redeemable_earnings_ledger
+      WHERE redemption_id = '${redemptionId}' AND entry_type = 'refund';`,
+  );
+  return (r.rows[0] as { n: number }).n;
+}
+
 beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
@@ -196,6 +223,7 @@ beforeAll(async () => {
         eliza_price_usd numeric(18,8) NOT NULL DEFAULT '0',
         eliza_amount numeric(24,8) NOT NULL DEFAULT '0',
         price_quote_expires_at timestamp NOT NULL DEFAULT now(),
+        asset text NOT NULL DEFAULT 'usdc',
         network text NOT NULL DEFAULT 'base',
         payout_address text NOT NULL DEFAULT '0x0000000000000000000000000000000000000000',
         address_signature text,
@@ -597,4 +625,79 @@ describe("payout stale-lock recovery (#10553)", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "(g) a retries-exhausted redemption returns its locked earnings to available_balance exactly once",
+    async () => {
+      if (!pgliteReady) return;
+      // Seeded: total_pending=10 (locked), available_balance=90, usd_value=10.
+      const id = await seedRedemption({
+        status: "processing",
+        broadcastTxHash: null,
+        startedMinutesAgo: 10,
+        retryCount: 3, // == MAX_RETRY_ATTEMPTS → recovery marks it 'failed'
+      });
+
+      const before = await readEarnings(id);
+      expect(before.available_balance).toBeCloseTo(90, 4);
+      expect(before.total_pending).toBeCloseTo(10, 4);
+
+      await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(row.status).toBe("failed");
+      expect(row.broadcast_tx_hash).toBeNull();
+
+      // The $10 was returned from total_pending to available_balance (previously
+      // stranded forever — rejectRedemption only touches 'pending' rows).
+      const after = await readEarnings(id);
+      expect(after.available_balance).toBeCloseTo(100, 4);
+      expect(after.total_pending).toBeCloseTo(0, 4);
+      expect(await refundLedgerCount(id)).toBe(1);
+
+      // Idempotent: a second batch does NOT refund again (ledger guard).
+      await service.processBatch();
+      const after2 = await readEarnings(id);
+      expect(after2.available_balance).toBeCloseTo(100, 4);
+      expect(await refundLedgerCount(id)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(h) a broadcast-but-unconfirmed row is NEVER refunded (reverse-double-pay guard)",
+    async () => {
+      if (!pgliteReady) return;
+      // A stale row WITH a broadcast hash: tokens may be on-chain, so it must be
+      // routed to reconciliation (left 'processing'), never failed+refunded —
+      // refunding available_balance while tokens went out would be a reverse
+      // double-pay.
+      const id = await seedRedemption({
+        status: "processing",
+        broadcastTxHash: `0x${"d".repeat(64)}`,
+        startedMinutesAgo: 10,
+        retryCount: 0,
+      });
+
+      const before = await readEarnings(id);
+      await service.processBatch();
+
+      const row = await readRedemption(id);
+      // Not failed (reconciliation path), and crucially NOT refunded.
+      expect(row.status).toBe("processing");
+      const after = await readEarnings(id);
+      expect(after.available_balance).toBeCloseTo(before.available_balance, 4);
+      expect(after.total_pending).toBeCloseTo(before.total_pending, 4);
+      expect(await refundLedgerCount(id)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+// early-return; this turns that silent no-op into a hard CI failure so a
+// money-path proof can never masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
 });

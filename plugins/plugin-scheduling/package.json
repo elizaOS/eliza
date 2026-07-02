@@ -64,8 +64,9 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.2",
     "@types/node": "^25.0.6",
+    "fast-check": "^4.8.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17"

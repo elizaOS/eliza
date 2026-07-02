@@ -39,6 +39,10 @@ import type {
 } from "@elizaos/core";
 import { ChannelType, logger as coreLogger, stringToUuid } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import {
+  type OrchestratorTaskType,
+  detectTaskType,
+} from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
@@ -284,6 +288,39 @@ function connectorMessageIdFromMemory(
   );
 }
 
+/**
+ * The stable per-request root id used to key the per-origin spawn cap (#8875).
+ * On the FIRST spawn it is the connector message id (Discord/connectors) or,
+ * when none exists (dashboard/web), the user message id. SubAgentRouter stamps
+ * this id back onto every synthetic re-spawn inbound as `spawnRootMessageId`,
+ * so a request that re-spawns resolves the SAME id on EVERY transport — the
+ * connector-less dashboard/web path previously produced no key at all, so the
+ * cap silently never fired there. Kept as a pure exported fn so the record
+ * (SubAgentRouter) and enforce (this action) sides can be proven to agree.
+ */
+export function spawnRootIdFor(
+  message: Memory,
+  content: Record<string, unknown>,
+): string | undefined {
+  return (
+    connectorMessageIdFromMemory(message, content) ??
+    plainString(objectValue(content.metadata)?.spawnRootMessageId) ??
+    message.id
+  );
+}
+
+/** `spawnRootIdFor` scoped to an agent type — the exact per-origin cap key.
+ * `undefined` only when the inbound carries no id at all (the cap is skipped,
+ * exactly as before). */
+export function spawnOriginKeyFor(
+  message: Memory,
+  content: Record<string, unknown>,
+  agentType: string,
+): string | undefined {
+  const root = spawnRootIdFor(message, content);
+  return root ? `${root}\0${agentType}` : undefined;
+}
+
 function pickRoutingString(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -482,10 +519,27 @@ function taskWithResolvedRoute(
   return sections.join("\n");
 }
 
+// Specialized (non-default) task types detectTaskType only returns for
+// unambiguous build/deploy/view signals — a bare personal to-do never trips them.
+const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> = new Set(
+  ["view-create", "app-build", "deploy"],
+);
+
 function looksLikePersonalLifeOpsTask(text: string): boolean {
-  return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
-    text,
-  );
+  if (
+    !/\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  // A conversational "add a task to build/deploy a landing page/app/site/view" is
+  // a coding request phrased as a to-do, not a personal-lifeops item. Reuse the
+  // structural task classifier: it flags those unambiguous build/deploy/view
+  // signals, so don't suppress the coding orchestrator for them. A generic
+  // "add a task to buy milk" carries no such signal (detectTaskType → "coding"
+  // default) and stays a suppressed lifeops item.
+  return !SPECIALIZED_CODING_TASK_TYPES.has(detectTaskType(text));
 }
 
 // Durable variant of runPromptAndClose: drives the spawned session through the
@@ -702,16 +756,21 @@ async function runCreate(
           model,
         );
       }
-      return { session, label, agentType };
+      return { session, label, agentType, originalTask: taskWithRouteHints };
     }),
   );
 
   const results: Array<Record<string, unknown>> = [];
   const sessions: SpawnResult[] = [];
+  // Parallel to `sessions`; carries the per-part context needed to attach a
+  // successful spawn into the durable task thread minted below. Kept out of
+  // SpawnResult so the ACP contract stays lean.
+  const sessionAttachHints: Array<{ label: string; originalTask: string }> = [];
   for (const [index, outcome] of settled.entries()) {
     if (outcome.status === "fulfilled") {
-      const { session, label } = outcome.value;
+      const { session, label, originalTask } = outcome.value;
       sessions.push(session);
+      sessionAttachHints.push({ label, originalTask });
       results.push({
         id: session.sessionId,
         sessionId: session.sessionId,
@@ -763,16 +822,12 @@ async function runCreate(
   // The ACP sessions have already succeeded; a failure here is logged but
   // never demotes the action's success — the agents are still running.
   //
-  // KNOWN GAP (tracked): the ACP sessions spawned above via
-  // `service.spawnSession` are NOT attached to this durable thread — only
-  // sessions created through `OrchestratorTaskService.spawnAgentForTask`
-  // land in the task store's session index (see `resolveTaskId`). So the
-  // freshly-minted thread reads `0/0 agents` and no token usage until/unless
-  // a session reports an event that resolves back to it. The widget still
-  // renders and navigates correctly; wiring true session linkage (a public
-  // `attachSession`, or routing create through `spawnAgentForTask`) is a
-  // follow-up slice that touches the spawn lifecycle — see
-  // docs/orchestrator-dashboard-task-widget-secrets-assessment.md.
+  // The ACP sessions spawned above via `service.spawnSession` are then
+  // registered against the freshly-minted thread through the task service's
+  // `attachSession` — without that, `resolveTaskId` never learns about them,
+  // event routing drops their session events, and the widget reads `0/0
+  // agents`. Per-session attach failures are logged but never demote the
+  // action's success, same policy as thread-mint failure.
   const taskTitle =
     pickString(params, content, "title") ??
     pickString(params, content, "goal") ??
@@ -801,10 +856,10 @@ async function runCreate(
       ? swarmRoomMetadata.originRoomId
       : undefined;
   let threadId: string | null = null;
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
   try {
-    const taskService = runtime.getService?.(
-      OrchestratorTaskService.serviceType,
-    ) as OrchestratorTaskService | null | undefined;
     if (taskService && typeof taskService.createTask === "function") {
       const detail = await taskService.createTask({
         title: taskTitle,
@@ -827,6 +882,49 @@ async function runCreate(
       }`,
     );
     threadId = null;
+  }
+
+  // Bind every successfully spawned session to the freshly-minted thread so
+  // the task widget / tasks panel sees them (sessionCount, latestSessionId,
+  // token usage). Thread-mint-failed path skips this cleanly — no taskId to
+  // attach against, and the sessions are still running / stopped independently.
+  if (
+    threadId &&
+    taskService &&
+    typeof taskService.attachSession === "function"
+  ) {
+    for (const [index, session] of sessions.entries()) {
+      const hint = sessionAttachHints[index];
+      try {
+        // Every session that resolved fulfilled above was driven through
+        // runPromptAndClose / runPromptViaSmithers, which stop it in their
+        // `finally` before we reach here. So the `SpawnResult.status` captured
+        // at spawn time is a stale `ready` snapshot — passing it would make
+        // attachSession falsely promote the task to `active` and count a
+        // finished single-turn session as live. Read the real post-run status
+        // from the service instead; a fulfilled outcome always means the
+        // session was stopped, so fall back to a terminal status if its record
+        // is already gone.
+        const refreshed = await service.getSession(session.sessionId);
+        const effectiveStatus = refreshed?.status ?? "stopped";
+        await taskService.attachSession(threadId, {
+          sessionId: session.sessionId,
+          agentType: session.agentType,
+          workdir: session.workdir,
+          status: effectiveStatus,
+          ...(session.metadata ? { metadata: session.metadata } : {}),
+          ...(hint?.label ? { label: hint.label } : {}),
+          ...(hint?.originalTask ? { originalTask: hint.originalTask } : {}),
+          ...(model ? { model } : {}),
+        });
+      } catch (error) {
+        logger(runtime).warn(
+          `[TASKS:create] attachSession failed for ${session.sessionId} on task ${threadId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
   }
 
   const widgetBlock = threadId
@@ -1046,9 +1144,12 @@ async function runSpawnAgent(
     const spawnCapRouter = isSpawnCapRouter(spawnCapRouterService)
       ? spawnCapRouterService
       : undefined;
-    const spawnOriginKey = originConnectorMessageId
-      ? `${originConnectorMessageId}\0${agentType}`
-      : undefined;
+    // The stable per-request root id + cap key (see spawnRootIdFor). Anchored to
+    // ONE user request across the whole re-spawn loop on EVERY transport,
+    // closing the dashboard/web no-op where `originConnectorMessageId` is absent
+    // and the cap silently never fired (#8875).
+    const spawnRootMessageId = spawnRootIdFor(message, content);
+    const spawnOriginKey = spawnOriginKeyFor(message, content, agentType);
     if (spawnCapRouter && spawnOriginKey) {
       const cap = maxSpawnsPerOrigin(runtime);
       if (spawnCapRouter.spawnCountForOrigin(spawnOriginKey) >= cap) {
@@ -1084,6 +1185,11 @@ async function runSpawnAgent(
       metadata: {
         ...extraMetadata,
         ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
+        // Persist the stable root id so SubAgentRouter re-stamps it onto the
+        // next synthetic re-spawn inbound (keeping the per-origin spawn cap
+        // anchored to ONE user request across the whole loop, on every
+        // transport — including connector-less dashboard/web). (#8875)
+        ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
         requestedType: explicitAgentType ?? agentType,
         messageId: message.id,
         roomId: swarmRoomMetadata.taskRoomId,

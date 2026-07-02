@@ -19,6 +19,7 @@ export type ApiErrorCode =
   | "validation_error"
   | "insufficient_credits"
   | "session_not_ready"
+  | "agent_quota_exceeded"
   | "internal_error";
 
 export interface ApiErrorOptions {

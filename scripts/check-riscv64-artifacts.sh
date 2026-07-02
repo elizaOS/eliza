@@ -3,7 +3,7 @@
 # native artifact this repo cross-compiles.
 #
 # One-shot harness: walks the known cross-build outputs (native plugins
-# + libllama / libggml family + libomnivoice + libsigsys-handler-riscv64),
+# + libllama / libggml family + libsigsys-handler-riscv64),
 # confirms each is an ELF UCB RISC-V
 # 64-bit double-float-ABI object, and exercises every executable smoke
 # under qemu-riscv64-static. Shared libraries are dlopen-verified via a
@@ -394,13 +394,6 @@ LLAMA_FAMILY_SEARCH_DIRS=(
     "packages/app-core/platforms/android/app/src/main/assets/agent/riscv64"
 )
 
-OMNIVOICE_SEARCH=(
-    "plugins/plugin-local-inference/native/omnivoice.cpp/build-linux-riscv64-cpu/libomnivoice.so"
-    "plugins/plugin-local-inference/native/omnivoice.cpp/build-android-riscv64-cpu/libomnivoice.so"
-    "plugins/plugin-local-inference/native/build-omnivoice-linux-riscv64-cpu/libomnivoice.so"
-    "plugins/plugin-local-inference/native/build-omnivoice-android-riscv64-cpu/libomnivoice.so"
-)
-
 SIGSYS_SEARCH=(
     "${HOME}/.cache/eliza-android-agent/seccomp-shim/riscv64/libsigsys-handler.so"
 )
@@ -432,19 +425,6 @@ for basename in "${LLAMA_FAMILY_BASENAMES[@]}"; do
             "not built; run \`bun run build:riscv64-artifacts\` (libllama for linux-riscv64-cpu + android-riscv64-cpu)" "0"
     fi
 done
-
-echo
-echo "── libomnivoice ──"
-o_found=""
-for p in "${OMNIVOICE_SEARCH[@]}"; do
-    if [ -e "$repo_root/$p" ]; then o_found="$repo_root/$p"; break; fi
-done
-if [ -n "$o_found" ]; then
-    verify_artifact "$o_found"
-else
-    emit_record "$repo_root/${OMNIVOICE_SEARCH[0]}" "shared-library" "SKIP" \
-        "not built; run \`OMNIVOICE_TARGET=linux-riscv64-cpu node plugins/plugin-local-inference/native/build-omnivoice.mjs\`" "0"
-fi
 
 echo
 echo "── libsigsys-handler-riscv64 (Bun seccomp shim) ──"

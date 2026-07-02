@@ -19,6 +19,7 @@ import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
+  loadWakeWordEnabled,
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
@@ -123,6 +124,11 @@ export interface ShellController {
   transcript: string;
   /** True while an assistant reply is being spoken aloud (voice output). */
   speaking: boolean;
+  /** Speak a specific message aloud on demand — backs the per-message
+   *  "Play audio" action row control (#10713). */
+  speak: (text: string) => void;
+  /** Stop any in-flight assistant speech — backs the Play control's toggle. */
+  stopSpeaking: () => void;
   /** True while assistant voice output is muted by the user. */
   agentVoiceMuted: boolean;
   /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
@@ -198,6 +204,42 @@ export interface ShellController {
  * standalone-surface path). A final transcript is submitted through the same
  * `send` handler. The phase drives the pill glow and waveform mode.
  */
+/**
+ * Turn a mic-capture start failure into a clear, actionable notice. Reads the
+ * DOMException `name` (getUserMedia rejects with `NotAllowedError` on a denied
+ * permission, `NotFoundError` when no device exists) and its message so we
+ * distinguish "denied" vs "no device" vs a generic failure, instead of
+ * swallowing the rejection and leaving a mic tap silent.
+ */
+function describeCaptureFailure(err: unknown): string {
+  const name =
+    typeof err === "object" &&
+    err !== null &&
+    "name" in err &&
+    typeof (err as { name: unknown }).name === "string"
+      ? (err as { name: string }).name
+      : "";
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  const haystack = `${name} ${message}`.toLowerCase();
+  if (
+    haystack.includes("notallowed") ||
+    haystack.includes("permissiondenied") ||
+    haystack.includes("permission denied") ||
+    haystack.includes("not-allowed")
+  ) {
+    return "Microphone access was denied. Enable microphone permission in your browser or system settings to use voice.";
+  }
+  if (
+    haystack.includes("notfound") ||
+    haystack.includes("devices not found") ||
+    haystack.includes("no device") ||
+    haystack.includes("no microphone")
+  ) {
+    return "No microphone was found. Connect a microphone to use voice.";
+  }
+  return "Could not start the microphone. Check your microphone permissions and try again.";
+}
+
 /** Shallow equality for two optional string lists (topic-change detection). */
 function sameStringList(a?: string[], b?: string[]): boolean {
   if (a === b) return true;
@@ -227,6 +269,7 @@ const selectShellController = (s: AppContextValue) => ({
   conversations: s.conversations,
   setTab: s.setTab,
   handleChatStop: s.handleChatStop,
+  setActionNotice: s.setActionNotice,
 });
 
 export function useShellController(): ShellController {
@@ -244,6 +287,7 @@ export function useShellController(): ShellController {
     conversations,
     setTab,
     handleChatStop,
+    setActionNotice,
   } = useAppSelectorShallow(selectShellController);
   // The wake phrase for transcript-mode inline replies follows the character
   // name (issue #9880); falls back to the running agent name, then "eliza".
@@ -287,6 +331,16 @@ export function useShellController(): ShellController {
   const conversationLoadingSeqRef = React.useRef(0);
   const conversationTransitionBusyRef = React.useRef(false);
 
+  // Stop any in-flight assistant speech across a conversation change. `voiceOutput`
+  // is defined far below (after the conversation-switch handlers), so mirror its
+  // `stopSpeaking` into a ref the clear/switch handlers can call at gesture time
+  // without a definition-order/closure problem. Defaults to a no-op until wired.
+  const stopSpeakingRef = React.useRef<() => void>(() => {});
+  // Guards the capture-failure notice so the hands-free re-listen loop's retries
+  // (which re-call startCapture every ~250ms) don't spam the toast; cleared on
+  // the next successful start so a later failure re-notifies.
+  const captureFailureNoticedRef = React.useRef(false);
+
   const runWithConversationLoading = React.useCallback(
     (task: () => Promise<unknown>) => {
       const seq = conversationLoadingSeqRef.current + 1;
@@ -326,16 +380,22 @@ export function useShellController(): ShellController {
   // conversation is kept and remains swipe-reachable).
   const clearConversation = React.useCallback(() => {
     // A fresh conversation's bootstrap greeting is NOT a reply to a voice turn —
-    // clear the voice flag so the greeting isn't spoken aloud after a prior
-    // voice session.
+    // stop any reply still being spoken from the prior session and clear the
+    // voice flag so the greeting isn't spoken aloud after it.
+    stopSpeakingRef.current();
     setLastTurnVoice(false);
     runWithConversationLoading(handleNewConversation);
   }, [handleNewConversation, runWithConversationLoading]);
 
   // Switch conversations behind a loading flag so an uncached swipe shows the
   // spinner; a cached one resolves within the same tick (thread already painted).
+  // A switch must not leave the previous thread's spoken reply playing into the
+  // new one, nor inherit its "speak the next turn" latch: stop in-flight TTS and
+  // reset lastTurnVoice so the target conversation starts silent.
   const selectConversation = React.useCallback(
     (id: string) => {
+      stopSpeakingRef.current();
+      setLastTurnVoice(false);
       runWithConversationLoading(() => handleSelectConversation(id));
     },
     [handleSelectConversation, runWithConversationLoading],
@@ -862,15 +922,26 @@ export function useShellController(): ShellController {
       handle
         .start()
         .then(() => {
+          // A clean start clears the failure latch so a later denial re-notifies.
+          captureFailureNoticedRef.current = false;
           if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           captureRef.current = null;
           setAnalyser(null);
           setRecording(false);
+          // Mic permission denial / capture failure was previously swallowed —
+          // the user tapped the mic and nothing happened with no feedback.
+          // Surface a clear, actionable notice through the shell's toast channel
+          // (denied vs no-device distinguished where possible). Guarded so the
+          // hands-free re-listen loop's retries don't spam it.
+          if (!captureFailureNoticedRef.current) {
+            captureFailureNoticedRef.current = true;
+            setActionNotice(describeCaptureFailure(err), "error", 6000);
+          }
         });
     },
-    [send, stopCapture, finalizeTranscriptSession],
+    [send, stopCapture, finalizeTranscriptSession, setActionNotice],
   );
 
   const toggleRecording = React.useCallback(() => {
@@ -920,6 +991,9 @@ export function useShellController(): ShellController {
     uiLanguage,
     cloudConnected: elizaCloudVoiceProxyAvailable,
   });
+  // Wire the forward ref so the conversation-switch / clear handlers (defined
+  // above `voiceOutput`) can stop in-flight assistant speech at gesture time.
+  stopSpeakingRef.current = voiceOutput.stopSpeaking;
 
   // `recording` (push-to-talk press or continuous capture) wins over an
   // in-flight response so the pill shows the red "listening" pulse the instant
@@ -1019,8 +1093,14 @@ export function useShellController(): ShellController {
   // ../../voice/VOICE_UX.md.
   const wakeAlreadyAlwaysOn =
     handsFree && loadContinuousChatMode() === "always-on";
+  // The Settings → Voice "Wake word" toggle gates this listening loop. Read the
+  // persisted pref synchronously each render (same direct-read pattern as
+  // loadContinuousChatMode above); it defaults ON so wake stays available unless
+  // the user turns it off. A disabled pref makes useWakeListenWindow inert (no
+  // native subscription, no mic effect).
+  const wakeWordEnabled = loadWakeWordEnabled();
   useWakeListenWindow({
-    enabled: true,
+    enabled: wakeWordEnabled,
     alwaysOn: wakeAlreadyAlwaysOn,
     agentBusy: responding,
     characterName: wakeCharacterName,
@@ -1261,6 +1341,8 @@ export function useShellController(): ShellController {
     setComposerHasDraft,
     transcript,
     speaking: voiceOutput.speaking,
+    speak: voiceOutput.speak,
+    stopSpeaking: voiceOutput.stopSpeaking,
     agentVoiceMuted: voiceOutput.agentVoiceMuted,
     toggleAgentVoiceMute: voiceOutput.toggleAgentVoiceMute,
     needsAudioUnlock: voiceOutput.needsAudioUnlock,

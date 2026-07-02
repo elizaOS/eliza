@@ -61,7 +61,7 @@ const wav =
 	process.env.ELIZA_ASR_WAV?.trim() ||
 	path.resolve(
 		__dirname,
-		"../native/omnivoice.cpp/examples/freeman.wav",
+		"../native/audio-fixtures/freeman.wav",
 	);
 if (!existsSync(wav)) skip(`test audio not found at ${wav} (set ELIZA_ASR_WAV)`);
 

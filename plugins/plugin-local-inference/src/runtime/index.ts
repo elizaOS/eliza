@@ -20,7 +20,15 @@ export {
 	findExistingEmbeddingModelForWarmupReuse,
 	isEmbeddingWarmupReuseDisabled,
 } from "./embedding-manager-support.js";
-export { detectEmbeddingPreset } from "./embedding-presets.js";
+export {
+	detectEmbeddingPreset,
+	detectEmbeddingTier,
+	EMBEDDING_PRESETS,
+	type EmbeddingPreset,
+	type EmbeddingTier,
+	selectEmbeddingPresetFromHardware,
+	selectEmbeddingTierFromHardware,
+} from "./embedding-presets.js";
 export { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
 export { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 export {

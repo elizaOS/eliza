@@ -4,7 +4,7 @@ Eliza Cloud integration — multi-model inference, container provisioning, agent
 
 ## Purpose / role
 
-Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured.
+Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured — **unless the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`** (`applyCloudConfigToEnv`), in which case the chat-brain handlers (`TEXT_*`, `RESPONSE_HANDLER`, `ACTION_PLANNER`) are not registered at all and only the capability handlers (IMAGE, IMAGE_DESCRIPTION, TEXT_TO_SPEECH, embeddings, RESEARCH) stay active. This capability-only mode is how an agent keeps Cloud image/media/TTS while an external provider (a CLI/SDK subscription brain, a local model) owns the text brain (elizaOS/eliza#10819).
 
 The plugin has two distinct export surfaces:
 
@@ -13,11 +13,27 @@ The plugin has two distinct export surfaces:
 
 ## Plugin surface
 
-### Model handlers (registered in `models` map)
+### Model handlers
+
+Two registration groups (elizaOS/eliza#10819):
+
+**Capability handlers — always registered (static `models` map).** These don't
+compete with the chat brain and must survive an external text provider:
 
 | Slot | Handler | File |
 |---|---|---|
 | `TEXT_EMBEDDING` | `handleTextEmbedding` | `src/models/embeddings.ts` |
+| `RESEARCH` | `handleResearch` | `src/models/research.ts` |
+| `IMAGE` | `handleImageGeneration` | `src/models/image.ts` |
+| `IMAGE_DESCRIPTION` | `handleImageDescription` | `src/models/image.ts` |
+| `TEXT_TO_SPEECH` | `handleTextToSpeech` | `src/models/speech.ts` |
+
+**Chat-brain handlers — registered from `init()`** (`registerTextInferenceModels`,
+`src/index.ts`), skipped when the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`
+(registered when it is `true` or unset — unset preserves standalone plugin use):
+
+| Slot | Handler | File |
+|---|---|---|
 | `TEXT_NANO` | `handleTextNano` | `src/models/text.ts` |
 | `TEXT_SMALL` | `handleTextSmall` | `src/models/text.ts` |
 | `TEXT_MEDIUM` | `handleTextMedium` | `src/models/text.ts` |
@@ -25,10 +41,6 @@ The plugin has two distinct export surfaces:
 | `TEXT_MEGA` | `handleTextMega` | `src/models/text.ts` |
 | `RESPONSE_HANDLER` | `handleResponseHandler` | `src/models/text.ts` |
 | `ACTION_PLANNER` | `handleActionPlanner` | `src/models/text.ts` |
-| `RESEARCH` | `handleResearch` | `src/models/research.ts` |
-| `IMAGE` | `handleImageGeneration` | `src/models/image.ts` |
-| `IMAGE_DESCRIPTION` | `handleImageDescription` | `src/models/image.ts` |
-| `TEXT_TO_SPEECH` | `handleTextToSpeech` | `src/models/speech.ts` |
 
 ### Providers
 
@@ -234,7 +246,7 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 |---|---|
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | `8192` |
-| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | `google/gemini-2.5-flash-image` |
+| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | `google/nano-banana-2/text-to-image` |
 | `ELIZAOS_CLOUD_TTS_MODEL` | `gpt-5-mini-tts` |
 | `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | `gpt-5-mini-transcribe` |
 
@@ -276,6 +288,7 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 - **Browser build is separate.** `src/index.browser.ts` is the entry for `dist/browser/`. It must not import Node-only modules. The route plugin (`src/plugin.ts`) is Node-only and is excluded from the browser bundle.
 - **Routes use `rawPath: true`.** All `/api/cloud/*` routes bypass the plugin-name prefix so paths stay stable.
 - **TTS routing precedence.** This plugin's priority (50) does not govern TTS routing. The router-handler in `plugin-local-inference` runs at `MAX_SAFE_INTEGER` priority and enforces the `prefer-local` policy. Cloud TTS is a fallback; `CloudTtsUnavailableError` (from `src/models/speech.ts`) signals the router to try the next provider.
+- **Cloud TTS availability gate ≠ core `isCloudConnected`.** `handleTextToSpeech` and `fetchCloudVoiceCatalog` serve when a Cloud API key is present AND (`ELIZAOS_CLOUD_ENABLED` OR `ELIZAOS_CLOUD_USE_TTS`) is truthy — `isCloudTtsAvailable` in `src/utils/config.ts`. The `USE_TTS` leg is what keeps Cloud TTS alive in capability-only mode, where `applyCloudConfigToEnv` deliberately leaves `ELIZAOS_CLOUD_ENABLED` unset (many consumers read ENABLED as "cloud is the text brain"). Do not "simplify" this back to core `isCloudConnected` — that regates TTS on inference and reopens the capability-only gap (elizaOS/eliza#10961 follow-up).
 - **Services start in dependency order.** `CloudAuthService` must be first; every other service calls `runtime.getService("CLOUD_AUTH")`. `dispose()` stops them in reverse order.
 - **`CloudBootstrapService` fails closed.** `getExpectedIssuer()` throws when `ELIZA_CLOUD_ISSUER` is unset. Never add a silent default.
 - **No `as` casts or `?? 0` fallbacks for missing pipeline data.** Follow the architecture rules in `AGENTS.md` at the repo root.

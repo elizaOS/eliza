@@ -7,8 +7,7 @@ import type {
 import { pathForTab } from "../../navigation";
 import { isCloudStatusReasonApiKeyOnly } from "../../utils/cloud-status";
 
-export const ELIZA_CLOUD_INSTANCES_URL =
-  "https://www.elizacloud.ai/dashboard/app";
+export const ELIZA_CLOUD_INSTANCES_URL = "https://elizacloud.ai/dashboard/app";
 /** Marketing / docs site — "Learn more" when not connected (in-app browser on desktop). */
 export const ELIZA_CLOUD_WEB_URL = "https://elizacloud.ai";
 export const BILLING_PRESET_AMOUNTS = [10, 25, 100];

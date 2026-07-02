@@ -127,6 +127,23 @@ export {
 	type VoiceLatencyDevPayload,
 	voiceLatencyTracer,
 } from "./latency-trace";
+export {
+	type BuildLocalModelLifecycleMatrixOptions,
+	buildLocalModelLifecycleMatrix,
+	collectLocalLifecycleFileChecks,
+	formatLocalModelLifecycleMatrixMarkdown,
+	type LifecycleBundleRemoteCheck,
+	type LifecycleCheck,
+	type LifecycleCheckStatus,
+	type LifecycleLocalFileCheck,
+	type LifecycleRemoteCheck,
+	type LocalModelLifecycleArtifact,
+	type LocalModelLifecycleComponent,
+	type LocalModelLifecycleMatrix,
+	type LocalModelLifecycleRow,
+	lifecycleArtifactKey,
+	listLocalModelLifecycleArtifacts,
+} from "./local-model-lifecycle-matrix";
 export * from "./manifest/index";
 export {
 	type ArbiterCapability,

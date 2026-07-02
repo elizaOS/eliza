@@ -60,6 +60,7 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
+import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
 // imported via module-scope top-level await, which forced both plugins to
@@ -2721,51 +2722,18 @@ async function handleRequest(
   // is what makes a freshly scaffolded/edited local plugin (VIEWS/APP create)
   // actually appear without an agent restart — its views register via
   // runtime.registerPlugin. Must run BEFORE the generic /api/plugins/* handler.
-  if (method === "POST" && pathname === "/api/plugins/load-from-directory") {
-    const { isLocalCodeExecutionAllowed, buildStoreVariantBlockedMessage } =
-      await import("@elizaos/core");
-    if (!isLocalCodeExecutionAllowed()) {
-      error(res, buildStoreVariantBlockedMessage("Local plugin loading"), 403);
-      return;
-    }
-    if (!state.runtime) {
-      error(res, "Agent runtime is not available", 503);
-      return;
-    }
-    const body = await readJsonBody<{ directory?: unknown; entry?: unknown }>(
+  if (
+    await handlePluginDirectoryRoutes({
       req,
       res,
-    );
-    if (body === null) return;
-    const directory =
-      typeof body.directory === "string" ? body.directory.trim() : "";
-    if (!directory || !path.isAbsolute(directory)) {
-      error(res, "'directory' must be an absolute path", 400);
-      return;
-    }
-    const entry = typeof body.entry === "string" ? body.entry : undefined;
-    try {
-      const { loadPluginFromDirectory } = await import(
-        "../runtime/load-plugin-from-directory.ts"
-      );
-      const result = await loadPluginFromDirectory({
-        runtime: state.runtime as Parameters<
-          typeof loadPluginFromDirectory
-        >[0]["runtime"],
-        directory,
-        ...(entry ? { entry } : {}),
-      });
-      json(res, { ok: true, ...result });
-    } catch (err) {
-      json(
-        res,
-        {
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        422,
-      );
-    }
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
     return;
   }
 

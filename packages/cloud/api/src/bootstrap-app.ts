@@ -177,10 +177,18 @@ export function createApp(): Hono<AppEnv> {
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
       async () =>
-        // Expose the client IP to shared library code (anti-sybil grant checks)
-        // without threading it through every call site.
-        runWithRequestContext({ clientIp: getRequestIp(c) }, async () =>
-          runWithDbCacheAsync(async () => next()),
+        // Expose the client IP + a stable per-request idempotency key to shared
+        // library code (anti-sybil grant checks; idempotent money settlement,
+        // #10423) without threading them through every call site.
+        runWithRequestContext(
+          {
+            clientIp: getRequestIp(c),
+            idempotencyKey:
+              c.req.header("idempotency-key") ||
+              c.req.header("x-request-id") ||
+              crypto.randomUUID(),
+          },
+          async () => runWithDbCacheAsync(async () => next()),
         ),
     );
   });

@@ -13,6 +13,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 
@@ -31,8 +32,11 @@ async function __hono_GET(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
+  if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
+    return Response.json({ error: "Access denied" }, { status: 403 });
+  }
 
   try {
     const status = await discordAppAutomationService.getAutomationStatus(
@@ -59,8 +63,11 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
+  if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
+    return Response.json({ error: "Access denied" }, { status: 403 });
+  }
 
   let body: z.infer<typeof automationConfigSchema>;
   try {
@@ -150,8 +157,11 @@ async function __hono_DELETE(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
+  if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
+    return Response.json({ error: "Access denied" }, { status: 403 });
+  }
 
   try {
     await discordAppAutomationService.disableAutomation(

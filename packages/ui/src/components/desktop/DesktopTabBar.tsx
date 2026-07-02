@@ -44,7 +44,7 @@ function TabButton({
           : "border-border/40 bg-card/60 text-muted hover:border-border hover:text-txt"
       }`}
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] bg-accent/10 text-accent">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-accent/10 text-accent">
         <ViewIcon icon={tab.icon} label={tab.label} className="h-3 w-3" />
       </span>
       <button

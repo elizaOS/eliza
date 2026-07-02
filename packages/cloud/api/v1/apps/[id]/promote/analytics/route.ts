@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { advertisingService } from "@/lib/services/advertising";
 import { appsService } from "@/lib/services/apps";
 import { conversionTrackingService } from "@/lib/services/conversion-tracking";
@@ -12,12 +13,15 @@ async function __hono_GET(
   { params }: RouteContext<{ id: string }>,
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
     const app = await appsService.getById(id);
     if (!app || app.organization_id !== user.organization_id) {
       return Response.json({ error: "App not found" }, { status: 404 });
+    }
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+      return Response.json({ error: "Access denied" }, { status: 403 });
     }
 
     const url = new URL(request.url);

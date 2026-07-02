@@ -55,6 +55,44 @@ def _find_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def _node_major(node_path: str) -> int:
+    """Return the major version of a node binary, or -1 when unreadable."""
+    try:
+        out = subprocess.run(
+            [node_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        ).stdout.strip()
+        return int(out.lstrip("v").split(".", 1)[0])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return -1
+
+
+def _resolve_node() -> str | None:
+    """Find a node binary new enough for the repo (engines: node >= 24).
+
+    The orchestrator prepends `sys.executable`'s directory to PATH so
+    pip-installed console scripts resolve; on hosts where that directory is
+    /usr/bin this also shadows a modern nvm node with an ancient system node
+    (observed: /usr/bin/node v18 lacks the global `crypto` that uuid v14
+    requires, so every runtime request dies with `crypto is not defined`).
+    Scan every PATH entry and take the first node with major >= 20; fall back
+    to the plain `which` result when none qualifies.
+    """
+    best: str | None = None
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = Path(entry) / "node"
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            continue
+        if best is None:
+            best = str(candidate)
+        if _node_major(str(candidate)) >= 20:
+            return str(candidate)
+    return best
+
+
 def _server_command(server_script: Path) -> list[str]:
     """Return the benchmark server command.
 
@@ -66,14 +104,24 @@ def _server_command(server_script: Path) -> list[str]:
     forced = os.environ.get("ELIZA_BENCH_SERVER_CMD", "").strip()
     if forced:
         return [*shlex.split(forced), str(server_script)]
-    if shutil.which("node"):
-        return ["node", "--import", "tsx", str(server_script)]
+    node = _resolve_node()
+    if node:
+        major = _node_major(node)
+        if 0 <= major < 20:
+            logger.warning(
+                "Benchmark server node %s is v%d (< 20); the runtime needs a "
+                "global `crypto`. Set ELIZA_BENCH_SERVER_CMD or put a newer "
+                "node first on PATH.",
+                node,
+                major,
+            )
+        return [node, "--import", "tsx", str(server_script)]
     if shutil.which("bun"):
         return ["bun", "--no-env-file", "run", str(server_script)]
     return ["node", "--import", "tsx", str(server_script)]
 
 
-CEREBRAS_OPENAI_MODEL_IDS = {"gpt-oss-120b", "zai-glm-4.7"}
+CEREBRAS_OPENAI_MODEL_IDS = {"gemma-4-31b", "gpt-oss-120b", "zai-glm-4.7"}
 
 
 def _normalize_model_env(env: dict[str, str]) -> None:
@@ -115,7 +163,7 @@ def _normalize_model_env(env: dict[str, str]) -> None:
             env.setdefault("ELIZA_PROVIDER", "cerebras")
             env.setdefault("OPENAI_BASE_URL", cerebras_base_url)
             env.setdefault("OPENAI_API_KEY", cerebras_key)
-        model = model or "gpt-oss-120b"
+        model = model or "gemma-4-31b"
 
     if not model:
         return

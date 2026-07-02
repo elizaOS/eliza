@@ -9,7 +9,7 @@ import {
 } from "./helpers";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
-// first-run runtime chooser rarely gets render-telemetry coverage. That surface
+// first-run chat transcript rarely gets render-telemetry coverage. That surface
 // is exactly where the agent-start render loop once froze onboarding, so this
 // spec lands on it with the guard armed and drives the runtime selection that
 // preceded the freeze.
@@ -85,7 +85,7 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
   });
 }
 
-test("first-run chooser renders without a render loop and lets the runtime be chosen", async ({
+test("in-chat first-run renders without a render loop and lets the runtime be chosen", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -99,10 +99,8 @@ test("first-run chooser renders without a render loop and lets the runtime be ch
 
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
-  const chooser = page.getByTestId("first-run-runtime-chooser");
-  await expect(chooser).toBeVisible({ timeout: 20_000 });
   await expect(
-    chooser.getByText("Choose how Eliza should run", { exact: true }),
+    page.getByText("First, where should your agent run?", { exact: false }),
   ).toBeVisible({ timeout: 15_000 });
 
   // The removed full-screen onboarding gate must NOT render — proof the surface
@@ -115,26 +113,28 @@ test("first-run chooser renders without a render loop and lets the runtime be ch
     await expect(page.getByTestId(removed)).toHaveCount(0);
   }
 
-  const cloud = chooser.getByTestId("first-run-chooser-cloud");
-  const local = chooser.getByTestId("first-run-chooser-local");
-  const other = chooser.getByTestId("first-run-chooser-other");
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
+  const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
+  const local = page.getByTestId("choice-__first_run__:runtime:local");
+  const other = page.getByTestId("choice-__first_run__:runtime:other");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible();
-  await chooser.getByRole("button", { name: /Advanced setup/i }).click();
   await expect(other).toBeVisible();
 
   // Local advances to the provider step (on-device vs Eliza Cloud vs other) —
   // the re-render churn on the newer step that previously froze.
   await local.click();
-  await expect(chooser.getByTestId("first-run-provider-on-device")).toBeVisible(
-    { timeout: 15_000 },
-  );
   await expect(
-    chooser.getByTestId("first-run-provider-elizacloud"),
+    page.getByTestId("choice-__first_run__:provider:on-device"),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:elizacloud"),
   ).toBeVisible();
-  await expect(chooser.getByTestId("first-run-provider-other")).toBeVisible();
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:other"),
+  ).toBeVisible();
 
-  await expectNoRenderTelemetryErrors(page, "first-run chooser flow");
+  await expectNoRenderTelemetryErrors(page, "in-chat first-run flow");
   await expect(chatOverlay).toBeVisible();
 });
 

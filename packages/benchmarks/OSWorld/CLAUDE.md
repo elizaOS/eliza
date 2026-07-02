@@ -13,7 +13,7 @@ TypeScript bridge agent layered on top. Registered in the suite registry as
 python scripts/python/run_multienv_eliza.py \
     --provider_name docker \
     --observation_type screenshot_a11y_tree \
-    --model openai/gpt-oss-120b \
+    --model gemma-4-31b \
     --max_steps 15 \
     --result_dir ./results/eliza \
     --task_id 030eeff7-b492-4218-b312-701ec99ee0cc
@@ -22,7 +22,7 @@ python scripts/python/run_multienv_eliza.py \
 python scripts/python/run_multienv_eliza.py \
     --provider_name docker \
     --observation_type screenshot_a11y_tree \
-    --model openai/gpt-oss-120b \
+    --model gemma-4-31b \
     --max_steps 15 \
     --num_envs 5 \
     --result_dir ./results/eliza
@@ -32,7 +32,7 @@ python scripts/python/run_multienv_eliza.py \
     --provider_name vmware \
     --path_to_vm ~/Virtual\ Machines.localized/Ubuntu.vmwarevm/Ubuntu.vmx \
     --observation_type screenshot_a11y_tree \
-    --model openai/gpt-oss-120b \
+    --model gemma-4-31b \
     --max_steps 15 \
     --result_dir ./results/eliza
 
@@ -47,7 +47,7 @@ python -m benchmarks.orchestrator run --benchmarks osworld --provider <p> --mode
 python scripts/python/run_multienv_eliza.py \
     --provider_name docker \
     --observation_type screenshot_a11y_tree \
-    --model openai/gpt-oss-120b \
+    --model gemma-4-31b \
     --max_steps 1 \
     --dry_run \
     --result_dir /tmp/osworld-smoke

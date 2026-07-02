@@ -335,6 +335,7 @@ export function HeartbeatForm({
   });
 
   return (
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
     <div className="w-full px-4 pb-8 pt-0 sm:px-5 sm:pb-8 sm:pt-1 lg:px-7 lg:pb-8 lg:pt-1 xl:px-8">
       {templateNotice && (
         <PagePanel.Notice
@@ -380,7 +381,6 @@ export function HeartbeatForm({
               >
                 {editorEnabled ? t("common.disable") : t("common.enable")}
               </Button>
-              <div className="w-px h-6 bg-border/50 mx-1 hidden sm:block" />
               <Button
                 ref={deleteButton.ref}
                 variant="outline"
@@ -405,7 +405,7 @@ export function HeartbeatForm({
 
         <PagePanel
           variant="padded"
-          className="grid gap-5"
+          className="grid gap-8"
           data-testid="heartbeats-editor-panel"
         >
           <div>
@@ -426,8 +426,9 @@ export function HeartbeatForm({
             />
           </div>
 
-          <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+          {/* Flat — no card/border. Sections separate by whitespace + type scale. */}
+          <div className="grid gap-4">
+            <div className="text-sm font-medium text-txt">
               {t("heartbeatform.whatItDoes", { defaultValue: "What it does" })}
             </div>
             <TriggerKindSection
@@ -444,8 +445,8 @@ export function HeartbeatForm({
             />
           </div>
 
-          <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+          <div className="grid gap-4">
+            <div className="text-sm font-medium text-txt">
               {t("heartbeatform.whenItStarts", {
                 defaultValue: "When it starts",
               })}
@@ -619,8 +620,8 @@ export function HeartbeatForm({
             <SchedulePreview form={form} t={t} />
           </div>
 
-          <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+          <div className="grid gap-4">
+            <div className="text-sm font-medium text-txt">
               {t("heartbeatform.runBehavior", {
                 defaultValue: "Run behavior",
               })}
@@ -684,7 +685,7 @@ export function HeartbeatForm({
               ref={submitButton.ref}
               variant="default"
               size="sm"
-              className="h-10 px-6 text-sm text-white hover:text-white dark:text-white dark:hover:text-white"
+              className="h-10 px-6 text-sm text-white hover:text-white"
               disabled={
                 triggersSaving ||
                 (form.kind === "workflow" && !form.workflowId) ||
@@ -880,10 +881,7 @@ function TriggerKindSection({
         <div className="mt-4">
           {workflowsError === "unavailable" ||
           (!workflowsLoading && workflows.length === 0) ? (
-            <div
-              role="status"
-              className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3 text-sm text-muted"
-            >
+            <div role="status" className="text-sm text-muted">
               <p>{t("triggers.workflowUnavailable")}</p>
               <button
                 ref={goToWorkflowsButton.ref}
@@ -1152,7 +1150,7 @@ function EventInputSection({
       )}
 
       {form.eventKind.trim() && (
-        <div className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3 text-xs text-muted">
+        <div className="text-xs text-muted">
           {t("heartbeatform.event.runsWhen", {
             eventName: humanizeEventKind(form.eventKind),
             defaultValue: "Runs when {{eventName}} arrives.",
@@ -1255,11 +1253,7 @@ function SchedulePreview({
   if (!preview) return null;
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3 text-sm"
-    >
+    <div role="status" aria-live="polite" className="text-sm">
       {preview.kind === "error" ? (
         <p className="text-xs font-medium text-danger">{preview.message}</p>
       ) : preview.kind === "once" ? (
@@ -1421,10 +1415,7 @@ function HeartbeatRunHistory({
                 .slice()
                 .reverse()
                 .map((run) => (
-                  <div
-                    key={run.triggerRunId}
-                    className="rounded-sm bg-bg/30 border border-border/20 px-4 py-3 text-sm transition-colors hover:bg-bg/50"
-                  >
+                  <div key={run.triggerRunId} className="text-sm">
                     <div className="flex items-start gap-3">
                       <StatusDot
                         status={run.status}
@@ -1443,7 +1434,7 @@ function HeartbeatRunHistory({
                         </div>
                         <div className="text-xs-tight text-muted/80">
                           {formatDurationMs(run.latencyMs)} &middot;{" "}
-                          <span className="font-mono text-muted/60 bg-bg/40 px-1 py-0.5 rounded-sm">
+                          <span className="font-mono text-muted/60">
                             {run.source}
                           </span>
                         </div>

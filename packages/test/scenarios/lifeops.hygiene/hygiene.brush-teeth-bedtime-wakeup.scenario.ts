@@ -1,6 +1,14 @@
 /**
  * Hygiene: brush teeth at "wake-up and bedtime" phrasing — colloquial
  * input that should still resolve to the canonical morning+night slots.
+ *
+ * De-echoed for #9310: the old turn assertions ("brush", "wake", "bed" /
+ * "brush") were satisfiable by parroting the prompt. The persisted
+ * twice-daily definition with canonical Morning/Night slots
+ * (`definitionCountDelta`) is the load-bearing outcome; the turn checks now
+ * enforce the derived normalization (the preview must resolve the colloquial
+ * phrasing to a morning slot — a word the prompt never used) and the
+ * two-phase commit.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -27,13 +35,23 @@ export default scenario({
       kind: "message",
       name: "brush wake-bed preview",
       text: "make sure i actually brush my teeth when i wake up and before bed lol",
-      responseIncludesAny: ["brush", "wake", "bed"],
+      // Derived normalization: "when i wake up" must resolve to a morning
+      // slot — "morning" appears in no user turn, so echo cannot pass.
+      responseIncludesAny: ["morning"],
+      // Two-phase commit: no completion claim before the owner confirms.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must resolve the colloquial phrasing into a concrete twice-daily schedule (a morning slot and a night slot) and ask the owner to confirm before saving. Claiming it is already saved, or proposing a single daily reminder, fails.",
+      },
     },
     {
       kind: "message",
       name: "brush wake-bed confirm",
       text: "Yes, save that.",
-      responseIncludesAny: ["saved", "brush"],
+      // Save-confirmation semantics in words the prompt never used.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [

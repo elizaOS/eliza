@@ -91,6 +91,42 @@ describe("DELETE_APP", () => {
     expect(cb.calls.at(-1)?.text).toContain("Deleted");
   });
 
+  it("partial-cleanup failure: reports partial, does NOT claim the container/DB are gone", async () => {
+    // The DELETE route returns HTTP 200 with { success:false, errors } when
+    // cleanup partially fails (continueOnError) — the SDK returns it normally.
+    setDeleteApp(() =>
+      Promise.resolve({
+        success: false,
+        message: "partial cleanup",
+        errors: ["tenant_db teardown failed"],
+      }),
+    );
+    const runtime = keyedRuntime();
+    const cb = captureCallback();
+    await deleteAppAction.handler(
+      runtime,
+      makeMessage("delete Acme Bot"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
+    const result = await deleteAppAction.handler(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      cb.fn,
+    );
+    expect(result?.success ?? true).toBe(false);
+    expect((result?.data as { partial?: boolean }).partial).toBe(true);
+    expect((result?.data as { errors?: string[] }).errors).toContain(
+      "tenant_db teardown failed",
+    );
+    const reply = cb.calls.at(-1)?.text ?? "";
+    expect(reply).not.toContain("are gone");
+    expect(reply.toLowerCase()).toContain("dashboard");
+  });
+
   it("a bare 'yes' is NOT enough to delete (connector-agnostic safety)", async () => {
     const deletes = trackDeletes();
     const runtime = keyedRuntime();

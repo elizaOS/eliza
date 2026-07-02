@@ -39,7 +39,7 @@ setup(
     python_requires='>=3.10',
     install_requires=[
         "numpy>=1.26,<3",
-        "Pillow~=12.2.0",
+        "Pillow~=12.3.0",
         "fabric",
         "gymnasium~=1.3.0",
         "requests~=2.33.0",
@@ -56,7 +56,7 @@ setup(
         "pandas>=3,<3.1",
         "flask~=3.1.3",
         "requests-toolbelt~=1.0.0",
-        "ag2~=0.13.0",
+        "ag2~=0.14.0",
         "lxml",
         "cssselect",
         "xmltodict",

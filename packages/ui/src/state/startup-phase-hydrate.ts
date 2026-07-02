@@ -30,7 +30,7 @@ import {
   type Tab,
   tabFromPath,
 } from "../navigation";
-import { isTransientOptionalFetchFailure, resolveApiUrl } from "../utils";
+import { isTransientOptionalFetchFailure } from "../utils";
 import { emitViewEvent } from "../views/view-event-bus";
 import {
   loadAvatarIndex,
@@ -61,8 +61,6 @@ export interface HydratingDeps {
   pollCloudCredits: () => void;
   fetchAutonomyReplay: () => Promise<void>;
   setSelectedVrmIndex: (v: number) => void;
-  setCustomVrmUrl: (v: string) => void;
-  setCustomBackgroundUrl: (v: string) => void;
   setWalletAddresses: (v: WalletAddresses) => void;
   setTab: (t: Tab) => void;
   setTabRaw: (t: Tab) => void;
@@ -227,17 +225,10 @@ export async function runHydrating(
       } catch (e: unknown) {
         warn("stream settings avatar", e);
       }
-      if (resolvedIdx === 0) {
-        if (await client.hasCustomVrm())
-          deps.setCustomVrmUrl(
-            resolveApiUrl(`/api/avatar/vrm?t=${Date.now()}`),
-          );
-        else deps.setSelectedVrmIndex(1);
-        if (await client.hasCustomBackground())
-          deps.setCustomBackgroundUrl(
-            resolveApiUrl(`/api/avatar/background?t=${Date.now()}`),
-          );
-      }
+      // No avatar chosen by config/stream settings → fall back to the first
+      // built-in avatar. (The old custom-VRM / custom-background existence
+      // probes were removed with the 3D companion feature, #10434.)
+      if (resolvedIdx === 0) deps.setSelectedVrmIndex(1);
     })();
 
     void (async () => {

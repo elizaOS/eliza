@@ -101,31 +101,32 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     selector: '[data-testid="wallet-shell"]',
     timeoutMs: 90_000,
   },
+  // Hyperliquid/Polymarket (wallet sub-views) and Shopify (connector surface)
+  // consolidated onto single adaptive spatial views — the rich-DOM app shells
+  // that carried `data-testid="<id>-shell"` and literal title text were
+  // deleted (PolymarketAppView, ShopifyAppView). The one element each view
+  // wrapper still renders unconditionally on mount is its agent toolbar
+  // (`aria-label="<Name> controls"`), so that is the readiness anchor proving
+  // the real view bundle mounted (and not the Launcher fallback).
   {
     name: "hyperliquid",
     path: "/hyperliquid",
     readyChecks: [
+      { selector: '[aria-label="Hyperliquid controls"]' },
       { text: "Hyperliquid" },
-      { selector: '[data-testid="hyperliquid-shell"]' },
     ],
     timeoutMs: 90_000,
   },
   {
     name: "polymarket",
     path: "/polymarket",
-    readyChecks: [
-      { text: "Polymarket" },
-      { selector: '[data-testid="polymarket-shell"]' },
-    ],
+    readyChecks: [{ selector: '[aria-label="Polymarket controls"]' }],
     timeoutMs: 90_000,
   },
   {
     name: "shopify",
     path: "/shopify",
-    readyChecks: [
-      { text: "Shopify" },
-      { selector: '[data-testid="shopify-shell"]' },
-    ],
+    readyChecks: [{ selector: '[aria-label="Shopify controls"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -226,22 +227,20 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 const managerVisibleViewTileCases = [
   { viewId: "calendar", path: "/calendar" },
   { viewId: "contacts", path: "/contacts" },
+  { viewId: "cockpit", path: "/cockpit" },
   { viewId: "documents", path: "/documents" },
   { viewId: "feed", path: "/feed" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },
   { viewId: "health", path: "/health" },
-  { viewId: "hyperliquid", path: "/hyperliquid" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "phone", path: "/phone" },
-  { viewId: "polymarket", path: "/polymarket" },
   { viewId: "relationships", path: "/relationships" },
   { viewId: "screenshare", path: "/screenshare" },
-  { viewId: "shopify", path: "/shopify" },
   { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },

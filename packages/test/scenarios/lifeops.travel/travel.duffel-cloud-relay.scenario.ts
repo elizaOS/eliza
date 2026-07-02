@@ -37,7 +37,10 @@ export default scenario({
         description: "Duffel flight search via cloud relay",
         includesAny: ["SFO", "LAX", "offer", "Duffel"],
       }),
-      responseIncludesAny: ["SFO", "LAX", "offer", "flight"],
+      // De-echoed (#9310): the old keywords ("SFO", "LAX", "offer", "flight")
+      // all appeared in the user's own turn text. Real Duffel offers carry a
+      // price — the reply must surface one, which no parroted reply can.
+      responseIncludesAny: ["$", "USD", "fare", "price"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

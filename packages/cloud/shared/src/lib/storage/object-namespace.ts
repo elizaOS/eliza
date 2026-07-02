@@ -10,6 +10,7 @@ export const ObjectNamespaces = {
   SeoPayloads: "seo-payloads",
   VertexTuningPayloads: "vertex-tuning-payloads",
   AgentSandboxBackups: "agent-sandbox-backups",
+  AppFrontends: "app-frontends",
 } as const;
 
 export type ObjectNamespace = (typeof ObjectNamespaces)[keyof typeof ObjectNamespaces];

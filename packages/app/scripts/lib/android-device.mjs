@@ -238,6 +238,28 @@ function bootCompleted(adbBin, serial) {
  * for boot completion. Returns the device serial. Throws loudly if no device
  * can be obtained (so a CI lane that should have an emulator fails visibly).
  */
+/**
+ * Suppress system error/ANR dialogs on the test device. On a software-GPU
+ * emulator under load, the Pixel Launcher / SystemUI routinely ANR; the dialog
+ * window then HOLDS INPUT FOCUS, so every `adb shell input` swipe/tap goes to
+ * the dialog and the app under test receives ZERO input events (observed as
+ * `mCurrentFocus=… Application Not Responding: …nexuslauncher` while a touch
+ * spec's page recorder counted 0 events). Standard Android CI hardening.
+ */
+function suppressErrorDialogs(adbBin, serial, log = () => {}) {
+  const ok = adbTry(adbBin, [
+    "-s",
+    serial,
+    "shell",
+    "settings",
+    "put",
+    "global",
+    "hide_error_dialogs",
+    "1",
+  ]);
+  if (ok) log(`error/ANR dialogs suppressed on ${serial}`);
+}
+
 export async function ensureEmulatorBooted({
   adb: adbBin = resolveAdb(),
   emulator = resolveEmulator(),
@@ -249,6 +271,7 @@ export async function ensureEmulatorBooted({
   if (existing.length > 0) {
     const serial = process.env.ANDROID_SERIAL ?? existing[0];
     log(`reusing attached device ${serial}`);
+    suppressErrorDialogs(adbBin, serial, log);
     return serial;
   }
 
@@ -329,6 +352,7 @@ export async function ensureEmulatorBooted({
     const devices = listDevices(adbBin);
     if (devices.length > 0 && bootCompleted(adbBin, devices[0])) {
       log(`emulator ${devices[0]} boot completed (log: ${logFile})`);
+      suppressErrorDialogs(adbBin, devices[0], log);
       return devices[0];
     }
   }

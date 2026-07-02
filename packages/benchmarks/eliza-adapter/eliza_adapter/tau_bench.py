@@ -347,7 +347,7 @@ class ElizaTauAgent(BaseTauAgent):
 
     def __init__(
         self,
-        model: str = "gpt-oss-120b",
+        model: str = "gemma-4-31b",
         provider: str = "cerebras",
         temperature: float = 0.0,
         client: ElizaClient | None = None,

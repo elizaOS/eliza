@@ -10,6 +10,7 @@ const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"etimedout",
 	"timeout",
 	"timed out",
+	"529",
 	"503",
 	"502",
 	"504",

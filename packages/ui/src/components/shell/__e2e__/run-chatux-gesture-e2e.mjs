@@ -23,6 +23,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import { touchSwipe } from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-chatux");
@@ -92,58 +93,12 @@ async function snap(p, name) {
   console.log(`  📸 ${file}`);
 }
 
-/** Dispatch a real touch-pointer drag from an element's centre by (dx, dy). */
+/** Drive a real touch drag from an element's centre by (dx, dy). */
 async function drag(p, testid, dx, dy, { steps = 10, slow = false } = {}) {
-  const box = await p.getByTestId(testid).boundingBox();
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await p.evaluate(
-    ({ cx, cy }) => {
-      const el = document.elementFromPoint(cx, cy);
-      window.__t = el;
-      el?.dispatchEvent(
-        new PointerEvent("pointerdown", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: cx,
-          clientY: cy,
-          bubbles: true,
-        }),
-      );
-    },
-    { cx, cy },
-  );
-  for (let i = 1; i <= steps; i += 1) {
-    const x = cx + (dx * i) / steps;
-    const y = cy + (dy * i) / steps;
-    await p.evaluate(
-      ({ x, y }) =>
-        window.__t?.dispatchEvent(
-          new PointerEvent("pointermove", {
-            pointerId: 1,
-            pointerType: "touch",
-            clientX: x,
-            clientY: y,
-            bubbles: true,
-          }),
-        ),
-      { x, y },
-    );
-    if (slow) await p.waitForTimeout(24);
-  }
-  await p.evaluate(
-    ({ x, y }) =>
-      window.__t?.dispatchEvent(
-        new PointerEvent("pointerup", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: x,
-          clientY: y,
-          bubbles: true,
-        }),
-      ),
-    { x: cx + dx, y: cy + dy },
-  );
+  await touchSwipe(p, `[data-testid="${testid}"]`, dx, dy, {
+    steps,
+    stepDelayMs: slow ? 24 : 0,
+  });
 }
 
 const logs = [];
@@ -152,6 +107,7 @@ const browser = await chromium.launch();
 const context = await browser.newContext({
   viewport: { width: 600, height: 760 },
   deviceScaleFactor: 2,
+  hasTouch: true,
   recordVideo: { dir: videoDir, size: { width: 600, height: 760 } },
 });
 const page = await context.newPage();

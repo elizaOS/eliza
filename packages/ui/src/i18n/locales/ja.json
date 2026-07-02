@@ -7396,6 +7396,7 @@
   "desktop.tray.openPlugins": "プラグインを開く",
   "desktop.tray.openDesktopWorkspace": "デスクトップワークスペースを開く",
   "desktop.tray.openVoiceControls": "音声コントロールを開く",
+  "desktop.tray.notifications": "通知",
   "desktop.tray.toggleLifecycle": "エージェントを開始/停止",
   "desktop.tray.restartAgent": "エージェントを再起動",
   "desktop.tray.sendTestNotification": "テスト通知を送信",

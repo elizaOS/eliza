@@ -118,6 +118,75 @@ describe("startup coordinator", () => {
       ),
     ).toEqual({ phase: "restoring-session" });
   });
+
+  it("surfaces a terminal native agent error during backend polling as the error phase (#11030)", () => {
+    // The iOS device hang: the native transport fails TERMINALLY while the
+    // backend poll runs (missing-endpoint / cloud-mode IPC policy). The
+    // coordinator must surface the REAL message instead of polling forever.
+    const message =
+      "iOS Agent requires a configured HTTP endpoint for remote/cloud mode, or runtimeMode=local for dev/sideload local mode.";
+    expect(
+      startupReducer(
+        { phase: "polling-backend", target: "embedded-local", attempts: 3 },
+        { type: "AGENT_ERROR", message },
+      ),
+    ).toEqual({
+      phase: "error",
+      reason: "agent-error",
+      message,
+      timedOut: false,
+    });
+  });
+
+  it("keeps the deadline path: BACKEND_TIMEOUT during polling still reaches the error phase", () => {
+    expect(
+      startupReducer(
+        { phase: "polling-backend", target: "embedded-local", attempts: 12 },
+        { type: "BACKEND_TIMEOUT" },
+      ),
+    ).toEqual({
+      phase: "error",
+      reason: "backend-timeout",
+      message: "Backend did not respond within the timeout period.",
+      timedOut: true,
+    });
+  });
+
+  it("recovers from the terminal error phase via RETRY (the error view's button)", () => {
+    expect(
+      startupReducer(
+        {
+          phase: "error",
+          reason: "agent-error",
+          message: "iOS Agent requires a configured HTTP endpoint",
+          timedOut: false,
+        },
+        { type: "RETRY" },
+      ),
+    ).toEqual({ phase: "restoring-session" });
+  });
+
+  it("keeps the healthy polling path unchanged: retries increment attempts, then BACKEND_REACHED advances", () => {
+    const retried = startupReducer(
+      { phase: "polling-backend", target: "embedded-local", attempts: 0 },
+      { type: "BACKEND_POLL_RETRY" },
+    );
+    expect(retried).toEqual({
+      phase: "polling-backend",
+      target: "embedded-local",
+      attempts: 1,
+    });
+    expect(
+      startupReducer(retried, {
+        type: "BACKEND_REACHED",
+        firstRunComplete: true,
+      }),
+    ).toEqual({
+      phase: "starting-runtime",
+      attempts: 0,
+      target: "embedded-local",
+    });
+  });
 });
 
 describe("isShellPaintable", () => {

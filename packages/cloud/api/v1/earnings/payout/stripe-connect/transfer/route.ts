@@ -113,6 +113,39 @@ async function handleTransfer(c: AppContext) {
     );
   }
 
+  // A DEDUPLICATED debit means an adjustment row for this idempotency_key already
+  // exists. That is legitimate for the ambiguous-retry case (Call 1 debited, the
+  // transfer timed out with an uncertain outcome, we held the debit; Stripe's own
+  // transfer idempotency then replays the single transfer on retry — no double
+  // pay). But if a compensating `${key}:refund` earning ALSO exists, Call 1's
+  // transfer was DEFINITIVELY rejected and the debit was rolled back — the balance
+  // was fully restored, so this debit no longer holds funds. Proceeding would fire
+  // a FRESH transfer (Stripe never persisted the rejected key) against a no-op
+  // debit and pay the creator twice while they keep the balance. Refuse the retry
+  // and require a fresh idempotency_key. (#11022)
+  if (debit.deduplicated) {
+    const alreadyRefunded =
+      await redeemableEarningsService.hasEarningBySourceId({
+        userId: user_id,
+        source: "creator_revenue_share",
+        sourceId: `${idempotency_key}:refund`,
+      });
+    if (alreadyRefunded) {
+      logger.warn("[StripeConnect] refusing retry of a rejected+refunded key", {
+        userId: user_id,
+        idempotencyKey: idempotency_key,
+      });
+      return Response.json(
+        {
+          success: false,
+          error:
+            "This idempotency_key was already rejected and the balance refunded. Retry with a fresh idempotency_key.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   try {
     const { transferId, amountCents } = await transferToConnectAccount(
       toConnectClient(requireStripe()),

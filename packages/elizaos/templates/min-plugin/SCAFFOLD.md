@@ -55,7 +55,7 @@ Do not emit legacy fields such as `name`, `testsPassed`, or `lintClean`; the orc
 
 The orchestrator will cross-check the claims against disk and the verification log. If anything you assert does not match reality, it will retry you with a structured failure report (capped by `ELIZA_APP_VERIFICATION_MAX_RETRIES`, default `3`).
 
-## 6. View kind (only if your plugin adds a view)
+## 6. VIEW_KIND_CONTRACT (only if your plugin adds a view)
 
 If your plugin contributes a UI view (a `Plugin.views` entry), set its `viewKind`
 so the shell knows when to show it. The four kinds (escalating exposure):

@@ -202,6 +202,38 @@ describe("POST /api/pty/sessions", () => {
     expect(h.calls).toHaveLength(0);
   });
 
+  it("403s for explicit non-truthy interactive settings", async () => {
+    for (const value of [" FALSE ", "off", "no", "disable-please"]) {
+      const h = makeHarness({
+        settings: {
+          PTY_ELIZA_CLOUD_API_KEY: "sk",
+          PTY_INTERACTIVE_ENABLED: value,
+        },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { cwd: process.cwd() }),
+      );
+      expect(res.status, value).toBe(403);
+      expect(h.calls, value).toHaveLength(0);
+    }
+  });
+
+  it("accepts explicit truthy interactive settings", async () => {
+    for (const value of ["true", "1", "on", "YES"]) {
+      const h = makeHarness({
+        settings: {
+          PTY_ELIZA_CLOUD_API_KEY: "sk",
+          PTY_INTERACTIVE_ENABLED: value,
+        },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { cwd: process.cwd() }),
+      );
+      expect(res.status, value).toBe(200);
+      expect(h.calls, value).toHaveLength(1);
+    }
+  });
+
   it("403 on store builds", async () => {
     const h = makeHarness({
       settings: {
@@ -256,6 +288,44 @@ describe("POST /api/pty/sessions", () => {
     );
     expect(res.status).toBe(200);
     expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("sk-body");
+  });
+
+  it("uses operator-pinned tier model fallbacks", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ELIZA_CLOUD_FAST_MODEL: "fast-pin",
+        PTY_ELIZA_CLOUD_SMART_MODEL: "smart-pin",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("fast-pin");
+    expect(h.calls[0].opts.env?.OPENAI_MEDIUM_MODEL).toBe("fast-pin");
+    expect(h.calls[0].opts.env?.OPENAI_LARGE_MODEL).toBe("smart-pin");
+  });
+
+  it("lets request body tier models override operator fallbacks", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ELIZA_CLOUD_FAST_MODEL: "fast-pin",
+        PTY_ELIZA_CLOUD_SMART_MODEL: "smart-pin",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, {
+        cwd: process.cwd(),
+        fastModel: "fast-body",
+        smartModel: "smart-body",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("fast-body");
+    expect(h.calls[0].opts.env?.OPENAI_MEDIUM_MODEL).toBe("fast-body");
+    expect(h.calls[0].opts.env?.OPENAI_LARGE_MODEL).toBe("smart-body");
   });
 
   it("rejects unallowlisted base URLs and accepts explicit operator allowlist", async () => {
@@ -376,5 +446,98 @@ describe("GET + DELETE /api/pty/sessions", () => {
       ctx(h.runtime, undefined, {}),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+// Regression edges for #11040 / #10830. The truthy-allowlist and both-tier
+// model pins are covered above; these lock the remaining branches of the
+// fail-closed `interactiveEnabled` gate and prove the two model env fallbacks
+// (`?? PTY_ELIZA_CLOUD_FAST_MODEL` / `?? PTY_ELIZA_CLOUD_SMART_MODEL`) are
+// independent — a bug that swaps or collapses them would still spawn, so only
+// the resolved model env can catch it.
+describe("PTY interactive gate + model fallbacks (regression edges)", () => {
+  it("defaults to enabled when the flag is unset or empty", async () => {
+    for (const settings of [
+      { PTY_ELIZA_CLOUD_API_KEY: "sk" }, // flag absent
+      { PTY_ELIZA_CLOUD_API_KEY: "sk", PTY_INTERACTIVE_ENABLED: "" },
+      { PTY_ELIZA_CLOUD_API_KEY: "sk", PTY_INTERACTIVE_ENABLED: "   " },
+    ]) {
+      const h = makeHarness({ settings });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { cwd: process.cwd() }),
+      );
+      expect(res.status, JSON.stringify(settings)).toBe(200);
+      expect(h.calls, JSON.stringify(settings)).toHaveLength(1);
+    }
+  });
+
+  it("normalizes case + surrounding whitespace before the truthy allowlist", async () => {
+    for (const value of [" TrUe ", "\tON\n", " 1 ", "  yEs  "]) {
+      const h = makeHarness({
+        settings: {
+          PTY_ELIZA_CLOUD_API_KEY: "sk",
+          PTY_INTERACTIVE_ENABLED: value,
+        },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { cwd: process.cwd() }),
+      );
+      expect(res.status, JSON.stringify(value)).toBe(200);
+      expect(h.calls, JSON.stringify(value)).toHaveLength(1);
+    }
+  });
+
+  it("fails closed on a truthy-looking but unrecognized flag", async () => {
+    // A plausible operator typo that is NOT in the allowlist must disable
+    // spawning rather than silently leave it on.
+    for (const value of [" enabled ", "yep", "2", "y"]) {
+      const h = makeHarness({
+        settings: {
+          PTY_ELIZA_CLOUD_API_KEY: "sk",
+          PTY_INTERACTIVE_ENABLED: value,
+        },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { cwd: process.cwd() }),
+      );
+      expect(res.status, JSON.stringify(value)).toBe(403);
+      expect(h.calls, JSON.stringify(value)).toHaveLength(0);
+    }
+  });
+
+  it("applies the FAST tier env fallback without touching the SMART default", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ELIZA_CLOUD_FAST_MODEL: "fast-only",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    const env = h.calls[0].opts.env;
+    expect(env?.OPENAI_SMALL_MODEL).toBe("fast-only");
+    expect(env?.OPENAI_MEDIUM_MODEL).toBe("fast-only");
+    // SMART unset → the cerebras default, not the FAST pin.
+    expect(env?.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+  });
+
+  it("applies the SMART tier env fallback without touching the FAST default", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ELIZA_CLOUD_SMART_MODEL: "smart-only",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    const env = h.calls[0].opts.env;
+    // FAST unset → the cerebras default, not the SMART pin.
+    expect(env?.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(env?.OPENAI_MEDIUM_MODEL).toBe("gemma-4-31b");
+    expect(env?.OPENAI_LARGE_MODEL).toBe("smart-only");
   });
 });

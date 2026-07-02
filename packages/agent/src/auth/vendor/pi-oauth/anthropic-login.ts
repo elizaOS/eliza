@@ -152,12 +152,20 @@ export async function refreshAnthropicToken(
     throw new Error(`Anthropic token refresh failed: ${errText}`);
   }
   const data = (await response.json()) as {
-    refresh_token: string;
-    access_token: string;
-    expires_in: number;
+    refresh_token?: string;
+    access_token?: string;
+    expires_in?: number;
   };
+  if (!data.access_token || typeof data.expires_in !== "number") {
+    throw new Error(
+      "Anthropic token refresh failed: response missing access_token/expires_in",
+    );
+  }
   return {
-    refresh: data.refresh_token,
+    // Anthropic rotates refresh tokens (one-time-use). Per RFC 6749 §6 a
+    // response that omits refresh_token means "keep the current one" — never
+    // persist undefined over a still-valid stored refresh token.
+    refresh: data.refresh_token ?? refreshToken,
     access: data.access_token,
     expires: Date.now() + data.expires_in * 1000 - 5 * 60 * 1000,
   };

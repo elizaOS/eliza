@@ -18,7 +18,11 @@ import {
   type Route,
   ServiceType,
 } from "@elizaos/core";
-import { persistDataUrl, persistMediaBytes } from "./media-store.ts";
+import {
+  persistDataUrl,
+  persistMediaBytes,
+  pinBackgroundMedia,
+} from "./media-store.ts";
 
 interface GenerateImageBody {
   prompt?: unknown;
@@ -111,6 +115,9 @@ export const backgroundGenerateImageRoute: Route = {
         sourceUrl,
         result.mimeType ?? "image/png",
       );
+      // The wallpaper's only referent is the client's persisted config, which
+      // the orphan GC cannot see — pin it so it survives the daily sweep.
+      pinBackgroundMedia(url);
       return jsonResult(200, { url });
     } catch (err) {
       // Translate a provider/transport failure into a clear client error.
@@ -118,5 +125,49 @@ export const backgroundGenerateImageRoute: Route = {
         error: err instanceof Error ? err.message : "Image generation failed.",
       });
     }
+  },
+};
+
+interface UploadImageBody {
+  dataUrl?: unknown;
+}
+
+/**
+ * Cap on an uploaded wallpaper data URL. The client downscales to ≤4 MB of
+ * bytes before uploading; base64 inflates ~4/3, so allow modest headroom.
+ */
+const BACKGROUND_UPLOAD_MAX_CHARS = 8 * 1024 * 1024;
+
+/**
+ * Re-host a user-picked wallpaper into the content-addressed media store
+ * (authenticated write — the same normalization the generate route performs),
+ * so the client persists a short, stable `/api/media/<hash>` reference instead
+ * of a multi-MB data URL that silently blows the localStorage quota.
+ */
+export const backgroundUploadImageRoute: Route = {
+  type: "POST",
+  path: "/api/background/upload-image",
+  rawPath: true,
+  name: "background-upload-image",
+  routeHandler: async (ctx) => {
+    const body = (ctx.body ?? {}) as UploadImageBody;
+    const dataUrl = typeof body.dataUrl === "string" ? body.dataUrl.trim() : "";
+    if (!dataUrl.startsWith("data:image/")) {
+      return jsonResult(400, { error: "An image data URL is required." });
+    }
+    if (dataUrl.length > BACKGROUND_UPLOAD_MAX_CHARS) {
+      return jsonResult(413, { error: "That image is too large." });
+    }
+    const persisted = persistDataUrl(dataUrl);
+    if (!persisted) {
+      return jsonResult(400, { error: "Could not decode that image." });
+    }
+    // The wallpaper's only referent is the client's persisted config, which
+    // the orphan GC cannot see — pin it so it survives the daily sweep.
+    pinBackgroundMedia(persisted.url);
+    logger.info(
+      `[background] re-hosted uploaded wallpaper as ${persisted.url}`,
+    );
+    return jsonResult(200, { url: persisted.url });
   },
 };

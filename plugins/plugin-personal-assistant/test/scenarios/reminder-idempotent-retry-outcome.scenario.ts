@@ -21,12 +21,11 @@ function assertApiBody(options: {
  * idempotent-retry / no-double-send guarantee (issue #9970 edge-case list):
  * a retry, restart, or duplicate tick can't double-notify the owner.
  *
- * Fully deterministic (api turns only): seeding, processing, and the
- * attempt-count assertion are all on the scheduler delivery path, so this runs
- * keyless on the `pr-deterministic` lane.
+ * API-only, but kept live-only until the keyless runner timeout is resolved in
+ * #10757 and this scenario is promoted with passing PR-gated evidence.
  */
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "reminder-idempotent-retry-outcome",
   title: "Re-processing a delivered reminder does not double-send",
   domain: "reminders",

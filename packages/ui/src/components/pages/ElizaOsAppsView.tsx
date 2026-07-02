@@ -157,7 +157,8 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-sm border border-border bg-card p-4">
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
+    <section>
       <div className="mb-4">
         <h2 className="text-base font-semibold text-txt">{title}</h2>
         {description ? (
@@ -348,21 +349,13 @@ function StatusNotice({
     );
   }
   if (notice) {
-    return (
-      <div className="rounded-sm border border-border bg-bg px-3 py-2 text-sm text-muted">
-        {notice}
-      </div>
-    );
+    return <div className="px-3 py-2 text-sm text-muted">{notice}</div>;
   }
   return null;
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-sm border border-border bg-bg p-3 text-sm text-muted">
-      {children}
-    </div>
-  );
+  return <div className="px-1 py-2 text-sm text-muted">{children}</div>;
 }
 
 function PhonePanelTabButton({
@@ -390,10 +383,10 @@ function PhonePanelTabButton({
       type="button"
       onClick={() => onSelect(item.id)}
       aria-current={isActive ? "page" : undefined}
-      className={`inline-flex h-9 items-center gap-2 rounded-sm border px-3 text-sm font-medium ${
+      className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors ${
         isActive
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-bg text-txt"
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-strong hover:bg-surface hover:text-txt"
       }`}
       {...agentProps}
     >
@@ -422,7 +415,7 @@ function DialpadButton({
       ref={ref}
       type="button"
       onClick={() => onPress(digit)}
-      className="aspect-[1.6] rounded-sm border border-border bg-bg text-lg font-semibold text-txt hover:border-primary"
+      className="aspect-[1.6] rounded-sm bg-surface text-lg font-semibold text-txt transition-colors hover:bg-bg-hover"
       {...agentProps}
     >
       {digit}
@@ -453,7 +446,7 @@ const RecentCallButton = memo(function RecentCallButton({
       ref={ref}
       type="button"
       onClick={handleSelect}
-      className="rounded-sm border border-border bg-bg p-3 text-left text-sm hover:border-primary"
+      className="rounded-sm p-3 text-left text-sm transition-colors hover:bg-surface"
       {...agentProps}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -505,7 +498,7 @@ const PhoneContactRow = memo(function PhoneContactRow({
     [onSms, contactNumber],
   );
   return (
-    <div className="rounded-sm border border-border bg-bg p-3 text-sm">
+    <div className="p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-medium text-txt">
@@ -567,7 +560,7 @@ function PhoneRoleRow({
   onRequest: (role: AndroidRoleStatus) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card p-2 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-2 p-2 text-sm">
       <div className="min-w-0">
         <div className="font-medium text-txt">
           {role.role}: {role.held ? heldLabel : notHeldLabel}
@@ -1156,7 +1149,7 @@ export function PhonePageView() {
         >
           {selectedCall ? (
             <div className="grid gap-3">
-              <div className="rounded-sm border border-border bg-bg p-3 text-sm">
+              <div className="p-3 text-sm">
                 <div className="font-medium text-txt">
                   {callDisplayName(selectedCall)}
                 </div>
@@ -1170,7 +1163,7 @@ export function PhonePageView() {
                 </div>
               </div>
               {selectedCall.transcription ? (
-                <div className="rounded-sm border border-border bg-bg p-3 text-sm text-txt">
+                <div className="p-3 text-sm text-txt">
                   <div className="mb-1 text-xs font-medium uppercase text-muted">
                     {t("elizaosapps.phone.transcript.voicemail", {
                       defaultValue: "Voicemail transcription",
@@ -1299,14 +1292,14 @@ export function PhonePageView() {
             </div>
           </div>
           <div className="grid gap-3">
-            <div className="grid gap-1 rounded-sm border border-border bg-bg p-3 text-sm text-muted">
+            <div className="grid gap-1 p-3 text-sm text-muted">
               {status.length > 0
                 ? status.map((line) => <div key={line}>{line}</div>)
                 : t("elizaosapps.phone.dialer.noStatus", {
                     defaultValue: "No status loaded.",
                   })}
             </div>
-            <div className="grid gap-2 rounded-sm border border-border bg-bg p-3">
+            <div className="grid gap-2 p-3">
               <div className="text-sm font-medium text-txt">
                 {t("elizaosapps.phone.dialer.defaultRoles", {
                   defaultValue: "Android default roles",
@@ -1353,7 +1346,7 @@ export function PhonePageView() {
                 {t("elizaosapps.phone.settings", { defaultValue: "Settings" })}
               </SecondaryButton>
             </div>
-            <div className="rounded-sm border border-border bg-bg p-3">
+            <div className="p-3">
               <div className="mb-3 text-sm font-medium text-txt">
                 {t("elizaosapps.phone.newContact.title", {
                   defaultValue: "New Contact",
@@ -1705,7 +1698,7 @@ export function MessagesPageView() {
         >
           <div className="grid gap-3">
             {incomingSms ? (
-              <div className="rounded-sm border border-border bg-bg p-3 text-sm">
+              <div className="p-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                   <span>
                     {incomingSms.sender ||
@@ -1798,10 +1791,7 @@ export function MessagesPageView() {
           <div className="grid max-h-[60vh] gap-2 overflow-y-auto">
             {messages.length > 0 ? (
               messages.map((message) => (
-                <div
-                  key={message.id}
-                  className="rounded-sm border border-border bg-bg p-3 text-sm"
-                >
+                <div key={message.id} className="p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                     <span>
                       {message.address ||
@@ -2008,10 +1998,7 @@ export function ContactsPageView() {
           <div className="grid max-h-[60vh] gap-2 overflow-y-auto">
             {contacts.length > 0 ? (
               contacts.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="rounded-sm border border-border bg-bg p-3 text-sm"
-                >
+                <div key={contact.id} className="p-3 text-sm">
                   <div className="font-medium text-txt">
                     {contact.displayName}
                   </div>

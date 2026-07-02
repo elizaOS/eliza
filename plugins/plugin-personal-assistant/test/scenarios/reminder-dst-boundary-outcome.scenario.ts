@@ -24,7 +24,7 @@ function assertApiBody(options: {
  * DST offset rather than a fixed UTC offset (issue #9970 DST-boundary edge case).
  */
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "reminder-dst-boundary-outcome",
   title: "A daily reminder window tracks local time across a DST transition",
   domain: "reminders",

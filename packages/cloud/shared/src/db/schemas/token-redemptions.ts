@@ -26,6 +26,15 @@ export const redemptionNetworkEnum = pgEnum("redemption_network", [
 ]);
 
 /**
+ * Payout asset for a redemption (#10732).
+ *
+ * Creator payouts now default to `usdc` (Circle USDC on Solana/Base, 1 USDC ≈
+ * $1). `eliza` is retained for legacy elizaOS-token redemptions and for the
+ * safe migration backfill of existing rows.
+ */
+export const redemptionAssetEnum = pgEnum("redemption_asset", ["eliza", "usdc"]);
+
+/**
  * Status of a token redemption request.
  * Follows a strict state machine to prevent double-processing.
  */
@@ -87,6 +96,11 @@ export const tokenRedemptions = pgTable(
 
     // Price quote expiry (typically 5 minutes from creation)
     price_quote_expires_at: timestamp("price_quote_expires_at").notNull(),
+
+    // Payout asset (#10732). Defaults to `usdc` for new creator payouts; the
+    // migration backfills existing rows to `eliza`. For `usdc`, `eliza_price_usd`
+    // is 1 and `eliza_amount` holds the USDC amount (= usd_value).
+    asset: redemptionAssetEnum("asset").notNull().default("usdc"),
 
     // Target network for payout
     network: redemptionNetworkEnum("network").notNull(),

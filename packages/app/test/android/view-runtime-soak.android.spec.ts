@@ -243,7 +243,7 @@ test.describe
         waitUntil: "domcontentloaded",
         timeout: 60_000,
       });
-      if ((await page.getByTestId("first-run-runtime-chooser").count()) > 0) {
+      if (await isFirstRunShowing(page)) {
         await connectHostRuntimeViaDeepLink({ adb, serial, page });
       }
       await ensureHomeShell(page);

@@ -148,7 +148,7 @@ describe("runDeployGate", () => {
     expect(deps.statusCalls).toBe(1);
   });
 
-  it("reports unreachable when READY but /health is not 2xx (does NOT claim live)", async () => {
+  it("reports unreachable when READY but /health returns a Caddy gateway error (503)", async () => {
     const deps = makeDeps({
       statuses: [statusRes({ status: "READY" })],
       productionUrl: "https://acme.elizacloud.ai",
@@ -158,6 +158,39 @@ describe("runDeployGate", () => {
     expect(result.phase).toBe("unreachable");
     expect(result.url).toBe("https://acme.elizacloud.ai");
     expect(result.reachability?.status).toBe(503);
+  });
+
+  it("REGRESSION: an auth-gated app (READY + /health 401) is LIVE, not 'not live'", async () => {
+    // The server marks such an app READY (401 is not a gateway error), so the
+    // gate must agree instead of contradicting GET_APP_DEPLOY_STATUS.
+    const deps = makeDeps({
+      statuses: [statusRes({ status: "READY" })],
+      productionUrl: "https://acme.elizacloud.ai",
+      probe: { ok: false, status: 401 },
+    });
+    const result = await runDeployGate(deps, FAST_CONFIG);
+    expect(result.phase).toBe("ready");
+    expect(result.url).toBe("https://acme.elizacloud.ai");
+  });
+
+  it("REGRESSION: an app with no /health route (READY + 404) is LIVE", async () => {
+    const deps = makeDeps({
+      statuses: [statusRes({ status: "READY" })],
+      productionUrl: "https://acme.elizacloud.ai",
+      probe: { ok: false, status: 404 },
+    });
+    const result = await runDeployGate(deps, FAST_CONFIG);
+    expect(result.phase).toBe("ready");
+  });
+
+  it("reports unreachable when the probe never gets a response (network error, no status)", async () => {
+    const deps = makeDeps({
+      statuses: [statusRes({ status: "READY" })],
+      productionUrl: "https://acme.elizacloud.ai",
+      probe: { ok: false, error: "ECONNREFUSED" },
+    });
+    const result = await runDeployGate(deps, FAST_CONFIG);
+    expect(result.phase).toBe("unreachable");
   });
 
   it("reports unreachable when READY but no production_url exists", async () => {

@@ -5,6 +5,7 @@ import { cn } from "../../lib/utils";
 import { useAppSelector, useContentPack } from "../../state";
 import type { UiThemeMode } from "../../state/ui-preferences";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
+import { Switch } from "../ui/switch";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { selectableTileClass } from "./appearance-primitives.helpers";
@@ -106,6 +107,10 @@ export function AppearanceSettingsSection() {
   const uiLanguage = useAppSelector((s) => s.uiLanguage);
   const uiThemeMode = useAppSelector((s) => s.uiThemeMode);
   const setUiThemeMode = useAppSelector((s) => s.setUiThemeMode);
+  const homeTimeWidgetHidden = useAppSelector((s) => s.homeTimeWidgetHidden);
+  const setHomeTimeWidgetHidden = useAppSelector(
+    (s) => s.setHomeTimeWidgetHidden,
+  );
   const t = useAppSelector((s) => s.t);
   const { activePack, loadedPacks, toggle } = useContentPack();
   const advancedEnabled = useAdvancedSettingsEnabled();
@@ -148,6 +153,23 @@ export function AppearanceSettingsSection() {
             />
           ))}
         </div>
+      </SettingsGroup>
+
+      <SettingsGroup
+        bare
+        title={t("settings.homeDashboard", { defaultValue: "Home" })}
+      >
+        <SettingsRow
+          label={t("settings.showTimeWidget", {
+            defaultValue: "Show time & date",
+          })}
+          control={
+            <Switch
+              checked={!homeTimeWidgetHidden}
+              onCheckedChange={(checked) => setHomeTimeWidgetHidden(!checked)}
+            />
+          }
+        />
       </SettingsGroup>
 
       <LoadedPacksList

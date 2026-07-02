@@ -79,6 +79,55 @@ const strictBrowserRoutes = [
   },
 ];
 
+const WAIT_FOR_URL_START_URL = "https://scenario.test/oauth/start";
+const WAIT_FOR_URL_CALLBACK_URL =
+  "https://scenario.test/oauth/callback?code=scenario";
+const WAIT_FOR_URL_PATTERN = "callback?code=scenario";
+const SEEDED_FORM_TAB_ID = "btab_1";
+let waitForUrlCallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+function clearWaitForUrlCallbackTimer(): void {
+  if (waitForUrlCallbackTimer) {
+    clearInterval(waitForUrlCallbackTimer);
+    waitForUrlCallbackTimer = null;
+  }
+}
+
+function scheduleWaitForUrlCallbackNavigation(): void {
+  clearWaitForUrlCallbackTimer();
+  const startedAt = Date.now();
+  let startSeenAt: number | null = null;
+  waitForUrlCallbackTimer = setInterval(() => {
+    void (async () => {
+      const tabs = await executeBrowserWorkspaceCommand({ subaction: "list" });
+      const waitTab = tabs.tabs?.find(
+        (tab) => tab.url === WAIT_FOR_URL_START_URL,
+      );
+      if (waitTab?.id) {
+        startSeenAt ??= Date.now();
+        if (Date.now() - startSeenAt < 150) {
+          return;
+        }
+        clearWaitForUrlCallbackTimer();
+        await executeBrowserWorkspaceCommand({
+          id: waitTab.id,
+          subaction: "navigate",
+          url: WAIT_FOR_URL_CALLBACK_URL,
+        });
+        return;
+      }
+
+      if (Date.now() - startedAt > 3_000) {
+        clearWaitForUrlCallbackTimer();
+      }
+    })().catch(() => {
+      if (Date.now() - startedAt > 3_000) {
+        clearWaitForUrlCallbackTimer();
+      }
+    });
+  }, 50);
+}
+
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -104,6 +153,111 @@ function readPath(value: unknown, path: string): unknown {
 
 function valuesEqual(actual: unknown, expected: unknown): boolean {
   return JSON.stringify(actual) === JSON.stringify(expected);
+}
+
+function expectBrowserWaitForUrlTurn(
+  execution: ScenarioTurnExecution,
+): string | undefined {
+  const action = execution.actionsCalled.find(
+    (candidate) => candidate.actionName === "BROWSER_WAIT_FOR_URL",
+  ) as CapturedAction | undefined;
+  if (!action) {
+    return `expected BROWSER_WAIT_FOR_URL action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
+  }
+
+  if (action.result?.success !== true) {
+    return `expected BROWSER_WAIT_FOR_URL success=true, saw ${JSON.stringify(action.result)}`;
+  }
+
+  const params = actionParameters(action.parameters);
+  for (const [key, expectedValue] of Object.entries({
+    action: "wait_for_url",
+    id: SEEDED_FORM_TAB_ID,
+    pattern: WAIT_FOR_URL_PATTERN,
+    pollIntervalMs: 50,
+    timeoutMs: 4_000,
+    url: WAIT_FOR_URL_START_URL,
+  })) {
+    if (!valuesEqual(params[key], expectedValue)) {
+      return `expected BROWSER_WAIT_FOR_URL parameter ${key}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(params[key])}`;
+    }
+  }
+
+  const checks: Record<string, unknown> = {
+    "values.subaction": "wait_for_url",
+    "values.status": "matched",
+    "values.matched": true,
+    "data.subaction": "wait_for_url",
+    "data.outcome.status": "matched",
+    "data.outcome.matched": true,
+    "data.outcome.pattern": WAIT_FOR_URL_PATTERN,
+    "data.outcome.lastUrl": WAIT_FOR_URL_CALLBACK_URL,
+  };
+  for (const [path, expectedValue] of Object.entries(checks)) {
+    const actual = readPath(action.result, path);
+    if (!valuesEqual(actual, expectedValue)) {
+      return `expected BROWSER_WAIT_FOR_URL result.${path}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(actual)}`;
+    }
+  }
+
+  const polls = readPath(action.result, "data.outcome.polls");
+  if (typeof polls !== "number" || polls < 2) {
+    return `expected BROWSER_WAIT_FOR_URL to poll at least twice before matching, saw ${JSON.stringify(polls)}`;
+  }
+
+  const responseText = execution.responseText ?? "";
+  for (const expected of [
+    `I opened ${WAIT_FOR_URL_START_URL}`,
+    `watching for "${WAIT_FOR_URL_PATTERN}"`,
+    `still waiting for "${WAIT_FOR_URL_PATTERN}"`,
+    `tab reached ${WAIT_FOR_URL_CALLBACK_URL}`,
+  ]) {
+    if (!responseText.includes(expected)) {
+      return `expected BROWSER_WAIT_FOR_URL streamed response to include ${JSON.stringify(expected)}, saw ${JSON.stringify(responseText)}`;
+    }
+  }
+
+  return undefined;
+}
+
+function expectRestoreFormTurn(
+  execution: ScenarioTurnExecution,
+): string | undefined {
+  const action = execution.actionsCalled.find(
+    (candidate) => candidate.actionName === "BROWSER_NAVIGATE",
+  ) as CapturedAction | undefined;
+  if (!action) {
+    return `expected BROWSER_NAVIGATE action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
+  }
+
+  if (action.result?.success !== true) {
+    return `expected BROWSER_NAVIGATE success=true, saw ${JSON.stringify(action.result)}`;
+  }
+
+  const params = actionParameters(action.parameters);
+  for (const [key, expectedValue] of Object.entries({
+    action: "navigate",
+    id: SEEDED_FORM_TAB_ID,
+    url: "https://scenario.test/form",
+  })) {
+    if (!valuesEqual(params[key], expectedValue)) {
+      return `expected BROWSER_NAVIGATE parameter ${key}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(params[key])}`;
+    }
+  }
+
+  for (const [path, expectedValue] of Object.entries({
+    "values.mode": "web",
+    "values.subaction": "navigate",
+    "data.result.tab.id": SEEDED_FORM_TAB_ID,
+    "data.result.tab.url": "https://scenario.test/form",
+  })) {
+    const actual = readPath(action.result, path);
+    if (!valuesEqual(actual, expectedValue)) {
+      return `expected BROWSER_NAVIGATE result.${path}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(actual)}`;
+    }
+  }
+
+  return undefined;
 }
 
 function expectActionTurn(
@@ -223,6 +377,7 @@ export default scenario({
           url: "https://scenario.test/form",
         });
 
+        scheduleWaitForUrlCallbackNavigation();
         registerStrictActionRouteFixtures(runtime, strictBrowserRoutes);
         return undefined;
       },
@@ -236,6 +391,44 @@ export default scenario({
     },
   ],
   turns: [
+    {
+      kind: "action",
+      name: "wait for browser URL callback",
+      actionName: "BROWSER_WAIT_FOR_URL",
+      text: "Open the OAuth start page and wait for the callback URL",
+      timeoutMs: 8_000,
+      options: {
+        parameters: {
+          action: "wait_for_url",
+          id: SEEDED_FORM_TAB_ID,
+          pattern: WAIT_FOR_URL_PATTERN,
+          pollIntervalMs: 50,
+          timeoutMs: 4_000,
+          url: WAIT_FOR_URL_START_URL,
+        },
+      },
+      responseIncludesAll: [
+        WAIT_FOR_URL_START_URL,
+        WAIT_FOR_URL_PATTERN,
+        WAIT_FOR_URL_CALLBACK_URL,
+      ],
+      assertTurn: expectBrowserWaitForUrlTurn,
+    },
+    {
+      kind: "action",
+      name: "restore seeded browser form after callback",
+      actionName: "BROWSER_NAVIGATE",
+      text: "Return the browser workspace to the seeded form",
+      options: {
+        parameters: {
+          action: "navigate",
+          id: SEEDED_FORM_TAB_ID,
+          url: "https://scenario.test/form",
+        },
+      },
+      responseIncludesAll: ["navigate completed", "https://scenario.test/form"],
+      assertTurn: expectRestoreFormTurn,
+    },
     {
       kind: "message",
       name: "read seeded browser form heading",
@@ -393,6 +586,12 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "actionCalled",
+      actionName: "BROWSER_WAIT_FOR_URL",
+      status: "success",
+      minCount: 1,
+    },
     {
       type: "actionCalled",
       actionName: "BROWSER_GET",

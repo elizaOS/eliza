@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -84,10 +85,13 @@ export function InboxUnreadWidget(_props: Partial<WidgetProps>) {
   const [unread, setUnread] = useState<UnreadThread[]>([]);
   const [loaded, setLoaded] = useState(false);
   const nav = useWidgetNavigation();
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the 20s inbox poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
 
   const loadInbox = useCallback(async () => {
     const baseUrl = client.getBaseUrl();
-    if (!supportsFullAppShellRoutes(baseUrl)) {
+    if (!authenticated || !supportsFullAppShellRoutes(baseUrl)) {
       setLoaded(true);
       setUnread([]);
       return;
@@ -103,7 +107,7 @@ export function InboxUnreadWidget(_props: Partial<WidgetProps>) {
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void loadInbox();

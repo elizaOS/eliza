@@ -704,6 +704,24 @@ export class PgApprovalQueue implements ApprovalQueue {
     return rowToRequest(rows[0]);
   }
 
+  /**
+   * Lazily enforce expiry at the transition boundary (#11092): no production
+   * caller runs purgeExpired periodically, so without this check a request
+   * whose expiresAt has passed stays `pending` forever and remains approvable.
+   * A lapsed pending row is flipped to `expired` (CAS — a concurrent
+   * transition wins cleanly) and the attempted transition is refused as
+   * from-expired, the same typed error callers already handle.
+   */
+  private async refuseLapsedPending(
+    current: ApprovalRequest,
+    target: ApprovalRequestState,
+  ): Promise<void> {
+    if (current.state !== "pending" || target === "expired") return;
+    if (current.expiresAt.getTime() > Date.now()) return;
+    await this.transitionWithoutResolution(current.id, "expired");
+    throw new ApprovalStateTransitionError(current.id, "expired", target);
+  }
+
   private async transitionWithResolution(
     id: string,
     target: ApprovalRequestState,
@@ -711,8 +729,13 @@ export class PgApprovalQueue implements ApprovalQueue {
   ): Promise<ApprovalRequest> {
     const current = await this.fetchById(id);
     if (!current) throw new ApprovalNotFoundError(id);
+    await this.refuseLapsedPending(current, target);
     assertTransition(id, current.state, target);
     const now = new Date();
+    // Compare-and-swap on the observed state: without the `AND state =`
+    // guard an in-flight concurrent transition (e.g. the atomic
+    // purgeExpired flipping pending → expired) was silently overwritten,
+    // resurrecting an expired request into `approved`.
     const sql = `UPDATE approval_requests
       SET state = ${sqlText(target)},
           resolved_at = ${timestampLiteral(now)},
@@ -720,10 +743,11 @@ export class PgApprovalQueue implements ApprovalQueue {
           resolution_reason = ${sqlText(resolution.resolutionReason)},
           updated_at = ${timestampLiteral(now)}
       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
+        AND state = ${sqlText(current.state)}
       RETURNING ${SELECT_COLUMNS}`;
     const rows = await executeRawSql(this.runtime, sql);
     if (rows.length === 0) {
-      throw new ApprovalNotFoundError(id);
+      return this.throwLostRace(id, target);
     }
     logger.info(
       `[ApprovalQueue] ${current.state} -> ${target} (${id}) by ${resolution.resolvedBy}`,
@@ -737,19 +761,40 @@ export class PgApprovalQueue implements ApprovalQueue {
   ): Promise<ApprovalRequest> {
     const current = await this.fetchById(id);
     if (!current) throw new ApprovalNotFoundError(id);
+    await this.refuseLapsedPending(current, target);
     assertTransition(id, current.state, target);
     const now = new Date();
+    // Compare-and-swap on the observed state — see transitionWithResolution.
     const sql = `UPDATE approval_requests
       SET state = ${sqlText(target)},
           updated_at = ${timestampLiteral(now)}
       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
+        AND state = ${sqlText(current.state)}
       RETURNING ${SELECT_COLUMNS}`;
     const rows = await executeRawSql(this.runtime, sql);
     if (rows.length === 0) {
-      throw new ApprovalNotFoundError(id);
+      return this.throwLostRace(id, target);
     }
     logger.info(`[ApprovalQueue] ${current.state} -> ${target} (${id})`);
     return rowToRequest(rows[0]);
+  }
+
+  /**
+   * The CAS matched zero rows: either the row vanished or a concurrent
+   * transition moved it first. Re-read and surface the loss as the same
+   * typed errors callers already handle — a validated-then-lost race is an
+   * invalid transition FROM the row's new state.
+   */
+  private async throwLostRace(
+    id: string,
+    target: ApprovalRequestState,
+  ): Promise<never> {
+    const latest = await this.fetchById(id);
+    if (!latest) throw new ApprovalNotFoundError(id);
+    logger.warn(
+      `[ApprovalQueue] lost transition race: ${id} moved to ${latest.state} before -> ${target} committed`,
+    );
+    throw new ApprovalStateTransitionError(id, latest.state, target);
   }
 }
 

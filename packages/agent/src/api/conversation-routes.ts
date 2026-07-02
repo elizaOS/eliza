@@ -52,6 +52,7 @@ import {
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
+  normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,

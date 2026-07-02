@@ -70,11 +70,22 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install browser drivers (the suite imports puppeteer-core/playwright-core)
+      - name: Install browser drivers
         run: |
           set -euo pipefail
-          bun add --cwd packages/app-core puppeteer-core playwright-core
           bunx playwright install --with-deps chromium
 
       - name: Run browser-driven real app e2e
-        run: bun run --cwd packages/app-core test:app-real-e2e
+        run: |
+          set -euo pipefail
+          # streaming-visible-text.live.e2e launches a real browser via
+          # playwright-core's chromium and honors ELIZA_CHROME_PATH, which
+          # defaults to a macOS Google Chrome path that never exists on ubuntu —
+          # so without this the live streaming suite self-skips forever. Point it
+          # at the chromium the "Install browser drivers" step installed, resolved
+          # from the same playwright-core the test imports.
+          ELIZA_CHROME_PATH="$(cd packages/app-core && node -e "console.log(require('playwright-core').chromium.executablePath())")"
+          test -x "$ELIZA_CHROME_PATH"
+          echo "Using ELIZA_CHROME_PATH=$ELIZA_CHROME_PATH"
+          export ELIZA_CHROME_PATH
+          bun run --cwd packages/app-core test:app-real-e2e

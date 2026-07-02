@@ -179,7 +179,7 @@ async function completeFirstRunIfNeeded(page: Page) {
   const firstRunVisible = await page.evaluate(() =>
     Boolean(
       document.querySelector('[data-testid="first-run-runtime-chooser"]') ||
-        /How should Eliza run|Choose how Eliza should run/i.test(
+        /First, where should your agent run/i.test(
           document.body?.innerText ?? "",
         ),
     ),
@@ -260,6 +260,52 @@ async function androidTouchDrag(
     String(endY),
     String(Math.max(120, steps * 20)),
   ]);
+}
+
+/**
+ * Wait until the WebView main thread is responsive enough to receive input.
+ * On a software-GPU emulator the embedded runtime's boot stalls the main
+ * thread in multi-second chunks (logcat `Davey! duration=1793ms`, `Skipped 47
+ * frames`); while stalled, Android's input pipeline can drop the ENTIRE adb
+ * swipe sequence — the page then sees zero pointer events, and no commit
+ * logic can fire on events that never arrive. Requires several consecutive
+ * low-latency event-loop samples before letting the gesture proceed.
+ */
+async function waitForResponsiveMainThread(
+  page: Page,
+  {
+    maxLatencyMs = 250,
+    consecutive = 3,
+    timeoutMs = 120_000,
+  }: { maxLatencyMs?: number; consecutive?: number; timeoutMs?: number } = {},
+) {
+  const startedAt = Date.now();
+  let streak = 0;
+  let lastLatency = -1;
+  while (Date.now() - startedAt < timeoutMs) {
+    lastLatency = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          const t0 = performance.now();
+          setTimeout(() => resolve(performance.now() - t0), 0);
+        }),
+    );
+    streak = lastLatency <= maxLatencyMs ? streak + 1 : 0;
+    if (streak >= consecutive) {
+      writeStage("main-thread-responsive", {
+        lastLatency,
+        waitedMs: Date.now() - startedAt,
+      });
+      return;
+    }
+    await page.waitForTimeout(500);
+  }
+  // Proceed anyway — the retry loop around the drag still gets its chance —
+  // but record that the settle gate never opened (this run will be slow).
+  writeStage("main-thread-still-janked", {
+    lastLatency,
+    waitedMs: Date.now() - startedAt,
+  });
 }
 
 async function ensureCollapsedHome(page: Page, adb: string, serial: string) {
@@ -390,15 +436,41 @@ test.describe
         const beforePage = await surface.getAttribute("data-page");
         writeStage("install-touch-recorder", { beforePage, serial });
         await installTouchRecorder(page);
-        writeStage("dispatch-horizontal-touch", { beforePage, serial });
-        await androidTouchDrag(
-          page,
-          adb,
-          serial,
-          '[data-testid="chat-sheet-grabber"]',
-          -150,
-          -6,
-        );
+        // A stalled main thread drops the whole adb swipe before the page sees
+        // a single pointer event — settle first, then dispatch with bounded,
+        // LOGGED retries whenever zero events were delivered (no silent
+        // retries; the final assertion below is unchanged and strict).
+        await waitForResponsiveMainThread(page);
+        const maxDragAttempts = 3;
+        for (let attempt = 1; attempt <= maxDragAttempts; attempt++) {
+          writeStage("dispatch-horizontal-touch", {
+            attempt,
+            beforePage,
+            serial,
+          });
+          await androidTouchDrag(
+            page,
+            adb,
+            serial,
+            '[data-testid="chat-sheet-grabber"]',
+            -150,
+            -6,
+          );
+          const delivered = await page
+            .waitForFunction(
+              () => (window.__elizaTouchGestureEvents?.length ?? 0) > 0,
+              undefined,
+              { timeout: 8_000 },
+            )
+            .then(() => true)
+            .catch(() => false);
+          if (delivered) break;
+          writeStage("retry-dispatch-no-events-delivered", {
+            attempt,
+            serial,
+          });
+          await waitForResponsiveMainThread(page, { timeoutMs: 30_000 });
+        }
 
         writeStage("assert-launcher", { beforePage, serial });
         await expect

@@ -1450,11 +1450,19 @@ export const lifeScheduledTasks = appLifeopsPgSchema.table(
       t.subjectKind,
       t.subjectId,
     ),
-    // Partial index supporting the per-tick due-task scan: live tasks only
-    // (`scheduled` or `fired`), ordered by their next fire-at time.
+    // Partial index supporting the per-tick due-task scan: every status
+    // except `dismissed`, ordered by next fire-at time. Live rows
+    // (`scheduled` / `fired`) are the primary tick slice; the remaining
+    // statuses (`acknowledged` + terminal) are in the predicate because
+    // RECURRING tasks parked there keep a trigger-derived `next_fire_at` and
+    // must resurface at their next occurrence (recurrence refire). Settled
+    // non-recurring rows carry `next_fire_at = NULL` and never match the
+    // tick's `next_fire_at <= now` refire scan.
     index("idx_life_scheduled_tasks_due")
       .on(t.agentId, t.nextFireAt)
-      .where(sql`(state_json::jsonb ->> 'status') IN ('scheduled', 'fired')`),
+      .where(
+        sql`(state_json::jsonb ->> 'status') IN ('scheduled', 'fired', 'acknowledged', 'completed', 'skipped', 'expired', 'failed')`,
+      ),
   ],
 );
 

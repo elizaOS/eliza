@@ -16,6 +16,7 @@ const ON_CHAIN_SUBACTIONS = new Set<WalletRouterParams["subaction"]>([
   "swap",
   "bridge",
   "gov",
+  "pump_fun_buy",
 ]);
 
 export function requiresWalletFinancialConfirmation(
@@ -85,6 +86,8 @@ export function walletFinancialPreview(
       return `Bridge ${params.amount ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}? Reply yes to submit or no to cancel.`;
     case "gov":
       return `Governance ${params.op ?? "operation"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+    case "pump_fun_buy":
+      return `Buy ${params.amount ?? "?"} SOL of ${params.toToken ?? "the selected pump.fun token"} through pump.fun on ${chainLabel}? Reply yes to submit or no to cancel.`;
     default:
       return `Submit wallet ${params.subaction} on ${chainLabel}? Reply yes to confirm or no to cancel.`;
   }

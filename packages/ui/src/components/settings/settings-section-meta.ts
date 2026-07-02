@@ -44,6 +44,7 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
   { id: "connectors", defaultLabel: "Connectors", group: "agent" },
   { id: "runtime", defaultLabel: "Runtime", group: "system" },
   { id: "appearance", defaultLabel: "Appearance", group: "system" },
+  { id: "background", defaultLabel: "Background", group: "system" },
   { id: "remote-plugins", defaultLabel: "Remote Plugins", group: "system" },
   { id: "wallet-rpc", defaultLabel: "Wallet & RPC", group: "system" },
   { id: "updates", defaultLabel: "Updates", group: "system" },

@@ -3,6 +3,7 @@
  * (`service-mixin-x.ts`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
   errorToDispatchResult,
@@ -38,7 +39,7 @@ export function createXConnectorContribution(
       } catch (error) {
         return {
           state: "disconnected",
-          message: error instanceof Error ? error.message : String(error),
+          message: formatError(error),
           observedAt: new Date().toISOString(),
         };
       }

@@ -13,9 +13,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "discord-core",
       text: "Read the Discord thread, draft a reply, and send it back in the right context.",
-      responseIncludesAny: ["discord", "reply", "thread", "draft"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["discord", "reply", "thread", "draft"],
+      // Completion-state tokens the prompt never uses; parroting the request
+      // ("draft a reply, send it") cannot satisfy any of them.
+      responseIncludesAny: ["drafted", "sent", "delivered", "posted"],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["discord", "reply", "thread", "draft"],
     },
   ],
   finalChecks: [

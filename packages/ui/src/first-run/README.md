@@ -2,11 +2,20 @@
 
 | File | What it does |
 |------|--------------|
-| `FirstRunScreen.tsx` | Controller boundary for the pure first-run shell view. |
-| `use-first-run-controller.ts` | First-run behavior owner: persistence, API submission, runtime startup, speech prompt playback, and mic transcript capture. |
-| `first-run.ts` | Deterministic first-run state helpers, voice transcript application, and submit payload builder. |
+| `use-first-run-conductor.ts` | Headless in-chat conductor that seeds first-run chat turns and routes `__first_run__:` choices. |
+| `first-run-finish.ts` | Single headless finish use case: runtime startup, cloud/remote binding, and exactly-once `/api/first-run` persistence. |
+| `first-run.ts` | Deterministic first-run state helpers and submit payload builder. |
 | `setup-steps.ts` | Internal setup cursor for state-side completion callbacks. |
 | `reload-into-first-run-runtime.ts` | Runtime-switch URL and storage reset helper used by Settings. |
 | `deep-link-handler.ts` | Mobile deep-link adapter for selecting first-run runtime targets. |
 | `runtime-target.ts` | Persisted runtime identity (local / remote / elizacloud / elizacloud-hybrid) used across the shell and mobile runtime. |
 | `mobile-runtime-mode.ts` | Mobile-specific runtime mode persistence tied to the server target. |
+
+## The onboarding lock
+
+While first-run is pending the floating chat is a modal onboarding surface:
+pinned FULL, composer locked ("Choose an option to continue"), every collapse
+path a no-op, and a one-shot auto-collapse on completion. The full contract (and
+which seam enforces each guarantee) is documented in
+[`IN_CHAT_ONBOARDING_DESIGN.md`](./IN_CHAT_ONBOARDING_DESIGN.md) and covered by
+`../components/shell/ContinuousChatOverlay.firstrun.test.tsx`.

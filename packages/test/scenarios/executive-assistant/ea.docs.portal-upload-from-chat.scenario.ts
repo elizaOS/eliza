@@ -40,7 +40,10 @@ export default scenario({
         description: "portal upload task setup",
         includesAny: ["portal", "upload", "deck"],
       }),
-      responseIncludesAny: ["deck", "upload", "portal", "send over", "for me"],
+      // Setup turn: the browser-task lifecycle finalChecks carry the
+      // outcome; the reply must not claim the upload already happened
+      // before the asset even arrives (hallucinated-completion decoy).
+      responseExcludes: ["uploaded", "receipt", "completed the upload"],
     },
     {
       kind: "message",
@@ -57,7 +60,11 @@ export default scenario({
         minInterventions: 1,
         blockedReasonIncludes: "portal",
       }),
-      responseIncludesAny: ["portal", "sign", "blocking", "deck"],
+      // Derived blocked-state report: the reply must say the task is
+      // paused/blocked awaiting the owner — none of these tokens appear in
+      // any user turn, so echo cannot pass. Still no completion claim.
+      responseIncludesAny: ["blocked", "paused", "waiting", "credentials"],
+      responseExcludes: ["uploaded", "receipt"],
     },
     {
       kind: "message",
@@ -73,7 +80,10 @@ export default scenario({
         minUploadedAssets: 1,
         minProvenance: 1,
       }),
-      responseIncludesAny: ["uploaded", "receipt", "link", "portal"],
+      // Derived completion report: "uploaded"/"successfully"/"complete"
+      // appear in no user turn (the prompts only ever say "upload it"), so
+      // only a real completion report passes.
+      responseIncludesAny: ["uploaded", "successfully", "complete"],
     },
   ],
   finalChecks: [

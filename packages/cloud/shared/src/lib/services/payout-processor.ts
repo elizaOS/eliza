@@ -24,10 +24,14 @@
  * 7. Updates record with tx hash (status = completed)
  *
  * FAILURE HANDLING:
- * - Failed transactions are marked as "failed" with reason
+ * - Failed transactions are marked as "failed" with reason (requires_review)
  * - Automatic retry up to MAX_RETRY_ATTEMPTS
- * - Manual intervention required after max retries
- * - Balance is NOT auto-refunded on failure (requires admin review)
+ * - Manual intervention flagged after max retries
+ * - A provably-un-broadcast failed redemption (no tokens sent) returns its
+ *   locked earnings from total_pending to the user's available_balance
+ *   (refundStrandedRedemption); a broadcast-but-unconfirmed redemption is left
+ *   for on-chain reconciliation and NOT auto-refunded (would be a reverse
+ *   double-pay).
  *
  * ============================================================================
  */
@@ -48,6 +52,7 @@ import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { tokenRedemptions } from "../../db/schemas/token-redemptions";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
+import { getPayoutTokenConfig } from "../config/payout-assets";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -57,6 +62,7 @@ import {
   type SupportedNetwork,
 } from "./eliza-token-price";
 import { payoutAlertsService } from "./payout-alerts";
+import { redeemableEarningsService } from "./redeemable-earnings";
 
 // Configuration
 const PAYOUT_CONFIG = {
@@ -401,9 +407,17 @@ export class PayoutProcessorService {
       await payoutAlertsService.sendAlert({
         severity: "high",
         title: "Payout retries exhausted",
-        message: `${exhausted.length} stale redemption(s) exceeded retry attempts before any broadcast was detected. Manual review required to release or refund the payout.`,
+        message: `${exhausted.length} stale redemption(s) exceeded retry attempts before any broadcast was detected. Locked earnings are being returned to the users' available balance.`,
         details: { redemptionIds: exhausted.map((r) => r.id) },
       });
+      // These are provably-un-broadcast EVM rows (WHERE ne solana + broadcast_tx_hash
+      // IS NULL), so no tokens were sent — return the locked earnings to the users.
+      for (const r of exhausted) {
+        await this.refundStrandedRedemption(
+          r.id,
+          "Stale processing lock reached MAX_RETRY_ATTEMPTS (no broadcast detected)",
+        );
+      }
     }
     if (stuck.length > 0) {
       logger.error(
@@ -570,12 +584,12 @@ export class PayoutProcessorService {
       };
     }
 
-    const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
+    // Asset-aware (#10732): USDC (6 decimals) or the legacy elizaOS token (9).
+    // `eliza_amount` holds the payout-token amount in either case.
+    const tokenConfig = getPayoutTokenConfig(network, redemption.asset);
+    const tokenAddress = tokenConfig.address as Address;
     const toAddress = redemption.payout_address as Address;
-    const amount = parseUnits(
-      redemption.eliza_amount.toString(),
-      ELIZA_DECIMALS[network as keyof typeof ELIZA_DECIMALS],
-    );
+    const amount = parseUnits(redemption.eliza_amount.toString(), tokenConfig.decimals);
 
     const account = privateKeyToAccount(this.evmPrivateKey);
 
@@ -696,14 +710,46 @@ export class PayoutProcessorService {
       getAccount,
       TokenAccountNotFoundError,
     } = require("@solana/spl-token") as typeof import("@solana/spl-token");
-    const mintAddress = new PublicKey(ELIZA_TOKEN_ADDRESSES.solana);
+    // Asset-aware (#10732): USDC SPL mint (6 decimals) or the legacy elizaOS mint (9).
+    const tokenConfig = getPayoutTokenConfig("solana", redemption.asset);
+    const mintAddress = new PublicKey(tokenConfig.address);
     const toAddress = new PublicKey(redemption.payout_address);
-    const amount = BigInt(
-      Math.floor(Number(redemption.eliza_amount) * 10 ** ELIZA_DECIMALS.solana),
-    );
+    const amount = BigInt(Math.floor(Number(redemption.eliza_amount) * 10 ** tokenConfig.decimals));
 
     // Get source token account (hot wallet's ATA)
     const sourceAta = await getAssociatedTokenAddress(mintAddress, this.solanaKeypair.publicKey);
+    let sourceAccount;
+    try {
+      sourceAccount = await getAccount(this.solanaConnection, sourceAta);
+    } catch (error) {
+      if (error instanceof TokenAccountNotFoundError) {
+        logger.error("[PayoutProcessor] Source token account not found", {
+          redemptionId: redemption.id,
+          asset: redemption.asset,
+          mint: tokenConfig.address,
+          sourceAta: sourceAta.toBase58(),
+        });
+        return {
+          success: false,
+          error: "Source token account not configured - contact support",
+          retryable: true,
+        };
+      }
+      throw error;
+    }
+    if (sourceAccount.amount < amount) {
+      logger.error("[PayoutProcessor] Insufficient Solana hot wallet balance", {
+        redemptionId: redemption.id,
+        asset: redemption.asset,
+        required: amount.toString(),
+        available: sourceAccount.amount.toString(),
+      });
+      return {
+        success: false,
+        error: "Insufficient hot wallet balance - contact support",
+        retryable: true,
+      };
+    }
 
     // Get or create destination token account
     const destinationAta = await getAssociatedTokenAddress(mintAddress, toAddress);
@@ -923,11 +969,16 @@ export class PayoutProcessorService {
               "A retryable payout failure reached MAX_RETRY_ATTEMPTS and was marked failed for manual review instead of being orphaned in approved.",
             details: { redemptionId, reason },
           });
+          // Retryable failures never sent tokens (this branch even cleared
+          // broadcast_tx_hash), so return the locked earnings to the user.
+          await this.refundStrandedRedemption(redemptionId, `Payout retries exhausted: ${reason}`);
         }
       }
     } else {
-      // Mark as failed (requires manual intervention)
-      await dbWrite
+      // Mark as failed (requires manual intervention). Guard on status
+      // 'processing' + RETURNING so the transition (and the refund below) happens
+      // exactly once, even if this is called twice for the same row.
+      const failedRows = await dbWrite
         .update(tokenRedemptions)
         .set({
           status: "failed",
@@ -937,7 +988,18 @@ export class PayoutProcessorService {
           processing_worker_id: null,
           updated_at: new Date(),
         })
-        .where(eq(tokenRedemptions.id, redemptionId));
+        .where(
+          and(eq(tokenRedemptions.id, redemptionId), eq(tokenRedemptions.status, "processing")),
+        )
+        .returning({ id: tokenRedemptions.id });
+
+      if (failedRows.length > 0) {
+        // Non-retryable failures are terminal validation errors that occur
+        // before any transfer is broadcast; refundStrandedRedemption additionally
+        // guards on broadcast_tx_hash IS NULL, so a (future) post-broadcast
+        // non-retryable error is left for reconciliation, never refunded.
+        await this.refundStrandedRedemption(redemptionId, `Payout failed: ${reason}`);
+      }
     }
 
     logger.error("[PayoutProcessor] Payout failed", {
@@ -945,6 +1007,73 @@ export class PayoutProcessorService {
       reason,
       retryable,
     });
+  }
+
+  /**
+   * Return a permanently-failed redemption's locked USD from `total_pending`
+   * back to the user's `available_balance` (#10059-adjacent earnings-stranding
+   * fix). Requesting a redemption locks the earnings (available -= usd,
+   * total_pending += usd); markCompleted moves that to total_redeemed on success.
+   * A redemption that ends `failed` (retries exhausted / non-retryable / stale
+   * Solana) previously left the USD stuck in total_pending forever —
+   * rejectRedemption only refunds `pending` rows, and refundRedemption had no
+   * callers — so the creator could neither receive tokens nor re-access those
+   * earnings without a manual DB fix.
+   *
+   * SAFETY: only refund a row that is `failed` AND provably never broadcast a
+   * transfer (`broadcast_tx_hash IS NULL`). A row that may have broadcast is left
+   * for on-chain reconciliation — refunding it while tokens are/were in flight
+   * would be a reverse double-pay. IDEMPOTENT: skips if a refund ledger entry for
+   * this redemption already exists. Never throws (the row is requires_review) so
+   * a refund hiccup can't crash the batch or un-fail the redemption.
+   */
+  private async refundStrandedRedemption(redemptionId: string, reason: string): Promise<void> {
+    try {
+      const [row] = await dbRead
+        .select({
+          userId: tokenRedemptions.user_id,
+          usdValue: tokenRedemptions.usd_value,
+          status: tokenRedemptions.status,
+          broadcastTxHash: tokenRedemptions.broadcast_tx_hash,
+        })
+        .from(tokenRedemptions)
+        .where(eq(tokenRedemptions.id, redemptionId))
+        .limit(1);
+
+      // Only refund a terminally-failed, provably-un-broadcast redemption.
+      if (!row || row.status !== "failed" || row.broadcastTxHash) return;
+
+      // Idempotency: never refund the same redemption twice.
+      const [existingRefund] = await dbRead
+        .select({ id: redeemableEarningsLedger.id })
+        .from(redeemableEarningsLedger)
+        .where(
+          and(
+            eq(redeemableEarningsLedger.redemption_id, redemptionId),
+            eq(redeemableEarningsLedger.entry_type, "refund"),
+          ),
+        )
+        .limit(1);
+      if (existingRefund) return;
+
+      await redeemableEarningsService.refundRedemption({
+        userId: row.userId,
+        redemptionId,
+        amount: Number(row.usdValue),
+        reason,
+      });
+
+      logger.info("[PayoutProcessor] Refunded stranded earnings for failed redemption", {
+        redemptionId,
+        amount: row.usdValue,
+        reason,
+      });
+    } catch (error) {
+      logger.error("[PayoutProcessor] Failed to refund stranded redemption earnings", {
+        redemptionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

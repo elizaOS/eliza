@@ -26,7 +26,7 @@ orchestrator → bfcl runner (BENCHMARK_HARNESS=smithers)
     → SmithersClient.send_message(text, context)      [Python]
       → spawn: bun run smithers_turn.mjs               [one-shot subprocess]
         → new OpenAIAgent({ model: provider.chat(model) })  [Smithers / ai SDK]
-          → Cerebras /v1/chat/completions (gpt-oss-120b)
+          → Cerebras /v1/chat/completions (gemma-4-31b)
       ← {text, thought, actions, params:{tool_calls, usage}}  [one JSON line]
 ```
 
@@ -72,14 +72,14 @@ Resolution precedence: `SMITHERS_DIR` env → `~/.eliza/agents/smithers/manifest
 ```bash
 cd packages/benchmarks
 CEREBRAS_API_KEY=... BENCHMARK_HARNESS=smithers \
-BENCHMARK_MODEL_PROVIDER=cerebras BENCHMARK_MODEL_NAME=gpt-oss-120b \
+BENCHMARK_MODEL_PROVIDER=cerebras BENCHMARK_MODEL_NAME=gemma-4-31b \
 PYTHONPATH=smithers-adapter:hermes-adapter:openclaw-adapter:eliza-adapter \
-.venv-standard/bin/python -m benchmarks.bfcl run --provider eliza --model gpt-oss-120b --categories simple --sample 8
+.venv-standard/bin/python -m benchmarks.bfcl run --provider eliza --model gemma-4-31b --categories simple --sample 8
 ```
 
-Verified live: BFCL simple, Cerebras `gpt-oss-120b` → **87.5% (7/8)** and
-**100% (3/3)** on small samples — in range with hermes/openclaw (100% on the
-same samples).
+Verified live (measured on the previous default model, Cerebras
+`gpt-oss-120b`): BFCL simple → **87.5% (7/8)** and **100% (3/3)** on small
+samples — in range with hermes/openclaw (100% on the same samples).
 
 ## Extending coverage
 
@@ -102,7 +102,7 @@ Smithers ships GEPA-style reflective prompt optimization:
 ```bash
 smithers optimize workflow.tsx \
   --cases evals/cases.jsonl --suite bfcl-gepa \
-  --provider cerebras --model gpt-oss-120b \
+  --provider cerebras --model gemma-4-31b \
   --artifact .smithers/optimizations/bfcl-gepa.json
 ```
 

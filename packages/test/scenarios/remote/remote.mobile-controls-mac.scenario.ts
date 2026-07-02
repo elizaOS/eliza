@@ -27,13 +27,22 @@ export default scenario({
       name: "mobile-input",
       room: "main",
       text: "I'm on my iPhone and need to control my Mac remotely. Start the remote session for me. confirmed true.",
-      responseIncludesAny: ["remote", "session", "Mac"],
+      // De-echoed (#9310): "remote"/"session"/"Mac" all appeared in the
+      // user's own turn text. A started session hands back connection
+      // details — the reply must surface them in words the prompt never used.
+      responseIncludesAny: ["url", "code", "link", "connect"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must confirm a live remote-desktop session and hand back concrete connection details (a session URL and/or pairing code), not merely restate the intent to start one.",
+      },
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
       actionName: "REMOTE_DESKTOP",
+      status: "success",
       minCount: 1,
     },
   ],

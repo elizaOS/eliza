@@ -150,4 +150,31 @@ describe("decideInterruption", () => {
       }).action,
     ).toBe("queue");
   });
+
+  it("does NOT cancel a live turn for a 'stop <code-action>' instruction", () => {
+    // "stop using axios" changes the code, it is not "stop working" — it must
+    // reach the agent after the turn (queue), never cancel the in-flight turn.
+    expect(
+      decideInterruption({
+        ...base,
+        text: "let's stop using axios, switch to fetch",
+        sessionBusy: true,
+      }).action,
+    ).toBe("queue");
+    expect(
+      decideInterruption({
+        ...base,
+        text: "stop importing lodash everywhere",
+        sessionBusy: true,
+      }).action,
+    ).toBe("queue");
+    // ...but a genuine halt still interrupts.
+    expect(
+      decideInterruption({ ...base, text: "stop working", sessionBusy: true })
+        .action,
+    ).toBe("interrupt");
+    expect(
+      decideInterruption({ ...base, text: "stop", sessionBusy: true }).action,
+    ).toBe("interrupt");
+  });
 });

@@ -27,12 +27,18 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadAccount } from "@elizaos/agent/auth/account-storage";
-import { getAccessToken } from "@elizaos/agent/auth/credentials";
+import {
+  getAccessToken,
+  saveCredentials,
+} from "@elizaos/agent/auth/credentials";
+import { accountRefreshMutex } from "@elizaos/agent/auth/refresh-mutex";
 import type { DirectAccountProvider } from "@elizaos/agent/auth/types";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
+  isDirectAccountProvider,
   isSubscriptionProvider,
 } from "@elizaos/agent/auth/types";
+import { probeDirectApiKey } from "@elizaos/agent/auth/direct-api-probe";
 import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
 import { logger, resolveStateDir } from "@elizaos/core";
 import type {
@@ -169,6 +175,99 @@ function codexHomeDir(accountId: string): string {
   );
 }
 
+/** Decode the `exp` claim (epoch ms) from a JWT access token, or null. */
+function jwtExpiryMs(accessToken: string): number | null {
+  const parts = accessToken.split(".");
+  if (parts.length !== 3 || !parts[1]) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1], "base64url").toString("utf-8"),
+    ) as { exp?: unknown };
+    return typeof payload.exp === "number" && Number.isFinite(payload.exp)
+      ? payload.exp * 1000
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Shape of the ChatGPT-mode `auth.json` a Codex CLI maintains in CODEX_HOME. */
+interface MaterializedCodexAuthJson {
+  tokens?: {
+    access_token?: string;
+    refresh_token?: string;
+    id_token?: string;
+  };
+  last_refresh?: string;
+}
+
+/**
+ * Adopt tokens a spawned Codex CLI rotated inside its per-account CODEX_HOME
+ * back into the canonical account record.
+ *
+ * OpenAI refresh tokens are ONE-TIME-USE: when a long-running Codex session
+ * self-refreshes, it writes the rotated pair to `CODEX_HOME/auth.json` only —
+ * the canonical record at `auth/openai-codex/{accountId}.json` is left holding
+ * an already-consumed refresh token. Every later canonical refresh (next
+ * spawn's `getAccessToken`, the keep-alive usage sweep) then fails with
+ * `invalid_grant` and the account is marked needs-reauth — forcing a manual
+ * re-login even though the CLI's copy holds perfectly good tokens. Calling
+ * this before any canonical token resolution heals that drift.
+ *
+ * Serialized on the same per-account refresh mutex as `getAccessToken` so an
+ * adoption can't interleave with an in-flight canonical refresh.
+ */
+export async function adoptRotatedCodexTokens(
+  accountId: string,
+): Promise<boolean> {
+  const authPath = path.join(codexHomeDir(accountId), "auth.json");
+  if (!existsSync(authPath)) return false;
+  return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
+    let parsed: MaterializedCodexAuthJson;
+    try {
+      parsed = JSON.parse(
+        readFileSync(authPath, "utf-8"),
+      ) as MaterializedCodexAuthJson;
+    } catch {
+      return false;
+    }
+    const tokens = parsed?.tokens;
+    if (!tokens?.access_token || !tokens.refresh_token) return false;
+    const record = loadAccount("openai-codex", accountId);
+    if (!record) return false;
+    // Same refresh token → the CLI never rotated; nothing to adopt.
+    if (tokens.refresh_token === record.credentials.refresh) return false;
+    // Only adopt when the CLI's copy is NEWER than the canonical record. An
+    // older materialized copy (e.g. the account was re-linked via OAuth after
+    // that session ran) would clobber a fresh login with dead tokens.
+    const materializedAt = Date.parse(parsed.last_refresh ?? "");
+    if (
+      !Number.isFinite(materializedAt) ||
+      materializedAt <= record.updatedAt
+    ) {
+      return false;
+    }
+    // Prefer the access token's own exp claim; an undecodable token is saved
+    // as already-expired so the next getAccessToken refreshes it immediately
+    // (with the adopted, still-valid refresh token).
+    const expires = jwtExpiryMs(tokens.access_token) ?? Date.now();
+    saveCredentials(
+      "openai-codex",
+      {
+        access: tokens.access_token,
+        refresh: tokens.refresh_token,
+        expires,
+        ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+      },
+      accountId,
+    );
+    logger.info(
+      `[coding-account-bridge] adopted rotated Codex tokens from CODEX_HOME for account "${accountId}" (CLI self-refresh)`,
+    );
+    return true;
+  });
+}
+
 /**
  * Materialize a per-account `CODEX_HOME` so Codex authenticates as the selected
  * account instead of the machine's single `~/.codex` login. Writes the
@@ -296,6 +395,12 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           ...(opts?.exclude ? { exclude: opts.exclude } : {}),
         });
         if (!account) continue;
+        // A prior Codex session may have rotated the one-time refresh token
+        // inside its CODEX_HOME; heal the canonical record BEFORE resolving a
+        // token or the refresh below burns on the consumed token.
+        if (providerId === "openai-codex") {
+          await adoptRotatedCodexTokens(account.id).catch(() => false);
+        }
         let accessToken: string | null = null;
         let resolveError: unknown;
         try {
@@ -346,10 +451,73 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
     markRateLimited(providerId, accountId, untilMs, detail) {
       return pool.markRateLimited(accountId, untilMs, detail, { providerId });
     },
-    markNeedsReauth(providerId, accountId, detail) {
+    async markNeedsReauth(providerId, accountId, detail) {
+      // A session-level 401 usually means the token INJECTED at spawn aged out
+      // mid-run (Claude gets a bare access token it cannot refresh), not that
+      // the account's credential is dead. Verify before evicting: adopt any
+      // CLI-rotated Codex tokens, resolve a token through the normal refresh
+      // path, then prove it server-side with the usage probe (a cached-but-
+      // revoked access token must not keep a dead account in rotation; probe
+      // success also restores health + usage). Only an auth-shaped verify
+      // failure marks needs-reauth — a transient blip leaves the account for
+      // the keep-alive sweep to re-check.
+      if (providerId === "openai-codex") {
+        await adoptRotatedCodexTokens(accountId).catch(() => false);
+      }
+      try {
+        const token = await getAccessToken(providerId, accountId);
+        if (token) {
+          if (isSubscriptionProvider(providerId)) {
+            const record = pool.get(accountId, providerId);
+            await pool.refreshUsage(accountId, token, {
+              providerId,
+              ...(record?.organizationId
+                ? { codexAccountId: record.organizationId }
+                : {}),
+            });
+          } else if (isDirectAccountProvider(providerId)) {
+            // #11033 regression fix: a direct-API key resolves offline from
+            // local storage with a never-expires sentinel, so a successful
+            // `getAccessToken` proves NOTHING — a cached-but-revoked key that
+            // just 401'd a session would otherwise be logged "verified" and
+            // kept in rotation forever (doomed failover respawns). Probe it
+            // against the provider; only a real 2xx keeps it, a 401/403 falls
+            // through to markNeedsReauth. A network/timeout blip (status 0)
+            // is inconclusive → leave rotation state to the keep-alive sweep.
+            const probe = await probeDirectApiKey(providerId, token);
+            if (!probe.ok) {
+              if (probe.status === 401 || probe.status === 403) {
+                return pool.markNeedsReauth(accountId, detail, { providerId });
+              }
+              logger.info(
+                `[coding-account-bridge] ${providerId}/${accountId} auth-failure verify was inconclusive (probe status ${probe.status}${probe.error ? `: ${probe.error}` : ""}) — leaving rotation state to the keep-alive sweep`,
+              );
+              return;
+            }
+          }
+          logger.info(
+            `[coding-account-bridge] ${providerId}/${accountId} reported an auth failure but its credential verifies — keeping it in rotation (injected token likely expired mid-session)${detail ? `: ${detail}` : ""}`,
+          );
+          return;
+        }
+        // Token resolve returned null: no credential / refresh failed → mark.
+      } catch (err) {
+        if (!isAuthFailure(err)) {
+          logger.info(
+            `[coding-account-bridge] ${providerId}/${accountId} auth-failure verify hit a transient error (${String(err)}) — leaving rotation state to the keep-alive sweep`,
+          );
+          return;
+        }
+      }
       return pool.markNeedsReauth(accountId, detail, { providerId });
     },
-    recordUsage(providerId, accountId, result) {
+    async recordUsage(providerId, accountId, result) {
+      // Session end is the natural sync point for tokens a Codex CLI rotated
+      // mid-run — heal the canonical record before the next sweep refreshes
+      // against the consumed one.
+      if (providerId === "openai-codex") {
+        await adoptRotatedCodexTokens(accountId).catch(() => false);
+      }
       return pool.recordCall(accountId, result, { providerId });
     },
   };

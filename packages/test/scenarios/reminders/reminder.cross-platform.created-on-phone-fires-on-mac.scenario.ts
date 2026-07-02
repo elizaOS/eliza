@@ -25,14 +25,26 @@ export default scenario({
       name: "create-from-phone",
       room: "phone",
       text: "Please set a reminder for 2 hours from now to refill my prescription.",
-      responseIncludesAny: ["2 hour", "refill", "prescription"],
+      // Two-phase commit (#9310): the old keywords ("2 hour"/"refill"/
+      // "prescription") were echoes of this turn's own text. The preview must
+      // not claim persistence before the owner confirms; the custom predicate
+      // below asserts the real persisted cadence.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose a one-time prescription-refill reminder roughly two hours from now and ask the owner to confirm before saving. Claiming it is already saved, or a bare acknowledgement with no concrete plan, fails.",
+      },
     },
     {
       kind: "message",
       name: "confirm-phone-reminder",
       room: "phone",
       text: "Yes, save that reminder.",
-      responseIncludesAny: ["saved", "refill", "prescription"],
+      // Save-confirmation semantics in words the prompt never used; the real
+      // outcome (title / interval cadence / reminder plan) is asserted by the
+      // custom predicate in finalChecks.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [

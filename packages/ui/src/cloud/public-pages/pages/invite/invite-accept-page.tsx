@@ -35,6 +35,7 @@ import {
 } from "../../../../components/primitives";
 import { ApiError, api } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import { DEFAULT_LOGIN_RETURN_TO } from "../../lib/login-return-to";
 import { useSessionAuth } from "../../lib/use-session-auth";
 
 interface InviteDetails {
@@ -146,10 +147,10 @@ export default function InviteAcceptPage() {
       if (data.success) {
         toast.success(
           t("cloud.invite.accepted", {
-            defaultValue: "Invitation accepted! Redirecting to dashboard...",
+            defaultValue: "Invitation accepted! Redirecting…",
           }),
         );
-        setTimeout(() => navigate("/dashboard"), 1500);
+        setTimeout(() => navigate(DEFAULT_LOGIN_RETURN_TO), 1500);
       } else {
         setError(
           data.error ||

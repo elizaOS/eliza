@@ -51,11 +51,17 @@ export const MAX_RENDERED_SHELL_MESSAGES = 80;
 
 /**
  * Pure transcript-windowing decision (#9141 gap 4 seam). Drops empty turns —
- * EXCEPT the in-flight assistant turn while a reply is streaming (phase ===
- * "responding"), so its bubble can show the breathing dots anchored where the
- * text will fill in — then keeps only the most recent `max` turns to bound DOM
- * nodes. Pure + DOM-free so the cap + streaming-turn exception are unit-testable
- * and any future virtualizer can reuse the same predicate.
+ * EXCEPT turns that carry non-text content (attachments or a pending secret
+ * request: an image-only send is a valid user turn and an assistant reply can
+ * be a bare generated image), a FAILED assistant turn (failureKind carries the
+ * retry / no-provider / insufficient-credits UI, which is often content-less —
+ * a rate-limit or provider stall fails before any token streams, so dropping
+ * it would hide the failure AND its retry affordance entirely), and the
+ * in-flight assistant turn while a reply is streaming (phase === "responding"),
+ * so its bubble can show the breathing dots anchored where the text will fill
+ * in — then keeps only the most recent `max` turns to bound DOM nodes. Pure +
+ * DOM-free so the cap + exceptions are unit-testable and any future virtualizer
+ * can reuse the same predicate.
  */
 export function selectVisibleShellMessages(
   messages: readonly ShellMessage[],
@@ -64,7 +70,11 @@ export function selectVisibleShellMessages(
 ): ShellMessage[] {
   const kept = messages.filter(
     (m) =>
-      m.content.trim() || (m.role === "assistant" && phase === "responding"),
+      m.content.trim() ||
+      (m.attachments?.length ?? 0) > 0 ||
+      m.secretRequest !== undefined ||
+      m.failureKind !== undefined ||
+      (m.role === "assistant" && phase === "responding"),
   );
   return max > 0 && kept.length > max ? kept.slice(-max) : [...kept];
 }

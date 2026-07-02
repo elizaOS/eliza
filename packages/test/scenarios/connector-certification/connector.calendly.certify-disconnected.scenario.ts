@@ -19,10 +19,22 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "calendly-disconnected",
-      text: "Get me a fresh Calendly booking link for next week, but if Calendly is disconnected, tell me that explicitly and ask me to reconnect it instead of inventing a link.",
-      responseIncludesAny: ["calendly", "disconnected", "reconnect", "link"],
-      acceptedActions: ["CALENDAR", "CALENDAR"],
-      includesAny: ["calendly", "disconnected", "reconnect", "link"],
+      // The prompt never names the seeded failure; the agent must discover the
+      // disconnect from the connector itself and report it in its own words.
+      text: "Get me a fresh Calendly booking link for next week, and be straight with me about anything blocking that before you claim it's ready.",
+      responseIncludesAny: [
+        "disconnected",
+        "not connected",
+        "reconnect",
+        "connection",
+      ],
+      expectedActions: ["CALENDAR"],
+      actionPayloadIncludesAny: [
+        "calendly",
+        "disconnected",
+        "reconnect",
+        "link",
+      ],
     },
   ],
   finalChecks: [{ type: "clarificationRequested", expected: true }],

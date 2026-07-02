@@ -353,7 +353,7 @@ async function fetchLocalMcps(
       category: mcp.category,
       tags: mcp.tags ?? [],
       active: mcp.status === "live",
-      mcpEndpoint: userMcpsService.getEndpointUrl(mcp, baseUrl),
+      mcpEndpoint: userMcpsService.getPublicProxyUrl(mcp, baseUrl),
       mcpTools: mcp.tools.map((t) => t.name),
       a2aSkills: [],
       x402Support: mcp.x402_enabled,

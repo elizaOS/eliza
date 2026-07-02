@@ -1,16 +1,31 @@
 /**
- * Live streaming visible-text test.
+ * Live streaming visible-text + frame-contract test.
  *
  * Boots the real API and a minimal HTML harness that consumes the SSE
- * stream from `POST /api/conversations/:id/messages/stream`, then asserts
- * the visible assistant text grows monotonically as tokens arrive.
+ * stream from `POST /api/conversations/:id/messages/stream`, then asserts:
+ *   1. the visible assistant text grows monotonically as tokens arrive, and
+ *   2. the SSE frame contract holds against the live model: a `thinking`
+ *      status opens the turn, a producing status (`streaming` for raw LLM
+ *      token streams, `running_action` when an action callback produces the
+ *      reply) precedes the first `token` frame, `token` frames carry
+ *      non-decreasing cumulative `fullText`, and the terminal `done` frame
+ *      carries the thought channel (`thought`, when the model emits
+ *      reasoning) separate from — never leaked into — the visible text.
  *
  * Gated on `ELIZA_LIVE_TEST=1` plus an LLM API key. Skips cleanly with a
  * loud reason when prerequisites are absent (fail-on-silent-skip pattern).
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, symlink, unlink } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -53,7 +68,9 @@ if (LIVE_TESTS_ENABLED && !CHROME_AVAILABLE) {
 }
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-const READY_TIMEOUT_MS = 120_000;
+// First boot may download the gte-small embedding GGUF (~64MB) before the
+// health endpoint comes up; keep headroom for cold caches + slow networks.
+const READY_TIMEOUT_MS = 300_000;
 const STREAM_DEADLINE_MS = 90_000;
 
 interface Stack {
@@ -99,10 +116,45 @@ async function waitForUrl(url: string, timeoutMs: number): Promise<void> {
 }
 
 /**
+ * `/api/health` flips ready before deferred plugins (including the model
+ * provider) finish registering. Streaming into that window yields the canned
+ * "no LLM provider configured" reply. `/api/status` exposes `canRespond` —
+ * true only once a TEXT_GENERATION handler is registered — so gate on it.
+ */
+async function waitForCanRespond(
+  apiBase: string,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = "<unknown>";
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${apiBase}/api/status`);
+      if (response.ok) {
+        const status = (await response.json()) as {
+          state?: string;
+          canRespond?: boolean;
+        };
+        lastState = `state=${status.state} canRespond=${status.canRespond}`;
+        if (status.canRespond === true) return;
+      }
+    } catch {
+      // keep polling until the deadline
+    }
+    await sleep(1_000);
+  }
+  throw new Error(
+    `Timed out waiting for canRespond=true at ${apiBase}/api/status (last: ${lastState})`,
+  );
+}
+
+/**
  * Minimal HTML page that:
  *   1. Creates a conversation.
  *   2. POSTs the user message to the streaming endpoint.
  *   3. Reads SSE frames and appends `text` deltas to a visible div.
+ *   4. Records EVERY parsed SSE payload (status/token/done/…) in arrival
+ *      order into `window.__frames` for frame-contract assertions.
  *
  * The browser then samples that div via Playwright.
  */
@@ -119,6 +171,7 @@ function makeHarnessHtml(apiBase: string): string {
     const status = document.getElementById('status');
 
     window.__samples = [];
+    window.__frames = [];
     window.__startStream = async function(prompt) {
       try {
       status.textContent = 'creating-conversation';
@@ -163,6 +216,7 @@ function makeHarnessHtml(apiBase: string): string {
           if (!line) continue;
           try {
             const payload = JSON.parse(line.slice('data: '.length));
+            window.__frames.push({ t: Date.now(), payload: payload });
             if (payload.type === 'token' && typeof payload.fullText === 'string') {
               out.textContent = payload.fullText;
               window.__samples.push({ t: Date.now(), len: payload.fullText.length });
@@ -229,6 +283,11 @@ async function ensureAgentDevDistLinks(): Promise<void> {
 async function startStack(): Promise<Stack> {
   const stateRoot = path.join(REPO_ROOT, ".tmp");
   await mkdir(stateRoot, { recursive: true });
+  // Persistent cache for immutable model artifacts (the gte-small embedding
+  // GGUF). The state dir is a throwaway mkdtemp per run, so without this
+  // every run re-downloads ~64MB and can blow the ready timeout.
+  const modelsCacheDir = path.join(stateRoot, "eliza-live-models");
+  await mkdir(modelsCacheDir, { recursive: true });
   await ensureAgentDevDistLinks();
   const stateDir = await mkdtemp(path.join(stateRoot, "eliza-streaming-live-"));
   const apiPort = await getFreePort();
@@ -255,6 +314,7 @@ async function startStack(): Promise<Stack> {
         ELIZA_PORT: String(apiPort),
         ELIZA_ALLOWED_ORIGINS: `http://127.0.0.1:${harnessPort}`,
         ELIZA_STATE_DIR: stateDir,
+        MODELS_DIR: modelsCacheDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -272,6 +332,7 @@ async function startStack(): Promise<Stack> {
   });
 
   await waitForUrl(`${apiBase}/api/health`, READY_TIMEOUT_MS);
+  await waitForCanRespond(apiBase, READY_TIMEOUT_MS);
 
   const harnessServer = await startHarnessServer({
     apiBase,
@@ -296,14 +357,20 @@ async function startStack(): Promise<Stack> {
 
 async function stopStack(stack: Stack | null): Promise<void> {
   if (!stack) return;
-  try {
-    await stack.browser.close();
-  } catch {
-    /* best effort */
-  }
-  await new Promise<void>((resolve) => {
-    stack.harnessServer.close(() => resolve());
-  });
+  // Teardown must never hang the suite: a wedged Chrome or a lingering
+  // keep-alive socket previously stalled `browser.close()` /
+  // `harnessServer.close()` past the hook timeout, leaking the API child.
+  await Promise.race([
+    stack.browser.close().catch(() => undefined),
+    sleep(15_000),
+  ]);
+  stack.harnessServer.closeAllConnections();
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      stack.harnessServer.close(() => resolve());
+    }),
+    sleep(10_000),
+  ]);
   if (stack.apiChild.exitCode == null) {
     stack.apiChild.kill("SIGTERM");
     const exited = await new Promise<boolean>((resolve) => {
@@ -327,18 +394,22 @@ describeLive("streaming-visible-text live e2e", () => {
   let context: BrowserContext | null = null;
   let page: Page | null = null;
 
-  beforeAll(async () => {
-    stack = await startStack();
-    context = await stack.browser.newContext({
-      viewport: { width: 1280, height: 800 },
-    });
-    page = await context.newPage();
-    page.on("console", (message) => {
-      console.log(
-        `[streaming-live][browser:${message.type()}] ${message.text()}`,
-      );
-    });
-  }, READY_TIMEOUT_MS + 30_000);
+  beforeAll(
+    async () => {
+      stack = await startStack();
+      context = await stack.browser.newContext({
+        viewport: { width: 1280, height: 800 },
+      });
+      page = await context.newPage();
+      page.on("console", (message) => {
+        console.log(
+          `[streaming-live][browser:${message.type()}] ${message.text()}`,
+        );
+      });
+      // Covers both boot gates: /api/health ready + /api/status canRespond.
+    },
+    READY_TIMEOUT_MS * 2 + 30_000,
+  );
 
   afterAll(async () => {
     if (context) {
@@ -437,4 +508,132 @@ describeLive("streaming-visible-text live e2e", () => {
     },
     STREAM_DEADLINE_MS + 30_000,
   );
+
+  it("SSE frames arrive thinking→producing→tokens→done, with the thought channel separate from visible text", async () => {
+    if (!page) throw new Error("page not initialized");
+
+    // Frames were captured by the harness during the previous test's live
+    // stream (`window.__frames` records every parsed SSE payload in order).
+    const frames = await page.evaluate(() => {
+      const w = window as unknown as {
+        __frames?: Array<{ t: number; payload: Record<string, unknown> }>;
+      };
+      return w.__frames ?? [];
+    });
+    expect(
+      frames.length,
+      "harness captured no SSE frames — did the streaming test run?",
+    ).toBeGreaterThan(0);
+
+    const payloads = frames.map(
+      (frame) =>
+        frame.payload as Record<string, unknown> & {
+          type?: string;
+          kind?: string;
+          text?: string;
+          fullText?: string;
+          thought?: string;
+          agentName?: string;
+        },
+    );
+
+    // Evidence hook: dump the raw captured frames for hand review
+    // (vitest's default reporter hides per-test console output on pass).
+    if (process.env.ELIZA_STREAM_FRAME_DUMP) {
+      await writeFile(
+        process.env.ELIZA_STREAM_FRAME_DUMP,
+        JSON.stringify(frames, null, 2),
+      );
+    }
+
+    // Evidence log: hand-readable frame sequence (types, status kinds,
+    // token growth, and the terminal done frame with its thought).
+    const tokenLens = payloads
+      .filter((payload) => payload.type === "token")
+      .map((payload) => String(payload.fullText ?? "").length);
+    console.log(
+      `[streaming-live][frames] total=${frames.length} sequence=${JSON.stringify(
+        payloads.map((payload) =>
+          payload.type === "status"
+            ? `status:${payload.kind}`
+            : String(payload.type),
+        ),
+      )}`,
+    );
+    console.log(
+      `[streaming-live][frames] token fullText lengths=${JSON.stringify(tokenLens)}`,
+    );
+
+    // ── Status ordering: `thinking` opens the turn, then a producing-phase
+    // status precedes the first token frame. The producing status is
+    // `streaming` when raw LLM tokens claim the stream (onStreamChunk), or
+    // `running_action` when an action handler (e.g. REPLY) produces the
+    // visible reply through callbacks — the path observed live with the
+    // Cerebras default (gemma-4-31b) through the bootstrap message handler.
+    const thinkingIndex = payloads.findIndex(
+      (payload) => payload.type === "status" && payload.kind === "thinking",
+    );
+    const producingIndex = payloads.findIndex(
+      (payload) =>
+        payload.type === "status" &&
+        (payload.kind === "streaming" || payload.kind === "running_action"),
+    );
+    const firstTokenIndex = payloads.findIndex(
+      (payload) => payload.type === "token",
+    );
+    const doneIndex = payloads.findIndex((payload) => payload.type === "done");
+    expect(thinkingIndex, "no thinking status frame").toBeGreaterThanOrEqual(0);
+    expect(
+      producingIndex,
+      "no streaming/running_action status frame",
+    ).toBeGreaterThan(thinkingIndex);
+    expect(firstTokenIndex, "no token frames").toBeGreaterThan(producingIndex);
+    expect(doneIndex, "no done frame").toBeGreaterThan(firstTokenIndex);
+    // `done` is terminal — no token frames after it.
+    expect(
+      payloads.slice(doneIndex + 1).some((payload) => payload.type === "token"),
+    ).toBe(false);
+
+    // ── Token frames: cumulative fullText never shrinks.
+    for (let i = 1; i < tokenLens.length; i += 1) {
+      expect(
+        tokenLens[i],
+        `token fullText shrank at frame ${i}: ${tokenLens[i - 1]} -> ${tokenLens[i]}`,
+      ).toBeGreaterThanOrEqual(tokenLens[i - 1]);
+    }
+
+    // ── Done frame contract.
+    const done = payloads[doneIndex];
+    expect(typeof done.fullText).toBe("string");
+    expect(String(done.fullText).length).toBeGreaterThan(0);
+    expect(typeof done.agentName).toBe("string");
+    expect(String(done.agentName).length).toBeGreaterThan(0);
+
+    // ── Thought channel: a field contract, not a model-behavior demand.
+    // When the live model emits reasoning, `done.thought` is a non-empty
+    // string that is NOT part of the visible streamed text; a model may
+    // legitimately return no reasoning, in which case the field is absent.
+    if (done.thought !== undefined) {
+      expect(typeof done.thought).toBe("string");
+      const thought = String(done.thought).trim();
+      expect(thought.length).toBeGreaterThan(0);
+      console.log(
+        `[streaming-live][thought] present (${thought.length} chars): ${JSON.stringify(thought)}`,
+      );
+      // Never leaked into the visible token stream or the final text.
+      expect(String(done.fullText)).not.toContain(thought);
+      for (const payload of payloads) {
+        if (payload.type === "token") {
+          expect(String(payload.fullText ?? "")).not.toContain(thought);
+        }
+      }
+    } else {
+      console.log(
+        "[streaming-live][thought] absent — the live model emitted no reasoning for this turn (contract allows absence)",
+      );
+    }
+    console.log(
+      `[streaming-live][done] fullText=${JSON.stringify(String(done.fullText))}`,
+    );
+  }, 60_000);
 });

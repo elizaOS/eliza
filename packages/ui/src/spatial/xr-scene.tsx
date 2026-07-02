@@ -486,7 +486,6 @@ export function XRSpatialScene({
             boxShadow: "0 8px 40px rgba(0,0,0,0.55)",
             border: "1px solid rgba(255,255,255,0.08)",
             display: "none",
-            willChange: "left, top, width, height",
           }}
         >
           <div

@@ -52,6 +52,12 @@ const LEGACY_TRANSFER_ACTIONS = new Set([
 
 const LEGACY_BRIDGE_ACTIONS = new Set(["CROSS_CHAIN_TRANSFER"]);
 const LEGACY_GOV_ACTIONS = new Set(["WALLET_GOV"]);
+const LEGACY_PUMP_FUN_ACTIONS = new Set([
+  "PUMP_FUN_BUY",
+  "PUMPFUN_BUY",
+  "BUY_PUMP_FUN",
+  "BUY_PUMPFUN",
+]);
 const LEGACY_TOKEN_INFO_ACTIONS = new Set(["TOKEN_INFO"]);
 const LEGACY_SEARCH_ADDRESS_ACTIONS = new Set([
   "BIRDEYE_SEARCH",
@@ -68,6 +74,7 @@ const WALLET_SUBACTIONS = [
   "swap",
   "bridge",
   "gov",
+  "pump_fun_buy",
   ...ANALYTICS_SUBACTIONS,
 ] as const;
 type WalletSubaction = (typeof WALLET_SUBACTIONS)[number];
@@ -128,6 +135,7 @@ function legacySubactionFromName(value: unknown): WalletSubaction | undefined {
   if (LEGACY_TRANSFER_ACTIONS.has(upper)) return "transfer";
   if (LEGACY_BRIDGE_ACTIONS.has(upper)) return "bridge";
   if (LEGACY_GOV_ACTIONS.has(upper)) return "gov";
+  if (LEGACY_PUMP_FUN_ACTIONS.has(upper)) return "pump_fun_buy";
   if (LEGACY_TOKEN_INFO_ACTIONS.has(upper)) return "token_info";
   if (LEGACY_SEARCH_ADDRESS_ACTIONS.has(upper)) return "search_address";
   return undefined;
@@ -144,7 +152,7 @@ function normalizeSubactionValue(value: unknown): WalletSubaction | undefined {
   const normalized = value
     .trim()
     .toLowerCase()
-    .replace(/[\s-]+/g, "_");
+    .replace(/[.\s-]+/g, "_");
   if ((WALLET_SUBACTIONS as readonly string[]).includes(normalized as string)) {
     return normalized as WalletSubaction;
   }
@@ -194,7 +202,14 @@ function normalizeRawParams(
       raw.toToken ??
       raw.outputToken ??
       raw.outputTokenCA ??
-      raw.outputTokenSymbol,
+      raw.outputTokenSymbol ??
+      (subaction === "pump_fun_buy"
+        ? (raw.token ??
+          raw.tokenAddress ??
+          raw.mint ??
+          raw.query ??
+          raw.address)
+        : undefined),
     amount: raw.amount,
     recipient: raw.recipient ?? raw.toAddress ?? raw.to,
     slippageBps: raw.slippageBps ?? raw.slippage,
@@ -458,9 +473,9 @@ async function runWalletRouter(
 export const walletRouterAction: Action = {
   name: "WALLET",
   description:
-    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
+    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
   descriptionCompressed:
-    "WALLET transfer|swap|bridge|gov|token_info|search_address; chain ops + market/portfolio",
+    "WALLET transfer|swap|bridge|gov|pump_fun_buy|token_info|search_address; chain ops + market/portfolio",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
   roleGate: { minRole: "ADMIN" },
@@ -475,6 +490,8 @@ export const walletRouterAction: Action = {
     "PREPARE_TRANSFER",
     "WALLET_ACTION",
     "WALLET_GOV",
+    "PUMP_FUN_BUY",
+    "PUMPFUN_BUY",
     "TOKEN_INFO",
     "BIRDEYE_LOOKUP",
     "BIRDEYE_SEARCH",
@@ -492,6 +509,7 @@ export const walletRouterAction: Action = {
         "swap",
         "bridge",
         "gov",
+        "pump_fun_buy",
         "token_info",
         "search_address",
       ],
@@ -521,7 +539,7 @@ export const walletRouterAction: Action = {
     {
       name: "toToken",
       description:
-        "Destination token symbol, native token alias, or token address.",
+        "Destination token symbol, native token alias, or token address. For pump_fun_buy, use the pump.fun token mint address.",
       required: false,
       schema: { type: "string" },
       examples: ["USDC", "SOL"],
@@ -529,7 +547,7 @@ export const walletRouterAction: Action = {
     {
       name: "amount",
       description:
-        "Human-readable token amount. Required for transfer, swap, and bridge.",
+        "Human-readable token amount. Required for transfer, swap, bridge, and pump_fun_buy. pump_fun_buy interprets this as SOL.",
       required: false,
       schema: { type: "string" },
       examples: ["0.1", "25"],

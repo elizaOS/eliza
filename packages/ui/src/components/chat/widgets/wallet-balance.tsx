@@ -12,6 +12,7 @@ import type { WalletBalancesResponse } from "@elizaos/shared";
 import { Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../../api";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import type { WidgetProps } from "../../../widgets/types";
 import { useWidgetNavigation } from "./home-widget-card";
 import {
@@ -38,7 +39,8 @@ function formatPrice(priceUsd: number): string {
 
 /** Signed 24h-change label, e.g. "+1.2%" / "-0.4%"; empty when ~0. */
 function formatChange(change24hPct: number): string {
-  if (!Number.isFinite(change24hPct) || Math.abs(change24hPct) < 0.01) return "";
+  if (!Number.isFinite(change24hPct) || Math.abs(change24hPct) < 0.01)
+    return "";
   const sign = change24hPct > 0 ? "+" : "";
   return `${sign}${change24hPct.toFixed(1)}%`;
 }
@@ -50,8 +52,13 @@ export function WalletBalanceWidget(
   const [holdings, setHoldings] = useState<PricedHolding[] | null>(null);
   const [loading, setLoading] = useState(true);
   const nav = useWidgetNavigation();
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the one-shot balances/prices fetch must stay dormant until the session is
+  // authenticated (it fires once the phase flips).
+  const authenticated = useIsAuthenticated();
 
   useEffect(() => {
+    if (!authenticated) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -73,7 +80,7 @@ export function WalletBalanceWidget(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authenticated]);
 
   // First load pending: a quiet placeholder keeps the grid cell stable.
   if (loading && holdings == null) {

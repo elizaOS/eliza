@@ -48,7 +48,11 @@ export default scenario({
         description: "followup → scheduled task promotion",
         includesAny: ["task", "Friday", "3pm", "redline", "contract"],
       }),
-      responseIncludesAny: ["task", "Friday", "3pm", "redline"],
+      // Seeded-token grounding: the open-followup memory names Megan as the
+      // redline counterparty — "Megan" appears in no user turn, so echo
+      // cannot pass. The anti-behaviour (more bumping/nudging) is excluded.
+      responseIncludesAny: ["Megan"],
+      responseExcludes: ["bump you", "nudge you", "keep reminding"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

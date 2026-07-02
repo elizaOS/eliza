@@ -21,6 +21,12 @@ export interface SeedTestUserOptions {
   email?: string;
   stewardUserId?: string;
   role?: string;
+  /**
+   * Org credit balance (numeric string, USD). Defaults to the funded baseline
+   * "1000.000000". Pass "0.000000" to seed a deliberately broke org for
+   * insufficient-credit (402) negative cases.
+   */
+  creditBalance?: string;
 }
 
 /**
@@ -57,7 +63,7 @@ export async function seedTestUser(
       name: slug,
       slug,
       billing_email: email,
-      credit_balance: "1000.000000",
+      credit_balance: opts.creditBalance ?? "1000.000000",
     })
     .returning();
 

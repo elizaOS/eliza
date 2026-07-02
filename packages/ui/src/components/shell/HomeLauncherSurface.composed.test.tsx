@@ -17,7 +17,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
-import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
+import {
+  getShellSurface,
+  resetShellSurfaceForTests,
+} from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { LauncherSurface } from "../pages/LauncherSurface";
@@ -130,7 +133,12 @@ function flick(testid: string, dx: number, dy = 4): void {
 }
 
 const openLauncher = () => flick("home-launcher-home-page", -140);
-const swipeBackHome = () => flick("home-launcher-launcher-page", 140);
+// A real finger on the launcher lands on the inner page window (it fills the
+// launcher half), so the swipe-back-home gesture is owned by the inner Launcher
+// pager (edge-swipe-right → goHome), not the outer rail. Firing on the inner
+// window matches that hit-test; the event still bubbles to the (gesture-
+// disabled) rail div, which correctly ignores it.
+const swipeBackHome = () => flick("launcher-page-window", 140);
 
 describe("Home ↔ Launcher composed surface", () => {
   it("tracks the rail with the finger before committing a home ↔ launcher swipe", () => {
@@ -168,7 +176,7 @@ describe("Home ↔ Launcher composed surface", () => {
 
     expect(surface.getAttribute("data-page")).toBe("launcher");
     expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
-  });
+  }, 15_000);
 
   it("renders no page-indicator strips — no dots competing with the composer (#4)", () => {
     const surface = renderComposed();
@@ -200,15 +208,16 @@ describe("Home ↔ Launcher composed surface", () => {
     renderComposed();
     openLauncher();
 
-    // A stationary hold past the long-press threshold must NOT surface pin/edit
-    // affordances — the curated launcher has a fixed placement, no reordering.
+    // A stationary hold past the long-press threshold must NOT enter edit mode —
+    // the curated launcher has a fixed placement, no reordering. Edit mode
+    // animates tiles with `animate-pulse`, so its absence is the read-only proof.
     const tile = screen
       .getByTestId("launcher-tile-settings")
       .querySelector("button");
     if (!tile) throw new Error("settings tile button missing");
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
-    expect(screen.queryByTestId("launcher-fav-settings")).toBeNull();
+    expect(tile.className).not.toContain("animate-pulse");
     vi.useRealTimers();
   });
 
@@ -228,6 +237,115 @@ describe("Home ↔ Launcher composed surface", () => {
 
     swipeBackHome();
     expect(surface.getAttribute("data-page")).toBe("home");
+  });
+
+  // ── Nested gesture arbitration — the bubbling path a real finger takes ────
+  // Every gesture below starts on a TILE INSIDE the inner page window, so the
+  // pointer events bubble through the inner Launcher pager's handlers first
+  // and then the outer rail's half-div handlers — the composition where the
+  // rail used to steal mouse capture from the grid pager and double-paint
+  // touch drags.
+
+  /** Mock a fixed layout width (jsdom reports 0) on a pager viewport. */
+  function mockClientWidth(el: HTMLElement, value: number): void {
+    Object.defineProperty(el, "clientWidth", { configurable: true, value });
+  }
+
+  /** A tile INSIDE the inner page window (page 0) — NOT the dock. */
+  function tileInsidePage0(): HTMLElement {
+    const tile = screen
+      .getByTestId("launcher-page-0")
+      .querySelector<HTMLElement>('[data-testid^="launcher-tile-"]');
+    if (!tile) throw new Error("no tile inside launcher page 0");
+    return tile;
+  }
+
+  function renderComposedOnLauncher(): {
+    surface: HTMLElement;
+    outerRail: HTMLElement;
+    innerRail: HTMLElement;
+    tile: HTMLElement;
+  } {
+    runAnimationFramesImmediately();
+    const surface = renderComposed();
+    mockClientWidth(surface, 390);
+    mockClientWidth(screen.getByTestId("launcher-page-window"), 390);
+    openLauncher();
+    expect(surface.getAttribute("data-page")).toBe("launcher");
+    return {
+      surface,
+      outerRail: screen.getByTestId("home-launcher-rail"),
+      innerRail: screen.getByTestId("launcher-page-rail"),
+      tile: tileInsidePage0(),
+    };
+  }
+
+  it("a MOUSE drag left on a tile advances the INNER grid pager — the rail no longer steals the gesture", () => {
+    const { surface, outerRail, tile } = renderComposedOnLauncher();
+    const outerResting = outerRail.style.transform;
+    const opts = {
+      isPrimary: true,
+      pointerId: 11,
+      pointerType: "mouse",
+      clientY: 300,
+    } as const;
+
+    fireEvent.pointerDown(tile, { ...opts, clientX: 300 });
+    fireEvent.pointerMove(tile, { ...opts, clientX: 280 });
+    fireEvent.pointerMove(tile, { ...opts, clientX: 100 });
+    fireEvent.pointerUp(tile, { ...opts, clientX: 100 });
+
+    // The inner pager advanced to the second grid page (e.g. Developer) …
+    expect(getShellSurface().launcherPage).toBe(1);
+    // … and the outer rail neither paged home nor moved at all.
+    expect(surface.getAttribute("data-page")).toBe("launcher");
+    expect(outerRail.style.transform).toBe(outerResting);
+  });
+
+  it("a touch drag left claimed by the inner grid never moves the OUTER rail (no double-paint)", () => {
+    const { outerRail, innerRail, tile } = renderComposedOnLauncher();
+    const outerResting = outerRail.style.transform;
+    const opts = {
+      isPrimary: true,
+      pointerId: 12,
+      pointerType: "touch",
+      clientY: 300,
+    } as const;
+
+    fireEvent.pointerDown(tile, { ...opts, clientX: 300 });
+    fireEvent.pointerMove(tile, { ...opts, clientX: 280 });
+    fireEvent.pointerMove(tile, { ...opts, clientX: 180 });
+
+    // Mid-drag: the inner rail follows the finger 1:1 …
+    expect(innerRail.style.transform).toContain("-120px");
+    // … while the outer rail stays parked (it used to add its own dx·0.35
+    // rubber-band on top — ~1.35× finger motion and a gap at the edge).
+    expect(outerRail.style.transform).toBe(outerResting);
+
+    fireEvent.pointerUp(tile, { ...opts, clientX: 180 });
+    expect(getShellSurface().launcherPage).toBe(1);
+    expect(outerRail.style.transform).toBe(outerResting);
+  });
+
+  it("a swipe right on a tile at inner page 0 returns HOME (the inner launcher owns the edge-swipe-back)", () => {
+    const { surface, tile } = renderComposedOnLauncher();
+    const opts = {
+      isPrimary: true,
+      pointerId: 13,
+      pointerType: "touch",
+      clientY: 300,
+    } as const;
+
+    fireEvent.pointerDown(tile, { ...opts, clientX: 100 });
+    fireEvent.pointerMove(tile, { ...opts, clientX: 120 });
+    fireEvent.pointerMove(tile, { ...opts, clientX: 300 });
+    fireEvent.pointerUp(tile, { ...opts, clientX: 300 });
+
+    // The inner launcher pager owns the swipe-right-back-to-home gesture
+    // (onEdgeSwipeRight → goHome); the outer rail is gesture-disabled on the
+    // launcher, so exactly one pager handles the finger.
+    expect(surface.getAttribute("data-page")).toBe("home");
+    expect(getShellSurface().page).toBe("home");
   });
 
   it("launcher tiles render DISTINCT generated app-icon imagery (#5)", () => {

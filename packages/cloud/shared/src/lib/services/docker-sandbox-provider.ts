@@ -440,7 +440,7 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
  * `/api/health` answers over the tailnet; 180s lost that race and failed the
  * provision even though the agent came up. 6 min gives slow cold boots room.
  */
-const HEALTH_CHECK_TIMEOUT_MS = 360_000;
+export const HEALTH_CHECK_TIMEOUT_MS = 360_000;
 
 /** SSH command timeout for docker pull (can be slow on first pull). */
 export const PULL_TIMEOUT_MS = 300_000; // 5 min
@@ -1346,7 +1346,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
           throw new Error(
             "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
-              "Refusing to fall back to the hardcoded prod URL (https://www.elizacloud.ai/api/v1) — " +
+              "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
               "this caused staging containers to silently call prod. " +
               "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
               "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",

@@ -26,6 +26,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  touchDragHold,
+  touchSwipe,
+  touchTap,
+} from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
@@ -151,6 +156,21 @@ const sheetHeight = (p) =>
         .querySelector('[data-testid="chat-thread"]')
         ?.getBoundingClientRect().height ?? 0,
   );
+async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
+  await p
+    .waitForFunction(
+      ({ expected, tolerance }) => {
+        const h =
+          document
+            .querySelector('[data-testid="chat-thread"]')
+            ?.getBoundingClientRect().height ?? 0;
+        return Math.abs(h - expected) <= tolerance;
+      },
+      { expected, tolerance },
+      { timeout },
+    )
+    .catch(() => {});
+}
 const viewportH = (p) =>
   p.evaluate(() => window.visualViewport?.height ?? window.innerHeight);
 // Distance from the viewport top to the panel's top edge — at FULL the sheet
@@ -190,12 +210,15 @@ const SETTLE = 480; // spring settle time before measuring a detent
 
 /**
  * Real pointer gesture on the grabber. `up` px is the pull distance (positive =
- * up/open, negative = down/close). `pointer` is "mouse" (real Playwright mouse,
- * pointerType=mouse) or "touch" (dispatched PointerEvents, pointerType=touch).
+ * up/open, negative = down/close). `pointer` is "mouse" (real Playwright mouse)
+ * or "touch" (CDP Input.dispatchTouchEvent through Chromium's real touch path).
  * `slow` inserts per-step waits so elapsed time is real → LOW velocity (forces a
  * distance-threshold decision); without it the moves fire back-to-back → HIGH
  * velocity (a flick). `hold` leaves the pointer down for a mid-drag screenshot.
  */
+const heldTouchDrags = new WeakMap();
+const testIdSelector = (testId) => `[data-testid="${testId}"]`;
+
 async function gesture(
   p,
   up,
@@ -222,52 +245,14 @@ async function gesture(
     }
     if (!hold) await p.mouse.up();
   } else {
-    await p.evaluate(
-      ({ cx, cy, target }) => {
-        const el = document.querySelector(`[data-testid="${target}"]`);
-        window.__g = el;
-        el.dispatchEvent(
-          new PointerEvent("pointerdown", {
-            pointerId: 1,
-            pointerType: "touch",
-            clientX: cx,
-            clientY: cy,
-            bubbles: true,
-          }),
-        );
-      },
-      { cx, cy, target },
-    );
-    for (let i = 1; i <= steps; i += 1) {
-      await p.evaluate(
-        ({ cx, y }) =>
-          window.__g.dispatchEvent(
-            new PointerEvent("pointermove", {
-              pointerId: 1,
-              pointerType: "touch",
-              clientX: cx,
-              clientY: y,
-              bubbles: true,
-            }),
-          ),
-        { cx, y: targetY(i) },
-      );
-      if (slow) await p.waitForTimeout(28);
-    }
-    if (!hold) {
-      await p.evaluate(
-        ({ cx, y }) =>
-          window.__g.dispatchEvent(
-            new PointerEvent("pointerup", {
-              pointerId: 1,
-              pointerType: "touch",
-              clientX: cx,
-              clientY: y,
-              bubbles: true,
-            }),
-          ),
-        { cx, y: targetY(steps) },
-      );
+    const drag = await touchDragHold(p, testIdSelector(target), 0, -up, {
+      steps,
+      stepDelayMs: slow ? 28 : 0,
+    });
+    if (hold) {
+      heldTouchDrags.set(p, drag);
+    } else {
+      await drag.release();
     }
   }
 }
@@ -275,21 +260,10 @@ async function release(p, pointer, up = 0) {
   if (pointer === "mouse") {
     await p.mouse.up();
   } else {
-    const b = await grabberBox(p);
-    const y = (b?.y ?? 0) + (b?.height ?? 0) / 2 - up;
-    await p.evaluate(
-      (y) =>
-        window.__g?.dispatchEvent(
-          new PointerEvent("pointerup", {
-            pointerId: 1,
-            pointerType: "touch",
-            clientX: 0,
-            clientY: y,
-            bubbles: true,
-          }),
-        ),
-      y,
-    );
+    const drag = heldTouchDrags.get(p);
+    if (!drag) throw new Error("release(touch): no held real-touch drag");
+    heldTouchDrags.delete(p);
+    await drag.release();
   }
 }
 
@@ -309,10 +283,11 @@ async function runDragSuite(p, pointer, tag) {
   assert(near(await sheetHeight(p), 0, 6), `[${pointer}] COLLAPSED thread height ≈ 0px`);
   await snap(p, `${tag}-collapsed`);
 
-  // FLICK up → HALF (fast pull crosses the velocity threshold → snap to a detent)
-  await gesture(p, 90, { pointer, slow: false, steps: 2 });
+  // FLICK up → HALF (fast deliberate pull crosses the velocity threshold → snap to a detent)
+  await gesture(p, 160, { pointer, slow: false, steps: 2 });
   await p.waitForTimeout(SETTLE);
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
+  await waitForSheetHeightNear(p, halfH, TOL);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
   // #9142 regression guard: the grabber BAR (inner span) must actually PAINT
@@ -351,16 +326,15 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header (post home↔launcher consolidation, #9450): Maximize + Copy +
-  // Clear on the left, a single Launcher button on the right (the old
-  // Home/Views/Settings trio collapsed into one launcher target). Copy only
-  // shows when there's a thread (the default fixture seeds one).
+  // Header (post home↔launcher consolidation, #9450): Maximize + Clear on the
+  // left, a single Launcher button on the right (the old Home/Views/Settings
+  // trio collapsed into one launcher target). The stray copy-conversation button
+  // was removed in #10713 (#10749), so the FULL header is exactly these three.
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
       (await p.getByTestId("chat-full-clear").count()) === 1 &&
-      (await p.getByTestId("chat-full-copy-conversation").count()) === 1 &&
       (await p.getByTestId("chat-full-launcher").count()) === 1,
-    `[${pointer}] header shows maximize + copy + clear + launcher`,
+    `[${pointer}] header shows maximize + clear + launcher`,
   );
   // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
   await p.getByTestId("chat-full-maximize").click();
@@ -418,9 +392,9 @@ async function runDragSuite(p, pointer, tag) {
 
   // FREE DRAG: a deliberate SLOW drag RESTS where released (not snapped to a
   // detent). Flick to FULL first for a known start, then slow-drag down. The
-  // strict "rests in the middle" check is mouse-authoritative — touch pointer
-  // dispatch in this harness can coalesce a slow drag and under-travel; touch
-  // still verifies the sheet stays open (no snap-shut) after the drag.
+  // strict "rests in the middle" check is mouse-authoritative — real touch can
+  // coalesce a slow drag and under-travel; touch still verifies the sheet stays
+  // open (no snap-shut) after the drag.
   await gesture(p, 200, { pointer, slow: false, steps: 2 });
   await p.waitForTimeout(SETTLE);
   const startFree = Math.round(await sheetHeight(p));
@@ -508,9 +482,143 @@ try {
   await mobile.waitForTimeout(700);
   await runDragSuite(mobile, "touch", "mobile");
 
+  // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
+  // The collapsed grabber's horizontal swipe pages home → launcher through the
+  // shell-surface store (goLauncher). Android's on-device spec drives this with
+  // a real finger; drive it here through Chromium's REAL touch pipeline
+  // (Input.dispatchTouchEvent, hit-test + touch-action + implicit capture), and
+  // ALSO under a janked main thread (fire-and-forget dispatch → the renderer
+  // coalesces the moves), the failure shape of the Davey!-janked WebView.
+  {
+    const surfacePage = (p) =>
+      p.evaluate(
+        () =>
+          globalThis[Symbol.for("elizaos.ui.shell-surface-store")]?.state
+            ?.page ?? "home",
+      );
+    const resetSurface = (p) =>
+      p.evaluate(() => {
+        const s = globalThis[Symbol.for("elizaos.ui.shell-surface-store")];
+        if (s) {
+          s.state = { ...s.state, page: "home" };
+          for (const l of s.listeners) l();
+        }
+      });
+    const grabberSel = '[data-testid="chat-sheet-grabber"]';
+
+    const p = await browser.newPage({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+    });
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector(grabberSel);
+    await p.waitForTimeout(700);
+
+    // 1. Plain real-touch flick (adb-like: 150px left over ~280ms).
+    assert(
+      (await surfacePage(p)) === "home",
+      "[grabber-swipe] starts on the home surface",
+    );
+    await touchSwipe(p, grabberSel, -150, -6, { steps: 14, stepDelayMs: 20 });
+    await p.waitForTimeout(400);
+    assert(
+      (await surfacePage(p)) === "launcher",
+      "[grabber-swipe] REAL-touch left flick on the grabber commits goLauncher (#9943)",
+    );
+    await snap(p, "grabber-real-touch-launcher");
+
+    // 2. Real-touch flick with the main thread JANKED: dispatch the whole
+    // sequence fire-and-forget so the renderer coalesces the moves (this is
+    // what a 700ms+ frame on the Android WebView does to a 280ms finger swipe).
+    await resetSurface(p);
+    const box = await p.locator(grabberSel).first().boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const cdp = await p.context().newCDPSession(p);
+    const touchPoint = (x, y) => [
+      { x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 },
+    ];
+    const busy = p
+      .evaluate((ms) => {
+        const end = performance.now() + ms;
+        while (performance.now() < end) {
+          // burn the main thread across the whole swipe
+        }
+      }, 1200)
+      .catch(() => {});
+    await p.waitForTimeout(80); // let the busy loop engage
+    const sends = [
+      cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: touchPoint(cx, cy),
+      }),
+    ];
+    for (let i = 1; i <= 14; i += 1) {
+      sends.push(
+        cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: touchPoint(cx - (150 * i) / 14, cy - (6 * i) / 14),
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    sends.push(
+      cdp.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      }),
+    );
+    await Promise.allSettled(sends);
+    await busy;
+    await p.waitForTimeout(600);
+    assert(
+      (await surfacePage(p)) === "launcher",
+      "[grabber-swipe] real-touch flick still commits with the main thread janked / moves coalesced (#9943)",
+    );
+    await cdp.detach().catch(() => {});
+
+    // 3. Synthetic PointerEvent path (jsdom-style dispatch) stays green.
+    await resetSurface(p);
+    await p.evaluate((sel) => {
+      const g = document.querySelector(sel);
+      const r = g.getBoundingClientRect();
+      const cx0 = r.x + r.width / 2;
+      const cy0 = r.y + r.height / 2;
+      const fire = (type, x, y) =>
+        g.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 7,
+            pointerType: "touch",
+            isPrimary: true,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      fire("pointerdown", cx0, cy0);
+      fire("pointermove", cx0 - 75, cy0 - 3);
+      fire("pointermove", cx0 - 150, cy0 - 6);
+      fire("pointerup", cx0 - 150, cy0 - 6);
+    }, grabberSel);
+    await p.waitForTimeout(400);
+    assert(
+      (await surfacePage(p)) === "launcher",
+      "[grabber-swipe] synthetic PointerEvent flick still commits (parity)",
+    );
+    await p.close();
+  }
+
   // ===== CONTROLS + INPUT STATES (mobile viewport for the tactile surface) =====
   const ctrl = async () =>
-    browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2 });
+    browser.newPage({
+      viewport: { width: 402, height: 874 },
+      deviceScaleFactor: 2,
+      hasTouch: true,
+    });
 
   // empty thread: no sheet, just the composer (suggestion strip is flagged off)
   {
@@ -1010,14 +1118,17 @@ try {
     );
     await snap(p, "state-keyboard-collapsed");
 
-    // pull to FULL with the keyboard still up — the WORST case for height
-    await gesture(p, 120, { pointer: "touch", slow: true }); // → HALF
+    // Flick to FULL with the keyboard still up — the WORST case for height.
+    // Slow drags deliberately free-rest; the FULL semantic state requires a
+    // committed flick/pull release, so drive the real touch path that way.
+    await gesture(p, 120, { pointer: "touch", slow: false, steps: 2 }); // → HALF
     await p.waitForTimeout(SETTLE);
-    await gesture(p, 240, { pointer: "touch", slow: true }); // → FULL
+    await gesture(p, 240, { pointer: "touch", slow: false, steps: 2 }); // → FULL
     await p.waitForTimeout(SETTLE);
+    const keyboardFullDetent = await detent(p);
     assert(
-      (await detent(p)) === "full",
-      "KEYBOARD: pulled to FULL with the keyboard open",
+      keyboardFullDetent === "full",
+      `KEYBOARD: pulled to FULL with the keyboard open (got ${keyboardFullDetent})`,
     );
     const full = await metrics();
     assert(
@@ -1136,25 +1247,8 @@ try {
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL-TAP: collapsed to pill first");
-    // Real tap: pointerdown then pointerup at the SAME spot (no move).
-    const pb = await p.getByTestId("chat-pill").boundingBox();
-    const tx = pb.x + pb.width / 2;
-    const ty = pb.y + pb.height / 2;
-    await p.evaluate(
-      ({ tx, ty }) => {
-        const el = document.querySelector('[data-testid="chat-pill"]');
-        const opts = {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: tx,
-          clientY: ty,
-          bubbles: true,
-        };
-        el.dispatchEvent(new PointerEvent("pointerdown", opts));
-        el.dispatchEvent(new PointerEvent("pointerup", opts));
-      },
-      { tx, ty },
-    );
+    // Real tap: touchStart then touchEnd at the SAME spot (no move).
+    await touchTap(p, '[data-testid="chat-pill"]');
     await p.waitForTimeout(SETTLE);
     const openedOpacity = await p
       .getByTestId("chat-content")
@@ -1376,6 +1470,40 @@ try {
       `STATES: maximize → MAXIMIZED (got ${await chatState(p)})`,
     );
     await snap(p, "state-MAXIMIZED");
+
+    // #10698 regression: the floating transcript's message bubbles carry NO
+    // per-message fill — text floats over the ONE shared panel glass. The
+    // backdrop-blur gate only bans blur, not a fill, so a re-added
+    // bg-black*/bg-white/10 would slip past it. Assert the COMPUTED background of
+    // the WHOLE per-message wrapper chain — every ancestor from the selectable
+    // content up to (excluding) the thread-line container — so a fill re-added
+    // at any wrapper level is caught, not just on the immediate parent.
+    const bubbleBackgrounds = await p
+      .locator('[data-testid="thread-line"] [data-chat-selectable="true"]')
+      .evaluateAll((nodes) =>
+        nodes.flatMap((n) => {
+          const chain = [];
+          for (
+            let el = n.parentElement;
+            el && el.getAttribute("data-testid") !== "thread-line";
+            el = el.parentElement
+          ) {
+            chain.push(getComputedStyle(el).backgroundColor);
+          }
+          return chain.length > 0 ? chain : ["missing"];
+        }),
+      );
+    assert(
+      bubbleBackgrounds.length > 0,
+      `#10698: populated thread renders message bubbles (found ${bubbleBackgrounds.length})`,
+    );
+    const filled = bubbleBackgrounds.filter(
+      (bg) => bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent",
+    );
+    assert(
+      filled.length === 0,
+      `#10698: message bubbles have NO per-message fill (transparent bg); filled=${JSON.stringify(filled)}`,
+    );
     await p.close();
   }
 
@@ -1421,9 +1549,9 @@ try {
     );
     await snap(p, "state-OPEN_UNDER_HALF");
 
-    // CLOSED — flick down to input, then down again to the pill. Touch pointer:
+    // CLOSED — flick down to input, then down again to the pill. Real touch:
     // the grabber sits near the screen bottom, so a downward mouse drag clamps at
-    // the viewport edge; dispatched touch events carry the full downward delta.
+    // the viewport edge; CDP touch events carry the full downward delta.
     await gesture(p, -vh, { pointer: "touch", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });

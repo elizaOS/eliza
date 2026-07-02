@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
-import { maxMtimeUnder } from "./lib/artifact-staleness.mjs";
+import { artifactStaleness, maxMtimeUnder } from "./lib/artifact-staleness.mjs";
 import {
   buildWindowsRepairSteps,
   classifyElectrobunViewFailure,
@@ -1177,6 +1177,36 @@ function ensureFusedLibSubmodule() {
 }
 
 /**
+ * Whether the already-staged fused lib is OLDER than the native fork source it
+ * was built from — the classic "dev→device stale native lib" trap: a rebuild
+ * landed in the fork's build dir (or the fork submodule was updated) but the
+ * copy staged into the app bundle was never refreshed, so the app ships a lib
+ * that no longer matches the source. Mirrors the renderer freshness guard
+ * (assertRendererRebuiltSince). Skipped when the fork isn't checked out (a
+ * sidecar-less prebuilt drop-in is trusted, same as the variant gate).
+ */
+function fusedLibSourceStaleness() {
+  if (!fusedLibAlreadyStaged())
+    return { stale: false, reason: "no staged lib" };
+  if (!fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt")))
+    return { stale: false, reason: "fork not checked out (trust staged)" };
+  const staged = fusedLibFilenames()
+    .map((n) => path.join(FUSED_LIB_OUT_DIR, n))
+    .find((p) => fs.existsSync(p));
+  if (!staged) return { stale: false, reason: "no staged lib" };
+  return artifactStaleness(staged, {
+    sourceDirs: [
+      path.join(FUSED_LIB_FORK_DIR, "tools", "kokoro"),
+      path.join(FUSED_LIB_FORK_DIR, "tools", "omnivoice"),
+      path.join(FUSED_LIB_FORK_DIR, "tools", "tts"),
+      path.join(FUSED_LIB_FORK_DIR, "src"),
+      path.join(FUSED_LIB_FORK_DIR, "ggml", "src"),
+    ],
+    sourceFiles: [path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt")],
+  });
+}
+
+/**
  * Build + stage the fused `libelizainference` into the desktop bundle so a
  * COMPILED app ships with working local inference — no first-run download, no
  * manual `build:fused-desktop`. The "auto" variant bakes CPU in and layers the
@@ -1207,8 +1237,14 @@ function stageDesktopFusedLib() {
       process.env.ELIZA_DESKTOP_FUSED_LIB_REQUIRED === "1") &&
     process.env.ELIZA_DESKTOP_FUSED_LIB_OPTIONAL !== "1";
 
+  // Never reuse a staged lib that is OLDER than the fork source it was built
+  // from — that is the "stale native lib reaches the device" bug. Treated the
+  // same as a wrong-variant lib: rebuilt when we can, dropped otherwise.
+  const sourceStale = fusedLibSourceStaleness();
+
   if (
     fusedLibStagedForCurrentVariant() &&
+    !sourceStale.stale &&
     process.env.ELIZA_DESKTOP_REBUILD_FUSED_LIB !== "1"
   ) {
     console.log(
@@ -1216,6 +1252,14 @@ function stageDesktopFusedLib() {
         `(variant=${FUSED_LIB_VARIANT}, ${process.platform})`,
     );
     return;
+  }
+
+  if (sourceStale.stale) {
+    console.warn(
+      `[desktop-build] Staged fused lib is STALE vs the native fork source ` +
+        `(${sourceStale.reason}). It will be rebuilt/dropped so no stale native ` +
+        `lib is shipped to a device.`,
+    );
   }
 
   // A staged lib whose sidecar names a DIFFERENT variant/platform is a confirmed
@@ -1233,17 +1277,19 @@ function stageDesktopFusedLib() {
   }
 
   if (!shouldBuild) {
-    if (variantMismatch) {
+    if (variantMismatch || sourceStale.stale) {
       // Can't rebuild here (no toolchain requested) and the staged lib is the
-      // wrong variant — drop it so the app cleanly falls back to cloud inference
-      // instead of dlopen()-ing a mismatched backend on the device.
+      // wrong variant OR stale vs source — drop it so the app cleanly falls back
+      // to cloud inference instead of dlopen()-ing a mismatched/stale backend on
+      // the device.
       for (const name of fusedLibFilenames()) {
         fs.rmSync(path.join(FUSED_LIB_OUT_DIR, name), { force: true });
       }
       fs.rmSync(FUSED_LIB_SIDECAR, { force: true });
       console.warn(
-        "[desktop-build] Removed the mismatched fused lib; this build ships without " +
-          "local inference. Rebuild with --build-fused-lib to stage the right variant.",
+        `[desktop-build] Removed the ${sourceStale.stale ? "stale" : "mismatched"} fused lib; ` +
+          "this build ships without local inference. Rebuild with --build-fused-lib " +
+          "to stage a fresh, matching lib.",
       );
       return;
     }

@@ -47,7 +47,7 @@ its own directory and carries `README.md` + `AGENTS.md` + `CLAUDE.md`.
 | `<benchmark>/` | One directory per benchmark — harness code, data, tests, and docs. |
 | `*-adapter/` | Harness bridges (`eliza`, `hermes`, `openclaw`, `smithers`) that let one benchmark run against different agent backends. |
 | `agentbench_matrix/` | Code-agent comparison adapter for the real `agentbench`, driven by `orchestrator/code_agent_matrix.py`. (The dup `*_matrix` / import-shim variants for vendored sources were removed in #9475.) |
-| `loadperf/`, `memperf/`, `mobile-resource/` | Direct resource/load KPI workbenches with their own CI lanes; not suite-orchestrator adapters. |
+| `loadperf/`, `memperf/`, `mobile-resource/`, `view-bundle-size/` | Direct resource/load/bundle KPI workbenches with their own CI lanes; not suite-orchestrator adapters. |
 | `framework/`, `lib/`, `standard/` | Shared harness framework, helpers, and the standard academic adapters (MMLU, HumanEval, GSM8K, MT-Bench, dispatched by `run.py`). |
 | `viewer/` | Static browser UI for inspecting normalized results. |
 | `tests/` | Suite-level tests (registry scores, runner normalization, acceptance gate, …). |
@@ -69,7 +69,7 @@ python -m benchmarks.orchestrator run --benchmarks <id> --provider <p> --model <
 Run the whole suite:
 
 ```bash
-python -m benchmarks.orchestrator run --all --provider groq --model openai/gpt-oss-120b
+python -m benchmarks.orchestrator run --all --provider cerebras --model gemma-4-31b
 ```
 
 Each benchmark can also be run directly from its own directory — see that

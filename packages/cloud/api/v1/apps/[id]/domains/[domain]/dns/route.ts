@@ -10,6 +10,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appsService } from "@/lib/services/apps";
 import { cloudflareDnsService } from "@/lib/services/cloudflare-dns";
@@ -42,10 +43,11 @@ async function loadCloudflareManagedDomain(c: AppContext) {
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
   }
+  if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+    return { error: "Access denied", status: 403 as const };
+  }
 
-  const md = await managedDomainsService.getDomainByName(
-    decodeURIComponent(domainParam),
-  );
+  const md = await managedDomainsService.getOwnDomainRow(user.organization_id, decodeURIComponent(domainParam));
   if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
     return { error: "Domain not attached to this app", status: 404 as const };
   }

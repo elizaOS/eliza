@@ -60,6 +60,9 @@ export async function executeLifeOpsSchedulerTask(
   scheduledTaskCompletionTimeouts: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["scheduledTaskCompletionTimeouts"];
+  subsystemFailures: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["subsystemFailures"];
 }> {
   const now = resolveSchedulerNowIso(options);
 
@@ -83,12 +86,23 @@ export async function executeLifeOpsSchedulerTask(
     scheduledWork = await service.processScheduledWork({ now });
   }
 
-  // Escalate any unacknowledged intents from desktop to mobile
-  const { escalateUnacknowledgedIntents } = await import("./intent-sync.js");
-  const escalationResult = await escalateUnacknowledgedIntents(runtime);
-  if (escalationResult.escalated > 0) {
-    logger.info(
-      `[lifeops-scheduler] Escalated ${escalationResult.escalated} unacknowledged intent(s) to mobile.`,
+  // Escalate any unacknowledged intents from desktop to mobile. Isolated so
+  // an escalation failure cannot fail the whole tick (which would feed the
+  // core failure ladder even though the scheduled work already completed).
+  try {
+    const { escalateUnacknowledgedIntents } = await import("./intent-sync.js");
+    const escalationResult = await escalateUnacknowledgedIntents(runtime);
+    if (escalationResult.escalated > 0) {
+      logger.info(
+        `[lifeops-scheduler] Escalated ${escalationResult.escalated} unacknowledged intent(s) to mobile.`,
+      );
+    }
+  } catch (error) {
+    logger.error(
+      { err: error instanceof Error ? error : undefined },
+      `[lifeops-scheduler] intent escalation failed; continuing tick: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
 
@@ -100,6 +114,7 @@ export async function executeLifeOpsSchedulerTask(
     scheduledTaskFires: scheduledWork.scheduledTaskFires,
     scheduledTaskCompletionTimeouts:
       scheduledWork.scheduledTaskCompletionTimeouts,
+    subsystemFailures: scheduledWork.subsystemFailures,
   };
 }
 

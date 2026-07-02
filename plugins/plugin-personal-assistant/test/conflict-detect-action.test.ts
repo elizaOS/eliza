@@ -26,6 +26,7 @@ import {
   __resetConflictDetectLoaderForTests,
   type ConflictDetectEvent,
   conflictDetectAction,
+  createCalendarFeedConflictLoader,
   setConflictDetectLoader,
 } from "../src/actions/conflict-detect.js";
 
@@ -288,6 +289,280 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       expect(result.success).toBe(true);
       const data = result.data as { conflicts: unknown[] };
       expect(data.conflicts).toHaveLength(0);
+    });
+  });
+
+  describe("no calendar source wired", () => {
+    // The old default loader silently returned an empty feed, so every scan
+    // reported a confident success:true "No conflicts detected." with
+    // checkedEvents:0 — a fabricated answer. Unwired must fail honestly.
+    it("scan_today fails with CALENDAR_UNAVAILABLE instead of a fake zero-conflict success", async () => {
+      const result = await callConflict(makeRuntime(), makeMessage(), {
+        subaction: "scan_today",
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "CALENDAR_UNAVAILABLE" });
+      expect(String(result.text ?? "")).not.toMatch(/no conflicts/i);
+    });
+
+    it("scan_event_proposal with a valid proposal also fails honestly", async () => {
+      const result = await callConflict(makeRuntime(), makeMessage(), {
+        subaction: "scan_event_proposal",
+        proposal: {
+          startISO: "2026-05-11T09:00:00.000Z",
+          endISO: "2026-05-11T10:00:00.000Z",
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "CALENDAR_UNAVAILABLE" });
+    });
+  });
+
+  describe("overlap semantics", () => {
+    it("reports every pair of a 3-way overlap", async () => {
+      setConflictDetectLoader({
+        loadFeed: async () => [
+          {
+            id: "evt-1",
+            title: "All hands",
+            startISO: "2026-05-13T09:00:00.000Z",
+            endISO: "2026-05-13T10:00:00.000Z",
+            attendees: ["alice@example.com"],
+          },
+          {
+            id: "evt-2",
+            title: "Design review",
+            startISO: "2026-05-13T09:15:00.000Z",
+            endISO: "2026-05-13T10:15:00.000Z",
+            attendees: ["alice@example.com"],
+          },
+          {
+            id: "evt-3",
+            title: "1:1",
+            startISO: "2026-05-13T09:30:00.000Z",
+            endISO: "2026-05-13T09:45:00.000Z",
+            attendees: ["bob@example.com"],
+          },
+        ],
+      });
+      const result = await callConflict(makeRuntime(), makeMessage(), {
+        subaction: "scan_today",
+        range: {
+          start: "2026-05-13T00:00:00.000Z",
+          end: "2026-05-13T23:59:59.999Z",
+        },
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        conflicts: { eventA: { id: string }; eventB: { id: string } }[];
+        checkedEvents: number;
+      };
+      const pairs = data.conflicts.map((conflict) =>
+        [conflict.eventA.id, conflict.eventB.id].sort().join("+"),
+      );
+      expect(pairs.sort()).toEqual([
+        "evt-1+evt-2",
+        "evt-1+evt-3",
+        "evt-2+evt-3",
+      ]);
+      expect(data.checkedEvents).toBe(3);
+    });
+
+    it("treats back-to-back events as non-conflicting", async () => {
+      setConflictDetectLoader({
+        loadFeed: async () => [
+          {
+            id: "evt-morning",
+            title: "Morning review",
+            startISO: "2026-05-13T09:00:00.000Z",
+            endISO: "2026-05-13T10:00:00.000Z",
+            attendees: ["alice@example.com"],
+          },
+          {
+            id: "evt-next",
+            title: "Next meeting",
+            startISO: "2026-05-13T10:00:00.000Z",
+            endISO: "2026-05-13T11:00:00.000Z",
+            attendees: ["alice@example.com"],
+          },
+        ],
+      });
+      const result = await callConflict(makeRuntime(), makeMessage(), {
+        subaction: "scan_today",
+        range: {
+          start: "2026-05-13T00:00:00.000Z",
+          end: "2026-05-13T23:59:59.999Z",
+        },
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as { conflicts: unknown[]; summary: string };
+      expect(data.conflicts).toHaveLength(0);
+      expect(data.summary).toBe("No conflicts detected.");
+    });
+  });
+
+  describe("createCalendarFeedConflictLoader (real CalendarService feed)", () => {
+    type StubEvent = {
+      id: string;
+      title: string;
+      startAt: string;
+      endAt: string;
+      isAllDay: boolean;
+      attendees: { email: string | null }[];
+    };
+
+    function makeRuntimeWithFeed(
+      events: readonly StubEvent[],
+      calls: { timeMin?: string; timeMax?: string }[] = [],
+    ): IAgentRuntime {
+      return {
+        agentId: "agent-conflict-test" as UUID,
+        logger: {
+          info: () => undefined,
+          warn: () => undefined,
+          error: () => undefined,
+          debug: () => undefined,
+        },
+        getService: () => ({
+          getCalendarFeed: async (
+            _url: URL,
+            request: { timeMin?: string; timeMax?: string },
+          ) => {
+            calls.push(request);
+            return { events };
+          },
+        }),
+      } as unknown as IAgentRuntime;
+    }
+
+    it("detects a seeded 2-event overlap end-to-end through the handler", async () => {
+      const calls: { timeMin?: string; timeMax?: string }[] = [];
+      const runtime = makeRuntimeWithFeed(
+        [
+          {
+            id: "evt-flight",
+            title: "Flight arrival",
+            startAt: "2026-05-20T12:00:00.000Z",
+            endAt: "2026-05-20T13:30:00.000Z",
+            isAllDay: false,
+            attendees: [{ email: "owner@example.com" }],
+          },
+          {
+            id: "evt-board",
+            title: "Board meeting",
+            startAt: "2026-05-20T13:00:00.000Z",
+            endAt: "2026-05-20T15:00:00.000Z",
+            isAllDay: false,
+            attendees: [{ email: "owner@example.com" }, { email: null }],
+          },
+        ],
+        calls,
+      );
+      setConflictDetectLoader(createCalendarFeedConflictLoader());
+      const range = {
+        start: "2026-05-20T00:00:00.000Z",
+        end: "2026-05-20T23:59:59.999Z",
+      };
+      const result = await callConflict(runtime, makeMessage(), {
+        subaction: "scan_today",
+        range,
+      });
+      expect(result.success).toBe(true);
+      // The scan window is forwarded to the calendar read.
+      expect(calls).toEqual([{ timeMin: range.start, timeMax: range.end }]);
+      const data = result.data as {
+        conflicts: {
+          eventA: { id: string };
+          eventB: { id: string };
+          severity: string;
+        }[];
+        checkedEvents: number;
+      };
+      expect(data.checkedEvents).toBe(2);
+      expect(data.conflicts).toHaveLength(1);
+      expect(
+        new Set([data.conflicts[0]!.eventA.id, data.conflicts[0]!.eventB.id]),
+      ).toEqual(new Set(["evt-flight", "evt-board"]));
+      // Shared attendee email (null emails dropped) makes the overlap hard.
+      expect(data.conflicts[0]!.severity).toBe("hard");
+    });
+
+    it("excludes all-day events so they never fabricate conflicts", async () => {
+      const runtime = makeRuntimeWithFeed([
+        {
+          id: "evt-holiday",
+          title: "Public holiday",
+          startAt: "2026-05-20T00:00:00.000Z",
+          endAt: "2026-05-21T00:00:00.000Z",
+          isAllDay: true,
+          attendees: [],
+        },
+        {
+          id: "evt-call",
+          title: "Timed call",
+          startAt: "2026-05-20T13:00:00.000Z",
+          endAt: "2026-05-20T14:00:00.000Z",
+          isAllDay: false,
+          attendees: [],
+        },
+      ]);
+      setConflictDetectLoader(createCalendarFeedConflictLoader());
+      const result = await callConflict(runtime, makeMessage(), {
+        subaction: "scan_today",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        conflicts: unknown[];
+        checkedEvents: number;
+      };
+      expect(data.checkedEvents).toBe(1);
+      expect(data.conflicts).toHaveLength(0);
+    });
+
+    it("fails honestly when the calendar service is not registered", async () => {
+      const runtime = {
+        agentId: "agent-conflict-test" as UUID,
+        logger: {
+          info: () => undefined,
+          warn: () => undefined,
+          error: () => undefined,
+          debug: () => undefined,
+        },
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+      setConflictDetectLoader(createCalendarFeedConflictLoader());
+      const result = await callConflict(runtime, makeMessage(), {
+        subaction: "scan_today",
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "CALENDAR_UNAVAILABLE" });
+      expect(String(result.text ?? "")).not.toMatch(/no conflicts/i);
+    });
+
+    it("fails honestly when the feed read throws", async () => {
+      const runtime = {
+        agentId: "agent-conflict-test" as UUID,
+        logger: {
+          info: () => undefined,
+          warn: () => undefined,
+          error: () => undefined,
+          debug: () => undefined,
+        },
+        getService: () => ({
+          getCalendarFeed: async () => {
+            throw new Error("upstream calendar 502");
+          },
+        }),
+      } as unknown as IAgentRuntime;
+      setConflictDetectLoader(createCalendarFeedConflictLoader());
+      const result = await callConflict(runtime, makeMessage(), {
+        subaction: "scan_week",
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "CALENDAR_UNAVAILABLE",
+        detail: "upstream calendar 502",
+      });
     });
   });
 });

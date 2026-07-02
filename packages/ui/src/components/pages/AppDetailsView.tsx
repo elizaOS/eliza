@@ -166,14 +166,14 @@ function appProvenanceBadges(
     badges.push({
       key: "origin",
       label: t("appdetails.badge.thirdParty", { defaultValue: "Third party" }),
-      className: "border-border/60 text-muted",
+      className: "text-muted",
       title,
     });
   } else if (flags.isBuiltIn) {
     badges.push({
       key: "origin",
       label: t("appdetails.badge.builtIn", { defaultValue: "Built in" }),
-      className: "border-border/60 text-muted",
+      className: "text-muted",
       title,
     });
   }
@@ -182,14 +182,14 @@ function appProvenanceBadges(
     badges.push({
       key: "support",
       label: t("appdetails.badge.community", { defaultValue: "Community" }),
-      className: "border-warn/45 text-warn",
+      className: "text-warn",
       title,
     });
   } else if (flags.isFirstParty) {
     badges.push({
       key: "support",
       label: t("appdetails.badge.firstParty", { defaultValue: "First party" }),
-      className: "border-accent/45 text-accent",
+      className: "text-accent",
       title,
     });
   }
@@ -236,12 +236,9 @@ function ChipList({
     );
   }
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
       {items.map((item) => (
-        <span
-          key={item}
-          className="rounded-full border border-border/60 bg-card/50 px-2 py-0.5 text-xs text-muted"
-        >
+        <span key={item} className="text-xs text-muted">
           {item}
         </span>
       ))}
@@ -264,7 +261,7 @@ function WidgetPreview({
   );
   if (!Component) {
     return (
-      <div className="rounded-sm border border-border/40 bg-card/30 px-3 py-2 text-xs text-muted">
+      <div className="text-xs text-muted">
         {t("appdetails.widgetPreviewUnavailable", {
           defaultValue:
             "No bundled component for this widget — preview unavailable.",
@@ -272,11 +269,8 @@ function WidgetPreview({
       </div>
     );
   }
-  return (
-    <div className="rounded-sm border border-border/40 bg-card/30 p-3">
-      <Component pluginId={pluginId} events={[]} clearEvents={() => {}} />
-    </div>
-  );
+  /* Flat — widgets render chromeless, directly on the page. */
+  return <Component pluginId={pluginId} events={[]} clearEvents={() => {}} />;
 }
 
 function WidgetRow({
@@ -321,7 +315,8 @@ function WidgetRow({
     onActivate: () => onToggleVisible(!visible),
   });
   return (
-    <li className="rounded-sm border border-border/40 bg-card/30">
+    /* Flat — no card/border. Rows separate by whitespace. */
+    <li>
       <div className="flex items-center justify-between gap-3 px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
@@ -336,7 +331,8 @@ function WidgetRow({
             ref={previewButton.ref}
             type="button"
             onClick={onTogglePreview}
-            className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
+            /* Flat — borderless pill; hover fill is the affordance. */
+            className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:bg-surface hover:text-foreground"
             {...previewButton.agentProps}
           >
             {expanded
@@ -361,7 +357,7 @@ function WidgetRow({
         </div>
       </div>
       {expanded ? (
-        <div className="border-t border-border/40 p-3">
+        <div className="px-3 pb-3">
           <WidgetPreview declaration={declaration} pluginId={pluginId} t={t} />
         </div>
       ) : null}
@@ -713,17 +709,17 @@ export function AppDetailsView({
 
   return (
     <div className="device-layout mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 lg:px-6">
-      {/* Header */}
-      <header className="flex flex-col gap-3 border-b border-border/35 pb-5">
+      {/* Header — flat, no divider. Sections separate by whitespace. */}
+      <header className="flex flex-col gap-3">
         <div className="flex items-center gap-4">
           {resolved.info.heroImage ? (
             <img
               src={resolveRuntimeImageUrl(resolved.info.heroImage)}
               alt=""
-              className="h-14 w-14 rounded-sm border border-border/40 object-cover"
+              className="h-14 w-14 rounded-sm object-cover"
             />
           ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-sm border border-border/40 bg-card/40 text-xs uppercase text-muted">
+            <div className="flex h-14 w-14 items-center justify-center rounded-sm bg-surface text-xs uppercase text-muted">
               {(resolved.info.displayName ?? resolved.info.name)
                 .slice(0, 2)
                 .toUpperCase()}
@@ -740,13 +736,13 @@ export function AppDetailsView({
                 <span
                   key={badge.key}
                   title={badge.title}
-                  className={`rounded-full border px-2 py-0.5 ${badge.className}`}
+                  className={badge.className}
                 >
                   {badge.label}
                 </span>
               ))}
               {recentRuns.length > 0 ? (
-                <span className="rounded-full bg-accent/15 px-2 py-0.5 text-accent">
+                <span className="text-accent">
                   {t("appdetails.runningCount", {
                     count: recentRuns.length,
                     defaultValue: "{{count}} running",
@@ -758,10 +754,8 @@ export function AppDetailsView({
         </div>
       </header>
 
-      <section
-        data-testid="app-launch-panel"
-        className="flex flex-col gap-4 rounded-sm border border-border/45 bg-card/30 p-4"
-      >
+      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
+      <section data-testid="app-launch-panel" className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
             <SectionHeader>
@@ -788,7 +782,7 @@ export function AppDetailsView({
               name: resolved.info.displayName ?? resolved.info.name,
               defaultValue: "Launch {{name}}",
             })}
-            className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             {...launchButton.agentProps}
           >
             <Rocket className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -801,7 +795,7 @@ export function AppDetailsView({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="min-w-0 border-l border-border/35 pl-3">
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statRun", { defaultValue: "Run" })}
             </div>
@@ -810,7 +804,7 @@ export function AppDetailsView({
                 t("appdetails.statReady", { defaultValue: "Ready" })}
             </div>
           </div>
-          <div className="min-w-0 border-l border-border/35 pl-3">
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statWindow", { defaultValue: "Window" })}
             </div>
@@ -818,7 +812,7 @@ export function AppDetailsView({
               {launchModeLabel}
             </div>
           </div>
-          <div className="min-w-0 border-l border-border/35 pl-3">
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statTarget", { defaultValue: "Target" })}
             </div>
@@ -831,7 +825,7 @@ export function AppDetailsView({
                 : t("appdetails.targetAppRoute", { defaultValue: "App route" })}
             </div>
           </div>
-          <div className="min-w-0 border-l border-border/35 pl-3">
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statSession", { defaultValue: "Session" })}
             </div>
@@ -846,12 +840,9 @@ export function AppDetailsView({
         </div>
 
         {sessionFeatures.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
             {sessionFeatures.map((feature) => (
-              <span
-                key={feature}
-                className="rounded-full border border-border/60 bg-card/50 px-2 py-0.5 text-xs text-muted"
-              >
+              <span key={feature} className="text-xs text-muted">
                 {formatLabel(feature)}
               </span>
             ))}
@@ -870,8 +861,9 @@ export function AppDetailsView({
           </div>
         ) : null}
 
-        <fieldset className="flex flex-col gap-2 rounded-sm border border-border/40 bg-bg/20 p-3">
-          <legend className="px-1 text-xs uppercase tracking-[0.14em] text-muted">
+        {/* Flat — no fieldset box; the legend reads as a plain group label. */}
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-xs uppercase tracking-[0.14em] text-muted">
             <SettingsIcon className="mr-1 inline h-3 w-3" />{" "}
             {t("appdetails.launchDestination", {
               defaultValue: "Launch Destination",
@@ -919,7 +911,7 @@ export function AppDetailsView({
         </fieldset>
 
         <label
-          className={`inline-flex items-center gap-2 self-start rounded-full border border-border/60 bg-bg/20 px-3 py-1.5 text-xs ${
+          className={`inline-flex items-center gap-2 self-start text-xs ${
             config.launchMode === "window"
               ? "cursor-pointer"
               : "cursor-not-allowed opacity-50"
@@ -977,9 +969,10 @@ export function AppDetailsView({
           </SectionHeader>
           <ul className="flex flex-col gap-1 text-xs text-muted">
             {recentRuns.map((run) => (
+              /* Flat — no card/border. Rows separate by whitespace. */
               <li
                 key={run.runId}
-                className="flex items-center justify-between rounded-sm border border-border/40 bg-card/30 px-3 py-1.5"
+                className="flex items-center justify-between py-1"
               >
                 <span className="truncate">{run.runId}</span>
                 <span className="ml-2 shrink-0 uppercase tracking-[0.14em]">
@@ -1007,10 +1000,8 @@ export function AppDetailsView({
         ) : (
           <ul className="flex flex-col gap-1 text-xs">
             {history.slice(0, 5).map((entry) => (
-              <li
-                key={entry.timestamp}
-                className="rounded-sm border border-border/40 bg-card/30 px-3 py-1.5"
-              >
+              /* Flat — no card/border. Rows separate by whitespace. */
+              <li key={entry.timestamp} className="py-1">
                 <div className="flex items-center justify-between">
                   <span className="text-muted">
                     {formatTimestamp(entry.timestamp)}

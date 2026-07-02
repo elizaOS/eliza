@@ -9,7 +9,12 @@
  */
 
 import type { IAgentRuntime, Memory, Route } from "@elizaos/core";
-import { fetchRemoteMedia, logger } from "@elizaos/core";
+import {
+  fetchRemoteMedia,
+  logger,
+  nodeLookupFn,
+  nodePinnedFetch,
+} from "@elizaos/core";
 import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,
@@ -43,6 +48,8 @@ async function rehostRemoteMediaUrl(url: string): Promise<string | null> {
     const { buffer, contentType } = await fetchRemoteMedia({
       url,
       maxBytes: REHOST_MAX_BYTES,
+      lookupFn: nodeLookupFn,
+      pinnedFetchImpl: nodePinnedFetch,
     });
     return persistMediaBytes(buffer, contentType ?? "application/octet-stream")
       .url;
@@ -144,27 +151,37 @@ const MEDIA_GC_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 
 export function collectReferencedMedia(memories: Memory[]): Set<string> {
   const referenced = new Set<string>();
+  // Validate at the jsonb boundary: `content`/`metadata` are untyped at rest,
+  // so anything that hashes to a stored `<sha256>.<ext>` name is a live
+  // referent, everything else is ignored.
+  const addUrl = (value: unknown): void => {
+    const name = mediaFileNameFromUrl(typeof value === "string" ? value : "");
+    if (name) referenced.add(name);
+  };
   for (const memory of memories) {
     const attachments = (
-      memory.content as { attachments?: Array<{ url?: unknown }> } | undefined
+      memory.content as
+        | { attachments?: Array<{ url?: unknown; thumbnailUrl?: unknown }> }
+        | undefined
     )?.attachments;
     if (Array.isArray(attachments)) {
       for (const attachment of attachments) {
-        const url = typeof attachment?.url === "string" ? attachment.url : "";
-        const name = mediaFileNameFromUrl(url);
-        if (name) referenced.add(name);
+        // A stored image and its downscaled preview are two DISTINCT
+        // content-addressed files (see `persistImageThumbnail` /
+        // `ensureThumbnailForStoredFile`): the chat tile renders `thumbnailUrl`
+        // while the lightbox opens the full-res `url`. Both are live referents,
+        // but `thumbnailUrl` is invisible to a naive attachment scan — without
+        // collecting it the daily GC orphans every thumbnail past the grace
+        // window, so inline previews 404 even though the full image survives.
+        addUrl(attachment?.url);
+        addUrl(attachment?.thumbnailUrl);
       }
     }
 
     // Document-linked original-bytes files: a knowledge document references its
     // stored original via `metadata.mediaUrl` (no content.attachments entry).
     // Collect it so the file survives GC while the document still references it.
-    const mediaUrl = (memory.metadata as { mediaUrl?: unknown } | undefined)
-      ?.mediaUrl;
-    if (typeof mediaUrl === "string") {
-      const name = mediaFileNameFromUrl(mediaUrl);
-      if (name) referenced.add(name);
-    }
+    addUrl((memory.metadata as { mediaUrl?: unknown } | undefined)?.mediaUrl);
   }
   return referenced;
 }

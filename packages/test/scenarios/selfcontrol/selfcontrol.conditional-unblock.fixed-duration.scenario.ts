@@ -28,7 +28,16 @@ export default scenario({
       room: "main",
       text: "Unlock X for 60 minutes after my workout every day, then block it again.",
       expectedActions: ["WEBSITE_BLOCK"],
-      responseIncludesAny: ["workout", "60", "unlock", "x"],
+      // De-echoed (#9310): every old keyword was in the user's own turn text.
+      // The reply must describe the derived reward-window mechanics — a
+      // one-hour window that re-locks afterwards — in words the prompt never
+      // used. The websiteAccess finalCheck asserts the persisted rule itself.
+      responseIncludesAny: ["window", "hour", "reward", "re-block", "relock"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must confirm the conditional-unlock rule: finishing the daily workout opens a fixed 60-minute access window for X, after which the block resumes automatically. Missing the automatic re-block half of the rule fails.",
+      },
     },
   ],
   finalChecks: [

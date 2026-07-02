@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
@@ -87,11 +93,15 @@ describe("LauncherSurface", () => {
   it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
     render(<LauncherSurface />);
 
-    expect(screen.getByTestId("launcher-tile-wallet")).toBeTruthy();
-    expect(screen.getByTestId("launcher-tile-browser")).toBeTruthy();
-    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
+    // No dock: chat/settings tile on the apps page alongside everything else.
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
 
-    expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
+    const appsPage = within(screen.getByTestId("launcher-page-0"));
+    expect(appsPage.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(appsPage.getByTestId("launcher-tile-settings")).toBeTruthy();
+    expect(appsPage.getByTestId("launcher-tile-wallet")).toBeTruthy();
+    expect(appsPage.getByTestId("launcher-tile-browser")).toBeTruthy();
+
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();

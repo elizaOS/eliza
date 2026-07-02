@@ -18,7 +18,12 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { basename } from "node:path";
-import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
+import {
+  isFailedScenarioSignal,
+  qualitySignalForRowMetadata,
+  rewardForQualitySignal,
+  type TrajectoryTrainingTask,
+} from "../core/trajectory-task-datasets.js";
 import {
   buildDspyArtifact,
   buildExamplesFromRows,
@@ -191,15 +196,28 @@ interface JsonlRow {
     text?: string;
     toolCalls?: unknown[];
   };
+  metadata?: Record<string, unknown>;
 }
 
-function parseJsonlDataset(path: string): OptimizationExample[] {
+interface ParsedJsonlDataset {
+  examples: OptimizationExample[];
+  /**
+   * Rows dropped because `scenario_status` marked the source scenario
+   * failed/skipped — a failed trajectory must not optimize as gold (#8795).
+   * The trajectory dataset exporter already excludes these; this guard covers
+   * datasets pointed directly at a scenario `--export-native` JSONL.
+   */
+  excludedFailedScenarioRows: number;
+}
+
+function parseJsonlDataset(path: string): ParsedJsonlDataset {
   if (!existsSync(path)) {
     throw new Error(`[native-backend] dataset not found at ${path}`);
   }
   const raw = readFileSync(path, "utf-8");
   const lines = raw.split("\n").filter((line) => line.trim().length > 0);
   const examples: OptimizationExample[] = [];
+  let excludedFailedScenarioRows = 0;
   let index = 0;
   for (const line of lines) {
     const parsedJson: unknown = JSON.parse(line);
@@ -208,11 +226,18 @@ function parseJsonlDataset(path: string): OptimizationExample[] {
         `[native-backend] dataset line ${index + 1} is not an eliza_native_v1 row`,
       );
     }
+    if (
+      isFailedScenarioSignal(qualitySignalForRowMetadata(parsedJson.metadata))
+    ) {
+      excludedFailedScenarioRows += 1;
+      index += 1;
+      continue;
+    }
     const example = rowToExample(parsedJson, index);
     if (example) examples.push(example);
     index += 1;
   }
-  return examples;
+  return { examples, excludedFailedScenarioRows };
 }
 
 function isJsonlRow(value: unknown): value is JsonlRow {
@@ -263,10 +288,17 @@ function rowToExample(
     }
   }
   if (!user || !expected) return null;
+  // Quality-weight the example: judge score (0..1) when the scenario judge
+  // ran, else 1.0 for a passed scenario, else no reward. Bootstrap-fewshot
+  // ranks demonstrations reward-first (#8795).
+  const reward = rewardForQualitySignal(
+    qualitySignalForRowMetadata(row.metadata),
+  );
   return {
     id: `row-${index}`,
     input: { system, user },
     expectedOutput: expected,
+    ...(reward !== undefined ? { reward } : {}),
   };
 }
 
@@ -438,7 +470,15 @@ async function runDspyOptimizer(
 export async function runNativeBackend(
   options: NativeBackendOptions,
 ): Promise<NativeBackendResult> {
-  const dataset = parseJsonlDataset(options.datasetPath);
+  const { examples: dataset, excludedFailedScenarioRows } = parseJsonlDataset(
+    options.datasetPath,
+  );
+  const exclusionNotes =
+    excludedFailedScenarioRows > 0
+      ? [
+          `excluded ${excludedFailedScenarioRows} failed/skipped-scenario row(s) from ${options.datasetPath} (#8795 quality gate)`,
+        ]
+      : [];
   const adapter =
     options.adapter ?? createRuntimeAdapter(options.runtime.useModel);
   const scorer = createPromptScorer(adapter, {
@@ -469,6 +509,7 @@ export async function runNativeBackend(
       },
       notes: [
         `dataset at ${options.datasetPath} parsed to 0 usable rows; nothing to optimize`,
+        ...exclusionNotes,
       ],
       dataset,
       trainSet: dataset,
@@ -505,6 +546,7 @@ export async function runNativeBackend(
     notes: [
       `optimizer=${options.optimizer} dataset=${basename(options.datasetPath)} size=${dataset.length} baseline=${result.baseline.toFixed(3)} optimized=${result.score.toFixed(3)}`,
       splitNote,
+      ...exclusionNotes,
     ],
     dataset,
     trainSet,

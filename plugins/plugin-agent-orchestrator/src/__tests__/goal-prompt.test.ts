@@ -55,6 +55,19 @@ describe("buildGoalPrompt capability fence", () => {
     expect(prompt).not.toContain("Use only coding-relevant capabilities");
   });
 
+  it("adds the ViewKind contract for economics app/view goals (#8917)", () => {
+    const prompt = buildGoalPrompt({
+      ...baseInput,
+      capabilityProfile: "economics",
+    });
+
+    expect(prompt).toContain("--- ViewKind Contract ---");
+    expect(prompt).toContain("`release` is the default");
+    expect(prompt).toContain("`preview` is for unfinished");
+    expect(prompt).toContain("`developer` is for dev tooling");
+    expect(prompt).toContain("`system` is reserved");
+  });
+
   it("lets an explicit allow-list override the profile", () => {
     const prompt = buildGoalPrompt({
       ...baseInput,

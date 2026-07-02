@@ -128,7 +128,7 @@ def test_client_send_message_emits_subprocess_command(
     stdin_payload = call_args.kwargs.get("input") or ""
     parsed = json.loads(stdin_payload)
     assert parsed["text"] == "say PONG"
-    assert parsed["model"] == "gpt-oss-120b"
+    assert parsed["model"] == "gemma-4-31b"
     assert parsed["base_url"] == "https://test.example/v1"
     assert parsed["api_key"] == "test-key"
 
@@ -271,6 +271,7 @@ def test_client_defaults_gpt_oss_reasoning_effort_to_low_when_unset(
 ) -> None:
     client = HermesClient(
         repo_path=tmp_path,
+        model="gpt-oss-120b",
         api_key="test-key",
         base_url="https://test.example/v1",
     )
@@ -449,7 +450,7 @@ def test_client_send_message_passes_env(client_with_fake_venv: HermesClient) -> 
 
     assert captured_env["OPENAI_API_KEY"] == "test-key"
     assert captured_env["OPENAI_BASE_URL"] == "https://test.example/v1"
-    assert captured_env["OPENAI_MODEL"] == "gpt-oss-120b"
+    assert captured_env["OPENAI_MODEL"] == "gemma-4-31b"
     assert captured_env["TERMINAL_ENV"] == "local"
 
 

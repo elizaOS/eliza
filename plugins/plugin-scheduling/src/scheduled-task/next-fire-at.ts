@@ -38,6 +38,16 @@ function parseIsoMs(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Maximum |ms| a JS Date can represent (±100,000,000 days from epoch). */
+const MAX_DATE_MS = 8_640_000_000_000_000;
+
+/** Headroom for core's cron scan window (366 days) before the Date limit. */
+const CRON_SCAN_HEADROOM_MS = 366 * 24 * 60 * MINUTE_MS;
+
+function isRepresentableMs(ms: number): boolean {
+  return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
+}
+
 function minutesFromHHMM(value: string | undefined): number | null {
   if (!value) return null;
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
@@ -187,9 +197,12 @@ async function nextAnchorIso(
       ownerFacts,
     });
     if (resolved?.atIso && Number.isFinite(Date.parse(resolved.atIso))) {
-      return new Date(
-        Date.parse(resolved.atIso) + trigger.offsetMinutes * MINUTE_MS,
-      ).toISOString();
+      const atMs =
+        Date.parse(resolved.atIso) + trigger.offsetMinutes * MINUTE_MS;
+      // Extreme offsetMinutes can leave the representable Date range; a
+      // non-indexable anchor is NULL, not a crash in the persist path.
+      if (!isRepresentableMs(atMs)) return null;
+      return new Date(atMs).toISOString();
     }
   }
 
@@ -219,9 +232,9 @@ async function nextAnchorIso(
     baseIso = localHHMMToIso(context.now, "12:00", timeZone);
   }
   if (!baseIso) return null;
-  return new Date(
-    Date.parse(baseIso) + trigger.offsetMinutes * MINUTE_MS,
-  ).toISOString();
+  const atMs = Date.parse(baseIso) + trigger.offsetMinutes * MINUTE_MS;
+  if (!isRepresentableMs(atMs)) return null;
+  return new Date(atMs).toISOString();
 }
 
 /**
@@ -243,6 +256,18 @@ export async function computeNextFireAt(
   task: Pick<ScheduledTask, "trigger" | "state" | "metadata">,
   context: ComputeNextFireAtContext,
 ): Promise<string | null> {
+  // Scheduled-override first: a `scheduled` row with `state.firedAt` set fires
+  // AT that instant (snooze, gate-defer, dispatch-retry — see
+  // `scheduledOverrideDue` in due.ts). Recomputing from the trigger here would
+  // hide the override from the indexed tick query: a snoozed daily reminder
+  // would index at tomorrow's natural occurrence and only fire then, and a
+  // snoozed interval task would index at override+interval.
+  if (task.state.status === "scheduled") {
+    const overrideMs = parseIsoMs(task.state.firedAt);
+    if (overrideMs !== null) {
+      return new Date(overrideMs).toISOString();
+    }
+  }
   const trigger = task.trigger;
   switch (trigger.kind) {
     case "once": {
@@ -257,6 +282,11 @@ export async function computeNextFireAt(
         lastFire !== null && lastFire >= context.now.getTime()
           ? lastFire
           : context.now.getTime();
+      // computeNextCronRunAtMs scans up to ~366 days past the base. A base
+      // (garbage firedAt) close enough to the max representable date makes
+      // every candidate an Invalid Date: a ~30s scan that can only return
+      // null. Bail out with the same null, without the scan.
+      if (baseMs > MAX_DATE_MS - CRON_SCAN_HEADROOM_MS) return null;
       const nextMs = computeNextCronRunAtMs(
         trigger.expression,
         baseMs,
@@ -276,6 +306,9 @@ export async function computeNextFireAt(
           ? lastFireMs + trigger.everyMinutes * MINUTE_MS
           : (fromMs ?? context.now.getTime());
       if (untilMs !== null && candidateMs > untilMs) return null;
+      // A finite-but-huge everyMinutes (schema allows any positive int) can
+      // overflow the representable Date range — index as NULL, don't throw.
+      if (!isRepresentableMs(candidateMs)) return null;
       return new Date(candidateMs).toISOString();
     }
     case "relative_to_anchor":

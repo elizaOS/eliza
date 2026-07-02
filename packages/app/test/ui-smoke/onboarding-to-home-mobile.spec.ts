@@ -7,8 +7,13 @@ import {
   seedAppStorage,
 } from "./helpers";
 import {
+  completeCloudInferenceOnboardingToHome,
+  completeCloudOnboardingToHome,
   completeOnboardingToHome,
+  completeOtherProviderSettingsHandoff,
+  injectCloudAuthToken,
   injectFullCapabilityHost,
+  installCloudRoutes,
   installHomeRoutes,
   makeScreenshotter,
   settleHomeEntrance,
@@ -72,19 +77,89 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     ).toBe(true);
 
     // Tap (not click) the inline choice buttons — the touch path through the
-    // WebView, inside the same floating ContinuousChatOverlay.
+    // WebView, inside the same floating ContinuousChatOverlay. The shared flow
+    // also asserts the onboarding lock (disabled composer, Escape gated) and
+    // the auto-collapse on completion.
     const { surface } = await completeOnboardingToHome(
       page,
       (locator: Locator) => locator.tap(),
       { state, tutorial: "skip" },
     );
 
+    // Restated at the spec level: completion auto-collapsed the sheet, so the
+    // touch flick below lands on the home rail with no manual collapse step,
+    // and the composer unlocked for normal chat.
+    await expect(
+      page.getByTestId("continuous-chat-overlay"),
+    ).not.toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled();
+
     // Capture the populated mobile home landing.
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
     // A real left-flick over the home page pans the rail to the launcher.
-    await swipeLeftToLauncher(page, surface);
+    await swipeLeftToLauncher(page, surface, { input: "touch" });
     await screenshot(page, "launcher");
+  });
+
+  test("cloud first-run completes in chat with touch", async ({ page }) => {
+    await injectFullCapabilityHost(page);
+    await injectCloudAuthToken(page);
+    const state = await installHomeRoutes(page);
+    await installCloudRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeCloudOnboardingToHome(
+      page,
+      (locator: Locator) => locator.tap(),
+      { state, tutorial: "skip" },
+    );
+
+    await settleHomeEntrance(page);
+    await screenshot(page, "cloud-home");
+    await expect(surface).toHaveAttribute("data-page", "home");
+  });
+
+  test("cloud-inference provider first-run completes in chat with touch", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    await injectCloudAuthToken(page);
+    const state = await installHomeRoutes(page);
+    await installCloudRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeCloudInferenceOnboardingToHome(
+      page,
+      (locator: Locator) => locator.tap(),
+      { state, tutorial: "skip" },
+    );
+
+    await settleHomeEntrance(page);
+    await screenshot(page, "cloud-inference-home");
+    await expect(surface).toHaveAttribute("data-page", "home");
+  });
+
+  test("other provider handoff stays in chat with touch", async ({ page }) => {
+    await injectFullCapabilityHost(page);
+    const state = await installHomeRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeOtherProviderSettingsHandoff(
+      page,
+      (locator: Locator) => locator.tap(),
+      { state, tutorial: "skip" },
+    );
+
+    await settleHomeEntrance(page);
+    await screenshot(page, "other-settings-handoff");
+    await expect(surface).toHaveAttribute("data-page", "home");
   });
 });

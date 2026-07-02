@@ -21,6 +21,7 @@ import {
   type ApprovalQueue,
   type ApprovalRequest,
   ApprovalStateTransitionError,
+  ApprovalTransitionConflictError,
 } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedBookTravel } from "./book-travel.js";
@@ -269,8 +270,13 @@ export async function executeApprovedRequest(args: {
       );
     }
     await args.queue.markExecuting(args.request.id);
+    // The owner's approval IS the browser-action confirmation: these
+    // approvals exist precisely to gate browser dispatch behind consent.
+    const run = await service.runWorkflow(payload.workflowId, {
+      confirmBrowserActions: true,
+    });
     const done = await args.queue.markDone(args.request.id);
-    const text = `Approved workflow ${payload.workflowId}.`;
+    const text = `Approved and ran workflow ${payload.workflowId} (run ${run.id}: ${run.status}).`;
     await args.callback?.({ text });
     return {
       text,
@@ -280,22 +286,28 @@ export async function executeApprovedRequest(args: {
         state: done.state,
         action: done.action,
         workflowId: payload.workflowId,
+        workflowRunId: run.id,
+        workflowRunStatus: run.status,
       },
     };
   }
 
-  logger.info(
-    `[OwnerResolveRequest] approved ${args.request.id} without executor`,
+  // No executor exists for this action (sign_document, schedule_event,
+  // make_call, spend_money, ...). Approving must never report success while
+  // executing nothing — surface the gap instead (issue #10723).
+  logger.error(
+    `[OwnerResolveRequest] request ${args.request.id} approved but no executor exists for action ${args.request.action}; nothing was executed`,
   );
-  const text = "Approved.";
+  const text = `Approved request ${args.request.id}, but no executor exists for action "${args.request.action}" — nothing was executed.`;
   await args.callback?.({ text });
   return {
     text,
-    success: true,
+    success: false,
     data: {
+      error: "NO_EXECUTOR",
+      action: args.request.action,
       requestId: args.request.id,
       state: args.request.state,
-      action: args.request.action,
     },
   };
 }
@@ -386,6 +398,22 @@ async function resolveApprovalRequest(
   } catch (error) {
     if (error instanceof ApprovalNotFoundError) {
       return denied("REQUEST_NOT_FOUND");
+    }
+    // Lost compare-and-swap race (e.g. the request expired while the owner's
+    // approval was in flight). Must be matched before the parent
+    // ApprovalStateTransitionError and surfaced: nothing was executed.
+    if (error instanceof ApprovalTransitionConflictError) {
+      const text = `Request ${error.requestId} changed state to "${error.from}" while I was resolving it — nothing was executed.`;
+      if (callback) await callback({ text });
+      return {
+        text,
+        success: false,
+        data: {
+          error: "TRANSITION_CONFLICT",
+          requestId: error.requestId,
+          state: error.from,
+        },
+      };
     }
     if (error instanceof ApprovalStateTransitionError) {
       return denied("INVALID_STATE_TRANSITION");

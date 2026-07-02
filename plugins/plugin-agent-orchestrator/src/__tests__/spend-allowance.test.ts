@@ -77,6 +77,63 @@ describe("estimateSelfSpendCostUsd", () => {
       estimateSelfSpendCostUsd("domains.buy", { [SPEND_HINT_PARAM]: "abc" }),
     ).toBeNull();
   });
+
+  // Regression: an attacker-declared cost of exactly 0 must not slip a paid
+  // command under the cap. The old `hint ?? default` returned 0 for containers
+  // (nullish `??` does not catch 0) and `0` for hint-required commands.
+  it("never meters a container below its base cost even with a 0 or under-declared hint", () => {
+    expect(
+      estimateSelfSpendCostUsd("containers.create", { [SPEND_HINT_PARAM]: 0 }),
+    ).toBe(CONTAINER_DAILY_COST_USD);
+    expect(
+      estimateSelfSpendCostUsd("containers.update", {
+        [SPEND_HINT_PARAM]: 0.01,
+      }),
+    ).toBe(CONTAINER_DAILY_COST_USD);
+    // a hint above the base is still honored
+    expect(
+      estimateSelfSpendCostUsd("containers.create", { [SPEND_HINT_PARAM]: 3 }),
+    ).toBe(3);
+  });
+
+  it("treats a declared cost of 0 for a hint-required paid command as unknown (confirm)", () => {
+    expect(
+      estimateSelfSpendCostUsd("domains.buy", { [SPEND_HINT_PARAM]: 0 }),
+    ).toBeNull();
+    expect(
+      estimateSelfSpendCostUsd("media.image.generate", {
+        [SPEND_HINT_PARAM]: "0",
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("decideSpendAuthorization — spend-cap bypass regression", () => {
+  it("does NOT auto-authorize a domains.buy declared at $0 under a cap", () => {
+    const decision = decideSpendAuthorization({
+      command: "domains.buy",
+      risk: "paid",
+      capUsd: 50,
+      alreadySpentUsd: 0,
+      params: { [SPEND_HINT_PARAM]: 0 },
+    });
+    expect(decision.autoAuthorize).toBe(false);
+    expect(decision.reason).toBe("unknown-cost");
+  });
+
+  it("meters a 0-hint container at its base cost so a tiny cap is respected", () => {
+    // Cap $0.50 < base $0.67: a 0-declared container must NOT auto-authorize.
+    const decision = decideSpendAuthorization({
+      command: "containers.create",
+      risk: "paid",
+      capUsd: 0.5,
+      alreadySpentUsd: 0,
+      params: { [SPEND_HINT_PARAM]: 0 },
+    });
+    expect(decision.estimatedCostUsd).toBe(CONTAINER_DAILY_COST_USD);
+    expect(decision.autoAuthorize).toBe(false);
+    expect(decision.reason).toBe("over-cap");
+  });
 });
 
 describe("decideSpendAuthorization", () => {

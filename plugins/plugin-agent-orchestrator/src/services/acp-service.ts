@@ -53,6 +53,9 @@ type RuntimeLike = IAgentRuntime & {
     >
   >;
   services?: Map<string, unknown[]>;
+  /** Modern eliza runtime property (see packages/core/src/runtime.ts). */
+  adapter?: unknown;
+  /** Legacy alias for pre-2026 runtimes and some container harnesses. */
   databaseAdapter?: unknown;
   getSetting?: (key: string) => string | undefined | null;
 };
@@ -2899,6 +2902,10 @@ function boolSetting(value: string | undefined): boolean | undefined {
 
 function createDefaultSessionStore(runtime: RuntimeLike): SessionStore {
   const runtimeForStore = {
+    // Feed both names. The store prefers `adapter` and falls back to
+    // `databaseAdapter`. This keeps ancient hand-rolled runtimes working
+    // while wiring modern eliza runtimes to the SQL backend for real.
+    adapter: runtime.adapter,
     databaseAdapter: runtime.databaseAdapter,
     logger: runtime.logger,
     getSetting: (key: string) => {

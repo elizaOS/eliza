@@ -58,7 +58,7 @@ jobs:
           bun-version: "canary"
 
       - name: Cache Bun install
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
@@ -187,7 +187,7 @@ jobs:
             type=sha,prefix=sha-,format=short
 
       - id: build
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: packages/examples/cloud/edad/dist
           file: packages/examples/cloud/edad/Dockerfile.bundle
@@ -229,7 +229,7 @@ jobs:
           bun-version: "canary"
 
       - name: Cache Bun install
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
@@ -331,7 +331,7 @@ jobs:
             type=sha,prefix=sha-,format=short
 
       - id: build
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: packages/examples/cloud/clone-ur-crush/.next/standalone
           file: packages/examples/cloud/clone-ur-crush/Dockerfile.bundle

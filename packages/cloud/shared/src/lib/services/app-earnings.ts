@@ -5,8 +5,10 @@
 import {
   type AppEarningsTransaction,
   appEarningsRepository,
+  type NewAppEarningsTransaction,
 } from "../../db/repositories/app-earnings";
 import { appsRepository } from "../../db/repositories/apps";
+import { isUniqueConstraintError } from "../utils/db-errors";
 import { logger } from "../utils/logger";
 
 /**
@@ -197,23 +199,14 @@ export class AppEarningsService {
     amount: number,
     idempotencyKey?: string,
   ): Promise<{ success: boolean; message: string; transactionId?: string }> {
-    // Idempotency check: return existing transaction if key was already used
+    // Idempotent fast path: return the prior transaction if this key already ran.
     if (idempotencyKey) {
-      const existing = await appEarningsRepository.findTransactionByIdempotencyKey(
+      const existing = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
         appId,
         idempotencyKey,
       );
       if (existing) {
-        logger.info("[AppEarnings] Idempotent withdrawal request (duplicate)", {
-          appId,
-          idempotencyKey,
-          existingTransactionId: existing.id,
-        });
-        return {
-          success: true,
-          message: `$${Math.abs(Number(existing.amount)).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
-          transactionId: existing.id,
-        };
+        return this.idempotentWithdrawalResult(appId, idempotencyKey, existing);
       }
     }
 
@@ -229,23 +222,81 @@ export class AppEarningsService {
       };
     }
 
+    const metadata = {
+      requested_at: new Date().toISOString(),
+      status: "completed",
+      note: "Earnings are available in your redeemable balance for redemption as elizaOS tokens",
+      ...(idempotencyKey && { idempotencyKey }),
+    };
+
+    const transactionData: NewAppEarningsTransaction = {
+      app_id: appId,
+      type: "withdrawal",
+      amount: String(-amount),
+      description: `Withdrawal request: $${amount.toFixed(2)}`,
+      metadata,
+    };
+
+    // Claim the idempotency key and debit in one write transaction. The partial
+    // unique index on (app_id, metadata->>'idempotencyKey') WHERE type='withdrawal'
+    // is the concurrency gate (#10878); the transaction keeps a retry from seeing
+    // a phantom claim when validation or the conditional debit fails.
+    if (idempotencyKey) {
+      let result: Awaited<ReturnType<typeof appEarningsRepository.processIdempotentWithdrawal>>;
+      try {
+        result = await appEarningsRepository.processIdempotentWithdrawal(
+          appId,
+          amount,
+          transactionData,
+        );
+      } catch (err) {
+        if (!isUniqueConstraintError(err)) throw err;
+        // Lost the race: another request already claimed this key. Return its
+        // result idempotently WITHOUT debiting. PostgreSQL waits on a conflicting
+        // uncommitted unique-index entry before raising 23505, so this primary
+        // read sees the committed winner without read-replica lag.
+        const winner = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
+          appId,
+          idempotencyKey,
+        );
+        if (winner) {
+          return this.idempotentWithdrawalResult(appId, idempotencyKey, winner);
+        }
+        // Defensive only: we never debited. The client can poll again.
+        logger.warn(
+          "[AppEarnings] Concurrent withdrawal for idempotency key; winner not yet readable",
+          { appId, idempotencyKey },
+        );
+        return {
+          success: false,
+          message: "Withdrawal already in progress for this request.",
+        };
+      }
+
+      if (!result.success) {
+        return { success: false, message: result.message };
+      }
+
+      logger.info("[AppEarnings] Withdrawal requested", {
+        appId,
+        amount,
+        transactionId: result.transaction?.id,
+        idempotencyKey,
+      });
+
+      return {
+        success: true,
+        message: `$${amount.toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
+        transactionId: result.transaction?.id,
+      };
+    }
+
     const result = await appEarningsRepository.processWithdrawal(appId, amount);
     if (!result.success) {
       return { success: false, message: result.message };
     }
 
-    const transaction = await appEarningsRepository.createTransaction({
-      app_id: appId,
-      type: "withdrawal",
-      amount: String(-amount),
-      description: `Withdrawal request: $${amount.toFixed(2)}`,
-      metadata: {
-        requested_at: new Date().toISOString(),
-        status: "processing",
-        note: "Earnings are available in your redeemable balance for redemption as elizaOS tokens",
-        ...(idempotencyKey && { idempotencyKey }),
-      },
-    });
+    const transaction = await appEarningsRepository.createTransaction(transactionData);
 
     logger.info("[AppEarnings] Withdrawal requested", {
       appId,
@@ -258,6 +309,24 @@ export class AppEarningsService {
       success: true,
       message: `$${amount.toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
       transactionId: transaction.id,
+    };
+  }
+
+  /** The response for a withdrawal request that a prior call already recorded. */
+  private idempotentWithdrawalResult(
+    appId: string,
+    idempotencyKey: string,
+    existing: AppEarningsTransaction,
+  ): { success: boolean; message: string; transactionId?: string } {
+    logger.info("[AppEarnings] Idempotent withdrawal request (duplicate)", {
+      appId,
+      idempotencyKey,
+      existingTransactionId: existing.id,
+    });
+    return {
+      success: true,
+      message: `$${Math.abs(Number(existing.amount)).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
+      transactionId: existing.id,
     };
   }
 }

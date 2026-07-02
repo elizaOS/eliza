@@ -2,7 +2,8 @@
 
 Date: 2026-05-28. Scope: `packages/benchmarks`. Method: discovered adapters via
 `orchestrator.discover_adapters`, inspected per-harness factory coverage, and
-ran live BFCL smoke runs on Cerebras `gpt-oss-120b`.
+ran live BFCL smoke runs on Cerebras `gpt-oss-120b` (the default Cerebras eval
+model at the time; the default is now `gemma-4-31b`).
 
 ## Harness coverage at a glance
 

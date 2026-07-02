@@ -326,6 +326,47 @@ describe("ApprovalService", () => {
     expect(after?.state).toBe("expired");
   });
 
+  it("a lapsed pending request is refused and expired at the transition boundary (#11092)", async () => {
+    // No purge runs: the lazy guard alone must keep an expired approval from
+    // ever executing — nothing calls purgeExpired periodically in production.
+    const runtime = createApprovalTableRuntime("agent-1");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-lapsed",
+        expiresAt: new Date(Date.now() - 5 * 60 * 1000),
+      }),
+    );
+    expect(enqueued.state).toBe("pending");
+
+    await expect(
+      queue.approve(enqueued.id, {
+        resolvedBy: "owner-lapsed",
+        resolutionReason: "approving after expiry",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+
+    const after = await queue.byId(enqueued.id);
+    expect(after?.state).toBe("expired");
+    expect(after?.resolvedBy).toBeNull();
+  });
+
+  it("a fresh pending request still approves normally under the expiry guard (#11092)", async () => {
+    const runtime = createApprovalTableRuntime("agent-1");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-fresh",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      }),
+    );
+    const approved = await queue.approve(enqueued.id, {
+      resolvedBy: "owner-fresh",
+      resolutionReason: "in time",
+    });
+    expect(approved.state).toBe("approved");
+  });
+
   it("rejects invalid state transitions hard", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
@@ -359,5 +400,116 @@ describe("ApprovalService", () => {
     // A queue for a different agentId must not see agent-1's row.
     const otherQueue = service.getQueue("agent-2");
     expect(await otherQueue.byId(enqueued.id)).toBeNull();
+  });
+});
+
+describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
+  /**
+   * Race: approve() reads `pending` and validates pending → approved, but a
+   * concurrent purgeExpired flips the row to `expired` BEFORE the approve
+   * UPDATE commits. Without the `AND state = <observed>` guard the UPDATE
+   * overwrote the concurrent transition and resurrected an expired request
+   * into `approved` — an expired spend/send could then execute. The guard
+   * must make the late writer lose with ApprovalStateTransitionError and
+   * leave the row `expired`.
+   */
+  it("a transition validated against a stale read loses the race instead of resurrecting the row", async () => {
+    const runtime = createApprovalTableRuntime("agent-race");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-race",
+        // Future expiresAt: the lazy expiry guard (#11092) must not preempt
+        // the interleave — this test exercises the CAS window itself.
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      }),
+    );
+
+    // Interleave deterministically: the first UPDATE that tries to write
+    // state='approved' for this row first has the "concurrent" purge land.
+    const db = (
+      runtime as unknown as {
+        adapter: {
+          db: { execute: (c: { __sql?: string }) => Promise<unknown> };
+        };
+      }
+    ).adapter.db;
+    const rawExecute = db.execute.bind(db);
+    let interleaved = false;
+    db.execute = async (chunks: { __sql?: string }) => {
+      const sqlText = chunks.__sql ?? "";
+      if (
+        !interleaved &&
+        /UPDATE\s+approval_requests/i.test(sqlText) &&
+        sqlText.includes("'approved'") &&
+        sqlText.includes(`'${enqueued.id}'`)
+      ) {
+        interleaved = true;
+        await rawExecute({
+          __sql: `UPDATE approval_requests
+      SET state = 'expired', updated_at = '2026-07-01T00:00:00.000Z'
+      WHERE id = '${enqueued.id}' AND agent_id = 'agent-race' AND state = 'pending'
+      RETURNING id`,
+        });
+      }
+      return rawExecute(chunks);
+    };
+
+    await expect(
+      queue.approve(enqueued.id, {
+        resolvedBy: "owner-race",
+        resolutionReason: "too late",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+
+    const after = await queue.byId(enqueued.id);
+    expect(after?.state).toBe("expired");
+    expect(after?.resolvedBy).toBeNull();
+  });
+
+  it("markExecuting lost to a concurrent reject stays rejected", async () => {
+    const runtime = createApprovalTableRuntime("agent-race2");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(
+      messageInput({ subjectUserId: "owner-race2" }),
+    );
+    await queue.approve(enqueued.id, {
+      resolvedBy: "owner-race2",
+      resolutionReason: "ok",
+    });
+
+    const db = (
+      runtime as unknown as {
+        adapter: {
+          db: { execute: (c: { __sql?: string }) => Promise<unknown> };
+        };
+      }
+    ).adapter.db;
+    const rawExecute = db.execute.bind(db);
+    let interleaved = false;
+    db.execute = async (chunks: { __sql?: string }) => {
+      const sqlText = chunks.__sql ?? "";
+      if (
+        !interleaved &&
+        /UPDATE\s+approval_requests/i.test(sqlText) &&
+        sqlText.includes("'executing'") &&
+        sqlText.includes(`'${enqueued.id}'`)
+      ) {
+        interleaved = true;
+        await rawExecute({
+          __sql: `UPDATE approval_requests
+      SET state = 'rejected', updated_at = '2026-07-01T00:00:00.000Z'
+      WHERE id = '${enqueued.id}' AND agent_id = 'agent-race2' AND state = 'approved'
+      RETURNING id`,
+        });
+      }
+      return rawExecute(chunks);
+    };
+
+    await expect(queue.markExecuting(enqueued.id)).rejects.toBeInstanceOf(
+      ApprovalStateTransitionError,
+    );
+    const after = await queue.byId(enqueued.id);
+    expect(after?.state).toBe("rejected");
   });
 });

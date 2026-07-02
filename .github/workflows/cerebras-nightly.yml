@@ -1,7 +1,7 @@
 # Cerebras Nightly — continuous benchmark grind (Phase 8)
 #
 # Runs the lifeops + personality benchmark suites nightly against
-# eliza / hermes / openclaw with Cerebras gpt-oss-120b as both agent
+# eliza / hermes / openclaw with Cerebras gemma-4-31b as both agent
 # (where applicable) and judge. Produces a delta report vs the previous
 # nightly's results so drift surfaces without anyone having to look.
 #
@@ -10,7 +10,7 @@
 # visibility.
 #
 # Required secret (job skipped, not failed, when missing):
-#   CEREBRAS_API_KEY  — gpt-oss-120b agent + judge
+#   CEREBRAS_API_KEY  — gemma-4-31b agent + judge
 #
 # Optional secrets:
 #   GITHUB_TOKEN      — present by default; required to upsert the
@@ -129,7 +129,7 @@ jobs:
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1"
-          CEREBRAS_MODEL: "gpt-oss-120b"
+          CEREBRAS_MODEL: "gemma-4-31b"
           EVAL_MODEL_PROVIDER: "cerebras"
           NIGHTLY_LIMIT: "${{ github.event.inputs.limit || '10' }}"
           RUN_ID: "cerebras-nightly-${{ github.run_id }}"

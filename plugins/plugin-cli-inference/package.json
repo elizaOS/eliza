@@ -43,7 +43,7 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.2",
     "@elizaos/core": "workspace:*",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.0.3",
@@ -103,6 +103,13 @@
         "description": "Restart each warm Claude SDK session after this many turns. Defaults to 20.",
         "required": false,
         "default": 20,
+        "sensitive": false
+      },
+      "ELIZA_CLI_SDK_TURN_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Per-turn Claude SDK timeout in milliseconds. Defaults to 90000 and falls back to ELIZA_CLI_TIMEOUT_MS when set.",
+        "required": false,
+        "default": 90000,
         "sensitive": false
       },
       "ELIZA_CLI_CODEX_MODEL": {

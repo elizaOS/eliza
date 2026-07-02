@@ -5,6 +5,11 @@ import {
   getBaseUrl,
   isServerReachable,
 } from "./_helpers/api";
+import {
+  countAiRequestDebitsSince,
+  countAppEarningsSince,
+} from "./_helpers/ledger";
+import { approveAppInDb } from "./_helpers/review";
 
 let serverReachable = false;
 let hasTestApiKey = false;
@@ -14,7 +19,9 @@ function shouldRunAuthed(): boolean {
   return serverReachable && hasTestApiKey;
 }
 
-async function createTestApp(): Promise<string> {
+async function createTestApp(
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const res = await api.post(
     "/api/v1/apps",
@@ -25,6 +32,7 @@ async function createTestApp(): Promise<string> {
       website_url: "https://example.com",
       allowed_origins: ["https://example.com"],
       skipGitHubRepo: true,
+      ...overrides,
     },
     { headers: bearerHeaders() },
   );
@@ -32,8 +40,12 @@ async function createTestApp(): Promise<string> {
   expect(res.status).toBe(200);
   const body = (await res.json()) as { app?: { id?: string } };
   expect(body.app?.id).toBeTruthy();
-  createdAppIds.push(body.app?.id as string);
-  return body.app?.id as string;
+  const appId = body.app?.id as string;
+  createdAppIds.push(appId);
+  // Charges require a compliance-approved app (#10732). This suite exercises the
+  // charge/settlement path, not the review gate, so approve the app directly.
+  await approveAppInDb(appId);
+  return appId;
 }
 
 beforeAll(async () => {
@@ -252,45 +264,43 @@ describe("PUT /api/v1/apps/:id", () => {
   test("monetized app: an inference charge attributes to the app's credits + creator earnings (#10423)", async () => {
     if (!shouldRunAuthed()) return;
 
-    // 1) create the app and enable monetization with a markup.
-    const appId = await createTestApp();
+    // 1) create the app monetized from the start. Enabling monetization via a
+    //    follow-up PUT races the app service's Redis SWR cache (~5 min TTL by
+    //    design, apps.ts:108): getAuthorizedMonetizedAppForUser can read the
+    //    pre-toggle row and silently skip attribution. Monetization-at-create
+    //    means the first cache fill is already monetized — and matches how the
+    //    create flows (dashboard + plugin) actually create monetized apps.
     const markupPct = 25;
-    const monetizeRes = await api.put(
-      `/api/v1/apps/${appId}`,
-      { monetization_enabled: true, inference_markup_percentage: markupPct },
-      { headers: bearerHeaders() },
-    );
-    expect(monetizeRes.status).toBe(200);
-
-    // 2) baseline the org credit balance + the app's creator earnings.
-    const baselineBalanceRes = await api.get("/api/v1/app-credits/balance", {
-      headers: bearerHeaders(),
+    const appId = await createTestApp({
+      monetization_enabled: true,
+      inference_markup_percentage: markupPct,
     });
-    expect(baselineBalanceRes.status).toBe(200);
-    const baselineBalance = Number(
-      ((await baselineBalanceRes.json()) as { credit_balance?: number })
-        .credit_balance ?? 0,
-    );
 
+    // 2) baseline the caller-org LEDGER + the app's creator earnings. The
+    //    attributed inference debits the calling org's credits (base + markup)
+    //    unless the caller holds a funded per-app wallet (app_credit_balances)
+    //    — which this fresh test user never does. The balance ENDPOINT serves
+    //    a 5-min-cached value by design, so the debit is asserted against the
+    //    credit_transactions ledger (the source of truth) instead.
+    const ledgerBaselineAt = new Date();
+
+    // The earnings endpoint must at least SERVE for the creator (its value
+    // rides the same ~5-min app-row cache, so the increase itself is asserted
+    // from the app_earnings_transactions ledger below).
     const baselineEarningsRes = await api.get(
       `/api/v1/apps/${appId}/earnings`,
       { headers: bearerHeaders() },
     );
     expect(baselineEarningsRes.status).toBe(200);
-    const baselineEarnings = Number(
-      (
-        (await baselineEarningsRes.json()) as {
-          total_creator_earnings?: number;
-        }
-      ).total_creator_earnings ?? 0,
-    );
 
     // 3) drive a real inference attributed to the app via the X-App-Id header.
     const inferenceRes = await api.post(
       "/api/v1/chat/completions",
       {
         model: "gpt-4o-mini",
-        max_tokens: 8,
+        // Providers enforce a 16-token minimum on max_output_tokens; 8 made
+        // the forward 400 upstream (surfaced as a Worker 500) on staging.
+        max_tokens: 32,
         messages: [{ role: "user", content: "Say hi in one word." }],
       },
       {
@@ -312,34 +322,30 @@ describe("PUT /api/v1/apps/:id", () => {
 
     // 4) reconcile fires post-response in the settle chain — poll briefly for the
     //    debit + the creator-earnings credit to land.
-    let balanceDropped = false;
+    let orgDebitLanded = false;
     let earningsIncreased = false;
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      await new Promise((r) => setTimeout(r, 750));
-      const balanceRes = await api.get("/api/v1/app-credits/balance", {
-        headers: bearerHeaders(),
-      });
-      const balanceNow = Number(
-        ((await balanceRes.json()) as { credit_balance?: number })
-          .credit_balance ?? baselineBalance,
-      );
-      if (balanceNow < baselineBalance) balanceDropped = true;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (!orgDebitLanded) {
+        orgDebitLanded =
+          (await countAiRequestDebitsSince(ledgerBaselineAt)) > 0;
+      }
 
-      const earningsRes = await api.get(`/api/v1/apps/${appId}/earnings`, {
-        headers: bearerHeaders(),
-      });
-      const earningsNow = Number(
-        ((await earningsRes.json()) as { total_creator_earnings?: number })
-          .total_creator_earnings ?? baselineEarnings,
-      );
-      if (earningsNow > baselineEarnings) earningsIncreased = true;
+      // The earnings ENDPOINT reads the app row through the same ~5-min SWR
+      // cache, so poll the app_earnings_transactions ledger (the actual money
+      // artifact #11021's two-leg dedupe writes) instead.
+      if (!earningsIncreased) {
+        earningsIncreased =
+          (await countAppEarningsSince(appId, ledgerBaselineAt)) > 0;
+      }
 
-      if (balanceDropped && earningsIncreased) break;
+      if (orgDebitLanded && earningsIncreased) break;
     }
 
-    // The org paid (base + markup) AND the creator earned the markup — i.e. the
-    // charge attributed to the app, not just consumed the caller's credits.
-    expect(balanceDropped).toBe(true);
+    // The org paid (base + markup, visible in the ledger) AND the creator
+    // earned the markup — i.e. the charge attributed to the app, not just
+    // consumed the caller's credits invisibly.
+    expect(orgDebitLanded).toBe(true);
     expect(earningsIncreased).toBe(true);
   });
 });

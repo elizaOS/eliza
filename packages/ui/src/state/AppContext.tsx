@@ -19,7 +19,7 @@ import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
-  FIRST_RUN_ACTION_PREFIX,
+  classifyActionMessage,
   tryHandleFirstRunAction,
 } from "../first-run/first-run-action-channel";
 import {
@@ -88,6 +88,7 @@ import { useMiscUiState } from "./useMiscUiState";
 import { useNavigationState } from "./useNavigationState";
 import { usePairingState } from "./usePairingState";
 import { usePluginsSkillsState } from "./usePluginsSkillsState";
+import { useResyncReconcile } from "./useResyncReconcile";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTabSync } from "./useTabSync";
 import { useTriggersState } from "./useTriggersState";
@@ -146,11 +147,20 @@ function AppProviderInner({
   // --- Display preferences (extracted to useDisplayPreferences) ---
   const displayPrefs = useDisplayPreferences();
   const {
-    state: { uiTheme, uiThemeMode, backgroundConfig, canUndoBackground },
+    state: {
+      uiTheme,
+      uiThemeMode,
+      backgroundConfig,
+      canUndoBackground,
+      canRedoBackground,
+      homeTimeWidgetHidden,
+    },
     setUiTheme,
     setUiThemeMode,
     setBackgroundConfig,
     undoBackgroundConfig,
+    redoBackgroundConfig,
+    setHomeTimeWidgetHidden,
   } = displayPrefs;
 
   // Apply the host app's brand theme (set via BrandingConfig.theme).
@@ -339,6 +349,7 @@ function AppProviderInner({
     autonomousRunHealthByRunIdRef,
     autonomousReplayInFlightRef,
     addUnread,
+    removeUnread,
   } = chatState;
   // Live server-reported phase of the in-flight assistant turn (rich status
   // indicator, #8813). Held outside the giant AppContext value (in its own
@@ -356,15 +367,22 @@ function AppProviderInner({
   unreadConversationsRef.current = unreadConversations;
   const setUnreadConversations = useCallback(
     (v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-      if (typeof v === "function") {
-        const nextVal = v(unreadConversationsRef.current);
-        // Sync back through dispatch
-        for (const id of nextVal) addUnread(id);
-      } else {
-        // Direct set not supported through reducer — use add/remove
+      const prev = unreadConversationsRef.current;
+      const nextVal = typeof v === "function" ? v(prev) : v;
+      // Diff prev→next and dispatch BOTH directions. The old wrapper only
+      // re-added ids in the result set and dropped every removal (the
+      // functional `next.delete(id)` updaters callers use to clear a badge
+      // were silent no-ops — REMOVE_UNREAD was unreachable, so badges never
+      // cleared on delete/mark-read). Add newly-present ids, remove
+      // newly-absent ones.
+      for (const id of nextVal) {
+        if (!prev.has(id)) addUnread(id);
+      }
+      for (const id of prev) {
+        if (!nextVal.has(id)) removeUnread(id);
       }
     },
-    [addUnread],
+    [addUnread, removeUnread],
   );
 
   // --- Triggers (extracted to useTriggersState) ---
@@ -1138,6 +1156,7 @@ function AppProviderInner({
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    loadedConversationIdRef,
     getBscTradePreflight,
     getBscTradeQuote,
     getBscTradeTxStatus,
@@ -1227,6 +1246,7 @@ function AppProviderInner({
     loadConversations,
     loadConversationMessages,
     prefetchConversationMessages,
+    loadedConversationIdRef,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -1309,21 +1329,30 @@ function AppProviderInner({
 
   // In-chat first-run interception: a first-run-scoped choice pick (reserved
   // `__first_run__:` prefix) is consumed by the active onboarding conductor and
-  // MUST NOT reach the server. Every other value falls through to the real
-  // send funnel unchanged, so normal chat (including during/after onboarding)
-  // is unaffected. Widgets stay 100% display-only — both InlineWidgetText and
-  // MessageContent route picks through this single `sendActionMessage`.
+  // MUST NOT reach the server. The prefix is reserved unconditionally: even
+  // after onboarding completes (conductor unregistered), a tap on a leftover
+  // onboarding widget in the transcript is dropped here instead of sending the
+  // literal sentinel to the agent as a chat message. While onboarding is
+  // ACTIVE (firstRunComplete false) every other value is dropped too: the
+  // transcript is choice-driven, so free text must never reach the server
+  // mid-setup (the overlay disables its composer; this is the send-seam
+  // backstop). Once onboarding completes, every non-first-run value falls
+  // through to the real send funnel unchanged. Widgets stay 100% display-only
+  // — both InlineWidgetText and MessageContent route picks through this single
+  // `sendActionMessage`.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
-      if (
-        text.startsWith(FIRST_RUN_ACTION_PREFIX) &&
-        tryHandleFirstRunAction(text)
-      ) {
-        return Promise.resolve();
+      switch (classifyActionMessage(text, firstRunComplete === true)) {
+        case "first-run":
+          tryHandleFirstRunAction(text);
+          return Promise.resolve();
+        case "dropped":
+          return Promise.resolve();
+        case "send":
+          return rawSendActionMessage(text);
       }
-      return rawSendActionMessage(text);
     },
-    [rawSendActionMessage],
+    [firstRunComplete, rawSendActionMessage],
   );
 
   useEffect(() => {
@@ -1383,6 +1412,12 @@ function AppProviderInner({
       }
     });
   }, []);
+
+  // Live consumer of the RESYNC_EVENT dispatched above. Without this the resync
+  // signal had no listener, so a reconnect never reconciled messages the agent
+  // emitted while the socket was down. This reloads the active conversation from
+  // the server on resync so those missed messages appear without a refresh.
+  useResyncReconcile({ activeConversationIdRef, loadConversationMessages });
 
   // ── Pairing ────────────────────────────────────────────────────────
 
@@ -1682,8 +1717,6 @@ function AppProviderInner({
     appendAutonomousEvent,
     notifyHeartbeatEvent,
     setSelectedVrmIndex,
-    setCustomVrmUrl,
-    setCustomBackgroundUrl,
     setWalletAddresses,
     setPtySessions,
     hasPtySessionsRef,
@@ -1929,6 +1962,8 @@ function AppProviderInner({
       uiThemeMode,
       backgroundConfig,
       canUndoBackground,
+      canRedoBackground,
+      homeTimeWidgetHidden,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2214,6 +2249,8 @@ function AppProviderInner({
       setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
+      redoBackgroundConfig,
+      setHomeTimeWidgetHidden,
       handleStart,
       handleStop,
 
@@ -2341,6 +2378,8 @@ function AppProviderInner({
       uiThemeMode,
       backgroundConfig,
       canUndoBackground,
+      canRedoBackground,
+      homeTimeWidgetHidden,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2633,6 +2672,8 @@ function AppProviderInner({
       setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
+      redoBackgroundConfig,
+      setHomeTimeWidgetHidden,
       handleStart,
       handleStop,
       handleRestart,

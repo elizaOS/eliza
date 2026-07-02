@@ -423,3 +423,43 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
     );
   });
 });
+
+describe("CockpitSessionPane — inspector layout per surface (#11159 audit)", () => {
+  // jsdom has no window.matchMedia, so useIsMobile() is false by default —
+  // that IS the desktop case. The mobile case stubs a matching MQL.
+  function stubMobileMatchMedia(): void {
+    const mql = {
+      matches: true,
+      media: "(max-width: 767px)",
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      onchange: null,
+      dispatchEvent: () => false,
+    } as unknown as MediaQueryList;
+    vi.stubGlobal("matchMedia", () => mql);
+  }
+
+  it("desktop keeps TaskInspector's w-80 rail fallback (no unconditional class override)", async () => {
+    renderPane();
+    const inspector = await screen.findByTestId("orchestrator-inspector");
+    // Passing className="flex" unconditionally suppressed the `flex w-80`
+    // fallback; in this flex ROW the shrink-0 inspector then inflated to
+    // max-content and crushed the transcript on desktop.
+    expect(inspector.className).toContain("w-80");
+  });
+
+  it("mobile overrides the rail with the dismissible drawer", async () => {
+    stubMobileMatchMedia();
+    try {
+      renderPane();
+      const inspector = await screen.findByTestId("orchestrator-inspector");
+      expect(inspector.className).not.toContain("w-80");
+      // Drawer geometry comes from the inline style (closed => hidden).
+      expect(inspector.style.display === "none" || inspector.style.position === "absolute").toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

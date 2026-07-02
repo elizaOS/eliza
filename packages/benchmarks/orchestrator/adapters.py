@@ -76,6 +76,7 @@ IGNORED_BENCHMARK_DIRS = {
     "loadperf",
     "memperf",
     "mobile-resource",
+    "view-bundle-size",
     "voice",
     # Legacy/partial shim with no source files in this checkout.
     "eliza-format",
@@ -2405,7 +2406,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "temperature": 0.0,
             "judge_max_tokens": 512,
             "judge_provider": "cerebras",
-            "judge_model": "gpt-oss-120b",
+            "judge_model": "gemma-4-31b",
             "judge_api_key_env": "CEREBRAS_API_KEY",
         },
         "tau_bench": {

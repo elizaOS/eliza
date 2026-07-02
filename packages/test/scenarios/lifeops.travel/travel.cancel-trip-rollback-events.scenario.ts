@@ -64,7 +64,12 @@ export default scenario({
         description: "trip cancellation with calendar rollback",
         includesAny: ["cancel", "calendar", "hold", "flight", "hotel"],
       }),
-      responseIncludesAny: ["cancel", "flight", "hotel", "calendar"],
+      // De-echoed (#9310): the old keywords ("cancel", "flight", "hotel",
+      // "calendar") all appeared in the user's own turn text. Seeded-token
+      // grounding instead: the concrete holds (UA245, Marriott, the travel
+      // blackout, PNR42X) exist only in the seeded trip, so enumerating them
+      // requires reading that state.
+      responseIncludesAny: ["UA245", "Marriott", "blackout", "PNR42X"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

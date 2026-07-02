@@ -478,6 +478,21 @@ export default defineConfig({
           "index.ts",
         ),
       },
+      // The scenario-corpus gate (test/executive-assistant-scenarios.test.ts)
+      // imports the real scenario loader from source; loader.ts references its
+      // own package via `@elizaos/scenario-runner/schema`, a self-referencing
+      // package-exports import Vite's resolver does not support. Anchor the
+      // subpath to the prebuilt schema entry the exports map points at.
+      {
+        find: /^@elizaos\/scenario-runner\/schema$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "scenario-runner",
+          "schema",
+          "index.js",
+        ),
+      },
       {
         find: /^react\/jsx-dev-runtime$/,
         replacement: path.join(reactRoot, "jsx-dev-runtime.js"),

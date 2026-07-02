@@ -49,6 +49,9 @@ export {
   // Avatar / VRM
   VRM_TELEPORT_COMPLETE_EVENT,
 } from "@elizaos/shared/events";
+export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
+export * from "../views/view-event-bus";
+export * from "../views/view-event-types";
 
 // ── UI-only events (no server producer) ──────────────────────────────────
 
@@ -137,6 +140,16 @@ export const TUTORIAL_CHAT_CONTROL_EVENT =
 export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
 /** Open the keyword message-search panel (fired by the chat search affordance). */
 export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
+/**
+ * Open the notification center from anywhere (#10706). On mobile the home
+ * pull-down owns opening the sheet; this window event is the surface-agnostic
+ * entry point the desktop-native "Notifications" menu/tray item + the
+ * `<scheme>://notifications` deep link use, so desktop gets a visible native way
+ * in (the floating bell is hidden there). The single always-mounted headless
+ * NotificationCenter is the one listener.
+ */
+export const OPEN_NOTIFICATION_CENTER_EVENT =
+  "eliza:notifications:open" as const;
 
 export interface TutorialChatControlDetail {
   /**
@@ -174,6 +187,52 @@ export function dispatchChatPrefill(detail: ChatPrefillEventDetail): void {
   window.dispatchEvent(new CustomEvent(CHAT_PREFILL_EVENT, { detail }));
 }
 
+/** Request the notification center to open (surface-agnostic — see
+ * {@link OPEN_NOTIFICATION_CENTER_EVENT}). */
+export function dispatchOpenNotificationCenter(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
+}
+
+// ── Android hardware back ─────────────────────────────────────────────────
+/**
+ * The Android hardware/gesture back press, surfaced to shell consumers BEFORE
+ * the app's default back behavior runs (#9148). Native (`main.tsx`) dispatches
+ * this on the Capacitor `backButton` event; a consumer with an open,
+ * back-dismissable surface — today the {@link ContinuousChatOverlay} chat sheet
+ * — closes ONE layer and flips `detail.handled = true`. The dispatcher reads
+ * `handled` synchronously (custom events dispatch synchronously, so every
+ * listener has run by the time `dispatchEvent` returns) and only falls through
+ * to `history.back()` / `minimizeApp()` when nothing consumed the press. This
+ * gives Android hardware-back the same "dismiss the open sheet first" behavior
+ * desktop/web get from Escape. Web/desktop simply never dispatch it, so the
+ * fall-through path is unchanged there.
+ */
+export const ELIZA_BACK_INTENT_EVENT = "eliza:back-intent" as const;
+
+export interface BackIntentEventDetail {
+  /**
+   * A consumer flips this to `true` when it handles the back press (e.g. by
+   * closing an open sheet). While it stays `false` the dispatcher falls through
+   * to the app's default back behavior — so a back press at rest still
+   * navigates / backgrounds the app as before.
+   */
+  handled: boolean;
+}
+
+/**
+ * Dispatch the Android back-intent to shell consumers and report whether one of
+ * them handled it (closed a surface). Returns `false` when nothing consumed the
+ * press — including off-window (SSR) — so the caller can fall through to its
+ * default back behavior. See {@link ELIZA_BACK_INTENT_EVENT}.
+ */
+export function dispatchBackIntent(): boolean {
+  if (typeof window === "undefined") return false;
+  const detail: BackIntentEventDetail = { handled: false };
+  window.dispatchEvent(new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }));
+  return detail.handled;
+}
+
 // ── Event-name unions (shared base widened with the UI-only events) ───────
 
 export type ElizaDocumentEventName =
@@ -186,7 +245,8 @@ export type ElizaWindowEventName =
   | typeof TUTORIAL_CHAT_CONTROL_EVENT
   | typeof CHAT_PREFILL_EVENT
   | typeof CLOUD_HANDOFF_PHASE_EVENT
-  | typeof CLOUD_HANDOFF_RETRY_EVENT;
+  | typeof CLOUD_HANDOFF_RETRY_EVENT
+  | typeof ELIZA_BACK_INTENT_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
 

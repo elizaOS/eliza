@@ -120,6 +120,22 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             });
             return;
           }
+          // Same stale-proxy guard as the refresh path: a still-valid token that
+          // gets a 401 from the session-sync endpoint is far more likely a
+          // misproxied control plane than a real revocation. Only clear once the
+          // token is actually expired, so a stale staging proxy can't loop us.
+          const current = readStoredToken();
+          if (current && !tokenIsExpired(current)) {
+            // Reset the dedupe marker so the next sync trigger (visibility,
+            // storage, re-render) retries the cookie POST for this same token
+            // once the endpoint recovers — otherwise the session would ride
+            // out its lifetime with no HttpOnly cookie ever established.
+            lastSyncedToken.current = null;
+            console.warn(
+              "[steward] Session-sync 401 but stored token still valid — keeping it (likely a stale control-plane proxy)",
+            );
+            return;
+          }
           console.warn(
             "[steward] Stored token rejected by server (401) - clearing",
           );
@@ -169,11 +185,25 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             return;
           }
           if (res.status === 401) {
-            if (wasAuthenticated.current && lastSyncedToken.current) {
-              lastSyncedToken.current = null;
-              wasAuthenticated.current = false;
+            // A refresh 401 normally means the session was revoked → clear so it
+            // self-heals. But a STALE co-hosted proxy (staging's FRONTEND_ALIAS
+            // pointing at the wrong control plane) 401s a still-VALID session,
+            // and wiping it here kicks the user back to /login on every refresh
+            // tick — the sign-in loop. So only clear when the stored token is
+            // actually expired (keeping it is useless then); a still-valid token
+            // rides until real expiry and any genuine revocation self-heals then.
+            const stored = readStoredToken();
+            if (!stored || tokenIsExpired(stored)) {
+              if (wasAuthenticated.current && lastSyncedToken.current) {
+                lastSyncedToken.current = null;
+                wasAuthenticated.current = false;
+              }
+              clearStaleStewardSession();
+            } else {
+              console.warn(
+                "[steward] Refresh 401 but stored token still valid — keeping it (likely a stale control-plane proxy, not a revoked session)",
+              );
             }
-            clearStaleStewardSession();
           }
         } catch (err) {
           console.warn("[steward] Auto-refresh failed", err);

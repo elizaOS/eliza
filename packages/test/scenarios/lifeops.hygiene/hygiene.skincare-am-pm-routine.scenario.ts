@@ -2,6 +2,13 @@
  * Hygiene: AM and PM skincare routine — two slots per day, distinct from
  * brushing. The agent should keep the routine as a single twice-daily habit
  * rather than splitting into morning and evening habits.
+ *
+ * De-echoed for #9310: the old turn assertions ("skincare", "morning",
+ * "night" / "saved", "skincare") were satisfiable by parroting the prompt.
+ * The persisted twice-daily definition (`definitionCountDelta`) is the
+ * load-bearing outcome; the turn checks now enforce the derived structure
+ * (one habit with two daily slots — "twice" appears in no user turn) and the
+ * two-phase commit.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -28,13 +35,23 @@ export default scenario({
       kind: "message",
       name: "skincare preview",
       text: "Remind me to do my skincare routine every morning and every night.",
-      responseIncludesAny: ["skincare", "morning", "night"],
+      // Derived structure: the preview must resolve to one twice-daily habit
+      // — "twice" / "both" appear in no user turn, so echo cannot pass.
+      responseIncludesAny: ["twice", "both", "am and pm", "2 slots"],
+      // Two-phase commit: no completion claim before the owner confirms.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose a single twice-daily skincare habit with an AM slot and a PM slot (not two separate habits) and ask the owner to confirm before saving. Claiming it is already saved fails.",
+      },
     },
     {
       kind: "message",
       name: "skincare confirm",
       text: "Yes, save that routine.",
-      responseIncludesAny: ["saved", "skincare"],
+      // Save-confirmation semantics in words the prompt never used.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [

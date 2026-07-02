@@ -118,7 +118,7 @@
     "eventsource-parser": "^1.1.2",
     "ethers": "^6.16.0",
     "import-in-the-middle": "^3.1.0",
-    "ioredis": "5.10.1",
+    "ioredis": "5.11.1",
     "js-tiktoken": "^1.0.21",
     "lightweight-charts": "^5.0.9",
     "nanoid": "^5.1.7",
@@ -134,9 +134,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.2",
     "@fal-ai/client": "^1.9.5",
-    "@intellectronica/ruler": "0.3.43",
+    "@intellectronica/ruler": "0.3.44",
     "@playwright/test": "1.61.1",
     "@prb/math": "^4.1.0",
     "@types/js-yaml": "^4.0.9",
@@ -154,7 +154,7 @@
     "next": "16.2.6",
     "sharp": "^0.34.5",
     "tsx": "^4.21.0",
-    "turbo": "2.9.18",
+    "turbo": "2.10.2",
     "typescript": "^5.9.3"
   },
   "lint-staged": {

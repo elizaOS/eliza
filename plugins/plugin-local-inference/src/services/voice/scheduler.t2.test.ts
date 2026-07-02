@@ -13,11 +13,11 @@ import { InMemoryAudioSink } from "./ring-buffer";
 import { type TtsPhraseChunkMetrics, VoiceScheduler } from "./scheduler";
 import type {
 	AudioChunk,
-	OmniVoiceBackend,
 	Phrase,
 	SpeakerPreset,
 	StreamingTtsBackend,
 	TextToken,
+	TtsBackend,
 	TtsPcmChunk,
 } from "./types";
 
@@ -34,9 +34,7 @@ function makePreset(): SpeakerPreset {
 	};
 }
 
-class ScriptedStreamingBackend
-	implements OmniVoiceBackend, StreamingTtsBackend
-{
+class ScriptedStreamingBackend implements TtsBackend, StreamingTtsBackend {
 	constructor(private readonly chunks: ReadonlyArray<Float32Array>) {}
 	async synthesize(): Promise<AudioChunk> {
 		throw new Error("not used");

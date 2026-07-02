@@ -268,13 +268,12 @@ describe("VoiceService", () => {
     const components = await voice.components();
     const ids = components.map((component) => component.id);
 
-    expect(ids).toContain("omnivoice");
     expect(ids).toContain("kokoro");
     expect(ids).toContain("asr");
     expect(ids).toContain("vad");
     expect(ids).toContain("turn-detector");
     expect(
-      components.find((component) => component.id === "omnivoice"),
+      components.find((component) => component.id === "kokoro"),
     ).toMatchObject({ status: "available", role: "tts" });
   });
 

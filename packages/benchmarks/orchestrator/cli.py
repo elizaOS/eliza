@@ -1033,7 +1033,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dry-run validate adapter/harness command, env, locator, and trajectory contracts",
     )
     p_matrix.add_argument("--provider", default="cerebras", help="Model provider")
-    p_matrix.add_argument("--model", default="gpt-oss-120b", help="Model name")
+    p_matrix.add_argument("--model", default="gemma-4-31b", help="Model name")
     p_matrix.add_argument(
         "--model-profile",
         default=None,
@@ -1125,7 +1125,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Harness adapters to run (e.g. eliza hermes openclaw smithers codex)",
     )
     p_review_all.add_argument("--provider", default="cerebras", help="Model provider")
-    p_review_all.add_argument("--model", default="gpt-oss-120b", help="Model name")
+    p_review_all.add_argument("--model", default="gemma-4-31b", help="Model name")
     p_review_all.add_argument(
         "--model-profile",
         default=None,
@@ -1209,7 +1209,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Additionally run perfect_v1, wrong_v1, and half_v1 calibration harnesses",
     )
     p_run.add_argument("--provider", default="cerebras", help="Model provider")
-    p_run.add_argument("--model", default="gpt-oss-120b", help="Model name")
+    p_run.add_argument("--model", default="gemma-4-31b", help="Model name")
     p_run.add_argument(
         "--model-profile",
         default=None,

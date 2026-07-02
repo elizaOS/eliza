@@ -8,7 +8,7 @@
  *                 fallback. Tier-A smoke lane.
  * - `mid`       — eliza-1 4B GGUF via the same fork. Tier-B manual /
  *                 scheduled.
- * - `large`     — Cerebras `gpt-oss-120b`. Default evaluation provider.
+ * - `large`     — Cerebras `gemma-4-31b`. Default evaluation provider.
  * - `frontier`  — Anthropic Opus 4.7. Production runtime.
  *
  * The `resolveTier` helper reads `MODEL_TIER` plus three overrides
@@ -57,9 +57,11 @@ export const DEFAULT_TIERS: Record<ModelTier, TierSpec> = {
   large: {
     tier: "large",
     provider: "cerebras",
-    modelName: "gpt-oss-120b",
+    modelName: "gemma-4-31b",
     baseUrl: "https://api.cerebras.ai/v1",
-    contextWindow: 131_072,
+    // Cerebras enforces a 131 000-token window for gemma-4-31b on the paid
+    // tier (live-verified: 200k prompts fail with context_length_exceeded).
+    contextWindow: 131_000,
     notes: "Default eval provider; prompt caching enabled",
   },
   frontier: {

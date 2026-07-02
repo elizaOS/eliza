@@ -121,7 +121,7 @@ Get an API key from
 | `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | Embedding vector size | `1536` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | Vision model used for image descriptions | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | Max image-description response tokens | `8192` |
-| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/gemini-2.5-flash-image` |
+| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/nano-banana-2/text-to-image` |
 | `ELIZAOS_CLOUD_TTS_MODEL` | Text-to-speech model | `gpt-5-mini-tts` |
 | `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | Audio transcription model | `gpt-5-mini-transcribe` |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | Enables experimental telemetry metadata | `false` |

@@ -40,19 +40,19 @@ export function authedClient(api: string, apiKey: string) {
  * `resolveAiProviderSource` bill it to the `cerebras` source and the language
  * model layer call `api.cerebras.ai/v1`. No Ollama / local-OpenAI shim.
  */
-export const REAL_LLM_MODEL = "cerebras/gpt-oss-120b";
+export const REAL_LLM_MODEL = "cerebras/gemma-4-31b";
 
 /** Billing source + provider for {@link REAL_LLM_MODEL} (seed-pricing). */
 export const REAL_LLM_BILLING_SOURCE = "cerebras";
 
 /**
- * The model's max output tokens (gpt-oss-120b on Cerebras: 40960, per the
- * `CEREBRAS_DEFAULT_TEXT_SMALL_MODEL` catalog entry in
- * cloud/shared/lib/models/catalog.ts). gpt-oss-120b is a reasoning model, so a
- * small cap is spent entirely on reasoning and returns empty content — give it
- * the model's full output budget.
+ * The model's max output tokens (gemma-4-31b on Cerebras: 40000 on the paid
+ * tier, per the `CEREBRAS_DEFAULT_TEXT_SMALL_MODEL` catalog entry in
+ * cloud/shared/lib/models/catalog.ts). gemma-4-31b is non-reasoning by default
+ * (reasoning only via `reasoning_effort`), but still give it the model's full
+ * output budget so long completions are never truncated.
  */
-export const REAL_LLM_MAX_TOKENS = 40960;
+export const REAL_LLM_MAX_TOKENS = 40000;
 
 /**
  * Whether the cloud's default inference provider (Cerebras) is configured.

@@ -43,7 +43,11 @@ export default scenario({
         description: "partial snooze, not dismiss",
         includesAny: ["snooze", "10 minutes", "desktop", "still"],
       }),
-      responseIncludesAny: ["snooze", "10", "desktop"],
+      // De-echoed (#9310): the old keywords ("snooze", "10", "desktop") all
+      // appeared in the user's own turn text. The reply must now express the
+      // derived snooze-vs-ack semantics (the copy persists / re-fires) in
+      // words the prompt never used.
+      responseIncludesAny: ["stay", "remain", "keep", "re-fire", "pop back"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

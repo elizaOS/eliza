@@ -697,6 +697,15 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
       return 402;
     }
 
+    // A provider 400 is the CALLER's fault (invalid parameters / a response
+    // schema the provider's strict validator rejects) — pass it through so
+    // the client sees 400 invalid_request_error instead of the generic 500
+    // fallback, which both mislabels the failure and (in the streaming error
+    // chunk) invites pointless retries of a request that can never succeed.
+    if (providerError.statusCode === 400) {
+      return 400;
+    }
+
     if (providerError.statusCode && providerError.statusCode >= 500) {
       return 503;
     }
@@ -987,9 +996,6 @@ export async function handleChatCompletionsPOST(
 
     const tBeforeReserve = Date.now();
     let reservation: CreditReservation | null = null;
-    let appCreditsInfo:
-      | { appId: string; estimatedBaseCost: number; app: typeof monetizedApp }
-      | undefined;
     // #9899 Tier-2: set when the optimistic off-path billing branch is taken;
     // replaces the reservation settler with a deferred actual-cost debit.
     let optimisticSettler:
@@ -997,7 +1003,6 @@ export async function handleChatCompletionsPOST(
       | null = null;
 
     if (useAppCredits && appId && monetizedApp) {
-      // App credits path
       const { totalCost } = await calculateCost(
         normalizedModel,
         provider,
@@ -1005,42 +1010,43 @@ export async function handleChatCompletionsPOST(
         estimatedOutputTokens,
         billingSource,
       );
-      const costWithMarkup = await appCreditsService.calculateCostWithMarkup(
-        appId,
-        totalCost,
-      );
 
-      const balanceCheck = await appCreditsService.checkBalance(
-        appId,
-        user.id,
-        costWithMarkup.totalCost,
-      );
-      if (!balanceCheck.sufficient) {
-        return addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
-                type: "insufficient_quota",
-                code: "insufficient_credits",
+      try {
+        reservation = await appCreditsService.reserveInferenceCredits({
+          appId,
+          userId: user.id,
+          estimatedBaseCost: totalCost,
+          description: `Chat completion: ${model}`,
+          idempotencyKey,
+          metadata: {
+            model,
+            provider,
+            billingSource,
+            requestId,
+            route: "chat_completions",
+            streaming: request.stream === true,
+            estimatedInputTokens,
+            estimatedOutputTokens,
+          },
+          app: monetizedApp,
+        });
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          return addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message: `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
+                  type: "insufficient_quota",
+                  code: "insufficient_credits",
+                },
               },
-            },
-            { status: 402 },
-          ),
-        );
+              { status: 402 },
+            ),
+          );
+        }
+        throw error;
       }
-
-      // No upfront debit happens for the app-credits flow: the anonymous
-      // reservation records no charge, and the actual debit lands on the org balance
-      // inside `appCreditsService.reconcileCredits` after the call resolves.
-      // Reporting estimatedBaseCost=0 makes reconcile charge the full actual
-      // cost as the diff, instead of treating the estimate as already paid.
-      appCreditsInfo = {
-        appId,
-        estimatedBaseCost: 0,
-        app: monetizedApp,
-      };
-      reservation = creditsService.createAnonymousReservation();
     } else {
       // Organization credits path. #9899 Tier-2: when optimistic billing is
       // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
@@ -1247,7 +1253,6 @@ export async function handleChatCompletionsPOST(
           request,
           user,
           apiKey ? { id: apiKey.id } : null,
-          appCreditsInfo,
           affiliateCode,
           idempotencyKey,
           requestId,
@@ -1268,7 +1273,6 @@ export async function handleChatCompletionsPOST(
           request,
           user,
           apiKey ? { id: apiKey.id } : null,
-          appCreditsInfo,
           affiliateCode,
           idempotencyKey,
           requestId,
@@ -1318,18 +1322,7 @@ export async function handleChatCompletionsPOST(
     const status = isInsufficientCredits
       ? 402
       : (getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error));
-    let errorType = "api_error";
-    if (status === 401) {
-      errorType = "authentication_error";
-    } else if (status === 402) {
-      errorType = "insufficient_quota";
-    } else if (status === 429) {
-      errorType = "rate_limit_error";
-    } else if (status === 503) {
-      errorType = "service_unavailable";
-    } else if (status === 400) {
-      errorType = "invalid_request_error";
-    }
+    const errorType = openAiErrorTypeForStatus(status);
 
     return addCorsHeaders(
       Response.json(
@@ -1345,6 +1338,20 @@ export async function handleChatCompletionsPOST(
   }
 }
 
+/**
+ * OpenAI-compatible `error.type` for an HTTP status. Single mapping shared by
+ * the non-streaming error response and the terminal streaming error chunk so
+ * the two paths can never disagree about what a status means.
+ */
+function openAiErrorTypeForStatus(status: number): string {
+  if (status === 401) return "authentication_error";
+  if (status === 402) return "insufficient_quota";
+  if (status === 429) return "rate_limit_error";
+  if (status === 503) return "service_unavailable";
+  if (status === 400) return "invalid_request_error";
+  return "api_error";
+}
+
 // ============================================================================
 // Streaming Handler
 // ============================================================================
@@ -1356,9 +1363,6 @@ async function handleStreamingRequest(
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo:
-    | { appId: string; estimatedBaseCost: number; app: unknown }
-    | undefined,
   affiliateCode: string | null,
   idempotencyKey: string,
   requestId: string,
@@ -1425,18 +1429,6 @@ async function handleStreamingRequest(
         };
         const billing = await billUsage(billingContext, usage);
         const reconciliation = await settleReservation(billing.totalCost);
-
-        // Handle app credits reconciliation
-        if (appCreditsInfo) {
-          await appCreditsService.reconcileCredits({
-            appId: appCreditsInfo.appId,
-            userId: user.id,
-            estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-            actualBaseCost: billing.totalCost,
-            description: `Chat reconciliation: ${model}`,
-            metadata: { model, provider, billingSource, streaming: true },
-          });
-        }
 
         const usageRecord = await recordUsageAnalytics(
           billingContext,
@@ -1693,7 +1685,12 @@ async function handleStreamingRequest(
           const errorChunk = {
             error: {
               message: error instanceof Error ? error.message : String(error),
-              type: "rate_limit_error",
+              // Same status→type mapping as the non-streaming path — a
+              // hardcoded "rate_limit_error" here mislabeled every mid-stream
+              // provider failure (schema 400s, upstream 5xx) as rate limiting,
+              // steering OpenAI-compatible clients into pointless back-off
+              // retries.
+              type: openAiErrorTypeForStatus(status),
               code: status,
             },
           };
@@ -1742,9 +1739,6 @@ async function handleNonStreamingRequest(
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo:
-    | { appId: string; estimatedBaseCost: number; app: unknown }
-    | undefined,
   affiliateCode: string | null,
   idempotencyKey: string,
   requestId: string,
@@ -1844,18 +1838,6 @@ async function handleNonStreamingRequest(
         };
         const billing = await billUsage(billingContext, result.usage);
         const reconciliation = await settleReservation(billing.totalCost);
-
-        // Handle app credits
-        if (appCreditsInfo) {
-          await appCreditsService.reconcileCredits({
-            appId: appCreditsInfo.appId,
-            userId: user.id,
-            estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-            actualBaseCost: billing.totalCost,
-            description: `Chat: ${model}`,
-            metadata: { model, provider, billingSource, streaming: false },
-          });
-        }
 
         const usageRecord = await recordUsageAnalytics(
           billingContext,

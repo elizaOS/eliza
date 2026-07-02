@@ -4,6 +4,8 @@ import {
   runSupervisorTick,
   type SupervisorTaskView,
   statusEmoji,
+  supervisorStalenessLabel,
+  TaskSupervisorService,
 } from "../../src/services/task-supervisor-service.js";
 
 const ROOM_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -137,5 +139,103 @@ describe("runSupervisorTick (#8900)", () => {
     expect(seen.has(ROOM_A)).toBe(false);
     const second = await runSupervisorTick(views, send, seen);
     expect(second.posted).toEqual([ROOM_A]); // retried successfully
+  });
+
+  it("re-posts a STUCK task when its staleness band escalates (not deduped silent)", async () => {
+    const send = vi.fn(async () => undefined);
+    const seen = new Map<string, string>();
+    // First tick: task is fresh (no staleness) → posts.
+    const first = await runSupervisorTick(
+      [view({ id: "t1", status: "active" })],
+      send,
+      seen,
+    );
+    expect(first.posted).toEqual([ROOM_A]);
+    // Same task, same status/sessions, but now idle 8m+ (a stall) → the digest
+    // changes and it RE-POSTS, instead of being deduped into silence.
+    const second = await runSupervisorTick(
+      [view({ id: "t1", status: "active", staleness: "⏳ idle 8m+" })],
+      send,
+      seen,
+    );
+    expect(second.posted).toEqual([ROOM_A]);
+  });
+});
+
+describe("supervisorStalenessLabel (#8900)", () => {
+  const t0 = 1_000_000_000_000;
+  const min = (m: number) => t0 - m * 60_000;
+  it("returns undefined when fresh or activity time is unknown", () => {
+    expect(supervisorStalenessLabel(min(1), t0)).toBeUndefined();
+    expect(supervisorStalenessLabel(null, t0)).toBeUndefined();
+    expect(supervisorStalenessLabel(undefined, t0)).toBeUndefined();
+    expect(supervisorStalenessLabel(0, t0)).toBeUndefined();
+  });
+  it("escalates through coarse bands as idle time grows", () => {
+    expect(supervisorStalenessLabel(min(4), t0)).toBe("⏳ idle 3m+");
+    expect(supervisorStalenessLabel(min(10), t0)).toBe("⏳ idle 8m+");
+    expect(supervisorStalenessLabel(min(25), t0)).toBe("⏳ idle 20m+");
+    expect(supervisorStalenessLabel(min(90), t0)).toBe("⚠️ stalled 45m+");
+  });
+  it("folds into the digest line", () => {
+    const digest = composeRoomDigest([
+      view({
+        id: "t1",
+        label: "grind",
+        status: "active",
+        staleness: "⏳ idle 8m+",
+      }),
+    ]);
+    expect(digest).toContain("grind — active (1 running) ⏳ idle 8m+");
+  });
+});
+
+describe("TaskSupervisorService.runOnce resilience", () => {
+  function runtimeWith(taskSvc: unknown) {
+    return {
+      getService: (type: string) =>
+        type === "ORCHESTRATOR_TASK_SERVICE" ? taskSvc : undefined,
+      sendMessageToTarget: async () => undefined,
+      // Supervisor disabled → start() does not arm the interval timer.
+      getSetting: (k: string) =>
+        k === "ELIZA_ORCHESTRATOR_SUPERVISOR" ? "0" : undefined,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    } as never;
+  }
+
+  it("swallows a throwing task service instead of rejecting (no unhandled rejection per tick)", async () => {
+    const svc = await TaskSupervisorService.start(
+      runtimeWith({
+        listTasks: async () => {
+          throw new Error("db exploded");
+        },
+        getTaskOriginTarget: async () => null,
+      }),
+    );
+    await expect(svc.runOnce()).resolves.toEqual({ posted: [], skipped: [] });
+    await svc.stop();
+  });
+
+  it("still posts a digest on a healthy tick", async () => {
+    const svc = await TaskSupervisorService.start(
+      runtimeWith({
+        listTasks: async () => [
+          {
+            id: "t1",
+            title: "Alpha",
+            status: "active",
+            activeSessionCount: 1,
+            latestSessionLabel: "codex",
+          },
+        ],
+        getTaskOriginTarget: async () => ({
+          roomId: ROOM_A,
+          source: "telegram",
+        }),
+      }),
+    );
+    const result = await svc.runOnce();
+    expect(result.posted).toEqual([ROOM_A]);
+    await svc.stop();
   });
 });
