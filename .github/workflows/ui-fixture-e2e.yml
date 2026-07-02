@@ -1,0 +1,125 @@
+name: UI Fixture E2E
+
+# #9310 section 3.16: the packages/ui fixture e2e runners (src/**/__e2e__/run-*.mjs)
+# esbuild-bundle REAL shipped components into a self-contained page and drive
+# them with real input in headless Chromium: no app server, no credentials,
+# fully deterministic. All were verified to run locally, but only the chat
+# gesture trio (ui-e2e-gate.yml), the swipe/perf set (chat-shell-gestures.yml),
+# and tutorial/perf-gate (test.yml) had CI legs; the ten runners below were
+# wired to NO workflow, so a regression in the agent-surface bridge, bottombar,
+# ambient background, background/launcher/connectors pages, view lifecycle, or
+# chat widgets could only be caught by hand. This gates them on packages/ui
+# changes. Mirrors ui-e2e-gate.yml (lean bun workspace + Playwright Chromium;
+# the runners self-bundle from source, so no dist build is needed).
+#
+# fused-wake is keyless too: it self-skips (exit 0 + ::notice::) unless the
+# prebuilt libwakeword + hey-eliza models are staged, so on this runner it
+# documents the skip instead of silently not existing.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/ui/src/**"
+      - ".github/workflows/ui-fixture-e2e.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/ui/src/**"
+
+concurrency:
+  group: ui-fixture-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  fixture-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      # Agent capability bridge: synthetic fixture + REAL plugin-task-coordinator
+      # components driven purely through window.__agentSurface.
+      - name: Agent-surface bridge e2e
+        run: bun run --cwd packages/ui test:agent-surface-e2e
+
+      # Chromeless desktop bottom bar (#9953): resting -> open -> type -> vision flow.
+      - name: Bottombar e2e
+        run: bun run --cwd packages/ui test:bottombar-e2e
+
+      # /chat ambient background: pulse phases + reduced-motion still.
+      - name: Chat ambient background e2e
+        run: bun run --cwd packages/ui test:chat-ambient-e2e
+
+      # Unified app background: swatch/upload/agent-apply/undo/redo chain.
+      - name: Background view e2e
+        run: bun run --cwd packages/ui test:background-e2e
+
+      # Launcher view: tiles, tap-launch, long-press edit, page-nav, telemetry.
+      - name: Launcher e2e
+        run: bun run --cwd packages/ui test:launcher-e2e
+
+      # Connector card config/setup-panel co-rendering (#10705).
+      - name: Connectors page e2e
+        run: bun run --cwd packages/ui test:connectors-e2e
+
+      # View lifecycle contract (#10202): LRU retention, pause, evict, leaks.
+      - name: View lifecycle e2e
+        run: bun run --cwd packages/ui test:view-lifecycle-e2e
+
+      # OrchestratorAccountsView render states with a clean console.
+      - name: Orchestrator accounts widget e2e
+        run: bun run --cwd packages/ui test:orchestrator-accounts-e2e
+
+      # First-time-user welcome lifecycle (#9959): show once, retire, persist.
+      - name: FTU home widget e2e
+        run: bun run --cwd packages/ui test:ftu-home-e2e
+
+      # Full-chain fused wake (#10351): self-skips with ::notice:: unless
+      # libwakeword + hey-eliza models are staged on the runner.
+      - name: Fused-wake integration e2e (self-skipping)
+        run: bun run --cwd packages/ui test:fused-wake-integration-e2e
+
+      - name: Upload fixture e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ui-fixture-e2e-output
+          path: |
+            packages/ui/src/agent-surface/__e2e__/output
+            packages/ui/src/components/shell/__e2e__/output
+            packages/ui/src/components/shell/__e2e__/output-bottombar
+            packages/ui/src/components/pages/__e2e__/output-background
+            packages/ui/src/components/pages/__e2e__/output-launcher
+            packages/ui/src/components/pages/__e2e__/output-connectors
+            packages/ui/src/components/views/__e2e__/output-view-lifecycle
+            packages/ui/src/components/chat/widgets/__e2e__/output
+            packages/ui/src/components/chat/widgets/__e2e__/output-ftu
+          retention-days: 14
+          if-no-files-found: ignore
