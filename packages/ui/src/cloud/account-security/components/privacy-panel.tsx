@@ -4,8 +4,7 @@
  *   - trajectory logging toggle (local consent store)
  *   - data export   GET  /api/v1/me/export        (DSR right-to-export)
  *   - delete account POST /api/v1/me/delete-request (DSR right-to-erasure)
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/security/_components/privacy-panel.tsx`.
+ *
  * Keeps the 404-graceful "coming soon" pattern for the DSR endpoints.
  */
 

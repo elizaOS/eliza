@@ -1,7 +1,6 @@
 /**
  * Authentication error page (public). Maps a `?reason=` query to a friendly
- * message and offers retry / home. Ported from
- * `@elizaos/cloud-frontend/src/pages/auth/error/page.tsx`.
+ * message and offers retry / home.
  */
 
 import { AlertCircle, Home, RefreshCw } from "lucide-react";

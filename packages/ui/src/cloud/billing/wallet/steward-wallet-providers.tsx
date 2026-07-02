@@ -1,14 +1,13 @@
 /**
  * The wallet provider tree (wagmi + RainbowKit + Solana wallet adapters).
  *
- * Ported from `@elizaos/cloud-frontend/src/pages/login/steward-wallet-providers.tsx`.
  * Loaded only behind {@link ConditionalWalletProviders}'s lazy boundary so the
  * heavy wallet vendor chunks never enter the entry bundle.
  *
  * NOTE: RainbowKit's stylesheet (`@rainbow-me/rainbowkit/styles.css`) is NOT
  * imported here — the app shell owns CSS and this module is `index.ts`-free by
- * design. FOLLOW-UP: the host/cloud-ui CSS entry should `@import` it (as
- * cloud-frontend's `globals.css` does) so the RainbowKit modal renders styled.
+ * design; the host/cloud-ui CSS entry must `@import` the RainbowKit styles for
+ * the modal to render styled.
  */
 
 import { BRAND_COLORS } from "@elizaos/shared/brand";

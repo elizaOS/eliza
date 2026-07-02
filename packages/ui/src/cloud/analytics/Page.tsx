@@ -1,8 +1,6 @@
 /**
  * `/dashboard/analytics` — per-user usage metrics + cost projections.
  *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/analytics/Page.tsx`.
- *
  * THE "WEEKLY BUG" FIX: the original hardcoded `timeRange = "weekly"` in local
  * state and never read the filter UI, so the `AnalyticsFilters` control (which
  * writes to the URL search params) had no effect — the page always showed the

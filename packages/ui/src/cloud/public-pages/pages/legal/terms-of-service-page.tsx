@@ -1,10 +1,6 @@
 /**
- * Terms of Service (public, static). Ported from
- * `@elizaos/cloud-frontend/src/pages/terms-of-service/page.tsx`.
- *
- * Change vs source: the cloud-frontend marketing `LandingHeader` / `Footer`
- * chrome is dropped (that landing subsystem stays on `eliza.app` and is not part
- * of this domain). A simple back-link header replaces it.
+ * Terms of Service (public, static). Renders with a simple back-link header —
+ * the marketing landing chrome lives on `eliza.app`, not in this domain.
  */
 
 import { ArrowLeft } from "lucide-react";

@@ -1,11 +1,6 @@
 /**
- * Empty state for the agent library when no cloud agent exists yet.
- * Ported from
- * `@elizaos/cloud-frontend/src/components/my-agents/empty-state.tsx` with the
- * brand fix: the original CTA used an orange→black hover
- * (`hover:bg-black hover:text-white`), which violates the app rule (orange
- * resting → darker-orange hover, never orange→black). BrandButton's default
- * primary hover (darker orange) is used instead.
+ * Empty state for the agent library when no cloud agent exists yet. Uses
+ * BrandButton's default primary hover (darker orange).
  */
 "use client";
 

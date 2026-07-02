@@ -1,7 +1,6 @@
 /**
  * Third-party app OAuth-authorize page (public). Reuses the cloud-ui
- * `AuthorizeContent` component (the shared authorize UI). Ported from
- * `@elizaos/cloud-frontend/src/pages/app-auth/authorize/page.tsx`.
+ * `AuthorizeContent` component (the shared authorize UI).
  *
  * `AuthorizeContent` calls `useAuth()` / renders `<StewardLogin>` from
  * `@stwd/react`, both of which require an ancestor Steward `<StewardProvider>`.

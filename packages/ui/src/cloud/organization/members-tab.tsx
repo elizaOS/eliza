@@ -1,11 +1,7 @@
 /**
  * Members tab component for managing organization members and invites.
  * Displays current members, pending invites, and provides invite functionality.
- *
- * Ported from `@elizaos/cloud-frontend`; the component's hand-rolled
- * `useState`/`useEffect` fetchers + per-action `fetch()` calls are replaced by
- * the React-Query hooks in `./data/use-organization` (typed client + automatic
- * invalidation). RBAC (owner > admin > member) and toast UX are unchanged.
+ * RBAC: owner > admin > member.
  *
  * @param props - Members tab configuration
  * @param props.user - User data with organization information

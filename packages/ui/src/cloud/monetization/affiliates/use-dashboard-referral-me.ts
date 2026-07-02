@@ -1,7 +1,5 @@
 /**
- * Hook to fetch + manage referral data for the affiliates surface. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/affiliates/_components/use-dashboard-referral-me.ts`,
- * rewired onto the local {@link fetchReferralMe} (typed cloud `api` client).
+ * Hook to fetch + manage referral data for the affiliates surface.
  *
  * Stale-while-revalidate: on `refetch()`, `loadingReferral` becomes true while
  * `referralMe` retains its previous value, so the UI shows existing data with a

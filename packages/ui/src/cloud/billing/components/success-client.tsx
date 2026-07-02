@@ -19,12 +19,7 @@ async function getCreditBalance(): Promise<number> {
   return data.balance;
 }
 
-interface CreditBalanceDisplayProps {
-  sessionId?: string;
-  creditsAdded?: number;
-}
-
-export function CreditBalanceDisplay(_props: CreditBalanceDisplayProps) {
+export function CreditBalanceDisplay() {
   const t = useCloudT();
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);

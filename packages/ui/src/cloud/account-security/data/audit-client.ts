@@ -5,8 +5,7 @@
  * before persisting via the canonical `AuditDispatcher`; the client only carries
  * action + result + metadata.
  *
- * Ported from `@elizaos/cloud-frontend/src/lib/security/audit-client.ts`. The
- * cloud-api side of this endpoint may not exist yet, so callers degrade
+ * The cloud-api side of this endpoint may not exist yet, so callers degrade
  * gracefully: this helper never throws and returns `false` when delivery fails.
  */
 

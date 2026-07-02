@@ -1,9 +1,7 @@
 /**
- * Local en-US USD formatter for the cloud surfaces. cloud-frontend imported
- * `formatUsd` from a cloud-shared package; ported locally here to avoid pulling a
- * server bundle into the client.
- *
- * Canonical shared copy for all cloud domains.
+ * Local en-US USD formatter for the cloud surfaces — canonical shared copy for
+ * all cloud domains (kept local so the client never pulls a server bundle for
+ * one formatter).
  */
 export function formatUsd(value: number | string | null | undefined): string {
   const amount = typeof value === "string" ? Number.parseFloat(value) : value;

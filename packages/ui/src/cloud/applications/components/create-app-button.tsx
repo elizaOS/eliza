@@ -1,6 +1,5 @@
 /**
- * Create-app trigger button + dialog. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/create-app-button.tsx`.
+ * Create-app trigger button + dialog.
  */
 
 import { Plus } from "lucide-react";

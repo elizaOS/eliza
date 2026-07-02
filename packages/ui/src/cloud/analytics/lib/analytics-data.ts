@@ -1,15 +1,6 @@
 /**
  * Analytics data hooks for the app-hosted Eliza Cloud analytics view.
  *
- * Ported from `@elizaos/cloud-frontend/src/lib/data/analytics.ts` and rewired
- * onto the shared cloud infra under `@elizaos/ui/cloud`:
- *   - typed `api<T>` client     → `../../lib/api-client`
- *   - canonical response DTOs   → `@elizaos/cloud-shared/types`
- *   - auth-query gate           → `./auth-query` (consumes the cloud shell's
- *                                 LocalStewardAuthContext)
- *
- * The response shapes are the canonical `EnhancedAnalyticsDataDto` /
- * `ProjectionsDataDto` from cloud-shared — we do not hand-roll local interfaces.
  * `DateLike` fields arrive over the wire as ISO strings; `Page.tsx` adapts them
  * to `Date` before rendering.
  *

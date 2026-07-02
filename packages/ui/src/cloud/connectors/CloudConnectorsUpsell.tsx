@@ -5,10 +5,7 @@
  * This component reads the app store (`useAppSelectorShallow`) and therefore may
  * ONLY be mounted under `<AppProvider>`. The Settings section adapter
  * ({@link CloudConnectorsSettingsBody}) renders inside the app shell, which
- * supplies that provider. The standalone cloud route mounts
- * `CloudConnectorsSection` directly under `CloudRouterShell` (no AppProvider),
- * so it must never reach this component — the branch below lives in the
- * app-shell adapter, not in `CloudConnectorsSection`.
+ * supplies that provider.
  */
 
 "use client";
@@ -161,8 +158,7 @@ function CloudConnectorsUpsell(): React.JSX.Element {
  * Settings-section body: when Eliza Cloud is connected, render the canonical
  * connectors surface; otherwise render the upsell. This branch reads the app
  * store and so is only valid under `<AppProvider>` (the app-shell Settings
- * view). The standalone cloud route renders `CloudConnectorsSection` directly
- * and never mounts this component.
+ * view).
  */
 export function CloudConnectorsSettingsBody(): React.JSX.Element {
   const elizaCloudConnected = useAppSelectorShallow(

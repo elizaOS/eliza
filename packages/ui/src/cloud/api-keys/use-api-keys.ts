@@ -1,9 +1,7 @@
 /**
- * React Query hook for the authenticated user's API keys.
- *
- * Ported from `@elizaos/cloud-frontend/src/lib/data/api-keys.ts`. Calls the
- * shared cloud `api<T>` client (`/api/v1/api-keys`) and gates on the Steward
- * session via {@link useAuthenticatedQueryGate}. Mutations on the keys page
+ * React Query hook for the authenticated user's API keys. Calls the shared
+ * cloud `api<T>` client (`/api/v1/api-keys`) and gates on the Steward session
+ * via {@link useAuthenticatedQueryGate}. Mutations on the keys page
  * invalidate the `["api-keys"]` query key directly, so a long stale window is
  * safe.
  */

@@ -1,5 +1,5 @@
 /**
- * In-app Eliza Cloud settings sections (re-IA Step 2).
+ * In-app Eliza Cloud settings sections.
  *
  * This barrel is intentionally side-effect free. Hosts that expose the Cloud
  * dashboard inside Settings must call {@link registerCloudSettingsSections}

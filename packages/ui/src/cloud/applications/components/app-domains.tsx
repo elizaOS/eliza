@@ -1,8 +1,6 @@
 /**
  * Application detail — Domains tab (subdomain + custom domain + DNS verify).
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-domains.tsx`. The
- * domain list/add/remove/status `fetch` calls are routed through the typed `api`
+ * The domain list/add/remove/status calls are routed through the typed `api`
  * client.
  */
 

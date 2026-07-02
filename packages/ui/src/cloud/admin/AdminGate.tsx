@@ -2,10 +2,9 @@
  * Role gate + chrome for the in-app Eliza Cloud admin surfaces.
  *
  * Every admin route (`/dashboard/admin*`) wraps its body in {@link AdminGate}.
- * In `@elizaos/cloud-frontend` this lived in `dashboard/admin/Layout.tsx` as a
- * nested-route `<Outlet>` parent; the app shell mounts each cloud route flat
- * against the route registry (no shared `<Outlet>` parent), so the gate is a
- * component each route composes with instead.
+ * The app shell mounts each cloud route flat against the route registry (no
+ * shared `<Outlet>` parent), so the gate is a component each route composes
+ * with instead of a nested-route layout.
  *
  * Gate decisions come from {@link useAdminGate} (the single source of truth:
  * the moderation HEAD endpoint, with the documented dev bypass). This file owns

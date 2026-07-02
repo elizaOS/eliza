@@ -1,7 +1,6 @@
 /**
  * Toast adapter for the API Explorer surface. Wraps `sonner` with the
- * `{ message, mode }` shape the ported components expect. Ported verbatim from
- * `@elizaos/cloud-frontend/src/lib/utils/toast-adapter.ts`.
+ * `{ message, mode }` shape the explorer components expect.
  */
 
 import { toast as sonnerToast } from "sonner";

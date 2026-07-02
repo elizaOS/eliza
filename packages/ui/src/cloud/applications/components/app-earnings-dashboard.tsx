@@ -1,6 +1,5 @@
 /**
- * Application detail — Earnings tab. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-earnings-dashboard.tsx`.
+ * Application detail — Earnings tab.
  * GET `/api/v1/apps/:id/earnings` goes through the typed `api` client.
  */
 

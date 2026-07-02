@@ -2,8 +2,6 @@
  * Analytics filters: aggregation (time-range bucket) selector + preset date
  * ranges, synced to the URL search params.
  *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/analytics/_components/filters.tsx`.
- *
  * BUG-FIX NOTE (the "weekly bug"): the original UI wrote `granularity` /
  * `startDate` / `endDate` to the URL, but the breakdown endpoint
  * (`/api/analytics/breakdown`) only honors a coarse `timeRange`

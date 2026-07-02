@@ -1,18 +1,10 @@
 /**
- * API keys management view (app-hosted Eliza Cloud surface).
+ * API keys management view (app-hosted Eliza Cloud surface). Renders the key
+ * summary, table, create dialog with rate-limit presets, the one-time
+ * secret-reveal dialog, and the disable/enable/delete/regenerate confirmation
+ * flow.
  *
- * Lifted from `@elizaos/cloud-frontend/src/dashboard/api-keys/_components/
- * api-keys-page-client.tsx`. Renders the key summary, table, create dialog with
- * rate-limit presets, the one-time secret-reveal dialog, and the
- * disable/enable/delete/regenerate confirmation flow.
- *
- * Migration notes:
- * - All chrome is imported from the cloud-ui bundle (`@elizaos/ui/cloud-ui`) via
- *   deep source paths instead of the cloud-frontend root barrel.
- * - i18n goes through the cloud shell's `useCloudT()`.
- * - Mutations use the shared cloud `apiFetch` client (auth injection +
- *   structured `ApiError`) and invalidate the react-query key, replacing the
- *   raw `fetch` + manual `response.ok` plumbing.
+ * Notes:
  * - There is no row-level "copy key" action: the full secret is only ever
  *   shown once, in the post-create reveal dialog (copyable via `handleCopyKey`).
  *   A stored key exposes only its public prefix, so copying it is pointless.

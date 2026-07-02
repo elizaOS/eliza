@@ -1,8 +1,6 @@
 /**
  * Google Services cloud connector (OAuth-redirect).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/google-connection.tsx`.
  * Imports the ConnectionCard family from `cloud-ui` and the cloud i18n + OAuth
  * hook from the app-hosted cloud surfaces.
  */

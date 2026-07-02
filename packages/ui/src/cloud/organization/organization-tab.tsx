@@ -1,10 +1,7 @@
 /**
  * Organization settings tab — overview header + Members / Credentials / General
- * sub-tabs.
- *
- * Ported from `@elizaos/cloud-frontend`; imports retargeted to the app-hosted
- * cloud-ui bundle + local DTO contract. Pure presentational shell: it receives a
- * resolved `UserWithOrganizationDto` and renders the org overview + nested tabs.
+ * sub-tabs. Pure presentational shell: it receives a resolved
+ * `UserWithOrganizationDto` and renders the org overview + nested tabs.
  *
  * Deep-link intent (connect-link UX, #11332 design §5): `?tab=credentials`
  * selects the Credentials tab and `?contribute=1` opens the contribute modal —

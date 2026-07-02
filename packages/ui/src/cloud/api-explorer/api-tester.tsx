@@ -4,8 +4,6 @@
  * cloning, JSON body for everything else), shows the response (JSON / audio /
  * headers), and generates a copyable cURL command.
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/api-explorer/_components/api-tester.tsx`.
  * The request uses a raw `fetch` on purpose: it targets an arbitrary endpoint
  * path with a user-supplied Bearer key, custom headers, and multipart/audio
  * bodies — none of which fit the same-origin JSON-only typed `api<T>` client.

@@ -1,17 +1,6 @@
 /**
  * /dashboard/admin/redemptions — review and approve token redemption requests.
  *
- * Lifted from `@elizaos/cloud-frontend/src/dashboard/admin/_components/redemptions-client.tsx`
- * (+ its `redemptions-wrapper.tsx` / `redemptions/Page.tsx` shells, folded into
- * this single page). Rewired:
- *   - raw `fetch()` → typed `api<T>` / `apiFetch` from the app cloud client
- *     (Steward token + same-origin), with react-query for the list/status reads.
- *   - `window` reload-style refetch → react-query `invalidateQueries`.
- *   - `useT` → `useCloudT`; `formatUsd` ported locally (no `@elizaos/shared`
- *     server-bundle subpath in `@elizaos/ui`).
- *   - hardcoded `bg-zinc-900` dialog skins + `text-[var(--brand-orange)]` →
- *     design tokens (`text-accent`, default dialog surface).
- *
  * The redemption queue + payout system status come from the admin redemptions
  * endpoint (`/api/admin/redemptions`) and the public redemptions status probe
  * (`/api/v1/redemptions/status`). The route-level {@link AdminGate} owns the

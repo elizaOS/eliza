@@ -1,6 +1,5 @@
 /**
- * Cloud connectors surface — the canonical port of the cloud-frontend
- * `ConnectionsTab` (Messaging & Communication + Channels groups).
+ * Cloud connectors surface (Messaging & Communication + Channels groups).
  *
  * These are the CLOUD-hosted connectors (OAuth-redirect + token-credential),
  * distinct from the local-process `ConnectorsSection`. The surface is designed

@@ -1,8 +1,6 @@
 /**
  * Typed fetch wrapper for the cloud surfaces hosted inside the Eliza app.
- * Ported verbatim (framework-agnostic) from `@elizaos/cloud-frontend`'s
- * `src/lib/api-client.ts`. Every `/api/*` call routed through here gets a single
- * place that:
+ * Every `/api/*` call routed through here gets a single place that:
  *
  * - injects credentials (the steward-token cookie + `Authorization: Bearer`
  *   from localStorage when present)
@@ -106,10 +104,7 @@ function getApiBaseUrl(): string {
 
   // Deliberately same-origin-only in the (web) browser: every `/api/*` call rides
   // the page's own origin so the steward-token cookie + Bearer header stay scoped
-  // to Eliza Cloud. There is intentionally NO cross-origin fetch bridge here (the
-  // legacy cloud-frontend SPA had one — `installApiFetchBridge` — alongside its
-  // Pages proxy, which created two transports with contradictory cookie scoping;
-  // the app never adopted that, so that dual-path concern does not exist here).
+  // to Eliza Cloud. There is intentionally NO cross-origin fetch bridge here;
   // `resolveApiUrl` below enforces this by throwing on any cross-origin URL.
   if (typeof window !== "undefined") return "";
 

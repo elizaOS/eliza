@@ -1,7 +1,6 @@
 /**
  * Lazy Steward runtime — the heavy `@stwd/sdk` / `@stwd/react` chunk.
  *
- * Ported from `@elizaos/cloud-frontend/src/providers/StewardProviderRuntime.tsx`.
  * Loaded only by {@link StewardAuthProvider} when a token is present or the
  * route needs auth, so the wallet/Steward stack never lands on the first-paint
  * critical path (and never in the native bundle — the whole shell is

@@ -1,6 +1,5 @@
 /**
- * Application detail — Overview tab. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-overview.tsx`.
+ * Application detail — Overview tab.
  * Bare same-origin `fetch` is routed through the typed `api`/`regenerateAppApiKey`
  * helpers so the Steward Bearer token is attached on every target.
  */

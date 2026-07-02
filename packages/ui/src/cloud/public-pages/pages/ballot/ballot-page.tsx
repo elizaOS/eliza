@@ -1,8 +1,7 @@
 /**
  * Hosted public page for a secret-ballot vote submission. Participants reach
  * this page from a DM-delivered scoped-token URL, paste their token, and vote.
- * The POST is unauthenticated and gated on the token hash server-side. Ported
- * from `@elizaos/cloud-frontend/src/pages/ballot/[ballotId]/page.tsx`.
+ * The POST is unauthenticated and gated on the token hash server-side.
  */
 
 import { AlertCircle, CheckCircle2, Loader2, Vote } from "lucide-react";

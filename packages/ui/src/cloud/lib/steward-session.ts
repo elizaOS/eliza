@@ -4,8 +4,8 @@
  * Thin adapter over the canonical client in
  * `@elizaos/shared/steward-session-client` — the single source of truth for the
  * storage-key names, request/response/error shapes, and read/write/clear
- * helpers shared across os-homepage, cloud-frontend, and the cloud-api route
- * handlers. We re-export the browser-safe surface the cloud domain modules need
+ * helpers shared with the cloud-api route handlers. We re-export the
+ * browser-safe surface the cloud domain modules need
  * so they import from one place inside `@elizaos/ui/cloud` instead of reaching
  * into `@elizaos/shared` directly.
  *

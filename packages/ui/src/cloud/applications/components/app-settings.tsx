@@ -1,7 +1,6 @@
 /**
  * Application detail — Settings tab (edit fields, allowed origins, danger zone).
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-settings.tsx`.
+ *
  * Bare `fetch` is replaced with the typed `updateApp` / `regenerateAppApiKey` /
  * `deleteApp` helpers; the single-app + list query keys are invalidated after a
  * save/delete so the detail page and list reflect changes without a full reload.

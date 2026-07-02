@@ -1,7 +1,6 @@
 /**
  * Login `returnTo` resolution for the app-hosted Steward login surface.
  *
- * Ported from `@elizaos/cloud-frontend/src/pages/login/login-return-to.ts`.
  * Sanitizes + persists the post-login destination across the OAuth redirect
  * round-trip (which can't carry it in the OAuth `redirect_uri`).
  */

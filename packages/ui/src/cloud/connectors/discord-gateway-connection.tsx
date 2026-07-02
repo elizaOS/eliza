@@ -1,8 +1,6 @@
 /**
  * Discord Gateway Bot cloud connector (multi-connection CRUD).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/discord-gateway-connection.tsx`.
  * Raw `fetch` calls (list/create/patch/delete connections + character list) are
  * swapped for the cloud {@link api} client so the steward Bearer token is
  * injected on native targets.

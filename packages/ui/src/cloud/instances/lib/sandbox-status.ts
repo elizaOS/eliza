@@ -3,7 +3,7 @@
  * status display.
  *
  * Ported from `@elizaos/cloud-shared/lib/constants/sandbox-status.ts` with the
- * brand fix required by the app design rules (DECISIONS.md / root AGENTS.md):
+ * brand fix required by the app design rules (root AGENTS.md):
  * **no blue anywhere**. The shared version painted the "provisioning" state
  * `bg-blue-400` / `bg-blue-500` — here it uses the brand orange instead, which
  * also reads correctly as "work in progress" alongside the amber "pending" and

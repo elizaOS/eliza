@@ -3,8 +3,7 @@
  *
  * Reads the redacted public view from /api/v1/payment-requests/:id?public=1 and
  * presents a single "Pay" button that delegates to the provider's checkout.
- * Renders WITHOUT the app shell chrome. Ported from
- * `@elizaos/cloud-frontend/src/pages/payment/[paymentRequestId]/page.tsx`.
+ * Renders WITHOUT the app shell chrome.
  */
 
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";

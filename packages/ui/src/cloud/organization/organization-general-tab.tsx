@@ -1,9 +1,7 @@
 /**
  * Organization general tab — read-only organization details + billing summary.
- *
- * Ported from `@elizaos/cloud-frontend`. Intentionally read-only: Eliza Cloud
- * has no organization-rename flow, so this surface displays name/slug/status/
- * balance but never edits them.
+ * Intentionally read-only: Eliza Cloud has no organization-rename flow, so this
+ * surface displays name/slug/status/balance but never edits them.
  *
  * @param props - Organization general tab configuration
  * @param props.organization - Organization data to display

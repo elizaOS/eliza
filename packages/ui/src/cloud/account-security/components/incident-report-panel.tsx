@@ -1,7 +1,6 @@
 /**
  * Report a security incident: POST /api/v1/security/incident, falling back to a
- * mailto: when the endpoint isn't built yet. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/security/_components/incident-report-panel.tsx`.
+ * mailto: when the endpoint isn't built yet.
  */
 
 import { useState } from "react";

@@ -1,8 +1,6 @@
 /**
  * Create App dialog — name + app_url + smart defaults.
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/create-app-dialog.tsx`.
  * The bare `fetch` calls (check-name + create) are routed through the typed
  * `checkAppNameAvailable()` / `createApp()` helpers so the Steward Bearer token
  * is attached; on success the apps list is invalidated and the user is sent to

@@ -1,7 +1,6 @@
 /**
  * Auth manager for the API Explorer: displays the auto-minted explorer key with
- * a visibility toggle, copy, and an override field for a custom key. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/api-explorer/_components/auth-manager.tsx`.
+ * a visibility toggle, copy, and an override field for a custom key.
  * The "API calls are billed" notice is kept — explorer calls hit real billed
  * endpoints.
  */

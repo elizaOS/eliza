@@ -1,7 +1,5 @@
 /**
  * Agent / sandbox status polling hooks.
- * Ported verbatim from
- * `@elizaos/cloud-frontend/src/hooks/use-sandbox-status-poll.ts`.
  *
  * - {@link useSandboxStatusPoll} polls a single agent until it reaches a
  *   terminal state (used by the create-agent dialog's progress view).

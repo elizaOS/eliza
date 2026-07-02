@@ -1,8 +1,8 @@
 /**
  * Lightweight document-title setter for the app-hosted public cloud pages.
  *
- * Replaces cloud-frontend's `<Helmet>` usage: `@elizaos/ui` does not depend on
- * `react-helmet-async`, and these public routes only need to set the page title
+ * `@elizaos/ui` does not depend on `react-helmet-async`, and these public
+ * routes only need to set the page title
  * (and occasionally a robots/description meta) while mounted. On unmount the
  * previous title is restored so navigating away (back to the app shell) doesn't
  * leave the public page's title behind.

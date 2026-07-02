@@ -1,8 +1,6 @@
 /**
  * Twilio SMS & Voice cloud connector (token-credential).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/twilio-connection.tsx`.
  * Raw `fetch` connect/disconnect calls are swapped for the cloud {@link api}
  * client so the steward Bearer token is injected on native targets.
  */

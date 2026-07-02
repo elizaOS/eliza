@@ -1,8 +1,6 @@
 /**
  * Telegram Bot cloud connector (token-credential).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/telegram-connection.tsx`.
  * Raw `fetch` connect/disconnect calls are swapped for the cloud {@link api}
  * client so the steward Bearer token is injected on native targets. The
  * "Next: Start chatting" callout `tone="blue"` is fixed to neutral `tone="muted"`.

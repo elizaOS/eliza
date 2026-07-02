@@ -8,18 +8,15 @@
  *   - `dashboard/my-agents`         → character library + agent console
  *
  * Each page is code-split via `React.lazy` so its bundle (create-agent dialog,
- * wallet/transactions tabs, log viewers, recharts-free) only loads when the
- * route is opened. The routes register themselves against the shell's
- * cloud-route registry as an import side effect, mirroring the analytics /
- * api-keys domains. The Wave-3 settings section and the app shell can also
- * consume the exported page components directly.
+ * wallet/transactions tabs, log viewers) only loads when the route is opened.
+ * The routes register themselves against the shell's cloud-route registry as
+ * an import side effect.
  *
- * The cloud shell already mounts the `/dashboard/containers*` →
- * `/dashboard/agents*` compat redirects, so legacy deep links resolve here.
+ * The cloud shell mounts the `/dashboard/containers*` → `/dashboard/agents*`
+ * compat redirects, so legacy container deep links resolve here.
  *
- * ADDED in the migration (backend already supported, UI did not): Sleep / Wake
- * controls on the agent detail actions (deep cold suspend that frees the compute
- * slot via `POST /sleep`, and `POST /wake`).
+ * The agent detail actions include Sleep / Wake controls (deep cold suspend
+ * that frees the compute slot via `POST /sleep`, and `POST /wake`).
  */
 
 import { lazy } from "react";

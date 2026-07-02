@@ -1,6 +1,5 @@
 /**
  * Instances page (`/dashboard/agents`) — the hosted agent management table.
- * Ported from `@elizaos/cloud-frontend/src/dashboard/agents/Page.tsx`.
  */
 
 import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";

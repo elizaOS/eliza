@@ -1,7 +1,6 @@
 /**
  * Login page (public) — Steward is the sole auth provider. Renders the lazy
- * Steward login section with the terms/privacy links. Ported from
- * `@elizaos/cloud-frontend/src/pages/login/page.tsx`.
+ * Steward login section with the terms/privacy links.
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";

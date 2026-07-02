@@ -1,28 +1,12 @@
 /**
  * Admin cloud domain — barrel + route registration.
  *
- * Business-admin surfaces moved in-app behind ONE consolidated role gate
- * (DECISIONS.md / PLAN.md §3 "Admin split"). Lifted from
- * `@elizaos/cloud-frontend/src/dashboard/admin/*`:
- *
- *   - Moderation  → `dashboard/admin`             (`/api/v1/admin/moderation`)
- *   - Redemptions → `dashboard/admin/redemptions` (`/api/admin/redemptions`,
- *                                                   `/api/v1/redemptions/status`)
- *   - RPC status  → `dashboard/admin/rpc-status`  (`/admin/rpc-status`)
- *
- * The infra dashboard (3252-line `infrastructure-dashboard.tsx`) and the metrics
- * console are intentionally NOT ported — they stay a separate internal ops
- * console (super_admin + `ssh2` Node-only, 501-stubbed on Workers) and add
- * nothing to the consumer app.
- *
- * Role gate consolidation: cloud-frontend had two parallel admin hooks
- * (`lib/data/admin.ts` + `hooks/use-admin.ts`) and four dev-bypass conventions.
- * Here {@link useAdminGate} is the single source of truth — the moderation HEAD
+ * Business-admin surfaces, behind ONE consolidated role gate:
+ * {@link useAdminGate} is the single source of truth — the moderation HEAD
  * endpoint (`X-Is-Admin` / `X-Admin-Role`) with the documented dev rule
- * (local dev: any authed user is super_admin; prod: the role gate decides). Every
- * route wraps its body in {@link AdminGate}, which also renders the shared admin
- * sub-nav. These paths have NO compat redirect in `CloudRouterShell`, so
- * registering them at import time is safe and preserves the deep-link contract.
+ * (local dev: any authed user is super_admin; prod: the role gate decides).
+ * Every route wraps its body in {@link AdminGate}, which also renders the
+ * shared admin sub-nav.
  */
 
 import { lazy } from "react";

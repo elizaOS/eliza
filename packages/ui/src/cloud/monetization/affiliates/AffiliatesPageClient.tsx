@@ -1,14 +1,5 @@
 /**
- * Affiliates & Referrals client. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/affiliates/_components/affiliates-page-client.tsx`.
- *
- * Changes vs the original (behavior preserved):
- * - raw `fetch` → the typed cloud {@link api} / {@link apiFetch} client
- * - `useT` → {@link useCloudT}; `react-router-dom` `Link` → kept (cloud routes
- *   mount under `BrowserRouter`)
- * - cloud-shared / cloud-frontend helpers (`copyTextToClipboard`,
- *   `buildReferralInviteLoginUrl`, `useCopyFeedback`, `getAppUrl`) → ported
- *   locally into this domain (`@elizaos/ui` avoids the cloud-shared bundle)
+ * Affiliates & Referrals client.
  *
  * Data: GET `/api/v1/affiliates` (auto-create on first load via POST), POST/PUT
  * `/api/v1/affiliates` (markup), GET `/api/v1/referrals` (via

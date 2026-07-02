@@ -1,8 +1,6 @@
 /**
  * Application detail — Users tab (authenticated users + anonymous visitors).
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-users.tsx`. Both
- * GETs are routed through the typed `api` client.
+ * Both GETs are routed through the typed `api` client.
  */
 
 import { formatDistanceToNow } from "date-fns";

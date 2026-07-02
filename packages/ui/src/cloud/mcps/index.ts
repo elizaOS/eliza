@@ -1,9 +1,7 @@
 /**
  * MCPs cloud domain — barrel + route/section registration.
  *
- * The REAL MCP registry management surface (DECISIONS §D4 "build and test a
- * REAL registry"). It replaces the cloud-frontend `demoMcpServers` larp with
- * live data from the registry backend:
+ * The MCP registry management surface, backed by live registry data:
  *
  *   - `GET/POST     /api/v1/mcps`              list (own/public/all) + create
  *   - `GET/PUT/DELETE /api/v1/mcps/:mcpId`     detail / update / delete

@@ -1,6 +1,5 @@
 /**
- * Recent security events: GET /api/v1/me/audit-events?limit=50. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/security/_components/recent-audit-events.tsx`.
+ * Recent security events: GET /api/v1/me/audit-events?limit=50.
  * Keeps the 404-graceful "not exposed yet on this server" pattern.
  */
 

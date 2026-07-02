@@ -1,17 +1,12 @@
 /**
  * React-Query data hooks + typed mutation helpers for cloud OAuth applications.
  *
- * Ported from `@elizaos/cloud-frontend/src/lib/data/apps.ts`, re-pointed at the
- * app-hosted shared infra (`../../lib/api-client` + the applications-domain auth
- * gate). The `App` type narrows the canonical `AppDto` from
- * `@elizaos/cloud-shared` exactly as cloud-frontend did (the legacy
- * user-database fields are optional here).
+ * The `App` type narrows the canonical `AppDto` from `@elizaos/cloud-shared`
+ * (the legacy user-database fields are optional here).
  *
  * Mutations go through the same typed `api<T>` client as the reads so that the
- * Steward Bearer token is attached on every target (native cloud included) —
- * the cloud-frontend originals used bare same-origin `fetch`, which only worked
- * with the cookie session on the apex. Each mutation invalidates the relevant
- * query key instead of `window.location.reload()`.
+ * Steward Bearer token is attached on every target (native cloud included).
+ * Each mutation invalidates the relevant query key.
  */
 
 import type { AppDto } from "@elizaos/cloud-shared/types";

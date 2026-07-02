@@ -2,7 +2,7 @@
  * Invite-acceptance page for organization invitations. Validates the token,
  * then lets an authenticated user accept (which MOVES them into the inviting org
  * — single-org model). Signed-out users are sent to login with a returnTo back
- * here. Ported from `@elizaos/cloud-frontend/src/pages/invite/accept/page.tsx`.
+ * here.
  *
  * Changes vs source: dropped the dead `pending-invite-token` localStorage write
  * (the returnTo round-trip already carries the token); raw fetch → typed `api`

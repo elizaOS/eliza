@@ -1,13 +1,6 @@
 /**
  * /dashboard/admin — moderation panel.
  *
- * Lifted from `@elizaos/cloud-frontend/src/dashboard/admin/Page.tsx`. Rewired:
- *   - DTOs from `@elizaos/cloud-shared/lib/types/cloud-api` (was `@/lib/types/cloud-api`).
- *   - `api` / `ApiError` from the app cloud client (`../lib/api-client`).
- *   - `useCloudT` (was the cloud-frontend `useT`); `useDocumentTitle` (was Helmet).
- *   - the admin role comes from the consolidated {@link useAdminGate} (was the
- *     now-removed `useAdminModerationStatus` hook).
- *
  * The route-level role gate ({@link AdminGate}) decides visibility; this body
  * assumes it is already past the gate and reads the role only to scope
  * super-admin-only controls (add / revoke admin).

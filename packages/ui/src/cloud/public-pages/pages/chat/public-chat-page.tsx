@@ -2,16 +2,11 @@
  * Public shared-chat landing for a character. Fetches the redacted public
  * character from /api/characters/:ref/public (no-login funnel) and presents it
  * with a CTA into the full Eliza chat experience. Renders WITHOUT app-shell
- * chrome. Ported from
- * `@elizaos/cloud-frontend/src/pages/chat/[characterRef]/page.tsx`.
+ * chrome.
  *
- * NOTE: cloud-frontend mounted its bespoke `ElizaPageClient` (a ~94 KB chat
- * tree wired to cloud-frontend-only stores) here. That chat surface is not part
- * of the public-pages domain and is not portable cheaply; in the merged app the
- * full chat experience is the app shell's own continuous-chat surface. This page
- * therefore resolves + presents the shared character and links into the app
- * chat. Mounting an in-page chat against the shared character is a follow-up
- * (owned by the chat/agent-view domain), tracked in the structured result.
+ * This page intentionally does NOT mount a chat tree: the full chat
+ * experience is the app shell's own continuous-chat surface, so this page only
+ * resolves + presents the shared character and links into the app chat.
  */
 
 import { Loader2 } from "lucide-react";

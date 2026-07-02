@@ -1,12 +1,6 @@
 /**
  * /dashboard/admin/rpc-status — verify the worker can reach each chain's RPC.
- *
- * Lifted from `@elizaos/cloud-frontend/src/dashboard/admin/rpc-status/Page.tsx`.
- * Rewired: `api` from the app cloud client (`../lib/api-client`); `useCloudT`;
- * `useDocumentTitle` (was Helmet). Already used react-query + the typed client
- * upstream, so the data layer is unchanged. The route-level {@link AdminGate}
- * owns the role gate + the outer page padding, so the page body drops the
- * cloud-frontend `p-6` wrapper.
+ * The route-level {@link AdminGate} owns the role gate and page chrome.
  */
 
 import {

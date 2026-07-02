@@ -1,6 +1,5 @@
 /**
- * Thin route-page chrome for a single application detail view. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/single-app-page-wrapper.tsx`.
+ * Thin route-page chrome for a single application detail view.
  */
 
 import type { ReactNode } from "react";

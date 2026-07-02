@@ -1,8 +1,7 @@
 /**
  * Steward email magic-link callback (public). Verifies the token/email via the
  * Steward auth context, syncs the session cookie, then redirects to the stored
- * app-authorize returnTo (third-party app integration) or /dashboard. Ported
- * from `@elizaos/cloud-frontend/src/pages/auth/callback/email/page.tsx`.
+ * app-authorize returnTo (third-party app integration) or /dashboard.
  */
 
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";

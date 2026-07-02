@@ -1,6 +1,5 @@
 /**
  * Generic background-job poller for agent provisioning / suspend / delete jobs.
- * Ported from `@elizaos/cloud-frontend/src/hooks/use-job-poller.ts`.
  *
  * Tracks jobs by an arbitrary key (the agent id), polls `GET /api/v1/jobs/:id`
  * until each reaches a terminal state, and fires `onComplete` / `onFailed`.

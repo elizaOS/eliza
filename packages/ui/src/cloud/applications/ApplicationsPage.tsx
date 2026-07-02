@@ -1,11 +1,7 @@
 /**
- * /dashboard/apps — the Applications list (cloud OAuth apps).
- *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/apps/Page.tsx`. The
- * cloud-frontend `<Helmet>` SEO block is dropped: under the app shell the
- * document head is owned by the host, not per-cloud-route. Auth gating uses the
- * applications-domain `useRequireAuth()` (Steward session) instead of the
- * cloud-frontend session hook.
+ * /dashboard/apps — the Applications list (cloud OAuth apps). Under the app
+ * shell the document head is owned by the host, not per-cloud-route. Auth
+ * gating uses `useRequireAuth()` (Steward session).
  */
 
 import { Activity, Grid3x3, TrendingUp, Users } from "lucide-react";

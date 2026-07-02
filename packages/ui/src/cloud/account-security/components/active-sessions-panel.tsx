@@ -2,8 +2,7 @@
  * Active sessions panel: lists signed-in devices and revokes them.
  *   GET    /api/v1/sessions
  *   DELETE /api/v1/sessions/:id
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/security/_components/active-sessions-panel.tsx`.
+ *
  * Keeps the 404-graceful "not available on this server yet" pattern.
  */
 

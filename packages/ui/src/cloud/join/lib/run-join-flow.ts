@@ -2,7 +2,7 @@
  * The join flow's core controller — pure(ish) async logic, decoupled from React
  * so it is unit-testable.
  *
- * Flow (PLAN.md §4.2 / DECISIONS.md, the headline outcome): after Steward login
+ * Flow: after Steward login
  * the backend's `syncUserFromSteward` has already created user + org + credits +
  * a default character. The join flow:
  *

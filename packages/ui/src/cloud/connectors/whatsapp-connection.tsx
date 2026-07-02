@@ -1,8 +1,6 @@
 /**
  * WhatsApp Business cloud connector (token-credential + Meta webhook).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/whatsapp-connection.tsx`.
  * Raw `fetch` connect/disconnect calls are swapped for the cloud {@link api}
  * client so the steward Bearer token is injected on native targets. The webhook
  * setup callout `tone="blue"` is fixed to neutral `tone="muted"` per brand rules.

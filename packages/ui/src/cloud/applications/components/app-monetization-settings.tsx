@@ -1,6 +1,5 @@
 /**
- * Application detail — Monetization tab. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-monetization-settings.tsx`.
+ * Application detail — Monetization tab.
  * GET/PUT `/api/v1/apps/:id/monetization` go through the typed `api` client.
  * Reuses the shared `EarningsSimulator` + `RevenueFlowDiagram` from cloud-ui.
  */

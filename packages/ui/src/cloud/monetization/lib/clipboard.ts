@@ -1,9 +1,7 @@
 /**
  * Clipboard + copy-feedback + referral-invite-link helpers for the monetization
- * surfaces. Ported locally from `@elizaos/cloud-shared`
- * (`lib/utils/copy-to-clipboard`, `lib/utils/referral-invite-url`) and
- * cloud-frontend's `hooks/use-copy-feedback`, because `@elizaos/ui` does not
- * depend on the cloud-shared server bundle.
+ * surfaces. Kept local because `@elizaos/ui` does not depend on the
+ * cloud-shared server bundle.
  */
 
 import { useCallback, useState } from "react";

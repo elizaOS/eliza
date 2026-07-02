@@ -2,9 +2,6 @@
  * Analytics page client: usage metrics, cost insights, breakdowns, projections,
  * and filter-aware export.
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/analytics/_components/analytics-page-client.tsx`.
- *
  * @param props.data - Enhanced analytics data (usage + cost metrics).
  * @param props.projectionsData - Projected usage + cost data.
  */

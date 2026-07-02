@@ -1,7 +1,5 @@
 /**
  * React-query hooks for the hosted Eliza agents (Instances) list + detail.
- * Ported from `@elizaos/cloud-frontend/src/lib/data/eliza-agents.ts`, repointed
- * at the cloud shell's typed {@link api} client and the Instances auth gate.
  */
 
 import type {

@@ -1,8 +1,6 @@
 /**
- * Credit-balance read hook used by the Instances pricing banner.
- * Ported from `@elizaos/cloud-frontend/src/lib/data/credits.ts` (the balance
- * read only — the billing checkout-verify mutation lives in the billing
- * domain). Repointed at the cloud shell's typed {@link api} client + auth gate.
+ * Credit-balance read hook used by the Instances pricing banner, on the cloud
+ * shell's typed {@link api} client + auth gate.
  */
 
 import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";

@@ -6,7 +6,7 @@
  * render WITHOUT the app-shell chrome and WITHOUT the Steward auth wrapper at
  * the route level (the pages that need a session read it via `useSessionAuth`,
  * which falls back to localStorage). Paths mirror the backend-issued deep-link
- * contract verbatim (PLAN.md §6.2): payment / approve / ballot /
+ * contract verbatim: payment / approve / ballot /
  * sensitive-requests / chat / invite / login / auth / app-auth / legal / bsc.
  *
  * Importing this module is the single side-effecting entry point: the app shell

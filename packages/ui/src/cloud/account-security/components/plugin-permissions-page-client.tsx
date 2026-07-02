@@ -2,8 +2,7 @@
  * Plugin permissions: every permission granted to a plugin, with revoke control.
  *   GET    /api/v1/me/plugin-grants
  *   DELETE /api/v1/me/plugin-grants/:grantId
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/security/permissions/_components/plugin-permissions-page-client.tsx`.
+ *
  * Keeps the 404-graceful "not exposed yet on this server" pattern.
  */
 

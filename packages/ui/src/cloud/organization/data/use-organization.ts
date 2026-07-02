@@ -1,11 +1,7 @@
 /**
- * React-Query data hooks for the Organization settings surface.
- *
- * Ported from the cloud-frontend organization tab, which used raw `fetch()` +
- * manual `useState`/`useEffect` loading and component-local refetch. Here the
- * reads/writes go through the shared typed {@link api} client and React-Query,
- * so mutations invalidate the relevant query instead of re-running ad-hoc
- * fetchers.
+ * React-Query data hooks for the Organization settings surface. Reads/writes
+ * go through the shared typed {@link api} client and React-Query, so mutations
+ * invalidate the relevant query.
  *
  * Endpoints (note plural `organizations`, no `/v1`):
  * - `GET    /api/v1/user`                          current user + organization

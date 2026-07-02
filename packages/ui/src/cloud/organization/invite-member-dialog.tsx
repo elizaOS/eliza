@@ -3,12 +3,6 @@
  * Allows setting email and role (member or admin) with validation and error
  * handling.
  *
- * Ported from `@elizaos/cloud-frontend`; the raw `fetch()` POST is replaced by
- * the {@link useCreateInvite} React-Query mutation (typed client +
- * invalidation), and the copy now surfaces the single-org reality: accepting an
- * invite *moves* the invitee's organization (Eliza Cloud is single-membership),
- * so the invitee switches to this org rather than gaining a second membership.
- *
  * After the invite is created the dialog shows the copyable invite link
  * (`/invite/accept?token=…`) so the owner can DM it instead of relying on the
  * email. With `connectIntent` (the Credentials tab "Invite & Connect" flow,

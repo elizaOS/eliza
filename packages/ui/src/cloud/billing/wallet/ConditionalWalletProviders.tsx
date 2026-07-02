@@ -1,7 +1,6 @@
 /**
  * Lazy boundary for the wallet stack (wagmi + RainbowKit + Solana + viem).
  *
- * Ported from `@elizaos/cloud-frontend/src/providers/ConditionalWalletProviders.tsx`.
  * On non-wallet routes it renders `children` directly so the heavy wallet vendor
  * chunks never enter the entry bundle; on wallet routes it lazy-loads the real
  * provider tree ({@link StewardWalletProviders}) behind Suspense as the outermost

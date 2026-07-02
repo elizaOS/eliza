@@ -2,9 +2,6 @@
  * Pending invites list component displaying organization invitation status.
  * Shows invite details, expiration, and supports invitation revocation.
  *
- * Ported from `@elizaos/cloud-frontend`; imports retargeted to the app-hosted
- * cloud-ui bundle + local DTO contract.
- *
  * @param props - Pending invites list configuration
  * @param props.invites - Array of invitation objects
  * @param props.onRevoke - Callback when invitation is revoked

@@ -1,9 +1,6 @@
 /**
  * Eliza Agents Table — lists hosted agent sandboxes on the Instances page.
  * Auto-refreshes while any sandbox is in an active (pending/provisioning) state.
- *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/agents/_components/eliza-agents-table.tsx`.
  */
 "use client";
 

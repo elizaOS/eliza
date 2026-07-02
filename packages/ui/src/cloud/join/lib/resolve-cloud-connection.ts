@@ -3,7 +3,7 @@
  * `selectOrProvisionCloudAgent`: the direct-cloud API origin and the Steward
  * session token.
  *
- * Auth model (DECISIONS.md D3): Cloud = Steward, unified across web AND native.
+ * Auth model: Cloud = Steward, unified across web AND native.
  * The Steward JWT in `localStorage.steward_session_token` is the canonical auth
  * source for every Cloud connection, so the join flow reads it directly via the
  * shared steward-session client rather than the legacy `__ELIZA_CLOUD_AUTH_TOKEN__`

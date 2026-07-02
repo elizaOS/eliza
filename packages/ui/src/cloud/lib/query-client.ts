@@ -5,7 +5,7 @@ import { ApiError } from "./api-client";
  * Single QueryClient for the cloud surfaces. Defaults match the dashboard's
  * read-mostly pattern: 30s stale time, retry on transient (5xx / network)
  * errors only, refetch-on-window-focus disabled so navigation doesn't hammer
- * the API. Ported from `@elizaos/cloud-frontend`'s `src/lib/query-client.ts`.
+ * the API.
  */
 export const queryClient = new QueryClient({
   defaultOptions: {

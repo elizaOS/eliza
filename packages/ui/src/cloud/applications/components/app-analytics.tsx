@@ -1,8 +1,7 @@
 /**
  * Application detail — Analytics tab (overview / requests / visitors / logs).
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-analytics.tsx`. All
- * `/api/v1/apps/:id/analytics*` GETs are routed through the typed `api` client.
+ * All `/api/v1/apps/:id/analytics*` GETs are routed through the typed `api`
+ * client.
  */
 
 import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";

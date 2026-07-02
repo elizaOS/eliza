@@ -1,14 +1,12 @@
 /**
  * Steward authentication provider for the app-hosted Eliza Cloud surfaces.
- *
- * Ported from `@elizaos/cloud-frontend/src/providers/StewardProvider.tsx`
- * (web-build-only). Wraps the cloud routes in Steward auth context and syncs
- * the JWT to a server cookie so same-origin Hono/API routes can read it. The
+ * Wraps the cloud routes in Steward auth context and syncs the JWT to a server
+ * cookie so same-origin Hono/API routes can read it. The
  * heavy `@stwd/sdk` / `@stwd/react` runtime lives in a lazy chunk
  * ({@link StewardProviderRuntime}) loaded only when a token is present or the
  * current route is an auth/dashboard/payment surface.
  *
- * Auth model (DECISIONS.md D3): Cloud = Steward, unified across web and native.
+ * Auth model: Cloud = Steward, unified across web and native.
  * On hosted web (same-origin apex) Steward rides the cookie + localStorage-JWT
  * path; the localStorage Bearer path also works for native cloud connections.
  */

@@ -1,6 +1,5 @@
 /**
- * Application detail — tab bar + tab content router. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-details-tabs.tsx`.
+ * Application detail — tab bar + tab content router.
  * The active tab is the `?tab=` search param (so deep links + the create flow's
  * `?tab=monetization` redirect work).
  */

@@ -1,7 +1,6 @@
 /**
  * Open the Agent Web UI for a hosted (dedicated) agent via the pairing-token
- * flow. Ported verbatim from
- * `@elizaos/cloud-frontend/src/hooks/open-web-ui.ts`.
+ * flow.
  *
  * 1. Opens a popup immediately (must be in a click handler to dodge blockers).
  * 2. Polls `POST /api/v1/eliza/agents/:id/pairing-token` for a one-time token

@@ -1,9 +1,6 @@
 /**
  * Agent filters — search, view-mode toggle, and sort controls for the agent
- * library. Ported from
- * `@elizaos/cloud-frontend/src/components/my-agents/character-filters.tsx` with
- * the brand fix: the original active view-toggle used `text-[#0c4f8d]` (a blue),
- * which violates the app's no-blue rule. The active toggle now reads as the
+ * library.  The active toggle now reads as the
  * brand-neutral foreground; the rest of the light-on-glass treatment is
  * preserved.
  */

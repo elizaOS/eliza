@@ -1,13 +1,13 @@
 /**
  * Analytics cloud domain — per-user usage + cost view.
  *
- * Mounts at `/dashboard/analytics` (the canonical home; cloud-frontend's
- * degraded `settings analytics-tab` is intentionally not ported). The route is
- * code-split via `React.lazy` so the recharts/date-fns chart bundle only loads
- * when the view is opened.
+ * Mounts at `/dashboard/analytics` (the canonical org-level analytics home;
+ * per-app analytics live in the app detail route). The route is code-split via
+ * `React.lazy` so the recharts/date-fns chart bundle only loads when the view
+ * is opened.
  *
- * The Wave-3 settings section and the app shell consume {@link AnalyticsPage}
- * (default export) / this module's `registerCloudRoute` side effect.
+ * The app shell consumes {@link AnalyticsPage} (default export) via this
+ * module's `registerCloudRoute` side effect.
  */
 
 import { lazy } from "react";

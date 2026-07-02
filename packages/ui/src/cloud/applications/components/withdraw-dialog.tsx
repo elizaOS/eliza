@@ -1,11 +1,8 @@
 /**
- * Withdrawal dialog with confirmation + result states. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/monetization/withdraw-dialog.tsx`.
+ * Withdrawal dialog with confirmation + result states.
  *
  * POST `/api/v1/apps/:id/earnings/withdraw` is routed through the typed `api`
- * client. The cloud-frontend version fired a `canvas-confetti` burst on success;
- * that decoration is dropped here (the dependency is not part of `@elizaos/ui`
- * and the withdrawal flow is fully functional without it).
+ * client.
  */
 
 import {

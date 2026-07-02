@@ -1,7 +1,5 @@
 /**
  * Provider breakdown: cost distribution per AI provider with progress bars.
- *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/analytics/_components/provider-breakdown.tsx`.
  */
 
 "use client";

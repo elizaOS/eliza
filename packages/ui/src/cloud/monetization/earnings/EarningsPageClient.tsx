@@ -1,20 +1,6 @@
 /**
- * Earnings & Redemptions client. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/earnings/_components/earnings-page-client.tsx`.
- *
- * Changes vs the original (behavior preserved):
- * - raw `fetch` → the typed cloud {@link api} / {@link apiFetch} client (steward
- *   Bearer + same-origin credentials)
- * - `useT` (cloud-frontend I18nProvider) → {@link useCloudT} (cloud shell i18n)
- * - `formatUsd` from `@elizaos/shared/utils/format` → local {@link formatUsd}
- *   (the shared subpath is not exported and `@elizaos/ui` avoids the shared
- *   server bundle)
- * - `@web3icons/react` branded network marks → brand-neutral inline network
- *   dots. `@web3icons/react` is not a declared dependency of `@elizaos/ui`
- *   (it lives only in cloud-frontend's deps), so the network selector keeps the
- *   same base/solana/ethereum/bnb options without the undeclared icon dep.
- *   FOLLOW-UP: add `@web3icons/react` to `@elizaos/ui` deps to restore branded
- *   marks if desired.
+ * Earnings & Redemptions client. Network marks are brand-neutral inline dots
+ * (`@web3icons/react` is not a dependency of `@elizaos/ui`).
  *
  * Data: GET `/api/v1/redemptions/balance`, GET `/api/v1/redemptions?limit=10`,
  * GET `/api/v1/redemptions/status`, GET `/api/v1/redemptions/quote`, POST

@@ -1,7 +1,6 @@
 /**
  * Account details: account id, email/wallet verification, status, role, and
- * important dates. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/account/_components/account-details.tsx`.
+ * important dates.
  */
 
 import { Calendar, CheckCircle2, Info, Wallet, XCircle } from "lucide-react";

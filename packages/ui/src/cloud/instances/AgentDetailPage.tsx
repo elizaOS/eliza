@@ -1,6 +1,5 @@
 /**
  * Agent detail page (`/dashboard/agents/:id`).
- * Ported from `@elizaos/cloud-frontend/src/dashboard/agents/[id]/Page.tsx`.
  */
 
 import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";

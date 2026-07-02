@@ -2,13 +2,10 @@
  * ElizaAgentActions — start/stop/sleep/wake/snapshot/delete controls on the
  * agent detail page.
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/agents/_components/agent-actions.tsx`.
- * ADDED in the app migration: explicit **Sleep** (deep cold suspend that frees
- * the compute slot — `POST /sleep`) and **Wake** (`POST /wake`) controls, which
- * the backend already supports but the cloud-frontend UI never exposed. Sleep is
- * offered for running dedicated agents; Wake for sleeping agents. Both ride the
- * existing 202 + jobId poll path.
+ * Includes explicit **Sleep** (deep cold suspend that frees the compute slot —
+ * `POST /sleep`) and **Wake** (`POST /wake`) controls. Sleep is offered for
+ * running dedicated agents; Wake for sleeping agents. Both ride the existing
+ * 202 + jobId poll path.
  */
 "use client";
 

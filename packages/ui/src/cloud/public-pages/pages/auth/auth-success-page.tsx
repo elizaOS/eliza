@@ -1,7 +1,6 @@
 /**
  * OAuth/connector auth-success callback page (public). Shows a connection-
- * successful card and auto-closes the popup. Ported from
- * `@elizaos/cloud-frontend/src/pages/auth/success/page.tsx`.
+ * successful card and auto-closes the popup.
  */
 
 import { CheckCircle } from "lucide-react";

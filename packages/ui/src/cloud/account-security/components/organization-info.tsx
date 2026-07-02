@@ -1,7 +1,5 @@
 /**
  * Organization info: name, slug, balance, status, member-since, billing email.
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/account/_components/organization-info.tsx`.
  */
 
 import { Building2, Calendar, CreditCard } from "lucide-react";

@@ -1,6 +1,5 @@
 /**
  * Copy-to-clipboard feedback hook — toggles a transient `copied` flag.
- * Ported verbatim from `@elizaos/cloud-frontend/src/hooks/use-copy-feedback.ts`.
  *
  * Canonical shared copy for all cloud domains.
  */

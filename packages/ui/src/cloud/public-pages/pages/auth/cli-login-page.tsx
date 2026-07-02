@@ -2,7 +2,6 @@
  * CLI / device login page (public). After the Steward session resolves, POSTs
  * to /api/auth/cli-session/:id/complete to mint an API key for the waiting CLI
  * / Remote device pairing, then posts a completion message to the opener.
- * Ported from `@elizaos/cloud-frontend/src/pages/auth/cli-login/page.tsx`.
  */
 
 import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";

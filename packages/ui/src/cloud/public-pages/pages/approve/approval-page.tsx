@@ -2,8 +2,7 @@
  * Hosted public page for an approval request. Reads the redacted public view
  * from /api/v1/approval-requests/:id?public=1 and presents the challenge +
  * signature form. Approve/deny are public; the server-side
- * IdentityVerificationGatekeeper validates the pasted signature. Ported from
- * `@elizaos/cloud-frontend/src/pages/approve/[approvalId]/page.tsx`.
+ * IdentityVerificationGatekeeper validates the pasted signature.
  */
 
 import {

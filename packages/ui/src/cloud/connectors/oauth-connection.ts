@@ -1,12 +1,6 @@
 /**
  * Shared data layer for OAuth-redirect cloud connectors (Google, Microsoft).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/oauth-connection.ts`,
- * with the raw `fetch` calls swapped for the cloud {@link api} client so the
- * steward Bearer token is injected on native targets (same-origin cookie auth
- * keeps working on web).
- *
  * Handles listing connections (`GET /api/v1/oauth/connections?platform=`),
  * initiating the OAuth redirect (`POST /api/v1/oauth/<platform>/initiate`), and
  * revoking a connection (`DELETE /api/v1/oauth/connections/:id`).

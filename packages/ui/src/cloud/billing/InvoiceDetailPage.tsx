@@ -1,7 +1,5 @@
 /**
- * /dashboard/invoices/:id — single invoice detail. Lifted from
- * `@elizaos/cloud-frontend/src/dashboard/invoices/[id]/Page.tsx` with Helmet
- * removed (the app shell owns the document head).
+ * /dashboard/invoices/:id — single invoice detail.
  */
 
 import {

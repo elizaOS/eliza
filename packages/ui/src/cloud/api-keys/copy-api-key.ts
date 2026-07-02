@@ -1,10 +1,6 @@
 /**
- * Clipboard helper for the API-keys cloud domain.
- *
- * Replaces the cloud-frontend `@/lib/client/api-keys` module, which never
- * existed on disk — the keys page imported `copyApiKeyToClipboard` /
- * `getClientApiKeySecret` from it, so the "Copy key" action on a stored key
- * threw at module load. The fix reflects the real backend contract:
+ * Clipboard helper for the API-keys cloud domain. Reflects the real backend
+ * contract:
  *
  *   The plaintext of an API key is hashed + KMS-encrypted at rest and is only
  *   returned once, on create / regenerate (see

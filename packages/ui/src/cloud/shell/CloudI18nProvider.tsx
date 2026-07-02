@@ -1,10 +1,7 @@
 /**
- * i18n provider for the app-hosted Eliza Cloud surfaces.
- *
- * Ported from `@elizaos/cloud-frontend/src/providers/I18nProvider.tsx`. Wraps
- * the existing `@elizaos/ui` `t()` system with React context + persistence so
- * lifted cloud pages keep consuming `useCloudI18n()` / `useCloudT()` exactly as
- * they did via the cloud-frontend `useI18n()` / `useT()` hooks.
+ * i18n provider for the app-hosted Eliza Cloud surfaces. Wraps the existing
+ * `@elizaos/ui` `t()` system with React context + persistence, consumed by the
+ * cloud pages via `useCloudI18n()` / `useCloudT()`.
  *
  * This is the cloud-route i18n context only; the tab/view App keeps its own
  * `@elizaos/ui` `AppProvider` translation context. They are independent.

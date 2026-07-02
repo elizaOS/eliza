@@ -1,7 +1,6 @@
 /**
  * Agent library grid — renders agents in grid or list view; empty state when no
- * agents are available. Ported from
- * `@elizaos/cloud-frontend/src/components/my-agents/character-library-grid.tsx`.
+ * agents are available.
  */
 
 "use client";

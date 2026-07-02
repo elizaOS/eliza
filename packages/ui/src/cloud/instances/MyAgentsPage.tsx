@@ -1,7 +1,6 @@
 /**
  * "My Agent" page (`/dashboard/my-agents`) — the character library + agent
- * console. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/my-agents/Page.tsx`.
+ * console.
  */
 
 import {

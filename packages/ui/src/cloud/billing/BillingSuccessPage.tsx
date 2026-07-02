@@ -5,9 +5,7 @@
  * `/dashboard/billing/success?session_id=...&from=settings`. On mount we POST
  * `/api/billing/checkout/verify` (the synchronous webhook fallback) so credits
  * apply immediately rather than waiting on the async webhook, then show the
- * refreshed balance. Lifted from
- * `@elizaos/cloud-frontend/src/dashboard/billing/success/Page.tsx` with Helmet
- * removed (the app shell owns the document head).
+ * refreshed balance.
  */
 
 import {
@@ -140,7 +138,7 @@ export default function BillingSuccessPage() {
         </CardHeader>
 
         <CardContent className="text-center space-y-4">
-          <CreditBalanceDisplay sessionId={sessionId} />
+          <CreditBalanceDisplay />
           <p className="text-sm text-muted-foreground">
             {t("cloud.billingSuccess.creditsUsage", {
               defaultValue:

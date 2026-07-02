@@ -1,8 +1,6 @@
 /**
  * Applications list table. Reuses the shared `AppsListView` from cloud-ui and
- * adds the delete-confirmation dialog. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/apps-table.tsx`; the
- * raw `fetch(... DELETE)` + `window.location.reload()` is replaced with the
+ * adds the delete-confirmation dialog.  DELETE)` + `window.location.reload()` is replaced with the
  * typed `deleteApp()` mutation + a react-query invalidation so the list updates
  * in place under the app shell's Bearer-auth client.
  */

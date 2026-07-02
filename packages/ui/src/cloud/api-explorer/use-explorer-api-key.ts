@@ -1,9 +1,6 @@
 /**
  * Auto-mints (or fetches) the per-user "API Explorer" key used to run real,
- * billed test calls from the explorer. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/api-explorer/_components/use-explorer-api-key.ts`,
- * with the raw `fetch` converted to the typed {@link api} client (same-origin,
- * auth-injecting, structured `ApiError`).
+ * billed test calls from the explorer.
  *
  * Backend: `GET /api/v1/api-keys/explorer` returns `{ apiKey, isNew? }`.
  */

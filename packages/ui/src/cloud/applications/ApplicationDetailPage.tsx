@@ -1,9 +1,6 @@
 /**
- * /dashboard/apps/:id — single Application detail (8 tabs).
- *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/apps/[id]/Page.tsx`. The
- * `<Helmet>` SEO block is dropped (the app shell owns the document head). Auth
- * gating uses the applications-domain `useRequireAuth()`.
+ * /dashboard/apps/:id — single Application detail (8 tabs). The app shell owns
+ * the document head; auth gating uses `useRequireAuth()`.
  */
 
 import { useEffect, useState } from "react";

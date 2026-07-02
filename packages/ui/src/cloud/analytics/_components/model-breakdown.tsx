@@ -1,7 +1,5 @@
 /**
  * Model breakdown: cost / usage per AI model, expandable table.
- *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/analytics/_components/model-breakdown.tsx`.
  */
 
 "use client";

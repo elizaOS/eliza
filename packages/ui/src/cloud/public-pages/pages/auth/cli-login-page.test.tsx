@@ -18,9 +18,6 @@ const sessionAuthRef = vi.hoisted(() => ({
   current: {
     ready: true,
     authenticated: false,
-    authSource: "none" as "none" | "steward",
-    stewardAuthenticated: false,
-    stewardUser: null as { id: string; email: string } | null,
     user: null as { id: string; email: string } | null,
   },
 }));
@@ -70,9 +67,6 @@ function resetSessionAuth() {
   sessionAuthRef.current = {
     ready: true,
     authenticated: false,
-    authSource: "none",
-    stewardAuthenticated: false,
-    stewardUser: null,
     user: null,
   };
 }
@@ -132,9 +126,6 @@ describe("CliLoginPage", () => {
     sessionAuthRef.current = {
       ready: true,
       authenticated: true,
-      authSource: "steward",
-      stewardAuthenticated: true,
-      stewardUser: { id: "u1", email: "a@b.co" },
       user: { id: "u1", email: "a@b.co" },
     };
     apiFetchMock.mockResolvedValue({
@@ -189,9 +180,6 @@ describe("CliLoginPage", () => {
     sessionAuthRef.current = {
       ready: true,
       authenticated: true,
-      authSource: "steward",
-      stewardAuthenticated: true,
-      stewardUser: { id: "u1", email: "a@b.co" },
       user: { id: "u1", email: "a@b.co" },
     };
     apiFetchMock.mockRejectedValue(new Error("boom"));
@@ -209,9 +197,6 @@ describe("CliLoginPage", () => {
     sessionAuthRef.current = {
       ready: true,
       authenticated: true,
-      authSource: "steward",
-      stewardAuthenticated: true,
-      stewardUser: { id: "u1", email: "a@b.co" },
       user: { id: "u1", email: "a@b.co" },
     };
     apiFetchMock.mockRejectedValue(new ApiError(401, "unauthorized", "nope"));

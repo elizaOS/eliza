@@ -2,7 +2,6 @@
  * Steward OAuth `/authorize` URL builder + PKCE helpers for the app-hosted
  * login surface.
  *
- * Ported from `@elizaos/cloud-frontend/src/pages/login/steward-oauth-url.ts`.
  * The redirect_uri is kept stable at `/login` (Steward allowlists exact URLs);
  * post-login destinations are carried outside redirect_uri via
  * {@link login-return-to}. Steward URL resolution uses the shell's

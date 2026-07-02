@@ -1,8 +1,7 @@
 /**
  * Local consent state for SOC2 user-facing toggles, backed by `localStorage`
  * under a fixed prefix. Each accessor defaults to "OFF / not consented", per
- * privacy-by-default. Ported from
- * `@elizaos/cloud-frontend/src/lib/security/consent-store.ts`.
+ * privacy-by-default.
  */
 
 const PREFIX = "eliza.security.consent.";

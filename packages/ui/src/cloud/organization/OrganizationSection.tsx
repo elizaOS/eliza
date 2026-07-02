@@ -3,7 +3,7 @@
  *
  * Zero-arg component (the contract for `registerSettingsSection`): it resolves
  * the current user + organization itself via {@link useOrganizationUser} and
- * renders the {@link OrganizationTab}. This is what the Wave-3 settings/section
+ * renders the {@link OrganizationTab}. This is what the settings-section
  * agent registers into the settings-section registry, and what the cloud route
  * (`OrganizationPage`) mounts.
  *

@@ -1,6 +1,5 @@
 /**
- * Privacy Policy (public, static). Ported from
- * `@elizaos/cloud-frontend/src/pages/privacy-policy/page.tsx`. Marketing
+ * Privacy Policy (public, static).  Marketing
  * `LandingHeader` / `Footer` chrome dropped (stays on `eliza.app`).
  */
 

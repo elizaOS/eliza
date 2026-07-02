@@ -9,16 +9,14 @@
  * backend issues (which a flat tab enum cannot express) and the `/dashboard/*`
  * compat redirects.
  *
- * Route table source (REVISION-2 §B1, DECISIONS.md D1): every cloud / public /
- * auth / payment route is registered by its domain module via
- * `registerCloudRoute(...)` against the {@link CloudRouteDef} registry; this
- * shell mounts whatever {@link listCloudRoutes} returns and 404s gracefully
- * otherwise. The `/dashboard/*` `<Navigate>` map is carried verbatim from
- * `@elizaos/cloud-frontend/src/App.tsx`.
+ * Route table: every cloud / public / auth / payment route is registered by
+ * its domain module via `registerCloudRoute(...)` against the
+ * {@link CloudRouteDef} registry; this shell mounts whatever
+ * {@link listCloudRoutes} returns and 404s gracefully otherwise.
  *
- * Build-target gating (REVISION-2 §B3): this module and its Steward / cloud-i18n
- * / query providers are web-build-only. Native (Capacitor) mounts the tab/view
- * App directly with no bundle growth — see `packages/app/src/main.tsx`.
+ * Build-target gating: this module and its Steward / cloud-i18n / query
+ * providers are web-build-only. Native (Capacitor) mounts the tab/view App
+ * directly with no bundle growth — see `packages/app/src/main.tsx`.
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";

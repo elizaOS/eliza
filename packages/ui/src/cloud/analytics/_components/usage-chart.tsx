@@ -1,8 +1,6 @@
 /**
  * Usage chart: time-series analytics with a toggleable focus metric
  * (requests / cost / success rate).
- *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/analytics/_components/usage-chart.tsx`.
  */
 
 "use client";

@@ -1,16 +1,14 @@
 /**
  * Steward login section for the app-hosted login page.
  *
- * Ported from `@elizaos/cloud-frontend/src/pages/login/steward-login-section.tsx`.
  * Supports passkey, email magic-link, email-OTP passkey signup, and OAuth
- * (Google / Discord / GitHub). The post-redirect OAuth `code` / `#token`
- * consumption + cookie sync mirror cloud-frontend.
+ * (Google / Discord / GitHub), plus the post-redirect OAuth `code` / `#token`
+ * consumption + cookie sync.
  *
- * Wallet (SIWE / SIWS) sign-in is intentionally NOT ported here: it pulls
+ * Wallet (SIWE / SIWS) sign-in is intentionally absent: it pulls
  * `@rainbow-me/rainbowkit` + `@solana/*` + `wagmi`, which are not dependencies
- * of `@elizaos/ui` (the Scaffold owns deps). The wallet branch is gated off
- * (`showWallets` is forced false) and is tracked as a follow-up. Email/passkey/
- * OAuth cover the primary sign-in paths.
+ * of `@elizaos/ui`. The wallet branch is gated off (`showWallets` is forced
+ * false); email/passkey/OAuth cover the primary sign-in paths.
  */
 
 import {

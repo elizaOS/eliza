@@ -1,6 +1,5 @@
 /**
- * Small client-side helpers for the applications domain. Kept local so the
- * domain compiles in isolation without reaching into cloud-frontend's `@/lib`.
+ * Small client-side helpers for the applications domain.
  */
 
 const UUID_RE =

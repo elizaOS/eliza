@@ -2,8 +2,7 @@
  * Payment-success callback page (public). Handles redirects from external
  * payment providers (OxaPay/Stripe): checks the Steward session client-side and
  * redirects to billing settings (or the app-charge page) — or to login with a
- * returnTo when signed out. Ported from
- * `@elizaos/cloud-frontend/src/pages/payment/success/page.tsx`.
+ * returnTo when signed out.
  */
 
 import { CheckCircle, Loader2 } from "lucide-react";

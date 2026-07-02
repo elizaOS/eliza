@@ -1,12 +1,8 @@
 /**
  * Billing body — credit balance, buy-credits (Stripe card + crypto), auto-fund
- * settings, and invoice history. This is the canonical `BillingTab` lifted from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/tabs/billing-tab.tsx`
- * (the redundant `/dashboard/billing` page wrapper was NOT ported).
- *
- * Mounted by the in-app settings billing section and the standalone billing
- * entry. Crypto direct-payments render only when `/api/crypto/status` reports the
- * direct wallet enabled, and the wallet UI is gated behind
+ * settings, and invoice history. Mounted by the in-app settings billing
+ * section. Crypto direct-payments render only when `/api/crypto/status`
+ * reports the direct wallet enabled, and the wallet UI is gated behind
  * {@link ConditionalWalletProviders} by the mounting surface.
  */
 

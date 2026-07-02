@@ -1,8 +1,6 @@
 /**
  * Projections chart: historical + projected cost trend with low-balance /
  * high-burn alerts.
- *
- * Ported from `@elizaos/cloud-frontend/src/dashboard/analytics/_components/projections-chart.tsx`.
  */
 
 "use client";

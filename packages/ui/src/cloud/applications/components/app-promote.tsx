@@ -1,6 +1,5 @@
 /**
- * Application detail — Promote tab. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/apps/_components/app-promote.tsx`.
+ * Application detail — Promote tab.
  *
  * Two larp blocks from the original are dropped (per the migration scope):
  *   - the hard-coded "Quick Stats" tiles (Social Posts: 0 / SEO Score: -- /

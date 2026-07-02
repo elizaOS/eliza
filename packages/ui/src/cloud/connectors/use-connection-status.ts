@@ -1,9 +1,6 @@
 /**
  * Generic GET-status hook for token-credential cloud connectors (Twilio,
- * Blooio, WhatsApp, Telegram). Ported from
- * `@elizaos/cloud-frontend/src/hooks/use-connection-status.ts`, with the raw
- * `fetch` swapped for the cloud {@link api} client so the steward Bearer token
- * is injected on native targets (same-origin cookie auth keeps working on web).
+ * Blooio, WhatsApp, Telegram).
  */
 
 "use client";

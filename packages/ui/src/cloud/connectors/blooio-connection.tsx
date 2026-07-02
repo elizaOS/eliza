@@ -1,8 +1,6 @@
 /**
  * iMessage (Blooio) cloud connector (token-credential + webhook secret).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/blooio-connection.tsx`.
  * Raw `fetch` connect/disconnect/webhook-secret calls are swapped for the cloud
  * {@link api} client so the steward Bearer token is injected on native targets.
  */

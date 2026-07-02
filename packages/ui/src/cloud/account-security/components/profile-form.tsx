@@ -1,7 +1,6 @@
 /**
  * Profile form for updating user profile information: name, avatar upload with
- * preview, email add, and read-only org role. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/account/_components/profile-form.tsx`.
+ * preview, email add, and read-only org role.
  *
  * Talks directly to the canonical profile routes via the typed cloud client:
  *   PATCH /api/v1/user        (name + avatar URL)

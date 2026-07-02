@@ -1,7 +1,7 @@
 /**
  * Public-pages domain barrel.
  *
- * The app shell / Wave-3 settings+section wiring imports {@link registerPublicPages}
+ * The app shell imports {@link registerPublicPages}
  * to mount all token-gated / auth / marketing / payment routes onto the shared
  * cloud-route registry (the `CloudRouterShell` renders whatever the registry
  * returns). Importing the module for its side effect is enough:

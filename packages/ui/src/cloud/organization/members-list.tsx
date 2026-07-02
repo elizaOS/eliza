@@ -2,9 +2,6 @@
  * Members list component displaying organization members with role management.
  * Supports role updates and member removal with permission checks.
  *
- * Ported from `@elizaos/cloud-frontend` org settings; imports retargeted to the
- * app-hosted cloud-ui bundle + local DTO contract + cloud i18n context.
- *
  * @param props - Members list configuration
  * @param props.members - Array of member objects
  * @param props.currentUserId - Current user's ID

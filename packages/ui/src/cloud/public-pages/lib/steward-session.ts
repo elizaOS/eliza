@@ -1,7 +1,5 @@
 /**
- * Steward session glue for the app-hosted cloud auth/login pages.
- *
- * Ported from `@elizaos/cloud-frontend/src/lib/steward-session.ts`. Handles the
+ * Steward session glue for the app-hosted cloud auth/login pages. Handles the
  * JWT → HttpOnly cookie sync, the one-time OAuth `code`/`#token` consumption,
  * the server-side nonce exchange, and the cookie-backed refresh — selecting the
  * correct auth endpoint per browser host (so previews and third-party app

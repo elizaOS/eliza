@@ -1,7 +1,6 @@
 /**
  * Invoice detail view — full invoice info, line items, payment status, and
- * download/view links. Lifted from
- * `@elizaos/cloud-frontend/src/dashboard/invoices/_components/invoice-detail-client.tsx`.
+ * download/view links.
  */
 
 "use client";

@@ -1,9 +1,8 @@
 /**
  * Set `document.title` while a cloud route is mounted and restore the previous
- * title on unmount. cloud-frontend used react-helmet-async `<Helmet>`; `@elizaos/ui`
- * has no such dependency, so the cloud domains set the title imperatively.
- *
- * Canonical shared copy for all cloud route domains.
+ * title on unmount. `@elizaos/ui` has no react-helmet dependency, so the cloud
+ * domains set the title imperatively. Canonical shared copy for all cloud
+ * route domains.
  */
 import { useEffect } from "react";
 

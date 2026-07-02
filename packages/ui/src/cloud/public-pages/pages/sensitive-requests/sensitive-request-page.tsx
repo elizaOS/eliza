@@ -2,8 +2,7 @@
  * Hosted public page for a sensitive-request submission (secret / private_info
  * / payment / oauth). Reads the form spec from /api/v1/sensitive-requests/:id
  * (with the URL token actor) and submits the value(s) via /submit. Renders
- * WITHOUT app-shell chrome. Ported from
- * `@elizaos/cloud-frontend/src/pages/sensitive-requests/[requestId]/page.tsx`.
+ * WITHOUT app-shell chrome.
  */
 
 import { AlertCircle, CheckCircle2, Loader2, LockKeyhole } from "lucide-react";

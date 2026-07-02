@@ -1,8 +1,6 @@
 /**
  * Microsoft Services cloud connector (OAuth-redirect).
  *
- * Ported from
- * `@elizaos/cloud-frontend/src/dashboard/settings/_components/microsoft-connection.tsx`.
  * The `tone="blue"` palette violation on the "Available automations" callout is
  * fixed to the neutral `tone="muted"` per the brand rules (no blue anywhere).
  */

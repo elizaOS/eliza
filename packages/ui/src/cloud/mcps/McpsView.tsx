@@ -1,7 +1,6 @@
 /**
- * MCP registry management view (app-hosted Eliza Cloud surface).
- *
- * Replaces the cloud-frontend `demoMcpServers` larp with the REAL registry:
+ * MCP registry management view (app-hosted Eliza Cloud surface), backed by
+ * the real registry:
  *   - "My MCPs" tab  → `GET /api/v1/mcps?scope=own`  (CRUD + publish)
  *   - "Registry" tab → `GET /api/v1/mcps?scope=public` (live community MCPs)
  *   - "Built-in" tab → `GET /api/mcp/list`            (platform MCPs)

@@ -1,6 +1,5 @@
 /**
- * Single registration barrel for the in-app Eliza Cloud settings sections
- * (re-IA Step 2).
+ * Single registration barrel for the in-app Eliza Cloud settings sections.
  *
  * Calling {@link registerCloudSettingsSections} registers:
  *  - new **Cloud** and **Developer** settings groups (between System and
@@ -62,8 +61,7 @@ import {
 
 /**
  * The Cloud + Developer groups sit between System (built-in order 1) and
- * Security (built-in order 2), matching the IA in
- * `docs/cloud-into-eliza/PLAN.md` §4.3.
+ * Security (built-in order 2).
  */
 let cloudSettingsRegistered = false;
 

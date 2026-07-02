@@ -1,7 +1,6 @@
 /**
  * Two-factor authentication status panel. Reads GET /api/v1/me/mfa and keeps the
- * 404-graceful "not available on this server yet" copy. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/security/_components/mfa-panel.tsx`.
+ * 404-graceful "not available on this server yet" copy.
  *
  * NOTE: the "Enroll a second factor" button is not wired — there is no MFA
  * enrollment endpoint yet (only the read route). The CTA renders so the surface

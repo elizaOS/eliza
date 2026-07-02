@@ -1,10 +1,7 @@
 /**
- * React Query data hooks for the billing domain.
- *
- * Consolidated from `@elizaos/cloud-frontend/src/lib/data/{user,credits,invoices}.ts`
- * with the raw `fetch` swapped for the cloud {@link api} client (steward Bearer
- * on native, same-origin cookie on web) and the auth gate driven by the local
- * {@link useSessionAuth} hook.
+ * React Query data hooks for the billing domain (user/org, credits, invoices),
+ * on the cloud {@link api} client (steward Bearer on native, same-origin cookie
+ * on web) with the auth gate driven by {@link useSessionAuth}.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

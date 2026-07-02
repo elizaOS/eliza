@@ -2,8 +2,7 @@
  * Hosted public page for an app credit-charge request. Reads the charge +
  * owning app from /api/v1/apps/:appId/charges/:chargeId, then begins a
  * stripe/oxapay checkout (auth required to start checkout; login redirect on
- * sign-out). Polls for confirmation after returning from the provider. Ported
- * from `@elizaos/cloud-frontend/src/pages/payment/app-charge/[appId]/[chargeId]/page.tsx`.
+ * sign-out). Polls for confirmation after returning from the provider.
  */
 
 import {

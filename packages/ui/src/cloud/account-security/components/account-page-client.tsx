@@ -1,11 +1,6 @@
 /**
- * Account page body: profile form, organization info, account details. Ported
- * from
- * `@elizaos/cloud-frontend/src/dashboard/account/_components/account-page-client.tsx`.
- *
- * The stub `SecurityPreferences` section (2FA / notifications / delete — all
- * dead "Coming Soon" controls) is intentionally NOT ported; the live
- * MFA / privacy / delete controls live in the Security page instead.
+ * Account page body: profile form, organization info, account details. The
+ * live MFA / privacy / delete controls live in the Security section instead.
  */
 
 import {
