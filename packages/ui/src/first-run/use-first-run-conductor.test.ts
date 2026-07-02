@@ -295,8 +295,9 @@ describe("useFirstRunConductor", () => {
     seedAppStore();
     const { turn, transcript, unmount } = renderConductor();
     const greeting = await waitForTurn(turn, "first-run:greeting");
-    const runtimeButtons = (greeting.text.match(/__first_run__:runtime:/g) ?? [])
-      .length;
+    const runtimeButtons = (
+      greeting.text.match(/__first_run__:runtime:/g) ?? []
+    ).length;
     expect(runtimeButtons).toBe(2);
 
     // A leftover/stale runtime:other action (e.g. an old transcript widget) is

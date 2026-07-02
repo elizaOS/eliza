@@ -777,8 +777,7 @@ function resolveTextParams(
   // an operator declare the constraint for any model id (new releases the
   // substring heuristic can't know about); the opus-4 name check remains the
   // built-in default.
-  const temperatureLocked =
-    isTemperatureLockedModel(runtime, modelName) || isOpus4Model(modelName);
+  const temperatureLocked = isTemperatureLockedModel(runtime, modelName) || isOpus4Model(modelName);
   if (temperatureLocked && temperature !== undefined && temperature !== 1) {
     temperature = 1;
   }
@@ -790,8 +789,7 @@ function resolveTextParams(
   // ANTHROPIC_MAX_OUTPUT_TOKENS overrides the heuristic (bare number or
   // per-model `id:tokens` pairs) so unknown ids get the right ceiling.
   const modelHardCap =
-    getMaxOutputTokensOverride(runtime, modelName) ??
-    (isOpus4Model(modelName) ? 32_000 : 64_000);
+    getMaxOutputTokensOverride(runtime, modelName) ?? (isOpus4Model(modelName) ? 32_000 : 64_000);
   // Anthropic's Messages API REQUIRES max_tokens — an opt-out caller (direct-
   // channel Stage-1) can't drop it, so send the model's hard cap. The reply is
   // then bounded only by the model's real max (never an arbitrary 8192), and the

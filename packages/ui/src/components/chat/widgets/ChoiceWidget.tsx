@@ -122,7 +122,10 @@ export function ChoiceWidget({
                 <span>{option.label}</span>
               </span>
               {!isSelected ? (
-                <ChevronRight className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                <ChevronRight
+                  className="h-4 w-4 shrink-0 opacity-70"
+                  aria-hidden
+                />
               ) : null}
             </Button>
           );

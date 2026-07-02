@@ -130,7 +130,9 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(true);
-    expect(input.placeholder).toBe("Tap a highlighted option above to continue");
+    expect(input.placeholder).toBe(
+      "Tap a highlighted option above to continue",
+    );
 
     const attach = screen.getByTestId("chat-composer-attach");
     expect(attach.getAttribute("aria-disabled")).toBe("true");

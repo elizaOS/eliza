@@ -423,9 +423,7 @@ function getPriceOverrides(): Record<string, ModelPriceUsdPerMTokens> {
 						: "unknown",
 				input: record.input,
 				output: record.output,
-				cacheRead: isNonNegativeFinite(record.cacheRead)
-					? record.cacheRead
-					: 0,
+				cacheRead: isNonNegativeFinite(record.cacheRead) ? record.cacheRead : 0,
 				cacheWrite: isNonNegativeFinite(record.cacheWrite)
 					? record.cacheWrite
 					: 0,
