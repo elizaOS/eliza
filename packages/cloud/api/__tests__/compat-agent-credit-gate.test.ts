@@ -19,7 +19,15 @@ const requireServiceKey = mock(() => ({
   organizationId: "org-1",
   userId: "user-1",
 }));
-const authenticateWaifuBridge = mock(async () => null);
+type WaifuBridgeAuth = {
+  user: {
+    id: string;
+    organization_id: string;
+  };
+} | null;
+const authenticateWaifuBridge = mock(
+  async (): Promise<WaifuBridgeAuth> => null,
+);
 
 // create route (compat/agents/route.ts) does its own inline compat auth via
 // these seams instead of compat/_lib/auth.
