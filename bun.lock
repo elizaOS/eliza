@@ -5514,6 +5514,7 @@
     "@biomejs/biome",
   ],
   "patchedDependencies": {
+    "@capacitor/ios@8.4.1": "patches/@capacitor%2Fios@8.4.1.patch",
     "@solana/rpc@5.5.1": "patches/@solana%2Frpc@5.5.1.patch",
     "@solana/sysvars@5.5.1": "patches/@solana%2Fsysvars@5.5.1.patch",
     "@solana/rpc-spec@5.5.1": "patches/@solana%2Frpc-spec@5.5.1.patch",
