@@ -266,6 +266,12 @@ export interface RerunFromEventInput {
   instruction?: string;
   planRevisionId?: string;
   stopActive?: boolean;
+  /**
+   * Rerun always preserves history; destructive rerun is intentionally
+   * unsupported. `boolean` (not the literal `true`) is deliberate: JSON callers
+   * can send `false`, and the boundary rejects it with a clear
+   * RecoveryConflictError rather than silently ignoring the request.
+   */
   preserveHistory?: boolean;
   agent?: SpawnAgentForTaskOptions;
 }
@@ -1983,13 +1989,20 @@ export class OrchestratorTaskService extends Service {
     // can replay the gap. Re-read the doc so an upstream metadata write in this
     // same pass (e.g. the valid-envelope stamp) is preserved.
     const doc = await this.store.getTask(taskId);
+    if (!doc) {
+      // The task was deleted concurrently (e.g. the user cancelled during
+      // auto-verify). Bail: there is nothing to re-engage, and writing partial
+      // metadata back with `...doc?.task.metadata` spreading to `{}` would
+      // clobber the completion envelope this very re-read exists to preserve.
+      return;
+    }
     const attemptReflections = [
-      ...readAttemptReflections(doc?.task.metadata),
+      ...readAttemptReflections(doc.task.metadata),
       { attempt: attempt + 1, missing, summary },
     ].slice(-MAX_ATTEMPT_REFLECTIONS);
     await this.store.updateTask(taskId, {
       metadata: {
-        ...doc?.task.metadata,
+        ...doc.task.metadata,
         autoVerifyAttempts: attempt + 1,
         attemptReflections,
       },
