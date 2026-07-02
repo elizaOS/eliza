@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "elizaos-swe-bench"
 version = "2.0.0"
 description = "SWE-bench benchmark for ElizaOS Python agents"
-readme = "RESEARCH.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
