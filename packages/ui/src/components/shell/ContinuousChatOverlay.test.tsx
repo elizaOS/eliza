@@ -8,7 +8,15 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
@@ -38,6 +46,7 @@ import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
+import { __resetAssistantLaunchPayloadClaimsForTests } from "../../platform/assistant-launch-payload";
 import {
   getShellSurface,
   resetShellSurfaceForTests,
@@ -152,6 +161,27 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ping");
     expect(input.value).toBe("");
+  });
+
+  it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const input = screen.getByLabelText("message") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "にほんご" } });
+
+    // Enter while an IME candidate is being committed: `isComposing` is set
+    // (legacy engines report keyCode 229). This Enter accepts the candidate and
+    // MUST NOT submit the half-composed line.
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(controller.send).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(controller.send).not.toHaveBeenCalled();
+    // The draft survives — the premature send never cleared it.
+    expect(input.value).toBe("にほんご");
+
+    // A normal Enter (composition finished) sends as usual.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("にほんご");
   });
 
   it("prefills and focuses the composer from the shared chat prefill event", async () => {
@@ -815,6 +845,61 @@ describe("ContinuousChatOverlay", () => {
     // Dialog gone: Escape collapses the chat as before.
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("lets the transcript viewer own Escape — the chat only collapses once the viewer is gone (#9148)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // The maximized transcript viewer (portal to body) carries role="dialog"
+    // but NO data-state="open", so it wouldn't match the old guard — Escape
+    // would close it AND collapse the chat underneath. It must close alone.
+    const viewer = document.createElement("div");
+    viewer.setAttribute("role", "dialog");
+    viewer.setAttribute("data-testid", "transcript-viewer");
+    document.body.appendChild(viewer);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      viewer.remove();
+    }
+    // Viewer gone: Escape collapses the chat as before.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("Escape closes an in-progress message edit without collapsing the whole sheet (#9148)", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            { id: "u", role: "user", content: "fix my typo", createdAt: 1 },
+          ],
+          send: vi.fn(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // Open the inline editor for the user turn.
+    const bubble = screen
+      .getByText("fix my typo")
+      .closest('[data-testid="thread-line"]')
+      ?.querySelector("div.select-text") as HTMLElement;
+    fireEvent.click(bubble);
+    fireEvent.click(screen.getByTestId("thread-line-edit"));
+    const editInput = screen.getByTestId("thread-line-edit-input");
+
+    // Escape closes THE EDITOR, and the sheet stays open (the edit-in-progress
+    // must not be collapsed away with the whole chat).
+    fireEvent.keyDown(editInput, { key: "Escape" });
+    expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
   it("renders the full thread as one scroll log when the sheet is open", () => {
@@ -2257,7 +2342,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(speak).toHaveBeenCalledWith("read me aloud");
   });
 
-  it("Play toggles to Stop while speaking", () => {
+  it("Play toggles to Stop once THIS message is the one playing", () => {
     const speak = vi.fn();
     const stopSpeaking = vi.fn();
     openThreadWith({
@@ -2270,11 +2355,48 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     });
     fireEvent.click(bubbleFor("now playing"));
     const play = screen.getByTestId("thread-line-speak");
-    expect(play.getAttribute("aria-label")).toBe("Stop");
+    // The agent is globally speaking, but nothing has been Played from THIS
+    // bubble, so it still offers Play (not a spurious Stop — the old bug).
+    expect(play.getAttribute("aria-label")).toBe("Play audio");
+    // Tapping Play speaks this message and marks it as the one playing.
     fireEvent.click(play);
-    // While speaking, the control stops playback instead of re-speaking.
+    expect(speak).toHaveBeenCalledWith("now playing");
+    const stop = screen.getByTestId("thread-line-speak");
+    expect(stop.getAttribute("aria-label")).toBe("Stop");
+    // Tapping again stops playback instead of re-speaking.
+    fireEvent.click(stop);
     expect(stopSpeaking).toHaveBeenCalledTimes(1);
-    expect(speak).not.toHaveBeenCalled();
+    expect(speak).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows Stop only on the actually-playing bubble, not every assistant bubble while anything speaks (#9148)", () => {
+    const speak = vi.fn();
+    openThreadWith({
+      messages: [
+        { id: "a", role: "assistant", content: "first answer", createdAt: 1 },
+        { id: "b", role: "assistant", content: "second answer", createdAt: 2 },
+      ],
+      speak,
+      speaking: true,
+    });
+    // Reveal both action rows. With the global `speaking` flag set but nothing
+    // Played yet, NEITHER bubble claims Stop (the old bug lit every bubble).
+    fireEvent.click(bubbleFor("first answer"));
+    fireEvent.click(bubbleFor("second answer"));
+    expect(
+      screen
+        .getAllByTestId("thread-line-speak")
+        .map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Play audio", "Play audio"]);
+    // Play the FIRST message → only its bubble flips to Stop; the second stays
+    // on Play even though the agent is still globally speaking.
+    fireEvent.click(screen.getAllByTestId("thread-line-speak")[0]);
+    expect(speak).toHaveBeenCalledWith("first answer");
+    expect(
+      screen
+        .getAllByTestId("thread-line-speak")
+        .map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Stop", "Play audio"]);
   });
 
   it("row Copy writes the message text to the clipboard", () => {
@@ -2350,5 +2472,87 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", () => {
+  beforeEach(() => {
+    __resetAssistantLaunchPayloadClaimsForTests();
+    window.history.replaceState(null, "", "/");
+  });
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("prefills the composer from an assistant-launch chat deep link on the hash", () => {
+    // Siri / Shortcuts / App Actions route into #chat?text=…&source=…; the
+    // ambient overlay is the only chat surface on mobile/web/default desktop, so
+    // it must claim the payload and PREFILL (never auto-send) the composer.
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=Remind%20me%20at%205&source=siri&assistant.launchId=launch-9148",
+    );
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("Remind me at 5");
+  });
+
+  it("consumes a launch only once — a second mount with the same launch id does not re-prefill", () => {
+    const hash =
+      "/#chat?text=Water%20plants&source=macos-shortcuts&assistant.launchId=launch-once";
+    window.history.replaceState(null, "", hash);
+    const first = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("Water plants");
+    first.unmount();
+
+    // The same launch id arrives again (re-open / re-render); claiming dedupes
+    // by launchId so it is NOT consumed a second time.
+    window.history.replaceState(null, "", hash);
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("");
+  });
+
+  it("starts hands-free voice capture on a voice=1 launch (while prefilling text)", () => {
+    const toggleHandsFree = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=start%20talking&source=assistant-entry&voice=1&assistant.launchId=launch-voice",
+    );
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ toggleHandsFree })}
+      />,
+    );
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("start talking");
+    expect(toggleHandsFree).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores an untrusted-source hash (no prefill, no voice)", () => {
+    const toggleHandsFree = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=malicious&source=unknown-shortcut&voice=1",
+    );
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ toggleHandsFree })}
+      />,
+    );
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("");
+    expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 });
