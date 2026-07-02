@@ -61,6 +61,20 @@ const registry = new Map<string, ViewRegistryEntry>();
 const warnedLargeBundles = new Set<string>();
 
 /**
+ * Package names to probe for a plugin, in preference order. The canonical
+ * `@elizaos/plugin-<name>` candidate comes BEFORE the bare short name: a
+ * plugin's short name can collide with an unrelated published npm package
+ * (e.g. plugin "birdclaw" vs the `birdclaw` CLI on npm), and under Bun a
+ * bare-name resolve can hit that package's install cache — registering the
+ * view against a directory that isn't this plugin at all.
+ */
+export function pluginPackageNameCandidates(pluginName: string): string[] {
+  return pluginName.startsWith("@")
+    ? [pluginName]
+    : [`@elizaos/plugin-${pluginName}`, pluginName];
+}
+
+/**
  * Attempt to resolve the package root dir for a plugin by name using
  * `require.resolve`. Returns `undefined` when the package is not reachable
  * from the current module (e.g. workspace-linked but not installed).
@@ -70,9 +84,7 @@ async function resolvePluginPackageDir(
 ): Promise<string | undefined> {
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
-  const packageNames = pluginName.startsWith("@")
-    ? [pluginName]
-    : [pluginName, `@elizaos/plugin-${pluginName}`];
+  const packageNames = pluginPackageNameCandidates(pluginName);
 
   for (const packageName of packageNames) {
     // Preferred: resolve the package's own package.json directly. Requires the
