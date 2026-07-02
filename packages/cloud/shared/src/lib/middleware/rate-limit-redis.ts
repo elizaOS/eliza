@@ -12,27 +12,44 @@
  * @see ANALYTICS_PR_REVIEW_ANALYSIS.md - Issue #1
  */
 
-import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
+import {
+  buildRedisClient,
+  type CompatibleRedis,
+  isCloudflareWorkerRuntime,
+} from "../cache/redis-factory";
 import { logger } from "../utils/logger";
 
 /** Environment prefix — prevents rate-limit key collisions when dev/prod share the same Redis instance. */
 const ENV_PREFIX = process.env.ENVIRONMENT || "local";
 
-let redis: CompatibleRedis | null = null;
+let cachedRedis: CompatibleRedis | null = null;
+let loggedInit = false;
+let loggedMissing = false;
 
 function getRedisClient(): CompatibleRedis | null {
-  if (redis) return redis;
+  // On Workers the client is built PER CALL: a cached TCP socket belongs to
+  // the request that opened it and every later request fails with "Cannot
+  // perform I/O on behalf of a different request" (observed on the prod
+  // inference routes). Node keeps the persistent connection.
+  if (!isCloudflareWorkerRuntime() && cachedRedis) return cachedRedis;
 
-  redis = buildRedisClient();
-  if (!redis) {
-    logger.error(
-      "[Rate Limit Redis] Missing Redis credentials. Set REDIS_URL or KV_REST_API_URL/KV_REST_API_TOKEN",
-    );
+  const client = buildRedisClient();
+  if (!client) {
+    if (!loggedMissing) {
+      loggedMissing = true;
+      logger.error(
+        "[Rate Limit Redis] Missing Redis credentials. Set REDIS_URL or KV_REST_API_URL/KV_REST_API_TOKEN",
+      );
+    }
     return null;
   }
 
-  logger.info("[Rate Limit Redis] Redis client initialized");
-  return redis;
+  if (!loggedInit) {
+    loggedInit = true;
+    logger.info("[Rate Limit Redis] Redis client initialized");
+  }
+  if (!isCloudflareWorkerRuntime()) cachedRedis = client;
+  return client;
 }
 
 /**

@@ -10,7 +10,11 @@
  * - Organization-scoped task isolation
  */
 
-import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
+import {
+  buildRedisClient,
+  type CompatibleRedis,
+  isCloudflareWorkerRuntime,
+} from "../cache/redis-factory";
 import type { Task } from "../types/a2a";
 import { logger } from "../utils/logger";
 import { assertPersistentCloudStateConfigured } from "../utils/persistence-guard";
@@ -40,23 +44,30 @@ const TASK_ORG_INDEX_PREFIX = "a2a:org:";
 // Redis Client
 // ============================================================================
 
-let redis: CompatibleRedis | null = null;
-let initialized = false;
+let cachedRedis: CompatibleRedis | null = null;
+let loggedInit = false;
 
 function getRedisClient(): CompatibleRedis {
-  if (initialized && redis) return redis;
+  // On Workers the client is built PER CALL: a cached TCP socket belongs to
+  // the request that opened it and every later request fails with "Cannot
+  // perform I/O on behalf of a different request". Node keeps the persistent
+  // connection.
+  if (!isCloudflareWorkerRuntime() && cachedRedis) return cachedRedis;
 
-  redis = buildRedisClient();
-  if (!redis) {
+  const client = buildRedisClient();
+  if (!client) {
     assertPersistentCloudStateConfigured("A2A TaskStore", false);
     throw new Error(
       "[A2A TaskStore] Redis-backed shared storage is required; configure REDIS_URL or KV_* credentials before starting the service.",
     );
   }
 
-  logger.info("[A2A TaskStore] ✓ Redis task store initialized");
-  initialized = true;
-  return redis;
+  if (!loggedInit) {
+    loggedInit = true;
+    logger.info("[A2A TaskStore] ✓ Redis task store initialized");
+  }
+  if (!isCloudflareWorkerRuntime()) cachedRedis = client;
+  return client;
 }
 
 // ============================================================================
