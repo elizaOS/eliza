@@ -27,6 +27,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -45,7 +46,7 @@ const KEY = process.env.CEREBRAS_API_KEY || process.env.LLM_KEY || "";
 // FIXED workdir (reset clean each run) — record and replay MUST share the same
 // filesystem context, or the agent's tool results diverge and replay drifts off
 // the recorded turn sequence. Path is normalized out of the match key anyway.
-const workdir = join(tmpdir(), "eliza-det-replay-workspace");
+const workdir = join(realpathSync(tmpdir()), "eliza-det-replay-workspace");
 
 // The EXACT prompt the session is recorded with — must match for replay keys.
 const PROMPT =
