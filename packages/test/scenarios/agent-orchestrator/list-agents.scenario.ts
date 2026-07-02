@@ -14,6 +14,10 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+} from "../_helpers/effect-assertions.ts";
 
 const TASKS = "TASKS";
 type R = AgentRuntime & {
@@ -140,6 +144,25 @@ export default scenario({
       actionName: TASKS,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): list_agents really read the ACP session
+      // store — a fresh runtime must surface an empty sessions array in the
+      // result payload, not just handler success.
+      type: "custom",
+      name: "acp-session-store-read-effect",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, TASKS);
+        if (!data) {
+          return `no successful ${TASKS} result data; calls: ${describeCalls(ctx)}`;
+        }
+        if (!Array.isArray(data.sessions)) {
+          return `expected result.data.sessions array from the ACP session store, saw ${JSON.stringify(data.sessions ?? null)}`;
+        }
+        if (data.sessions.length !== 0) {
+          return `fresh ACP session store must be empty; saw ${data.sessions.length} session(s)`;
+        }
+      },
     },
   ],
 });

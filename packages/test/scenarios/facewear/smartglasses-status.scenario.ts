@@ -11,6 +11,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { describeCalls, toRecord } from "../_helpers/effect-assertions.ts";
 
 const SMARTGLASSES_STATUS = "SMARTGLASSES_STATUS";
 type R = AgentRuntime & {
@@ -138,6 +139,34 @@ export default scenario({
       actionName: SMARTGLASSES_STATUS,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the action really read the live
+      // SmartglassesService status snapshot — in a headless test that
+      // snapshot must report no connected device, and the counters the
+      // service tracks must be present in the result values.
+      type: "custom",
+      name: "smartglasses-status-snapshot-effect",
+      predicate: (ctx) => {
+        const call = ctx.actionsCalled.find(
+          (action) =>
+            action.actionName === SMARTGLASSES_STATUS &&
+            action.result?.success === true,
+        );
+        const values = toRecord(call?.result?.values);
+        if (!values) {
+          return `no successful ${SMARTGLASSES_STATUS} result values; calls: ${describeCalls(ctx)}`;
+        }
+        if (values.connected !== false) {
+          return `headless run has no BLE device, so status.connected must be false; saw ${JSON.stringify(values.connected ?? null)}`;
+        }
+        if (typeof values.audioChunksReceived !== "number") {
+          return `expected the service's audioChunksReceived counter in result values, saw ${JSON.stringify(values.audioChunksReceived ?? null)}`;
+        }
+        if (!toRecord(values.setup)) {
+          return `expected the derived setup summary in result values, saw ${JSON.stringify(values.setup ?? null)}`;
+        }
+      },
     },
   ],
 });
