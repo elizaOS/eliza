@@ -24,6 +24,7 @@ import {
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
+import { savePendingCloudHandoff } from "../cloud/handoff/pending-handoff-store";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { getBootConfig } from "../config/boot-config";
@@ -520,6 +521,17 @@ export async function bindCloudAgent(
       sharedAgentId,
       async () => {
         const dedicatedAgentId = await createDedicatedHandoffTarget();
+        // Reload insurance: the supervisor is in-memory, so persist the exact
+        // migration target. A reload mid-boot resumes THIS handoff at startup
+        // (resumePendingCloudHandoff) instead of stranding the user on the
+        // shared adapter; silentlyRepointToDedicated clears the marker.
+        savePendingCloudHandoff({
+          sharedAgentId,
+          dedicatedAgentId,
+          sharedApiBase: cloudAgentApiBase,
+          cloudApiBase,
+          startedAt: Date.now(),
+        });
         return await client.startCloudAgentHandoff({
           agentId: sharedAgentId,
           sharedApiBase: cloudAgentApiBase,

@@ -529,6 +529,50 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
+  it("re-offers a FRESH provider turn on a runtime re-pick after a failed finish (locked-widget dead end)", async () => {
+    // First POST /api/first-run fails, second succeeds.
+    mocks.client.submitFirstRun.mockRejectedValueOnce(
+      new Error("first-run write failed"),
+    );
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.id.startsWith("first-run:error:"),
+        ),
+      ).toBe(true);
+    });
+
+    // The user re-picks LOCAL from the error turn. The original provider turn
+    // still exists (its widget locked itself on the first pick), so the
+    // conductor must seed a FRESH provider turn — otherwise the retry is a
+    // dead end in the real UI.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.id.startsWith("first-run:provider:retry:"),
+        ),
+      ).toBe(true);
+    });
+
+    // The retried provider pick completes: second POST succeeds → tutorial.
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
   it("unregisters the action handler on unmount so identical values no longer short-circuit", async () => {
     seedAppStore();
     const { turn, unmount } = renderConductor();

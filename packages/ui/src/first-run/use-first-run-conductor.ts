@@ -239,6 +239,23 @@ export function useFirstRunConductor(): void {
     },
     [setConversationMessages],
   );
+  // Seed a CHOICE turn that must arrive unlocked on every re-offer. A choice
+  // widget locks itself after its first pick, and `seedTurn` dedups by id — so
+  // re-offering into an existing turn would present a dead (locked) widget.
+  // When the base turn already exists, seed a fresh retry turn instead.
+  const seedFreshChoiceTurn = React.useCallback(
+    (baseId: string, text: string) => {
+      setConversationMessages((prev) => {
+        if (!prev.some((m) => m.id === baseId)) {
+          return [...prev, makeTurn(baseId, text)];
+        }
+        const retryId = `${baseId}:retry:${Date.now()}`;
+        if (prev.some((m) => m.id === retryId)) return prev;
+        return [...prev, makeTurn(retryId, text)];
+      });
+    },
+    [setConversationMessages],
+  );
 
   const seedTutorial = React.useCallback(() => {
     provisionedRef.current = true;
@@ -333,14 +350,12 @@ export function useFirstRunConductor(): void {
       lines.push(
         `${FIRST_RUN_ACTION_PREFIX}cloud-agent:new=Create a new agent`,
       );
-      seedTurn(
-        makeTurn(
-          "first-run:cloud-agent",
-          `Which Eliza Cloud agent should I use?\n\n[CHOICE:first-run id=cloud-agent]\n${lines.join("\n")}\n[/CHOICE]`,
-        ),
+      seedFreshChoiceTurn(
+        "first-run:cloud-agent",
+        `Which Eliza Cloud agent should I use?\n\n[CHOICE:first-run id=cloud-agent]\n${lines.join("\n")}\n[/CHOICE]`,
       );
     },
-    [seedTurn],
+    [seedFreshChoiceTurn],
   );
 
   // Armed by a needs-cloud-login outcome; consumed by the auto-resume effect
@@ -481,11 +496,9 @@ export function useFirstRunConductor(): void {
           runtime: "local",
           localInference: "all-local",
         };
-        seedTurn(
-          makeTurn(
-            "first-run:provider",
-            `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: id === "other" ? "other" : "on-device" })}`,
-          ),
+        seedFreshChoiceTurn(
+          "first-run:provider",
+          `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: id === "other" ? "other" : "on-device" })}`,
         );
         return true;
       }
@@ -607,6 +620,7 @@ export function useFirstRunConductor(): void {
     },
     [
       seedTurn,
+      seedFreshChoiceTurn,
       seedRuntimeChoice,
       replaceTurn,
       handleOutcome,
