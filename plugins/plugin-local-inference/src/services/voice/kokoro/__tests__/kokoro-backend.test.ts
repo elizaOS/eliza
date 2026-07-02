@@ -102,6 +102,49 @@ describe("KokoroTtsBackend", () => {
 		expect(totalBody).toBe(9600);
 	});
 
+	it("passes the raw phrase text — never the IPA string — to the runtime (#10726)", async () => {
+		const seen: Array<{ text: string; phonemes: string }> = [];
+		class RecordingRuntime implements KokoroRuntime {
+			readonly id = "mock" as const;
+			readonly sampleRate = 24000;
+			async synthesize(
+				args: KokoroRuntimeInputs,
+			): Promise<{ cancelled: boolean }> {
+				seen.push({ text: args.text, phonemes: args.phonemes.phonemes });
+				args.onChunk({
+					pcm: new Float32Array(0),
+					sampleRate: this.sampleRate,
+					isFinal: true,
+				});
+				return { cancelled: false };
+			}
+			dispose(): void {}
+		}
+		const backend = new KokoroTtsBackend({
+			runtime: new RecordingRuntime(),
+			layout: {
+				root: "/tmp/kokoro",
+				modelFile: "kokoro-82m-v1_0.gguf",
+				voicesDir: "/tmp/kokoro/voices",
+				sampleRate: 24000,
+			},
+			defaultVoiceId: KOKORO_DEFAULT_VOICE_ID,
+			phonemizer: fixedPhonemizer(),
+		});
+		await backend.synthesizeStream({
+			phrase: makePhrase("hello there"),
+			preset: makePreset(KOKORO_DEFAULT_VOICE_ID),
+			cancelSignal: { cancelled: false },
+			onChunk: () => undefined,
+		});
+		expect(seen).toHaveLength(1);
+		// The fused engine phonemizes internally; handing it the JS-side IPA
+		// string double-phonemizes into unintelligible audio (#10726).
+		expect(seen[0]?.text).toBe("hello there");
+		expect(seen[0]?.phonemes).toBe("ab");
+		expect(seen[0]?.text).not.toBe(seen[0]?.phonemes);
+	});
+
 	it("propagates cancelSignal at chunk boundaries", async () => {
 		const { backend } = makeBackend({ totalSamples: 24000, chunkCount: 8 });
 		const cancelSignal = { cancelled: false };

@@ -77,6 +77,7 @@ function makeInputs(
 	cancelSignal = { cancelled: false },
 ): KokoroRuntimeInputs {
 	return {
+		text: "hello",
 		phonemes: { ids: Int32Array.from([1, 2, 3]), phonemes: "hɛˈloʊ" },
 		voice: v,
 		cancelSignal,
@@ -187,9 +188,11 @@ describe("KokoroFfiRuntime", () => {
 		expect(calls.loads[0]?.voiceBinPath).toBe(
 			path.join(root, "voices", "af_same.bin"),
 		);
-		// The fork phonemizes internally — we hand it the phoneme string, the
-		// same `input` the llama-server /v1/audio/speech path sends.
-		expect(calls.synths[0]?.text).toBe("hɛˈloʊ");
+		// The fork phonemizes internally (espeak-ng or ASCII fallback) — it must
+		// receive the RAW phrase text, never the JS-side IPA string. IPA-as-text
+		// double-phonemizes into unintelligible audio (#10726).
+		expect(calls.synths[0]?.text).toBe("hello");
+		expect(calls.synths[0]?.text).not.toBe("hɛˈloʊ");
 		expect(chunks.filter((c) => !c.isFinal)).toHaveLength(1);
 		expect(chunks.at(-1)?.isFinal).toBe(true);
 		expect(chunks[0]?.len).toBe(4);
