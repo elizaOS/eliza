@@ -179,6 +179,15 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
+    # A production Worker deploy must never be cancelled mid-flight by a newer
+    # main promote (#11640): the workflow-level group did not protect the
+    # in-flight job, so rapid promotes cancelled every Worker deploy and prod
+    # ran stale code. Job-level concurrency groups are repo-wide, so a per-env
+    # group with cancel-in-progress:false serializes deploys ACROSS runs (queue,
+    # never cancel) — same protection migrate-db already has.
+    concurrency:
+      group: cloud-cf-deploy-api-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      cancel-in-progress: false
     # Keep the deploy fleet configurable while Cloud ops converges on the
     # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
@@ -495,6 +504,12 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
+    # Per-env (or per-PR) job concurrency so a newer main promote queues behind
+    # the in-flight prod Pages deploy instead of cancelling it (#11640); PR
+    # previews keep a per-PR group that DOES dedupe (cancel-in-progress).
+    concurrency:
+      group: cloud-cf-deploy-console-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Keep the deploy fleet configurable while Cloud ops converges on the
     # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
@@ -850,6 +865,12 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
+    # Per-env (or per-PR) job concurrency so a newer main promote queues behind
+    # the in-flight prod Pages deploy instead of cancelling it (#11640); PR
+    # previews keep a per-PR group that DOES dedupe (cancel-in-progress).
+    concurrency:
+      group: cloud-cf-deploy-app-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Keep the deploy fleet configurable while Cloud ops converges on the
     # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
