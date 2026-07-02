@@ -670,18 +670,7 @@ class AdvertisingService {
       throw new Error(result.error || "Failed to update campaign");
     }
 
-    // Platform accepted — refund a budget DECREASE now (never refund before the
-    // live budget is actually lowered).
-    if (budgetCreditDelta < 0) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: -budgetCreditDelta,
-        description: `Ad budget decrease refund: ${campaign.name}`,
-        metadata: { type: "ad_budget_decrease_refund", campaignId },
-      });
-    }
-
-    const updated = await adCampaignsRepository.update(campaignId, {
+    const updateData = {
       name: input.name,
       budget_amount: input.budgetAmount ? String(input.budgetAmount) : undefined,
       ...(newCreditsAllocated !== undefined
@@ -690,7 +679,50 @@ class AdvertisingService {
       start_date: input.startDate,
       end_date: input.endDate,
       targeting: input.targeting,
-    });
+    };
+
+    let updated: AdCampaign | undefined;
+    if (budgetCreditDelta < 0 && newCreditsAllocated !== undefined) {
+      // Platform accepted a budget DECREASE. Two money leaks fixed here (#11292):
+      //  1. Over-refund after spend: the old code refunded the FULL allocation
+      //     delta, ignoring spend. Refund only the genuinely-UNUSED portion (the
+      //     same clamp deleteCampaign applies), so a decrease can never refund
+      //     credits already spent on real impressions.
+      //  2. Concurrent double-refund: claim the allocation change atomically
+      //     (CAS on the observed credits_allocated) so only ONE of two
+      //     simultaneous decreases refunds.
+      // credits_allocated stays == newBudget*markup (never clamp the STORED
+      // allocation) so the markup derived at delete (allocated/budget) stays
+      // correct — only the REFUND is clamped.
+      const oldAllocated = parseFloat(campaign.credits_allocated);
+      const spentCredits = await this.computeCreditsSpent(campaign);
+      const freed = oldAllocated - newCreditsAllocated;
+      const unused = Math.max(0, oldAllocated - spentCredits);
+      const refundAmount = Math.max(0, Math.min(freed, unused));
+
+      updated = await adCampaignsRepository.claimAllocationChange(
+        campaignId,
+        organizationId,
+        campaign.credits_allocated,
+        updateData,
+      );
+      if (!updated) {
+        // Another budget change moved credits_allocated between our read and
+        // this atomic write — refuse rather than risk a double refund. Safe to
+        // retry (the campaign was not modified by this call).
+        throw new Error("Campaign budget changed concurrently; please retry");
+      }
+      if (refundAmount > 0) {
+        await creditsService.refundCredits({
+          organizationId,
+          amount: refundAmount,
+          description: `Ad budget decrease refund: ${campaign.name}`,
+          metadata: { type: "ad_budget_decrease_refund", campaignId },
+        });
+      }
+    } else {
+      updated = await adCampaignsRepository.update(campaignId, updateData);
+    }
 
     logger.info("[Advertising] Campaign updated", { campaignId });
 
@@ -759,6 +791,50 @@ class AdvertisingService {
     return updated!;
   }
 
+  /**
+   * Credits genuinely spent for a campaign, honoring BOTH spend columns (#11151):
+   *   - internal miniapp SSP spend → `credits_spent` (already in allocated-credit
+   *     units, written by adSlotsRepository.recordServe per served impression).
+   *   - external-provider spend → `total_spend` (USD; converted to allocated-
+   *     credit units at the same markup applied at allocation). Best-effort
+   *     refreshed from the provider first so a never-synced campaign can't
+   *     under-count spend and over-refund.
+   * Takes the MAX of the two measures (never double-count) and clamps to the
+   * allocation, so a refund derived from `allocated - spent` can never return
+   * credits already spent on real impressions. Shared by deleteCampaign and the
+   * updateCampaign budget-decrease refund (#11292).
+   */
+  private async computeCreditsSpent(campaign: {
+    id: string;
+    organization_id: string;
+    external_campaign_id: string | null;
+    credits_allocated: string;
+    budget_amount: string;
+    credits_spent: string;
+    total_spend: string;
+  }): Promise<number> {
+    let totalSpendUsd = parseFloat(campaign.total_spend);
+    if (campaign.external_campaign_id) {
+      try {
+        const freshMetrics = await this.getCampaignMetrics(campaign.id, campaign.organization_id);
+        if (Number.isFinite(Number(freshMetrics.spend))) {
+          totalSpendUsd = Number(freshMetrics.spend);
+        }
+      } catch (metricsError) {
+        logger.warn("[Advertising] spend refresh failed; using stored total_spend", {
+          campaignId: campaign.id,
+          error: metricsError instanceof Error ? metricsError.message : String(metricsError),
+        });
+      }
+    }
+    const creditsAllocated = parseFloat(campaign.credits_allocated);
+    const budgetAmountUsd = parseFloat(campaign.budget_amount);
+    const markup = budgetAmountUsd > 0 ? creditsAllocated / budgetAmountUsd : 1;
+    const internalSpentCredits = Math.max(0, parseFloat(campaign.credits_spent));
+    const externalSpentCredits = Math.max(0, totalSpendUsd) * markup;
+    return Math.min(creditsAllocated, Math.max(internalSpentCredits, externalSpentCredits));
+  }
+
   async deleteCampaign(campaignId: string, organizationId: string): Promise<void> {
     const campaign = await adCampaignsRepository.findById(campaignId);
     if (!campaign || campaign.organization_id !== organizationId) {
@@ -778,51 +854,23 @@ class AdvertisingService {
       }
     }
 
-    // Refund the genuinely-UNUSED budget. Spend accrues on TWO different columns
-    // depending on the campaign type, and the refund must honor BOTH (#11151):
-    //   - internal miniapp SSP spend → `credits_spent` (allocated-credit units,
-    //     written by adSlotsRepository.recordServe on every served impression,
-    //     #10942/#11029). NOTE: the earlier "credits_spent is never written"
-    //     reasoning is STALE — it only checked incrementSpend's callers and
-    //     missed recordServe's direct UPDATE.
-    //   - external-provider spend → `total_spend` (USD, synced by getCampaignMetrics).
-    // Refunding off `total_spend` ALONE let a purely-internal campaign
-    // (external_campaign_id = null, so total_spend stays "0") refund its ENTIRE
-    // prepaid budget + markup after spending it on real impressions ("free
-    // advertising", platform eats the publisher payouts). Convert the external
-    // USD spend into allocated-credit units at the same markup applied at
-    // allocation, take the MAX of the two spent measures, and refund only the
-    // remainder — so a campaign of either kind (or both) can never be refunded
-    // past its genuinely-unused allocation. Best-effort refresh external spend
-    // first so a never-synced provider campaign can't over-refund.
-    let totalSpendUsd = parseFloat(campaign.total_spend);
-    if (campaign.external_campaign_id) {
-      try {
-        const freshMetrics = await this.getCampaignMetrics(campaignId, organizationId);
-        if (Number.isFinite(Number(freshMetrics.spend))) {
-          totalSpendUsd = Number(freshMetrics.spend);
-        }
-      } catch (metricsError) {
-        logger.warn(
-          "[Advertising] spend refresh before delete-refund failed; using stored total_spend",
-          {
-            campaignId,
-            error: metricsError instanceof Error ? metricsError.message : String(metricsError),
-          },
-        );
-      }
+    // Compute the genuinely-unused refund BEFORE the atomic claim — the spend
+    // refresh inside computeCreditsSpent needs the row to still exist. The
+    // two-column (#11151) spend logic lives in the shared helper.
+    const creditsSpent = await this.computeCreditsSpent(campaign);
+    const creditsRemaining = Math.max(0, parseFloat(campaign.credits_allocated) - creditsSpent);
+
+    // Atomic claim: only the caller that actually removes the row refunds, so
+    // two concurrent deletes (or a delete retried after a mid-op failure) can't
+    // both refund the unused budget (#11292). claimDelete returns the row only
+    // to the winner.
+    const deleted = await adCampaignsRepository.claimDelete(campaignId, organizationId);
+    if (!deleted) {
+      logger.info("[Advertising] Campaign already deleted concurrently; skipping refund", {
+        campaignId,
+      });
+      return;
     }
-    const creditsAllocated = parseFloat(campaign.credits_allocated);
-    const budgetAmountUsd = parseFloat(campaign.budget_amount);
-    const markup = budgetAmountUsd > 0 ? creditsAllocated / budgetAmountUsd : 1;
-    // credits_spent is already in allocated-credit units; total_spend is USD → scale by markup.
-    const internalSpentCredits = Math.max(0, parseFloat(campaign.credits_spent));
-    const externalSpentCredits = Math.max(0, totalSpendUsd) * markup;
-    const creditsSpent = Math.min(
-      creditsAllocated,
-      Math.max(internalSpentCredits, externalSpentCredits),
-    );
-    const creditsRemaining = Math.max(0, creditsAllocated - creditsSpent);
 
     if (creditsRemaining > 0) {
       await creditsService.refundCredits({
@@ -842,8 +890,6 @@ class AdvertisingService {
         description: `Refund for deleted campaign: ${campaign.name}`,
       });
     }
-
-    await adCampaignsRepository.delete(campaignId);
 
     logger.info("[Advertising] Campaign deleted", { campaignId });
   }
