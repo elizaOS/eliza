@@ -24,8 +24,10 @@ node_modules/
 screenshots/
 .vite/
 
-# Aesthetic audit screenshot output (generated, not source of truth)
+# Aesthetic audit screenshot output (generated, not source of truth; reviewed
+# cloud-audit evidence is committed under .github/issue-evidence/10725-*)
 aesthetic-audit-output/
+aesthetic-audit-output-cloud/
 
 # LifeOps view screenshot harness output + build (generated; review locally)
 test/view-screenshots/output/

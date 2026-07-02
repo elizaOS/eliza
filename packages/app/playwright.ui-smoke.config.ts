@@ -61,6 +61,10 @@ const webkitLaneEnabled = process.env.PLAYWRIGHT_WEBKIT === "1";
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
+// The cloud-surface aesthetic audit (#10725/#11342) walks every registered
+// cloud route (packages/ui/src/cloud/register-all.ts) at desktop + mobile; a
+// dedicated tool run via `audit:cloud`, not part of the default e2e smoke.
+const AUDIT_CLOUD_SPEC = /cloud-surfaces-aesthetic-audit\.spec\.ts/;
 // The WebKit lane (#10104/#10722): the assertion-grade dashboard specs, the
 // core shell smoke, and the input-modality spec on a real Desktop Safari
 // engine. WebKit-only behavior differences are real (see
@@ -108,8 +112,9 @@ export default defineConfig({
       name: "chromium",
       // The voice button-press spec needs the fake-audio launch flags; it runs
       // in the dedicated `chromium-voice-mic` project below, not here. The
-      // all-views aesthetic audit runs only via the `audit:app` project.
-      testIgnore: [VOICE_MIC_SPEC, AUDIT_APP_SPEC],
+      // all-views aesthetic audit runs only via the `audit:app` project; the
+      // cloud-surface audit only via `audit:cloud`.
+      testIgnore: [VOICE_MIC_SPEC, AUDIT_APP_SPEC, AUDIT_CLOUD_SPEC],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
@@ -208,6 +213,20 @@ export default defineConfig({
       // (`--project=audit-app`). Walks every view at desktop + mobile internally.
       name: "audit-app",
       testMatch: AUDIT_APP_SPEC,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
+    },
+    {
+      // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
+      // (`--project=audit-cloud`). Walks every registered cloud route at
+      // desktop + mobile internally. Requires a renderer built with
+      // VITE_PLAYWRIGHT_TEST_AUTH=true (the spec self-skips otherwise).
+      name: "audit-cloud",
+      testMatch: AUDIT_CLOUD_SPEC,
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
