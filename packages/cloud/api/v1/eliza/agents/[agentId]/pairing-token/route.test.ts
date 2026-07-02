@@ -239,6 +239,25 @@ describe("eliza agent pairing token route", () => {
     expect(generateToken).not.toHaveBeenCalled();
   });
 
+  test("#11224: pairing a STOPPED shared-runtime agent does not credit-gate or provision", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("shared"),
+      status: "stopped",
+    });
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "AGENT_WEB_UI_NOT_READY",
+    });
+    expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
+    expect(checkAgentCreditGate).not.toHaveBeenCalled();
+    expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
+    expect(generateToken).not.toHaveBeenCalled();
+  });
+
   test("#11224: pairing a STOPPED dedicated agent for a suspended org is blocked 402 — no free re-provision", async () => {
     findByIdAndOrg.mockResolvedValue({
       ...runningSandbox("dedicated-lazy"),
