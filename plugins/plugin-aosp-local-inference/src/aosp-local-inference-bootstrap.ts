@@ -1194,7 +1194,10 @@ function resolveBundledModelsDir(): string {
 // voice"), so unlike the general recommended-model auto-download it fetches by
 // default; opt out with ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1 (offline/kiosk).
 // `af_sam.bin` lives under voice/kokoro/voices/, not the per-tier bundle.
-const KOKORO_GGUF_FILE = "kokoro-82m-v1_0-Q4_K_M.gguf";
+// The published eliza-1 bundle ships the F16 GGUF under this name (no
+// separate Q4 is published; llama-quantize does not support the kokoro arch).
+// The engine discovery also accepts this name — keep them in sync.
+const KOKORO_GGUF_FILE = "kokoro-82m-v1_0.gguf";
 const KOKORO_VOICE_FILE = "af_sam.bin";
 // Kokoro style-embedding dimension (matches the shared voice/ffi-bindings loader
 // and the .bin voice-preset layout). Passed to eliza_inference_kokoro_load.

@@ -197,7 +197,7 @@ const VOICE_COMPONENTS: Eliza1VoiceComponent[] = [
     roles: ["tts", "voice"],
     capabilities: ["text-to-speech"],
     files: [
-      "kokoro-82m-v1_0-Q4_K_M.gguf",
+      "kokoro-82m-v1_0.gguf",
       "voices/af_bella.bin",
       "voices/af_same.bin",
     ],

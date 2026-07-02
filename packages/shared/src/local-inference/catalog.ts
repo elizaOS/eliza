@@ -365,7 +365,7 @@ function bundleComponent(
 }
 
 function primaryVoiceFileForTier(_id: Eliza1TierId): string {
-  return "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf";
+  return "tts/kokoro/kokoro-82m-v1_0.gguf";
 }
 
 function asrFileForTier(id: Eliza1TierId): string {
