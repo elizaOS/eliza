@@ -71,9 +71,12 @@ function isOnchainError(status: number, _data: unknown): boolean {
   return status === 500 && isOnchainMode;
 }
 
-function skipUnless<T>(value: T | null | undefined): asserts value is T {
+function skipUnless<T>(
+  value: T | null | undefined,
+  reason: string,
+): asserts value is T {
   if (value == null) {
-    test.skip();
+    test.skip(true, reason);
   }
 }
 
@@ -226,7 +229,7 @@ test.describe("Perpetual Market Trading (Simulation)", () => {
     );
 
     const market = markets[0];
-    skipUnless(market);
+    skipUnless(market, "No perpetual market fixture available.");
     const tradeSize = Math.max(market.minOrderSize || 10, 10);
 
     const { data, status } = await apiPost<PerpOpenResponse>(
@@ -271,7 +274,10 @@ test.describe("Perpetual Market Trading (Simulation)", () => {
 
     // Use a different market to avoid position consolidation
     const market = markets[1];
-    skipUnless(market);
+    skipUnless(
+      market,
+      "Need at least two perpetual market fixtures to open an isolated short position.",
+    );
     const tradeSize = Math.max(market.minOrderSize || 10, 10);
 
     const { data, status } = await apiPost<PerpOpenResponse>(
@@ -310,7 +316,7 @@ test.describe("Perpetual Market Trading (Simulation)", () => {
 
     // Use the last market to avoid conflicts with earlier tests
     const market = markets[markets.length - 1];
-    skipUnless(market);
+    skipUnless(market, "No perpetual market fixture available.");
     const tradeSize = Math.max(market.minOrderSize || 10, 10);
 
     const { data: openResult, status: openStatus } =
@@ -359,7 +365,7 @@ test.describe("Perpetual Market Trading (Simulation)", () => {
     );
 
     const market = markets[0];
-    skipUnless(market);
+    skipUnless(market, "No perpetual market fixture available.");
 
     const response = await fetch(`${BASE_URL}/api/markets/perps/open`, {
       method: "POST",

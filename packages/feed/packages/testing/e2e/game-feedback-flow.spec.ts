@@ -34,7 +34,7 @@ function skipOrFail(message: string): void {
     throw new Error(`[STRICT MODE] ${message}`);
   }
   console.log(`ℹ️ ${message}`);
-  test.skip();
+  test.skip(true, message);
 }
 
 test.describe("Game Feedback Button", () => {

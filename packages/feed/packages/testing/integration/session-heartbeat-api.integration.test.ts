@@ -291,7 +291,7 @@ describe("Session Heartbeat API", () => {
         signal: AbortSignal.timeout(10000),
       });
 
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(400);
     });
 
     test("handles empty body", async () => {
@@ -304,8 +304,7 @@ describe("Session Heartbeat API", () => {
         signal: AbortSignal.timeout(10000),
       });
 
-      // Should handle gracefully (400 or similar)
-      expect(res.status).toBeLessThan(500);
+      expect(res.status).toBe(400);
     });
   });
 
