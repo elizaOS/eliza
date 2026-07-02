@@ -26,6 +26,7 @@ import { type AppReview, appReviews } from "../../db/schemas/app-reviews";
 import { type App, apps } from "../../db/schemas/apps";
 import { getLanguageModel, hasLanguageModelProviderConfigured } from "../providers/language-model";
 import { logger } from "../utils/logger";
+import { appsService } from "./apps";
 
 /** Bump when the rubric or category taxonomy changes so old rows stay attributable. */
 export const RUBRIC_VERSION = "2026-07-01.1";
@@ -398,6 +399,26 @@ export async function runAppReview(params: RunAppReviewParams): Promise<AppRevie
 
     return row;
   });
+
+  // The review just changed apps.review_status in the DB, but appsService caches
+  // the app row (getById, TTL 300s) — the monetization/charge gates read through
+  // that cache via isAppMonetizationApproved. Without this invalidation an
+  // approval 403s legit creators for up to 5 min, and a re-review to REJECTED
+  // leaves the payment gate reading a stale "approved" row. Mirrors the
+  // invalidate-on-mutation invariant documented at apps.ts:105-111. Best-effort:
+  // a cache-eviction failure must not fail the (already-committed) review.
+  try {
+    await appsService.invalidateCache(
+      app.id,
+      app.api_key_id ?? undefined,
+      app.slug ?? undefined,
+    );
+  } catch (err) {
+    logger.warn("[AppReview] cache invalidation after review failed", {
+      appId: app.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   logger.info("[AppReview] Completed review", {
     appId: app.id,
