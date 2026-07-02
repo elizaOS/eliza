@@ -256,7 +256,13 @@ function buildSearchText(doc: OrchestratorTaskDocument): string {
     t.originalRequest,
     t.summary ?? "",
     ...t.acceptanceCriteria,
-    ...doc.sessions.map((s) => `${s.label} ${s.framework} ${s.workdir}`),
+    // Session ids are included so `findSession` can prefilter on the indexed
+    // `search_text` column instead of substring-scanning the whole JSON
+    // `document` (which is both a full-table hot-path scan and the query that
+    // fails on pglite — see RuntimeDbTaskStore.findSession, #11641).
+    ...doc.sessions.map(
+      (s) => `${s.label} ${s.framework} ${s.workdir} ${s.sessionId}`,
+    ),
   ]
     .join(" ")
     .toLowerCase();
@@ -997,10 +1003,36 @@ export class RuntimeDbTaskStore {
 
   async findSession(sessionId: string) {
     await this.ensureInitialized();
-    const rows = await this.exec().all(
-      "SELECT document FROM orchestrator_tasks WHERE document LIKE ?",
-      [`%${sessionId}%`],
+    // Portable, targeted session-id lookup. The old `WHERE document LIKE ?`
+    // used the serialized JSON `document` column as a text haystack, which:
+    //   * fails outright on pglite/postgres — the drizzle/pglite driver does
+    //     not treat that JSON-bearing column comparison as a plain-text `LIKE`
+    //     the way sqlite does, so `SELECT document FROM orchestrator_tasks
+    //     WHERE document LIKE $1` throws on every session event (#11641); and
+    //   * scanned/serialized the ENTIRE document per event on the hot path.
+    //
+    // We instead prefilter on `search_text` — a plain, indexed TEXT column that
+    // `listTasks` already matches with `LIKE` on every backend (sqlite/pglite/
+    // postgres) without incident. `buildSearchText` now folds each session's
+    // id into that column, so the DB narrows to candidate rows and we only
+    // JSON-parse those. The authoritative decision is still the JS
+    // `sessions.find(...)` below, so a substring false-positive can never
+    // resolve to the wrong session.
+    const needle = `%${sessionId.toLowerCase()}%`;
+    let rows = await this.exec().all(
+      "SELECT document FROM orchestrator_tasks WHERE search_text LIKE ?",
+      [needle],
     );
+    const match = this.matchSession(rows, sessionId);
+    if (match) return match;
+    // Legacy fallback: rows persisted before session ids were added to
+    // `search_text` won't match the prefilter. Only pay for a full scan when
+    // the targeted lookup misses, so the steady-state hot path stays cheap.
+    rows = await this.exec().all("SELECT document FROM orchestrator_tasks");
+    return this.matchSession(rows, sessionId);
+  }
+
+  private matchSession(rows: unknown[], sessionId: string) {
     for (const row of rows) {
       const doc = this.parseDoc(row);
       const session = doc?.sessions.find((s) => s.sessionId === sessionId);

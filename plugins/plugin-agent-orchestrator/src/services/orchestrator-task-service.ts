@@ -607,6 +607,11 @@ export class OrchestratorTaskService extends Service {
   protected override readonly runtime: RuntimeLike;
   private readonly store: OrchestratorTaskStore;
   private readonly sessionTaskIndex = new Map<string, string>();
+  // Session ids whose event-recording has already logged a failure. A
+  // degraded store (e.g. #11641's pglite lookup) would otherwise re-warn on
+  // EVERY session event (`ready`, `tool_running`, ...) forever — one line per
+  // event, per session. We warn once per session and stay silent after.
+  private readonly recordFailureWarned = new Set<string>();
   // Tasks with an auto-goal-verify pass in flight. ACP can emit `task_complete`
   // from two sites for one turn; without this guard both runs read the same
   // attempt counter across the model `await` and double-send a correction.
@@ -761,11 +766,18 @@ export class OrchestratorTaskService extends Service {
       await this.applySessionEvent(taskId, sessionId, event, data);
       this.emitChange(taskId);
     } catch (err) {
-      this.log("warn", "failed to record session event", {
-        sessionId,
-        event,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      // Warn once per session, not once per event. A persistently degraded
+      // store would fire this on every `ready`/`tool_running`/... otherwise,
+      // flooding the log for the life of the session (#11641).
+      if (!this.recordFailureWarned.has(sessionId)) {
+        this.recordFailureWarned.add(sessionId);
+        this.log("warn", "failed to record session event", {
+          sessionId,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+          note: "further event-record failures for this session are suppressed",
+        });
+      }
     }
   }
 
@@ -1629,8 +1641,10 @@ export class OrchestratorTaskService extends Service {
     const doc = await this.store.getTask(taskId);
     if (!doc) return false;
     await this.stopActiveSessions(doc);
-    for (const session of doc.sessions)
+    for (const session of doc.sessions) {
       this.sessionTaskIndex.delete(session.sessionId);
+      this.recordFailureWarned.delete(session.sessionId);
+    }
     return this.store.deleteTask(taskId);
   }
 
@@ -2731,10 +2745,39 @@ export class OrchestratorTaskService extends Service {
       createdAt: ts,
       updatedAt: ts,
     };
-    await this.store.addSession(session);
+    // The ACP spawn above already SUCCEEDED — the session is live and doing
+    // work. Everything from here on is durable book-keeping. If the store is
+    // degraded (e.g. #11641's pglite lookup failure) a throw here would bubble
+    // a 500 to `POST /tasks/{id}/agents` even though the spawn worked, making
+    // API consumers think it failed and possibly double-spawn. So record the
+    // session best-effort and, on failure, still return a coherent detail that
+    // reflects the live session instead of throwing.
+    // Seed the in-memory index unconditionally so `resolveTaskId` resolves this
+    // session's events even if the durable write below degrades.
     this.sessionTaskIndex.set(result.sessionId, taskId);
-    await this.advanceTaskStatus(taskId, "active");
-    return this.getTask(taskId);
+    try {
+      await this.store.addSession(session);
+      await this.advanceTaskStatus(taskId, "active");
+      return this.getTask(taskId);
+    } catch (err) {
+      this.log("warn", "spawn succeeded but recording the session failed", {
+        taskId,
+        sessionId: result.sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Return a detail that includes the just-spawned session so the caller
+      // sees a 2xx with the real session info. Prefer a fresh read (the
+      // addSession may have partially landed); fall back to the pre-spawn doc
+      // with the new session appended so the response is never a false 404.
+      const refreshed = await this.getTask(taskId).catch(() => null);
+      if (refreshed?.sessions?.some((s) => s.sessionId === result.sessionId)) {
+        return refreshed;
+      }
+      return toTaskThreadDetail({
+        ...doc,
+        sessions: [...doc.sessions, session],
+      });
+    }
   }
 
   /**

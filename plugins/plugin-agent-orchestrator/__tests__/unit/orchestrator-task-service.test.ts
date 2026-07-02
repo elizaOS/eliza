@@ -1333,3 +1333,90 @@ describe("OrchestratorTaskService — aggregation and bulk controls", () => {
     expect((await service.getStatus()).pausedTaskCount).toBe(0);
   });
 });
+
+describe("OrchestratorTaskService — store degradation resilience (#11641)", () => {
+  /** Runtime that hands back the same logger it wires in, so a test can assert
+   * on warn calls. */
+  function runtimeWithLogger(acp?: FakeAcp): {
+    runtime: IAgentRuntime;
+    warn: ReturnType<typeof vi.fn>;
+  } {
+    const warn = vi.fn();
+    const rt = {
+      getService: () => acp ?? null,
+      logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() },
+    } as never as IAgentRuntime;
+    return { runtime: rt, warn };
+  }
+
+  it("spawnAgentForTask returns a 2xx-shaped detail when the spawn succeeds but recording the session fails", async () => {
+    // Live symptom: on pglite the session INSERT/lookup path threw, so
+    // POST /tasks/:id/agents returned 500 even though acp.spawnSession
+    // succeeded and the agent was doing work. The API consumer saw a false
+    // failure and could double-spawn. The spawn success must decouple from the
+    // durable recording.
+    const acp = new FakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { runtime, warn } = runtimeWithLogger(acp);
+    const service = new OrchestratorTaskService(runtime, { store });
+    await service.start();
+    const task = await service.createTask(createInput());
+
+    // Break the durable session write exactly as a degraded adapter would.
+    vi.spyOn(store, "addSession").mockRejectedValueOnce(
+      new Error("Failed query: INSERT INTO orchestrator_tasks ..."),
+    );
+
+    const detail = await service.spawnAgentForTask(task.id);
+
+    // Not null (that would be a 404) and not a throw (that would be a 500) —
+    // the caller gets a real detail carrying the just-spawned session.
+    expect(detail).not.toBeNull();
+    expect(detail?.sessions).toHaveLength(1);
+    expect(detail?.sessions[0]?.sessionId).toBe("session-1");
+    // The recording failure is logged (once), not swallowed silently.
+    expect(
+      warn.mock.calls.some((c) =>
+        String(c[0]).includes("spawn succeeded but recording the session failed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("warns once per session when event-recording keeps failing, not once per event", async () => {
+    // A persistently degraded store (e.g. findSession throwing on pglite)
+    // used to re-fire the failed-query warn on EVERY session event forever.
+    // The service must warn once per session and stay quiet after.
+    const acp = new FakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { runtime, warn } = runtimeWithLogger(acp);
+    const service = new OrchestratorTaskService(runtime, { store });
+    await service.start();
+    const task = await service.createTask(createInput());
+    const detail = must(
+      await service.spawnAgentForTask(task.id),
+      "expected spawn detail",
+    );
+    const sessionId = must(detail.sessions[0], "session").sessionId;
+
+    // Force the event-record path to fail for this session on every event by
+    // making the addEvent write throw (simulating the degraded store).
+    vi.spyOn(store, "addEvent").mockRejectedValue(
+      new Error("Failed query: SELECT document FROM orchestrator_tasks ..."),
+    );
+    // Also drop the cached mapping so resolveTaskId hits the store each time
+    // (worst case), proving the guard is keyed on sessionId not luck.
+    // (resolveTaskId is cached from spawn; addEvent throwing is enough to
+    // exercise the once-per-session warn.)
+
+    const before = warn.mock.calls.length;
+    await drive(acp, sessionId, "ready");
+    await drive(acp, sessionId, "tool_running", { toolCall: { title: "edit" } });
+    await drive(acp, sessionId, "tool_running", { toolCall: { title: "read" } });
+    await drive(acp, sessionId, "message", { text: "hi" });
+
+    const recordWarns = warn.mock.calls
+      .slice(before)
+      .filter((c) => String(c[0]).includes("failed to record session event"));
+    expect(recordWarns).toHaveLength(1);
+  });
+});
