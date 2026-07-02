@@ -38,7 +38,9 @@ mocked at the route boundary only) on this branch.
 ## Logs
 
 - `unit-fuzz-test-run.log` — packages/ui first-run + cloud/handoff suites:
-  20 files / 201 tests green, including the five seeded 250-step fuzz storms
+  21 files / 224 tests green (re-captured after merging develop, which added
+  the #11119 chat-overlay-conductor coverage and the #11104 mobile-runtime-mode
+  suites to the same paths), including the five seeded 250-step fuzz storms
   (`use-first-run-conductor.fuzz.test.ts`) asserting the exactly-once
   invariants (≤1 POST, ≤1 cloud provision, ≤1 completeFirstRun, bounded
   transcript, all sentinel values consumed) and the 9 reload-resume cases for

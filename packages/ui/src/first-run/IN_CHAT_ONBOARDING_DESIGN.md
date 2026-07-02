@@ -53,9 +53,11 @@ dismissed until onboarding completes. The contract, enforced in
   active) never triggers this collapse, and the collapse gate is released so
   Escape/outside-tap/etc. work normally afterward.
 
-The desktop `?shellMode=chat-overlay` shell never mounts the overlay/conductor,
-so it is unaffected. Only the transcript's CHOICE widgets and any OAuth/secret
-blocks stay interactive during onboarding.
+The desktop `?shellMode=chat-overlay` shell mounts the (headless,
+`firstRunComplete`-gated) conductor too, so a fresh chat-first desktop install
+seeds the same in-chat onboarding; once first-run completes the mount is a
+no-op (`App.chat-overlay-first-run.test.tsx`). Only the transcript's CHOICE
+widgets and any OAuth/secret blocks stay interactive during onboarding.
 
 ## Confused-user guards (conductor + send funnel)
 

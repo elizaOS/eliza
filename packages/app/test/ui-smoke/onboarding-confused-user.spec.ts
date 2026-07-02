@@ -100,9 +100,7 @@ test.describe("confused-user onboarding", () => {
       state.firstRunPosts.length,
       "POST /api/first-run must fire exactly once under double-clicks",
     ).toBe(1);
-    expect(leaks, "no __first_run__ sentinel may reach the server").toEqual(
-      [],
-    );
+    expect(leaks, "no __first_run__ sentinel may reach the server").toEqual([]);
   });
 
   test("a failing first-run POST re-offers UNLOCKED choices and the retry completes", async ({
