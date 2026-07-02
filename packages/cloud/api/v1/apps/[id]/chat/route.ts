@@ -664,11 +664,16 @@ async function handlePOST(
 
     // Non-streaming response. The body-read + cost-calc + reconcile below run
     // AFTER the upfront debit, and the outer catch returns 500 WITHOUT refunding
-    // — so a malformed body / calculateCost / reconcile throw here stranded the
-    // reserved hold (#11169 part 1; the streaming branch was already guarded).
-    // Guard the settle path: any throw before the reconcile lands refunds the
-    // hold, then rethrows to the outer error handler.
-    let nonStreamingSettled = false;
+    // — so a malformed body / calculateCost throw here stranded the reserved
+    // hold (#11169 part 1; the streaming branch was already guarded).
+    // Guard the settle path: any throw BEFORE the reconcile is invoked refunds
+    // the hold, then rethrows to the outer error handler. Once the reconcile
+    // has been invoked we never refund — reconcileCredits is not transactional,
+    // so a mid-flight throw may have already committed the org-balance movement
+    // and a blind refund would double-credit (same reason the streaming branch
+    // flips streamCompleted before ITS settle). A hold stranded by that rare
+    // window is recovered by the stranded-reservation sweep (#11169 part 3).
+    let nonStreamingSettleStarted = false;
     try {
       const responseData = (await providerResponse.json()) as {
         usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -702,6 +707,10 @@ async function handlePOST(
 
       // Reconcile the difference between reserved and actual costs
       // Pass app to avoid N+1 query (app already fetched above)
+      // Flag BEFORE the call: reconcileCredits commits its org-balance movement
+      // before its (non-co-transactional) earnings/counter writes, so a throw
+      // from inside it must NOT trigger the refund below (double-credit).
+      nonStreamingSettleStarted = true;
       const reconciliation = await appCreditsService.reconcileCredits({
         appId,
         userId: user.id,
@@ -718,8 +727,6 @@ async function handlePOST(
         },
         app,
       });
-      // The hold is now settled (charged to actual) — no refund on later throws.
-      nonStreamingSettled = true;
 
       const duration = Date.now() - startTime;
       logger.info("[App Chat] Request completed", {
@@ -739,12 +746,12 @@ async function handlePOST(
 
       return withCors(Response.json(responseData));
     } catch (nonStreamingError) {
-      // Refund the upfront hold if the settle didn't complete (#11169 part 1).
-      // Best-effort: a refund failure is logged inside the helper's caller but
-      // never masks the original error surfaced to the client.
+      // Refund the upfront hold if the settle reconcile was never invoked
+      // (#11169 part 1). Best-effort: a refund failure is logged but never
+      // masks the original error surfaced to the client.
       await reconcileNonStreamingSettleError(
         {
-          settled: nonStreamingSettled,
+          settleStarted: nonStreamingSettleStarted,
           appId,
           userId: user.id,
           reservedBaseCost,

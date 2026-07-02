@@ -119,10 +119,10 @@ const nonStreamBase = {
 };
 
 describe("reconcileNonStreamingSettleError (#11169 part 1)", () => {
-  test("settle threw BEFORE reconcile (not settled) → full refund (actualBaseCost 0)", async () => {
+  test("throw BEFORE the settle reconcile was invoked → full refund (actualBaseCost 0)", async () => {
     const credits = makeCredits();
     const result = await reconcileNonStreamingSettleError(
-      { ...nonStreamBase, settled: false },
+      { ...nonStreamBase, settleStarted: false },
       credits,
     );
     expect(result.refunded).toBe(true);
@@ -133,10 +133,10 @@ describe("reconcileNonStreamingSettleError (#11169 part 1)", () => {
     });
   });
 
-  test("throw AFTER reconcile already charged (settled) → keep the charge, NO refund (no double-credit)", async () => {
+  test("throw at/after the settle reconcile (incl. from INSIDE it — movement may have committed) → NO refund (no double-credit)", async () => {
     const credits = makeCredits();
     const result = await reconcileNonStreamingSettleError(
-      { ...nonStreamBase, settled: true },
+      { ...nonStreamBase, settleStarted: true },
       credits,
     );
     expect(result.refunded).toBe(false);
@@ -154,7 +154,7 @@ describe("reconcileNonStreamingSettleError (#11169 part 1)", () => {
       ),
     } as unknown as StreamRefundCredits;
     await reconcileNonStreamingSettleError(
-      { ...nonStreamBase, settled: false },
+      { ...nonStreamBase, settleStarted: false },
       credits,
     );
     expect(metaCalls[0]).toMatchObject({
