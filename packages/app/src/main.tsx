@@ -9,7 +9,6 @@ import "./cloud-apps-view";
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";
 
-import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
@@ -63,12 +62,9 @@ import {
 } from "@elizaos/ui/config";
 import {
   AGENT_READY_EVENT,
-  APP_PAUSE_EVENT,
-  APP_RESUME_EVENT,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   dispatchAppEvent,
-  dispatchBackIntent,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
@@ -354,8 +350,6 @@ let mobileAgentTunnelListener: PluginListenerHandle | null = null;
 let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
-let lifecycleListenersRegistered = false;
-let activeVisibilityHandler: (() => void) | null = null;
 let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
 
@@ -1442,7 +1436,7 @@ async function initializePlatform(): Promise<void> {
   if (isIOS || isAndroid) {
     await initializeStatusBar();
     await initializeKeyboard();
-    initializeAppLifecycle();
+    getMobileLifecycle().initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
     void getMobileLifecycle().initializeNetworkListener();
     void initializeMobileDeviceBridge();
@@ -1541,85 +1535,15 @@ async function initializeKeyboard(): Promise<void> {
   });
 }
 
-function initializeAppLifecycle(): void {
-  // Each Capacitor listener fires its handler N times if added N times.
-  // Vite HMR and any redundant initialization paths re-invoke this function,
-  // so guard against duplicate registrations.
-  if (lifecycleListenersRegistered) return;
-  lifecycleListenersRegistered = true;
-
-  let lastActive: boolean | null = null;
-  const setAppActive = (active: boolean): void => {
-    if (lastActive === active) return;
-    lastActive = active;
-    dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
-  };
-
-  void Promise.resolve(
-    CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-      setAppActive(isActive);
-    }),
-  ).catch((error) => {
-    logNativePluginUnavailable("App", error);
-  });
-
-  if (activeVisibilityHandler) {
-    document.removeEventListener("visibilitychange", activeVisibilityHandler);
-  }
-  activeVisibilityHandler = () => {
-    setAppActive(document.visibilityState !== "hidden");
-  };
-  document.addEventListener("visibilitychange", activeVisibilityHandler);
-
-  void Promise.resolve(
-    CapacitorApp.addListener("backButton", ({ canGoBack }) => {
-      // Give the shell first crack at the back press: an open chat sheet (or any
-      // future back-dismissable overlay) closes ONE layer and reports it
-      // handled, so hardware back dismisses the sheet instead of navigating the
-      // app out from under it — matching desktop/web Escape-to-close (#9148).
-      // `dispatchBackIntent` resolves synchronously; only an unhandled press
-      // falls through to the app's default back below.
-      if (dispatchBackIntent()) return;
-      if (canGoBack) {
-        window.history.back();
-      } else {
-        // At the root view the hardware back button was a no-op (the app felt
-        // frozen). Match Android convention: send the app to the background
-        // (minimize) rather than killing it, so the agent + state survive.
-        void CapacitorApp.minimizeApp().catch(() => {
-          // minimizeApp is Android-only; ignore where unavailable.
-        });
-      }
-    }),
-  ).catch((error) => {
-    logNativePluginUnavailable("App", error);
-  });
-
-  void Promise.resolve(
-    CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-      handleDeepLink(url);
-    }),
-  ).catch((error) => {
-    logNativePluginUnavailable("App", error);
-  });
-
-  void CapacitorApp.getLaunchUrl()
-    .then((result) => {
-      if (result?.url) {
-        handleDeepLink(result.url);
-      }
-    })
-    .catch((error) => {
-      logNativePluginUnavailable("App", error);
-    });
-}
-
 /**
  * Live Android/Capacitor lifecycle helper. `main.tsx` keeps its own
- * status-bar / keyboard / app-lifecycle wiring (the app-lifecycle path carries
- * the hardware-back `minimizeApp` behavior the extracted helper predates), but
- * the network listener is delegated here so the #10472 window `online`/`offline`
- * fallback actually runs in the live entrypoint. Before this the fallback lived
+ * status-bar / keyboard wiring, but the app-lifecycle path (foreground/
+ * background events + the `visibilitychange` fallback, the hardware-back
+ * contract — `dispatchBackIntent()` first, then `history.back()` /
+ * `minimizeApp()` when unhandled (#9148) — and the deep-link bootstrap) and
+ * the network listener are delegated here so the extracted module IS the
+ * shipped behavior, not a stale duplicate. The network delegation carries the
+ * #10472 window `online`/`offline` fallback: before it, the fallback lived
  * only in `mobile-lifecycle.ts` and had zero importers, so on Android — where
  * the Capacitor `Network` plugin can be absent from the WebView bridge — the
  * `networkStatusChange` listener never registered and NETWORK_STATUS_CHANGE_EVENT
