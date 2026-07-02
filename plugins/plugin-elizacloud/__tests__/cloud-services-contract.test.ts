@@ -7,7 +7,7 @@
  *
  * This is NOT live-cloud coverage. It was formerly misnamed
  * `cloud-services.real.test.ts`, which parked a stub-backed test in the
- * live-API `*.real.test.ts` lane. Live coverage lives in `bun run test:live`.
+ * live-API `*.real.test.ts` lane. Live coverage lives in the post-merge real lane (`TEST_LANE=post-merge`).
  */
 
 import * as http from "node:http";
