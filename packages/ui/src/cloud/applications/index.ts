@@ -9,9 +9,9 @@
  *
  *  - {@link ApplicationsRoute} (default export of `ApplicationsPage`) is the
  *    list view at `dashboard/apps`.
- *  - {@link ApplicationDetailRoute} is the 8-tab detail view at
- *    `dashboard/apps/:id` (overview / monetization / earnings / domains /
- *    analytics / promote / users / settings).
+ *  - {@link ApplicationDetailRoute} is the 9-tab detail view at
+ *    `dashboard/apps/:id` (overview / monetization / earnings / hosting /
+ *    domains / analytics / promote / users / settings).
  *
  * Both routes register **at import time** against the {@link CloudRouteDef}
  * registry. The `CloudRouterShell` carries a `dashboard/apps/create →
