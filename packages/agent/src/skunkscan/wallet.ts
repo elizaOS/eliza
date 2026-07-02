@@ -1,8 +1,9 @@
-import { getSolanaBalance } from "./helius";
+import { getSolanaBalance, getSolanaRecentSignatures } from "./helius";
 import {
   SupportedChain,
   WalletBalance,
   WalletInvestigationResult,
+  WalletRecentTransaction,
 } from "./types";
 
 export async function investigateWallet(
@@ -25,22 +26,35 @@ export async function investigateWallet(
     case "solana": {
       try {
         const balance = await getSolanaBalance(walletAddress);
+        const recentSignatures = await getSolanaRecentSignatures(walletAddress, 10);
 
         const walletBalance: WalletBalance = {
           nativeAmount: balance.sol,
           nativeSymbol: "SOL",
           rawAmount: balance.lamports,
         };
+        const recentTransactions: WalletRecentTransaction[] =
+  recentSignatures.map((tx) => ({
+    signature: String(tx.signature ?? ""),
+    slot: typeof tx.slot === "number" ? tx.slot : undefined,
+    blockTime:
+      typeof tx.blockTime === "number" || tx.blockTime === null
+        ? tx.blockTime
+        : undefined,
+    status: tx.err ? "failed" : "success",
+  }));
 
         return {
           chain,
           address: walletAddress,
           status: "supported",
           balance: walletBalance,
-          summary: `Wallet found. Current balance: ${balance.sol.toFixed(
-            6,
-          )} SOL.`,
-          warnings: [],
+recentTransactions,
+transactionCountSample: recentTransactions.length,
+summary: `Wallet found. Current balance: ${balance.sol.toFixed(
+  6,
+)} SOL. Recent transaction sample: ${recentTransactions.length}.`,
+warnings: [],
         };
       } catch (error) {
         return {
