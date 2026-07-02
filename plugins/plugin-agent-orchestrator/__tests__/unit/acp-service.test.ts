@@ -1815,4 +1815,35 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     );
     expect(active).toHaveLength(2);
   });
+
+  it("rejects a concurrent prompt for the same native session (TOCTOU #11028)", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
+    await service.start();
+    const spawned = await service.spawnSession({
+      name: "busy-guard",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    // Hold the first prompt in-flight so the session stays claimed while the
+    // second call races it.
+    let release: (() => void) | undefined;
+    firstNativeClient().prompt = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ stopReason: "end_turn" });
+        }),
+    );
+    const p1 = service.sendPrompt(spawned.sessionId, "first");
+    // NO tick between the two sendPrompt calls: the race the fix closes is a
+    // same-tick check-then-claim, and inserting even a 10ms sleep here made the
+    // test pass on the PRE-fix code (the first prompt's claim landed during the
+    // sleep). Issuing both in the same microtask is what reproduces the TOCTOU.
+    // Before the fix, the busy marker was only set deep inside sendNativePrompt,
+    // so this concurrent prompt slipped through and ran on the same session.
+    await expect(
+      service.sendPrompt(spawned.sessionId, "second"),
+    ).rejects.toThrow(/busy/i);
+    release?.();
+    await p1;
+  });
 });
