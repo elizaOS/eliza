@@ -1,0 +1,79 @@
+# #10710 — strip default-visible views to minimal "eliza" aesthetic
+
+Branch `feat/strip-default-views-10710`. All numbers below are from `bun run --cwd packages/app audit:app`
+(349-test playwright matrix: every builtin + plugin view × 5 viewports, rest + hover).
+
+## What changed
+
+Chrome-strip across every default-visible surface (system/release ViewKind), per the flat
+pattern codified in `SettingsView`/`HomeScreen` and merged batches #10995/#10786:
+
+- **Launcher / apps grid** (`Launcher.tsx`) — dock band solid-dark card → translucent wash,
+  borderless; per-tile borders dropped. This is the shared surface behind
+  `/apps`, `/views`, rolodex, contacts, camera, phone, messages.
+- **Automations** (`AutomationsFeed`, `WorkflowEditor`, `HeartbeatForm`, `HeartbeatsView`,
+  `TaskEditor`, `WorkflowGraphViewer`) — stat cards → plain figures, dividers gone,
+  status chips → dot + text, filter pills → borderless text tabs (counts hide at zero).
+- **Documents** (`DocumentsView`, `documents-detail`, `documents-upload`) — row/metadata
+  chips → middot text, icon tiles → bare icons, dividers gone, scope filters → borderless
+  tabs; fixed illegible `text-accent-fg`-on-wash "Add Knowledge" label.
+- **Character** (editor panels, experience workspace, hub, roster, timeline, skills,
+  music widget) — conversation/example cards, count chips, dashed empty boxes, timeline
+  rail, tab-list box all stripped; bottom-line inputs.
+- **Training / fine-tuning** (`TrainingDashboard`, `JobDetailPanel`, `BudgetPanel`,
+  `InferenceEndpointPanel`, plugin-training views) — table row/header borders, panel
+  cards, status pills stripped; progress bars kept (data, not chrome).
+- **Settings-reachable + misc** (`SecretsView`, `ConfigPageView`, `config-page-sections`,
+  `StreamView`, `MediaGalleryView`, `BrowserWorkspaceView` wrapper fills,
+  `PairingView`, `StartupFailureView`, `BugReportModal`, wallet `InventoryAppView`).
+- **Chat overlay** (`ContinuousChatOverlay`) — `HeaderButton` → borderless icon-only
+  (matches `SoftButton`), composer top divider removed, edit-textarea border removed.
+  Glass sheet, bubble tone borders, and warn chips untouched (deliberate design).
+- **Shared primitives** — `SegmentedControl` outer box + active border removed;
+  `PagePanelFeatureEmpty` icon-medallion border removed; sidebar toggle border removed;
+  `AppPageSidebar` right-edge hairline removed; memories feed `divide-y` removed.
+- **Semantic chrome kept everywhere**: warn/error/destructive boxes, focus rings,
+  active-selection states, drag/drop zones, progress bars, modal/glass scrims
+  (self-contained contrast over wallpaper), form-input affordances (bottom-line style).
+
+Also fixed while in here:
+- **Triple "Fine-Tuning" launcher tile** — `TAB_PATHS` has both `fine-tuning` and
+  `advanced` (same path) plus the `@elizaos/plugin-training` app registration;
+  deduped via `CANONICAL_ID` in `launcher-curation.ts`.
+- **Stream "Go Live" was a green-tinted CTA** — orange is the only accent; now accent.
+  ("Stop Stream" stays danger — semantic destructive.)
+- **Radius gate** (`all-views-aesthetic-audit.spec.ts`) — admits `3px` (base.css collapses
+  every `--radius-*` token to `--radius-xs: 3px`) and `32px` (the floating chat capsule's
+  animated collapsed-state radius, present on every view; it was flagging all 348
+  findings as off-token).
+- **CI strict flip** (`app-aesthetic-audit.yml`) — `ELIZA_AUDIT_APP_STRICT=1` +
+  `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` with an empty `AESTHETIC_VERDICT_DEBT`
+  (the #10970 operator steps).
+
+## Border/divider density (per 1M px², ceiling 45) — before → after
+
+| view | desktop | mobile |
+|---|---|---|
+| launcher family (apps/views/rolodex/…) | 89.5 → 6.2 | 303.8 → 24.3 |
+| fine-tuning | 52.5 → 9.3 | 145.8 → 30.4 |
+| automations | 37.0 → 21.6 | 145.8 → 85.1 → (post-polish, see final report) |
+| stream | 15.4 → 12.3 | 60.8 → 48.6 → (post-polish) |
+| documents | 27.8 | 109.4 → (post-polish) |
+
+Final post-polish numbers: `after/report.json`. Baseline (develop tip a9be4f48c70):
+`before/report.json`.
+
+## Evidence
+
+- `before/desktop|mobile/*.png` — develop-tip baseline screenshots (18 views × 2 viewports).
+- `after/desktop|mobile/*.png` — same views after the strip.
+- `after/report.json` — final audit report (strict gates ON).
+- Full ui suite: **494 files / 5107 tests passed** (run twice: post-strip and post-polish).
+- Per-group scoped verification by each strip pass: character 26/26, documents 2/2,
+  automations 42/42, apps/shell 89, settings/misc 99, training 40 — plus
+  `packages/ui` typecheck (tsgo) and biome 2.5.1 clean on every touched file.
+- Real-LLM trajectory: **N/A** — pure presentation/CSS change; no model, action, or
+  prompt path touched.
+- Backend logs: **N/A** — no server code path changes.
+- Known out-of-scope finding: several launcher **icon artworks** contain blue pixels
+  (asset-level, invisible to the CSS audit); flagged for the icon-artwork owner.
