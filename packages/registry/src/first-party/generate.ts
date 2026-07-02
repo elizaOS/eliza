@@ -25,7 +25,13 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type RegistryEntry, registryEntrySchema } from "./schema";
 
-const localRequire = createRequire(import.meta.url);
+// Resolve biome from the repo-root package.json, not this file: this package
+// doesn't declare @biomejs/biome, so under isolated installs resolving from
+// here walks up PAST the repo into whatever stale copy a parent workspace
+// hoisted — version-skewed against biome.json's pinned schema.
+const rootRequire = createRequire(
+  new URL("../../../../package.json", import.meta.url),
+);
 
 // `JSON.stringify(…, null, 2)` puts every array element on its own line, but
 // biome — the repo's format gate (`bun run format:check`) — collapses arrays
@@ -35,7 +41,7 @@ const localRequire = createRequire(import.meta.url);
 // artifact through biome makes the generator emit exactly what `format:check`
 // expects, so generator output, committed files, and the format gate all agree.
 function biomeFormatJson(content: string, filePath: string): string {
-  const biomeBin = localRequire.resolve("@biomejs/biome/bin/biome");
+  const biomeBin = rootRequire.resolve("@biomejs/biome/bin/biome");
   return execFileSync(
     process.execPath,
     [biomeBin, "format", `--stdin-file-path=${filePath}`],
