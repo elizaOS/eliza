@@ -2,6 +2,7 @@ import {
   type AutocompleteProvider,
   Editor,
   type Focusable,
+  Loader,
   Markdown,
   type TUI,
 } from "@elizaos/tui";
@@ -164,6 +165,8 @@ export class ChatPane implements Focusable {
   focused = false;
   private props: ChatPaneProps;
   private editor: Editor;
+  private typingLoader: Loader | null = null;
+  private typingLoaderRunning = false;
   private scrollOffset = 0;
   private width = 80;
   private height = 24;
@@ -185,6 +188,10 @@ export class ChatPane implements Focusable {
     this.editor.onChange = (text: string) => {
       useStore.getState().setInputValue(text);
     };
+  }
+
+  dispose(): void {
+    this.stopTypingLoader();
   }
 
   syncFocus(isFocused: boolean): void {
@@ -241,6 +248,39 @@ export class ChatPane implements Focusable {
     this.props.tui.requestRender();
   }
 
+  private ensureTypingLoader(): Loader {
+    if (!this.typingLoader) {
+      this.typingLoader = new Loader(
+        this.props.tui,
+        chalk.green,
+        chalk.dim,
+        "Processing (Esc/Ctrl+C abort)",
+      );
+      this.typingLoaderRunning = true;
+      return this.typingLoader;
+    }
+
+    if (!this.typingLoaderRunning) {
+      this.typingLoader.start();
+      this.typingLoaderRunning = true;
+    }
+
+    return this.typingLoader;
+  }
+
+  private stopTypingLoader(): void {
+    if (!this.typingLoaderRunning) return;
+    this.typingLoader?.stop();
+    this.typingLoaderRunning = false;
+  }
+
+  private renderTypingLoader(width: number): RenderLine[] {
+    return this.ensureTypingLoader()
+      .render(width)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => ({ text: line, raw: true }));
+  }
+
   /** Region body for the chat column (messages + input chrome). */
   renderContent(width: number, height: number): string[] {
     this.width = width;
@@ -265,7 +305,9 @@ export class ChatPane implements Focusable {
 
     const allLines = toRenderLines(messages, innerWidth);
     if (isAgentTyping) {
-      allLines.push({ text: "Eliza typing…", color: "green", dim: true });
+      allLines.push(...this.renderTypingLoader(innerWidth));
+    } else {
+      this.stopTypingLoader();
     }
 
     const maxScroll = Math.max(0, allLines.length - messageAreaHeight);

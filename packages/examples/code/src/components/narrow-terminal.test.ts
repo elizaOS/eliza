@@ -42,6 +42,7 @@ function makeScreen(cols: number) {
 afterEach(() => {
   useStore.getState().setInputValue("");
   useStore.getState().setLoading(false);
+  useStore.getState().setAgentTyping(false);
 });
 
 describe("eliza-code TUI at cockpit phone width", () => {
@@ -115,6 +116,26 @@ describe("eliza-code TUI at cockpit phone width", () => {
     const wideLoading = wideLines.find((line) => line.includes("Processing"));
     expect(wideLoading).toContain("Esc/Ctrl+C abort");
     expect(visibleWidth(wideLoading ?? "")).toBeLessThanOrEqual(80);
+  });
+
+  test("ChatPane uses the TUI loader while the assistant is typing", () => {
+    const { chatPane } = makeScreen(PHONE_COLS);
+    chatPane.syncFocus(true);
+    useStore.getState().setAgentTyping(true);
+
+    try {
+      const lines = chatPane.renderContent(PHONE_COLS, 24);
+      const loaderLine = lines.find((line) =>
+        line.includes("Processing (Esc/Ctrl+C abort)"),
+      );
+      expect(loaderLine).toBeDefined();
+      expect(lines.join("\n")).not.toContain("Eliza typing");
+      expect(visibleWidth(loaderLine ?? "")).toBeLessThanOrEqual(PHONE_COLS);
+    } finally {
+      useStore.getState().setAgentTyping(false);
+      chatPane.renderContent(PHONE_COLS, 24);
+      chatPane.dispose();
+    }
   });
 
   test("ChatPane renders tool transcript lines without overflowing narrow terminals", () => {
