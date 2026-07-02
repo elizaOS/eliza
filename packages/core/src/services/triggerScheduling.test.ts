@@ -59,23 +59,44 @@ describe("computeNextCronRunAtMs - DST fall-back dedupe (#11046)", () => {
 
 	it("fires the FIRST instant of the repeated hour", () => {
 		// From the prior day's fire, the next run is the EDT (first) pass.
-		expect(computeNextCronRunAtMs("30 1 * * *", at("2026-10-31T05:30:00.000Z"), NY)).toBe(
-			at("2026-11-01T05:30:00.000Z"),
-		);
+		expect(
+			computeNextCronRunAtMs("30 1 * * *", at("2026-10-31T05:30:00.000Z"), NY),
+		).toBe(at("2026-11-01T05:30:00.000Z"));
 	});
 
 	it("does NOT double-fire at the repeated hour's second instant", () => {
 		// Immediately after the EDT fire, the next run skips the EST duplicate
 		// (06:30Z same day) and lands on the next local day (01:30 EST).
-		expect(computeNextCronRunAtMs("30 1 * * *", at("2026-11-01T05:30:00.000Z"), NY)).toBe(
-			at("2026-11-02T06:30:00.000Z"),
-		);
+		expect(
+			computeNextCronRunAtMs("30 1 * * *", at("2026-11-01T05:30:00.000Z"), NY),
+		).toBe(at("2026-11-02T06:30:00.000Z"));
 	});
 
 	it("resumes normal once-per-day firing after the transition", () => {
-		expect(computeNextCronRunAtMs("30 1 * * *", at("2026-11-02T06:30:00.000Z"), NY)).toBe(
-			at("2026-11-03T06:30:00.000Z"),
-		);
+		expect(
+			computeNextCronRunAtMs("30 1 * * *", at("2026-11-02T06:30:00.000Z"), NY),
+		).toBe(at("2026-11-03T06:30:00.000Z"));
+	});
+
+	it("dedupes non-hour fall-back offsets such as Lord Howe's 30-minute transition", () => {
+		const lordHowe = "Australia/Lord_Howe";
+		// Lord Howe falls back by 30 minutes on 2026-04-05: local 01:45 occurs
+		// at 14:45Z (UTC+11) and again at 15:15Z (UTC+10:30). The second instant
+		// must not be treated as a separate cron fire.
+		expect(
+			computeNextCronRunAtMs(
+				"45 1 * * *",
+				at("2026-04-03T14:45:00.000Z"),
+				lordHowe,
+			),
+		).toBe(at("2026-04-04T14:45:00.000Z"));
+		expect(
+			computeNextCronRunAtMs(
+				"45 1 * * *",
+				at("2026-04-04T14:45:00.000Z"),
+				lordHowe,
+			),
+		).toBe(at("2026-04-05T15:15:00.000Z"));
 	});
 });
 

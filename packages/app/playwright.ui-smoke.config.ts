@@ -45,6 +45,19 @@ writeFileSync(
   Buffer.from(KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "", "base64"),
 );
 const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
+// WebKit (Safari engine) pointer/focus/text-input lane. iOS/iPadOS ship Safari's
+// WebKit, but every default lane above is Chromium-only, so pointer, focus, and
+// text-input regressions specific to WebKit go uncaught. This lane re-runs the
+// chat pointer/focus/composer specs on WebKit. Scoped to keyless, stub-backed
+// specs that need no Chromium-only permissions (clipboard/microphone) or
+// fake-media launch flags, so they run green on WebKit (chat-message-actions and
+// wallet-inventory grant clipboard permissions WebKit does not support and are
+// intentionally excluded). Opt-in via PLAYWRIGHT_WEBKIT=1: WebKit is a separate
+// browser download (`playwright install webkit`) not present on every machine, so
+// gating keeps the default lane from reddening where WebKit is absent.
+const WEBKIT_POINTER_FOCUS_SPEC =
+  /(chat-overlay-controls-interactions|conversation-management|slash-commands)\.spec\.ts/;
+const webkitLaneEnabled = process.env.PLAYWRIGHT_WEBKIT === "1";
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
@@ -147,6 +160,17 @@ export default defineConfig({
         /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|input-modality)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
+    // WebKit cross-engine lane (opt-in). Only added when PLAYWRIGHT_WEBKIT=1 so a
+    // machine without the WebKit browser download never reds the default lane.
+    ...(webkitLaneEnabled
+      ? [
+          {
+            name: "webkit",
+            testMatch: WEBKIT_POINTER_FOCUS_SPEC,
+            use: { ...devices["Desktop Safari"] },
+          },
+        ]
+      : []),
     {
       name: "desktop-webkit",
       // Real WebKit (Desktop Safari device profile) over the dashboard +

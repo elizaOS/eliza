@@ -4,7 +4,11 @@
 // first-run redirects. Pure routing logic — share-target persistence and
 // CONNECT event dispatch are injected so the dispatcher stays test-friendly.
 
-import { CONNECT_EVENT, dispatchAppEvent } from "@elizaos/ui/events";
+import {
+  CONNECT_EVENT,
+  dispatchAppEvent,
+  dispatchOpenNotificationCenter,
+} from "@elizaos/ui/events";
 import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { applyLaunchConnection } from "@elizaos/ui/platform/browser-launch";
@@ -97,6 +101,13 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
         break;
       case "settings":
         window.location.hash = "#settings";
+        ctx.dispatchDeepLinkCallback(url);
+        break;
+      case "notifications":
+        // Desktop-native entry point (#10706): the "Notifications" menu/tray
+        // item opens the notification center in place (no route change), the
+        // one visible way in where the floating bell is hidden.
+        dispatchOpenNotificationCenter();
         ctx.dispatchDeepLinkCallback(url);
         break;
       case "connect":

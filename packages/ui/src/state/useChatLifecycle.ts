@@ -154,7 +154,7 @@ export interface UseChatLifecycleDeps {
   requestGreetingWhenRunning: (convId: string | null) => Promise<void>;
 
   // Reset conversation state
-  interruptActiveChatPipeline: () => void;
+  interruptActiveChatPipeline: () => string;
   resetConversationDraftState: () => void;
   setActiveConversationId: (v: string | null) => void;
   setConversationMessages: (

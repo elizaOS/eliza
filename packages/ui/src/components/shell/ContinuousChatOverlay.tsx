@@ -54,6 +54,7 @@ import {
 } from "../../hooks/useLayoutShiftMonitor";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -876,6 +877,10 @@ function ThreadLineEditor({
             onSave();
           } else if (e.key === "Escape") {
             e.preventDefault();
+            // Escape closes THIS editor only — stop it from bubbling to the
+            // overlay's document-level Escape handler, which would otherwise
+            // also collapse the whole chat sheet and discard the edit (#9148).
+            e.stopPropagation();
             onCancel();
           }
         }}
@@ -922,8 +927,9 @@ const ThreadLine = React.memo(function ThreadLine({
   /** Copy this message's text. Used by both the press-and-hold shortcut
    *  (assistant) and the reveal-row Copy control (both roles). Stable identity. */
   onCopy?: (text: string) => void;
-  /** Speak an assistant message aloud (reveal-row Play). Stable identity. */
-  onSpeak?: (text: string) => void;
+  /** Speak an assistant message aloud (reveal-row Play). Receives the message
+   *  id so the parent can track which bubble is playing. Stable identity. */
+  onSpeak?: (id: string, text: string) => void;
   /** Save an edited user message and resend it (reveal-row Edit). Stable id. */
   onEdit?: (text: string) => void;
   /** True while assistant voice output is playing — drives Play↔Stop. */
@@ -1070,8 +1076,8 @@ const ThreadLine = React.memo(function ThreadLine({
   }, [onCopy, message.content]);
 
   const handleSpeak = React.useCallback(() => {
-    onSpeak?.(message.content);
-  }, [onSpeak, message.content]);
+    onSpeak?.(message.id, message.content);
+  }, [onSpeak, message.id, message.content]);
 
   const openEditor = React.useCallback(() => {
     setEditDraft(message.content);
@@ -1450,17 +1456,34 @@ export function ContinuousChatOverlay({
     void copyTextToClipboard(text);
   }, []);
 
+  // Which message initiated the current voice playback, so ONLY that bubble
+  // shows Stop. The global `speaking` flag alone lit EVERY assistant bubble to
+  // "Stop" at once; scope the playing state to the actual source message.
+  // Cleared when playback ends (speaking true→false) so a stale id never
+  // re-lights an old bubble during the next, unrelated playback.
+  const [playingMessageId, setPlayingMessageId] = React.useState<string | null>(
+    null,
+  );
+  const wasSpeakingRef = React.useRef(false);
+  React.useEffect(() => {
+    if (wasSpeakingRef.current && !speaking) setPlayingMessageId(null);
+    wasSpeakingRef.current = speaking;
+  }, [speaking]);
+
   // Play an assistant message aloud from its reveal row (#10713). Toggling: a tap
-  // while already speaking stops playback; otherwise it speaks this message.
+  // on the message currently playing stops it; any other tap speaks that message
+  // (and marks it as the one playing, so only its bubble shows Stop).
   const handleSpeakMessage = React.useCallback(
-    (text: string) => {
-      if (speaking) {
+    (id: string, text: string) => {
+      if (speaking && playingMessageId === id) {
         stopSpeaking?.();
+        setPlayingMessageId(null);
         return;
       }
       speak?.(text);
+      setPlayingMessageId(id);
     },
-    [speaking, speak, stopSpeaking],
+    [speaking, playingMessageId, speak, stopSpeaking],
   );
 
   // Save an edited user message and resend it as a new turn (#10713) — the same
@@ -1764,7 +1787,7 @@ export function ContinuousChatOverlay({
           onCopy={handleCopyMessage}
           onSpeak={handleSpeakMessage}
           onEdit={handleEditResend}
-          speaking={speaking}
+          speaking={speaking && playingMessageId === m.id}
           onOpenSettings={openSettings}
           turnStatus={isInFlight ? turnStatus : undefined}
           suppressReasoning={responding && isLastAssistant}
@@ -1778,6 +1801,7 @@ export function ContinuousChatOverlay({
       handleSpeakMessage,
       handleEditResend,
       speaking,
+      playingMessageId,
       openSettings,
       responding,
       turnStatus,
@@ -2803,6 +2827,60 @@ export function ContinuousChatOverlay({
     return () => window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
   }, [clearPrefillFocusSchedule]);
 
+  // OS assistant / deep-link entry (Siri, Shortcuts, App Actions, the assistant
+  // entry point) routes into `#chat?text=…&source=…&voice=1`. On desktop the
+  // detached window's ChatView claims it, but the ambient overlay (mobile, web,
+  // default desktop bottom-bar) is the ONLY chat surface there — so it must
+  // claim the launch payload itself. We PREFILL (never auto-send) the composer:
+  // the `text` is attacker-authorable, so the user reviews it and presses send.
+  // `claimAssistantLaunchPayloadFromHash` dedupes by launchId and clears the
+  // hash, so a re-render / second mount never re-consumes the same launch.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const consumeFromHash = () => {
+      const hash = window.location.hash;
+      // Read the voice flag off the ORIGINAL hash first — claiming clears the
+      // launch params (text/source/action/launchId) but leaves `voice`, and we
+      // want the intent regardless of ordering.
+      const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+      const wantsVoice = new URLSearchParams(query).get("voice") === "1";
+      const payload = claimAssistantLaunchPayloadFromHash(hash, {
+        allowedRoutes: ["chat"],
+      });
+      if (!payload) return;
+      setMode((m) => (m === "pill" ? "input" : m));
+      setDraft(payload.text);
+      // Open the history sheet (no-op when there's no thread yet) and focus the
+      // composer so the prefilled text is ready to review + send.
+      expand();
+      const focusComposer = () => {
+        prefillFocusFrameRef.current = null;
+        prefillFocusTimerRef.current = null;
+        inputRef.current?.focus();
+      };
+      clearPrefillFocusSchedule();
+      if (typeof window.requestAnimationFrame === "function") {
+        prefillFocusFrameRef.current =
+          window.requestAnimationFrame(focusComposer);
+      } else {
+        prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
+      }
+      // A `voice=1` launch also starts hands-free voice capture (the same intent
+      // a mic tap carries). Only when not already live, so it never toggles an
+      // in-progress session off.
+      if (wantsVoice && !handsFree && !recording) toggleHandsFree();
+    };
+    consumeFromHash();
+    window.addEventListener("hashchange", consumeFromHash);
+    return () => window.removeEventListener("hashchange", consumeFromHash);
+  }, [
+    clearPrefillFocusSchedule,
+    expand,
+    handsFree,
+    recording,
+    toggleHandsFree,
+  ]);
+
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is
   // mounted, appending to whatever the user has already typed.
@@ -3152,9 +3230,14 @@ export function ContinuousChatOverlay({
         // to exactly these; broad role="dialog" would match always-mounted
         // shell surfaces (AssistantOverlay, tutorial card) and permanently
         // disable Escape-collapse.
+        //
+        // Also defer while the transcript viewer is open or a per-message edit
+        // is in progress: neither carries `[data-state="open"]`, so Escape must
+        // close THAT first (the viewer's own handler / the editor's Cancel) and
+        // NOT also collapse the whole sheet + discard the in-progress edit.
         if (
           document.querySelector(
-            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"]',
+            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
           )
         ) {
           return;
@@ -4196,6 +4279,19 @@ export function ContinuousChatOverlay({
                   }
                 }}
                 onKeyDown={(e) => {
+                  // Never treat the Enter that COMMITS an IME composition as a
+                  // command/send key: while a CJK/other IME is composing, the
+                  // browser fires this keydown with `isComposing` true (legacy
+                  // engines report keyCode 229) and the Enter only accepts the
+                  // candidate. Guard BOTH the slash-resolve and the submit below
+                  // so committing a candidate never fires either (#9148). Let it
+                  // fall through to the textarea/IME as its default.
+                  if (
+                    e.key === "Enter" &&
+                    (e.nativeEvent.isComposing || e.keyCode === 229)
+                  ) {
+                    return;
+                  }
                   // The slash menu intercepts navigation/commit keys when open.
                   if (slashOpen) {
                     if (e.key === "ArrowDown") {
@@ -4232,6 +4328,7 @@ export function ContinuousChatOverlay({
                     }
                   }
                   // Enter sends; Shift+Enter inserts a newline (multi-line compose).
+                  // (An IME-composition Enter was already filtered out above.)
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     submit();

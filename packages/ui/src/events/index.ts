@@ -140,6 +140,16 @@ export const TUTORIAL_CHAT_CONTROL_EVENT =
 export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
 /** Open the keyword message-search panel (fired by the chat search affordance). */
 export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
+/**
+ * Open the notification center from anywhere (#10706). On mobile the home
+ * pull-down owns opening the sheet; this window event is the surface-agnostic
+ * entry point the desktop-native "Notifications" menu/tray item + the
+ * `<scheme>://notifications` deep link use, so desktop gets a visible native way
+ * in (the floating bell is hidden there). The single always-mounted headless
+ * NotificationCenter is the one listener.
+ */
+export const OPEN_NOTIFICATION_CENTER_EVENT =
+  "eliza:notifications:open" as const;
 
 export interface TutorialChatControlDetail {
   /**
@@ -175,6 +185,13 @@ export function dispatchTutorialChatControl(
 export function dispatchChatPrefill(detail: ChatPrefillEventDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(CHAT_PREFILL_EVENT, { detail }));
+}
+
+/** Request the notification center to open (surface-agnostic — see
+ * {@link OPEN_NOTIFICATION_CENTER_EVENT}). */
+export function dispatchOpenNotificationCenter(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
 }
 
 // ── Event-name unions (shared base widened with the UI-only events) ───────

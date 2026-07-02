@@ -7,6 +7,16 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 
 const { getBaseUrlMock, publishMock, listConnectorAccountsMock } = vi.hoisted(
@@ -110,6 +120,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  authMock.authenticated = true;
   getBaseUrlMock.mockReset();
   getBaseUrlMock.mockReturnValue("http://localhost");
   publishMock.mockReset();
@@ -238,5 +249,37 @@ describe("CalendarUpcomingWidget", () => {
     window.removeEventListener("eliza:navigate:view", onNav);
 
     expect(navEvents).toContain("/calendar");
+  });
+
+  // #11084 — the widget mounts before the auth probe resolves; the connector
+  // probe and the calendar feed must stay dormant while unauthenticated.
+  it("does not probe the connector or fetch the feed while unauthenticated", async () => {
+    authMock.authenticated = false;
+    connectedGoogle();
+    mockFeed([event({ id: "a", title: "Standup" })]);
+
+    render(<CalendarUpcomingWidget {...homeProps} />);
+
+    await Promise.resolve();
+    expect(listConnectorAccountsMock).not.toHaveBeenCalled();
+    expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it("starts the probe + feed once the session flips to authenticated", async () => {
+    authMock.authenticated = false;
+    connectedGoogle();
+    mockFeed([event({ id: "a", title: "Standup" })]);
+
+    const { rerender } = render(<CalendarUpcomingWidget {...homeProps} />);
+    await Promise.resolve();
+    expect(listConnectorAccountsMock).not.toHaveBeenCalled();
+
+    authMock.authenticated = true;
+    rerender(<CalendarUpcomingWidget {...homeProps} />);
+
+    const card = await screen.findByTestId("chat-widget-calendar-upcoming");
+    expect(card.textContent).toContain("Standup");
+    expect(listConnectorAccountsMock).toHaveBeenCalled();
+    expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
   });
 });

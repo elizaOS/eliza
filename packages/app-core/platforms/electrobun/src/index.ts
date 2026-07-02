@@ -2092,7 +2092,11 @@ async function setupUpdater(): Promise<void> {
         void getDesktopManager().quit();
         return true;
       }
-      if (action?.startsWith("navigate-")) {
+      if (action?.startsWith("navigate-") || action === "open-notifications") {
+        // `open-notifications` (#10706): the desktop-native "Notifications"
+        // menu/tray item. Reuses the same renderer channel as `navigate-*`;
+        // DesktopSurfaceNavigationRuntime opens the notification center in place
+        // rather than switching tabs.
         void getDesktopManager().showWindow();
         sendToActiveRenderer("desktopTrayMenuClick", { itemId: action });
         return true;

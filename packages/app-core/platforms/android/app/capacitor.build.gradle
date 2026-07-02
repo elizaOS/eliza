@@ -30,6 +30,7 @@ dependencies {
     implementation project(':elizaos-capacitor-gateway')
     implementation project(':elizaos-capacitor-location')
     implementation project(':elizaos-capacitor-messages')
+    implementation project(':elizaos-capacitor-mlkit-text')
     implementation project(':elizaos-capacitor-mobile-agent-bridge')
     implementation project(':elizaos-capacitor-mobile-signals')
     implementation project(':elizaos-capacitor-phone')

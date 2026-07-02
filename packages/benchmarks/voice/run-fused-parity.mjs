@@ -81,7 +81,7 @@ const FREEMAN_WAV = firstExisting([
   process.env.FREEMAN_WAV,
   path.join(
     repoRoot,
-    "plugins/plugin-local-inference/native/omnivoice.cpp/examples/freeman.wav",
+    "plugins/plugin-local-inference/native/audio-fixtures/freeman.wav",
   ),
 ]);
 

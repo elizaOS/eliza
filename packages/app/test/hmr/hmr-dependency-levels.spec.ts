@@ -30,6 +30,13 @@ const LEVELS = [
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
   {
+    // Developer-only coding cockpit (/cockpit). CockpitRoute is the plugin-side
+    // view container (wires the presentational @elizaos/ui CockpitView to the
+    // live orchestrator client), so it is the source guaranteed in the view graph.
+    name: "plugin view cockpit",
+    file: "plugins/plugin-task-coordinator/src/CockpitRoute.tsx",
+  },
+  {
     name: "plugin view focus",
     file: "plugins/plugin-blocker/src/components/focus/FocusView.tsx",
   },
@@ -129,14 +136,10 @@ const LEVELS = [
     name: "plugin view training",
     file: "plugins/plugin-training/src/ui/FineTuningView.tsx",
   },
-  {
-    name: "plugin view facewear",
-    file: "plugins/plugin-facewear/src/components/FacewearView.tsx",
-  },
-  {
-    name: "plugin view smartglasses",
-    file: "plugins/plugin-facewear/src/ui/SmartglassesView.tsx",
-  },
+  // facewear + smartglasses were converted from GUI views to TUI views
+  // (their GUI config moved to Settings → Wearables), so they no longer carry
+  // a GUI HMR source probe — their stale probes are removed to keep the matrix
+  // in lockstep with the GUI VIEW_CASES set.
 ] as const;
 
 // Vite's client logs these to the page console when it processes a change.

@@ -17,6 +17,7 @@ import {
   client,
 } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useAppSelector } from "../../../state";
 import { WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";
@@ -62,15 +63,19 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
   const [snapshot, setSnapshot] = useState<BrowserWorkspaceSnapshot | null>(
     null,
   );
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the 4s workspace poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
 
   const poll = useCallback(async () => {
+    if (!authenticated) return;
     try {
       const next = await client.getBrowserWorkspace();
       setSnapshot(next);
     } catch {
       // Transient errors — keep the last snapshot.
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void poll();

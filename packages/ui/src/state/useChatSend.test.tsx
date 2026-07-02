@@ -14,6 +14,7 @@ import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import {
   buildSendFailureNotice,
+  getSendValidationFailureMessage,
   type UseChatSendDeps,
   useChatSend,
 } from "./useChatSend";
@@ -982,6 +983,159 @@ describe("buildSendFailureNotice (#10231)", () => {
     const notice = buildSendFailureNotice(new Error("boom"));
     expect(notice.length).toBeGreaterThan(0);
     expect(notice).toContain("resend");
+  });
+
+  it("surfaces the server's validation reason for a 4xx validation reject", () => {
+    // Regression: a 400 (e.g. attachment too large / unsupported type) got the
+    // generic "didn't go through — please resend" copy, which discards the only
+    // information that lets the user fix the payload; resending unchanged fails
+    // identically forever.
+    const err = Object.assign(new Error("Attachment too large (max 5 MB)"), {
+      status: 400,
+      kind: "http",
+    });
+    const notice = buildSendFailureNotice(err);
+    expect(notice).toContain("Attachment too large (max 5 MB)");
+    expect(notice).not.toContain("didn't go through");
+  });
+
+  it("keeps the generic copy for a body-less 4xx and for 5xx server messages", () => {
+    // No usable body → "HTTP 400" fallback message → generic copy.
+    expect(
+      buildSendFailureNotice(
+        Object.assign(new Error("HTTP 400"), { status: 400, kind: "http" }),
+      ),
+    ).toContain("didn't go through");
+    // 5xx bodies are internal noise, not user-actionable validation reasons.
+    expect(
+      buildSendFailureNotice(
+        Object.assign(new Error("upstream connect error"), {
+          status: 500,
+          kind: "http",
+        }),
+      ),
+    ).toContain("didn't go through");
+  });
+});
+
+describe("getSendValidationFailureMessage", () => {
+  it("extracts the message only for payload-validation statuses", () => {
+    for (const status of [400, 413, 415, 422]) {
+      expect(
+        getSendValidationFailureMessage(
+          Object.assign(new Error("bad payload"), { status }),
+        ),
+      ).toBe("bad payload");
+    }
+    for (const status of [401, 403, 404, 429, 500, 503]) {
+      expect(
+        getSendValidationFailureMessage(
+          Object.assign(new Error("bad payload"), { status }),
+        ),
+      ).toBeNull();
+    }
+    expect(getSendValidationFailureMessage(new Error("no status"))).toBeNull();
+  });
+});
+
+describe("useChatSend 4xx validation reject — honest notice + no-loss restore", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  function validationError(message: string): Error {
+    return Object.assign(new Error(message), { status: 400, kind: "http" });
+  }
+
+  it("restores the text AND attachments to the composer and says why", async () => {
+    // The destruction scenario: the composer was cleared at enqueue, the server
+    // 400s before persisting, and the reconcile reload wipes the optimistic
+    // bubble — without the restore the user's words are gone on a primary flow.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      validationError("Unsupported attachment type: image/heic"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    const images: ImageAttachment[] = [
+      { data: "AAAA", mimeType: "image/heic", name: "photo.heic" },
+    ];
+    await act(async () => {
+      await result.current.sendChatText("check out this photo", {
+        conversationId: "conv-1",
+        images,
+      });
+    });
+
+    // Text back in the composer, attachments back in the pending tray.
+    expect(deps.setChatInput).toHaveBeenCalledWith("check out this photo");
+    expect(deps.setChatPendingImages).toHaveBeenCalledWith(images);
+    // The notice carries the server's specific reason + the restore.
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+    const [noticeText, tone] = (
+      deps.setActionNotice as ReturnType<typeof vi.fn>
+    ).mock.calls[0];
+    expect(noticeText).toContain("Unsupported attachment type: image/heic");
+    expect(noticeText).toContain("restored to the input");
+    expect(tone).toBe("error");
+    // The message never persisted server-side, so the thread reconciles (the
+    // optimistic bubble is replaced by server truth; the draft lives in the
+    // composer now, not the thread).
+    expect(deps.loadConversationMessages).toHaveBeenCalledWith("conv-1");
+  });
+
+  it("restores just the text for a text-only validation reject", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      validationError("text is too long"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("a very long message", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setChatInput).toHaveBeenCalledWith("a very long message");
+    expect(deps.setChatPendingImages).not.toHaveBeenCalled();
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Your message was restored to the input."),
+      "error",
+      expect.any(Number),
+    );
+  });
+
+  it("does NOT restore the composer on a transient (5xx) failure", async () => {
+    // Transient failures keep the user bubble in the thread (resend can
+    // succeed); writing into the composer would clobber whatever the user
+    // typed since.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Service Unavailable"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    expect(deps.setChatInput).not.toHaveBeenCalled();
+    expect(deps.setChatPendingImages).not.toHaveBeenCalled();
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
   });
 });
 

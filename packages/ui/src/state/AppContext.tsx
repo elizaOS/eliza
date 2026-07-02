@@ -348,6 +348,7 @@ function AppProviderInner({
     autonomousRunHealthByRunIdRef,
     autonomousReplayInFlightRef,
     addUnread,
+    removeUnread,
   } = chatState;
   // Live server-reported phase of the in-flight assistant turn (rich status
   // indicator, #8813). Held outside the giant AppContext value (in its own
@@ -365,15 +366,22 @@ function AppProviderInner({
   unreadConversationsRef.current = unreadConversations;
   const setUnreadConversations = useCallback(
     (v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-      if (typeof v === "function") {
-        const nextVal = v(unreadConversationsRef.current);
-        // Sync back through dispatch
-        for (const id of nextVal) addUnread(id);
-      } else {
-        // Direct set not supported through reducer — use add/remove
+      const prev = unreadConversationsRef.current;
+      const nextVal = typeof v === "function" ? v(prev) : v;
+      // Diff prev→next and dispatch BOTH directions. The old wrapper only
+      // re-added ids in the result set and dropped every removal (the
+      // functional `next.delete(id)` updaters callers use to clear a badge
+      // were silent no-ops — REMOVE_UNREAD was unreachable, so badges never
+      // cleared on delete/mark-read). Add newly-present ids, remove
+      // newly-absent ones.
+      for (const id of nextVal) {
+        if (!prev.has(id)) addUnread(id);
+      }
+      for (const id of prev) {
+        if (!nextVal.has(id)) removeUnread(id);
       }
     },
-    [addUnread],
+    [addUnread, removeUnread],
   );
 
   // --- Triggers (extracted to useTriggersState) ---
@@ -1147,6 +1155,7 @@ function AppProviderInner({
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    loadedConversationIdRef,
     getBscTradePreflight,
     getBscTradeQuote,
     getBscTradeTxStatus,
@@ -1236,6 +1245,7 @@ function AppProviderInner({
     loadConversations,
     loadConversationMessages,
     prefetchConversationMessages,
+    loadedConversationIdRef,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,

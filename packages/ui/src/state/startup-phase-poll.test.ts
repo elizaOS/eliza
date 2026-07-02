@@ -1258,6 +1258,239 @@ describe("runPollingBackend cancellation during options fetch", () => {
   });
 });
 
+describe("runPollingBackend bounded native boot (#11030)", () => {
+  const nativePolicy = {
+    supportsLocalRuntime: true,
+    backendTimeoutMs: 30_000,
+    agentReadyTimeoutMs: 30_000,
+    probeForExistingInstall: false,
+    defaultTarget: "cloud-managed" as const,
+  };
+
+  const mobileLocalServer = {
+    id: "local:mobile",
+    kind: "remote" as const,
+    label: "On-device agent",
+    apiBase: "eliza-local-agent://ipc",
+  };
+
+  function nativeCtx(): RestoringSessionCtx {
+    return {
+      persistedActiveServer: mobileLocalServer,
+      restoredActiveServer: mobileLocalServer,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+  }
+
+  function installNativeWindow(): void {
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "capacitor://localhost", protocol: "capacitor:" },
+    };
+    (globalThis as Record<string, unknown>).Capacitor = {
+      isNativePlatform: () => true,
+    };
+  }
+
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).Capacitor;
+  });
+
+  it("fails fast to AGENT_ERROR with the REAL message on the iOS cloud-mode IPC policy rejection", async () => {
+    // The exact #11030 renderer failure: a stale persisted "cloud" runtime
+    // mode policy-locks the local-agent transport, so every startup probe
+    // rejects with the same TypeError until the 3-minute deadline — an
+    // infinite "Booting up…" splash. The poll must surface the error phase
+    // (which renders Retry) with the real message immediately.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    const policyMessage =
+      "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new TypeError(policyMessage), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      nativePolicy,
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "AGENT_ERROR",
+      message: policyMessage,
+    });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "agent-error",
+        message: policyMessage,
+      }),
+    );
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("fails fast on the native Agent plugin's missing-endpoint error", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    const missingEndpoint =
+      "iOS Agent requires a configured HTTP endpoint for remote/cloud mode, or runtimeMode=local for dev/sideload local mode. Set Agent.apiBase in capacitor.config, an Info.plist/UserDefaults key such as ELIZA_IOS_API_BASE or ELIZA_AGENT_API_BASE, or a simulator environment variable.";
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error(missingEndpoint), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      nativePolicy,
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "AGENT_ERROR",
+      message: missingEndpoint,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("does NOT fail fast on the same message off-native (web keeps the plain retry/timeout path)", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:4173", protocol: "http:" },
+    };
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
+        ),
+        { kind: "network", path: "/api/auth/status" },
+      ),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, backendTimeoutMs: 300 },
+      {
+        persistedActiveServer: mobileLocalServer,
+        restoredActiveServer: mobileLocalServer,
+        shouldPreserveCompletedFirstRun: false,
+        hadPriorFirstRun: true,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "AGENT_ERROR" }),
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("bounds the native boot: consecutive failures past the native budget surface the last failure", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 200 },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    // The overall backendTimeoutMs (30s) never elapsed — the native
+    // consecutive-failure budget produced the terminal transition.
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-timeout",
+        message: expect.stringContaining("Last failure:"),
+        detail: expect.stringContaining("Failed to fetch"),
+      }),
+    );
+  });
+
+  it("resets the native failure streak on any successful probe (a cold-booting agent is not a broken transport)", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    const networkError = () =>
+      Object.assign(new Error("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockRejectedValueOnce(networkError())
+      .mockResolvedValue({
+        required: false,
+        authenticated: true,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+    clientMock.getFirstRunStatus.mockReset();
+    clientMock.getFirstRunStatus
+      .mockRejectedValueOnce(networkError())
+      .mockResolvedValue({ complete: true, cloudProvisioned: false });
+
+    // Budget 450ms: WITHOUT the reset, the second failure (~500ms in, after
+    // the first backoff) would exceed the budget and dead-end on
+    // BACKEND_TIMEOUT. WITH the reset (the auth probe between the two
+    // failures succeeded) the streak restarts and the third round completes.
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 450 },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+});
+
 describe("isRecoverableRemoteBase — allowLoopback", () => {
   const base = {
     pageOrigin: "http://localhost:2138",

@@ -11,6 +11,7 @@ import type {
   RelationshipsPersonSummary,
 } from "../../../api/client-types-relationships";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -126,9 +127,12 @@ export function RelationshipsAttentionWidget({
 }: Partial<WidgetProps>) {
   const [data, setData] = useState<RelationshipsAttentionData>(EMPTY_DATA);
   const nav = useWidgetNavigation();
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the relationships poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
 
   const load = useCallback(async () => {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+    if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setData(EMPTY_DATA);
       return;
     }
@@ -147,7 +151,7 @@ export function RelationshipsAttentionWidget({
       // Network/agent failure — keep the last good data (or empty); never
       // surface a broken card. Matches todo.tsx's silent-fallback catch.
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void load();
