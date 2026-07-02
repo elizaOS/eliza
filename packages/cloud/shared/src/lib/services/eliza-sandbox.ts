@@ -40,6 +40,7 @@ import {
   incrementalChainDepth,
   planIncrementalBackup,
 } from "./agent-backup-diff";
+import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import {
   type AIUsage,
   type BillingContext,
@@ -566,10 +567,18 @@ export class ElizaSandboxService {
     >,
   ): Promise<string> {
     const createEndpoint = await this.getAgentApiEndpoint(rec, "/api/agents");
+    // Bootstrap secrets (OPENAI_API_KEY / ANTHROPIC_API_KEY / ...) are copied
+    // out of environment_vars, which stores them encrypted at rest (#11332) —
+    // materialize real values before building the bootstrap payload.
+    const bootstrapEnv = await decryptAgentEnvVars(
+      (rec.environment_vars as Record<string, string> | null) ?? {},
+    );
     const createRes = await fetch(createEndpoint, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
-      body: JSON.stringify({ agent: this.buildRuntimeBootstrapAgent(rec) }),
+      body: JSON.stringify({
+        agent: this.buildRuntimeBootstrapAgent({ ...rec, environment_vars: bootstrapEnv }),
+      }),
       signal: AbortSignal.timeout(60_000),
     });
     if (!createRes.ok) {
@@ -714,6 +723,18 @@ export class ElizaSandboxService {
       reuse: params.reuseExistingNonTerminal ?? false,
     });
 
+    // Caller-supplied env can carry BYO secrets — encrypt them before the row
+    // is inserted (#11332), mirroring updateAgentEnvironment.
+    if (params.environmentVars && Object.keys(params.environmentVars).length > 0) {
+      params = {
+        ...params,
+        environmentVars: await encryptAgentEnvVarsForStorage(
+          params.organizationId,
+          params.environmentVars,
+        ),
+      };
+    }
+
     // Multi-agent-per-org callers (waifu launches, compat) leave the flag unset
     // and keep the plain insert — they legitimately mint several agents per org.
     if (!params.reuseExistingNonTerminal) {
@@ -793,6 +814,11 @@ export class ElizaSandboxService {
     const createParams: CreateAgentParams & { dockerImage: string } = {
       ...params,
       executionTier: params.executionTier ?? "custom",
+      // Coding-container env carries caller secrets (tokens, provider keys) —
+      // encrypt them before the row is inserted (#11332).
+      environmentVars: params.environmentVars
+        ? await encryptAgentEnvVarsForStorage(params.organizationId, params.environmentVars)
+        : params.environmentVars,
     };
 
     logger.info("[agent-sandbox] Creating coding-container agent", {
@@ -874,8 +900,11 @@ export class ElizaSandboxService {
   ): Promise<AgentSandbox | undefined> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return undefined;
+    // BYO secrets (provider API keys, tokens) are encrypted at rest (#11332);
+    // the materialization paths (provision / fleet upgrade / runtime
+    // bootstrap) decrypt, so the running agent still sees real values.
     return agentSandboxesRepository.update(rec.id, {
-      environment_vars: environmentVars,
+      environment_vars: await encryptAgentEnvVarsForStorage(orgId, environmentVars),
     });
   }
 
@@ -1253,12 +1282,32 @@ export class ElizaSandboxService {
     const MAX_PROVISION_ATTEMPTS = 3;
     let lastError: string = "Unknown error";
 
+    // Materialize the stored env for the container: BYO secrets are encrypted
+    // at rest (#11332); legacy plaintext values pass through unchanged. A
+    // decrypt failure fails the provision (never boot a container with
+    // ciphertext standing in for a secret) and is surfaced like any other
+    // pre-provision failure.
+    let materializedEnv: Record<string, string>;
+    try {
+      materializedEnv = await decryptAgentEnvVars(
+        (rec.environment_vars as Record<string, string>) ?? {},
+      );
+    } catch (envError) {
+      const message = envError instanceof Error ? envError.message : String(envError);
+      await this.markError(rec, `Environment decryption failed: ${message}`);
+      return {
+        success: false,
+        sandboxRecord: await agentSandboxesRepository.findById(rec.id),
+        error: message,
+      };
+    }
+
     for (let attempt = 1; attempt <= MAX_PROVISION_ATTEMPTS; attempt++) {
       let handle;
 
       try {
         // 2. Sandbox (via provider)
-        const callerEnv = (rec.environment_vars as Record<string, string>) ?? {};
+        const callerEnv = materializedEnv;
         // DATABASE_URL precedence: a self-contained image (e.g. a coding
         // container running its own bot) can ship its OWN database. Do not
         // silently clobber it with the managed shared DB URL — that would force the
@@ -4420,6 +4469,10 @@ export class ElizaSandboxService {
       };
     }
 
+    // Materialize at-rest-encrypted BYO secrets before container create (#11332).
+    const upgradeEnv = await decryptAgentEnvVars(
+      (agent.environment_vars as Record<string, string>) ?? {},
+    );
     const config = {
       agentId,
       agentName: agent.agent_name ?? "",
@@ -4434,10 +4487,8 @@ export class ElizaSandboxService {
       // narrow helper deliberately avoids the full provision merge, which would
       // mint a new API key / strip DATABASE_URL / flip local-state on upgrade (#8434).
       environmentVars: {
-        ...((agent.environment_vars as Record<string, string>) ?? {}),
-        ...applyManagedAgentInferenceEnvDefaults(
-          (agent.environment_vars as Record<string, string>) ?? {},
-        ),
+        ...upgradeEnv,
+        ...applyManagedAgentInferenceEnvDefaults(upgradeEnv),
       },
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
       excludeNodeId: oldNodeId,
@@ -4728,15 +4779,17 @@ export class ElizaSandboxService {
     }
 
     const rollbackImage = agent.previous_docker_image ?? dockerImage;
+    // Materialize at-rest-encrypted BYO secrets before container create (#11332).
+    const rollbackEnv = await decryptAgentEnvVars(
+      (agent.environment_vars as Record<string, string>) ?? {},
+    );
     const config = {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
       environmentVars: {
-        ...((agent.environment_vars as Record<string, string>) ?? {}),
-        ...applyManagedAgentInferenceEnvDefaults(
-          (agent.environment_vars as Record<string, string>) ?? {},
-        ),
+        ...rollbackEnv,
+        ...applyManagedAgentInferenceEnvDefaults(rollbackEnv),
       },
       dockerImage: digestPinnedImageRef(rollbackImage, toDigest),
       excludeNodeId: oldNodeId,
