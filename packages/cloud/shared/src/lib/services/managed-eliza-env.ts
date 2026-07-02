@@ -10,6 +10,14 @@ export type { ManagedElizaEnvironmentResult } from "./managed-eliza-config";
 
 export const DEFAULT_STEWARD_KEYLESS_OPENAI_CAPABILITY = "openai.chat.completions";
 
+/**
+ * Loose read-only env shape. The repo's `NodeJS.ProcessEnv` augmentation types
+ * many custom keys as required, which makes a plain `process.env` unassignable
+ * to `Pick<NodeJS.ProcessEnv, ...>`. These helpers only ever read a handful of
+ * optional flag keys, so a permissive record is the honest contract.
+ */
+type KeylessEnv = Record<string, string | undefined>;
+
 function envFlagEnabled(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
 }
@@ -18,44 +26,27 @@ function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-export function isStewardKeylessOpenAIEnabled(
-  env: Pick<
-    NodeJS.ProcessEnv,
-    "STEWARD_KEYLESS_HOSTED_AGENTS" | "STEWARD_KEYLESS_OPENAI"
-  > = process.env,
-): boolean {
+export function isStewardKeylessOpenAIEnabled(env: KeylessEnv = process.env): boolean {
   return (
     envFlagEnabled(env.STEWARD_KEYLESS_HOSTED_AGENTS) && envFlagEnabled(env.STEWARD_KEYLESS_OPENAI)
   );
 }
 
-export function allowsStewardKeylessRawOpenAIFallback(
-  env: Pick<NodeJS.ProcessEnv, "STEWARD_KEYLESS_FALLBACK_RAW_ENV"> = process.env,
-): boolean {
+export function allowsStewardKeylessRawOpenAIFallback(env: KeylessEnv = process.env): boolean {
   return envFlagEnabled(env.STEWARD_KEYLESS_FALLBACK_RAW_ENV);
 }
 
-export function shouldStripRawOpenAIForKeyless(
-  env: Pick<
-    NodeJS.ProcessEnv,
-    "STEWARD_KEYLESS_HOSTED_AGENTS" | "STEWARD_KEYLESS_OPENAI" | "STEWARD_KEYLESS_FALLBACK_RAW_ENV"
-  > = process.env,
-): boolean {
+export function shouldStripRawOpenAIForKeyless(env: KeylessEnv = process.env): boolean {
   return isStewardKeylessOpenAIEnabled(env) && !allowsStewardKeylessRawOpenAIFallback(env);
 }
 
-export function resolveStewardKeylessOpenAICapability(
-  env: Pick<NodeJS.ProcessEnv, "STEWARD_KEYLESS_OPENAI_CAPABILITY"> = process.env,
-): string {
+export function resolveStewardKeylessOpenAICapability(env: KeylessEnv = process.env): string {
   return env.STEWARD_KEYLESS_OPENAI_CAPABILITY?.trim() || DEFAULT_STEWARD_KEYLESS_OPENAI_CAPABILITY;
 }
 
 export function resolveStewardKeylessOpenAIBaseURL(params: {
   stewardApiUrl: string;
-  env?: Pick<
-    NodeJS.ProcessEnv,
-    "STEWARD_KEYLESS_OPENAI_BASE_URL" | "STEWARD_KEYLESS_OPENAI_CAPABILITY"
-  >;
+  env?: KeylessEnv;
 }): string {
   const override = params.env?.STEWARD_KEYLESS_OPENAI_BASE_URL?.trim();
   if (override) return stripTrailingSlash(override);
@@ -69,7 +60,7 @@ export function resolveStewardKeylessOpenAIBaseURL(params: {
 
 export function buildManagedKeylessOpenAIEnv(params: {
   stewardApiUrl: string;
-  env?: NodeJS.ProcessEnv;
+  env?: KeylessEnv;
 }): Record<string, string> {
   const env = params.env ?? process.env;
   if (!isStewardKeylessOpenAIEnabled(env) || allowsStewardKeylessRawOpenAIFallback(env)) return {};
@@ -90,7 +81,7 @@ export function buildManagedKeylessOpenAIEnv(params: {
 export function buildKeylessOpenAIContainerEnv(params: {
   stewardApiUrl: string;
   stewardAuthToken?: string;
-  env?: NodeJS.ProcessEnv;
+  env?: KeylessEnv;
 }): Record<string, string> {
   const env = params.env ?? process.env;
   if (!isStewardKeylessOpenAIEnabled(env) || allowsStewardKeylessRawOpenAIFallback(env)) return {};

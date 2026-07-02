@@ -20,10 +20,7 @@ export const RUNTIME_AGENT_SECRET_KEYS = [
 export function mergeRuntimeAgentSecretsFromEnv(params: {
   rawSecrets?: Record<string, unknown>;
   environmentVars?: Record<string, string>;
-  controlEnv?: Pick<
-    NodeJS.ProcessEnv,
-    "STEWARD_KEYLESS_HOSTED_AGENTS" | "STEWARD_KEYLESS_OPENAI" | "STEWARD_KEYLESS_FALLBACK_RAW_ENV"
-  >;
+  controlEnv?: Record<string, string | undefined>;
 }): Record<string, unknown> {
   const stripRawOpenAI = shouldStripRawOpenAIForKeyless(params.controlEnv ?? process.env);
   const secrets: Record<string, unknown> = { ...(params.rawSecrets ?? {}) };
