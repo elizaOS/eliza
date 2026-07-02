@@ -2,14 +2,14 @@
 // Loaded as ES module. Uses inverse homography + solvePnP camera pose
 // to align 3D objects with the real camera view.
 
-import * as THREE from 'three';
-import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 let scene, camera, renderer, controls, clock;
-let mixer = null;       // AnimationMixer for character
-let walkAction = null;   // walk AnimationAction
-let idleAction = null;   // idle AnimationAction
+let mixer = null; // AnimationMixer for character
+let walkAction = null; // walk AnimationAction
+let idleAction = null; // idle AnimationAction
 let characterGroup = null;
 let characterLoaded = false;
 let treeMeshTemplate = null;
@@ -19,7 +19,7 @@ let groundPlane = null;
 
 let arEnabled = true;
 let lastRobotPos = null;
-let lastRobotHeading = 0;
+const lastRobotHeading = 0;
 let isWalking = false;
 
 const loader = new GLTFLoader();
@@ -27,20 +27,28 @@ const loader = new GLTFLoader();
 // ---- Camera pose from solvePnP ----
 function setCameraFromPose(pose, camWidth, camHeight) {
   if (!pose || !camera) return;
-  const {rvec, tvec, fx, fy, cx, cy} = pose;
+  const { rvec, tvec, fx, fy, cx, cy } = pose;
 
   // Build rotation matrix from rvec (Rodrigues)
-  const theta = Math.sqrt(rvec[0]**2 + rvec[1]**2 + rvec[2]**2);
-  let R = new THREE.Matrix3();
+  const theta = Math.sqrt(rvec[0] ** 2 + rvec[1] ** 2 + rvec[2] ** 2);
+  const R = new THREE.Matrix3();
   if (theta < 1e-6) {
     R.identity();
   } else {
-    const k = [rvec[0]/theta, rvec[1]/theta, rvec[2]/theta];
-    const ct = Math.cos(theta), st = Math.sin(theta), v = 1 - ct;
+    const k = [rvec[0] / theta, rvec[1] / theta, rvec[2] / theta];
+    const ct = Math.cos(theta),
+      st = Math.sin(theta),
+      v = 1 - ct;
     R.set(
-      ct + k[0]*k[0]*v,      k[0]*k[1]*v - k[2]*st, k[0]*k[2]*v + k[1]*st,
-      k[1]*k[0]*v + k[2]*st, ct + k[1]*k[1]*v,      k[1]*k[2]*v - k[0]*st,
-      k[2]*k[0]*v - k[1]*st, k[2]*k[1]*v + k[0]*st, ct + k[2]*k[2]*v
+      ct + k[0] * k[0] * v,
+      k[0] * k[1] * v - k[2] * st,
+      k[0] * k[2] * v + k[1] * st,
+      k[1] * k[0] * v + k[2] * st,
+      ct + k[1] * k[1] * v,
+      k[1] * k[2] * v - k[0] * st,
+      k[2] * k[0] * v - k[1] * st,
+      k[2] * k[1] * v + k[0] * st,
+      ct + k[2] * k[2] * v,
     );
   }
 
@@ -48,43 +56,77 @@ function setCameraFromPose(pose, camWidth, camHeight) {
   // Camera position in world = -R^T * t
   const Re = R.elements; // column-major
   const Rt = new THREE.Matrix3();
-  Rt.set(
-    Re[0], Re[1], Re[2],
-    Re[3], Re[4], Re[5],
-    Re[6], Re[7], Re[8]
-  );
+  Rt.set(Re[0], Re[1], Re[2], Re[3], Re[4], Re[5], Re[6], Re[7], Re[8]);
   const t = new THREE.Vector3(tvec[0], tvec[1], tvec[2]);
   const camPos = t.clone().applyMatrix3(Rt).negate();
 
   // Build view matrix (world-to-camera)
   const viewMat = new THREE.Matrix4();
   viewMat.set(
-    Re[0], Re[3], Re[6], tvec[0],
-    Re[1], Re[4], Re[7], tvec[1],
-    Re[2], Re[5], Re[8], tvec[2],
-    0, 0, 0, 1
+    Re[0],
+    Re[3],
+    Re[6],
+    tvec[0],
+    Re[1],
+    Re[4],
+    Re[7],
+    tvec[1],
+    Re[2],
+    Re[5],
+    Re[8],
+    tvec[2],
+    0,
+    0,
+    0,
+    1,
   );
 
   // OpenCV camera: X-right, Y-down, Z-forward
   // Three.js camera: X-right, Y-up, Z-backward
   // Flip Y and Z
   const flipYZ = new THREE.Matrix4().set(
-    1,  0,  0, 0,
-    0, -1,  0, 0,
-    0,  0, -1, 0,
-    0,  0,  0, 1
+    1,
+    0,
+    0,
+    0,
+    0,
+    -1,
+    0,
+    0,
+    0,
+    0,
+    -1,
+    0,
+    0,
+    0,
+    0,
+    1,
   );
   const threeView = flipYZ.clone().multiply(viewMat);
 
   // Build projection matrix matching OpenCV intrinsics
-  const near = 0.05, far = 50;
-  const w = camWidth, h = camHeight;
+  const near = 0.05,
+    far = 50;
+  const w = camWidth,
+    h = camHeight;
   const projMat = new THREE.Matrix4();
   projMat.set(
-    2*fx/w,  0,       -(2*cx/w - 1),  0,
-    0,       2*fy/h,  -(2*cy/h - 1),  0,
-    0,       0,       -(far+near)/(far-near), -2*far*near/(far-near),
-    0,       0,       -1,              0
+    (2 * fx) / w,
+    0,
+    -((2 * cx) / w - 1),
+    0,
+    0,
+    (2 * fy) / h,
+    -((2 * cy) / h - 1),
+    0,
+    0,
+    0,
+    -(far + near) / (far - near),
+    (-2 * far * near) / (far - near),
+    0,
+    0,
+    -1,
+    0,
   );
 
   camera.projectionMatrix.copy(projMat);
@@ -99,18 +141,22 @@ function setCameraFromPose(pose, camWidth, camHeight) {
 
 // ---- Init ----
 export function init() {
-  const canvas = document.getElementById('ar-canvas');
+  const canvas = document.getElementById("ar-canvas");
   if (!canvas) return;
 
   scene = new THREE.Scene();
   clock = new THREE.Clock();
-  camera = new THREE.PerspectiveCamera(60, 640/480, 0.05, 50);
+  camera = new THREE.PerspectiveCamera(60, 640 / 480, 0.05, 50);
 
   try {
-    renderer = new THREE.WebGLRenderer({canvas, antialias: true, alpha: true});
-  } catch(e) {
-    console.error('AR overlay: WebGL failed', e);
-    canvas.style.display = 'none';
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+    });
+  } catch (e) {
+    console.error("AR overlay: WebGL failed", e);
+    canvas.style.display = "none";
     return;
   }
 
@@ -139,7 +185,7 @@ export function init() {
 
   // Invisible ground plane to receive shadows
   const groundGeo = new THREE.PlaneGeometry(10, 10);
-  const groundMat = new THREE.ShadowMaterial({opacity: 0.4});
+  const groundMat = new THREE.ShadowMaterial({ opacity: 0.4 });
   groundPlane = new THREE.Mesh(groundGeo, groundMat);
   groundPlane.receiveShadow = true;
   // Ground is at z=0 in world coords (XY plane)
@@ -154,7 +200,7 @@ export function init() {
   createSphere();
 
   animate();
-  console.log('AR overlay initialized');
+  console.log("AR overlay initialized");
 }
 
 // ---- Load character with walk animation ----
@@ -162,10 +208,10 @@ function loadCharacter() {
   characterGroup = new THREE.Group();
   scene.add(characterGroup);
 
-  loader.load('/assets/models/human/human_rigged.glb', (gltf) => {
+  loader.load("/assets/models/human/human_rigged.glb", (gltf) => {
     const model = gltf.scene;
     model.scale.set(0.15, 0.15, 0.15); // Scale to ~20cm tall for the robot
-    model.traverse(c => {
+    model.traverse((c) => {
       if (c.isMesh) {
         c.castShadow = true;
         c.receiveShadow = true;
@@ -178,7 +224,7 @@ function loadCharacter() {
     mixer = new THREE.AnimationMixer(model);
 
     // Load idle animation
-    loader.load('/assets/emotes/emote-idle.glb', (idleGltf) => {
+    loader.load("/assets/emotes/emote-idle.glb", (idleGltf) => {
       if (idleGltf.animations.length > 0) {
         idleAction = mixer.clipAction(idleGltf.animations[0]);
         idleAction.play();
@@ -186,28 +232,28 @@ function loadCharacter() {
     });
 
     // Load walk animation
-    loader.load('/assets/emotes/emote-walk.glb', (walkGltf) => {
+    loader.load("/assets/emotes/emote-walk.glb", (walkGltf) => {
       if (walkGltf.animations.length > 0) {
         walkAction = mixer.clipAction(walkGltf.animations[0]);
         walkAction.timeScale = 1.3;
       }
     });
 
-    console.log('Character loaded');
+    console.log("Character loaded");
   });
 }
 
 // ---- Load tree template ----
 function loadTreeTemplate() {
-  loader.load('/assets/models/tree/tree.glb', (gltf) => {
+  loader.load("/assets/models/tree/tree.glb", (gltf) => {
     treeMeshTemplate = gltf.scene;
-    treeMeshTemplate.traverse(c => {
+    treeMeshTemplate.traverse((c) => {
       if (c.isMesh) {
         c.castShadow = true;
         c.receiveShadow = true;
       }
     });
-    console.log('Tree template loaded');
+    console.log("Tree template loaded");
   });
 }
 
@@ -215,7 +261,7 @@ function loadTreeTemplate() {
 function placeTrees(floorMarkers) {
   if (!treeMeshTemplate || treesPlaced) return;
 
-  const corners = Object.values(floorMarkers).map(p => [p[0], p[1]]);
+  const corners = Object.values(floorMarkers).map((p) => [p[0], p[1]]);
   if (corners.length < 3) return;
 
   // Place trees along edges and slightly outside the perimeter
@@ -227,18 +273,22 @@ function placeTrees(floorMarkers) {
     const mx = (a[0] + b[0]) / 2;
     const my = (a[1] + b[1]) / 2;
     // Normal pointing outward
-    const dx = b[0] - a[0], dy = b[1] - a[1];
-    const len = Math.sqrt(dx*dx + dy*dy);
-    const nx = -dy/len * 0.15, ny = dx/len * 0.15;
+    const dx = b[0] - a[0],
+      dy = b[1] - a[1];
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const nx = (-dy / len) * 0.15,
+      ny = (dx / len) * 0.15;
     treePositions.push([mx + nx, my + ny]);
     // Also at each corner, offset outward
-    const cx = a[0], cy = a[1];
+    const cx = a[0],
+      cy = a[1];
     // Average of adjacent edge normals for corner offset
     const prev = corners[(i - 1 + corners.length) % corners.length];
-    const dx2 = a[0] - prev[0], dy2 = a[1] - prev[1];
-    const len2 = Math.sqrt(dx2*dx2 + dy2*dy2) || 1;
-    const cnx = (-dy/len - dy2/len2) * 0.12;
-    const cny = (dx/len + dx2/len2) * 0.12;
+    const dx2 = a[0] - prev[0],
+      dy2 = a[1] - prev[1];
+    const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+    const cnx = (-dy / len - dy2 / len2) * 0.12;
+    const cny = (dx / len + dx2 / len2) * 0.12;
     treePositions.push([cx + cnx, cy + cny]);
   }
 
@@ -283,7 +333,11 @@ export function update(ws) {
 
   // Update camera pose
   if (ws.camera_pose) {
-    setCameraFromPose(ws.camera_pose, ws.cam_width || 640, ws.cam_height || 480);
+    setCameraFromPose(
+      ws.camera_pose,
+      ws.cam_width || 640,
+      ws.cam_height || 480,
+    );
   }
 
   // Place trees once floor markers are known
@@ -296,14 +350,14 @@ export function update(ws) {
     const rp = ws.robot_position;
     const rh = ws.robot_heading || 0;
     characterGroup.position.set(rp[0], rp[1], 0);
-    characterGroup.rotation.set(0, 0, rh - Math.PI/2); // Face heading direction
+    characterGroup.rotation.set(0, 0, rh - Math.PI / 2); // Face heading direction
 
     // Detect if robot is moving
     let moving = false;
     if (lastRobotPos) {
       const dx = rp[0] - lastRobotPos[0];
       const dy = rp[1] - lastRobotPos[1];
-      moving = Math.sqrt(dx*dx + dy*dy) > 0.005;
+      moving = Math.sqrt(dx * dx + dy * dy) > 0.005;
     }
     lastRobotPos = [rp[0], rp[1]];
 
@@ -324,7 +378,7 @@ export function update(ws) {
   }
 
   // Update sphere position (red ball)
-  const redBall = (ws.objects || []).find(o => o.label === 'red_ball');
+  const redBall = (ws.objects || []).find((o) => o.label === "red_ball");
   if (redBall && sphereMesh) {
     sphereMesh.position.set(redBall.position[0], redBall.position[1], 0.04);
     sphereMesh.visible = true;
@@ -343,6 +397,6 @@ export function update(ws) {
 
 export function toggle(enabled) {
   arEnabled = enabled;
-  const c = document.getElementById('ar-canvas');
-  if (c) c.style.display = enabled ? 'block' : 'none';
+  const c = document.getElementById("ar-canvas");
+  if (c) c.style.display = enabled ? "block" : "none";
 }

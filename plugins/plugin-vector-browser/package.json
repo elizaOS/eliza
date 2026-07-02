@@ -81,7 +81,7 @@
   ],
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "@types/three": "^0.184.0",
+    "@types/three": "^0.185.0",
     "react": "^19.0.0",
     "three": "^0.184.0",
     "tsup": "^8.5.1",

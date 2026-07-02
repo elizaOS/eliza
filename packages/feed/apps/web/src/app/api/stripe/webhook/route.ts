@@ -110,7 +110,7 @@ export const POST = withErrorHandling(async function POST(req: Request) {
   // Filter events by app metadata — only process events belonging to this app (feed).
   // Events without metadata.app are allowed through for backward compatibility with
   // resources created before this tagging was added.
-  const eventObject = event.data.object as Record<string, unknown>;
+  const eventObject = event.data.object as unknown as Record<string, unknown>;
   const appMetadata =
     (eventObject?.metadata as Record<string, string> | undefined)?.app ??
     (

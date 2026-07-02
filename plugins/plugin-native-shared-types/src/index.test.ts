@@ -62,7 +62,10 @@ describe("@elizaos/native-plugin-shared-types", () => {
       resultIndex: 0,
       results: {
         length: 1,
-        0: { isFinal: true, 0: { transcript: "open settings", confidence: 0.9 } },
+        0: {
+          isFinal: true,
+          0: { transcript: "open settings", confidence: 0.9 },
+        },
       },
     };
     onResult(event);

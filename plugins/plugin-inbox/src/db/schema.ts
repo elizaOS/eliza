@@ -38,6 +38,7 @@ export const lifeInboxTriageEntries = inboxSchema.table(
     suggestedResponse: text("suggested_response"),
     draftResponse: text("draft_response"),
     autoReplied: boolean("auto_replied").notNull().default(false),
+    snoozedUntil: text("snoozed_until"),
     resolved: boolean("resolved").notNull().default(false),
     resolvedAt: text("resolved_at"),
     createdAt: text("created_at").notNull(),

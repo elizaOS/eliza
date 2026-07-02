@@ -15,6 +15,7 @@ import type {
 } from "@elizaos/core";
 import { and, comments, db, eq, isNull, posts, users } from "@feed/db";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 const MAX_THREAD_DEPTH = 10;
 
@@ -71,13 +72,13 @@ export const checkCommentDetailAction: Action = {
   description:
     "Get detailed information about a comment including its thread context (parent chain and replies).",
 
-  parameters: {
+  parameters: defineActionParameters({
     commentId: {
       type: "string",
       description: "The ID of the comment to retrieve",
       required: true,
     },
-  },
+  }),
 
   examples: [
     [

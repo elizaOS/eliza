@@ -1,7 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { validateGithubLiveEvidence } from "./validate-capability-router-github-live-evidence.ts";
 
 const CLOUD_ARTIFACT = "remote-capability-cloud-live-report";

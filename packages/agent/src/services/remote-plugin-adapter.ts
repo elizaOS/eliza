@@ -2327,7 +2327,7 @@ function requireRemoteLaunchPreparation(
   if (result.diagnostics !== undefined) {
     requireRemoteLaunchDiagnostics(result.diagnostics, moduleId, hook);
   }
-  return result as unknown as PluginAppLaunchPreparation;
+  return result as PluginAppLaunchPreparation;
 }
 
 function requireRemoteViewerAuthMessage(
@@ -2343,7 +2343,27 @@ function requireRemoteViewerAuthMessage(
       "returned invalid viewer auth message",
     );
   }
-  return result as unknown as PluginAppViewerAuthMessage;
+  if (!isRemoteViewerAuthMessage(result)) {
+    throw remoteDecodeError(
+      moduleId,
+      hook,
+      "returned malformed viewer auth message",
+    );
+  }
+  return result;
+}
+
+function isRemoteViewerAuthMessage(
+  value: JsonObject,
+): value is JsonObject & PluginAppViewerAuthMessage {
+  if (typeof value.type !== "string") return false;
+  return [
+    "authToken",
+    "characterId",
+    "sessionToken",
+    "agentId",
+    "followEntity",
+  ].every((key) => value[key] === undefined || typeof value[key] === "string");
 }
 
 function requireRemoteLaunchDiagnostics(
@@ -2384,12 +2404,23 @@ function requireRemoteLaunchSession(
   if (!isJsonObject(result)) {
     throw remoteDecodeError(moduleId, hook, "returned invalid session");
   }
-  for (const key of ["sessionId", "appName", "mode", "status"]) {
-    if (typeof result[key] !== "string") {
-      throw remoteDecodeError(moduleId, hook, `returned invalid ${key}`);
-    }
+  if (!isRemoteLaunchSession(result)) {
+    throw remoteDecodeError(moduleId, hook, "returned malformed session");
   }
-  return result as unknown as PluginAppSessionState;
+  return result;
+}
+
+function isRemoteLaunchSession(
+  value: JsonObject,
+): value is JsonObject & PluginAppSessionState {
+  return (
+    typeof value.sessionId === "string" &&
+    typeof value.appName === "string" &&
+    (value.mode === "viewer" ||
+      value.mode === "spectate-and-steer" ||
+      value.mode === "external") &&
+    typeof value.status === "string"
+  );
 }
 
 function requireRemoteRouteStatus(

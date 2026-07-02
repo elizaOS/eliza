@@ -1,0 +1,2 @@
+$ bunx @biomejs/biome check .
+Checked 96 files in 94ms. No fixes applied.

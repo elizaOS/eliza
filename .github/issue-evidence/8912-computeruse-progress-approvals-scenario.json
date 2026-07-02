@@ -8,13 +8,7 @@
       "id": "deterministic-computeruse-progress-approvals",
       "title": "Computer-use approval relay buttons",
       "domain": "computeruse",
-      "tags": [
-        "pr",
-        "deterministic",
-        "zero-cost",
-        "computeruse",
-        "approvals"
-      ],
+      "tags": ["pr", "deterministic", "zero-cost", "computeruse", "approvals"],
       "status": "passed",
       "durationMs": 18,
       "turns": [

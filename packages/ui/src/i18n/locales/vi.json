@@ -7396,6 +7396,7 @@
   "desktop.tray.openPlugins": "Mở plugin",
   "desktop.tray.openDesktopWorkspace": "Mở không gian làm việc desktop",
   "desktop.tray.openVoiceControls": "Mở điều khiển giọng nói",
+  "desktop.tray.notifications": "Thông báo",
   "desktop.tray.toggleLifecycle": "Bắt đầu/Dừng agent",
   "desktop.tray.restartAgent": "Khởi động lại agent",
   "desktop.tray.sendTestNotification": "Gửi thông báo thử nghiệm",

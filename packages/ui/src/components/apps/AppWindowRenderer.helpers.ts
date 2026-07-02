@@ -17,6 +17,7 @@ export function getOverlayAppLazyComponent(
   const created = function RetainedOverlayApp(props: OverlayAppContext) {
     return createElement(RetainedLazyComponent<OverlayAppContext>, {
       loader,
+      cacheKey: app.name,
       componentProps: props,
       fallback: null,
     });

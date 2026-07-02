@@ -18,16 +18,26 @@ import {
   verifyManifest,
 } from "../verify-image-reproducibility.mjs";
 
-const sha256 = (buf) => `sha256:${createHash("sha256").update(buf).digest("hex")}`;
+const sha256 = (buf) =>
+  `sha256:${createHash("sha256").update(buf).digest("hex")}`;
 
 // Deterministic component bytes — same inputs => same bytes => same digest.
 // This stands in for "two reproducible builds produce identical components".
 function deterministicComponents(seed = "elizaos-confidential") {
   return {
     kernel: { filename: "bzImage", bytes: Buffer.from(`${seed}::kernel`) },
-    initrd: { filename: "initramfs.cpio.zst", bytes: Buffer.from(`${seed}::initrd`) },
-    rootfs: { filename: "rootfs.squashfs", bytes: Buffer.from(`${seed}::rootfs`) },
-    appCompose: { filename: "app-compose.json", bytes: Buffer.from(`${seed}::compose`) },
+    initrd: {
+      filename: "initramfs.cpio.zst",
+      bytes: Buffer.from(`${seed}::initrd`),
+    },
+    rootfs: {
+      filename: "rootfs.squashfs",
+      bytes: Buffer.from(`${seed}::rootfs`),
+    },
+    appCompose: {
+      filename: "app-compose.json",
+      bytes: Buffer.from(`${seed}::compose`),
+    },
   };
 }
 
@@ -40,7 +50,11 @@ const MEASURED_INTO = {
 
 // Write the component bytes to disk and build a manifest whose declared digests
 // are the real sha256 of those bytes — mirroring generate-tee-measurements.mjs.
-async function buildFixture(dir, components, { confirmed } = { confirmed: false }) {
+async function buildFixture(
+  dir,
+  components,
+  { confirmed } = { confirmed: false },
+) {
   const manifestComponents = {};
   for (const [name, { filename, bytes }] of Object.entries(components)) {
     await writeFile(path.join(dir, filename), bytes);
@@ -56,12 +70,23 @@ async function buildFixture(dir, components, { confirmed } = { confirmed: false 
     schemaVersion: 1,
     generatedBy: "verify-image-reproducibility.test",
     summary: "deterministic test fixture",
-    image: { profile: "confidential", substrate: "tdx", builder: "meta-dstack", architecture: "x86_64" },
+    image: {
+      profile: "confidential",
+      substrate: "tdx",
+      builder: "meta-dstack",
+      architecture: "x86_64",
+    },
     components: manifestComponents,
     buildInputs: {
-      toolchain: [{ name: "poky", version: "scarthgap", sha256: "a".repeat(64) }],
+      toolchain: [
+        { name: "poky", version: "scarthgap", sha256: "a".repeat(64) },
+      ],
       layers: [
-        { name: "meta-dstack", repo: "https://github.com/Dstack-TEE/meta-dstack", commit: "1".repeat(40) },
+        {
+          name: "meta-dstack",
+          repo: "https://github.com/Dstack-TEE/meta-dstack",
+          commit: "1".repeat(40),
+        },
       ],
     },
     measurements: {
@@ -79,7 +104,8 @@ async function buildFixture(dir, components, { confirmed } = { confirmed: false 
     gate: {
       name: "confidential-image-manifest-check",
       blockedOn: "build host",
-      provingCommand: "node packages/os/scripts/verify-image-reproducibility.mjs",
+      provingCommand:
+        "node packages/os/scripts/verify-image-reproducibility.mjs",
     },
   };
 }
@@ -97,7 +123,9 @@ test("reproducible: two builds of the same deterministic inputs are byte-identic
   const dirB = path.join(workDir, "buildB");
   await rm(dirA, { recursive: true, force: true });
   await rm(dirB, { recursive: true, force: true });
-  await import("node:fs/promises").then((m) => Promise.all([m.mkdir(dirA), m.mkdir(dirB)]));
+  await import("node:fs/promises").then((m) =>
+    Promise.all([m.mkdir(dirA), m.mkdir(dirB)]),
+  );
 
   const manifestA = await buildFixture(dirA, deterministicComponents());
   const manifestB = await buildFixture(dirB, deterministicComponents());
@@ -109,10 +137,12 @@ test("reproducible: two builds of the same deterministic inputs are byte-identic
   });
   assert.equal(result.ok, true, result.errors.join("\n"));
   // And both were recomputed from real bytes, not just compared as strings.
-  assert.deepEqual(
-    [...result.verifiedA].sort(),
-    ["appCompose", "initrd", "kernel", "rootfs"],
-  );
+  assert.deepEqual([...result.verifiedA].sort(), [
+    "appCompose",
+    "initrd",
+    "kernel",
+    "rootfs",
+  ]);
 });
 
 test("drift: a one-byte change in build B is caught and FAILS CLOSED", async () => {
@@ -137,7 +167,9 @@ test("drift: a one-byte change in build B is caught and FAILS CLOSED", async () 
   });
   assert.equal(result.ok, false);
   assert.ok(
-    result.errors.some((e) => e.includes("components.rootfs") && e.includes("NOT reproducible")),
+    result.errors.some(
+      (e) => e.includes("components.rootfs") && e.includes("NOT reproducible"),
+    ),
     result.errors.join("\n"),
   );
   // The os measurement (derived from rootfs) must also diverge.
@@ -146,19 +178,26 @@ test("drift: a one-byte change in build B is caught and FAILS CLOSED", async () 
 
 test("missing component file: recompute reports it UNVERIFIED and FAILS without --allow-absent", async () => {
   const dir = path.join(workDir, "missing");
-  await import("node:fs/promises").then((m) => m.mkdir(dir, { recursive: true }));
+  await import("node:fs/promises").then((m) =>
+    m.mkdir(dir, { recursive: true }),
+  );
   const components = deterministicComponents();
   const manifest = await buildFixture(dir, components);
   // Remove the kernel file so it cannot be recomputed.
   await rm(path.join(dir, components.kernel.filename));
 
-  const strict = await recomputeComponents(manifest, dir, { allowAbsent: false });
+  const strict = await recomputeComponents(manifest, dir, {
+    allowAbsent: false,
+  });
   assert.equal(strict.ok, false);
   assert.ok(strict.unverified.includes("kernel"), JSON.stringify(strict));
   assert.ok(strict.errors.some((e) => e.includes("UNVERIFIED")));
 
   // A confirmed=true manifest with a missing file is a hard FAIL (no fabricated claim).
-  const confirmedManifest = { ...manifest, reproducibility: { ...manifest.reproducibility, confirmed: true } };
+  const confirmedManifest = {
+    ...manifest,
+    reproducibility: { ...manifest.reproducibility, confirmed: true },
+  };
   const verified = await verifyManifest(confirmedManifest, dir);
   assert.equal(verified.ok, false);
   assert.equal(verified.blocked, false);
@@ -166,17 +205,26 @@ test("missing component file: recompute reports it UNVERIFIED and FAILS without 
 
 test("recompute mismatch: a declared digest that lies about its bytes FAILS CLOSED", async () => {
   const dir = path.join(workDir, "mismatch");
-  await import("node:fs/promises").then((m) => m.mkdir(dir, { recursive: true }));
+  await import("node:fs/promises").then((m) =>
+    m.mkdir(dir, { recursive: true }),
+  );
   const components = deterministicComponents();
   const manifest = await buildFixture(dir, components);
   // Tamper the declared digest so it no longer matches the real bytes on disk.
-  manifest.components.initrd.digest = sha256(Buffer.from("a different payload"));
+  manifest.components.initrd.digest = sha256(
+    Buffer.from("a different payload"),
+  );
 
-  const result = await recomputeComponents(manifest, dir, { allowAbsent: false });
+  const result = await recomputeComponents(manifest, dir, {
+    allowAbsent: false,
+  });
   assert.equal(result.ok, false);
   assert.ok(
     result.errors.some(
-      (e) => e.includes("components.initrd") && e.includes("recomputed") && e.includes("declared"),
+      (e) =>
+        e.includes("components.initrd") &&
+        e.includes("recomputed") &&
+        e.includes("declared"),
     ),
     result.errors.join("\n"),
   );
@@ -184,8 +232,12 @@ test("recompute mismatch: a declared digest that lies about its bytes FAILS CLOS
 
 test("confirmed=false is BLOCKED (not a hard fail), but present drift still hard-FAILS", async () => {
   const dir = path.join(workDir, "blocked");
-  await import("node:fs/promises").then((m) => m.mkdir(dir, { recursive: true }));
-  const manifest = await buildFixture(dir, deterministicComponents(), { confirmed: false });
+  await import("node:fs/promises").then((m) =>
+    m.mkdir(dir, { recursive: true }),
+  );
+  const manifest = await buildFixture(dir, deterministicComponents(), {
+    confirmed: false,
+  });
 
   // No components dir: confirmed=false => BLOCKED, absence allowed.
   const blocked = await verifyManifest(manifest, undefined);
@@ -194,7 +246,10 @@ test("confirmed=false is BLOCKED (not a hard fail), but present drift still hard
   assert.ok(blocked.errors.some((e) => e.includes("BLOCKED")));
 
   // Even while BLOCKED, a present-but-drifted byte is a hard fail, not a block.
-  const drifted = { ...manifest, components: JSON.parse(JSON.stringify(manifest.components)) };
+  const drifted = {
+    ...manifest,
+    components: JSON.parse(JSON.stringify(manifest.components)),
+  };
   drifted.components.kernel.digest = sha256(Buffer.from("wrong"));
   const hardFail = await verifyManifest(drifted, dir);
   assert.equal(hardFail.ok, false);
@@ -203,8 +258,12 @@ test("confirmed=false is BLOCKED (not a hard fail), but present drift still hard
 
 test("confirmed=true with byte-backed recompute is CONFIRMED", async () => {
   const dir = path.join(workDir, "confirmed");
-  await import("node:fs/promises").then((m) => m.mkdir(dir, { recursive: true }));
-  const manifest = await buildFixture(dir, deterministicComponents(), { confirmed: true });
+  await import("node:fs/promises").then((m) =>
+    m.mkdir(dir, { recursive: true }),
+  );
+  const manifest = await buildFixture(dir, deterministicComponents(), {
+    confirmed: true,
+  });
   const result = await verifyManifest(manifest, dir);
   assert.equal(result.ok, true, result.errors.join("\n"));
   assert.equal(result.blocked, false);

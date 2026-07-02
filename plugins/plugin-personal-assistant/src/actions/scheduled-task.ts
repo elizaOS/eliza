@@ -270,19 +270,228 @@ function getParams(options: HandlerOptions | undefined): ScheduledTaskParams {
   return {};
 }
 
-function isTrigger(value: unknown): value is ScheduledTaskTrigger {
-  if (!value || typeof value !== "object") return false;
-  const kind = (value as { kind?: unknown }).kind;
-  return (
-    kind === "once" ||
-    kind === "cron" ||
-    kind === "interval" ||
-    kind === "relative_to_anchor" ||
-    kind === "during_window" ||
-    kind === "event" ||
-    kind === "manual" ||
-    kind === "after_task"
-  );
+const TRIGGER_KINDS =
+  "once | cron | interval | relative_to_anchor | during_window | event | manual | after_task";
+
+/**
+ * Self-repair redirect appended to create-trigger failures. Observed live
+ * (gemma-4-31b, `brush-teeth-basic`): a habit-shaped ask routed here, then the
+ * model burned every planner continuation retrying `trigger: {}` against the
+ * raw scheduler instead of switching to the definition-save flow. The failure
+ * text is the only in-turn channel that can steer the retry, so it names the
+ * correct surface explicitly.
+ */
+const HABIT_REDIRECT_HINT =
+  "If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.";
+
+type TriggerNormalization =
+  | { ok: true; trigger: ScheduledTaskTrigger }
+  | { ok: false; message: string };
+
+function pickString(
+  record: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function pickNumber(
+  record: Record<string, unknown>,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+/**
+ * Normalize a planner-supplied trigger into the canonical
+ * `ScheduledTaskTrigger` shape, accepting the field aliases LLMs naturally
+ * produce (`type` for `kind`; `cron`/`schedule` for `expression`;
+ * `timezone` for `tz`; `at`/`when` for `atIso`; `minutes` for
+ * `everyMinutes`; …), and validating per-kind completeness so an
+ * incomplete trigger can never reach the runner and blow up mid-schedule.
+ *
+ * Failure messages are written FOR the model: they state the exact
+ * canonical shape so a self-repair retry lands on the first attempt.
+ * (Observed live: `{type:"cron", schedule:"…"}` and `{kind:"cron",
+ * cron:"…"}` each burned a planner retry before the model guessed
+ * `expression`, and the mid-runner throw surfaced as a bare
+ * `success:false` with no message.)
+ */
+function normalizeTriggerInput(value: unknown): TriggerNormalization {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      ok: false,
+      message: `Trigger must be an object with a "kind" field (${TRIGGER_KINDS}).`,
+    };
+  }
+  const record = value as Record<string, unknown>;
+  const kindRaw = pickString(record, ["kind", "type"]);
+  if (!kindRaw) {
+    return {
+      ok: false,
+      message: `Trigger is missing "kind" (${TRIGGER_KINDS}).`,
+    };
+  }
+  const kind = kindRaw.toLowerCase();
+  switch (kind) {
+    case "cron": {
+      const expression = pickString(record, ["expression", "cron", "schedule"]);
+      if (!expression) {
+        return {
+          ok: false,
+          message:
+            'Cron triggers need { kind: "cron", expression: "<5-field cron>", tz?: "<IANA timezone>" } — e.g. { kind: "cron", expression: "0 8,21 * * *", tz: "America/New_York" }.',
+        };
+      }
+      const tz = pickString(record, ["tz", "timezone", "timeZone"]);
+      return {
+        ok: true,
+        trigger: {
+          kind: "cron",
+          expression,
+          ...(tz ? { tz } : {}),
+        } as ScheduledTaskTrigger,
+      };
+    }
+    case "once": {
+      const atIso = pickString(record, ["atIso", "at", "when", "datetime"]);
+      if (!atIso || !Number.isFinite(Date.parse(atIso))) {
+        return {
+          ok: false,
+          message:
+            'Once triggers need { kind: "once", atIso: "<ISO-8601 instant>" } — e.g. { kind: "once", atIso: "2026-07-03T17:00:00-04:00" }.',
+        };
+      }
+      return { ok: true, trigger: { kind: "once", atIso } };
+    }
+    case "interval": {
+      const everyMinutes = pickNumber(record, [
+        "everyMinutes",
+        "minutes",
+        "intervalMinutes",
+      ]);
+      if (everyMinutes === null || everyMinutes <= 0) {
+        return {
+          ok: false,
+          message:
+            'Interval triggers need { kind: "interval", everyMinutes: <positive number>, from?: "<ISO>", until?: "<ISO>" }.',
+        };
+      }
+      const from = pickString(record, ["from"]);
+      const until = pickString(record, ["until"]);
+      return {
+        ok: true,
+        trigger: {
+          kind: "interval",
+          everyMinutes,
+          ...(from ? { from } : {}),
+          ...(until ? { until } : {}),
+        },
+      };
+    }
+    case "relative_to_anchor": {
+      const anchorKey = pickString(record, ["anchorKey", "anchor"]);
+      const offsetMinutes = pickNumber(record, [
+        "offsetMinutes",
+        "offset",
+        "minutes",
+      ]);
+      if (!anchorKey || offsetMinutes === null) {
+        return {
+          ok: false,
+          message:
+            'relative_to_anchor triggers need { kind: "relative_to_anchor", anchorKey: "<anchor>", offsetMinutes: <number> } — e.g. { kind: "relative_to_anchor", anchorKey: "wake.confirmed", offsetMinutes: 30 }.',
+        };
+      }
+      return {
+        ok: true,
+        trigger: { kind: "relative_to_anchor", anchorKey, offsetMinutes },
+      };
+    }
+    case "during_window": {
+      const windowKey = pickString(record, ["windowKey", "window"]);
+      if (!windowKey) {
+        return {
+          ok: false,
+          message:
+            'during_window triggers need { kind: "during_window", windowKey: "morning" | "afternoon" | "evening" | "night" | "morning_or_evening" | "morning_or_night" }.',
+        };
+      }
+      return { ok: true, trigger: { kind: "during_window", windowKey } };
+    }
+    case "event": {
+      const eventKind = pickString(record, ["eventKind", "event", "name"]);
+      if (!eventKind) {
+        return {
+          ok: false,
+          message:
+            'Event triggers need { kind: "event", eventKind: "<event name>" }.',
+        };
+      }
+      const filter = record.filter;
+      return {
+        ok: true,
+        trigger: {
+          kind: "event",
+          eventKind,
+          ...(filter && typeof filter === "object"
+            ? { filter: filter as never }
+            : {}),
+        },
+      };
+    }
+    case "manual":
+      return { ok: true, trigger: { kind: "manual" } };
+    case "after_task": {
+      const taskId = pickString(record, ["taskId", "taskRef", "task"]);
+      const outcome = pickString(record, ["outcome"]);
+      if (
+        !taskId ||
+        (outcome !== "completed" &&
+          outcome !== "skipped" &&
+          outcome !== "failed" &&
+          outcome !== "expired" &&
+          outcome !== "dismissed")
+      ) {
+        return {
+          ok: false,
+          message:
+            'after_task triggers need { kind: "after_task", taskId: "<parent task id>", outcome: "completed" | "skipped" | "failed" | "expired" | "dismissed" }.',
+        };
+      }
+      return {
+        ok: true,
+        trigger: { kind: "after_task", taskId, outcome } as never,
+      };
+    }
+    default:
+      return {
+        ok: false,
+        message: `Unknown trigger kind "${kindRaw}". Valid kinds: ${TRIGGER_KINDS}.`,
+      };
+  }
+}
+
+function stableTriggerKey(trigger: ScheduledTaskTrigger): string {
+  const record = trigger as unknown as Record<string, unknown>;
+  return Object.keys(record)
+    .sort()
+    .map((key) => `${key}=${JSON.stringify(record[key])}`)
+    .join("|");
 }
 
 async function handleList(
@@ -340,21 +549,69 @@ async function handleCreate(
       data: { subaction: "create", error: "MISSING_PROMPT_INSTRUCTIONS" },
     };
   }
-  if (!isTrigger(params.trigger)) {
+  if (params.trigger === undefined || params.trigger === null) {
     return {
       success: false,
-      text: "I need a trigger (once / cron / interval / event / manual / …) to schedule a task.",
+      text: `I need a trigger (${TRIGGER_KINDS}) to schedule a task. ${HABIT_REDIRECT_HINT}`,
       data: { subaction: "create", error: "MISSING_TRIGGER" },
     };
   }
+  const normalized = normalizeTriggerInput(params.trigger);
+  if (!normalized.ok) {
+    return {
+      success: false,
+      text: `${normalized.message} ${HABIT_REDIRECT_HINT}`,
+      data: {
+        subaction: "create",
+        error: "INVALID_TRIGGER",
+        message: normalized.message,
+      },
+    };
+  }
+  const trigger = normalized.trigger;
   const kind = normalizeKind(params.kind) ?? "custom";
   const priority: ScheduledTaskPriorityParam = params.priority ?? "medium";
   const subject = buildSubject(
     normalizeSubjectKind(params.subjectKind),
     params.subjectId,
   );
+  // Content-level duplicate guard. `idempotencyKey` already dedupes exact
+  // retries, but a planner re-asked across turns tends to mint a NEW key for
+  // the same intent (observed live: two identical brush-teeth cron reminders
+  // one minute apart under different keys). An ACTIVE task with the same
+  // kind + instructions + trigger is the same intent — return it instead of
+  // stacking a duplicate reminder. Likewise a create that reuses a
+  // planner-invented `taskId` (the runner mints real ids, so it is recorded
+  // as `metadata.plannerTaskId` below) is a retry of the same intent, even
+  // when the retry rewrites the instructions or trigger (observed live:
+  // turn-2 retries reused taskId "brush-teeth-8am-daily" under fresh
+  // idempotency keys).
+  const requestedTaskId = params.taskId?.trim() || undefined;
+  const activeSiblings = await scope.runner.list({
+    kind,
+    status: ["scheduled", "fired", "acknowledged"],
+  });
+  const normalizedInstructions = promptInstructions.toLowerCase();
+  const triggerKey = stableTriggerKey(trigger);
+  const duplicate = activeSiblings.find(
+    (candidate) =>
+      (candidate.promptInstructions.trim().toLowerCase() ===
+        normalizedInstructions &&
+        stableTriggerKey(candidate.trigger) === triggerKey) ||
+      (requestedTaskId !== undefined &&
+        (candidate.taskId === requestedTaskId ||
+          candidate.metadata?.plannerTaskId === requestedTaskId)),
+  );
+  if (duplicate) {
+    return {
+      success: true,
+      text: `An identical ${kind} task already exists (${duplicate.taskId}) — not creating a duplicate.`,
+      data: { subaction: "create", task: duplicate, deduplicated: true },
+    };
+  }
   const metadata = {
     ...(params.metadata ?? {}),
+    ...(requestedTaskId ? { plannerTaskId: requestedTaskId } : {}),
     ...(scope.roomId && params.completionCheck
       ? { pendingPromptRoomId: scope.roomId }
       : {}),
@@ -362,7 +619,7 @@ async function handleCreate(
   const created = await scope.runner.schedule({
     kind,
     promptInstructions,
-    trigger: params.trigger,
+    trigger,
     priority,
     ...(params.contextRequest ? { contextRequest: params.contextRequest } : {}),
     ...(params.shouldFire ? { shouldFire: params.shouldFire } : {}),
@@ -634,11 +891,11 @@ export const scheduledTaskAction: Action & {
     "surface:internal",
   ],
   description:
-    "Owner scheduled-item surface backed by LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+    "Low-level admin surface over LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history. create schedules a raw task and requires an explicit structural trigger — it is NOT the flow for saving a habit/routine/recurring personal reminder the owner asks for in chat; OWNER_ROUTINES / OWNER_REMINDERS action=create own that (definition + reminder plan).",
   descriptionCompressed:
-    "LifeOps scheduled items list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
+    "low-level scheduled-item admin list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history; NOT new-habit/routine creation (-> OWNER_ROUTINES/OWNER_REMINDERS create)",
   routingHint:
-    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that reminder", "follow-ups today", "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
+    'manage EXISTING scheduled items ("snooze that reminder", "follow-ups today", "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; NEW habit/routine/recurring personal reminder ("brush my teeth at 8 am and 9 pm every day", "remind me daily at 9pm") -> OWNER_ROUTINES/OWNER_REMINDERS action=create; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
   contexts: [
     "tasks",
     "automation",

@@ -11,7 +11,9 @@ console.log("===================================");
 console.log("");
 
 if (platform() !== "darwin") {
-  console.log("⚠ This setup requires macOS + Xcode. Skipping on this platform.");
+  console.log(
+    "⚠ This setup requires macOS + Xcode. Skipping on this platform.",
+  );
   process.exit(0);
 }
 
@@ -30,7 +32,8 @@ try {
 }
 
 // Check simulator
-const simPath = "/Library/Developer/CoreSimulator/Profiles/Runtimes/visionOS.simruntime";
+const simPath =
+  "/Library/Developer/CoreSimulator/Profiles/Runtimes/visionOS.simruntime";
 if (existsSync(simPath)) {
   console.log("✓ Apple Vision Pro Simulator installed");
 } else {
@@ -40,13 +43,17 @@ if (existsSync(simPath)) {
 
 console.log("\nManual Steps:");
 console.log("1. Apple Developer account: https://developer.apple.com/");
-console.log("2. Enable Vision Pro in Devices: Settings → Privacy → Developer Mode");
+console.log(
+  "2. Enable Vision Pro in Devices: Settings → Privacy → Developer Mode",
+);
 console.log("3. Open native/visionos/ElizaFacewear.xcodeproj in Xcode");
 console.log("4. Set your Team ID in project settings");
 console.log("5. Run on Vision Pro Simulator or physical device");
 console.log("");
 console.log("Architecture Notes:");
-console.log("- App connects to elizaOS agent via WebSocket (same as Quest/XReal)");
+console.log(
+  "- App connects to elizaOS agent via WebSocket (same as Quest/XReal)",
+);
 console.log("- WebXR in Safari/WKWebView (visionOS 1.1+)");
 console.log("- RealityKit renders 3D panels in immersive space");
 console.log("- Persona camera + mic via AVCaptureSession");

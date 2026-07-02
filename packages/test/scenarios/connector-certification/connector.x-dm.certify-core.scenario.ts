@@ -12,9 +12,16 @@ export default buildConnectorCertificationScenario({
     {
       name: "x-dm-core",
       text: "Read my unread X DMs and draft the right reply with the right context.",
-      responseIncludesAny: ["x", "dm", "reply", "draft"],
-      acceptedActions: ["X_READ", "INBOX"],
-      includesAny: ["x", "dm", "reply", "draft"],
+      // Draft-completion tokens the prompt never uses; parroting "draft the
+      // right reply" cannot satisfy any of them.
+      responseIncludesAny: [
+        "drafted",
+        "composed",
+        "ready to send",
+        "proposed reply",
+      ],
+      expectedActions: ["X_READ", "INBOX"],
+      actionPayloadIncludesAny: ["x", "dm", "reply", "draft"],
     },
   ],
   finalChecks: [{ type: "draftExists", channel: "x-dm", expected: true }],

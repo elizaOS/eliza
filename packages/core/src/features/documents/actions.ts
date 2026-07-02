@@ -1,5 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+	resolveActionArgs,
+	type SubactionsMap,
+} from "../../actions/resolve-action-args";
 import { logger } from "../../logger";
 import { checkSenderRole, hasRoleAccess, isAgentSelf } from "../../roles";
 import type {
@@ -59,16 +63,91 @@ type DocumentActionParameters = {
 	timeRangeEnd?: string | number;
 };
 
-const DOCUMENT_SUB_ACTIONS = new Set<DocumentSubAction>([
-	"list",
-	"search",
-	"read",
-	"write",
-	"edit",
-	"delete",
-	"import_file",
-	"import_url",
-]);
+/**
+ * Route-only subaction map: the planner selects the DOCUMENT subaction by
+ * emitting a structured English-enum `action`/`subaction` value, and
+ * {@link resolveActionArgs} routes on it. Subactions whose values are natural
+ * language (`search.query`, `write.text`) require the planner/extractor to
+ * supply those values instead of trimming English command prefixes from the
+ * user's text. ID/path/URL subactions keep `required: []` because their
+ * handlers can recover values from structural machine extractors (UUID /
+ * file-path / URL patterns) before prompting for missing details. The
+ * `optional` lists mirror the {@link DocumentActionParameters} keys each
+ * handler reads so the resolver forwards them through.
+ */
+const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
+	list: {
+		description: "List available stored documents, optionally filtered.",
+		descriptionCompressed: "list stored documents w/ filters",
+		required: [],
+		optional: [
+			"query",
+			"limit",
+			"offset",
+			"scope",
+			"scopedToEntityId",
+			"addedBy",
+			"timeRangeStart",
+			"timeRangeEnd",
+			"tags",
+		],
+	},
+	search: {
+		description: "Semantic + keyword search over stored document fragments.",
+		descriptionCompressed: "search document fragments by query",
+		required: ["query"],
+		optional: [
+			"limit",
+			"searchMode",
+			"scope",
+			"scopedToEntityId",
+			"addedBy",
+			"timeRangeStart",
+			"timeRangeEnd",
+			"tags",
+		],
+	},
+	read: {
+		description: "Read the full text of one stored document by id.",
+		descriptionCompressed: "read document by id",
+		required: [],
+		optional: ["id", "documentId"],
+	},
+	write: {
+		description: "Create a new text-backed document from supplied content.",
+		descriptionCompressed: "create text document",
+		required: ["text"],
+		optional: ["content", "title", "tags", "scope", "scopedToEntityId"],
+	},
+	edit: {
+		description: "Replace the content of an existing document by id.",
+		descriptionCompressed: "edit document content by id",
+		required: [],
+		optional: ["id", "documentId", "text", "content"],
+	},
+	delete: {
+		description: "Delete a stored document by id.",
+		descriptionCompressed: "delete document by id",
+		required: [],
+		optional: ["id", "documentId"],
+	},
+	import_file: {
+		description: "Import a document from a local file path or text content.",
+		descriptionCompressed: "import document from file path",
+		required: [],
+		optional: ["filePath", "content", "title", "scope", "scopedToEntityId"],
+	},
+	import_url: {
+		description: "Import a document from an HTTP or HTTPS URL.",
+		descriptionCompressed: "import document from url",
+		required: [],
+		optional: ["url", "includeImageDescriptions", "scope", "scopedToEntityId"],
+	},
+};
+
+const DOCUMENT_SUB_ACTION_KEYS = Object.keys(
+	DOCUMENT_SUBACTIONS,
+) as DocumentSubAction[];
 
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"global",
@@ -120,54 +199,6 @@ export function registerDocumentsSearchCategory(runtime: IAgentRuntime): void {
 	if (!hasSearchCategory(runtime, DOCUMENTS_SEARCH_CATEGORY.category)) {
 		runtime.registerSearchCategory(DOCUMENTS_SEARCH_CATEGORY);
 	}
-}
-
-function getParams(
-	options?: HandlerOptions | unknown,
-): DocumentActionParameters {
-	const maybeOptions = options as HandlerOptions | undefined;
-	const params = maybeOptions?.parameters;
-	return params && typeof params === "object"
-		? (params as DocumentActionParameters)
-		: {};
-}
-
-function normalizeSubAction(value: unknown): DocumentSubAction | null {
-	if (typeof value !== "string") return null;
-	const normalized = value.trim().toLowerCase().replace(/-/g, "_");
-	return DOCUMENT_SUB_ACTIONS.has(normalized as DocumentSubAction)
-		? (normalized as DocumentSubAction)
-		: null;
-}
-
-function inferSubAction(
-	params: DocumentActionParameters,
-	message: Memory,
-): DocumentSubAction | null {
-	const explicit =
-		normalizeSubAction(params.action) ?? normalizeSubAction(params.subaction);
-	if (explicit) return explicit;
-
-	const text = message.content.text ?? "";
-	if (
-		(params.url || URL_PATTERN.test(text)) &&
-		/\b(add|import|save)\b/i.test(text)
-	) {
-		return "import_url";
-	}
-	if (
-		(params.filePath || DOCUMENT_PATH_PATTERN.test(text)) &&
-		/\b(add|import|process|save)\b/i.test(text)
-	) {
-		return "import_file";
-	}
-	if (/\b(read|open|show)\b/i.test(text)) return "read";
-	if (/\b(list|recent|available)\b/i.test(text)) return "list";
-	if (/\b(delete|remove|drop|forget)\b/i.test(text)) return "delete";
-	if (/\b(edit|update|replace|rewrite)\b/i.test(text)) return "edit";
-	if (/\b(save|store|write|create|remember|add)\b/i.test(text)) return "write";
-	if (/\b(search|find|lookup|look up|query)\b/i.test(text)) return "search";
-	return null;
 }
 
 function isUuid(value: string): value is UUID {
@@ -314,32 +345,19 @@ async function ensureDocumentMutationAccess(
 		: "Users can only edit or delete their own private documents.";
 }
 
-function getCleanWriteText(
-	params: DocumentActionParameters,
-	message: Memory,
-): string {
+function getCleanWriteText(params: DocumentActionParameters): string {
 	const explicit = params.text ?? params.content;
 	if (typeof explicit === "string" && explicit.trim()) {
 		return explicit.trim();
 	}
-	return (message.content.text ?? "")
-		.replace(
-			/^(save|store|write|create|remember|add)\s+(this|that|the following|a document|document)?:?\s*/i,
-			"",
-		)
-		.trim();
+	return "";
 }
 
-function getQuery(params: DocumentActionParameters, message: Memory): string {
+function getQuery(params: DocumentActionParameters): string {
 	if (typeof params.query === "string" && params.query.trim()) {
 		return params.query.trim();
 	}
-	return (message.content.text ?? "")
-		.replace(
-			/^(search|find|lookup|look up|query)\s+(my\s+|your\s+|the\s+)?documents?\s*(for|about)?\s*/i,
-			"",
-		)
-		.trim();
+	return "";
 }
 
 function getDocumentFilterParams(params: DocumentActionParameters): {
@@ -498,7 +516,7 @@ async function handleSearch(
 	params: DocumentActionParameters,
 	callback?: HandlerCallback,
 ): Promise<ActionResult> {
-	const query = getQuery(params, message);
+	const query = getQuery(params);
 	if (!query) {
 		const text = "What would you like me to search for in documents?";
 		await emit(callback, { text });
@@ -571,7 +589,7 @@ async function handleWrite(
 	params: DocumentActionParameters,
 	callback?: HandlerCallback,
 ): Promise<ActionResult> {
-	const text = getCleanWriteText(params, message);
+	const text = getCleanWriteText(params);
 	if (!text) {
 		const response = "I need non-empty text to create a document.";
 		await emit(callback, { text: response });
@@ -1011,7 +1029,7 @@ export const documentAction: Action = {
 			required: true,
 			schema: {
 				type: "string",
-				enum: [...DOCUMENT_SUB_ACTIONS],
+				enum: [...DOCUMENT_SUB_ACTION_KEYS],
 			},
 		},
 		{
@@ -1173,20 +1191,16 @@ export const documentAction: Action = {
 
 	validate: async (
 		runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-		options?: unknown,
+		_message: Memory,
 	): Promise<boolean> => {
 		registerDocumentsSearchCategory(runtime);
-		if (!runtime.getService(DocumentService.serviceType)) return false;
-		const params = getParams(options);
-		return Boolean(inferSubAction(params, message));
+		return Boolean(runtime.getService(DocumentService.serviceType));
 	},
 
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state?: State,
+		state?: State,
 		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
@@ -1194,23 +1208,34 @@ export const documentAction: Action = {
 		const service = runtime.getService<DocumentService>(
 			DocumentService.serviceType,
 		);
-		const params = getParams(options);
-		const subaction = inferSubAction(params, message);
 
 		if (!service) {
 			const text = "Documents service not available.";
 			await emit(callback, { text });
-			return result(false, text, subaction ?? "search", {
+			return result(false, text, "search", {
 				values: { error: "service_unavailable" },
 			});
 		}
-		if (!subaction) {
-			const text = "I need a document subaction to perform.";
-			await emit(callback, { text });
-			return result(false, text, "search", {
-				values: { error: "missing_sub_action" },
+
+		const resolved = await resolveActionArgs<
+			DocumentSubAction,
+			DocumentActionParameters
+		>({
+			runtime,
+			message,
+			state,
+			options,
+			actionName: "DOCUMENT",
+			subactions: DOCUMENT_SUBACTIONS,
+		});
+		if (!resolved.ok) {
+			await emit(callback, { text: resolved.clarification });
+			return result(false, resolved.clarification, "search", {
+				values: { error: "missing_sub_action", missing: resolved.missing },
 			});
 		}
+
+		const { subaction, params } = resolved;
 
 		try {
 			switch (subaction) {

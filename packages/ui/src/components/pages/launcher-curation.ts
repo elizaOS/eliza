@@ -1,193 +1,237 @@
-import { isViewVisible, resolveViewKind, type ViewKind } from "@elizaos/core";
+/**
+ * Launcher curation — the single source of truth for what shows in the app
+ * launcher and on which page.
+ *
+ * The launcher renders two curated pages:
+ *   - Page 1 "Apps"      — the everyday user-facing apps (curated order first,
+ *                          then any other loaded plugin app).
+ *   - Page 2 "Developer" — trajectory viewer, databases, runtime, logs, skills,
+ *                          and plugins (plus any other developer-only view when
+ *                          Developer Mode is on).
+ *
+ * Curation is a blocklist + canonical dedup, not a fixed allow-list: known apps
+ * are ordered, removed apps are hidden, duplicate registrations collapse to one
+ * tile, and everything else that is genuinely loaded still appears so installing
+ * a new plugin app keeps working. Native-OS tiles (phone/messages/contacts/
+ * camera/files) only appear on the AOSP ElizaOS fork.
+ */
+
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import type { EnabledViewKinds } from "../../state/useViewKinds";
 
-const SYSTEM_ORDER = [
-  "tutorial",
-  "help",
-  "documents",
-  "character",
+/** Page 1 — everyday apps, in display order. Other loaded apps append after. */
+export const LAUNCHER_APPS_ORDER: readonly string[] = [
+  "chat",
   "settings",
-  "tasks",
-  "transcripts",
   "wallet",
+  "automations",
   "browser",
-  "files",
-  "skills",
-  "feed",
+  "character",
+  "documents",
+  "transcripts",
   "relationships",
-] as const;
-
-const DEVELOPER_ORDER = [
-  "orchestrator",
-  "logs",
-  "database",
-  "trajectories",
-] as const;
-
-const SYSTEM_INDEX = new Map<string, number>(
-  SYSTEM_ORDER.map((id, index) => [id, index]),
-);
-const DEVELOPER_INDEX = new Map<string, number>(
-  DEVELOPER_ORDER.map((id, index) => [id, index]),
-);
-
-const ID_ALIASES = new Map<string, string>([
-  ["knowledge", "documents"],
-  ["@elizaos/plugin-documents-routes", "documents"],
-  ["inventory", "wallet"],
-  ["@elizaos/plugin-wallet-ui", "wallet"],
-  ["wallet.inventory", "wallet"],
-  ["todos", "tasks"],
-  ["task-coordinator", "tasks"],
-  ["@elizaos/plugin-feed", "feed"],
-  ["@elizaos/plugin-relationships", "relationships"],
-  ["@elizaos/plugin-task-coordinator", "orchestrator"],
-  ["log-viewer", "logs"],
-  ["database-viewer", "database"],
-  ["trajectory-viewer", "trajectories"],
-  ["trajectory-logger", "trajectories"],
-  ["@elizaos/plugin-trajectory-logger", "trajectories"],
-]);
-
-const PATH_ALIASES: Array<[RegExp, string]> = [
-  [/^\/(?:apps\/)?smartglasses(?:\/|$)/, "smartglasses"],
-  [/^\/(?:apps\/)?facewear(?:\/|$)/, "facewear"],
-  [/^\/(?:apps\/)?tasks(?:\/|$)/, "tasks"],
-  [/^\/todos(?:\/|$)/, "tasks"],
-  [/^\/(?:character\/documents|documents)(?:\/|$)/, "documents"],
-  [/^\/(?:wallet|inventory)(?:\/|$)/, "wallet"],
-  [/^\/(?:apps\/)?transcripts(?:\/|$)/, "transcripts"],
-  [/^\/(?:apps\/)?relationships(?:\/|$)/, "relationships"],
-  [/^\/(?:apps\/)?logs(?:\/|$)/, "logs"],
-  [/^\/(?:apps\/)?database(?:\/|$)/, "database"],
-  [/^\/(?:apps\/trajectories|trajectory-logger)(?:\/|$)/, "trajectories"],
-  [/^\/orchestrator(?:\/|$)/, "orchestrator"],
+  "memories",
+  "feed",
+  "stream",
 ];
 
-const PREFERRED_PATH_BY_CANONICAL_ID = new Map<string, string>([
-  ["documents", "/character/documents"],
-  ["tasks", "/apps/tasks"],
-  ["wallet", "/wallet"],
-  ["relationships", "/apps/relationships"],
-  ["logs", "/apps/logs"],
-  ["database", "/apps/database"],
-  ["trajectories", "/apps/trajectories"],
+/** Page 2 — developer tools, in display order. */
+export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
+  "trajectories",
+  "database",
+  "runtime",
+  "logs",
+  "skills",
+  "plugins",
+];
+
+/**
+ * Native-OS surfaces that only belong on the AOSP ElizaOS fork. Appended to the
+ * end of page 1 when the AOSP shell is active; hidden on web, desktop, iOS, and
+ * stock Play-Store Android.
+ */
+export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] = [
+  "phone",
+  "messages",
+  "contacts",
+  "camera",
+  "files",
+];
+
+/**
+ * Views that never appear in the launcher grid:
+ *  - shell surfaces reached another way (views/apps launchers; background +
+ *    voice are set from Settings/chat; character-select is inline),
+ *  - removed apps (companion, model tester, shopify, wearables),
+ *  - wallet sub-views (hyperliquid/polymarket open from inside the Wallet app).
+ */
+export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
+  "views",
+  "views-manager",
+  "apps",
+  "background",
+  "voice",
+  "character-select",
+  "desktop",
+  // Removed apps.
+  "companion",
+  "model-tester",
+  "shopify",
+  "facewear",
+  "smartglasses",
+  // Wallet sub-views — reached from inside the Wallet app, not the launcher.
+  "hyperliquid",
+  "polymarket",
 ]);
 
-function normalizedPath(path: string | undefined): string {
-  if (!path) return "";
-  const trimmed = path.trim().toLowerCase();
-  if (!trimmed) return "";
-  const withoutQuery = trimmed.replace(/[?#].*$/, "");
-  return withoutQuery.startsWith("/") ? withoutQuery : `/${withoutQuery}`;
+/**
+ * Duplicate/alias ids collapsed onto one canonical launcher id. Kills the double
+ * "Wallet" (standalone `wallet` view + `wallet.inventory` app-shell page +
+ * builtin `inventory` tab) and double "Automations" (`automations` + `triggers`)
+ * tiles, and folds the standalone tasks/todos surfaces into Automations.
+ */
+const CANONICAL_ID: ReadonlyMap<string, string> = new Map([
+  ["inventory", "wallet"],
+  ["wallet.inventory", "wallet"],
+  ["@elizaos/plugin-wallet-ui", "wallet"],
+  ["triggers", "automations"],
+  ["tasks", "automations"],
+  ["todos", "automations"],
+  ["task-coordinator", "automations"],
+  ["knowledge", "documents"],
+  ["@elizaos/plugin-documents-routes", "documents"],
+  ["plugins-page", "plugins"],
+  ["trajectory-logger", "trajectories"],
+  ["trajectory-viewer", "trajectories"],
+  ["log-viewer", "logs"],
+  ["database-viewer", "database"],
+  // Triple "Fine-Tuning" tile: the `advanced` builtin tab alias, the
+  // `fine-tuning` builtin tab, and the plugin-training app registration
+  // (view id `training`) all route to /apps/fine-tuning — collapse to one
+  // tile (#10710).
+  ["advanced", "fine-tuning"],
+  ["training", "fine-tuning"],
+  ["plugin-training", "fine-tuning"],
+  ["@elizaos/plugin-training", "fine-tuning"],
+]);
+
+export function canonicalLauncherId(id: string): string {
+  return CANONICAL_ID.get(id) ?? id;
 }
 
-export function canonicalLauncherId(entry: Pick<ViewEntry, "id" | "path">) {
-  const byId = ID_ALIASES.get(entry.id) ?? entry.id;
-  if (SYSTEM_INDEX.has(byId) || DEVELOPER_INDEX.has(byId)) return byId;
+const APPS_INDEX = new Map(LAUNCHER_APPS_ORDER.map((id, i) => [id, i]));
+const DEVELOPER_INDEX = new Map(
+  LAUNCHER_DEVELOPER_ORDER.map((id, i) => [id, i]),
+);
+const AOSP_INDEX = new Map(LAUNCHER_AOSP_ONLY_IDS.map((id, i) => [id, i]));
 
-  const path = normalizedPath(entry.path);
-  for (const [pattern, canonical] of PATH_ALIASES) {
-    if (pattern.test(path)) return canonical;
-  }
-  return byId;
+/** True when a canonical id belongs on the Developer page. */
+function isDeveloperEntry(canonicalId: string, entry: ViewEntry): boolean {
+  if (DEVELOPER_INDEX.has(canonicalId)) return true;
+  // Uncurated developer-only views (e.g. vector-browser) join the Developer
+  // page rather than sitting among everyday apps.
+  return entry.viewKind === "developer" || entry.developerOnly === true;
 }
 
-export function launcherKindForCanonicalId(canonicalId: string): ViewKind {
-  if (SYSTEM_INDEX.has(canonicalId)) return "system";
-  if (DEVELOPER_INDEX.has(canonicalId)) return "developer";
-  return "preview";
-}
-
-export function normalizeLauncherEntry(entry: ViewEntry): ViewEntry {
-  const canonicalId = canonicalLauncherId(entry);
-  const viewKind = launcherKindForCanonicalId(canonicalId);
-  return {
-    ...entry,
-    developerOnly: viewKind === "developer",
-    viewKind,
-  };
-}
-
-export function isCuratedLauncherEntryVisible(
-  entry: ViewEntry,
-  enabledKinds: EnabledViewKinds,
-): boolean {
-  return isViewVisible(entry, enabledKinds);
-}
-
+/**
+ * Score competing registrations for the same canonical id so the richest one
+ * wins the single tile (a loaded standalone view beats an app-shell alias beats
+ * a builtin placeholder).
+ */
 function preferenceScore(entry: ViewEntry): number {
-  const canonicalId = canonicalLauncherId(entry);
-  const path = normalizedPath(entry.path);
   let score = 0;
   if (entry.state === "loaded") score += 100;
   if (entry.kind === "view") score += 50;
-  if (entry.id === canonicalId) score += 20;
   if (entry.builtin) score += 10;
-  if (PREFERRED_PATH_BY_CANONICAL_ID.get(canonicalId) === path) score += 40;
+  if (canonicalLauncherId(entry.id) === entry.id) score += 20;
   return score;
 }
 
-export function dedupeLauncherEntries(entries: ViewEntry[]): ViewEntry[] {
-  const order: string[] = [];
+/**
+ * Launcher tiles that back an Eliza Cloud surface and must not appear unless the
+ * user is signed into cloud. `cloud-apps` (the Cloud Applications dashboard,
+ * registered by `@elizaos/app`'s cloud-apps-view) is `viewKind: "release"`, so
+ * without this gate it shows as an "Apps" tile even when cloud is
+ * disconnected. (#10725)
+ */
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud-apps"]);
+
+export interface CurateLauncherOptions {
+  /** Include the native-OS tiles (phone/messages/contacts/camera/files). */
+  isAosp: boolean;
+  /** Which view kinds the user/build has enabled (system+release always on). */
+  enabledKinds: EnabledViewKinds;
+  /** True when signed into Eliza Cloud; gates cloud-only launcher tiles. */
+  cloudActive: boolean;
+}
+
+function comparator(indexes: Array<Map<string, number>>) {
+  return (a: ViewEntry, b: ViewEntry): number => {
+    for (const index of indexes) {
+      const ai = index.get(a.id);
+      const bi = index.get(b.id);
+      if (ai != null || bi != null) {
+        // Curated ids sort by their list order and before uncurated ids.
+        if (ai == null) return 1;
+        if (bi == null) return -1;
+        if (ai !== bi) return ai - bi;
+      }
+    }
+    return a.label.localeCompare(b.label, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  };
+}
+
+/**
+ * Curate raw launcher entries into the fixed page layout. Returns one array per
+ * rendered page: `[appsPage]`, or `[appsPage, developerPage]` when a developer
+ * tool is present. Entries are deduped by canonical id, hidden/removed apps are
+ * dropped, native-OS tiles are AOSP-gated, and uncurated preview/developer views
+ * follow the Developer-Mode toggle.
+ */
+export function curateLauncherPages(
+  entries: ViewEntry[],
+  { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
+): ViewEntry[][] {
   const byCanonical = new Map<string, ViewEntry>();
-
   for (const entry of entries) {
-    const canonicalId = canonicalLauncherId(entry);
+    const canonicalId = canonicalLauncherId(entry.id);
+    if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
+    if (AOSP_INDEX.has(canonicalId) && !isAosp) continue;
+    // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface
+    // unless the user is signed into Eliza Cloud.
+    if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;
+
+    const curated =
+      APPS_INDEX.has(canonicalId) ||
+      DEVELOPER_INDEX.has(canonicalId) ||
+      AOSP_INDEX.has(canonicalId);
+    // Curated tiles always show; uncurated extras respect the visibility toggle
+    // so preview/developer plugin views only surface when their kind is enabled.
+    if (!curated && !isViewVisible(entry, enabledKinds)) continue;
+
     const existing = byCanonical.get(canonicalId);
-    if (!existing) {
-      order.push(canonicalId);
-      byCanonical.set(canonicalId, entry);
-      continue;
-    }
-    if (preferenceScore(entry) > preferenceScore(existing)) {
-      byCanonical.set(canonicalId, entry);
+    if (!existing || preferenceScore(entry) > preferenceScore(existing)) {
+      // Preserve the canonical id so navigation + telemetry stay stable even
+      // when an aliased registration (e.g. `wallet.inventory`) wins the tile.
+      byCanonical.set(canonicalId, { ...entry, id: canonicalId });
     }
   }
 
-  return order
-    .map((id) => byCanonical.get(id))
-    .filter((entry): entry is ViewEntry => Boolean(entry));
-}
-
-function orderTuple(entry: ViewEntry): [number, number, string] {
-  const canonicalId = canonicalLauncherId(entry);
-  const kind = resolveViewKind(entry);
-  if (kind === "system") {
-    return [0, SYSTEM_INDEX.get(canonicalId) ?? Number.MAX_SAFE_INTEGER, ""];
-  }
-  if (kind === "developer") {
-    return [1, DEVELOPER_INDEX.get(canonicalId) ?? Number.MAX_SAFE_INTEGER, ""];
-  }
-  return [2, Number.MAX_SAFE_INTEGER, entry.label];
-}
-
-export function compareLauncherEntries(
-  left: ViewEntry,
-  right: ViewEntry,
-): number {
-  const [leftGroup, leftOrder, leftLabel] = orderTuple(left);
-  const [rightGroup, rightOrder, rightLabel] = orderTuple(right);
-  if (leftGroup !== rightGroup) return leftGroup - rightGroup;
-  if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-  return leftLabel.localeCompare(rightLabel, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-}
-
-export function launcherPageGroups(entries: ViewEntry[]): string[][] {
-  const system: string[] = [];
-  const developer: string[] = [];
-  const preview: string[] = [];
-
-  for (const entry of entries) {
-    const kind = resolveViewKind(entry);
-    if (kind === "system") system.push(entry.id);
-    else if (kind === "developer") developer.push(entry.id);
-    else preview.push(entry.id);
+  const appsPage: ViewEntry[] = [];
+  const developerPage: ViewEntry[] = [];
+  for (const [canonicalId, entry] of byCanonical) {
+    if (isDeveloperEntry(canonicalId, entry)) developerPage.push(entry);
+    else appsPage.push(entry);
   }
 
-  return [system, developer, preview].filter((page) => page.length > 0);
+  appsPage.sort(comparator([APPS_INDEX, AOSP_INDEX]));
+  developerPage.sort(comparator([DEVELOPER_INDEX]));
+
+  const pages: ViewEntry[][] = [];
+  if (appsPage.length > 0) pages.push(appsPage);
+  if (developerPage.length > 0) pages.push(developerPage);
+  return pages;
 }

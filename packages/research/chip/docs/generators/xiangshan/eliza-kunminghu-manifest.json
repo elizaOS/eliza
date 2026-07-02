@@ -41,9 +41,7 @@
       "FDIP-style L1I prefetch is wired as a hint only; the prefetch engine remains a downstream blocker."
     ]
   },
-  "required_evidence": [
-    "docs/evidence/cpu_ap/branch-prediction-params.json"
-  ],
+  "required_evidence": ["docs/evidence/cpu_ap/branch-prediction-params.json"],
   "claim_policy": {
     "branch_prediction_workstream_claim": "scaffold_only",
     "open_topology_match_claim": true,

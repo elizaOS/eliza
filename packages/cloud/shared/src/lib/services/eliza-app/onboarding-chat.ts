@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { cache } from "../../cache/client";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../../models";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
@@ -27,6 +28,12 @@ export interface OnboardingSession {
   platform?: OnboardingPlatform;
   platformUserId?: string;
   platformDisplayName?: string;
+  /**
+   * True once a trusted transport (internal gateway auth) has attested the
+   * platform identity on this session. Only trusted platform identities may
+   * be linked to a cloud account after login.
+   */
+  platformIdentityTrusted?: boolean;
   name?: string;
   userId?: string;
   organizationId?: string;
@@ -62,8 +69,14 @@ export interface OnboardingChatResult {
 
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
 const MAX_HISTORY_MESSAGES = 200;
+/**
+ * Hard byte bound on a stored user message. The public route already caps
+ * message length, but gateway services call runOnboardingChat directly with
+ * raw connector payloads, so the session store enforces its own bound.
+ */
+const MAX_MESSAGE_LENGTH = 4000;
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
-const CEREBRAS_MODEL = "gpt-oss-120b";
+const CEREBRAS_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 const ELIZA_APP_PRICING_SUMMARY =
@@ -87,12 +100,43 @@ export function createOnboardingSessionId(input?: {
   return crypto.randomUUID();
 }
 
+const SESSION_ID_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
+const PLATFORM_SESSION_PREFIX = "platform:";
+
+function redactSessionIdForLog(sessionId: string): string {
+  return sessionId.replace(/\d(?=\d{4})/g, "*");
+}
+
+/**
+ * Platform-scoped session ids (`platform:<platform>:<platformUserId>`) are
+ * derived from messaging identities (usually phone numbers), so they are
+ * guessable. Only two callers may present one:
+ * - a trusted transport (internal gateway auth, `trustedPlatformIdentity`);
+ * - an authenticated user continuing a session from their login link.
+ * Anonymous callers with a malformed or platform-scoped id get a fresh
+ * random session instead, so a forged id can never read or mutate another
+ * user's onboarding state.
+ */
 function sanitizeSessionId(value: string | undefined, input: OnboardingChatInput): string {
   const trimmed = value?.trim();
-  if (trimmed && /^[a-zA-Z0-9:+_-]{8,180}$/.test(trimmed)) {
-    return trimmed;
+  if (trimmed && SESSION_ID_PATTERN.test(trimmed)) {
+    if (!trimmed.startsWith(PLATFORM_SESSION_PREFIX)) {
+      return trimmed;
+    }
+    if (input.trustedPlatformIdentity === true || input.authenticatedUser) {
+      return trimmed;
+    }
+    logger.warn(
+      "[eliza-app onboarding] rejected platform-scoped session id from untrusted caller",
+      { sessionId: redactSessionIdForLog(trimmed) },
+    );
   }
-  return createOnboardingSessionId(input);
+  // Only a trusted transport may mint a platform-scoped id from the
+  // platform/platformUserId inputs; everyone else gets an unguessable id.
+  if (input.trustedPlatformIdentity === true) {
+    return createOnboardingSessionId(input);
+  }
+  return crypto.randomUUID();
 }
 
 async function loadSession(sessionId: string): Promise<OnboardingSession | null> {
@@ -123,23 +167,121 @@ function appendMessage(
   };
 }
 
-function inferName(message: string): string | undefined {
-  const patterns = [
-    /\b(?:my name is|i am|i'm|call me)\s+([a-z][a-z .'-]{1,40})/i,
-    /^\s*([A-Z][a-z]{1,30})(?:\s+[A-Z][a-z]{1,30})?\s*$/,
-  ];
-  for (const pattern of patterns) {
-    const match = pattern.exec(message);
-    const name = match?.[1]?.trim().replace(/[.!?]+$/, "");
-    if (name && !/\b(hello|hi|hey|yo|thanks|thank you)\b/i.test(name)) {
-      return name;
-    }
-  }
-  return undefined;
+/**
+ * Words that confused users send as standalone replies (or as "I'm <state>"
+ * continuations) which must never be captured as a preferred name. Includes
+ * URL scheme fragments so "my name is https://evil.example" never names the
+ * user "https".
+ */
+const NAME_STOPWORDS = new Set([
+  "back",
+  "busy",
+  "confused",
+  "cool",
+  "done",
+  "eliza",
+  "fine",
+  "good",
+  "great",
+  "hello",
+  "help",
+  "here",
+  "hey",
+  "hi",
+  "hmm",
+  "how",
+  "http",
+  "https",
+  "huh",
+  "interested",
+  "lol",
+  "lost",
+  "maybe",
+  "nah",
+  "new",
+  "nice",
+  "no",
+  "nope",
+  "not",
+  "ok",
+  "okay",
+  "please",
+  "ready",
+  "sorry",
+  "start",
+  "stop",
+  "sure",
+  "test",
+  "thank",
+  "thanks",
+  "what",
+  "when",
+  "where",
+  "who",
+  "why",
+  "www",
+  "yeah",
+  "yep",
+  "yes",
+  "yo",
+  "you",
+]);
+
+const EXPLICIT_NAME_PATTERN = /\b(?:my name is|i am|i'm|call me)\s+([a-z][a-z .'-]{1,40})/i;
+const BARE_NAME_PATTERN = /^\s*([A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30})?)\s*$/;
+
+function containsStopword(name: string): boolean {
+  return name
+    .toLowerCase()
+    .split(/[^a-z']+/)
+    .filter(Boolean)
+    .some((word) => NAME_STOPWORDS.has(word.replace(/'/g, "")));
 }
 
+/**
+ * Normalizes a candidate preferred name to the ASCII-safe form the SMS reply
+ * path requires and rejects candidates that are placeholders, stopwords, or
+ * empty after sanitization (for example fully non-ASCII display names, which
+ * simply keep the "what should I call you?" prompt active).
+ */
+function sanitizePreferredName(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = sanitizeReplyText(raw)
+    .replace(/\s+/g, " ")
+    .replace(/[.!?,]+$/, "")
+    .trim()
+    .slice(0, 60)
+    .trim();
+  if (!cleaned) return undefined;
+  if (isPlaceholderPhoneName(cleaned)) return undefined;
+  if (containsStopword(cleaned)) return undefined;
+  return cleaned;
+}
+
+/** Explicit intent ("call me X") — allowed to replace an existing name. */
+function inferExplicitName(message: string): string | undefined {
+  const match = EXPLICIT_NAME_PATTERN.exec(message);
+  return sanitizePreferredName(match?.[1]);
+}
+
+/** Weak inference (bare capitalized word) — only fills an empty name. */
+function inferBareName(message: string): string | undefined {
+  const match = BARE_NAME_PATTERN.exec(message);
+  return sanitizePreferredName(match?.[1]);
+}
+
+/**
+ * Auto-generated account display names ("User ***1234", "WhatsApp ***5678",
+ * masked emails like "User ab***cd", or raw phone numbers) are never a
+ * captured preferred name.
+ */
 function isPlaceholderPhoneName(name: string | undefined): boolean {
-  return Boolean(name && /^(?:User\s+)?\*{3}\d{2,4}$/.test(name.trim()));
+  if (!name) return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes("***")) return true;
+  const digits = trimmed.replace(/\D/g, "");
+  return digits.length >= 7 && !/[a-zA-Z]/.test(trimmed);
 }
 
 function hasPreferredName(session: OnboardingSession): boolean {
@@ -162,18 +304,25 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): Promise<OnboardingSession> {
+  // Phone linking requires a platform identity attested by a trusted
+  // transport — either this turn or a previous gateway turn on the session.
+  // An authenticated web caller claiming an arbitrary phone number in the
+  // request body must never bind that phone to their account.
+  const platformIdentityTrusted =
+    input.trustedPlatformIdentity === true || session.platformIdentityTrusted === true;
   if (
     !input.authenticatedUser ||
+    !platformIdentityTrusted ||
     !isPhoneLikePlatformIdentity({
       trustedPlatformIdentity: true,
-      platform: session.platform ?? input.platform,
-      platformUserId: session.platformUserId ?? input.platformUserId,
+      platform: session.platform,
+      platformUserId: session.platformUserId,
     })
   ) {
     return session;
   }
 
-  const phoneNumber = session.platformUserId ?? input.platformUserId;
+  const phoneNumber = session.platformUserId;
   if (!phoneNumber) return session;
 
   try {
@@ -279,12 +428,15 @@ async function generateOnboardingReply(args: {
   handoffComplete: boolean;
   preferredNameCaptured: boolean;
 }): Promise<string> {
+  // Fallback replies go through the same ASCII/markdown sanitizer as
+  // generated ones so the SMS-safety invariant holds on every reply path
+  // (session names captured before sanitization could carry non-ASCII).
   if (!args.preferredNameCaptured) {
-    return fallbackReply(args);
+    return sanitizeReplyText(fallbackReply(args));
   }
 
   const client = getCerebrasClient();
-  if (!client) return fallbackReply(args);
+  if (!client) return sanitizeReplyText(fallbackReply(args));
 
   try {
     const { text } = await generateText({
@@ -320,7 +472,7 @@ State:
     logger.warn("[eliza-app onboarding] generation failed; using fallback", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return fallbackReply(args);
+    return sanitizeReplyText(fallbackReply(args));
   }
 }
 
@@ -399,11 +551,10 @@ function controlPanelUrl(agentId?: string | null): string {
   return onboardingAppPath(agentId ? `/dashboard/agents/${agentId}` : "/dashboard/agents");
 }
 
-export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {
-  const sessionId = sanitizeSessionId(input.sessionId, input);
+function newSession(id: string, input: OnboardingChatInput): OnboardingSession {
   const createdAt = nowIso();
-  let session = (await loadSession(sessionId)) ?? {
-    id: sessionId,
+  return {
+    id,
     createdAt,
     updatedAt: createdAt,
     platform: input.platform,
@@ -411,14 +562,64 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     platformDisplayName: input.platformDisplayName,
     history: [],
   };
+}
 
+export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {
+  let sessionId = sanitizeSessionId(input.sessionId, input);
+  let session = await loadSession(sessionId);
+
+  // Authenticated web callers may CONTINUE a platform-scoped session (they
+  // carry its id from a login link the gateway texted out), but they may not
+  // CREATE one — that would let any signed-in user pre-bind a messaging
+  // identity they do not own.
+  if (
+    !session &&
+    sessionId.startsWith(PLATFORM_SESSION_PREFIX) &&
+    input.trustedPlatformIdentity !== true
+  ) {
+    logger.warn(
+      "[eliza-app onboarding] refused to create platform-scoped session for untrusted caller",
+      { sessionId: redactSessionIdForLog(sessionId) },
+    );
+    sessionId = crypto.randomUUID();
+  }
+
+  session = session ?? newSession(sessionId, input);
+
+  // A session already bound to one cloud account never carries over to a
+  // different authenticated account: the second account gets a fresh session
+  // instead of the first account's transcript, name, and phone identity.
+  if (
+    input.authenticatedUser &&
+    session.userId &&
+    session.userId !== input.authenticatedUser.userId
+  ) {
+    logger.warn(
+      "[eliza-app onboarding] session bound to a different user; starting fresh session",
+      {
+        sessionId: redactSessionIdForLog(session.id),
+        boundUserId: session.userId,
+        callerUserId: input.authenticatedUser.userId,
+      },
+    );
+    session = newSession(crypto.randomUUID(), input);
+  }
+
+  // Platform identity fields are first-write-wins: a platform-scoped session
+  // is permanently tied to the messaging identity in its id, and later turns
+  // (for example the authenticated web continuation sending platform "web")
+  // must not mutate it.
   session = {
     ...session,
-    platform: input.platform ?? session.platform,
-    platformUserId: input.platformUserId ?? session.platformUserId,
+    platform: session.platform ?? input.platform,
+    platformUserId: session.platformUserId ?? input.platformUserId,
     platformDisplayName: input.platformDisplayName ?? session.platformDisplayName,
     updatedAt: nowIso(),
   };
+
+  if (input.trustedPlatformIdentity === true && session.platform && session.platformUserId) {
+    session = { ...session, platformIdentityTrusted: true };
+  }
 
   if (input.authenticatedUser) {
     session = {
@@ -430,12 +631,18 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
 
   session = await maybeLinkAuthenticatedPlatformIdentity(session, input);
 
-  const userMessage = input.message?.trim();
+  const userMessage = input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
   let preferredNameProvidedThisTurn = false;
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);
-    const inferredName = inferName(userMessage) ?? input.platformDisplayName;
-    if (inferredName && (!session.name || isPlaceholderPhoneName(session.name))) {
+    const explicitName = inferExplicitName(userMessage);
+    const inferredName =
+      explicitName ??
+      inferBareName(userMessage) ??
+      sanitizePreferredName(input.platformDisplayName);
+    const mayCapture =
+      Boolean(explicitName) || !session.name || isPlaceholderPhoneName(session.name);
+    if (inferredName && mayCapture && inferredName !== session.name) {
       session.name = inferredName;
       preferredNameProvidedThisTurn = true;
     }

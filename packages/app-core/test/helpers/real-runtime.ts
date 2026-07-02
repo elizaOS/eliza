@@ -5,7 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
-import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  logger,
+} from "@elizaos/core";
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
@@ -229,11 +234,11 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
   const smallModel =
     process.env.ELIZA_LIVE_TEST_SMALL_MODEL?.trim() ||
     process.env.OPENAI_SMALL_MODEL?.trim() ||
-    "gpt-oss-120b";
+    DEFAULT_CEREBRAS_TEXT_MODEL;
   const largeModel =
     process.env.ELIZA_LIVE_TEST_LARGE_MODEL?.trim() ||
     process.env.OPENAI_LARGE_MODEL?.trim() ||
-    "gpt-oss-120b";
+    DEFAULT_CEREBRAS_TEXT_MODEL;
   const mediumModel =
     process.env.OPENAI_MEDIUM_MODEL?.trim() ||
     process.env.MEDIUM_MODEL?.trim() ||

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -17,8 +18,11 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
+  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+    return Response.json({ error: "Access denied" }, { status: 403 });
+  }
 
   const body = await request.json();
   const parsed = PostTweetSchema.safeParse(body);

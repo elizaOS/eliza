@@ -381,6 +381,7 @@ describe("local inference downloader status", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const completed = waitForTerminal(downloader, model.id);
 		await downloader.start(model);
@@ -429,6 +430,7 @@ describe("local inference downloader status", () => {
 		};
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const failed = new Promise<DownloadJob>((resolve) => {
 			const unsub = downloader.subscribe((event) => {
@@ -547,6 +549,7 @@ describe("local inference downloader status", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const failed = new Promise<DownloadJob>((resolve) => {
 			const unsub = downloader.subscribe((event) => {
@@ -585,6 +588,7 @@ describe("local inference downloader status", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 		});
 		const failed = new Promise<DownloadJob>((resolve) => {
 			const unsub = downloader.subscribe((event) => {
@@ -639,6 +643,7 @@ describe("local inference downloader status", () => {
 		}> = [];
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 			verifyOnDevice: async ({
 				modelId,
 				bundleRoot,
@@ -698,6 +703,7 @@ describe("local inference downloader status", () => {
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
 			verifyOnDevice: async () => {
 				throw new Error("barge-in cancel test failed");
 			},

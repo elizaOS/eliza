@@ -29,6 +29,8 @@ describe("applySandboxCharacterFromEnv", () => {
       topics: ["lore"],
       adjectives: ["sharp"],
       style: { all: ["concise"] },
+      settings: { discord: { autoReply: true } },
+      knowledge: [{ directory: "/knowledge" }],
     };
     const config = {} as never;
     const out = applySandboxCharacterFromEnv(config, {
@@ -40,6 +42,8 @@ describe("applySandboxCharacterFromEnv", () => {
     expect(entry.name).toBe("Nyx");
     expect(entry.system).toBe("You are Nyx.");
     expect(entry.bio).toEqual(["A mysterious agent."]);
+    expect(entry.settings).toEqual({ discord: { autoReply: true } });
+    expect(entry.knowledge).toEqual([{ directory: "/knowledge" }]);
     // The id MUST be the routing id so runtime.agentId matches the gateway.
     expect(entry.id).toBe("char-route");
     expect(entry.default).toBe(true);

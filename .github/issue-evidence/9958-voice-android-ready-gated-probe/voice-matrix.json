@@ -12,14 +12,8 @@
       "ios",
       "android"
     ],
-    "transcriptionState": [
-      "off",
-      "on"
-    ],
-    "chimeIn": [
-      "should-respond",
-      "should-not-respond"
-    ],
+    "transcriptionState": ["off", "on"],
+    "chimeIn": ["should-respond", "should-not-respond"],
     "wakewordContext": [
       "idle-wake",
       "already-listening-wake-inert",
@@ -31,12 +25,7 @@
       "echo-self-voice",
       "overlapping-speech"
     ],
-    "voices": [
-      "owner",
-      "enrolled-contact",
-      "unknown",
-      "multi-speaker"
-    ]
+    "voices": ["owner", "enrolled-contact", "unknown", "multi-speaker"]
   },
   "host": {
     "platform": "darwin",
@@ -71,10 +60,7 @@
         "packages/app",
         "test:e2e:android:local"
       ],
-      "evidence": [
-        "packages/app/test-results",
-        ".github/issue-evidence"
-      ],
+      "evidence": ["packages/app/test-results", ".github/issue-evidence"],
       "probe": {
         "available": false,
         "reason": "ELIZA_VOICE_ANDROID_READY=1 but no Android device/emulator is attached in device state; attach a device/emulator and install the current app before capture"

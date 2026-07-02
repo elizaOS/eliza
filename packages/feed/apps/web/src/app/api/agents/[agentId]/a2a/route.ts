@@ -100,10 +100,12 @@ const agentRequestHandlers = new Map<string, DefaultRequestHandlerType>();
 const agentJsonRpcHandlers = new Map<string, JsonRpcTransportHandler>();
 
 function getAgentRateLimiter(agentId: string): RateLimiter {
-  if (!agentRateLimiters.has(agentId)) {
-    agentRateLimiters.set(agentId, new RateLimiter(100));
+  let limiter = agentRateLimiters.get(agentId);
+  if (!limiter) {
+    limiter = new RateLimiter(100);
+    agentRateLimiters.set(agentId, limiter);
   }
-  return agentRateLimiters.get(agentId)!;
+  return limiter;
 }
 
 /**
@@ -158,7 +160,7 @@ async function getTaskStoreAndTaskId(
   }
 
   const jsonRpcHandler = await getAgentJsonRpcHandler(agentId);
-  const handlerWithRequestHandler = jsonRpcHandler as {
+  const handlerWithRequestHandler = jsonRpcHandler as unknown as {
     requestHandler: {
       taskStore: PersistentTaskStore;
     };
@@ -209,13 +211,24 @@ async function getAgentJsonRpcHandler(
       );
       agentRequestHandlers.set(agentId, requestHandler);
     }
-    const requestHandler = agentRequestHandlers.get(agentId)!;
+    const requestHandler = agentRequestHandlers.get(agentId);
+    if (!requestHandler) {
+      throw new Error(
+        `A2A request handler for agent ${agentId} was not initialized`,
+      );
+    }
     agentJsonRpcHandlers.set(
       agentId,
       new JsonRpcTransportHandler(requestHandler),
     );
   }
-  return agentJsonRpcHandlers.get(agentId)!;
+  const jsonRpcHandler = agentJsonRpcHandlers.get(agentId);
+  if (!jsonRpcHandler) {
+    throw new Error(
+      `A2A JSON-RPC handler for agent ${agentId} was not initialized`,
+    );
+  }
+  return jsonRpcHandler;
 }
 
 export const POST = withErrorHandling(async function POST(
@@ -327,7 +340,7 @@ export const POST = withErrorHandling(async function POST(
 
       // Use type assertions to access internal SDK structure
       // These properties exist at runtime but aren't in the public types
-      const handlerWithRequestHandler = jsonRpcHandler as {
+      const handlerWithRequestHandler = jsonRpcHandler as unknown as {
         requestHandler: {
           taskStore: PersistentTaskStore;
         };

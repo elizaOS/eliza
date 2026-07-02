@@ -5,6 +5,7 @@ import { inboxDbSchema } from "./db/schema.ts";
 import { InboxMigrationService } from "./inbox/migration.ts";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxTriageProvider } from "./providers/inbox-triage.ts";
+import { inboxRoutes } from "./routes/inbox-routes.ts";
 
 export const inboxPlugin: Plugin = {
   name: "@elizaos/plugin-inbox",
@@ -15,6 +16,7 @@ export const inboxPlugin: Plugin = {
   services: [InboxMigrationService],
   actions: [inboxAction],
   providers: [inboxTriageProvider, crossChannelContextProvider],
+  routes: inboxRoutes,
   views: [
     {
       id: "inbox",

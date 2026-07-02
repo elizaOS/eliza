@@ -1,31 +1,37 @@
 name: UI Chat Gesture E2E
 
-# #9954: the chat-sheet drag-detent and conversation-swipe gesture e2e runners
-# (src/components/shell/__e2e__/run-*.mjs) esbuild-bundle a fixture and drive it
-# with REAL pointer gestures in headless Chromium — coverage no jsdom unit test
-# can reach. They existed but were wired to NO workflow, so a swipe/sheet
-# regression could only be caught by hand. This gates them on packages/ui
-# changes. Mirrors ui-story-gate.yml (same lean bun workspace + Playwright
-# Chromium setup); the runners self-bundle, so no Storybook/dist build is needed.
+# #9954/#10722: the chat-sheet drag-detent, TopicGroup gesture, and home-screen
+# e2e runners (src/components/shell/__e2e__/run-*.mjs) esbuild-bundle a fixture
+# and drive it with REAL input in headless Chromium — genuine CDP touch
+# (src/testing/real-touch-gestures.ts) for the phone profiles plus real mouse
+# for the fine-pointer flows — coverage no jsdom unit test can reach. They
+# existed but were wired to NO workflow, so a swipe/sheet/launcher regression
+# could only be caught by hand. This gates them on packages/ui changes. Mirrors
+# ui-story-gate.yml (same lean bun workspace + Playwright Chromium setup); the
+# runners self-bundle, so no Storybook/dist build is needed.
 #
-# Only the two runners verified green are gated here. home-screen-e2e is left out
-# until its `client.listAutomations` drift is fixed; chat-ambient/onboarding have
-# their own follow-ups.
+# chat-ambient/onboarding have their own follow-ups.
 
 on:
   pull_request:
     branches: [main, develop]
     paths:
       - "packages/ui/src/components/shell/**"
+      - "packages/ui/src/components/pages/**"
       - "packages/ui/src/state/**"
       - "packages/ui/src/voice/**"
+      - "packages/ui/src/testing/**"
+      - "packages/ui/src/hooks/**"
       - ".github/workflows/ui-e2e-gate.yml"
   push:
     branches: [main, develop]
     paths:
       - "packages/ui/src/components/shell/**"
+      - "packages/ui/src/components/pages/**"
       - "packages/ui/src/state/**"
       - "packages/ui/src/voice/**"
+      - "packages/ui/src/testing/**"
+      - "packages/ui/src/hooks/**"
 
 concurrency:
   group: ui-e2e-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -68,10 +74,24 @@ jobs:
       - name: Chat sheet drag-gesture e2e
         run: bun run --cwd packages/ui test:chat-sheet-e2e
 
-      # Horizontal swipe between conversations (#8929) + interleaving with the
-      # async create/select path the seq/epoch guard (#10042) protects.
-      - name: Chat conversation-swipe gesture e2e
+      # TopicGroup collapse/expand (#8928) under REAL input (#10722): CDP touch
+      # taps + the touch-action pan-y contract, and mouse flicks for the
+      # fine-pointer profile.
+      - name: Chat TopicGroup gesture e2e
         run: bun run --cwd packages/ui test:chatux-gesture-e2e
+
+      # iOS-style HomeScreen + home↔launcher rail (#10722): REAL-touch rail
+      # swipes, inner launcher paging, and long-press on the mobile profile;
+      # mouse drag + `< >` edge buttons on the desktop/fine-pointer profiles.
+      - name: Home-screen real-touch e2e
+        run: bun run --cwd packages/ui test:home-screen-e2e
+
+      # Launcher grid (#10722): genuine CDP long-press pointer drag-to-reorder
+      # (section 2b) → onReorder → persisted LAUNCHER_STORAGE_KEY order +
+      # reorder telemetry + no duplicate ids. The jsdom Launcher.gestures suite
+      # explicitly defers this physics coverage here.
+      - name: Launcher real-drag reorder e2e
+        run: bun run --cwd packages/ui test:launcher-e2e
 
       - name: Upload chat gesture e2e artifacts
         if: always()
@@ -81,5 +101,7 @@ jobs:
           path: |
             packages/ui/src/components/shell/__e2e__/output
             packages/ui/src/components/shell/__e2e__/output-chatux
+            packages/ui/src/components/shell/__e2e__/output-home
+            packages/ui/src/components/pages/__e2e__/output-launcher
           retention-days: 14
           if-no-files-found: ignore

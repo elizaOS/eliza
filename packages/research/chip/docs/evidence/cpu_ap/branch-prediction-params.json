@@ -62,10 +62,7 @@
     "present": true,
     "schema": "eliza.bpu_sweep.v1",
     "sha256": "720fe0e4cbb65588c3c3579cf76df1fee56abc3e6a2645c9573cfe385312f832",
-    "trace_filter": [
-      "agent_decode",
-      "agent_loop"
-    ]
+    "trace_filter": ["agent_decode", "agent_loop"]
   },
   "full_browser_build_crypto_shard_sweep_ref": {
     "baseline_weighted_mpki": 50.151481,
@@ -95,9 +92,7 @@
     "present": true,
     "schema": "eliza.bpu_sweep.v1",
     "sha256": "83297b13f0b133c6f4db6fcb059f6e194b0bc5ed7dca14c9dcd2d07089291298",
-    "trace_filter": [
-      "compression_proxy"
-    ]
+    "trace_filter": ["compression_proxy"]
   },
   "full_io_media_shard_sweep_ref": {
     "baseline_weighted_mpki": 40.207626,
@@ -181,20 +176,8 @@
     "H2P_THRESHOLD": 36,
     "H2P_WEIGHT_W": 6,
     "ITTAGE_CTR_W": 3,
-    "ITTAGE_ENTRIES": [
-      1024,
-      1024,
-      2048,
-      2048,
-      2048
-    ],
-    "ITTAGE_HIST_LEN": [
-      4,
-      10,
-      20,
-      40,
-      80
-    ],
+    "ITTAGE_ENTRIES": [1024, 1024, 2048, 2048, 2048],
+    "ITTAGE_HIST_LEN": [4, 10, 20, 40, 80],
     "ITTAGE_PATH_HISTORY_BITS": 64,
     "ITTAGE_PATH_HISTORY_SHIFT": 2,
     "ITTAGE_PATH_HISTORY_TOKEN_BITS": 8,
@@ -233,14 +216,7 @@
     "SC_BIAS_ENTRIES": 2048,
     "SC_CTR_W": 6,
     "SC_ENTRIES_TABLE": 1024,
-    "SC_HIST_LEN": [
-      0,
-      4,
-      10,
-      16,
-      27,
-      44
-    ],
+    "SC_HIST_LEN": [0, 4, 10, 16, 27, 44],
     "SC_LOCAL_HISTORY_BITS": 8,
     "SC_LOCAL_HISTORY_ENTRIES": 1024,
     "SC_TABLES": 6,
@@ -252,13 +228,7 @@
     "TAGE_ALT_ON_NA_THRESHOLD": 1,
     "TAGE_CTR_W": 3,
     "TAGE_ENTRIES_TABLE": 8192,
-    "TAGE_HIST_LEN": [
-      8,
-      16,
-      44,
-      90,
-      195
-    ],
+    "TAGE_HIST_LEN": [8, 16, 44, 90, 195],
     "TAGE_PATH_HISTORY_BITS": 64,
     "TAGE_PATH_HISTORY_SHIFT": 2,
     "TAGE_PATH_HISTORY_TOKEN_BITS": 8,
@@ -697,36 +667,25 @@
       {
         "missing_dependency": "SPEC CPU2017 license and RV64 executable traces",
         "name": "spec2017_intrate",
-        "required_for_claims": [
-          "spec2017_claim",
-          "workload_mpki_claim"
-        ],
+        "required_for_claims": ["spec2017_claim", "workload_mpki_claim"],
         "status": "missing_external_trace"
       },
       {
         "missing_dependency": "AOSP/Cuttlefish RV64 system-server, launcher, and app traces",
         "name": "aosp_system_server_and_launcher",
-        "required_for_claims": [
-          "android_claim",
-          "workload_mpki_claim"
-        ],
+        "required_for_claims": ["android_claim", "workload_mpki_claim"],
         "status": "missing_external_trace"
       },
       {
         "missing_dependency": "JetStream/Speedometer-class RV64 browser and JS-engine traces",
         "name": "browser_js_engine",
-        "required_for_claims": [
-          "v8_claim",
-          "workload_mpki_claim"
-        ],
+        "required_for_claims": ["v8_claim", "workload_mpki_claim"],
         "status": "missing_external_trace"
       },
       {
         "missing_dependency": "real mobile GPU driver/runtime command submission traces",
         "name": "production_gpu_driver_runtime",
-        "required_for_claims": [
-          "workload_mpki_claim"
-        ],
+        "required_for_claims": ["workload_mpki_claim"],
         "status": "missing_external_trace"
       }
     ],

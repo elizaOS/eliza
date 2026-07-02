@@ -215,8 +215,8 @@ export {
   CockpitView,
   type CockpitViewProps,
   cockpitModeToProviderPolicy,
-  type ElizaCloudTier,
   ELIZA_CLOUD_TIER_MODEL,
+  type ElizaCloudTier,
 } from "./components/cockpit/index";
 // Surfaced directly on the root barrel (also reachable via the composites/hooks
 // chains) so dist-mapped consumers resolve them by name.
@@ -560,6 +560,10 @@ export {
   type ViewLifecycleHandlers,
   type ViewLifecycleState,
 } from "./state/useViewLifecycle";
+export {
+  useRegisterViewChatBinding,
+  type ViewChatBinding,
+} from "./state/view-chat-binding";
 // View lifecycle / memory / crash-containment primitives (#10202).
 export {
   PINNED_VIEW_IDS,

@@ -274,7 +274,7 @@ def build_hermes_woobench_agent_fn(
     *,
     model_name: str | None = None,
 ) -> Callable[[list[dict[str, str]]], Awaitable[dict[str, Any]]]:
-    bridge = client or HermesClient(model=model_name or "gpt-oss-120b")
+    bridge = client or HermesClient(model=model_name or "gemma-4-31b")
     bridge.wait_until_ready(timeout=60)
     task_ids_by_conversation: dict[int, str] = {}
     payment_state_by_conversation: dict[int, dict[str, bool]] = {}

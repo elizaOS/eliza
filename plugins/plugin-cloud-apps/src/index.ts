@@ -28,15 +28,17 @@
  *                                     money/credentials NEVER transit the connector.
  *   - Action  REGENERATE_APP_API_KEY— SECURITY: two-phase confirm; new key shown ONCE, never logged.
  *
+ * Domains layer (the last launch slice — check → buy → list):
+ *   - Action  CHECK_APP_DOMAIN      — READ-ONLY availability + purchase/renewal price quote.
+ *   - Action  BUY_APP_DOMAIN        — MONEY-OUT: read-only quote first, two-phase confirm with a
+ *                                     15-minute quote TTL; maps the server's idempotent-buy /
+ *                                     refund-on-registrar-failure / no-charge-recovery outcomes
+ *                                     to honest replies; money never transits the connector.
+ *   - Action  LIST_APP_DOMAINS      — READ-ONLY: registrar/status/SSL/verification per domain.
+ *
  * Auth: reads `ELIZAOS_CLOUD_API_KEY` (+ optional `ELIZAOS_CLOUD_BASE_URL`) via
  * runtime settings — the same credentials plugin-elizacloud uses. With no key
  * the actions degrade gracefully and the provider stays EMPTY.
- *
- * ───────────────────────────────────────────────────────────────────────────
- * DEFERRED (last slice — intentionally NOT here):
- *   - BUY_APP_DOMAIN          (domain is the last slice; SDK envelope not finalized)
- * The paid/destructive actions reuse the two-phase-confirm + connector CTA helper
- * built here (`src/safety.ts`); money/credentials never transit the connector.
  *
  * NOTE: a real end-to-end deploy can't be verified until the staging deploy
  * backend is armed (#9853 / Phase 4). DEPLOY_APP's tests drive the completion
@@ -45,33 +47,71 @@
  */
 
 import type { Plugin } from "@elizaos/core";
+import {
+  createAdSlotAction,
+  listAdSlotsAction,
+} from "./actions/ad-inventory.js";
+import { backupAppAction } from "./actions/backup-app.js";
+import { bookInfluencerAction } from "./actions/book-influencer.js";
+import { buyAppDomainAction } from "./actions/buy-app-domain.js";
+import { checkAppDomainAction } from "./actions/check-app-domain.js";
 import { createAppAction } from "./actions/create-app.js";
 import { deleteAppAction } from "./actions/delete-app.js";
 import { deployAppAction } from "./actions/deploy-app.js";
+import { deployFrontendAction } from "./actions/deploy-frontend.js";
 import { getAppAction } from "./actions/get-app.js";
 import { getAppDeployStatusAction } from "./actions/get-app-deploy-status.js";
 import { getAppEarningsAction } from "./actions/get-app-earnings.js";
+import {
+  createInfluencerProfileAction,
+  listInfluencersAction,
+} from "./actions/influencer.js";
+import { listAppDomainsAction } from "./actions/list-app-domains.js";
 import { listCloudAppsAction } from "./actions/list-cloud-apps.js";
 import { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
+import {
+  listFrontendDeploymentsAction,
+  rollbackFrontendAction,
+} from "./actions/rollback-frontend.js";
 import { updateAppAction } from "./actions/update-app.js";
 import { updateMonetizationAction } from "./actions/update-monetization.js";
 import { withdrawAppEarningsAction } from "./actions/withdraw-app-earnings.js";
 import { cloudAppsProvider } from "./providers/cloud-apps.js";
 
+export {
+  createAdSlotAction,
+  listAdSlotsAction,
+} from "./actions/ad-inventory.js";
+export { backupAppAction } from "./actions/backup-app.js";
+export { bookInfluencerAction } from "./actions/book-influencer.js";
+export { buyAppDomainAction } from "./actions/buy-app-domain.js";
+export { checkAppDomainAction } from "./actions/check-app-domain.js";
 export { createAppAction } from "./actions/create-app.js";
 export { deleteAppAction } from "./actions/delete-app.js";
 export { deployAppAction } from "./actions/deploy-app.js";
+export { deployFrontendAction } from "./actions/deploy-frontend.js";
 export { getAppAction } from "./actions/get-app.js";
 export { getAppDeployStatusAction } from "./actions/get-app-deploy-status.js";
 export { getAppEarningsAction } from "./actions/get-app-earnings.js";
+export {
+  createInfluencerProfileAction,
+  listInfluencersAction,
+} from "./actions/influencer.js";
+export { listAppDomainsAction } from "./actions/list-app-domains.js";
 export { listCloudAppsAction } from "./actions/list-cloud-apps.js";
 export { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
+export {
+  listFrontendDeploymentsAction,
+  rollbackFrontendAction,
+} from "./actions/rollback-frontend.js";
 export { updateAppAction } from "./actions/update-app.js";
 export { updateMonetizationAction } from "./actions/update-monetization.js";
 export { withdrawAppEarningsAction } from "./actions/withdraw-app-earnings.js";
 export * from "./app-facts.js";
 export * from "./client.js";
 export * from "./deploy-gate.js";
+export * from "./domain-facts.js";
+export * from "./domain-intent.js";
 export { cloudAppsProvider } from "./providers/cloud-apps.js";
 export * from "./reachability.js";
 export * from "./safety.js";
@@ -79,12 +119,15 @@ export * from "./safety.js";
 export const cloudAppsPlugin: Plugin = {
   name: "cloud-apps",
   description:
-    "Eliza Cloud Apps: list and describe the user's apps, create them, deploy them with a live-verification gate, check deploy status, and safely delete them — across every connector.",
+    "Eliza Cloud Apps: list and describe the user's apps, create them, deploy them with a live-verification gate, check deploy status, safely delete them, and manage their custom domains (check, buy, list) — across every connector.",
   actions: [
     listCloudAppsAction,
     getAppAction,
     createAppAction,
     deployAppAction,
+    deployFrontendAction,
+    listFrontendDeploymentsAction,
+    rollbackFrontendAction,
     getAppDeployStatusAction,
     deleteAppAction,
     updateAppAction,
@@ -92,6 +135,15 @@ export const cloudAppsPlugin: Plugin = {
     getAppEarningsAction,
     withdrawAppEarningsAction,
     regenerateAppApiKeyAction,
+    createAdSlotAction,
+    listAdSlotsAction,
+    createInfluencerProfileAction,
+    listInfluencersAction,
+    bookInfluencerAction,
+    backupAppAction,
+    checkAppDomainAction,
+    buyAppDomainAction,
+    listAppDomainsAction,
   ],
   providers: [cloudAppsProvider],
 };

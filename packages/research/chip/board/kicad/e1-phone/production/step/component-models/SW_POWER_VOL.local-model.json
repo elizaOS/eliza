@@ -42,12 +42,7 @@
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
   "local_step_bound": true,
-  "local_terminal_contract": [
-    "1",
-    "2",
-    "3",
-    "4"
-  ],
+  "local_terminal_contract": ["1", "2", "3", "4"],
   "local_terminal_contract_source": "captured_public_pinout_expected_pins",
   "mechanical_pad_count": 0,
   "mechanical_pads": [],
@@ -89,12 +84,7 @@
     }
   ],
   "pad_count": 4,
-  "pad_names": [
-    "1",
-    "2",
-    "3",
-    "4"
-  ],
+  "pad_names": ["1", "2", "3", "4"],
   "pad_visual_count": 4,
   "pattern_binding_status": "pinout_bound_public_or_captured_contract",
   "pattern_bound": true,

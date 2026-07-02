@@ -95,17 +95,6 @@ function userMessage(page: Page, text: string): Locator {
     .first();
 }
 
-function assistantMessages(page: Page, hasText: string | RegExp): Locator {
-  return page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .filter({ hasText })
-    .or(
-      conversationLog(page)
-        .locator('[data-role="assistant"]')
-        .filter({ hasText }),
-    );
-}
-
 async function clickIfVisible(
   locator: Locator,
   timeoutMs = 2_000,
@@ -120,19 +109,23 @@ async function clickIfVisible(
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
-  // For an already-authenticated user, first-run onboarding skips the "How should
-  // Eliza run?" runtime choice and goes straight to the "Choose your agent"
-  // picker, fetching the account's existing cloud agents. Driving "Create new"
-  // provisions a fresh agent through the local cloud proxy. A brand-new account
-  // with zero agents skips the picker entirely and auto-creates — both paths land
-  // on the same create route, so absence of the picker is fine.
-  const createNew = page.getByTestId("onboarding-agent-create");
-  await createNew.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {
-    /* no picker: zero-agent account auto-creates without a picker step */
-  });
-  if (await createNew.isVisible().catch(() => false)) {
-    await createNew.click();
-  }
+  const cloudRuntime = page.getByTestId("choice-__first_run__:runtime:cloud");
+  if (await clickIfVisible(cloudRuntime, 10_000)) return;
+
+  // Some authenticated recovery paths can still hydrate directly at the agent
+  // picker before the in-chat runtime choice paints.
+  const createNew = page
+    .getByTestId("onboarding-agent-create")
+    .or(page.getByRole("button", { name: /create a new agent/i }));
+  await clickIfVisible(createNew, 2_000);
+}
+
+async function chooseNewCloudAgent(page: Page): Promise<void> {
+  const createNew = page
+    .getByTestId("onboarding-agent-create")
+    .or(page.getByRole("button", { name: /create a new agent/i }));
+  await createNew.waitFor({ state: "visible", timeout: 30_000 });
+  await createNew.click();
 }
 
 async function installCloudConnectionRoutes(
@@ -165,6 +158,22 @@ async function installCloudConnectionRoutes(
       low: false,
       critical: false,
       authRejected: false,
+    });
+  });
+}
+
+async function installFreshFirstRunConfigRoute(page: Page): Promise<void> {
+  await page.route("**/api/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      meta: { firstRunComplete: false },
+      agents: {
+        list: [],
+        defaults: {},
+      },
     });
   });
 }
@@ -275,32 +284,26 @@ async function installDirectCloudLoginRoutes(
     });
   });
 
-  await page.route(
-    "https://api.elizacloud.ai/api/auth/cli-session",
-    async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      await fulfillJson(route, 200, { ok: true });
-    },
-  );
+  await page.route("**/api/auth/cli-session", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, { ok: true });
+  });
 
-  await page.route(
-    "https://api.elizacloud.ai/api/auth/cli-session/**",
-    async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      await fulfillJson(route, 200, {
-        status: "authenticated",
-        apiKey: CLOUD_AUTH_TOKEN,
-        organizationId: "ui-smoke-org",
-        userId,
-      });
-    },
-  );
+  await page.route("**/api/auth/cli-session/**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      status: "authenticated",
+      apiKey: CLOUD_AUTH_TOKEN,
+      organizationId: "ui-smoke-org",
+      userId,
+    });
+  });
 }
 
 async function installFirstRunSubmitRoute(
@@ -341,6 +344,32 @@ function parseAssistantFixtureText(
   ) as DeterministicAssistantFixture;
 }
 
+async function deterministicAssistantFixtures(
+  page: Page,
+): Promise<DeterministicAssistantFixture[]> {
+  const texts = await page
+    .locator(
+      [
+        '[data-testid="chat-message"][data-role="assistant"]',
+        '[role="log"][aria-label="conversation history"] [data-role="assistant"]',
+      ].join(", "),
+    )
+    .evaluateAll((elements) =>
+      elements
+        .map((element) => element.textContent?.trim() ?? "")
+        .filter((text) => text.includes("ui-smoke-assistant-v1")),
+    );
+
+  const fixtures: DeterministicAssistantFixture[] = [];
+  const seen = new Set<string>();
+  for (const text of texts) {
+    if (seen.has(text)) continue;
+    seen.add(text);
+    fixtures.push(parseAssistantFixtureText(text));
+  }
+  return fixtures;
+}
+
 async function expectDeterministicChatTurn(
   page: Page,
   prompt: string,
@@ -349,16 +378,9 @@ async function expectDeterministicChatTurn(
   await expect
     .poll(
       async () => {
-        const assistants = assistantMessages(page, /ui-smoke-assistant-v1/);
-        const matches: DeterministicAssistantFixture[] = [];
-        for (let i = 0; i < (await assistants.count()); i += 1) {
-          const assistantText =
-            (await assistants.nth(i).textContent())?.trim() ?? "";
-          const parsed = parseAssistantFixtureText(assistantText);
-          if (parsed.input.text === prompt) {
-            matches.push(parsed);
-          }
-        }
+        const matches = (await deterministicAssistantFixtures(page)).filter(
+          (fixture) => fixture.input.text === prompt,
+        );
         return matches.at(-1) ?? null;
       },
       {
@@ -414,6 +436,7 @@ for (const viewport of VIEWPORTS) {
     );
 
     await installDefaultAppRoutes(page);
+    await installFreshFirstRunConfigRoute(page);
     await installCloudConnectionRoutes(page, "cloud-provisioning-smoke-user");
     await installDirectCloudLoginRoutes(page, "cloud-provisioning-smoke-user");
     await installDirectCloudSandboxRoutes(page, {
@@ -665,6 +688,7 @@ for (const viewport of VIEWPORTS) {
     await clickIfVisible(
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
     );
+    await chooseNewCloudAgent(page);
 
     // "Create new" in the picker provisions a fresh dedicated cloud agent via the
     // local cloud proxy, then writes the first-run profile.

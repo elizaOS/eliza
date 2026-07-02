@@ -7396,6 +7396,7 @@
   "desktop.tray.openPlugins": "플러그인 열기",
   "desktop.tray.openDesktopWorkspace": "데스크톱 워크스페이스 열기",
   "desktop.tray.openVoiceControls": "음성 제어 열기",
+  "desktop.tray.notifications": "알림",
   "desktop.tray.toggleLifecycle": "에이전트 시작/중지",
   "desktop.tray.restartAgent": "에이전트 재시작",
   "desktop.tray.sendTestNotification": "테스트 알림 전송",

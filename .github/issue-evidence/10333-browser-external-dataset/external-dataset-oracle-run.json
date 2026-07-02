@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-30T08:23:59.465Z",
+  "generatedAt": "2026-07-01T03:15:30.374Z",
   "benchmark": "external-web-dataset",
   "engine": "jsdom-web",
   "policy": "oracle",
@@ -9,12 +9,12 @@
       "taskId": "mind2web-travel-search",
       "family": "mind2web-lite",
       "seed": 0,
-      "utterance": "Search for a flight from SFO to JFK on 2026-07-14 and include flexible dates.",
+      "utterance": "Search for an economy flight from SFO to JFK on 2026-07-14 and include flexible dates.",
       "engine": "jsdom-web",
       "policy": "oracle",
       "reward": 1,
       "success": true,
-      "steps": 6,
+      "steps": 7,
       "trajectory": [
         {
           "action": {
@@ -42,6 +42,16 @@
             "selector": "#date",
             "value": "2026-07-14",
             "note": "date"
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "select",
+            "selector": "#cabin",
+            "value": "economy",
+            "note": "cabin"
           },
           "resultMode": "web",
           "error": null

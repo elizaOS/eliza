@@ -92,6 +92,7 @@ export function getProviderFromModel(model: string): string {
   }
 
   // Handle non-prefixed format: "gpt-5-mini"
+  if (model === "gemma-4-31b") return "cerebras";
   if (model === "gpt-oss-120b") return "cerebras";
   if (model.startsWith("gpt-")) return "openai";
   if (model.startsWith("zai-glm-")) return "cerebras";
@@ -147,14 +148,14 @@ const REASONING_MODEL_PATTERNS: RegExp[] = [
   /^grok.*(reasoning|think)/,
   // Z.ai GLM reasoning — both the bare `glm-...-thinking` form and the
   // Cerebras `zai-glm-4.x` series (catalog-tagged "reasoning"; no "think" token
-  // in the id). The cloud's TEXT_LARGE default `zai-glm-4.7` lives here.
+  // in the id).
   /^glm-.*(think|reasoning)/,
   /^zai-glm-/,
-  // OpenAI gpt-oss open-weight reasoning models (gpt-oss-120b / gpt-oss-20b).
-  // gpt-oss-120b is the cloud's default TEXT_SMALL model and spends output
-  // tokens on hidden reasoning before answering, so it MUST get the response
-  // floor — otherwise a default/low max_tokens truncates mid-reasoning and
-  // returns empty (but billed) output, intermittently per call.
+  // Cerebras Gemma + OpenAI gpt-oss reasoning models. These spend output tokens
+  // on hidden reasoning before answering, so they MUST get the response floor —
+  // otherwise a default/low max_tokens truncates mid-reasoning and returns empty
+  // (but billed) output, intermittently per call.
+  /^gemma-4-31b$/,
   /^gpt-oss/,
 ];
 

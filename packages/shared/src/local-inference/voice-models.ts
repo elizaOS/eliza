@@ -30,7 +30,6 @@ export type VoiceModelId =
   | "turn-detector-intl"
   | "voice-emotion"
   | "kokoro"
-  | "omnivoice"
   | "vad"
   | "wakeword"
   | "embedding"
@@ -270,51 +269,6 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     evalDeltas: { f1Delta: 0.1411, netImprovement: true },
     changelogEntry:
       "LiveKit v1.2.2-en fine-tuned on DailyDialog (prefix-augmented EOU corpus, APOLLO-Mini, F1=0.9811 vs 0.84 baseline)",
-    minBundleVersion: "0.0.0",
-  },
-  {
-    id: "omnivoice",
-    version: "0.2.0",
-    parentVersion: "0.1.0",
-    publishedToHfAt: "2026-05-15T04:50:24Z",
-    hfRepo: "elizaos/eliza-1",
-    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
-    // K7: OmniVoice is fully on the fork via libelizainference FFI (W3-3).
-    // No ONNX path ever existed for OmniVoice.
-    preferredBackend: "llama-server",
-    ggufAssets: [
-      {
-        filename: "voice/omnivoice/omnivoice-base-q4_k_m.gguf",
-        sha256:
-          "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
-        sizeBytes: 407_485_216,
-        quant: "q4_k_m",
-      },
-      {
-        filename: "voice/omnivoice/omnivoice-tokenizer-q4_k_m.gguf",
-        sha256:
-          "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
-        sizeBytes: 252_474_112,
-        quant: "q4_k_m",
-      },
-      {
-        filename: "voice/omnivoice/omnivoice-base-q8_0.gguf",
-        sha256:
-          "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
-        sizeBytes: 656_395_008,
-        quant: "q8_0",
-      },
-      {
-        filename: "voice/omnivoice/presets/voice-preset-same.bin",
-        sha256:
-          "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
-        sizeBytes: 716,
-        quant: "fp16",
-      },
-    ],
-    evalDeltas: { netImprovement: true },
-    changelogEntry:
-      "OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)",
     minBundleVersion: "0.0.0",
   },
   {
@@ -622,43 +576,6 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     evalDeltas: { netImprovement: true },
     changelogEntry:
       "Initial release — kokoro 82M voice-embedding af_bella preset (ONNX deprecated; fork GGUF path in 0.3.0).",
-    minBundleVersion: "0.0.0",
-  },
-  {
-    id: "omnivoice",
-    version: "0.1.0",
-    publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizaos/eliza-1",
-    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
-    ggufAssets: [],
-    missingAssets: [
-      {
-        filename: "voice/omnivoice/omnivoice-base-q4_k_m.gguf",
-        quant: "q4_k_m",
-        expectedSizeBytes: 388_000_000,
-        reason: "missing-from-local-staging",
-      },
-      {
-        filename: "voice/omnivoice/omnivoice-tokenizer-q4_k_m.gguf",
-        quant: "q4_k_m",
-        expectedSizeBytes: 51_200_000,
-        reason: "missing-from-local-staging",
-      },
-      {
-        filename: "voice/omnivoice/omnivoice-base-q8_0.gguf",
-        quant: "q8_0",
-        expectedSizeBytes: 620_000_000,
-        reason: "missing-from-local-staging",
-      },
-      {
-        filename: "voice/omnivoice/presets/voice-preset-same.bin",
-        quant: "fp16",
-        expectedSizeBytes: 8_192,
-        reason: "missing-from-local-staging",
-      },
-    ],
-    evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — OmniVoice frozen-conditioning sam.",
     minBundleVersion: "0.0.0",
   },
   {

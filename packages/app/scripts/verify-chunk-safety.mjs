@@ -26,10 +26,12 @@
 // any chunk that is NOT one of the intended lazy `vendor-*` vendor chunks, so a
 // regressed bundle can never deploy. Run after `vite build`, before deploy.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+const distRoot = path.join(process.cwd(), "dist");
 const distAssets = path.join(process.cwd(), "dist", "assets");
+const indexHtmlPath = path.join(distRoot, "index.html");
 
 // bn.js's `toArrayLike` is the method that calls `Buffer.allocUnsafe` at
 // module-init; its presence marks the crypto/big-number graph.
@@ -51,9 +53,62 @@ try {
   process.exit(2);
 }
 
+function collectReferencedJsFiles() {
+  let indexHtml;
+  try {
+    indexHtml = readFileSync(indexHtmlPath, "utf8");
+  } catch {
+    return new Set(files);
+  }
+
+  const referenced = new Set();
+  const pending = [];
+  const addAssetRef = (rawRef, fromFile = null) => {
+    if (!rawRef?.endsWith(".js")) return;
+    let normalized = rawRef;
+    if (normalized.startsWith("/")) normalized = normalized.slice(1);
+    if (normalized.startsWith("./")) {
+      normalized = fromFile
+        ? path.posix.normalize(
+            path.posix.join(path.posix.dirname(fromFile), normalized),
+          )
+        : normalized.slice(2);
+    }
+    if (!normalized.startsWith("assets/")) return;
+    const file = normalized.slice("assets/".length);
+    if (!file.endsWith(".js") || referenced.has(file)) return;
+    if (!existsSync(path.join(distAssets, file))) return;
+    referenced.add(file);
+    pending.push(file);
+  };
+
+  const htmlAssetRe = /(?:src|href)=["'](?:\/?)(assets\/[^"']+\.js)["']/g;
+  let match = htmlAssetRe.exec(indexHtml);
+  while (match !== null) {
+    addAssetRef(match[1]);
+    match = htmlAssetRe.exec(indexHtml);
+  }
+
+  while (pending.length > 0) {
+    const file = pending.pop();
+    const body = readFileSync(path.join(distAssets, file), "utf8");
+    const jsAssetRe =
+      /(?:from\s*["']|import\s*\(\s*["'])(\.\/[^"']+\.js)["']|["'](assets\/[^"']+\.js)["']/g;
+    let jsMatch = jsAssetRe.exec(body);
+    while (jsMatch !== null) {
+      addAssetRef(jsMatch[1] || jsMatch[2], `assets/${file}`);
+      jsMatch = jsAssetRe.exec(body);
+    }
+  }
+
+  return referenced.size > 0 ? referenced : new Set(files);
+}
+
+const referencedFiles = collectReferencedJsFiles();
 const offenders = [];
 let cryptoChunkSeen = false;
 for (const file of files) {
+  if (!referencedFiles.has(file)) continue;
   const hasMarker = readFileSync(path.join(distAssets, file), "utf8").includes(
     CRYPTO_MARKER,
   );
@@ -88,7 +143,7 @@ if (!cryptoChunkSeen) {
 }
 
 console.log(
-  `[verify-chunk-safety] OK: bn.js/crypto graph is confined to lazy vendor chunks (${files.length} chunks scanned).`,
+  `[verify-chunk-safety] OK: bn.js/crypto graph is confined to lazy vendor chunks (${referencedFiles.size} current chunks scanned).`,
 );
 
 // ── Web SPA base regression guard ──

@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const jsonRpcRequest = body as JsonRpcRequest;
+  const jsonRpcRequest = body as unknown as JsonRpcRequest;
 
   if (jsonRpcRequest.jsonrpc !== "2.0") {
     return NextResponse.json(

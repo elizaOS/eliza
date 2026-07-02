@@ -38,7 +38,7 @@
         "@tavily/core": "^0.7.0"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.7"

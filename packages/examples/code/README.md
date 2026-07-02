@@ -67,21 +67,33 @@ Once running, you can chat with the agent:
 ```
 eliza-code/
 ├── src/
-│   ├── index.tsx          # Entry point
-│   ├── App.tsx            # Main layout
-│   ├── components/        # Ink UI components
-│   │   ├── ChatPane.tsx
-│   │   ├── TaskPane.tsx
-│   │   ├── StatusBar.tsx
-│   │   └── MessageBubble.tsx
+│   ├── index.ts           # Interactive TUI entry point (`eliza-code`)
+│   ├── acp.ts             # Agent Client Protocol entry point (`eliza-code-acp`)
+│   ├── cli.ts             # CLI arg parsing / mode select
+│   ├── App.ts             # Root TUI wiring
+│   ├── components/        # Terminal UI components (@elizaos/tui)
+│   │   ├── MainScreen.ts  # Composes status bar + chat/task split
+│   │   ├── ChatPane.ts
+│   │   ├── TaskPane.ts
+│   │   ├── StatusBar.ts
+│   │   └── HelpOverlay.ts
 │   ├── lib/
-│   │   ├── agent.ts       # Eliza runtime setup
-│   │   ├── chat-manager.ts
-│   │   ├── task-manager.ts
-│   │   └── store.ts       # Zustand state
-│   ├── lib/cwd.ts         # CWD tracking (no filesystem listing)
+│   │   ├── agent.ts          # Eliza runtime setup (loads plugin-openai etc.)
+│   │   ├── model-provider.ts # Provider selection (ELIZA_CODE_PROVIDER)
+│   │   ├── session.ts / store.ts  # Session + Zustand state
+│   │   └── cwd.ts            # CWD tracking (no filesystem listing)
 │   └── types.ts           # TypeScript types
+└── scripts/
+    └── write-dist-tsconfig.mjs  # Emits a paths-free dist/tsconfig.json (see Gotcha below)
 ```
+
+> **Do not remove `scripts/write-dist-tsconfig.mjs` from the `build` script.** Bun applies the
+> nearest tsconfig's `compilerOptions.paths` **at runtime**, and this package's tsconfig maps the
+> externalized `@elizaos/plugin-*` to their types-only `.d.ts`. Without the emitted paths-free
+> `dist/tsconfig.json`, `bun dist/index.js` loads a `.d.ts` and throws `ReferenceError` on first
+> plugin import. The cockpit's PTY terminal (`@elizaos/plugin-pty`) spawns exactly this
+> `dist/index.js` via `ELIZA_CODE_BIN`, so dropping the step silently re-breaks every cockpit
+> terminal spawn (#11043).
 
 ## Available Actions
 

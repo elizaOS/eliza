@@ -56,10 +56,9 @@ async function clickIfVisible(
   }
 }
 
-// Drive the cloud entry point of the in-chat first-run flow (#9952): the runtime
-// ChoiceWidget's "Eliza Cloud (managed)" option, then the in-chat
-// SensitiveRequestBlock "Connect Eliza Cloud" OAuth authorize affordance if
-// shown.
+// Drive the cloud entry point of first-run: the transcript's Eliza Cloud option,
+// then the SensitiveRequestBlock "Connect Eliza Cloud" OAuth authorize
+// affordance if shown.
 async function chooseCloudRuntime(page: Page): Promise<void> {
   await clickIfVisible(
     page.getByTestId("choice-__first_run__:runtime:cloud"),
@@ -120,6 +119,14 @@ test.describe("real cloud login + provisioning + chat", () => {
       active?.apiBase,
       "provisioned cloud agent must expose a bridge URL",
     ).toBeTruthy();
+
+    // Completion is DEFERRED to the tutorial-or-skip pick, and the composer
+    // stays LOCKED to the onboarding choice widgets until it fires — skip the
+    // tour so the chat unlocks for the real turn below.
+    await clickIfVisible(
+      page.getByTestId("choice-__first_run__:tutorial:skip"),
+      60_000,
+    );
 
     // Real chat turn against the provisioned cloud agent.
     await openAppPath(page, "/chat");

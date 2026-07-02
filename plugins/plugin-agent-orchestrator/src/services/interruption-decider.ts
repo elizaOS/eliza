@@ -43,6 +43,16 @@ export interface InterruptionInput {
 const STOP_PATTERN =
   /\b(stop|cancel|abort|halt|never ?mind|forget it|that'?s enough|quit it|kill it)\b/i;
 
+// "stop <gerund>" is normally a code INSTRUCTION ("stop using axios", "stop
+// importing lodash", "stop logging that") — it changes what the code does, not
+// a command to halt the agent — so it must NOT cancel the in-flight turn (it
+// queues and reaches the agent after its current turn). The exception is a
+// gerund that refers to the AGENT itself ("stop working / doing / running"),
+// which stays a genuine halt. Bare stops ("stop", "stop it", "Ada, stop") have
+// no following gerund and are unaffected.
+const STOP_CODE_INSTRUCTION_PATTERN =
+  /\bstop\s+(?!working\b|doing\b|running\b|generating\b|responding\b|that\b|this\b|it\b|now\b|everything\b|all\b)\w+ing\b/i;
+
 // Additive markers — the message AUGMENTS the current work rather than
 // redirecting it, so it must never interrupt (even when it also contains a
 // stop/correction token like "stop" or "don't forget"). "also add X", "and
@@ -100,6 +110,7 @@ export function decideInterruption(
   // or any stop in a solo room, interrupts).
   if (
     STOP_PATTERN.test(text) &&
+    !STOP_CODE_INSTRUCTION_PATTERN.test(text) &&
     !additive &&
     !(input.multiParty && !addressed)
   ) {

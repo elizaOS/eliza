@@ -54,7 +54,11 @@ export default scenario({
         description: "voice escalation after silence",
         includesAny: ["call", "vendor", "voice", "invoice"],
       }),
-      responseIncludesAny: ["call", "vendor", "voice", "invoice"],
+      // Seeded-token grounding: the stalled-thread memory carries invoice
+      // #4421 — the number appears in no user turn, so referencing it
+      // requires reading the seeded context. "phone"/"dial" are likewise
+      // absent from the prompt (which only says "call").
+      responseIncludesAny: ["4421", "phone", "dial"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

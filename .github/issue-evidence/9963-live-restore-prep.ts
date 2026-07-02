@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ChannelType, stringToUuid, type Memory, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type Memory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 
 const repoRoot = path.resolve(new URL("../..", import.meta.url).pathname);
 const evidenceDir = path.join(repoRoot, ".github", "issue-evidence");

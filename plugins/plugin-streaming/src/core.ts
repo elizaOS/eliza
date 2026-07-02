@@ -241,7 +241,7 @@ export function createStreamingDestination(
 
 // ── Cloud relay destination ────────────────────────────────────────────────
 
-const CLOUD_BASE_FALLBACK = "https://www.elizacloud.ai/api/v1";
+const CLOUD_BASE_FALLBACK = "https://elizacloud.ai/api/v1";
 
 function readSetting(runtime: IAgentRuntime, key: string): string | null {
   const raw = runtime.getSetting(key);

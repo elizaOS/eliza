@@ -244,10 +244,7 @@
       "name": "e1x_wafer_mesh_defect_sim",
       "suite": "Eliza E1X wafer-mesh architecture simulator",
       "version": "local/e1x-wafer-mesh-v1",
-      "command": [
-        "python3",
-        "scripts/generate_e1x_wafer_mesh_evidence.py"
-      ],
+      "command": ["python3", "scripts/generate_e1x_wafer_mesh_evidence.py"],
       "requires": ["python3"],
       "input_dataset": "deterministic core/link defect map plus mesh GEMM/stencil/sparse-attention workloads",
       "primary_metric": "modeled E1X minimum observed INT8 TOPS after repair",
@@ -266,10 +263,7 @@
       "name": "e1x_scaled_8gb_model_load_sim",
       "suite": "Eliza E1X scaled SRAM and model-load simulator",
       "version": "local/e1x-scaled-8gb-model-load-v1",
-      "command": [
-        "python3",
-        "scripts/generate_e1x_scaled_model_evidence.py"
-      ],
+      "command": ["python3", "scripts/generate_e1x_scaled_model_evidence.py"],
       "requires": ["python3"],
       "input_dataset": "13B 4-bit static graph over normal and high-failure deterministic wafer defect maps",
       "primary_metric": "resident quantized model execution under high-failure repair",
@@ -302,10 +296,7 @@
       "name": "e1x3d_wafer_stack_defect_sim",
       "suite": "Eliza E1X3D 3D-stacked wafer-mesh architecture simulator",
       "version": "local/e1x3d-wafer-stack-v1",
-      "command": [
-        "python3",
-        "scripts/generate_e1x3d_wafer_stack_evidence.py"
-      ],
+      "command": ["python3", "scripts/generate_e1x3d_wafer_stack_evidence.py"],
       "requires": ["python3"],
       "input_dataset": "deterministic 3D core/in-plane-link/Z-link defect map over a stacked logic-tier mesh",
       "primary_metric": "modeled E1X3D 3D-mesh repair feasibility and thermal/yield gates",
@@ -324,10 +315,7 @@
       "name": "e1x3d_scaled_model_load_sim",
       "suite": "Eliza E1X3D scaled stacked SRAM and model-load simulator",
       "version": "local/e1x3d-scaled-16gb-model-load-v1",
-      "command": [
-        "python3",
-        "scripts/generate_e1x3d_scaled_model_evidence.py"
-      ],
+      "command": ["python3", "scripts/generate_e1x3d_scaled_model_evidence.py"],
       "requires": ["python3"],
       "input_dataset": "13B 4-bit static graph over normal, high-failure, and dead-tier-region 3D wafer defect maps",
       "primary_metric": "resident quantized model load and run under 3D high-failure repair with thermal/yield gates",
@@ -629,9 +617,7 @@
       "units": "joules_per_inference",
       "parser": "simulator_metrics_v1",
       "provenance": "simulator",
-      "required_metrics": [
-        "energy_joules_per_inference"
-      ],
+      "required_metrics": ["energy_joules_per_inference"],
       "timeout_seconds": 1800
     }
   ]

@@ -281,6 +281,12 @@
   color-scheme: dark;
 }
 
+/* Native form controls (checkbox/radio/progress) follow the brand accent —
+   without this they render the UA default blue (no-blue rule, #10710). */
+:root {
+  accent-color: var(--accent);
+}
+
 /* macOS desktop: reserve space for traffic lights (close/min/max buttons)
    when the title bar is hidden with hiddenInset. The .desktop class is
    added by the Electrobun shell at startup. */

@@ -3,10 +3,7 @@
   "obsbot_device": "/dev/video-1",
   "include_locomotion": true,
   "fps": 15.0,
-  "external_size": [
-    0,
-    0
-  ],
+  "external_size": [0, 0],
   "actions": [
     {
       "label": "AINEX_STAND",

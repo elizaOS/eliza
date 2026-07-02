@@ -1,6 +1,7 @@
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  clearLlmWireMockEnvForLiveProvider,
   loadScenarioTestMocksForTests,
   resolveScenarioProviderConfig,
   shouldUseDeterministicLlmProxy,
@@ -25,9 +26,7 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
     "SCENARIO_LLM_PROXY_STRICT",
     "ELIZA_SCENARIO_LLM_PROXY_STRICT",
   ])("can enable strict fixture mode by %s", (name) => {
-    expect(shouldUseStrictDeterministicLlmProxy({ [name]: "true" })).toBe(
-      true,
-    );
+    expect(shouldUseStrictDeterministicLlmProxy({ [name]: "true" })).toBe(true);
   });
 
   it("resolves a no-key deterministic provider config in proxy mode", () => {
@@ -64,5 +63,36 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
     await expect(
       plugin.models?.[ModelType.TEXT_EMBEDDING]?.({} as never, "hello"),
     ).resolves.toEqual([0, 0, 0]);
+  });
+});
+
+describe("clearLlmWireMockEnvForLiveProvider", () => {
+  const mockEnv = () => ({
+    ELIZA_MOCK_OPENAI_BASE: "http://127.0.0.1:50101/v1",
+    ELIZA_MOCK_ANTHROPIC_BASE: "http://127.0.0.1:50102/v1",
+    ELIZA_MOCK_GOOGLE_BASE: "http://127.0.0.1:50103",
+  });
+
+  it.each([
+    "openai",
+    "anthropic",
+    "groq",
+    "google",
+    "openrouter",
+  ] as const)("drops the LLM wire-mock base overrides for the live %s provider", (providerName) => {
+    const env = mockEnv();
+    clearLlmWireMockEnvForLiveProvider(providerName, env);
+    expect(env.ELIZA_MOCK_OPENAI_BASE).toBeUndefined();
+    expect(env.ELIZA_MOCK_ANTHROPIC_BASE).toBeUndefined();
+    // Connector mocks are unrelated to the LLM path and must survive.
+    expect(env.ELIZA_MOCK_GOOGLE_BASE).toBe("http://127.0.0.1:50103");
+  });
+
+  it("keeps the LLM wire mocks for the deterministic proxy lane", () => {
+    const env = mockEnv();
+    clearLlmWireMockEnvForLiveProvider("deterministic-llm-proxy", env);
+    expect(env.ELIZA_MOCK_OPENAI_BASE).toBe("http://127.0.0.1:50101/v1");
+    expect(env.ELIZA_MOCK_ANTHROPIC_BASE).toBe("http://127.0.0.1:50102/v1");
+    expect(env.ELIZA_MOCK_GOOGLE_BASE).toBe("http://127.0.0.1:50103");
   });
 });

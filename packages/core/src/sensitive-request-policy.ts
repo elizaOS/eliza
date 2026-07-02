@@ -16,6 +16,7 @@ export type SensitiveRequestStatus =
 export type SensitiveRequestPaymentContext = "verified_payer" | "any_payer";
 
 export type SensitiveRequestActorPolicy =
+	| "owner_only"
 	| "owner_or_linked_identity"
 	| "organization_admin"
 	| "verified_payer"
@@ -83,6 +84,17 @@ export interface SensitiveRequestSecretTarget {
 	scope?: "organization" | "app" | "agent" | "global" | (string & {});
 	appId?: string;
 	validation?: Record<string, unknown>;
+	/**
+	 * How the value should be collected. Defaults to `secret` (masked text).
+	 * `image`/`file` let a secret be captured as an upload — e.g. photograph a
+	 * 2FA seed or scan a recovery QR — delivered as a base64 data URL through the
+	 * same submit path. Additive; omit for a normal typed secret. (#8910)
+	 */
+	input?: "secret" | "text" | "image" | "file";
+	/** For `input: "image" | "file"` — accepted MIME types (maps to the file input `accept`). */
+	mimeTypes?: string[];
+	/** For `input: "image" | "file"` — max upload size in bytes. */
+	maxBytes?: number;
 }
 
 export interface SensitiveRequestPrivateInfoField {
@@ -175,6 +187,13 @@ export interface SensitiveRequestEvent {
 	[key: string]: unknown;
 }
 
+export interface SensitiveRequestTunnelRouting {
+	credentialScopeId: string;
+	childSessionId: string;
+	/** Credential keys covered by this tunnel-routed request. Never includes values or scoped tokens. */
+	keys?: readonly string[];
+}
+
 export interface SensitiveRequestDeliveryPlan {
 	kind: SensitiveRequestKind;
 	source: SensitiveRequestSourceContext;
@@ -185,6 +204,8 @@ export interface SensitiveRequestDeliveryPlan {
 	authenticated: boolean;
 	canCollectValueInCurrentChannel: boolean;
 	linkBaseUrl?: string;
+	/** One-shot sub-agent credential tunnel routing. Scoped tokens and values never transit chat. */
+	tunnel?: SensitiveRequestTunnelRouting;
 	reason: string;
 	instruction: string;
 }

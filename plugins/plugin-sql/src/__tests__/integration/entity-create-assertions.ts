@@ -14,7 +14,3 @@ export function expectCreatedEntityIds(
 
   return expectedIds;
 }
-
-export function expectNoCreatedEntityIds(result: UUID[]): void {
-  expect(result).toEqual([]);
-}

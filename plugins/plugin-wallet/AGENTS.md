@@ -16,12 +16,13 @@ Adds a unified wallet action+provider surface to an Eliza agent, replacing the p
 | `WALLET` | `swap` | Token swap via Li.Fi (EVM) or Jupiter (Solana). |
 | `WALLET` | `bridge` | Cross-chain transfer via Li.Fi or CCTP. |
 | `WALLET` | `gov` | On-chain governance: propose, vote, queue, execute. |
+| `WALLET` | `pump_fun_buy` | Buy a pump.fun token on Solana via PumpPortal trade-local, local signing, browser coin-page open, and Solana RPC submission. |
 | `WALLET` | `token_info` | Read-only token/market data (DexScreener, Birdeye, CoinGecko). |
 | `WALLET` | `search_address` | Birdeye wallet/portfolio lookup by address. |
 
-Similes handled: `SWAP`, `SWAP_SOLANA`, `TRANSFER`, `TRANSFER_TOKEN`, `WALLET_SWAP`, `WALLET_TRANSFER`, `CROSS_CHAIN_TRANSFER`, `PREPARE_TRANSFER`, `WALLET_ACTION`, `WALLET_GOV`, `TOKEN_INFO`, `BIRDEYE_LOOKUP`, `BIRDEYE_SEARCH`, `WALLET_SEARCH_ADDRESS`.
+Similes handled: `SWAP`, `SWAP_SOLANA`, `TRANSFER`, `TRANSFER_TOKEN`, `WALLET_SWAP`, `WALLET_TRANSFER`, `CROSS_CHAIN_TRANSFER`, `PREPARE_TRANSFER`, `WALLET_ACTION`, `WALLET_GOV`, `PUMP_FUN_BUY`, `PUMPFUN_BUY`, `TOKEN_INFO`, `BIRDEYE_LOOKUP`, `BIRDEYE_SEARCH`, `WALLET_SEARCH_ADDRESS`.
 
-All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`) require a user confirmation turn before execution. `mode=prepare` (default) stages without signing. Setting `mode=execute` does **not** bypass the gate — submission only happens after a confirmed reply turn. `dryRun=true` returns metadata without signing.
+All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) require a user confirmation turn before execution. `mode=prepare` (default) stages without signing. Setting `mode=execute` does **not** bypass the gate — submission only happens after a confirmed reply turn. `dryRun=true` returns metadata without signing.
 
 **Providers:**
 
@@ -71,7 +72,7 @@ plugins/plugin-wallet/
     browser-shim/              Browser environment shim (build-shim.ts, shim.template.js)
     chains/
       wallet-action.ts         walletRouterAction (WALLET action, all subactions)
-      registry.ts              registerDefaultWalletChainHandlers (EVM + Solana)
+      registry.ts              registerDefaultWalletChainHandlers (EVM + Solana + pump.fun)
       evm/
         index.ts               evmPlugin (sub-plugin composed into walletPlugin)
         service.ts             EVMService
@@ -158,6 +159,9 @@ All read via `runtime.getSetting()` (or `process.env` fallback where noted).
 | `STEWARD_TENANT_ID` | Steward backend | Tenant/user identifier. |
 | `SOLANA_RPC_URL` | Solana features | RPC endpoint; skips Solana init if absent. |
 | `SOLANA_NO_ACTIONS` | No | Set to `true` to skip Solana action registration. |
+| `PUMPFUN_TRADE_LOCAL_URL` | No | PumpPortal local transaction API. Defaults to `https://pumpportal.fun/api/trade-local`. |
+| `PUMPFUN_PRIORITY_FEE_SOL` | No | Priority fee in SOL for `pump_fun_buy`. Defaults to `0.00005`. |
+| `PUMPFUN_POOL` | No | PumpPortal pool selector. Defaults to `auto`. |
 | `BIRDEYE_API_KEY` | Birdeye features | Direct API key for Birdeye. Falls back to Eliza Cloud route if absent. |
 | `BIRDEYE_WALLET_ADDR` | No | Enables `agentPortfolioProvider` for this wallet address. |
 | `BIRDEYE_NO_TRENDING` | No | Set to `true` to skip trending provider registration. |
@@ -192,8 +196,9 @@ Extend `src/analytics/birdeye/service.ts`. The service proxies all calls through
 
 ## Conventions / gotchas
 
-- **Financial confirmation gate.** All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`) go through `gateWalletFinancialExecution` in `src/security/wallet-financial-confirmation.ts`, which calls `requireConfirmation` from `@elizaos/core`. The LLM cannot bypass this by passing `mode=execute` alone — a confirmed reply turn is always required. Do not remove or short-circuit this gate.
+- **Financial confirmation gate.** All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) go through `gateWalletFinancialExecution` in `src/security/wallet-financial-confirmation.ts`, which calls `requireConfirmation` from `@elizaos/core`. The LLM cannot bypass this by passing `mode=execute` alone — a confirmed reply turn is always required. Do not remove or short-circuit this gate.
 - **`WalletBackend` is the only signing path.** Providers and actions must never read raw private key env vars directly. Go through `WalletBackendService.getWalletBackend()` → `WalletBackend`.
+- **pump.fun buy path.** `pump_fun_buy` is a Solana handler alias (`pumpfun`, `pump.fun`, `pump-fun`, `pump`) that requires `toToken`/`token` as a valid Solana mint and `amount` as SOL. It requests a serialized transaction from PumpPortal trade-local, signs through `WalletBackend.getSolanaSigner()` when available (falling back to the existing local `getWalletKey` Solana path), opens the token page through the optional browser service when available, then submits through `SOLANA_RPC_URL`.
 - **`handleWalletRoutes` is dependency-injected.** It imports nothing from `@elizaos/agent` to avoid a cycle. All agent-internal helpers (runtime lookup, auth, route helpers) are passed via `WalletRouteContext.deps` by `@elizaos/agent`'s server wiring.
 - **Sub-plugins.** `evmPlugin` and `solanaPlugin` are composed into `walletPlugin` in `plugin.ts`. They are not intended to be loaded directly; always depend on `@elizaos/plugin-wallet`.
 - **`SDK-LICENSE`** covers the `src/sdk/` subtree (originally from agent-wallet-sdk, MIT).

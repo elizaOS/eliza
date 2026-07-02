@@ -64,7 +64,11 @@ export function switchRuntimeNonDestructive(
   // the live client stuck on the stale remote base + token for the rest of the
   // session (it only self-heals on reboot).
   if (profile.apiBase) {
-    if (profile.accessToken) client.setToken(profile.accessToken);
+    // Set THIS profile's own token, clearing when it has none — never inherit
+    // the prior runtime's bearer. A tokenless remote (e.g. a VPS added in My
+    // Runtimes) would otherwise keep the cloud token and send it to that backend
+    // (silent cross-backend credential leak / auth failure).
+    client.setToken(profile.accessToken ?? null);
     client.repointBaseUrl(profile.apiBase);
   } else if (typeof window !== "undefined") {
     client.setToken(null);

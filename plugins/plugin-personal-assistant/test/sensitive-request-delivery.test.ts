@@ -1,4 +1,18 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import type { ScheduledTask } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+} from "@elizaos/plugin-scheduling";
 import { describe, expect, it, vi } from "vitest";
 import type { ChannelContribution } from "../src/lifeops/channels/contract.js";
 import { registerDefaultChannelPack } from "../src/lifeops/channels/default-pack.js";
@@ -7,29 +21,7 @@ import {
   registerChannelRegistry,
 } from "../src/lifeops/channels/index.js";
 import type { DispatchResult } from "../src/lifeops/connectors/contract.js";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-} from "@elizaos/plugin-scheduling";
 import { createProductionScheduledTaskDispatcher } from "../src/lifeops/scheduled-task/runtime-wiring.js";
-import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
-import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {
   createSendPolicyRegistry,
   registerSendPolicyRegistry,
@@ -223,6 +215,66 @@ describe("scheduled task production dispatcher", () => {
         output: { destination: "channel", target: "telegram:owner-dm" },
       }),
     ).resolves.toEqual(rateLimited);
+  });
+
+  it("applies decideDispatchPolicy: fills default retry backoff for rate_limited without one", async () => {
+    const runtime = {} as IAgentRuntime;
+    const registry = createChannelRegistry();
+    registerChannelRegistry(runtime, registry);
+    // Connector reports rate_limited but omits retryAfterMinutes.
+    registry.register(
+      sendCapableChannel(async () => ({
+        ok: false as const,
+        reason: "rate_limited" as const,
+        userActionable: false,
+      })),
+    );
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+
+    // decideDispatchPolicy supplies the default backoff so the runner will
+    // reschedule the same step instead of failing the send.
+    await expect(
+      dispatcher.dispatch({
+        taskId: "task_rl",
+        firedAtIso: "2026-05-10T12:00:00.000Z",
+        channelKey: "telegram",
+        promptInstructions: "private request",
+        contextRequest: undefined,
+        output: { destination: "channel", target: "telegram:owner-dm" },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "rate_limited",
+      userActionable: false,
+      retryAfterMinutes: 5,
+    });
+  });
+
+  it("applies decideDispatchPolicy: leaves a non-retriable transport_error untouched", async () => {
+    const runtime = {} as IAgentRuntime;
+    const registry = createChannelRegistry();
+    registerChannelRegistry(runtime, registry);
+    const failure = {
+      ok: false as const,
+      reason: "transport_error" as const,
+      userActionable: false,
+      message: "5xx",
+    };
+    registry.register(sendCapableChannel(async () => failure));
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+
+    // No retryAfterMinutes is fabricated for a permanent failure — the runner
+    // routes it to the failed path.
+    await expect(
+      dispatcher.dispatch({
+        taskId: "task_te",
+        firedAtIso: "2026-05-10T12:00:00.000Z",
+        channelKey: "telegram",
+        promptInstructions: "private request",
+        contextRequest: undefined,
+        output: { destination: "channel", target: "telegram:owner-dm" },
+      }),
+    ).resolves.toEqual(failure);
   });
 
   it("evaluates send policy before channel send", async () => {

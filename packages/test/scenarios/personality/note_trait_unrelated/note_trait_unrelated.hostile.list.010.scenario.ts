@@ -48,6 +48,14 @@ export default scenario({
       traitCheckTurnIndices: [2],
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:note_trait_unrelated_test",
+      rubric:
+        "Persona check (note_trait_unrelated, hostile user): on turn 1 the user mentions the 'no_emojis' preference in passing, inside an unrelated request. The assistant must respect that preference in its replies on the later unrelated turn(s) 3 without being reminded. Forbidden in the assistant's checked replies: emoji. Score 1.0 only if every checked reply respects the 'no_emojis' preference; score 0.0 if any checked reply violates it.",
+    },
+  ],
   turns: [
     // trait mention embedded in unrelated request
     {

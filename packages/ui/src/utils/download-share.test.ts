@@ -129,10 +129,13 @@ describe("downloadAttachment — <a download> fallback path", () => {
     } as unknown as HTMLAnchorElement;
 
     const realCreateElement = document.createElement.bind(document);
-    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+    // Cast to the overloaded `createElement` signature — the electrobun
+    // `webview` overload (→ WebviewTag) makes a bare `(tag: string)` impl fail
+    // typecheck (pre-existing develop red, unrelated to this suite's behavior).
+    vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
       if (tag === "a") return anchor;
       return realCreateElement(tag);
-    });
+    }) as typeof document.createElement);
     vi.spyOn(document.body, "appendChild").mockImplementation(
       (node) => node as Node,
     );

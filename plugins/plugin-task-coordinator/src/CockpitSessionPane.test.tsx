@@ -43,6 +43,7 @@ const calls = {
   getCodingAgentStatus: vi.fn(),
   updateOrchestratorTask: vi.fn(),
   addOrchestratorAgent: vi.fn(),
+  restartOrchestratorTask: vi.fn(),
 };
 
 // TaskInspector wires a couple of agent elements (close button + priority
@@ -76,11 +77,13 @@ vi.mock("@elizaos/ui", async (importOriginal) => {
         calls.updateOrchestratorTask(id, patch),
       addOrchestratorAgent: (id: string, input: unknown) =>
         calls.addOrchestratorAgent(id, input),
+      restartOrchestratorTask: (id: string, input: unknown) =>
+        calls.restartOrchestratorTask(id, input),
     },
   };
 });
 
-import { getViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
+import { getViewChatBinding } from "@elizaos/ui";
 import { CockpitSessionPane } from "./CockpitSessionPane";
 
 const ISO = "2026-01-01T00:00:00.000Z";
@@ -289,6 +292,7 @@ beforeEach(() => {
   calls.getCodingAgentStatus.mockResolvedValue({ tasks: [] });
   calls.updateOrchestratorTask.mockResolvedValue(detailFixture);
   calls.addOrchestratorAgent.mockResolvedValue(detailFixture);
+  calls.restartOrchestratorTask.mockResolvedValue(detailFixture);
 });
 
 afterEach(() => {
@@ -370,30 +374,51 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
     expect(screen.queryByTestId("cockpit-session-transcript")).toBeNull();
   });
 
-  it("Eliza Cloud: flipping the tier persists policy + respawns on the new model", async () => {
+  it("Eliza Cloud: flipping the tier persists policy + RESTARTS (stops old worker, no agent accumulation)", async () => {
     calls.getCodingAgentTaskThread.mockResolvedValue({
       ...detailFixture,
       providerPolicy: {
         preferredFramework: "elizaos",
         providerSource: "eliza-cloud",
-        model: "gpt-oss-120b",
+        model: "gemma-4-31b",
       },
     });
     renderPane();
     const smart = await screen.findByTestId("cockpit-tier-large");
     fireEvent.click(smart);
+    // 1. persist the new tier's model on the task policy
     await waitFor(() =>
       expect(calls.updateOrchestratorTask).toHaveBeenCalledWith(
         "task-1",
         expect.objectContaining({
-          providerPolicy: expect.objectContaining({ model: "zai-glm-4.7" }),
+          providerPolicy: expect.objectContaining({ model: "gemma-4-31b" }),
         }),
       ),
     );
+    // 2. RESTART with stopActive (replaces the worker) — NOT addOrchestratorAgent
+    // (which would accumulate live agents on repeated flips — Shaw's review).
     await waitFor(() =>
-      expect(calls.addOrchestratorAgent).toHaveBeenCalledWith(
+      expect(calls.restartOrchestratorTask).toHaveBeenCalledWith(
         "task-1",
-        expect.objectContaining({ model: "zai-glm-4.7" }),
+        expect.objectContaining({ stopActive: true }),
+      ),
+    );
+    expect(calls.addOrchestratorAgent).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an error when a composer-driven message fails to deliver", async () => {
+    calls.postOrchestratorTaskMessage.mockRejectedValue(new Error("offline"));
+    renderPane();
+    await waitFor(() =>
+      expect(screen.getByTestId("orchestrator-user-message")).toBeTruthy(),
+    );
+    const binding = getViewChatBinding();
+    // onSubmit still consumes the send (returns true) — but a failed delivery
+    // must surface, not vanish silently (Shaw's review).
+    expect(binding?.onSubmit?.("hi")).toBe(true);
+    await waitFor(() =>
+      expect(screen.getByTestId("cockpit-session-error").textContent).toMatch(
+        /deliver/i,
       ),
     );
   });

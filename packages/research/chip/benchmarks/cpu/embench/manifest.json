@@ -12,11 +12,27 @@
     "pinned_commit": "BLOCKED_until_first_clone_resolves_tag"
   },
   "workload_set": [
-    "aha-mont64", "crc32", "cubic", "edn", "huffbench",
-    "matmult-int", "minver", "nbody", "nettle-aes",
-    "nettle-sha256", "nsichneu", "picojpeg", "primecount",
-    "qrduino", "sglib-combined", "slre", "st",
-    "statemate", "tarfind", "ud", "wikisort"
+    "aha-mont64",
+    "crc32",
+    "cubic",
+    "edn",
+    "huffbench",
+    "matmult-int",
+    "minver",
+    "nbody",
+    "nettle-aes",
+    "nettle-sha256",
+    "nsichneu",
+    "picojpeg",
+    "primecount",
+    "qrduino",
+    "sglib-combined",
+    "slre",
+    "st",
+    "statemate",
+    "tarfind",
+    "ud",
+    "wikisort"
   ],
   "build_target": {
     "isa": "rv64gc",

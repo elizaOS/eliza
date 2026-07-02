@@ -25,6 +25,7 @@
 
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import type { Browser, ElementHandle, HTTPRequest, Page } from "puppeteer-core";
 import puppeteer from "puppeteer-core";
 import type {
@@ -49,14 +50,68 @@ const SYSTEM_CHROME_PATHS: readonly string[] = [
 
 const require = createRequire(import.meta.url);
 
+function headlessShellCandidatesFor(chromiumPath: string): string[] {
+  const normalized = chromiumPath.replaceAll("\\", "/");
+  const match = normalized.match(/^(.*\/)chromium-(\d+)\//);
+  if (!match) {
+    return [];
+  }
+  const [, cacheRoot, revision] = match;
+  const shellRoot = path.join(cacheRoot, `chromium_headless_shell-${revision}`);
+  return [
+    path.join(
+      shellRoot,
+      "chrome-headless-shell-mac-arm64",
+      "chrome-headless-shell",
+    ),
+    path.join(
+      shellRoot,
+      "chrome-headless-shell-linux64",
+      "chrome-headless-shell",
+    ),
+    path.join(
+      shellRoot,
+      "chrome-headless-shell-win64",
+      "chrome-headless-shell.exe",
+    ),
+    path.join(shellRoot, "chrome-linux", "headless_shell"),
+    path.join(shellRoot, "chrome-linux64", "headless_shell"),
+    path.join(shellRoot, "chrome-win", "headless_shell.exe"),
+  ];
+}
+
+export function resolveChromiumHeadlessShellExecutablePath(): string | null {
+  for (const packageName of ["playwright-core", "playwright"] as const) {
+    try {
+      const playwright = require(packageName) as {
+        chromium?: { executablePath?: () => string };
+      };
+      const playwrightPath = playwright.chromium?.executablePath?.();
+      if (!playwrightPath) {
+        continue;
+      }
+      for (const candidate of headlessShellCandidatesFor(playwrightPath)) {
+        if (existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    } catch {
+      // Package not resolvable / no browser installed — try the next source.
+    }
+  }
+  return null;
+}
+
 /**
  * Resolve a real Chromium executable for the gated lane, or `null` when none is
  * installed (the lane self-skips). Resolution order:
  *   1. `PUPPETEER_EXECUTABLE_PATH` / `CHROME_PATH` (explicit override),
- *   2. a Playwright-installed Chromium (the CI lane runs
+ *   2. Playwright's Chromium headless shell when present (more stable for
+ *      real screenshot capture under request interception),
+ *   3. a Playwright-installed Chromium (the CI lane runs
  *      `bunx playwright install --with-deps chromium`, mirroring
  *      `scenario-pr.yml` `app-browser-core`),
- *   3. a system Chrome/Chromium/Edge install.
+ *   4. a system Chrome/Chromium/Edge install.
  */
 export function resolveChromiumExecutablePath(): string | null {
   const override =
@@ -64,6 +119,11 @@ export function resolveChromiumExecutablePath(): string | null {
     process.env.CHROME_PATH?.trim();
   if (override && existsSync(override)) {
     return override;
+  }
+
+  const headlessShell = resolveChromiumHeadlessShellExecutablePath();
+  if (headlessShell) {
+    return headlessShell;
   }
 
   for (const packageName of ["playwright-core", "playwright"] as const) {
@@ -123,7 +183,7 @@ function noChromiumError(): Error {
 function chromiumLaunchOptions(executablePath: string) {
   return {
     executablePath,
-    headless: true as const,
+    headless: "shell" as const,
     // The default 30s browser-start / protocol timeouts are too tight on a
     // loaded CI box; bump them so a slow Chromium start isn't a flake.
     timeout: 60_000,
@@ -310,6 +370,8 @@ export async function createChromiumBenchmarkExecutor(
             el.tagName === "A" &&
             !!(el as HTMLAnchorElement).getAttribute("href"),
         );
+        const clickOptions =
+          command.subaction === "dblclick" ? { clickCount: 2 } : {};
         if (navigates) {
           await Promise.all([
             page
@@ -318,14 +380,10 @@ export async function createChromiumBenchmarkExecutor(
                 timeout: navigationTimeoutMs,
               })
               .catch(() => null),
-            command.subaction === "dblclick"
-              ? handle.click({ clickCount: 2 })
-              : handle.click(),
+            handle.click(clickOptions),
           ]);
         } else {
-          await handle.click(
-            command.subaction === "dblclick" ? { clickCount: 2 } : {},
-          );
+          await handle.click(clickOptions);
         }
         await handle.dispose();
         return result(command.subaction, { url: page.url() });
@@ -365,6 +423,36 @@ export async function createChromiumBenchmarkExecutor(
         }, checked);
         await handle.dispose();
         return result(command.subaction, { checked });
+      }
+
+      case "select": {
+        const handle = await resolveHandle(requireSelector(command));
+        const wanted = command.value ?? "";
+        const selected = await handle.evaluate((el, value) => {
+          if (el.tagName !== "SELECT") {
+            throw new Error("select requires a select target.");
+          }
+          const select = el as HTMLSelectElement;
+          const option = Array.from(select.options).find((candidate) => {
+            const text = (candidate.textContent ?? "")
+              .replace(/\s+/g, " ")
+              .trim();
+            return candidate.value === value || text === value;
+          });
+          if (!option) {
+            throw new Error(`Select option was not found: ${value}`);
+          }
+          select.value = option.value;
+          option.selected = true;
+          select.dispatchEvent(new Event("input", { bubbles: true }));
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          return {
+            value: select.value,
+            text: (option.textContent ?? "").replace(/\s+/g, " ").trim(),
+          };
+        }, wanted);
+        await handle.dispose();
+        return result(command.subaction, selected);
       }
 
       case "press": {

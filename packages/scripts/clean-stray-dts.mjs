@@ -26,10 +26,7 @@ function walk(dir, hits) {
     }
     if (!entry.isFile()) continue;
     if (!entry.name.endsWith(".ts")) continue;
-    if (
-      entry.name.endsWith(".d.ts") ||
-      entry.name.endsWith(".d.ts.map")
-    )
+    if (entry.name.endsWith(".d.ts") || entry.name.endsWith(".d.ts.map"))
       continue;
     hits.push(path.join(dir, entry.name));
   }
@@ -53,5 +50,7 @@ for (const ts of tsFiles) {
 }
 
 if (removed > 0) {
-  console.log(`[clean-stray-dts] removed ${removed} stray declaration file(s).`);
+  console.log(
+    `[clean-stray-dts] removed ${removed} stray declaration file(s).`,
+  );
 }

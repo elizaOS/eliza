@@ -5,10 +5,15 @@ import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import {
   type AestheticMetricBudget,
+  type AestheticVerdictDebt,
   bucket,
   computeVerdict,
   evaluateAestheticMetricBudget,
+  evaluateMinimalismRatchet,
+  evaluateStrictGate,
+  minimalismBaselineKey,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
+  parseMinimalismBaseline,
   parseNavigationTabPaths,
 } from "./aesthetic-audit-rules";
 import {
@@ -29,12 +34,30 @@ import { VIEW_CASES } from "./plugin-view-cases";
 // a GATE that fails on any `broken` verdict (a real crash / blank render /
 // console error / empty view) outside the shrinking debt allowlist below.
 // `needs-work` (design debt: blue / orange-hover / off-token radius) is logged
-// with a count but not hard-gated yet — capture the current set into
-// AESTHETIC_VERDICT_DEBT from a clean CI run, then tighten this to gate it too.
+// with a count but not hard-gated by default — opt in with
+// `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` (#10710) once the current set is captured
+// into AESTHETIC_VERDICT_DEBT from a clean CI run.
 const AUDIT_STRICT = process.env.ELIZA_AUDIT_APP_STRICT === "1";
+const AUDIT_STRICT_NEEDS_WORK =
+  process.env.ELIZA_AUDIT_APP_STRICT_NEEDS_WORK === "1";
 // Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
 // that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention).
-const AESTHETIC_VERDICT_DEBT: Record<string, "broken" | "needs-work"> = {};
+const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {};
+
+// "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the
+// existing divider-density debt (same idiom as
+// packages/scripts/ui-determinism-baseline.json). A breaching view NOT in this
+// file, or a baselined view that regressed past its recorded metrics +
+// tolerance, is a BLOCKING `needs-work` and fails the run in afterAll —
+// unconditionally, not just under ELIZA_AUDIT_APP_STRICT (same posture as the
+// system-view metric budget throw below). Refresh deliberately from a run's
+// report.json: `bun run --cwd packages/app audit:app:minimalism:update`.
+const MINIMALISM_BASELINE_PATH = fileURLToPath(
+  new URL("./aesthetic-minimalism-baseline.json", import.meta.url),
+);
+const MINIMALISM_BASELINE = parseMinimalismBaseline(
+  readFileSync(MINIMALISM_BASELINE_PATH, "utf8"),
+);
 
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
@@ -46,9 +69,11 @@ const AESTHETIC_VERDICT_DEBT: Record<string, "broken" | "needs-work"> = {};
  * `manual-review/<slug>.md` verdict stub + `contact-sheet.html` +
  * `report.json`.
  *
- * It is a REPORTER, not a first-failure gate: it records findings for every
- * view (so the 5-loop grind can drive each to `good`) and only fails the run on
- * an uncaught page error (a real crash). Output dir:
+ * It records findings for every view (no first-failure abort, so the 5-loop
+ * grind can drive each to `good`), then gates in afterAll: an uncaught page
+ * error fails the walk immediately; the system-view metric budgets and the
+ * Her-minimal ratchet baseline (#9950) fail the run unconditionally; `broken`
+ * verdicts fail under ELIZA_AUDIT_APP_STRICT=1. Output dir:
  * `aesthetic-audit-output/` (override with ELIZA_AUDIT_APP_DIR).
  *
  * Built-in views come from `@elizaos/ui` TAB_PATHS; plugin views from
@@ -269,6 +294,9 @@ interface ViewFinding {
   consoleErrors: string[];
   blueColors: string[];
   hoverViolations: string[];
+  /** Buttons the hover probe could not drive (hover timeout / detach) — a
+   * harness failure surfaced as a finding, not silently swallowed. */
+  hoverFailures: string[];
   borderRadiusViolations: string[];
   overlayPresent: boolean;
   overlayClearanceIssues: string[];
@@ -279,8 +307,16 @@ interface ViewFinding {
   borderDividerDensity: number;
   textDensity: number;
   whitespaceRatio: number;
+  /** Rendered viewport area in px² — the divider-density normalization basis. */
+  viewportArea: number;
+  /** The density probe crashed — surfaced as a finding, NOT scored as a
+   * zero-density "perfectly minimal" pass (a crashed probe used to silently
+   * satisfy the budget/ratchet). Non-empty means the metrics below are unknown. */
+  densityProbeFailures: string[];
   minimalismBudget: AestheticMetricBudget | null;
   minimalismBudgetViolations: string[];
+  /** Blocking Her-minimal ratchet violations vs the committed baseline (#9950). */
+  minimalismRatchetViolations: string[];
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
@@ -302,11 +338,19 @@ async function collectBlueColors(page: Page): Promise<string[]> {
   return colors.filter((c) => bucket(c) === "blue");
 }
 
+interface HoverScanResult {
+  violations: string[];
+  /** Orange-resting buttons the probe could not actually hover — recorded as
+   * findings so a hover failure never silently passes as "no violation". */
+  hoverFailures: string[];
+}
+
 /** Tag primary buttons, read rest+hover backgrounds, flag brand violations. */
-async function collectHoverViolations(page: Page): Promise<string[]> {
+async function collectHoverViolations(page: Page): Promise<HoverScanResult> {
   const buttons = page.locator("button, a[role='button'], [data-audit-btn]");
   const count = Math.min(await buttons.count(), 24);
   const violations: string[] = [];
+  const hoverFailures: string[] = [];
   for (let i = 0; i < count; i += 1) {
     const btn = buttons.nth(i);
     if (!(await btn.isVisible().catch(() => false))) continue;
@@ -314,7 +358,21 @@ async function collectHoverViolations(page: Page): Promise<string[]> {
       .evaluate((el) => getComputedStyle(el).backgroundColor)
       .catch(() => "");
     if (bucket(rest) !== "orange") continue; // only orange-resting buttons matter
-    await btn.hover({ timeout: 1000 }).catch(() => {});
+    let hoverError: string | null = null;
+    try {
+      await btn.hover({ timeout: 1000 });
+    } catch (error) {
+      hoverError = (error instanceof Error ? error.message : String(error))
+        .split("\n")[0]
+        .slice(0, 120);
+    }
+    if (hoverError !== null) {
+      // The hover never applied, so reading the "hover" background would just
+      // re-read the rest color and vacuously pass. Surface the probe failure.
+      const label = (await btn.innerText().catch(() => "")).slice(0, 24);
+      hoverFailures.push(`"${label}" hover probe failed: ${hoverError}`);
+      continue;
+    }
     const hover = await btn
       .evaluate((el) => getComputedStyle(el).backgroundColor)
       .catch(() => "");
@@ -324,23 +382,31 @@ async function collectHoverViolations(page: Page): Promise<string[]> {
       violations.push(`"${label}" orange→${dest} (${rest} -> ${hover})`);
     }
   }
-  return violations;
+  return { violations, hoverFailures };
 }
 
 /**
  * Scan the rendered DOM for border-radius values that are NOT on the token
- * radius scale (presets.ts: radiusSm/Md/Lg/Xl/2xl/3xl → 6/8/12/16/20/24px at a
- * 16px root, plus the base `radius` 8px). Allowed alongside the token scale:
- * `0px` (square) and full-round shapes (`9999px`, `50%`, `100%`, circle pills).
- * Everything else (e.g. ad-hoc `4px`/`10px`) is an off-scale value that should
- * round to a token. Returns a deduped list of offending computed values so the
- * report can surface them; ±1px tolerance absorbs sub-pixel rounding.
+ * radius scale: 3px (base.css collapses every --radius-* token to
+ * --radius-xs: 3px — the eliza ultra-tight radius, #10710) plus the presets.ts
+ * rem scale (radiusSm/Md/Lg/Xl/2xl/3xl → 6/8/12/16/20/24px at a 16px root).
+ * Allowed alongside the token scale: `0px` (square) and full-round shapes
+ * (`9999px`, `50%`, `100%`, circle pills). Everything else (e.g. ad-hoc
+ * `10px`) is an off-scale value that should round to a token. Returns a
+ * deduped list of offending computed values so the report can surface them;
+ * ±1px tolerance absorbs sub-pixel rounding.
  */
 async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
   const raw = await page.evaluate(() => {
-    // Allowed px values from the token rem scale (16px root):
-    //   0.375rem=6, 0.5rem=8, 0.75rem=12, 1rem=16, 1.25rem=20, 1.5rem=24.
-    const allowedPx = [0, 6, 8, 12, 16, 20, 24];
+    // Allowed px values. base.css collapses every radius token (--radius-sm
+    // through --radius-3xl) to --radius-xs: 3px — the intended ultra-tight
+    // eliza radius — so 3 is the canonical rendered value (#10710). The rem
+    // scale (0.375rem=6 … 1.5rem=24) stays admitted for surfaces that read
+    // presets.ts tokens directly rather than the base.css custom properties.
+    // 32 is the floating chat capsule: ContinuousChatOverlay animates the
+    // glass-panel radius 32→24 as the sheet opens (collapsed pill endpoint),
+    // and the overlay is mounted on every view.
+    const allowedPx = [0, 3, 6, 8, 12, 16, 20, 24, 32];
     const tolerance = 1;
     const isAllowed = (value: string): boolean => {
       const v = value.trim().toLowerCase();
@@ -384,6 +450,8 @@ interface AestheticDensityMetrics {
   borderDividerDensity: number;
   textDensity: number;
   whitespaceRatio: number;
+  /** Viewport px² the densities were normalized by. 0 = measurement failed. */
+  viewportArea: number;
 }
 
 function roundMetric(value: number): number {
@@ -590,6 +658,7 @@ async function collectAestheticDensityMetrics(
       ),
       textDensity: Number((textChars / (viewportArea / 10_000)).toFixed(4)),
       whitespaceRatio: Number(whitespaceRatio.toFixed(4)),
+      viewportArea,
     };
   });
 }
@@ -809,6 +878,8 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **blue colors (banned):** ${finding.blueColors.length ? finding.blueColors.join(", ") : "none"}`,
     `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
+    `- **hover probe failures:** ${finding.hoverFailures.length ? finding.hoverFailures.join("; ") : "none"}`,
+    `- **density probe failures:** ${finding.densityProbeFailures.length ? finding.densityProbeFailures.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **floating chat overlay clearance:** ${finding.overlayClearanceIssues.length ? finding.overlayClearanceIssues.join("; ") : "clear"}`,
     `- **readable content chars:** ${finding.readableChars}`,
@@ -816,6 +887,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **text density:** ${roundMetric(finding.textDensity)} chars / 10K px`,
     `- **whitespace ratio:** ${roundMetric(finding.whitespaceRatio)}`,
     `- **minimalism budget:** ${finding.minimalismBudget ? (finding.minimalismBudgetViolations.length ? finding.minimalismBudgetViolations.join("; ") : "pass") : "n/a"}`,
+    `- **minimalism ratchet (#9950):** ${finding.minimalismRatchetViolations.length ? finding.minimalismRatchetViolations.join("; ") : "pass"}`,
     `- **screenshot quality issues:** ${finding.qualityIssues.length ? finding.qualityIssues.join("; ") : "none"}`,
     "",
     "## Notes",
@@ -988,9 +1060,14 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           : [];
 
         const blueColors = await collectBlueColors(page).catch(() => []);
-        const hoverViolations = await collectHoverViolations(page).catch(
-          () => [],
-        );
+        const { violations: hoverViolations, hoverFailures } =
+          await collectHoverViolations(page).catch((error: unknown) => ({
+            violations: [],
+            // The whole hover scan failing is itself a finding, not a silent pass.
+            hoverFailures: [
+              `hover scan failed: ${(error instanceof Error ? error.message : String(error)).split("\n")[0].slice(0, 120)}`,
+            ],
+          }));
         const borderRadiusViolations = await collectBorderRadiusViolations(
           page,
         ).catch(() => []);
@@ -999,18 +1076,31 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               () => [],
             )
           : [];
+        // A crashed density probe must NOT read as zero-density "perfectly
+        // minimal" — that silently satisfied both the budget and the ratchet.
+        // Record the failure (surfaced like hoverFailures) and skip scoring the
+        // placeholder zeros so the probe crash can never manufacture a pass.
+        const densityProbeFailures: string[] = [];
         const densityMetrics = await collectAestheticDensityMetrics(page).catch(
-          () => ({
-            borderDividerCount: 0,
-            borderDividerDensity: 0,
-            textDensity: 0,
-            whitespaceRatio: 1,
-          }),
+          (error: unknown) => {
+            densityProbeFailures.push(
+              `density probe failed: ${(error instanceof Error ? error.message : String(error)).split("\n")[0].slice(0, 120)}`,
+            );
+            return {
+              borderDividerCount: 0,
+              borderDividerDensity: 0,
+              textDensity: 0,
+              whitespaceRatio: 1,
+              viewportArea: 0,
+            };
+          },
         );
+        const densityProbeOk = densityProbeFailures.length === 0;
         const minimalismBudget = systemMetricBudgetFor(view.slug, vp.name);
-        const minimalismBudgetViolations = minimalismBudget
-          ? evaluateAestheticMetricBudget(densityMetrics, minimalismBudget)
-          : [];
+        const minimalismBudgetViolations =
+          minimalismBudget && densityProbeOk
+            ? evaluateAestheticMetricBudget(densityMetrics, minimalismBudget)
+            : [];
 
         const base = {
           slug: view.slug,
@@ -1020,19 +1110,34 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           consoleErrors,
           blueColors,
           hoverViolations,
+          hoverFailures,
           borderRadiusViolations,
           overlayPresent,
           overlayClearanceIssues,
           readableChars,
           ...densityMetrics,
+          densityProbeFailures,
           minimalismBudget,
           minimalismBudgetViolations,
           quality,
           qualityIssues,
         };
+        // Her-minimal ratchet (#9950): blocks a NEW density breach (no baseline
+        // entry) or a baselined breach that regressed past tolerance. Only when
+        // the probe produced real metrics — a crashed probe's zero-density
+        // placeholder must not manufacture a ratchet pass.
+        const minimalismRatchetViolations = densityProbeOk
+          ? evaluateMinimalismRatchet(
+              base,
+              MINIMALISM_BASELINE.views[
+                minimalismBaselineKey(view.slug, vp.name)
+              ],
+            )
+          : [];
         const finding: ViewFinding = {
           ...base,
-          verdict: computeVerdict(base),
+          minimalismRatchetViolations,
+          verdict: computeVerdict({ ...base, minimalismRatchetViolations }),
         };
         findings.push(finding);
 
@@ -1064,12 +1169,13 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `<tr><td>${f.slug}</td><td>${f.viewport}</td><td>${f.verdict}</td>` +
           `<td>${f.consoleErrors.length}</td><td>${f.blueColors.length}</td>` +
           `<td>${f.borderRadiusViolations.length}</td>` +
-          `<td>${f.hoverViolations.length}</td><td>${f.overlayPresent ? "✓" : "✗"}</td>` +
+          `<td>${f.hoverViolations.length}${f.hoverFailures.length ? ` (+${f.hoverFailures.length} probe-failed)` : ""}</td><td>${f.overlayPresent ? "✓" : "✗"}</td>` +
           `<td>${f.overlayClearanceIssues.length}</td>` +
           `<td>${roundMetric(f.borderDividerDensity)}</td>` +
           `<td>${roundMetric(f.textDensity)}</td>` +
           `<td>${roundMetric(f.whitespaceRatio)}</td>` +
-          `<td>${f.minimalismBudgetViolations.length ? f.minimalismBudgetViolations.join("<br>") : "✓"}</td></tr>`,
+          `<td>${f.minimalismBudgetViolations.length ? f.minimalismBudgetViolations.join("<br>") : "✓"}</td>` +
+          `<td>${f.minimalismRatchetViolations.length ? f.minimalismRatchetViolations.join("<br>") : "✓"}</td></tr>`,
       )
       .join("\n");
     await writeFile(
@@ -1078,20 +1184,33 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `<table border="1" cellpadding="6"><tr><th>view</th><th>viewport</th>` +
         `<th>verdict</th><th>console</th><th>blue</th><th>radius</th><th>hover</th>` +
         `<th>overlay</th><th>overlay clearance</th><th>border/divider density</th>` +
-        `<th>text density</th><th>whitespace ratio</th><th>minimalism budget</th></tr>` +
+        `<th>text density</th><th>whitespace ratio</th><th>minimalism budget</th>` +
+        `<th>minimalism ratchet</th></tr>` +
         `${rows}</table>`,
       "utf8",
     );
 
-    // Gate (#9304). Always log the verdict tally; in strict mode, fail the run
-    // on any `broken` view not covered by the debt allowlist.
+    // Gate (#9304, #10710). Always log the verdict tally; the strict fail lives
+    // in the pure `evaluateStrictGate` (unit-tested in test/audit): it fails on
+    // any undebted `broken` view when `strict` is on, and — with
+    // `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` — on any undebted `needs-work` too.
     const broken = findings.filter((f) => f.verdict === "broken");
     const needsWork = findings.filter((f) => f.verdict === "needs-work");
     const minimalismBudgetFailures = findings.filter(
       (f) => f.minimalismBudgetViolations.length > 0,
     );
-    const undebtedBroken = broken.filter(
-      (f) => AESTHETIC_VERDICT_DEBT[`${f.slug}-${f.viewport}`] !== "broken",
+    const gate = evaluateStrictGate(findings, AESTHETIC_VERDICT_DEBT, {
+      strict: AUDIT_STRICT,
+      needsWorkStrict: AUDIT_STRICT_NEEDS_WORK,
+    });
+    const minimalismRatchetFailures = findings.filter(
+      (f) => f.minimalismRatchetViolations.length > 0,
+    );
+    const hoverProbeFailures = findings.filter(
+      (f) => f.hoverFailures.length > 0,
+    );
+    const densityProbeFailures = findings.filter(
+      (f) => f.densityProbeFailures.length > 0,
     );
     console.log(
       `[aesthetic-audit] ${findings.length} findings — ` +
@@ -1099,8 +1218,24 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
         `good=${findings.filter((f) => f.verdict === "good").length} ` +
         `minimalism-budget-failures=${minimalismBudgetFailures.length} ` +
-        `(strict=${AUDIT_STRICT}, undebted-broken=${undebtedBroken.length})`,
+        `minimalism-ratchet-failures=${minimalismRatchetFailures.length} ` +
+        `hover-probe-failures=${hoverProbeFailures.length} ` +
+        `density-probe-failures=${densityProbeFailures.length} ` +
+        `(strict=${AUDIT_STRICT}, needs-work-strict=${AUDIT_STRICT_NEEDS_WORK}, ` +
+        `undebted-broken=${gate.undebtedBroken.length}, ` +
+        `undebted-needs-work=${gate.undebtedNeedsWork.length})`,
     );
+    if (hoverProbeFailures.length > 0) {
+      // Surfaced, not gated: a hover probe that cannot drive a button is a
+      // harness reliability signal, recorded per view in report.json and the
+      // manual-review stubs.
+      const detail = hoverProbeFailures
+        .map(
+          (f) => `  ${f.slug} @ ${f.viewport}: ${f.hoverFailures.join("; ")}`,
+        )
+        .join("\n");
+      console.log(`[aesthetic-audit] hover probe failures:\n${detail}`);
+    }
     if (minimalismBudgetFailures.length > 0) {
       const detail = minimalismBudgetFailures
         .map(
@@ -1118,22 +1253,28 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `from a fresh clean baseline.`,
       );
     }
-    if (AUDIT_STRICT && undebtedBroken.length > 0) {
-      const detail = undebtedBroken
+    // Her-minimal ratchet gate (#9950) — unconditional, like the system-view
+    // budget above: a NEW divider-density breach, or a baselined breach that
+    // regressed past its recorded metrics + tolerance, fails the run.
+    if (minimalismRatchetFailures.length > 0) {
+      const detail = minimalismRatchetFailures
         .map(
           (f) =>
-            `  ${f.slug} @ ${f.viewport}: ${
-              [...f.consoleErrors, ...f.qualityIssues].join("; ") ||
-              `readableChars=${f.readableChars}`
-            }`,
+            `  ${f.slug} @ ${f.viewport}: ${f.minimalismRatchetViolations.join("; ")}`,
         )
         .join("\n");
       throw new Error(
-        `[aesthetic-audit] STRICT gate failed: ${undebtedBroken.length} ` +
-          `non-exempt 'broken' view(s) not in AESTHETIC_VERDICT_DEBT:\n${detail}\n` +
-          `Fix the view or, if genuinely accepted debt, add the slug-viewport key ` +
-          `to AESTHETIC_VERDICT_DEBT (and shrink it over time).`,
+        `[aesthetic-audit] Her-minimal ratchet failed for ` +
+          `${minimalismRatchetFailures.length} view(s):\n${detail}\n` +
+          `Remove redundant borders/dividers (or de-cramp the layout) so the ` +
+          `view drops back under its baseline. Only after an intentional, ` +
+          `reviewed design change, refresh the committed baseline from this ` +
+          `run's report.json:\n` +
+          `  bun run --cwd packages/app audit:app:minimalism:update`,
       );
+    }
+    if (gate.failed) {
+      throw new Error(gate.message);
     }
   });
 });

@@ -1,7 +1,13 @@
-import { existsSync } from "node:fs";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { BENCHMARK_MATRIX_ARTIFACT_SCHEMA } from "./benchmark-matrix-artifact.js";
@@ -10,17 +16,17 @@ import {
   ELIZA_ONE_BENCHMARK_TIERS,
   normalizeElizaOneBenchmarkTier,
 } from "./eliza1-benchmark-recipe.js";
+import { ELIZA1_BUNDLE_STAGE_SCHEMA } from "./eliza1-bundle-stager.js";
 import { EVAL_COMPARISON_ARTIFACT_SCHEMA } from "./eval-comparison-artifact.js";
 import { escapeHtml, escapeScriptJson } from "./html-escape";
-import { ELIZA1_BUNDLE_STAGE_SCHEMA } from "./eliza1-bundle-stager.js";
 import { HUGGINGFACE_DATASET_INGEST_SCHEMA } from "./huggingface-dataset-ingest.js";
-import { TRAINING_READINESS_REPORT_SCHEMA } from "./training-readiness-report.js";
 import { trainingStateRoot } from "./training-config.js";
+import type { TrainingRunRecord } from "./training-orchestrator.js";
+import { TRAINING_READINESS_REPORT_SCHEMA } from "./training-readiness-report.js";
 import {
   TRAJECTORY_EXPORT_BUNDLE_SCHEMA,
   type TrajectoryExportBundleManifest,
 } from "./trajectory-export-bundle.js";
-import type { TrainingRunRecord } from "./training-orchestrator.js";
 
 export const TRAINING_ANALYSIS_INDEX_SCHEMA = "eliza_training_analysis_index";
 export const TRAINING_ANALYSIS_INDEX_VERSION = 1;
@@ -372,7 +378,10 @@ async function summarizeBundle(
     path,
     payload.paths?.viewerHtmlPath,
   );
-  const rawJsonlPath = resolveManifestFilePath(path, payload.paths?.rawJsonlPath);
+  const rawJsonlPath = resolveManifestFilePath(
+    path,
+    payload.paths?.rawJsonlPath,
+  );
   const sanitizedJsonlPath = resolveManifestFilePath(
     path,
     payload.paths?.sanitizedJsonlPath,
@@ -388,9 +397,7 @@ async function summarizeBundle(
     sanitizedJsonlPath,
     summarizeBundleSample,
   );
-  const llmCallPreviews = await readBundleLlmCallPreviews(
-    sanitizedJsonlPath,
-  );
+  const llmCallPreviews = await readBundleLlmCallPreviews(sanitizedJsonlPath);
   return {
     id: artifactId("trajectory_bundle", path),
     kind: "trajectory_bundle",
@@ -511,8 +518,8 @@ async function summarizeTrajectoryDataset(
   const outputDir = resolveManifestPath(path, payload.outputDir);
   const runDir = resolveManifestPath(path, payload.runDir);
   const feedSamplePreviews =
-    (payload.schema === "feed_training_trajectory_export" ||
-      payload.schema === "feed_parallel_generation")
+    payload.schema === "feed_training_trajectory_export" ||
+    payload.schema === "feed_parallel_generation"
       ? await readJsonlSamplePreviews(
           exportPath ?? jsonlPath,
           summarizeFeedSample,
@@ -524,10 +531,7 @@ async function summarizeTrajectoryDataset(
       : [];
   const scenarioNativeSamplePreviews =
     payload.schema === "eliza_scenario_native_export"
-      ? await readJsonlSamplePreviews(
-          jsonlPath,
-          summarizeScenarioNativeSample,
-        )
+      ? await readJsonlSamplePreviews(jsonlPath, summarizeScenarioNativeSample)
       : [];
   return {
     id: artifactId("trajectory_dataset", path),
@@ -806,7 +810,10 @@ function summarizeScenarioRun(
   const runDir =
     resolveManifestFilePath(path, payload.runDir) ??
     (path.endsWith("matrix.json") ? dirname(path) : undefined);
-  const nativeJsonlPath = resolveManifestFilePath(path, payload.nativeJsonlPath);
+  const nativeJsonlPath = resolveManifestFilePath(
+    path,
+    payload.nativeJsonlPath,
+  );
   const nativeManifestPath = resolveManifestFilePath(
     path,
     payload.nativeManifestPath,
@@ -1324,8 +1331,12 @@ function summarizeEvalComparisonSamples(payload: JsonRecord): JsonRecord[] {
     .slice(0, 25)
     .map((row) => ({
       prompt:
-        firstStringValue(row, ["prompt", "input", "userPrompt", "user_prompt"]) ??
-        row.messages,
+        firstStringValue(row, [
+          "prompt",
+          "input",
+          "userPrompt",
+          "user_prompt",
+        ]) ?? row.messages,
       expected: row.expected ?? row.expectedOutput ?? row.expected_output,
       baseOutput:
         row.baseOutput ??
@@ -1563,7 +1574,8 @@ function summarizeModel(
     summary: {
       relativePath: relativePath(path, roots),
       schema: payload.schema,
-      model: payload.model_name ?? payload.modelId ?? payload.model ?? payload.name,
+      model:
+        payload.model_name ?? payload.modelId ?? payload.model ?? payload.name,
       variant: payload.variant,
       outputPath: payload.output_path ?? payload.outputPath,
       baseModel: payload.base_model ?? payload.baseModel,
@@ -1698,7 +1710,9 @@ function countSamplesFor(
     );
 }
 
-function benchmarkPayloadRows(artifact: TrainingAnalysisArtifact): JsonRecord[] {
+function benchmarkPayloadRows(
+  artifact: TrainingAnalysisArtifact,
+): JsonRecord[] {
   const payload = isRecord(artifact.payload) ? artifact.payload : {};
   return Array.isArray(payload.rows)
     ? payload.rows
@@ -1820,7 +1834,9 @@ function buildAnalysisCoverage(
     readableSamples.tests +
     readableSamples.trainingJsonl;
 
-  const evalArtifacts = artifacts.filter((artifact) => artifact.kind === "eval");
+  const evalArtifacts = artifacts.filter(
+    (artifact) => artifact.kind === "eval",
+  );
   const evalComparisons = evalArtifacts.filter(
     (artifact) => schemaOf(artifact) === EVAL_COMPARISON_ARTIFACT_SCHEMA,
   );
@@ -1908,7 +1924,9 @@ function buildAnalysisCoverage(
     };
   });
 
-  const modelArtifacts = artifacts.filter((artifact) => artifact.kind === "model");
+  const modelArtifacts = artifacts.filter(
+    (artifact) => artifact.kind === "model",
+  );
   return {
     dataSources: {
       huggingFace: artifacts.filter(isHuggingFace).length,
@@ -1930,7 +1948,9 @@ function buildAnalysisCoverage(
       scoredComparisons: scoredBenchmarkComparisons.length,
       caseSamples: benchmarkRows.reduce((count, row) => {
         const raw = isRecord(row.raw) ? row.raw : {};
-        return count + (Array.isArray(raw.caseSamples) ? raw.caseSamples.length : 0);
+        return (
+          count + (Array.isArray(raw.caseSamples) ? raw.caseSamples.length : 0)
+        );
       }, 0),
       tiers,
       allEliza1TiersCovered: tierCoverage.every(
@@ -1956,7 +1976,8 @@ function buildAnalysisCoverage(
         )
         .map((summary) => ({
           model: stringValue(summary.model) ?? null,
-          tier: normalizeElizaOneBenchmarkTier(stringValue(summary.tier)) ?? null,
+          tier:
+            normalizeElizaOneBenchmarkTier(stringValue(summary.tier)) ?? null,
           variant: stringValue(summary.variant) ?? null,
           baseModel: stringValue(summary.baseModel) ?? null,
           outputPath: stringValue(summary.outputPath) ?? null,
@@ -1969,14 +1990,15 @@ function buildAnalysisCoverage(
   };
 }
 
-
-
 function pathLink(path: unknown): string | undefined {
   const value = stringValue(path);
   return value ? pathToFileURL(value).href : undefined;
 }
 
-function sourceLink(label: string, path: unknown): {
+function sourceLink(
+  label: string,
+  path: unknown,
+): {
   label: string;
   path: string;
   href: string | undefined;
@@ -2011,22 +2033,28 @@ function enrichArtifactLinks(
     sourceLink("task-dataset-summary", summary.taskDatasetSummaryPath),
     sourceLink("task-dataset-dir", summary.taskDatasetDir),
     sourceLink("output", summary.outputDir),
-    sourceLink("trajectory-dir", summary.trajectoryDir ?? payloadSource.trajectoryDir),
+    sourceLink(
+      "trajectory-dir",
+      summary.trajectoryDir ?? payloadSource.trajectoryDir,
+    ),
     ...(Array.isArray(summary.taskFiles) ? summary.taskFiles : [])
       .map((file) => (isRecord(file) ? file : null))
       .filter((file): file is JsonRecord => file !== null)
-      .map((file) => sourceLink(`task-${stringValue(file.task) ?? "dataset"}`, file.path)),
+      .map((file) =>
+        sourceLink(`task-${stringValue(file.task) ?? "dataset"}`, file.path),
+      ),
     ...(Array.isArray(summary.hfFiles) ? summary.hfFiles : [])
       .map((file) => (isRecord(file) ? file : null))
       .filter((file): file is JsonRecord => file !== null)
-      .map((file) => sourceLink(`hf-${stringValue(file.hfPath) ?? "file"}`, file.localPath)),
-    ...benchmarkResults
-      .map((result) =>
-        sourceLink(
-          `benchmark-trajectory-${stringValue(result.caseId) ?? "case"}`,
-          result.trajectoryPath,
-        ),
+      .map((file) =>
+        sourceLink(`hf-${stringValue(file.hfPath) ?? "file"}`, file.localPath),
       ),
+    ...benchmarkResults.map((result) =>
+      sourceLink(
+        `benchmark-trajectory-${stringValue(result.caseId) ?? "case"}`,
+        result.trajectoryPath,
+      ),
+    ),
   ].filter((link): link is NonNullable<typeof link> => link !== null);
   const uniqueLinks = Array.from(
     new Map(links.map((link) => [`${link.label}:${link.path}`, link])).values(),
@@ -2827,8 +2855,11 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
     function hrefForPath(value) {
       const path = typeof value === "string" ? value.trim() : "";
       if (!path) return null;
-      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return path;
-      if (path.startsWith("/")) return "file://" + encodeURI(path);
+      if (path.indexOf("://") !== -1) return path;
+      const normalized = path.split(String.fromCharCode(92)).join("/");
+      if (normalized.charAt(0) === "/") return "file://" + encodeURI(normalized);
+      if (normalized.length > 1 && normalized.charAt(1) === ":")
+        return "file:///" + encodeURI(normalized);
       return null;
     }
     function appendPathCell(row, value) {

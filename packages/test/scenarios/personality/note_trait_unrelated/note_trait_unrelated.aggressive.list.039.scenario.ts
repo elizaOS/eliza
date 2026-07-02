@@ -50,6 +50,14 @@ export default scenario({
       ],
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:note_trait_unrelated_test",
+      rubric:
+        "Persona check (note_trait_unrelated, aggressive user): on turn 1 the user mentions the 'first_name_only' preference in passing, inside an unrelated request. The assistant must respect that preference in its replies on the later unrelated turn(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 without being reminded. Forbidden in the assistant's checked replies: mr.; sir; ma'am. Score 1.0 only if every checked reply respects the 'first_name_only' preference; score 0.0 if any checked reply violates it.",
+    },
+  ],
   turns: [
     // trait mention embedded in unrelated request
     {

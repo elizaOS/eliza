@@ -4,6 +4,8 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
+  RouteRequest,
+  RouteResponse,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor";
@@ -118,6 +120,201 @@ describe("scenario executor wait turns", () => {
   });
 });
 
+describe("scenario executor api turn captures", () => {
+  it("captures API response fields for later path and body templates", async () => {
+    const runtime = createRuntime([], {
+      routes: [
+        {
+          type: "POST",
+          path: "/mint",
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
+            res
+              .status(200)
+              .json({ scope: { id: "scope-123" }, token: "token-abc" });
+          },
+        },
+        {
+          type: "POST",
+          path: "/redeem/:scopeId",
+          handler: async (req: RouteRequest, res: RouteResponse) => {
+            const body = req.body ?? {};
+            res.status(200).json({
+              ok: true,
+              scopeId: req.params?.scopeId,
+              token: body.token,
+            });
+          },
+        },
+      ],
+    });
+
+    const report = await runScenario(
+      {
+        id: "api-captures",
+        title: "API captures",
+        domain: "executor",
+        turns: [
+          {
+            kind: "api",
+            name: "mint",
+            method: "POST",
+            path: "/mint",
+            expectedStatus: 200,
+            captures: {
+              scopeId: "scope.id",
+              token: "token",
+            },
+          },
+          {
+            kind: "api",
+            name: "redeem",
+            method: "POST",
+            path: "/redeem/{{capture:scopeId}}",
+            body: { token: "{{capture:token}}" },
+            expectedStatus: 200,
+            assertResponse(status, body) {
+              const record =
+                body && typeof body === "object"
+                  ? (body as Record<string, unknown>)
+                  : {};
+              if (status !== 200) return `expected status 200, saw ${status}`;
+              if (record.scopeId !== "scope-123") {
+                return `expected captured scope id, saw ${String(record.scopeId)}`;
+              }
+              if (record.token !== "token-abc") {
+                return `expected captured token, saw ${String(record.token)}`;
+              }
+              return undefined;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.turns.map((turn) => turn.failedAssertions)).toEqual([[], []]);
+    expect(report.turns[0]?.responseText).toContain("[REDACTED]");
+    expect(report.turns[0]?.responseText).not.toContain("token-abc");
+    expect(report.turns[1]?.responseText).toContain("[REDACTED]");
+    expect(report.turns[1]?.responseText).not.toContain("token-abc");
+  });
+
+  it("redacts configured API response fields only in persisted turn reports", async () => {
+    const runtime = createRuntime([], {
+      routes: [
+        {
+          type: "GET",
+          path: "/credential",
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
+            res.status(200).json({
+              key: "OPENAI_API_KEY",
+              value: "sk-real-looking-but-test-only",
+              retrievedAt: 123,
+            });
+          },
+        },
+      ],
+    });
+
+    const report = await runScenario(
+      {
+        id: "api-redaction",
+        title: "API redaction",
+        domain: "executor",
+        turns: [
+          {
+            kind: "api",
+            name: "credential",
+            method: "GET",
+            path: "/credential",
+            expectedStatus: 200,
+            redactResponseFields: ["value"],
+            assertResponse(status, body) {
+              const record =
+                body && typeof body === "object"
+                  ? (body as Record<string, unknown>)
+                  : {};
+              if (status !== 200) return `expected status 200, saw ${status}`;
+              return record.value === "sk-real-looking-but-test-only"
+                ? undefined
+                : "assertion did not receive raw credential value";
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.turns[0]?.responseText).toContain("[REDACTED]");
+    expect(report.turns[0]?.responseText).not.toContain(
+      "sk-real-looking-but-test-only",
+    );
+  });
+
+  it("exposes the scenario loopback base URL to final checks", async () => {
+    const runtime = createRuntime([], {
+      routes: [
+        {
+          type: "GET",
+          path: "/healthz",
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
+            res.status(200).json({ ok: true });
+          },
+        },
+      ],
+    });
+
+    const report = await runScenario(
+      {
+        id: "api-base-url-context",
+        title: "API base URL context",
+        domain: "executor",
+        turns: [{ kind: "wait", name: "settle", durationMs: 0 }],
+        finalChecks: [
+          {
+            type: "custom",
+            name: "apiBaseUrl can reach loopback route",
+            async predicate(ctx) {
+              if (typeof ctx.apiBaseUrl !== "string") {
+                return "expected apiBaseUrl in scenario context";
+              }
+              const response = await fetch(`${ctx.apiBaseUrl}/healthz`);
+              const body = (await response.json()) as { ok?: unknown };
+              return response.status === 200 && body.ok === true
+                ? undefined
+                : `expected healthy loopback, saw ${response.status}`;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.finalChecks[0]).toMatchObject({
+      label: "apiBaseUrl can reach loopback route",
+      status: "passed",
+    });
+  });
+});
+
 describe("scenario executor action turns", () => {
   it("executes a registered action turn with real options and captures its trace", async () => {
     const validate = vi.fn(async () => true);
@@ -218,6 +415,64 @@ describe("scenario executor action turns", () => {
       ],
       failedAssertions: [],
     });
+  });
+
+  it("redacts captured action data when actions suppress result clipboard state", async () => {
+    const runtime = createRuntime([
+      {
+        name: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+        description: "test sensitive action",
+        suppressActionResultClipboard: true,
+        validate: vi.fn(async () => true),
+        handler: vi.fn(async () => ({
+          success: true,
+          text: "declared",
+          data: {
+            actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+            scopedToken: "secret-token",
+            artifacts: [
+              {
+                kind: "credential-proof",
+                detail: "secret-token",
+              },
+            ],
+          },
+          values: {
+            scopedToken: "secret-token-values",
+          },
+        })),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "action-redaction",
+        title: "Action redaction",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "declare",
+            actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.actionsCalled[0]?.result?.data).toEqual({
+      actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+      suppressed: true,
+      reason: "sensitive_action_result",
+    });
+    expect(JSON.stringify(report)).not.toContain("secret-token");
+    expect(JSON.stringify(report)).not.toContain("secret-token-values");
   });
 
   it("fails action turns that do not name an action", async () => {

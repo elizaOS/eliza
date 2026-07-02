@@ -74,14 +74,12 @@ Create a new Cloud app. The response includes a one-time app API key for server-
     "allowed_origins": ["https://placeholder.invalid"],
     "created_at": "2026-05-05T10:30:00Z"
   },
-  "apiKey": {
-    "id": "key_abc123"
-  }
+  "apiKey": "eliza_abc123..."
 }
 ```
 
 <Warning>
-  Store the returned API key securely. Use user bearer tokens, not this admin key, for user-facing app-scoped chat.
+  Store the returned one-time plaintext API key immediately. Use user bearer tokens, not this admin key, for user-facing app-scoped chat.
 </Warning>
 
 ---

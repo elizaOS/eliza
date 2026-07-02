@@ -4,6 +4,7 @@ import {
   ImagePlus,
   Loader2,
   Pipette,
+  Redo2,
   Sparkles,
   Undo2,
 } from "lucide-react";
@@ -75,7 +76,9 @@ export function BackgroundSettingsControls({
     backgroundConfig,
     setBackgroundConfig,
     undoBackgroundConfig,
+    redoBackgroundConfig,
     canUndoBackground,
+    canRedoBackground,
   } = useBackgroundConfig();
   const { cloudConnected, cloudAuthRejected } = useAppSelectorShallow((s) => ({
     cloudConnected: s.elizaCloudConnected,
@@ -118,7 +121,19 @@ export function BackgroundSettingsControls({
       event.target.value = "";
       if (!file) return;
       try {
-        const imageUrl = await fileToBackgroundDataUrl(file);
+        const dataUrl = await fileToBackgroundDataUrl(file);
+        // Re-host into the media store so the persisted config (and the undo
+        // history) carries a tiny /api/media/<hash> URL instead of a multi-MB
+        // data URL that silently blows the localStorage quota. Offline or
+        // server-less, fall back to the data URL — the wallpaper still works,
+        // it just persists fat.
+        let imageUrl = dataUrl;
+        try {
+          const { url } = await client.uploadBackgroundImage(dataUrl);
+          if (url) imageUrl = url;
+        } catch {
+          // Keep the data-URL fallback.
+        }
         setBackgroundConfig({ mode: "image", color: activeColor, imageUrl });
         setError(null);
       } catch (err) {
@@ -172,6 +187,14 @@ export function BackgroundSettingsControls({
     group: "background-controls",
     description: "Revert to the previous background",
     onActivate: () => undoBackgroundConfig(),
+  });
+  const redoButton = useAgentElement<HTMLButtonElement>({
+    id: "background-redo",
+    role: "button",
+    label: "Redo background change",
+    group: "background-controls",
+    description: "Restore the background change that was undone",
+    onActivate: () => redoBackgroundConfig(),
   });
 
   return (
@@ -255,18 +278,33 @@ export function BackgroundSettingsControls({
             <Sparkles className="h-5 w-5" aria-hidden />
           </button>
         ) : null}
-        {canUndoBackground ? (
-          <button
-            ref={undoButton.ref}
-            type="button"
-            onClick={() => undoBackgroundConfig()}
-            title="Undo"
-            aria-label="Undo background change"
-            className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent"
-            {...undoButton.agentProps}
-          >
-            <Undo2 className="h-5 w-5" aria-hidden />
-          </button>
+        {canUndoBackground || canRedoBackground ? (
+          <>
+            <button
+              ref={undoButton.ref}
+              type="button"
+              onClick={() => undoBackgroundConfig()}
+              disabled={!canUndoBackground}
+              title="Undo"
+              aria-label="Undo background change"
+              className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
+              {...undoButton.agentProps}
+            >
+              <Undo2 className="h-5 w-5" aria-hidden />
+            </button>
+            <button
+              ref={redoButton.ref}
+              type="button"
+              onClick={() => redoBackgroundConfig()}
+              disabled={!canRedoBackground}
+              title="Redo"
+              aria-label="Redo background change"
+              className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
+              {...redoButton.agentProps}
+            >
+              <Redo2 className="h-5 w-5" aria-hidden />
+            </button>
+          </>
         ) : null}
       </div>
 

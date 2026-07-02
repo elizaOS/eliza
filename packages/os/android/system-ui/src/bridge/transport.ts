@@ -54,7 +54,9 @@ function bridgeTransportFromNative(
       };
     },
     send: async <TIn, TOut>(channel: string, payload: TIn) => {
-      return parseNativeJson<TOut>(native.send(channel, JSON.stringify(payload)));
+      return parseNativeJson<TOut>(
+        native.send(channel, JSON.stringify(payload)),
+      );
     },
   };
 }

@@ -61,6 +61,30 @@ describe("TASKS:create", () => {
     ).toBe(false);
   });
 
+  it("keeps a coding request phrased as a to-do eligible for TASKS (#11028)", async () => {
+    // "add a task to build ..." tripped the personal-lifeops keyword gate and
+    // suppressed the coding orchestrator even for an unambiguous build request.
+    // The gate now defers to the structural task classifier for build/deploy/view
+    // signals, so a landing-page build phrased as a to-do stays eligible.
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ text: "add a task to build me a landing page" }),
+        state,
+      ),
+    ).toBe(true);
+  });
+
+  it("still routes a bare personal to-do off TASKS (no regression)", async () => {
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ text: "add a task to buy milk" }),
+        state,
+      ),
+    ).toBe(false);
+  });
+
   it("supports nyx options.parameters and returns data.agents[].sessionId plus id", async () => {
     const svc = serviceMock();
     // Must be a real directory: resolveSpawnWorkdir drops an explicit workdir

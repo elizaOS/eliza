@@ -405,7 +405,30 @@ describe("view management actions", () => {
 		}
 	});
 
-	it("requires confirmation before deleting a view and unloads the plugin after yes", async () => {
+	it("requires a structured target before deleting a view", async () => {
+		const repo = createRepoFixture();
+		try {
+			const { runtime } = createRuntime();
+			const callback = vi.fn();
+
+			const result = await runViewsDelete({
+				runtime: runtime as never,
+				message: message("delete the remote ledger view") as never,
+				views: [view()],
+				callback,
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(false);
+			expect(result.text).toContain("structured view");
+			expect(runtime.createTask).not.toHaveBeenCalled();
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+		} finally {
+			repo.cleanup();
+		}
+	});
+
+	it("requires structured confirmation before deleting a view and unloads the plugin after confirm=true", async () => {
 		const repo = createRepoFixture();
 		try {
 			const { runtime, tasks } = createRuntime();
@@ -440,6 +463,20 @@ describe("view management actions", () => {
 			);
 			expect(globalThis.fetch).not.toHaveBeenCalled();
 
+			const textOnlyReply = await runViewsDelete({
+				runtime: runtime as never,
+				message: message("yes") as never,
+				views: [view()],
+				callback,
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(textOnlyReply.success).toBe(false);
+			expect(textOnlyReply.text).toContain("confirm=true");
+			expect(runtime.deleteTask).not.toHaveBeenCalled();
+			expect(tasks).toHaveLength(1);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+
 			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 				ok: true,
 				status: 200,
@@ -452,7 +489,8 @@ describe("view management actions", () => {
 
 			const second = await runViewsDelete({
 				runtime: runtime as never,
-				message: message("yes") as never,
+				message: message("sí") as never,
+				options: { confirm: true },
 				views: [view()],
 				callback,
 				repoRoot: repo.repoRoot,
@@ -477,6 +515,50 @@ describe("view management actions", () => {
 		} finally {
 			repo.cleanup();
 		}
+	});
+
+	it("owner-gates the follow-up delete confirmation turn for a non-owner (#10471)", async () => {
+		// A pending delete-confirm task exists in this room. A non-owner replying
+		// with a structured confirm must NOT be able to confirm someone else's
+		// destructive delete — validate must funnel the follow-up turn through the
+		// owner gate, exactly like the first destructive turn.
+		const { runtime } = createRuntime({
+			tasks: [
+				{
+					id: "task-1",
+					metadata: {
+						roomId: "room-1",
+						viewId: "remote-ledger",
+						viewLabel: "Remote Ledger",
+						pluginName: "@local/plugin-ledger",
+					},
+				},
+			],
+		});
+		const ownerCheck = vi.fn(async () => false);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: ownerCheck,
+		});
+
+		await expect(
+			action.validate?.(runtime as never, message("yes") as never, undefined, {
+				confirm: true,
+			}),
+		).resolves.toBe(false);
+		// The gate was actually reached (not rejected for some earlier reason).
+		expect(ownerCheck).toHaveBeenCalledTimes(1);
+
+		// A structured cancel from a non-owner is gated the same way.
+		await expect(
+			action.validate?.(runtime as never, message("no") as never, undefined, {
+				confirm: false,
+			}),
+		).resolves.toBe(false);
+		expect(ownerCheck).toHaveBeenCalledTimes(2);
 	});
 
 	it("reports failure (not 'Deleted') when the plugin uninstall fails", async () => {
@@ -504,7 +586,8 @@ describe("view management actions", () => {
 
 			const second = await runViewsDelete({
 				runtime: runtime as never,
-				message: message("yes") as never,
+				message: message("confirmo") as never,
+				options: { confirm: true },
 				views: [view()],
 				callback,
 				repoRoot: repo.repoRoot,
@@ -1628,7 +1711,7 @@ describe("view management actions", () => {
 				undefined,
 				{
 					action: "delete",
-					confirm: "true",
+					confirm: true,
 					view: "remote-ledger",
 				},
 				callback,
@@ -1725,7 +1808,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("close all views") as never,
 			undefined,
-			{ action: "delete", mode: "delete", confirm: "yes" },
+			{ action: "delete", mode: "delete", confirm: true },
 			callback,
 		);
 
@@ -1770,7 +1853,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("close the calendar view") as never,
 			undefined,
-			{ action: "delete", mode: "delete", view: "calendar", confirm: "yes" },
+			{ action: "delete", mode: "delete", view: "calendar", confirm: true },
 			callback,
 		);
 

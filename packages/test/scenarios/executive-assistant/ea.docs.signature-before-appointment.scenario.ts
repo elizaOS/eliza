@@ -37,7 +37,11 @@ export default scenario({
         description: "signature reminder scheduling",
         includesAny: ["sign", "appointment", "clinic", "docs"],
       }),
-      responseIncludesAny: ["sign", "docs", "appointment", "before", "clinic"],
+      // De-echoed (#9310): the old keywords ("sign", "docs", "appointment",
+      // "before", "clinic") all appeared in the user's own turn text. The
+      // reply must now commit to the reminder behaviour in words the prompt
+      // never used.
+      responseIncludesAny: ["remind", "nudge", "track", "check in"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

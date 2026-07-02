@@ -1,21 +1,17 @@
 # Copyright Sierra
 
-import json
-import os
 from typing import Any
 
-FOLDER_PATH = os.path.dirname(__file__)
+from elizaos_tau_bench.data_assets import load_domain_data
 
 
 def load_data() -> dict[str, Any]:
-    with open(os.path.join(FOLDER_PATH, "orders.json")) as f:
-        order_data = json.load(f)
-    with open(os.path.join(FOLDER_PATH, "products.json")) as f:
-        product_data = json.load(f)
-    with open(os.path.join(FOLDER_PATH, "users.json")) as f:
-        user_data = json.load(f)
-    return {
-        "orders": order_data,
-        "products": product_data,
-        "users": user_data,
-    }
+    # This ``data`` PACKAGE shadows the sibling ``data.py`` MODULE (on import a
+    # package wins over a same-named module), so ``from ...retail.data import
+    # load_data`` resolves HERE — not to ``data.py``. The upstream original read
+    # ``orders.json`` / ``products.json`` / ``users.json`` from this directory,
+    # which only vendors ``products.json``, so every retail run died in env_init
+    # with FileNotFoundError on ``orders.json``. Delegate to the shared loader
+    # (compact fixtures for smoke, official upstream download otherwise) exactly
+    # like ``data.py``.
+    return load_domain_data("retail")

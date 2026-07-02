@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDeploymentsService } from "@/lib/services/app-deployments";
 import { appsService } from "@/lib/services/apps";
@@ -28,6 +29,9 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "App not found" }, 404);
     }
     if (appRow.organization_id !== user.organization_id) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 

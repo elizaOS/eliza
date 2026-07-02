@@ -23,8 +23,12 @@ import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
 } from "../../contracts/index.js";
-import { resolveContextWindow } from "../../lifeops/defaults.js";
+import {
+  resolveContextWindow,
+  resolveDefaultTimeZone,
+} from "../../lifeops/defaults.js";
 import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
+import { getZonedDateParts } from "../../lifeops/time.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -47,6 +51,18 @@ export interface ExtractedTaskParams {
   timesPerDay: number | null;
   priority: number | null;
   durationMinutes: number | null;
+  /**
+   * Local calendar date "YYYY-MM-DD" for a dated "once" task
+   * ("april 17" → "2026-04-17"). Resolved by the model against the
+   * current date supplied in the prompt.
+   */
+  dueDate: string | null;
+  /** Whole days from today for relative "once" dates ("tomorrow" → 1). */
+  dueInDays: number | null;
+  /** Weekday number (0=Sun … 6=Sat) for weekday-named "once" tasks ("Friday" → 5). */
+  dueWeekday: number | null;
+  /** Minutes from now for offset "once" tasks ("in 2 hours" → 120). */
+  dueInMinutes: number | null;
 }
 
 export interface ExtractedTaskCreatePlan extends ExtractedTaskParams {
@@ -63,10 +79,6 @@ const VALID_CADENCE_KINDS = new Set([
 ]);
 const VALID_REQUEST_KINDS = new Set(["alarm", "reminder"]);
 const VALID_CREATE_PLAN_MODES = new Set(["create", "respond"]);
-const ALARM_CONTEXT_RE = /\b(alarm|wake(?:-|\s)?up|wake me up)\b/i;
-const REMINDER_CONTEXT_RE =
-  /\b(remind(?: me)?|reminder|set (?:a )?reminder|create (?:a )?reminder|nudge me|ping me)\b/i;
-const REQUEST_KIND_VALIDATION_WINDOW = 6;
 const DEFAULT_CREATE_PLAN_RESPONSE =
   "Restate the reminder in one sentence with the task and timing.";
 
@@ -85,7 +97,34 @@ const EMPTY_TASK_CREATE_PLAN: ExtractedTaskCreatePlan = {
   timesPerDay: null,
   priority: null,
   durationMinutes: null,
+  dueDate: null,
+  dueInDays: null,
+  dueWeekday: null,
+  dueInMinutes: null,
 };
+
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+/**
+ * Human-readable current date/time in the owner's timezone, used to ground
+ * absolute-date extraction ("april 17", "next friday") in the prompt.
+ */
+function describeNowForPrompt(now: Date, timeZone: string): string {
+  const parts = getZonedDateParts(now, timeZone);
+  const weekday = new Date(
+    Date.UTC(parts.year, parts.month - 1, parts.day, 12),
+  ).getUTCDay();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${WEEKDAY_NAMES[weekday]} ${parts.year}-${pad(parts.month)}-${pad(parts.day)} ${pad(parts.hour)}:${pad(parts.minute)} (${timeZone})`;
+}
 
 function promptText(value: string): string {
   const trimmed = value.trim();
@@ -101,9 +140,11 @@ function parseStructuredRecord(raw: string): Record<string, unknown> | null {
 function buildExtractionPrompt(
   intent: string,
   recentConversation: string,
+  nowDescription: string,
 ): string {
   return [
     "Plan the next step for a LifeOps create_definition request.",
+    `Current date and time: ${nowDescription}`,
     "Use the full current user request plus recent conversation.",
     "The user may speak informally, formally, code-switched, or in another language.",
     "Do not strip acknowledgements, fillers, or language-footer text. Interpret the whole request in context.",
@@ -131,9 +172,15 @@ function buildExtractionPrompt(
     '- timesPerDay: number of times per day if mentioned (e.g., 4 for "four times a day")',
     "- priority: 1-5 (1=critical, 2=high, 3=medium, 4-5=low) based on urgency/importance language",
     "- durationMinutes: how long the activity takes if mentioned",
+    '- dueDate: for "once" tasks, the local calendar date "YYYY-MM-DD" when the user names a specific calendar date (e.g. "april 17" — infer the next future occurrence from the current date above)',
+    '- dueInDays: for "once" tasks, whole days from today when the user uses relative day words ("today" -> 0, "tomorrow" -> 1, "day after tomorrow" -> 2)',
+    '- dueWeekday: for "once" tasks, the weekday number (0=Sun, 1=Mon, ..., 6=Sat) when the user names a weekday ("Friday" -> 5, "next Tuesday" -> 2)',
+    '- dueInMinutes: for "once" tasks, minutes from now for offsets ("in 2 hours" -> 120, "in 45 minutes" -> 45)',
+    "  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four null for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.",
     "",
-    'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    'Example respond: {"mode":"respond","response":"What do you want the todo to be, and when should it happen?","requestKind":null,"title":null,"description":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
+    'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
+    'Example once ("remind me friday at 5pm to call mom"): {"mode":"create","response":null,"requestKind":"reminder","title":"Call mom","description":null,"cadenceKind":"once","windows":null,"weekdays":null,"timeOfDay":"17:00","timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
+    'Example respond: {"mode":"respond","response":"What do you want the todo to be, and when should it happen?","requestKind":null,"title":null,"description":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
     "",
     "Use recent conversation only to resolve short follow-ups. Do not emit requestKind='alarm' or requestKind='reminder' unless the current request or recent conversation explicitly supports it.",
     "If the user has not actually specified the todo/habit yet, choose mode='respond' and ask a concise clarifying question instead of inventing a task.",
@@ -233,25 +280,36 @@ function validatePriority(value: unknown): number | null {
   return Math.max(1, Math.min(5, Math.round(value)));
 }
 
-function validateRequestKindAgainstContext(
-  value: ExtractedTaskParams["requestKind"],
-  currentText: string,
-  recentWindow: string[],
-): ExtractedTaskParams["requestKind"] {
-  if (!value) {
-    return null;
-  }
-  const texts = [currentText, ...recentWindow];
-  const pattern = value === "alarm" ? ALARM_CONTEXT_RE : REMINDER_CONTEXT_RE;
-  return texts.some((text) => pattern.test(text)) ? value : null;
+const LOCAL_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function validateDueDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = LOCAL_DATE_RE.exec(value.trim());
+  if (!match) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return match[0];
 }
 
-function buildTaskCreatePlan(args: {
-  parsed: Record<string, unknown>;
-  intent: string;
-  recentWindow: string[];
-}): ExtractedTaskCreatePlan | null {
-  const { parsed, intent, recentWindow } = args;
+function validateNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    return null;
+  }
+  return value;
+}
+
+function validateDueWeekday(value: unknown): number | null {
+  const validated = validateNonNegativeInteger(value);
+  return validated !== null && validated <= 6 ? validated : null;
+}
+
+// The LLM classification is authoritative for requestKind — no keyword
+// re-validation. English regex vetoes broke multilingual requests
+// ("recuérdame mañana…") whose LLM classification was correct.
+function buildTaskCreatePlan(
+  parsed: Record<string, unknown>,
+): ExtractedTaskCreatePlan | null {
   const mode = validateCreatePlanMode(parsed.mode);
   if (!mode) {
     return null;
@@ -262,11 +320,7 @@ function buildTaskCreatePlan(args: {
       mode === "respond"
         ? (validateResponse(parsed.response) ?? DEFAULT_CREATE_PLAN_RESPONSE)
         : null,
-    requestKind: validateRequestKindAgainstContext(
-      validateRequestKind(parsed.requestKind),
-      intent,
-      recentWindow.slice(-REQUEST_KIND_VALIDATION_WINDOW),
-    ),
+    requestKind: validateRequestKind(parsed.requestKind),
     title: validateTitle(parsed.title),
     description: validateTitle(parsed.description),
     cadenceKind: validateCadenceKind(parsed.cadenceKind),
@@ -278,6 +332,10 @@ function buildTaskCreatePlan(args: {
     timesPerDay: validatePositiveNumber(parsed.timesPerDay),
     priority: validatePriority(parsed.priority),
     durationMinutes: validatePositiveNumber(parsed.durationMinutes),
+    dueDate: validateDueDate(parsed.dueDate),
+    dueInDays: validateNonNegativeInteger(parsed.dueInDays),
+    dueWeekday: validateDueWeekday(parsed.dueWeekday),
+    dueInMinutes: validatePositiveNumber(parsed.dueInMinutes),
   };
 }
 
@@ -289,7 +347,7 @@ function buildRepairPrompt(args: {
   return [
     "Your last reply for the LifeOps create-definition planner was invalid.",
     "Return ONLY valid JSON with these exact fields:",
-    "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, priority, durationMinutes",
+    "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes",
     "",
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",
@@ -321,6 +379,10 @@ export async function extractTaskCreatePlanWithLlm(args: {
   intent: string;
   state: State | undefined;
   message?: Memory;
+  /** Reference instant for date grounding; defaults to the wall clock. */
+  now?: Date;
+  /** Owner timezone for date grounding; defaults to the host timezone. */
+  timeZone?: string;
 }): Promise<ExtractedTaskCreatePlan> {
   const { runtime, intent } = args;
 
@@ -332,25 +394,24 @@ export async function extractTaskCreatePlanWithLlm(args: {
     runtime,
     message: args.message,
     state: args.state,
-    limit: Math.max(resolveContextWindow(), REQUEST_KIND_VALIDATION_WINDOW),
+    limit: resolveContextWindow(),
   });
-  const recentConversation = recentWindow
-    .slice(-resolveContextWindow())
-    .join("\n");
-  const prompt = buildExtractionPrompt(intent, recentConversation);
+  const recentConversation = recentWindow.join("\n");
+  const prompt = buildExtractionPrompt(
+    intent,
+    recentConversation,
+    describeNowForPrompt(
+      args.now ?? new Date(),
+      args.timeZone ?? resolveDefaultTimeZone(),
+    ),
+  );
 
   const { parsed } = await runExtractorPipeline({
     runtime,
     prompt,
     parser: (raw) => {
       const parsedObject = parseStructuredRecord(raw);
-      return parsedObject
-        ? buildTaskCreatePlan({
-            parsed: parsedObject,
-            intent,
-            recentWindow,
-          })
-        : null;
+      return parsedObject ? buildTaskCreatePlan(parsedObject) : null;
     },
     buildRepairPrompt: (rawFirstPass) =>
       buildRepairPrompt({
@@ -368,6 +429,8 @@ export async function extractTaskParamsWithLlm(args: {
   intent: string;
   state: State | undefined;
   message?: Memory;
+  now?: Date;
+  timeZone?: string;
 }): Promise<ExtractedTaskParams> {
   const plan = await extractTaskCreatePlanWithLlm(args);
   const { mode: _mode, response: _response, ...params } = plan;

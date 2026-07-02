@@ -6,11 +6,7 @@
   "core_role": "little_core_e1_pro",
   "coverage": {
     "note": "Embench v1.0 ships 19 speed workloads; the manifest also lists primecount and tarfind which were introduced in Embench 2.0 and are absent at the pinned v1.0 tag.",
-    "workloads_failed": [
-      "huffbench",
-      "qrduino",
-      "statemate"
-    ],
+    "workloads_failed": ["huffbench", "qrduino", "statemate"],
     "workloads_failed_detail": {
       "huffbench": {
         "next_command": "Re-link huffbench against the riscv-tests p/v environment (or relocate its .bss heap array out of the tohost-adjacent page) and re-run; inspect build/embench/huffbench.run.log for the first faulting address.",
@@ -173,10 +169,7 @@
         "nbody": 1445.93,
         "st": 22.72
       },
-      "workloads": [
-        "nbody",
-        "st"
-      ]
+      "workloads": ["nbody", "st"]
     }
   },
   "provenance": "simulator",

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import {
@@ -290,9 +291,7 @@ describe("CI plugin sharding contract", () => {
     expect(testWorkflow).toMatch(
       /plugin-tests:\s+name:\s+Plugin Tests \(\$\{\{ matrix\.shard \}\}\/4\)[\s\S]*?strategy:[\s\S]*?fail-fast:\s+false[\s\S]*?matrix:[\s\S]*?shard:\s+\[1,\s*2,\s*3,\s*4\]/,
     );
-    expect(testWorkflow).toMatch(
-      /TEST_SHARD:\s+\$\{\{ matrix\.shard \}\}\/4/,
-    );
+    expect(testWorkflow).toMatch(/TEST_SHARD:\s+\$\{\{ matrix\.shard \}\}\/4/);
     expect(testWorkflow).toMatch(
       /plugin-tests-status:\s+name:\s+Plugin Tests[\s\S]*?needs:[\s\S]*?-\s+plugin-tests/,
     );
@@ -311,5 +310,78 @@ describe("CI plugin sharding contract", () => {
     expect(qualityWorkflow).not.toMatch(
       /develop-static-gate:[\s\S]*?Run lint[\s\S]*?bun run lint[\s\S]*?develop-lint-gate:/,
     );
+  });
+});
+
+describe("run-all-tests plan mode", () => {
+  const runnerPath = new URL("../run-all-tests.mjs", import.meta.url);
+
+  function runPlan(args: string[], env: Record<string, string> = {}) {
+    return spawnSync(process.execPath, [runnerPath.pathname, ...args], {
+      cwd: new URL("../../..", import.meta.url).pathname,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TEST_LANE: "pr",
+        TEST_PACKAGE_FILTER: "",
+        TEST_SCRIPT_FILTER: "",
+        TEST_SHARD: "",
+        TEST_START_AT: "",
+        ...env,
+      },
+    });
+  }
+
+  test("prints a JSON inventory without preparing services or starting package tests", () => {
+    const result = runPlan(
+      [
+        "--plan=json",
+        "--only=test",
+        "--no-cloud",
+        "--filter=^@elizaos/core \\(packages/core\\)#test$",
+      ],
+      // If plan mode regresses and prepares PostgreSQL or spawns package
+      // scripts, this stripped PATH makes the side effect visible.
+      { PATH: "" },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toContain("[eliza-test] START");
+    expect(result.stdout).not.toContain("PostgreSQL");
+    const plan = JSON.parse(result.stdout);
+    expect(plan.summary).toMatchObject({
+      lane: "pr",
+      only: "test",
+      noCloud: true,
+      taskCount: 1,
+      cloudStep: false,
+    });
+    expect(plan.tasks).toEqual([
+      {
+        packageName: "@elizaos/core",
+        relativeDir: "packages/core",
+        scriptName: "test",
+        label: "@elizaos/core (packages/core)#test",
+        parallelSafe: true,
+      },
+    ]);
+    expect(plan.cloudStep).toBeNull();
+  });
+
+  test("bare --plan prints text and keeps the cloud step visible", () => {
+    const result = runPlan([
+      "--plan",
+      "--only=test",
+      "--filter=^@elizaos/core \\(packages/core\\)#test$",
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("[eliza-test] PLAN lane=pr only=test");
+    expect(result.stdout).toContain("[eliza-test] PLAN cloud-step=yes");
+    expect(result.stdout).toContain(
+      "[eliza-test] PLAN parallel @elizaos/core (packages/core)#test",
+    );
+    expect(result.stdout).not.toContain("[eliza-test] START");
   });
 });

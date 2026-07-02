@@ -142,7 +142,10 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "apps catalog",
     path: "/apps",
-    readyChecks: [{ text: "Views" }, { text: "No views available" }],
+    // /apps renders the launcher grid (HomeScreenMount initialPage="launcher");
+    // the old text probes ("Views" / "No views available") predate that surface
+    // and never match it — anchor on the launcher's own testid.
+    readyChecks: [{ selector: '[data-testid="launcher"]' }],
     timeoutMs: 60_000,
   },
   {
@@ -187,7 +190,9 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "rolodex",
     path: "/rolodex",
-    readyChecks: [{ text: "Views" }],
+    // /rolodex resolves to the launcher surface on this platform — same
+    // testid anchor as the apps catalog (old text probe never matches).
+    readyChecks: [{ selector: '[data-testid="launcher"]' }],
     timeoutMs: 60_000,
   },
   {
@@ -231,7 +236,9 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "views catalog deep link",
     path: "/views",
-    readyChecks: [{ text: "Views" }, { text: "No views available" }],
+    // /views renders the launcher grid — anchor on its testid (the old text
+    // probes predate the surface and never match).
+    readyChecks: [{ selector: '[data-testid="launcher"]' }],
     timeoutMs: 60_000,
   },
   {

@@ -85,6 +85,8 @@ export interface DispatchRouteArgs {
   /** true when invoked in-process via IPC; false when invoked over HTTP. */
   inProcess: boolean;
   isAuthorized: () => boolean;
+  /** true when the transport verified a trusted loopback/local request. */
+  isTrustedLocal?: () => boolean;
   /** Optional host context (config, restartRuntime, etc.) — installed on the runtime for the duration of the dispatch. */
   hostContext?: RuntimeRouteHostContext;
 }
@@ -141,6 +143,10 @@ interface CapturedResponse {
   ended: boolean;
 }
 
+function asCapturedServerResponse(res: unknown): ServerResponse {
+  return res as ServerResponse;
+}
+
 /**
  * Builds a synthetic `IncomingMessage` / `ServerResponse` pair that legacy
  * Express-shaped route handlers can write to. The captured response is
@@ -170,7 +176,7 @@ function buildLegacyShim(args: {
   const readable = Readable.from(
     bodyText ? [Buffer.from(bodyText, "utf8")] : [],
   );
-  const req = readable as unknown as IncomingMessage & {
+  const req = readable as IncomingMessage & {
     query: Record<string, string | string[]>;
     params: Record<string, string>;
     protocol: string;
@@ -230,9 +236,9 @@ function buildLegacyShim(args: {
     }
   };
 
-  // Build a minimal ServerResponse-ish object. We intentionally cast through
-  // `unknown` because we only emulate the surface area that plugin handlers
-  // actually reach for (status/json/send/setHeader/end/write/headersSent).
+  // Build a minimal ServerResponse-ish object. Plugin handlers only reach for
+  // this subset (status/json/send/setHeader/end/write/headersSent), so the
+  // structural boundary is isolated in asCapturedServerResponse().
   const res = {
     statusCode: 200,
     get headersSent() {
@@ -250,7 +256,7 @@ function buildLegacyShim(args: {
     end: (chunk?: unknown) => {
       if (chunk != null) writeChunk(chunk);
       captured.ended = true;
-      return res as unknown as ServerResponse;
+      return asCapturedServerResponse(res);
     },
     status(code: number) {
       this.statusCode = code;
@@ -312,7 +318,7 @@ function buildLegacyShim(args: {
 
   return {
     req,
-    res: res as unknown as ServerResponse,
+    res: asCapturedServerResponse(res),
     captured,
   };
 }
@@ -387,6 +393,7 @@ export async function dispatchRoute(
           path: args.path,
           runtime: runtime as IAgentRuntime,
           inProcess: args.inProcess,
+          isTrustedLocal: args.isTrustedLocal?.() ?? false,
         };
         return await route.routeHandler(ctx);
       }

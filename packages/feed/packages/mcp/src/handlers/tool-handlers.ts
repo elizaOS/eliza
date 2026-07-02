@@ -71,7 +71,7 @@ import {
   StaticDataRegistry,
   WalletService,
 } from "@feed/engine";
-import type { JsonValue, StringRecord } from "@feed/shared";
+import type { JsonRpcResult, JsonValue, StringRecord } from "@feed/shared";
 import {
   GROUP_CONFIG,
   generateSnowflakeId,
@@ -79,6 +79,40 @@ import {
   logger,
   retryIfRetryable,
 } from "@feed/shared";
+
+function requireArrayItem<T>(items: T[], index: number, context: string): T {
+  const item = items[index];
+  if (item === undefined) {
+    throw new Error(`Missing ${context} at index ${index}`);
+  }
+  return item;
+}
+
+function isJsonRecord(
+  value: JsonRpcResult | undefined,
+): value is StringRecord<JsonValue> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function coerceToolResponseResult<T>(value: unknown): T {
+  return value as T;
+}
+
+function requireToolResponseResult<T>(
+  result: JsonRpcResult | undefined,
+  label: string,
+  requiredKeys: readonly string[],
+): T {
+  if (!isJsonRecord(result)) {
+    throw new Error(`${label} response result must be an object`);
+  }
+  for (const key of requiredKeys) {
+    if (result[key] === undefined) {
+      throw new Error(`${label} response result is missing ${key}`);
+    }
+  }
+  return coerceToolResponseResult<T>(result);
+}
 
 function buildWalletPort(): WalletPort {
   return {
@@ -2144,9 +2178,13 @@ export async function executeCreateGroup(
   ]);
   await db.chatParticipant.createMany({
     data: [
-      { id: participantIds[0]!, chatId, userId: agent.userId },
+      {
+        id: requireArrayItem(participantIds, 0, "chat participant id"),
+        chatId,
+        userId: agent.userId,
+      },
       ...uniqueMemberIds.map((memberId, idx) => ({
-        id: participantIds[idx + 1]!,
+        id: requireArrayItem(participantIds, idx + 1, "chat participant id"),
         chatId,
         userId: memberId,
       })),
@@ -2161,14 +2199,14 @@ export async function executeCreateGroup(
   await db.groupMember.createMany({
     data: [
       {
-        id: memberRecordIds[0]!,
+        id: requireArrayItem(memberRecordIds, 0, "group member id"),
         groupId,
         userId: agent.userId,
         role: "owner",
         addedBy: agent.userId,
       },
       ...uniqueMemberIds.map((memberId, idx) => ({
-        id: memberRecordIds[idx + 1]!,
+        id: requireArrayItem(memberRecordIds, idx + 1, "group member id"),
         groupId,
         userId: memberId,
         role: "member" as const,
@@ -2687,12 +2725,15 @@ export async function executeGetReferrals(
   const usersMap = new Map(usersList.map((u) => [u.id, u]));
   return {
     referrals: referralsList
-      .filter((r) => r.referredUserId !== null)
+      .filter(
+        (r): r is typeof r & { referredUserId: string } =>
+          r.referredUserId !== null,
+      )
       .map((r) => {
-        const user = usersMap.get(r.referredUserId!);
+        const user = usersMap.get(r.referredUserId);
         return {
           id: r.id,
-          referredUserId: r.referredUserId!,
+          referredUserId: r.referredUserId,
           username: user?.username || null,
           displayName: user?.displayName || null,
           createdAt: r.createdAt.toISOString(),
@@ -3118,7 +3159,11 @@ export async function executeCreateEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as CreateEscrowPaymentResult;
+  return requireToolResponseResult<CreateEscrowPaymentResult>(
+    response.result,
+    "createEscrowPayment",
+    ["success", "escrow", "paymentRequest"],
+  );
 }
 
 /**
@@ -3147,7 +3192,11 @@ export async function executeVerifyEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as VerifyEscrowPaymentResult;
+  return requireToolResponseResult<VerifyEscrowPaymentResult>(
+    response.result,
+    "verifyEscrowPayment",
+    ["success", "escrow"],
+  );
 }
 
 /**
@@ -3174,7 +3223,11 @@ export async function executeRefundEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as RefundEscrowPaymentResult;
+  return requireToolResponseResult<RefundEscrowPaymentResult>(
+    response.result,
+    "refundEscrowPayment",
+    ["success", "escrow"],
+  );
 }
 
 /**
@@ -3203,7 +3256,11 @@ export async function executeListEscrowPayments(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as ListEscrowPaymentsResult;
+  return requireToolResponseResult<ListEscrowPaymentsResult>(
+    response.result,
+    "listEscrowPayments",
+    ["success", "escrows", "pagination"],
+  );
 }
 
 // ============================================================================
@@ -3295,7 +3352,11 @@ export async function executeAppealBanWithEscrow(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as AppealBanWithEscrowResult;
+  return requireToolResponseResult<AppealBanWithEscrowResult>(
+    response.result,
+    "appealBanWithEscrow",
+    ["success", "message", "appeal"],
+  );
 }
 
 // ============================================================================

@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import type { Redis } from "@upstash/redis";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
 
@@ -14,8 +13,15 @@ interface ServerRoute {
   serverUrl: string;
 }
 
+export interface GatewayRoutingRedis {
+  get<T = string>(key: string): Promise<T | null>;
+  lpush(key: string, ...values: string[]): Promise<number>;
+  ltrim(key: string, start: number, stop: number): Promise<string>;
+  expire(key: string, seconds: number): Promise<number>;
+}
+
 export async function resolveAgentServer(
-  redis: Redis,
+  redis: Pick<GatewayRoutingRedis, "get">,
   agentId: string,
 ): Promise<ServerRoute | null> {
   const serverName = await redis.get<string>(`agent:${agentId}:server`);
@@ -28,7 +34,7 @@ export async function resolveAgentServer(
 }
 
 export async function refreshKedaActivity(
-  redis: Redis,
+  redis: Pick<GatewayRoutingRedis, "expire" | "lpush" | "ltrim">,
   serverName: string,
 ): Promise<void> {
   const key = `keda:${serverName}:activity`;

@@ -145,7 +145,7 @@ function matches(needle: string | RegExp, haystack: string): boolean {
 /**
  * Cerebras adapter that routes through the existing
  * `getTrainingUseModelAdapter()` helper (`lifeops-eval-model.ts`). The helper
- * already implements gpt-oss-120b auth, reasoning-effort hints, and retry
+ * already implements Cerebras auth, reasoning-effort hints, and retry
  * logic, so we delegate rather than re-implementing the HTTP client.
  *
  * The constructor takes the `useModel` callable so this module stays free of
@@ -175,7 +175,7 @@ export class CerebrasAdapter implements LanguageModelAdapter {
       temperature: args.temperature,
       maxTokens: args.maxTokens,
     });
-    // gpt-oss-120b does not expose per-call cache fields through the existing
+    // Cerebras models do not expose per-call cache fields through the existing
     // helper, so usage stays empty here. The helper-level cache hit-rate
     // counters live in `lifeops-eval-model.ts` and surface elsewhere.
     return { text, usage: {} };

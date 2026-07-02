@@ -78,7 +78,7 @@
     "smithers-orchestrator": "0.26.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.2",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
@@ -100,6 +100,7 @@
     "test": "bunx vitest run --config vitest.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
+    "test:e2e:native": "bun run build && node tests/e2e/live-native-acp-smoke.mjs",
     "test:e2e:multi-account": "bun --conditions=eliza-source scripts/compose-multi-account-e2e.ts",
     "test:e2e:multi-account:live": "ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun --conditions=eliza-source scripts/live-multi-account-e2e.ts",
     "check:account-readiness": "bun scripts/check-account-readiness.ts",

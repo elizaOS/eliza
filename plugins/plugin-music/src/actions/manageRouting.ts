@@ -10,6 +10,17 @@ import type {
 import { logger } from "@elizaos/core";
 import type { AudioRouter, AudioRoutingMode, ZoneManager } from "../router";
 
+type RoutingCommand =
+  | { action: "set_mode"; mode: AudioRoutingMode }
+  | {
+      action: "start_route";
+      sourceId: string;
+      targetIds: string[];
+      mode?: AudioRoutingMode;
+    }
+  | { action: "stop_route"; sourceId: string }
+  | { action: "status" };
+
 interface MusicRoutingService extends Service {
   capabilityDescription: string;
   stop(): Promise<void>;
@@ -98,28 +109,76 @@ function readParams(options: unknown): Record<string, unknown> {
   return { ...direct, ...parameters };
 }
 
-function routingTextFromOptions(options: unknown): string | null {
-  const params = readParams(options);
-  const operation =
-    typeof params.routingAction === "string"
-      ? params.routingAction.toLowerCase()
-      : typeof params.operation === "string"
-        ? params.operation.toLowerCase()
-        : "";
-  const mode = typeof params.mode === "string" ? params.mode.toLowerCase() : "";
-  const sourceId =
-    typeof params.sourceId === "string" ? params.sourceId.trim() : "";
-  const targetIds = Array.isArray(params.targetIds)
-    ? params.targetIds.filter(
-        (target): target is string => typeof target === "string",
-      )
-    : [];
-  if (operation === "set_mode" && mode) return `set mode ${mode}`;
-  if (operation === "start_route" && sourceId && targetIds.length > 0) {
-    return `route ${sourceId} to ${targetIds.join(", ")}`;
+function normalizeRoutingAction(
+  value: unknown,
+): RoutingCommand["action"] | null {
+  if (typeof value !== "string") return null;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  return normalized === "set_mode" ||
+    normalized === "start_route" ||
+    normalized === "stop_route" ||
+    normalized === "status"
+    ? normalized
+    : null;
+}
+
+function normalizeRoutingMode(value: unknown): AudioRoutingMode | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "simulcast" || normalized === "independent"
+    ? normalized
+    : null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => readString(item))
+      .filter((item): item is string => Boolean(item));
   }
-  if (operation === "stop_route" && sourceId) return `stop routing ${sourceId}`;
-  if (operation === "status") return "show routing status";
+  return [];
+}
+
+function readTargetIds(params: Record<string, unknown>): string[] {
+  const targetIds = readStringArray(params.targetIds);
+  const targetId = readString(params.targetId);
+  return targetId ? [...targetIds, targetId] : targetIds;
+}
+
+function routingCommandFromOptions(options: unknown): RoutingCommand | null {
+  const params = readParams(options);
+  const action = normalizeRoutingAction(
+    params.routingAction ?? params.operation,
+  );
+  if (!action) return null;
+
+  if (action === "set_mode") {
+    const mode = normalizeRoutingMode(params.mode);
+    return mode ? { action, mode } : null;
+  }
+  if (action === "start_route") {
+    const sourceId = readString(params.sourceId);
+    const targetIds = readTargetIds(params);
+    if (!sourceId || targetIds.length === 0) return null;
+    const mode = normalizeRoutingMode(params.mode);
+    return mode
+      ? { action, sourceId, targetIds, mode }
+      : { action, sourceId, targetIds };
+  }
+  if (action === "stop_route") {
+    const sourceId = readString(params.sourceId);
+    return sourceId ? { action, sourceId } : null;
+  }
+  if (action === "status") return { action };
   return null;
 }
 
@@ -162,7 +221,7 @@ export const manageRouting = {
       return false;
     }
     if (selectedContextMatches(state, ROUTING_CONTEXTS)) return true;
-    return routingTextFromOptions(options) !== null;
+    return routingCommandFromOptions(options) !== null;
   },
 
   handler: async (
@@ -173,7 +232,6 @@ export const manageRouting = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const timeoutMs = 10_000;
-    const maxCommandBytes = 2000;
     const source = message.content.source || "unknown";
     const effectiveCallback: HandlerCallback = callback ?? (async () => []);
     try {
@@ -202,21 +260,23 @@ export const manageRouting = {
         );
       }
 
-      const text = (
-        routingTextFromOptions(_options)?.toLowerCase() ||
-        message.content.text?.toLowerCase() ||
-        ""
-      ).slice(0, maxCommandBytes);
+      const command = routingCommandFromOptions(_options);
 
-      // Parse command
-      if (text.includes("set mode") || text.includes("switch mode")) {
-        return handleSetMode(routingService, text, effectiveCallback, source);
-      } else if (
-        /\bsimulcast\s+.+\s+to\b/.test(text) ||
-        /\broute\s+.+\s+to\b/.test(text)
-      ) {
+      if (command?.action === "set_mode") {
+        return handleSetMode(
+          routingService,
+          command.mode,
+          effectiveCallback,
+          source,
+        );
+      } else if (command?.action === "start_route") {
         return Promise.race([
-          handleStartRouting(routingService, text, effectiveCallback, source),
+          handleStartRouting(
+            routingService,
+            command,
+            effectiveCallback,
+            source,
+          ),
           new Promise<never>((_, reject) =>
             setTimeout(
               () => reject(new Error("routing operation timed out")),
@@ -224,9 +284,14 @@ export const manageRouting = {
             ),
           ),
         ]);
-      } else if (text.includes("stop routing")) {
+      } else if (command?.action === "stop_route") {
         return Promise.race([
-          handleStopRouting(routingService, text, effectiveCallback, source),
+          handleStopRouting(
+            routingService,
+            command.sourceId,
+            effectiveCallback,
+            source,
+          ),
           new Promise<never>((_, reject) =>
             setTimeout(
               () => reject(new Error("routing stop timed out")),
@@ -234,10 +299,7 @@ export const manageRouting = {
             ),
           ),
         ]);
-      } else if (
-        text.includes("show routing") ||
-        text.includes("routing status")
-      ) {
+      } else if (command?.action === "status") {
         return handleShowRouting(routingService, effectiveCallback, source);
       } else {
         return emit(
@@ -295,6 +357,12 @@ export const manageRouting = {
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
+    {
+      name: "targetId",
+      description: "Single routing target id or zone name.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
 
   examples: [
@@ -342,26 +410,11 @@ export const manageRouting = {
 
 async function handleSetMode(
   musicService: MusicRoutingService,
-  text: string,
+  mode: AudioRoutingMode,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  // Parse: "set mode <simulcast|independent>"
-  const match = text.match(/(?:set|switch) mode (simulcast|independent)/);
-  if (!match) {
-    return emit(
-      callback,
-      source,
-      "Invalid format. Use: set mode simulcast|independent",
-      false,
-      {
-        error: "INVALID_MODE_FORMAT",
-      },
-    );
-  }
-
-  const [, mode] = match;
-  musicService.setRoutingMode(mode as AudioRoutingMode);
+  musicService.setRoutingMode(mode);
   logger.log(`[ManageRouting] Set default routing mode to: ${mode}`);
 
   return emit(callback, source, `Routing mode set to: ${mode}`, true, { mode });
@@ -369,33 +422,11 @@ async function handleSetMode(
 
 async function handleStartRouting(
   musicService: MusicRoutingService,
-  text: string,
+  command: Extract<RoutingCommand, { action: "start_route" }>,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  // Parse: "route <stream> to <zones>" or "simulcast <stream> to <zones>"
-  const routeMatch = text.match(/route (.+?) to (.+)/);
-  const simulcastMatch = text.match(/simulcast (.+?) to (.+)/);
-
-  const match = routeMatch || simulcastMatch;
-  if (!match) {
-    return emit(
-      callback,
-      source,
-      "Invalid format. Use: route <stream> to <zone1>, <zone2> or simulcast <stream> to all",
-      false,
-      {
-        error: "INVALID_ROUTE_FORMAT",
-      },
-    );
-  }
-
-  const [, streamId, zonesStr] = match;
-  const selectors = zonesStr
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const targetIds = resolveTargetIds(musicService, selectors);
+  const targetIds = resolveTargetIds(musicService, command.targetIds);
   if (targetIds.length === 0) {
     return emit(
       callback,
@@ -408,14 +439,14 @@ async function handleStartRouting(
     );
   }
 
-  const mode = simulcastMatch ? "simulcast" : musicService.getRoutingMode();
+  const mode = command.mode ?? musicService.getRoutingMode();
   const route = await musicService.startBroadcastRoute(
-    streamId.trim(),
+    command.sourceId,
     targetIds,
     mode,
   );
   logger.log(
-    `[ManageRouting] Routed "${streamId}" to targets: ${targetIds.join(", ")}`,
+    `[ManageRouting] Routed "${command.sourceId}" to targets: ${targetIds.join(", ")}`,
   );
 
   return emit(
@@ -433,30 +464,15 @@ async function handleStartRouting(
 
 async function handleStopRouting(
   musicService: MusicRoutingService,
-  text: string,
+  sourceId: string,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  // Parse: "stop routing <stream>"
-  const match = text.match(/stop routing (.+)/);
-  if (!match) {
-    return emit(
-      callback,
-      source,
-      "Invalid format. Use: stop routing <stream>",
-      false,
-      {
-        error: "INVALID_STOP_ROUTE_FORMAT",
-      },
-    );
-  }
+  await musicService.stopBroadcastRoute(sourceId);
+  logger.log(`[ManageRouting] Stopped routing for "${sourceId}"`);
 
-  const [, streamId] = match;
-  await musicService.stopBroadcastRoute(streamId.trim());
-  logger.log(`[ManageRouting] Stopped routing for "${streamId}"`);
-
-  return emit(callback, source, `Stopped routing for ${streamId}`, true, {
-    sourceId: streamId.trim(),
+  return emit(callback, source, `Stopped routing for ${sourceId}`, true, {
+    sourceId,
   });
 }
 
@@ -496,7 +512,7 @@ function resolveTargetIds(
   const zoneManager = musicService.getZoneManager();
   const registeredTargets = new Set(musicService.listRoutingTargets());
 
-  if (selectors.length === 1 && selectors[0].includes("all")) {
+  if (selectors.length === 1 && selectors[0] === "all") {
     const zoneTargets = zoneManager.list().flatMap((zone) => zone.targetIds);
     const allTargets =
       zoneTargets.length > 0 ? zoneTargets : Array.from(registeredTargets);

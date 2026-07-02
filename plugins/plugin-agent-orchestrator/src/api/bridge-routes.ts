@@ -27,6 +27,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/core";
 import type { SessionInfo } from "../services/types.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 import {
@@ -43,6 +44,23 @@ const DEFAULT_LONG_POLL_MS = 5 * 60 * 1000;
 const POLL_INTERVAL_MS = 250;
 
 /**
+ * Machine-readable rejection reasons the credential adapter may emit
+ * (`CredentialScopeError.code`). Anything outside this set is a raw
+ * `error.message` from an unexpected failure and must NOT leak into the
+ * structured `code` channel — it collapses to a stable `rejected`.
+ */
+const KNOWN_CREDENTIAL_REJECTION_CODES: ReadonlySet<string> = new Set([
+  "invalid_input",
+  "key_not_in_scope",
+  "invalid_token",
+  "unknown_scope",
+  "scope_expired",
+  "session_mismatch",
+  "already_redeemed",
+  "no_ciphertext",
+]);
+
+/**
  * Adapter surface the bridge routes need from the parent runtime. The
  * concrete implementation lives in app-core (`CredentialTunnelService`) and
  * is registered into the parent runtime out-of-band; the route layer never
@@ -52,6 +70,12 @@ export interface BridgeCredentialAdapter {
   requestCredentials(input: {
     childSessionId: string;
     credentialKeys: readonly string[];
+    origin?: {
+      roomId?: string;
+      channelId?: string;
+      source?: string;
+      ownerEntityId?: string;
+    };
   }): Promise<{
     credentialScopeId: string;
     scopedToken: string;
@@ -68,6 +92,40 @@ export interface BridgeCredentialAdapter {
     | { status: "expired" }
     | { status: "rejected"; reason: string }
   >;
+}
+
+function originFromSessionMetadata(
+  metadata: Record<string, unknown> | undefined,
+):
+  | {
+      roomId?: string;
+      channelId?: string;
+      source?: string;
+      ownerEntityId?: string;
+    }
+  | undefined {
+  if (!metadata) return undefined;
+  const roomId =
+    typeof metadata.roomId === "string" && metadata.roomId.trim()
+      ? metadata.roomId.trim()
+      : undefined;
+  const channelId =
+    typeof metadata.channelId === "string" && metadata.channelId.trim()
+      ? metadata.channelId.trim()
+      : roomId;
+  const source =
+    typeof metadata.source === "string" && metadata.source.trim()
+      ? metadata.source.trim()
+      : undefined;
+  const ownerEntityId =
+    typeof metadata.userId === "string" && metadata.userId.trim()
+      ? metadata.userId.trim()
+      : typeof metadata.ownerEntityId === "string" &&
+          metadata.ownerEntityId.trim()
+        ? metadata.ownerEntityId.trim()
+        : undefined;
+  if (!roomId && !channelId && !source && !ownerEntityId) return undefined;
+  return { roomId, channelId, source, ownerEntityId };
 }
 
 function isLoopback(remoteAddress: string | null | undefined): boolean {
@@ -102,13 +160,11 @@ function delay(ms: number): Promise<void> {
  * the routes respond with 503 cleanly when the parent runtime doesn't
  * support credential tunneling (e.g. a stripped-down test harness).
  */
-const BRIDGE_CREDENTIAL_ADAPTER_SERVICE = "SubAgentCredentialBridgeAdapter";
-
 function getAdapter(ctx: RouteContext): BridgeCredentialAdapter | null {
   // Single-step cast: BridgeCredentialAdapter is a plain interface without the
   // Service base class, so we cannot use the getService<T> generic, but the
   // types don't conflict and one cast suffices.
-  return (ctx.runtime.getService(BRIDGE_CREDENTIAL_ADAPTER_SERVICE) ??
+  return (ctx.runtime.getService(SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE) ??
     null) as BridgeCredentialAdapter | null;
 }
 
@@ -196,12 +252,13 @@ async function handlePost(
   const result = await adapter.requestCredentials({
     childSessionId: sessionId,
     credentialKeys: rawKeys as readonly string[],
+    origin: originFromSessionMetadata(session.metadata),
   });
-  // #8907/#10317: surface the pending request as the real out-of-band
-  // sensitive-request in the origin task thread so `SensitiveRequestBlock`
-  // renders an inline tunnel-routed secure form (AC1). Best-effort; never blocks
-  // the credential bridge response. The scoped token is NOT forwarded — only the
-  // scope id + child session id, so the submitted value tunnels to this child.
+  // #8907/#10317: surface the pending request in the origin task thread so
+  // `SensitiveRequestBlock` renders an inline tunnel-routed secure form (AC1).
+  // Best-effort; never blocks the credential bridge response. The scoped token
+  // is NOT forwarded — only the scope id + child session id, so the submitted
+  // value tunnels to this child.
   await emitCredentialPrompt({
     runtime: ctx.runtime,
     metadata: session.metadata,
@@ -292,7 +349,12 @@ async function handleGet(
       return;
     }
     if (outcome.status === "rejected") {
-      sendJson(res, { error: outcome.reason, code: "rejected" }, 403);
+      // `reason` may be a raw error.message for an unexpected failure; keep the
+      // free text in `error` but only pass a KNOWN adapter code into `code`.
+      const code = KNOWN_CREDENTIAL_REJECTION_CODES.has(outcome.reason)
+        ? outcome.reason
+        : "rejected";
+      sendJson(res, { error: outcome.reason, code }, 403);
       return;
     }
     await delay(POLL_INTERVAL_MS);

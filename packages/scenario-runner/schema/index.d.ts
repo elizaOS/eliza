@@ -22,7 +22,6 @@ export type CapturedAction = {
 export type ScenarioTurnExecution = {
   actionsCalled: CapturedAction[];
   responseText?: string;
-  plannerText?: string;
   statusCode?: number;
   responseBody?: unknown;
 };
@@ -95,6 +94,7 @@ export type CapturedArtifact = {
 
 export type ScenarioContext = {
   runtime?: unknown;
+  apiBaseUrl?: string;
   now?: string;
   actionsCalled: CapturedAction[];
   turns?: ScenarioTurnExecution[];
@@ -105,40 +105,82 @@ export type ScenarioContext = {
   artifacts?: CapturedArtifact[];
 };
 
+/**
+ * Seed steps the runner actually applies (`src/seeds.ts` +
+ * `runCustomSeeds` in `src/executor.ts`). This union is closed on purpose:
+ * a seed type outside it is silently ignored by the runner, so declaring it
+ * here would only manufacture false coverage.
+ */
 export type ScenarioSeedStep =
   | {
       type: "advanceClock";
       by: string;
       name?: string;
-      [key: string]: unknown;
     }
   | {
-      type: string;
+      type: "custom";
       name?: string;
-      apply?: (
+      apply: (
         ctx: ScenarioContext,
       ) => ScenarioCheckResult | Promise<ScenarioCheckResult>;
-      by?: string;
+    }
+  | {
+      type: "todo";
+      name?: string;
+      title?: string;
+      description?: string;
+      dueIso?: string;
+      priority?: number | string;
+      isUrgent?: boolean;
+      state?: string;
+    }
+  | {
+      type: "contact";
+      name?: string;
+      notes?: string;
+      categories?: string[];
+      tags?: string[];
+      handles?: Array<Record<string, unknown>>;
+      followupThresholdDays?: number;
+      relationshipStatus?: string;
+      relationshipGoal?: string;
+      lastContactedAt?: string;
+    }
+  | {
+      type: "memory";
+      name?: string;
+      content?: Record<string, unknown>;
+    }
+  | {
+      type: "gmailInbox";
+      name?: string;
+      account?: string;
+      fixture?: string;
+      fixtures?: string[];
+      requiredMessageIds?: string[];
+      clearLedger?: boolean;
+      faultInjection?: Record<string, unknown>;
+    }
+  | {
+      type: "connectorStatus" | "connectorAuthSession" | "transportFault";
+      name?: string;
       connector?: string;
       provider?: string;
       state?: string;
       capabilities?: string[];
       scopes?: string[];
       limit?: number;
-      [key: string]: unknown;
     };
 
 export type ScenarioCleanupStep =
   | {
       type: "gmailDeleteDrafts";
       name?: string;
-      [key: string]: unknown;
     }
   | {
       type: "selfControlClearBlocks";
       name?: string;
       profile?: string;
-      [key: string]: unknown;
     }
   | {
       type: "custom";
@@ -146,7 +188,6 @@ export type ScenarioCleanupStep =
       apply?: (
         ctx: ScenarioContext,
       ) => ScenarioCheckResult | Promise<ScenarioCheckResult>;
-      [key: string]: unknown;
     };
 
 export type ScenarioJudgeRubric = {
@@ -175,18 +216,51 @@ type DefinitionCountWebsiteAccess = {
   reason?: string;
 };
 
+/**
+ * A single scenario turn. This type is closed (no index signature) on
+ * purpose: every key here is consumed by the executor, so a typo'd assertion
+ * key (`acceptedActions`, `includesAny`, ...) is a type error instead of a
+ * silently ignored no-op assertion.
+ */
 export type ScenarioTurn = {
   kind?: string;
   name: string;
   text?: string;
+  /** For `message` turns, extra content fields merged into the sent message. */
+  content?: Record<string, unknown>;
+  /** For `action` turns, the registered action to invoke directly. */
+  actionName?: string;
+  /** For multi-room scenarios, the `rooms[].id` this turn is sent to. */
+  room?: string;
   method?: string;
   path?: string;
   body?: unknown;
+  /**
+   * For API turns, capture response-body fields for later templates.
+   * Example: `{ scopedToken: "scopedToken" }` then `{{capture:scopedToken}}`.
+   */
+  captures?: Record<string, string>;
+  /**
+   * Field names or dot-paths to redact from persisted reports/viewers. The
+   * in-memory responseBody passed to assertions and captures remains raw.
+   */
+  redactResponseFields?: string[];
   expectedStatus?: number;
   durationMs?: number;
+  /** Per-turn override of the executor's turn timeout (ms). */
+  timeoutMs?: number;
   worker?: string;
   now?: string;
   options?: Record<string, unknown>;
+  /**
+   * For `voice` turns: the inline voice scenario + optional service overrides.
+   * Validated and typed at the runtime boundary in `src/voice-turn.ts`
+   * (`VoiceScenarioTurn`); kept structural here so the schema package stays
+   * dependency-free.
+   */
+  voiceScenario?: unknown;
+  voiceServices?: unknown;
+  allowVoiceSkip?: boolean;
   assertResponse?: ScenarioAssertResponse;
   assertTurn?: (turn: ScenarioTurnExecution) => ScenarioCheckResult;
   expectedActions?: string[];
@@ -198,8 +272,6 @@ export type ScenarioTurn = {
   plannerIncludesAny?: TurnMatcher[];
   plannerExcludes?: TurnMatcher[];
   responseJudge?: ScenarioJudgeRubric;
-  plannerJudge?: ScenarioJudgeRubric;
-  [key: string]: unknown;
 };
 
 export type ScenarioFinalCheck =
@@ -371,10 +443,45 @@ export type ScenarioFinalCheck =
  */
 export type ScenarioLane = "pr-deterministic" | "live-only";
 
+/**
+ * A platform-gated deferral on a live-only scenario: it cannot run in any
+ * current lane because the platform/runner it needs does not exist yet. Keeps
+ * the scenario visible-but-deferred in the corpus inventory. (#10757)
+ */
+export type ScenarioDeferral = {
+  /** Why the scenario cannot run yet (e.g. "needs SelfControl.app on macOS"). */
+  reason: string;
+  /** Self-hosted runner label that would unblock it, e.g. `eliza-e2e-macos`. */
+  runner?: string;
+};
+
+/** A room a multi-room scenario message turn can target (`turns[].room`). */
+export type ScenarioRoomSpec = {
+  id?: string;
+  account?: string;
+  title?: string;
+  source?: string;
+  channelType?: string;
+};
+
+/**
+ * Live-only personality expectation consumed by
+ * `scripts/personality-bench-bridge.mjs` (not by the runner itself).
+ */
+export type ScenarioPersonalityExpect = {
+  bucket: string;
+  directiveTurn?: number;
+  checkTurns?: number[];
+  options?: Record<string, unknown>;
+  judgeKwargs?: Record<string, unknown>;
+};
+
 export type ScenarioDefinition = {
   id: string;
   title: string;
   domain: string;
+  description?: string;
+  tags?: readonly string[];
   status?: "active" | "pending";
   /**
    * CI lane this scenario is eligible for.
@@ -386,11 +493,38 @@ export type ScenarioDefinition = {
    * Absent means `live-only` (see {@link DEFAULT_SCENARIO_LANE}).
    */
   lane?: ScenarioLane;
-  turns: ScenarioTurn[];
+  /**
+   * Platform-gated deferral. Present only on `live-only` scenarios that cannot
+   * run in any current lane because the platform/runner they need does not exist
+   * yet (e.g. a macOS SelfControl shard awaiting an `eliza-e2e-macos` runner).
+   * Keeps the scenario visible in the corpus inventory as a distinct "deferred
+   * platform-gated" class. (#10757)
+   */
+  deferred?: ScenarioDeferral;
+  /**
+   * Authoring metadata: the isolation level this scenario was written for.
+   * Not read by the runner — `packages/scripts/run-scenarios-isolated.mjs`
+   * isolates every scenario per process regardless.
+   */
+  isolation?: "per-scenario" | "shared-runtime" | "worker";
+  /** Plugins that must be registered before the scenario runs (skip otherwise). */
+  requires?: { plugins?: string[] };
+  rooms?: ScenarioRoomSpec[];
+  /** Personality corpus metadata (live-only judge bridge). */
+  scope?: "user" | "mixed";
+  personalityExpect?: ScenarioPersonalityExpect;
+  /** Connector-certification corpus metadata (`connector-certification/_factory.ts`). */
+  connector?: string;
+  axis?: string;
+  /** Mockoon mock services the connector-certification lane boots for this scenario. */
+  mockoon?: string[];
+  turns: readonly ScenarioTurn[];
   seed?: ScenarioSeedStep[];
   cleanup?: ScenarioCleanupStep[];
   finalChecks?: ScenarioFinalCheck[];
-  [key: string]: unknown;
+  /** Set by the loader when edge-case expansion is enabled — not authored. */
+  edgeVariant?: string;
+  baseScenarioId?: string;
 };
 
 export declare const FINAL_CHECK_KEYS: ReadonlyMap<string, ReadonlySet<string>>;
@@ -400,5 +534,14 @@ export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
 
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
+
+/**
+ * Resolve a scenario's platform-gated deferral, or `null` when it is not
+ * deferred. Throws if `deferred` is malformed or paired with a
+ * `pr-deterministic` lane. (#10757)
+ */
+export declare function scenarioDeferral(
+  value: Omit<ScenarioDefinition, "deferred"> & { deferred?: unknown },
+): ScenarioDeferral | null;
 
 export function scenario<const T extends ScenarioDefinition>(value: T): T;

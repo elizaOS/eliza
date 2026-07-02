@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type DragEvent,
   memo,
   useCallback,
   useEffect,
@@ -135,10 +136,11 @@ function ScopeFilterChip({
       aria-pressed={active}
       aria-current={active ? "page" : undefined}
       onClick={() => onSelect(value)}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold transition-colors ${
+      // Borderless text tab (#10710): active = accent text on a faint wash.
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold transition-colors ${
         active
-          ? "border-accent/45 bg-accent/12 text-accent-fg"
-          : "border-border/30 bg-bg-muted/20 text-muted hover:border-border/55 hover:text-txt"
+          ? "bg-accent/12 text-accent"
+          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
       }`}
     >
       <Icon className="h-3 w-3" aria-hidden />
@@ -187,10 +189,8 @@ const SearchResultListItem = memo(function SearchResultListItem({
       }`}
     >
       <span
-        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-2xs font-bold ${
-          active
-            ? "border-accent/25 bg-accent/10 text-accent-fg"
-            : "border-border/15 bg-transparent text-muted-strong"
+        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center text-2xs font-bold ${
+          active ? "text-accent" : "text-muted-strong"
         }`}
       >
         {(result.similarity * 100).toFixed(0)}%
@@ -268,15 +268,10 @@ const DocumentListItem = memo(function DocumentListItem({
         title={doc.filename}
         className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
       >
-        <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border ${
-            active
-              ? "border-accent/30 bg-accent/10 text-accent"
-              : "border-border/30 bg-bg-muted/20 text-muted"
-          }`}
-        >
-          <FileText className="h-4 w-4" aria-hidden />
-        </span>
+        <FileText
+          className={`h-4 w-4 shrink-0 ${active ? "text-accent" : "text-muted"}`}
+          aria-hidden
+        />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold leading-snug text-txt">
             {doc.filename}
@@ -285,24 +280,29 @@ const DocumentListItem = memo(function DocumentListItem({
             {getDocumentSummary(doc, t)}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted/70">
-            <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/8 px-1.5 py-0.5 text-accent-fg">
+            <span className="inline-flex items-center gap-1">
               <ScopeIcon className="h-3 w-3" aria-hidden />
               {scopeLabel}
             </span>
-            <span className="rounded-full border border-border/30 bg-bg-muted/20 px-1.5 py-0.5">
-              {getDocumentTypeLabel(doc.contentType)}
-            </span>
+            <span aria-hidden>·</span>
+            <span>{getDocumentTypeLabel(doc.contentType)}</span>
             {doc.canEditText ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-status-success/25 bg-status-success-bg px-1.5 py-0.5 text-status-success">
-                <BadgeCheck className="h-3 w-3" aria-hidden />
-                {t("documentsview.Editable", { defaultValue: "editable" })}
-              </span>
+              <>
+                <span aria-hidden>·</span>
+                <span className="inline-flex items-center gap-1 text-status-success">
+                  <BadgeCheck className="h-3 w-3" aria-hidden />
+                  {t("documentsview.Editable", { defaultValue: "editable" })}
+                </span>
+              </>
             ) : null}
             {!doc.canDelete ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/30 bg-bg-muted/20 px-1.5 py-0.5">
-                <Lock className="h-3 w-3" aria-hidden />
-                {t("documentsview.Locked", { defaultValue: "locked" })}
-              </span>
+              <>
+                <span aria-hidden>·</span>
+                <span className="inline-flex items-center gap-1">
+                  <Lock className="h-3 w-3" aria-hidden />
+                  {t("documentsview.Locked", { defaultValue: "locked" })}
+                </span>
+              </>
             ) : null}
           </div>
         </div>
@@ -354,10 +354,11 @@ const CompactSearchChip = memo(function CompactSearchChip({
       {...agentProps}
       type="button"
       onClick={() => onSelect(id)}
-      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+      // Borderless selector pill (#10710): selection = accent text on a wash.
+      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-accent/45 bg-accent/12 text-accent-fg"
-          : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+          ? "bg-accent/12 text-accent"
+          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
       }`}
     >
       <FileSearch className="h-3.5 w-3.5" aria-hidden />
@@ -390,10 +391,11 @@ function CompactDocChip({
       {...agentProps}
       type="button"
       onClick={() => onSelect(doc.id)}
-      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+      // Borderless selector pill (#10710): selection = accent text on a wash.
+      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-accent/45 bg-accent/12 text-accent-fg"
-          : "border-border/30 bg-bg-muted/20 text-muted hover:text-txt"
+          ? "bg-accent/12 text-accent"
+          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
       }`}
     >
       <FileText className="h-3.5 w-3.5" aria-hidden />
@@ -423,7 +425,9 @@ export function DocumentsView({
 } = {}) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const tRef = useRef(t);
   const setActionNoticeRef = useRef(setActionNotice);
+  tRef.current = t;
   setActionNoticeRef.current = setActionNotice;
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("all");
@@ -515,7 +519,7 @@ export function DocumentsView({
           const msg =
             err instanceof Error
               ? err.message
-              : t("documentsview.FailedToLoadDocumentsData", {
+              : tRef.current("documentsview.FailedToLoadDocumentsData", {
                   defaultValue: "Failed to load Knowledge data",
                 });
           setLoadError(msg);
@@ -525,7 +529,7 @@ export function DocumentsView({
         setLoading(false);
       }
     },
-    [onDocumentsChange, scopeFilter, t],
+    [onDocumentsChange, scopeFilter],
   );
 
   useEffect(() => {
@@ -1015,6 +1019,37 @@ export function DocumentsView({
     [handleFilesUpload, uploading],
   );
 
+  // Root-level file-drop intake (#10722). The only shipped documents surface
+  // (CharacterHubView → /character/documents) hides the selector rail, so the
+  // UploadZone fieldset — and with it the ONLY drag-drop upload affordance —
+  // never mounts. Accepting file drops on the whole view root restores
+  // drag-drop upload on every variant, with the same default options as the
+  // embedded "Add Knowledge" file input above. When the rail IS mounted, the
+  // UploadZone's own drop handler stops propagation so a drop inside it keeps
+  // its scoped options and never double-uploads.
+  const handleRootDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (event.dataTransfer?.types?.includes("Files")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+  const handleRootDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const files = event.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      // preventDefault BEFORE the uploading gate: dragover advertised
+      // droppability, so bailing without it hands the drop to the browser
+      // default — navigating the SPA to the local file.
+      event.preventDefault();
+      if (uploading) return;
+      void handleFilesUpload(Array.from(files) as DocumentUploadFile[], {
+        includeImageDescriptions: true,
+        scope: DEFAULT_DOCUMENT_UPLOAD_SCOPE,
+      });
+    },
+    [handleFilesUpload, uploading],
+  );
+
   const handleSearch = useCallback(
     async (query: string) => {
       try {
@@ -1175,9 +1210,10 @@ export function DocumentsView({
           : "md:w-[18rem] lg:w-[22rem] xl:w-[24rem]"
       }`}
     >
+      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
       <PagePanel
         variant="inset"
-        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none `}
+        className={useCompactSelectorRail ? "p-2" : "p-3"}
       >
         <UploadZone
           fileInputId={fileInputId}
@@ -1189,9 +1225,10 @@ export function DocumentsView({
         />
       </PagePanel>
 
+      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
       <PagePanel
         variant="inset"
-        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none  ${
+        className={`flex flex-1 flex-col overflow-hidden p-2.5 ${
           useCompactSelectorRail ? "min-h-[14rem]" : "min-h-[18rem]"
         }`}
       >
@@ -1242,7 +1279,7 @@ export function DocumentsView({
             filteredDocuments.length === 0 && (
               <PagePanel.Empty
                 variant="inset"
-                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
+                className="min-h-[12rem] px-0 py-8"
                 description={t("documentsview.SearchTips", {
                   defaultValue:
                     "Try a filename, topic, or phrase from the document body.",
@@ -1256,7 +1293,7 @@ export function DocumentsView({
           {isShowingSearchResults && visibleSearchResults.length === 0 && (
             <PagePanel.Empty
               variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
+              className="min-h-[12rem] px-0 py-8"
               description={t("documentsview.SearchTips", {
                 defaultValue:
                   "Try a filename, topic, or phrase from the document body.",
@@ -1290,15 +1327,18 @@ export function DocumentsView({
   );
 
   const compactDocumentStrip = !shouldRenderSelectorRail ? (
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
     <PagePanel
       variant="inset"
-      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none "
+      className="flex shrink-0 flex-col gap-2 px-0 py-0"
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
         {fileInputId ? (
           <label
             htmlFor={fileInputId}
-            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm border border-accent/35 bg-accent/10 px-3 text-xs font-semibold text-accent-fg transition hover:bg-accent/16 ${
+            // Borderless accent action (#10710); text-accent (not accent-fg,
+            // which is near-white and illegible on a 10% wash).
+            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm bg-accent/10 px-3 text-xs font-semibold text-accent transition hover:bg-accent/20 ${
               uploading ? "pointer-events-none opacity-60" : ""
             }`}
           >
@@ -1335,9 +1375,12 @@ export function DocumentsView({
   ) : null;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: file-drop target only; the keyboard-accessible upload path is the "Add Knowledge" file input rendered below.
     <div
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="documents-view"
+      onDragOver={handleRootDragOver}
+      onDrop={handleRootDrop}
     >
       {!shouldRenderSelectorRail && fileInputId ? (
         <input
@@ -1353,7 +1396,7 @@ export function DocumentsView({
       {isServiceLoading && (
         <PagePanel
           variant="inset"
-          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none "
+          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong"
         >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           {t("documentsview.DocumentServiceIs", {

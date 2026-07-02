@@ -6,21 +6,13 @@
 
 import type {
   Action,
+  ActionParameter,
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
 } from "@elizaos/core";
-
-/**
- * Action parameter definition
- */
-interface ActionParameter {
-  type: string;
-  description: string;
-  required: boolean;
-}
 
 /**
  * Formats actions with their parameter schemas for tool calling.
@@ -31,18 +23,13 @@ export function formatActionsWithParams(actions: Action[]): string {
       let formatted = `## ${action.name}\n${action.description}`;
 
       if (action.parameters !== undefined) {
-        const paramEntries = Object.entries(
-          action.parameters as Record<string, ActionParameter>,
-        );
-
-        if (paramEntries.length === 0) {
+        if (action.parameters.length === 0) {
           formatted +=
             "\n\n**Parameters:** None (can be called directly without parameters)";
         } else {
           formatted += "\n\n**Parameters:**";
-          for (const [paramName, paramDef] of paramEntries) {
-            const required = paramDef.required ? "(required)" : "(optional)";
-            formatted += `\n- \`${paramName}\` ${required}: ${paramDef.type} - ${paramDef.description}`;
+          for (const parameter of action.parameters) {
+            formatted += `\n- ${formatParameter(parameter)}`;
           }
         }
       }
@@ -50,6 +37,14 @@ export function formatActionsWithParams(actions: Action[]): string {
       return formatted;
     })
     .join("\n\n---\n\n");
+}
+
+function formatParameter(parameter: ActionParameter): string {
+  const required = parameter.required ? "(required)" : "(optional)";
+  const enumSuffix = parameter.schema.enum?.length
+    ? ` [${parameter.schema.enum.join(", ")}]`
+    : "";
+  return `\`${parameter.name}\` ${required}: ${parameter.schema.type}${enumSuffix} - ${parameter.description}`;
 }
 
 /**

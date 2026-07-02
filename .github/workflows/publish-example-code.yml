@@ -1,0 +1,137 @@
+# Publishes @elizaos/example-code (npm) — the elizaOS-owned "eliza-code" coding
+# agent (runtime + coding tools + orchestrator; the opencode replacement, #10059).
+# The Cloud coding-container runner installs this package to run eliza-code, so it
+# must exist on npm before the runner image can bundle it.
+#
+# Scoped, single-package publish (modeled on publish-plugin-elizacloud.yml): it
+# publishes ONLY @elizaos/example-code, never triggers a monorepo release. The
+# guard is an npm-existence check (not a git-version diff), so it publishes the
+# first-ever version correctly, is idempotent (a re-run when the version already
+# exists is a no-op), and never republishes an existing version.
+name: Publish @elizaos/example-code
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/examples/code/**"
+      - ".github/workflows/publish-example-code.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-example-code-${{ github.ref }}
+  cancel-in-progress: false
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  check_npm:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          filter: blob:none
+
+      - name: Decide whether to publish (version-new AND deps installable)
+        id: check
+        run: |
+          set -euo pipefail
+          PKG_JSON="packages/examples/code/package.json"
+          NAME=$(jq -r .name "$PKG_JSON")
+          VERSION=$(jq -r .version "$PKG_JSON")
+          echo "Package: ${NAME}@${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # (1) Publish only if this exact name@version is NOT already published.
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "Already published — skipping."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # (2) Preflight: `npm publish` rewrites this package's `workspace:*`
+          # @elizaos/* deps to `^<local monorepo version>`. If those versions are
+          # not on npm, the published package would be UNINSTALLABLE. Refuse to
+          # publish until every @elizaos workspace dep resolves at its local
+          # version — otherwise the monorepo 2.x beta line must be released first.
+          missing=""
+          while read -r dep localver; do
+            [ -z "$dep" ] && continue
+            if ! npm view "${dep}@${localver}" version >/dev/null 2>&1; then
+              missing="${missing} ${dep}@${localver}"
+            fi
+          done < <(
+            jq -r '.dependencies | to_entries[]
+                   | select(.key|startswith("@elizaos/"))
+                   | select(.value|startswith("workspace:"))
+                   | .key' "$PKG_JSON" |
+            while read -r dep; do
+              short="${dep#@elizaos/}"
+              for base in packages plugins; do
+                f="$base/$short/package.json"
+                if [ -f "$f" ]; then echo "$dep $(jq -r .version "$f")"; break; fi
+              done
+            done
+          )
+
+          if [ -n "$missing" ]; then
+            echo "::warning::Skipping publish — @elizaos deps not on npm at the required version(s):${missing}. Release the monorepo 2.x line first (see #10059)."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version is new and all @elizaos deps resolve on npm — will publish."
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish_npm:
+    needs: check_npm
+    if: needs.check_npm.outputs.should_publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write # npm OIDC trusted publishing (SOC2 CC9.2)
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Install and build
+        working-directory: packages/examples/code
+        run: |
+          bun install
+          bun run build
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm
+        # Publishes under the `beta` dist-tag because the version is a
+        # pre-release (2.0.0-beta.x) — it must NOT hijack `@latest`. The Cloud
+        # runner pins the exact version, so the tag is for hygiene, not resolution.
+        # Auth: prefer npm OIDC (id-token: write); NPM_TOKEN is the fallback.
+        working-directory: packages/examples/code
+        run: npm publish --tag beta --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "example-code-v${{ needs.check_npm.outputs.version }}" \
+            -m "example-code v${{ needs.check_npm.outputs.version }}" || true
+          git push origin "example-code-v${{ needs.check_npm.outputs.version }}" || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

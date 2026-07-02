@@ -30,6 +30,13 @@ function parseIsoMs(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Maximum |ms| a JS Date can represent (±100,000,000 days from epoch). */
+const MAX_DATE_MS = 8_640_000_000_000_000;
+
+function isRepresentableMs(ms: number): boolean {
+  return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
+}
+
 function isTerminalStatus(status: ScheduledTaskStatus): boolean {
   return (
     status === "completed" ||
@@ -230,6 +237,15 @@ function cronDue(
     parseIsoMs(task.state.firedAt) ??
     metadataCreatedAtMs(task) ??
     nowMs - CRON_CATCHUP_WINDOW_MS;
+  // A base at/after `now` cannot yield a due occurrence (the next run is
+  // strictly after the base). Skipping the scan also avoids a pathological
+  // full-window scan inside computeNextCronRunAtMs when a garbage
+  // firedAt/createdAtIso parses near the max representable date: every
+  // candidate is an Invalid Date, so the scan burns ~30s of Intl work per
+  // tick before returning null.
+  if (baseMs > nowMs) {
+    return { due: false, reason: "cron_pending" };
+  }
   const nextMs = computeNextCronRunAtMs(trigger.expression, baseMs, trigger.tz);
   if (nextMs === null) return { due: false, reason: "cron_invalid" };
   return nextMs <= nowMs
@@ -304,6 +320,12 @@ async function relativeAnchorDue(
     return { due: false, reason: "anchor_unresolved" };
   }
   const occurrenceMs = anchorMs + trigger.offsetMinutes * MINUTE_MS;
+  // `offsetMinutes` is only schema-bounded to an integer; an extreme value
+  // pushes the ms product outside the representable Date range and
+  // `new Date(...).toISOString()` below would throw mid-tick.
+  if (!isRepresentableMs(occurrenceMs)) {
+    return { due: false, reason: "anchor_offset_out_of_range" };
+  }
   if (occurrenceMs > nowMs) {
     return { due: false, reason: "anchor_pending" };
   }
@@ -372,6 +394,24 @@ function duringWindowDue(
   const fireKey = `${localDateKey(context.now, timeZone)}:${trigger.windowKey}:${active.name}`;
   if (task.metadata?.lastWindowFireKey === fireKey) {
     return { due: false, reason: "window_already_fired" };
+  }
+  // A `firedAt` stamped inside the currently active window means this
+  // window's occurrence already happened. `lastWindowFireKey` is written by
+  // the tick AFTER the fire persists, so a recurrence-refire re-read in that
+  // gap (or a lost metadata edit) must still see the same window as spent —
+  // otherwise a parallel tick could double-fire one window occurrence.
+  const firedAtMs = parseIsoMs(task.state.firedAt);
+  if (
+    task.state.status !== "scheduled" &&
+    firedAtMs !== null &&
+    localDateKey(new Date(firedAtMs), timeZone) ===
+      localDateKey(context.now, timeZone)
+  ) {
+    const firedParts = localParts(new Date(firedAtMs), timeZone);
+    const firedMinutes = firedParts.hour * 60 + firedParts.minute;
+    if (firedMinutes >= active.start && firedMinutes < active.end) {
+      return { due: false, reason: "window_already_fired" };
+    }
   }
   return {
     due: true,

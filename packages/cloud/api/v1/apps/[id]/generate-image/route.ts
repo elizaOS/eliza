@@ -4,6 +4,7 @@ import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/client";
 import { appImageGenerationIdempotency } from "@/db/schemas/app-image-generation-idempotency";
 import { jsonError } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -14,6 +15,7 @@ import { getAiProviderConfigurationError } from "@/lib/providers/language-model"
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { calculateImageGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
+  DEFAULT_IMAGE_MODEL_ID,
   getSupportedImageModelDefinition,
   SUPPORTED_IMAGE_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
@@ -25,14 +27,13 @@ import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const DEFAULT_IMAGE_MODEL = "google/gemini-2.5-flash-image";
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_IMAGES = 4;
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
 const imageRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
-  model: z.string().trim().default(DEFAULT_IMAGE_MODEL),
+  model: z.string().trim().default(DEFAULT_IMAGE_MODEL_ID),
   numImages: z.coerce.number().int().min(1).max(MAX_IMAGES).default(1),
   aspectRatio: z.string().trim().max(16).optional(),
   stylePreset: z.string().trim().max(64).optional(),
@@ -256,6 +257,10 @@ app.post("/", async (c) => {
     ) {
       return jsonError(c, 403, "Access denied to this app", "access_denied");
     }
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+      return jsonError(c, 403, "Access denied to this app", "access_denied");
+    }
 
     if (!c.env.BLOB)
       return jsonError(
@@ -348,24 +353,11 @@ app.post("/", async (c) => {
     const provider = getImageProvider(definition.billingSource);
     const env = getCloudAwareEnv();
     const apiKeys = {
-      OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
-      OPENROUTER_BASE_URL: env.OPENROUTER_BASE_URL,
       ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
       ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
       FAL_KEY: env.FAL_KEY,
       FAL_API_KEY: env.FAL_API_KEY,
     };
-    if (
-      definition.billingSource === "bitrouter" &&
-      !apiKeys.OPENROUTER_API_KEY
-    ) {
-      return jsonError(
-        c,
-        503,
-        getAiProviderConfigurationError(),
-        "internal_error",
-      );
-    }
     if (
       definition.billingSource === "atlascloud" &&
       !apiKeys.ATLASCLOUD_API_KEY

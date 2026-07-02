@@ -101,8 +101,10 @@ function trimmedOrDefault(value: string, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
-export function normalizeFirstRunName(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
+export function normalizeFirstRunName(
+  value: string | null | undefined,
+): string {
+  return (value ?? "").trim().replace(/\s+/g, " ");
 }
 
 function isFirstRunStep(value: unknown): value is FirstRunStep {

@@ -10,6 +10,7 @@ import {
 } from "../../src/services/orchestrator-task-store.js";
 import type {
   CreateTaskInput,
+  OrchestratorTaskDocument,
   OrchestratorTaskPlanRevision,
   OrchestratorTaskSession,
 } from "../../src/services/orchestrator-task-types.js";
@@ -175,6 +176,27 @@ describe("OrchestratorTaskStore backend selection", () => {
   it("selects runtime-db when a SQL adapter is supplied", () => {
     const store = new OrchestratorTaskStore({
       runtime: { databaseAdapter: new FakeSqlAdapter() },
+    });
+    expect(store.backend).toBe("runtime-db");
+  });
+
+  it("reads the modern `runtime.adapter` property, not just the legacy `runtime.databaseAdapter`", () => {
+    // packages/core/src/runtime.ts exposes `public adapter!: IDatabaseAdapter`,
+    // so this is how a real eliza runtime feeds a database into the store.
+    const store = new OrchestratorTaskStore({
+      runtime: { adapter: new FakeSqlAdapter() },
+    });
+    expect(store.backend).toBe("runtime-db");
+  });
+
+  it("recognizes an eliza `BaseDrizzleAdapter` shape (adapter.db.execute)", () => {
+    // The real @elizaos/plugin-sql adapter exposes SQL through `adapter.db`
+    // (a drizzle instance) rather than flat top-level methods. The store must
+    // recognize this shape too, or every real container falls to the file
+    // backend.
+    const fakeDrizzleAdapter = { db: { execute: () => Promise.resolve([]) } };
+    const store = new OrchestratorTaskStore({
+      runtime: { adapter: fakeDrizzleAdapter },
     });
     expect(store.backend).toBe("runtime-db");
   });
@@ -424,6 +446,34 @@ describe("InMemoryTaskStore", () => {
 });
 
 describe("FileTaskStore", () => {
+  it("serializes first-touch loads so concurrent operations cannot hydrate over each other", async () => {
+    const file = await tempFile();
+    const seed = new FileTaskStore(file);
+    await seed.createTask(createInput({ title: "seed" }));
+
+    class CountingFileTaskStore extends FileTaskStore {
+      loadCount = 0;
+      override hydrate(docs: OrchestratorTaskDocument[]): void {
+        this.loadCount += 1;
+        super.hydrate(docs);
+      }
+    }
+
+    const store = new CountingFileTaskStore(file);
+    const created = await Promise.all(
+      Array.from({ length: 25 }, (_, i) =>
+        store.createTask(createInput({ title: `concurrent ${i}` })),
+      ),
+    );
+
+    expect(store.loadCount).toBe(1);
+    const listed = await store.listTasks({ includeArchived: true });
+    expect(listed).toHaveLength(created.length + 1);
+    for (const doc of created) {
+      expect(listed.map((task) => task.id)).toContain(doc.task.id);
+    }
+  });
+
   it("persists tasks atomically and reloads them in a fresh store", async () => {
     const file = await tempFile();
     const store = new FileTaskStore(file);
@@ -518,5 +568,161 @@ describe("RuntimeDbTaskStore", () => {
       createInput({ title: "query only" }),
     );
     expect((await store.getTask(task.id))?.task.title).toBe("query only");
+  });
+
+  it("survives a service restart: a fresh store over the same adapter still lists the task and its sessions", async () => {
+    // Regression for the live symptom: `/api/orchestrator/tasks` returned a
+    // task before a container restart and `{"tasks":[]}` after. The docker
+    // filesystem was ephemeral, so the file backend lost its JSON. This test
+    // proves the SQL backend does NOT depend on any in-memory state: a
+    // completely new store instance layered over the same durable rows can
+    // still see the task and every session that was attached to it.
+    const adapter = new FakeSqlAdapter();
+
+    const service1 = new RuntimeDbTaskStore(adapter);
+    const { task } = await service1.createTask(
+      createInput({ title: "e2e reliability test page" }),
+    );
+    await service1.addSession(sessionFor(task.id, { sessionId: "session-a" }));
+    await service1.addSession(
+      sessionFor(task.id, {
+        id: "row-2",
+        sessionId: "session-b",
+        label: "reviewer",
+      }),
+    );
+
+    // Discard service1 entirely to simulate the container being torn down.
+    // Rows stay in `adapter` because that's the persistent SQL surface.
+    const service2 = new RuntimeDbTaskStore(adapter);
+
+    const listed = await service2.listTasks();
+    expect(listed.map((t) => t.id)).toContain(task.id);
+    expect(listed.find((t) => t.id === task.id)?.title).toBe(
+      "e2e reliability test page",
+    );
+
+    const detail = await service2.getTask(task.id);
+    expect(detail?.sessions.map((s) => s.sessionId).sort()).toEqual([
+      "session-a",
+      "session-b",
+    ]);
+
+    // And a session lookup by id still resolves back to the right task.
+    const found = await service2.findSession("session-b");
+    expect(found?.taskId).toBe(task.id);
+  });
+
+  it("emits a portable ON CONFLICT upsert so postgres/pglite/sqlite all accept it", async () => {
+    // Old code emitted `INSERT OR REPLACE INTO ...`, which is SQLite-only.
+    // Postgres and pglite reject that. Capture the SQL and assert on it.
+    const seenSql: string[] = [];
+    const adapter = new FakeSqlAdapter();
+    const capturing = {
+      execute: (sql: string, params?: unknown[]) => {
+        seenSql.push(sql);
+        return adapter.execute(sql, params);
+      },
+      all: (sql: string, params?: unknown[]) => adapter.all(sql, params),
+    };
+    const store = new RuntimeDbTaskStore(capturing);
+    await store.createTask(createInput({ title: "portable upsert" }));
+
+    // The DDL must use BIGINT for the ms-epoch column: Date.now() (~1.75e12)
+    // overflows postgres/pglite int4, and this SQL path is exactly the one
+    // that now engages on those backends.
+    const createTable = seenSql.find((s) => /CREATE TABLE/i.test(s));
+    expect(createTable).toMatch(/last_activity_at BIGINT/i);
+
+    const upserts = seenSql.filter((s) => /INSERT\s+INTO/i.test(s));
+    expect(upserts.length).toBeGreaterThan(0);
+    for (const sql of upserts) {
+      expect(sql).toMatch(/ON CONFLICT/i);
+      expect(sql).not.toMatch(/INSERT\s+OR\s+REPLACE/i);
+    }
+  });
+
+  it("round-trips through the drizzle SQL builder against an eliza-shaped adapter", {
+    timeout: 30_000,
+  }, async () => {
+    // Prove the eliza `BaseDrizzleAdapter` path actually assembles valid
+    // drizzle SQL objects. We use drizzle-orm's own SQL class to render the
+    // query to plain SQL + params, then feed that into the FakeSqlAdapter so
+    // the round-trip semantics are the same as the raw path.
+    const drizzle = await import("drizzle-orm");
+    const pgDialect = new (await import("drizzle-orm/pg-core")).PgDialect();
+    const adapter = new FakeSqlAdapter();
+    const drizzleShaped = {
+      db: {
+        execute: async (query: unknown) => {
+          if (query instanceof drizzle.SQL) {
+            const { sql, params } = pgDialect.sqlToQuery(query);
+            const head = sql.trim().slice(0, 6).toUpperCase();
+            if (head === "SELECT") return adapter.all(sql, params);
+            return adapter.execute(sql, params);
+          }
+          throw new Error(
+            "drizzle-shaped adapter received a non-SQL object; store" +
+              " is emitting the wrong query type",
+          );
+        },
+      },
+    };
+    const store = new RuntimeDbTaskStore(drizzleShaped);
+    const { task } = await store.createTask(
+      createInput({ title: "drizzle round trip" }),
+    );
+    await store.addSession(sessionFor(task.id));
+
+    // A completely new store over the same durable adapter still lists it.
+    const reopened = new RuntimeDbTaskStore(drizzleShaped);
+    const listed = await reopened.listTasks();
+    expect(listed.map((t) => t.id)).toContain(task.id);
+    const detail = await reopened.getTask(task.id);
+    expect(detail?.sessions[0]?.sessionId).toBe("session-1");
+  });
+});
+
+describe("orchestrator-task-store audit follow-ups (#11028)", () => {
+  it("SQL deleteTask reports whether the task existed, not an unconditional true", async () => {
+    const store = new RuntimeDbTaskStore(new FakeSqlAdapter());
+    const { task } = await store.createTask(createInput({ title: "real" }));
+    expect(await store.deleteTask(task.id)).toBe(true);
+    // A task that never existed must return false so DELETE /tasks/:id can 404
+    // instead of answering a misleading 200.
+    expect(await store.deleteTask("does-not-exist")).toBe(false);
+    // Already deleted → false on a second call.
+    expect(await store.deleteTask(task.id)).toBe(false);
+  });
+
+  it("FileTaskStore merges a concurrent insert instead of clobbering it", async () => {
+    const path = await tempFile();
+    const a = new FileTaskStore(path);
+    const b = new FileTaskStore(path);
+    // Both instances load the empty file; each inserts a distinct task. Before
+    // the read-merge-write fix, b's whole-document write clobbered a's task.
+    const ta = await a.createTask(createInput({ title: "from A" }));
+    const tb = await b.createTask(createInput({ title: "from B" }));
+    const reader = new FileTaskStore(path);
+    const ids = (await reader.listTasks()).map((t) => t.id);
+    expect(ids).toContain(ta.task.id);
+    expect(ids).toContain(tb.task.id);
+  });
+
+  it("FileTaskStore delete is honored even when afterWrite re-reads the deleted task from a concurrent write", async () => {
+    const path = await tempFile();
+    const a = new FileTaskStore(path);
+    const seed = await a.createTask(createInput({ title: "seed" }));
+    // A concurrent insert lands on disk (a second instance persists task X).
+    const b = new FileTaskStore(path);
+    const x = await b.createTask(createInput({ title: "X" }));
+    // `a` (which only knows about seed) deletes it. afterWrite re-reads disk
+    // {seed, X}; the tombstone drops seed while the concurrent insert X survives.
+    // Without the tombstone the re-read would resurrect seed.
+    expect(await a.deleteTask(seed.task.id)).toBe(true);
+    const reader = new FileTaskStore(path);
+    const ids = (await reader.listTasks()).map((t) => t.id);
+    expect(ids).not.toContain(seed.task.id);
+    expect(ids).toContain(x.task.id);
   });
 });

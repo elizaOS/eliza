@@ -15,19 +15,8 @@
     "num_envs": 1024,
     "batch_size": 256,
     "max_grad_norm": 1.0,
-    "policy_hidden_layer_sizes": [
-      128,
-      128,
-      128,
-      128
-    ],
-    "value_hidden_layer_sizes": [
-      256,
-      256,
-      256,
-      256,
-      256
-    ]
+    "policy_hidden_layer_sizes": [128, 128, 128, 128],
+    "value_hidden_layer_sizes": [256, 256, 256, 256, 256]
   },
   "env_config": {
     "Kd": "1.084",

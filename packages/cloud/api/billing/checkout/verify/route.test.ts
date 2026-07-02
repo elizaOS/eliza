@@ -123,6 +123,10 @@ mock.module("@/lib/services/organizations", () => ({
   },
 }));
 
+mock.module("@/lib/security/safe-fetch", () => ({
+  safeFetch: webhookFetch,
+}));
+
 mock.module("@/lib/stripe", () => ({
   requireStripe: () => ({
     checkout: {
@@ -156,7 +160,6 @@ describe("billing checkout verify service-key agent bridge", () => {
     retrieveSession.mockClear();
     dbRead.select.mockClear();
     webhookFetch.mockClear();
-    globalThis.fetch = webhookFetch as unknown as typeof fetch;
   });
 
   test("applies agent owner org credits and emits topped-up webhook", async () => {

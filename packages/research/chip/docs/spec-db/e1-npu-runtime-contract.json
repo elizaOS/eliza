@@ -103,10 +103,7 @@
   "stablehlo_subset_import": {
     "module": "compiler/runtime/e1_npu_stablehlo.py",
     "schema": "eliza.e1_npu_stablehlo_subset.v1",
-    "supported_rank2_dot_ops": [
-      "stablehlo.dot_general",
-      "stablehlo.dot"
-    ],
+    "supported_rank2_dot_ops": ["stablehlo.dot_general", "stablehlo.dot"],
     "supported_rank2_dot_precisions": [
       "int8",
       "int4",
@@ -122,42 +119,23 @@
       "group_scaled_int4",
       "w4a8_gs"
     ],
-    "supported_rank4_batch_matmul_ops": [
-      "stablehlo.batch_matmul"
-    ],
-    "supported_rank4_batch_matmul_precisions": [
-      "int8",
-      "int4"
-    ],
-    "supported_convolution_ops": [
-      "stablehlo.convolution"
-    ],
-    "supported_convolution_precisions": [
-      "int8",
-      "int4"
-    ],
+    "supported_rank4_batch_matmul_ops": ["stablehlo.batch_matmul"],
+    "supported_rank4_batch_matmul_precisions": ["int8", "int4"],
+    "supported_convolution_ops": ["stablehlo.convolution"],
+    "supported_convolution_precisions": ["int8", "int4"],
     "supported_add_ops": [
       "stablehlo.add",
       "stablehlo.residual_add",
       "stablehlo.bias_add"
     ],
-    "supported_add_precisions": [
-      "int8"
-    ],
-    "supported_mlp_ops": [
-      "stablehlo.mlp"
-    ],
-    "supported_mlp_precisions": [
-      "int8"
-    ],
+    "supported_add_precisions": ["int8"],
+    "supported_mlp_ops": ["stablehlo.mlp"],
+    "supported_mlp_precisions": ["int8"],
     "supported_attention_ops": [
       "stablehlo.attention_qk",
       "stablehlo.attention_av"
     ],
-    "supported_attention_precisions": [
-      "int8",
-      "int4"
-    ],
+    "supported_attention_precisions": ["int8", "int4"],
     "validation": "StableHLO subset parser accepts stablehlo.dot_general and stablehlo.dot rank-2 records for every bounded low-precision matmul smoke precision, stablehlo.batch_matmul rank-4 [B,H,M,K]x[B,H,K,N] records for INT8/INT4, batch-1 NHWC/HWIO stablehlo.convolution records for INT8/INT4, stablehlo.add/stablehlo.residual_add/stablehlo.bias_add INT8 matrix records, bounded stablehlo.mlp INT8 ReLU records, and bounded rank-4 stablehlo.attention_qk/stablehlo.attention_av INT8/INT4 records that dispatch through lower_attention_qk_smoke/lower_attention_av_smoke. It validates M/N/K against the local 3x3x7 tile envelope, rejects empty modules, duplicate op names, shape mismatches, unsupported layouts, unsupported activation, unsupported add/bias/attention shapes, and unsupported precision before lowering, emits parser-only LoweringPlan records mapping each precision/op to the existing runtime_api/schema smoke target, materializes only those checked runtime smoke graph records from required tensor fields and static op attributes, and dispatches materialized modules through lower_stablehlo_module_smoke with dispatch_order/lowering_plans metadata and without CPU fallback for covered smoke ops",
     "claim_boundary": "stablehlo_subset_parser_only_not_mlir_pipeline_graph_partitioner_or_production_compiler_backend"
   },
@@ -215,14 +193,8 @@
       "tflite.batch_matmul",
       "tflite.matmul"
     ],
-    "supported_precisions": [
-      "int8",
-      "int4"
-    ],
-    "mapped_opcodes": [
-      "GEMM_S8",
-      "GEMM_S4"
-    ],
+    "supported_precisions": ["int8", "int4"],
+    "mapped_opcodes": ["GEMM_S8", "GEMM_S4"],
     "tile_shape_limit": {
       "m": 3,
       "n": 3,
@@ -245,14 +217,8 @@
       "eliza.sparse_2_4_matmul",
       "eliza.sparse_int4_matmul"
     ],
-    "supported_precisions": [
-      "int4",
-      "sparse_int4",
-      "s4_2_4"
-    ],
-    "mapped_opcodes": [
-      "SDOT4_S4_2_4"
-    ],
+    "supported_precisions": ["int4", "sparse_int4", "s4_2_4"],
+    "mapped_opcodes": ["SDOT4_S4_2_4"],
     "layout": "dense signed INT4 activation matrix plus per-8-K-block 2:4 sparse INT4 weight values and metadata positions",
     "lowering": "Host validates signed INT4 activations, four nonzero weights and two distinct metadata positions per 2:4 group, pads K to 8-lane sparse blocks with INT4 zero values when needed, dispatches each sparse block through SDOT4_S4_2_4, and accumulates sparse block partial sums through OP_ADD",
     "claim_boundary": "sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend",
@@ -276,10 +242,7 @@
       "group_scaled_int4",
       "w4a8_gs"
     ],
-    "mapped_opcodes": [
-      "MUL_LO",
-      "ADD"
-    ],
+    "mapped_opcodes": ["MUL_LO", "ADD"],
     "layout": "signed INT8 activation matrix, signed INT4 weight matrix, and per-K-group per-output-column signed Q8.8 scale matrix",
     "lowering": "Host validates signed INT8 activations, signed INT4 weights, positive group_size, and signed Q8.8 per-group scales, dispatches each activation-weight scalar product through MUL_LO and ADD, then applies every group scale through MUL_LO and accumulates scaled Q8.8 group contributions through ADD",
     "claim_boundary": "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend",
@@ -298,13 +261,8 @@
       "eliza.int2_matmul",
       "eliza.bitnet_matmul"
     ],
-    "supported_precisions": [
-      "int2",
-      "bitnet_int2"
-    ],
-    "mapped_opcodes": [
-      "DOT16_S2"
-    ],
+    "supported_precisions": ["int2", "bitnet_int2"],
+    "mapped_opcodes": ["DOT16_S2"],
     "layout": "signed INT2 matrices in the two's-complement range [-2, 1] with signed int32 accumulator output",
     "lowering": "Host validates signed INT2 matrices, pads K to DOT16 width with INT2 zero values when needed, and dispatches every sixteen-lane INT2 MAC chunk through DOT16_S2 with signed int32 accumulation",
     "claim_boundary": "int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend",
@@ -322,12 +280,8 @@
       "tflite.matmul",
       "eliza.fp8_matmul"
     ],
-    "supported_precisions": [
-      "fp8_e4m3"
-    ],
-    "mapped_opcodes": [
-      "DOT4_FP8_E4M3"
-    ],
+    "supported_precisions": ["fp8_e4m3"],
+    "mapped_opcodes": ["DOT4_FP8_E4M3"],
     "layout": "raw FP8 E4M3 byte matrices with signed Q8.8 accumulator output",
     "lowering": "Host validates raw FP8 byte matrices, pads K to DOT4 width with FP8 zero bytes when needed, and dispatches every four-lane FP8 MAC chunk through DOT4_FP8_E4M3 with signed Q8.8 accumulation",
     "claim_boundary": "fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend",
@@ -345,14 +299,8 @@
       "tflite.matmul",
       "eliza.fp16_matmul"
     ],
-    "supported_precisions": [
-      "fp16",
-      "float16"
-    ],
-    "mapped_opcodes": [
-      "MUL_LO",
-      "ADD"
-    ],
+    "supported_precisions": ["fp16", "float16"],
+    "mapped_opcodes": ["MUL_LO", "ADD"],
     "layout": "raw IEEE FP16 finite normal/zero matrices converted by host to signed Q8.8 matrices with signed Q8.8 accumulator output",
     "lowering": "Host validates raw FP16 16-bit matrices, rejects NaN/Inf/subnormal values, converts finite normal/zero values to signed Q8.8, dispatches every scalar product through MUL_LO, host requantizes each Q16.16 product back to Q8.8, and dispatches accumulation through ADD",
     "claim_boundary": "fp16_matmul_q8_8_scalar_smoke_only_not_tensor_fp16_gemm_or_production_compiler_backend",
@@ -370,14 +318,8 @@
       "tflite.matmul",
       "eliza.bf16_matmul"
     ],
-    "supported_precisions": [
-      "bf16",
-      "bfloat16"
-    ],
-    "mapped_opcodes": [
-      "MUL_LO",
-      "ADD"
-    ],
+    "supported_precisions": ["bf16", "bfloat16"],
+    "mapped_opcodes": ["MUL_LO", "ADD"],
     "layout": "raw BF16 finite normal/zero matrices converted by host to signed Q8.8 matrices with signed Q8.8 accumulator output",
     "lowering": "Host validates raw BF16 16-bit matrices, rejects NaN/Inf/subnormal values, converts finite normal/zero values to signed Q8.8, dispatches every scalar product through MUL_LO, host requantizes each Q16.16 product back to Q8.8, and dispatches accumulation through ADD",
     "claim_boundary": "bf16_matmul_q8_8_scalar_smoke_only_not_tensor_bf16_gemm_or_production_compiler_backend",
@@ -387,14 +329,8 @@
     "runtime_api": "lower_conv2d_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
     "schema": "eliza.e1_npu_conv2d_smoke.v1",
-    "supported_source_ops": [
-      "stablehlo.convolution",
-      "tflite.conv_2d"
-    ],
-    "supported_precisions": [
-      "int8",
-      "int4"
-    ],
+    "supported_source_ops": ["stablehlo.convolution", "tflite.conv_2d"],
+    "supported_precisions": ["int8", "int4"],
     "layout": {
       "input": "NHWC",
       "filter": "HWIO",
@@ -416,9 +352,7 @@
       "tflite.depthwise_conv_2d",
       "eliza.depthwise_conv2d"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "layout": {
       "input": "NHWC",
       "filter": "HWCM",
@@ -440,9 +374,7 @@
       "tflite.conv_2d",
       "eliza.grouped_conv2d"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "layout": {
       "input": "NHWC",
       "filter": "HWIO",
@@ -466,10 +398,7 @@
       "tflite.batch_matmul",
       "eliza.attention_qk"
     ],
-    "supported_precisions": [
-      "int8",
-      "int4"
-    ],
+    "supported_precisions": ["int8", "int4"],
     "layout": "rank-4 [batch][heads][tokens][head_dim] query/key tensors",
     "lowering": "Host iterates batch/head dimensions and transposes each key matrix, then reuses lower_matmul_smoke so current GEMM_S8/GEMM_S4 commands perform every QK score MAC",
     "claim_boundary": "attention_qk_scores_smoke_only_not_softmax_or_production_compiler_backend",
@@ -484,9 +413,7 @@
       "tflite.softmax",
       "eliza.attention_softmax"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "layout": "rank-4 [batch][heads][tokens][key_tokens] int8 logits plus optional boolean mask",
     "lowering": "Host validates shape, mask, and bounded logit spread before dispatch; NPU scalar MAX_U32 over biased int8 values finds row max, OP_SUB forms deltas, EXP2_NEG_Q0_8 computes power-of-two Q0.8 exponent approximations, and OP_ADD accumulates row sums; host applies mask and divides by row sum to produce Q0.8 attention weights",
     "claim_boundary": "attention_softmax_exp2_q0_8_smoke_only_not_production_softmax_or_fused_attention",
@@ -502,10 +429,7 @@
       "tflite.batch_matmul",
       "eliza.attention_av"
     ],
-    "supported_precisions": [
-      "int8",
-      "int4"
-    ],
+    "supported_precisions": ["int8", "int4"],
     "layout": "rank-4 [batch][heads][tokens][key_tokens] attention weights and [batch][heads][key_tokens][value_dim] value tensors",
     "lowering": "Host iterates batch/head dimensions and requires prequantized attention weights, then reuses lower_matmul_smoke so current GEMM_S8/GEMM_S4 commands perform every AV context MAC",
     "claim_boundary": "attention_av_context_smoke_only_not_softmax_or_production_compiler_backend",
@@ -520,9 +444,7 @@
       "stablehlo.attention",
       "tflite.attention"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "layout": "rank-4 [batch][heads][tokens][head_dim] query/key tensors plus [batch][heads][key_tokens][value_dim] value tensors and optional boolean mask",
     "lowering": "Composes lower_attention_qk_smoke, host QK-score requantization, optional host-generated causal or sliding_window mask_mode, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, and host context requantization across batch/head slices",
     "claim_boundary": "multihead_attention_qk_exp2_softmax_av_smoke_only_not_fused_flash_attention_or_production_compiler_backend",
@@ -537,9 +459,7 @@
       "stablehlo.kv_cache_update",
       "tflite.kv_cache_update"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "layout": "rank-4 [batch][heads][capacity][dim] key/value caches plus rank-4 new key/value tensors and per-head cache lengths",
     "lowering": "Host validates cache capacity and append lengths, preserves existing cache entries, dispatches each appended K/V scalar copy through OP_ADD(value, 0), writes appended tokens into fixed cache positions, and advances cache_lengths",
     "claim_boundary": "kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache",
@@ -554,9 +474,7 @@
       "stablehlo.qkv_projection",
       "tflite.qkv_projection"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "layout": "signed INT8 input matrix plus packed signed INT8 [Q|K|V] projection weight matrix with equal Q/K/V output widths",
     "lowering": "Host validates packed QKV projection shape, dispatches the packed projection through one lower_matmul_smoke GEMM_S8 tiled lowering, slices the packed accumulator into Q/K/V matrices, and applies host-side Q/K/V requantization",
     "claim_boundary": "qkv_projection_packed_gemm_smoke_only_not_fused_attention_or_production_compiler_backend",
@@ -571,9 +489,7 @@
       "stablehlo.decode_attention",
       "tflite.decode_attention"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "layout": "rank-4 query tensor plus fixed-capacity rank-4 key/value caches, rank-4 new key/value tensors, and per-head cache lengths",
     "lowering": "Composes lower_kv_cache_update_smoke, host cache-view materialization with optional cache_window recent-token compaction and padded cache-lane mask, and lower_attention_smoke so the runtime appends K/V tokens and computes QK-softmax-AV attention over the updated cache",
     "claim_boundary": "decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend",
@@ -588,9 +504,7 @@
       "tflite.mlp",
       "eliza.transformer_mlp"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "activation": "relu",
     "lowering": "Host validates the two projection shapes, runs up-projection MACs through GEMM_S8, requantizes the hidden int32 accumulator to int8, runs activation through VRELU_S8, then runs down-projection MACs through GEMM_S8",
     "claim_boundary": "transformer_mlp_relu_smoke_only_not_gelu_or_production_compiler_backend",
@@ -605,9 +519,7 @@
       "stablehlo.swiglu",
       "tflite.swiglu"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "activation": "linear_gate",
     "lowering": "Runs up-projection and gate-projection MACs through GEMM_S8, requantizes both hidden int32 accumulators to int8, dispatches elementwise gate products through scalar OP_MUL_LO, applies a fixed-point gate shift plus int8 saturation on host, then runs down-projection MACs through GEMM_S8",
     "claim_boundary": "swiglu_s8_scalar_gate_smoke_only_not_silu_or_production_compiler_backend",
@@ -622,9 +534,7 @@
       "stablehlo.swiglu",
       "tflite.swiglu"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "activation": "silu",
     "lowering": "Runs up-projection and gate-projection MACs through GEMM_S8, requantizes both hidden int32 accumulators to int8, routes the gate tensor through lower_silu_smoke using EXP2_NEG_Q0_8, OP_SUB, and OP_MUL_LO scalar arithmetic, dispatches elementwise up*SiLU(gate) products through scalar OP_MUL_LO, applies a fixed-point gate shift plus int8 saturation on host, then runs down-projection MACs through GEMM_S8",
     "claim_boundary": "swiglu_s8_silu_gate_smoke_only_not_fused_vector_swiglu_or_production_compiler_backend",
@@ -640,9 +550,7 @@
       "eliza.silu",
       "eliza.approx_silu"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "activation": "silu_exp2_q0_8_piecewise",
     "lowering": "Host validates signed INT8 matrix inputs, dispatches every sigmoid decay approximation through EXP2_NEG_Q0_8, dispatches nonnegative sigmoid reconstruction through OP_SUB, dispatches every x*sigmoid product through OP_MUL_LO, and applies the final Q0.8 shift plus INT8 saturation on host",
     "claim_boundary": "silu_s8_exp2_piecewise_smoke_only_not_exact_sigmoid_or_vector_activation",
@@ -658,9 +566,7 @@
       "eliza.gelu",
       "eliza.quick_gelu"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "activation": "quick_gelu_exp2_q0_8",
     "lowering": "Host validates signed INT8 matrix inputs, dispatches every 1.703125*x scale through OP_MUL_LO, dispatches every sigmoid decay approximation through EXP2_NEG_Q0_8, dispatches nonnegative sigmoid reconstruction through OP_SUB, dispatches every x*sigmoid product through OP_MUL_LO, and applies final Q0.8 shift plus INT8 saturation on host",
     "claim_boundary": "gelu_s8_quick_exp2_piecewise_smoke_only_not_exact_gelu_or_vector_activation",
@@ -676,9 +582,7 @@
       "tflite.add",
       "eliza.bias_add"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "lowering": "Host validates row-wise bias width, broadcasts the bias vector over input rows, dispatches each element through scalar OP_ADD, then interprets the signed int32 result and saturates to int8",
     "claim_boundary": "bias_add_s8_scalar_broadcast_smoke_only_not_vector_or_production_compiler_backend",
     "not_claimed": "No vector add opcode, fused bias path, arbitrary-rank broadcasting, normalization, graph partitioning, Android delegate, or production compiler backend is implemented"
@@ -693,9 +597,7 @@
       "tflite.add",
       "eliza.residual_add"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "lowering": "Host validates equal matrix shapes, then dispatches each element through scalar OP_ADD; host interprets the signed int32 result and saturates to int8",
     "claim_boundary": "residual_add_s8_scalar_smoke_only_not_vector_or_production_compiler_backend",
     "not_claimed": "No vector add opcode, fused residual path, arbitrary broadcast add, normalization, graph partitioning, Android delegate, or production compiler backend is implemented"
@@ -709,9 +611,7 @@
       "stablehlo.transformer_block",
       "tflite.transformer_block"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "lowering": "Composes lower_attention_av_smoke, lower_bias_add_smoke, lower_residual_add_smoke, lower_mlp_smoke, and a second lower_residual_add_smoke for a batch-1 single-head block with prequantized attention weights",
     "claim_boundary": "single_head_transformer_block_smoke_only_not_softmax_norm_multihead_or_production_compiler_backend",
     "not_claimed": "No QK generation inside the block, softmax, scaling, masking, layer normalization, multi-head merge, KV-cache paging, fused kernels, Android delegate, or production compiler backend is implemented"
@@ -725,9 +625,7 @@
       "stablehlo.decoder_block",
       "tflite.decoder_block"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "lowering": "Composes lower_rmsnorm_smoke, either Q/K/V lower_matmul_smoke projections or one optional lower_qkv_projection_smoke packed-QKV projection with host Q/K/V slicing, host Q/K/V requantization, lower_rope_smoke, lower_attention_qk_smoke, host QK-score requantization, optional host-generated causal or sliding_window attention_mask_mode, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, lower_bias_add_smoke, lower_residual_add_smoke, a second lower_rmsnorm_smoke, lower_swiglu_smoke with optional SiLU-gated swiglu_activation, and a final lower_residual_add_smoke for a batch-1 single-head decoder block",
     "claim_boundary": "modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_or_production_compiler_backend",
     "not_claimed": "No exact exp/e softmax, scaling fusion, multi-head merge, KV-cache paging/update, sliding-window sparse attention hardware, vector norm/RoPE/gate/softmax datapaths, fused kernels, Android delegate, graph compiler, or production compiler backend is implemented"
@@ -735,14 +633,8 @@
   "rope_lowering_smoke": {
     "runtime_api": "lower_rope_smoke",
     "schema": "eliza.e1_npu_rope_smoke.v1",
-    "supported_source_ops": [
-      "eliza.rope",
-      "stablehlo.rope",
-      "tflite.rope"
-    ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_source_ops": ["eliza.rope", "stablehlo.rope", "tflite.rope"],
+    "supported_precisions": ["int8"],
     "lowering": "Dispatches every rotary-position embedding multiply, add, and subtract through scalar OP_MUL_LO, OP_SUB, and OP_ADD for even-width int8 matrices with prequantized int8 cosine/sine tables; host applies fixed-point shift and int8 saturation",
     "claim_boundary": "rope_s8_scalar_smoke_only_not_vector_or_production_compiler_backend",
     "not_claimed": "No vector RoPE datapath, fused Q/K projection, KV-cache update, graph compiler, Android delegate, or production compiler backend is implemented"
@@ -755,9 +647,7 @@
       "stablehlo.rms_norm",
       "tflite.rms_norm"
     ],
-    "supported_precisions": [
-      "int8"
-    ],
+    "supported_precisions": ["int8"],
     "lowering": "Dispatches every RMSNorm square, sum accumulation, input-weight multiply, and reciprocal-RMS scale multiply through scalar OP_MUL_LO and OP_ADD for int8 matrices with int8 weights; host computes reciprocal RMS and applies fixed-point shift plus int8 saturation",
     "claim_boundary": "rmsnorm_s8_scalar_smoke_only_not_vector_or_production_compiler_backend",
     "not_claimed": "No vector RMSNorm datapath, hardware reciprocal-square-root, fused transformer norm, graph compiler, Android delegate, or production compiler backend is implemented"
@@ -919,7 +809,12 @@
       "phase": "L2_planned",
       "path": "OCP Microscaling MXFP8 (E5M2 or E4M3 lanes, 32-element block, shared E8M0 scale); no MX block-scaled operand fetch, no MX accumulator, and no compiler lowering exists today",
       "claim_boundary": "no MX RTL or compiler support exists today; current DOT4_FP8_E4M3 is scalar evidence only and not the production format",
-      "sources": ["ocp_mx_spec", "mx_formats_paper", "microxcaling_repo", "ptq_mx_paper"]
+      "sources": [
+        "ocp_mx_spec",
+        "mx_formats_paper",
+        "microxcaling_repo",
+        "ptq_mx_paper"
+      ]
     },
     {
       "precision": "MXFP6",
@@ -935,7 +830,12 @@
       "phase": "L2_planned",
       "path": "OCP Microscaling MXFP4 (E2M1 lanes, 32-element block, shared E8M0 scale); no MX block-scaled operand fetch, no MX accumulator, and no compiler lowering exists today",
       "claim_boundary": "no MX RTL or compiler support exists today",
-      "sources": ["ocp_mx_spec", "mx_formats_paper", "microxcaling_repo", "ptq_mx_paper"]
+      "sources": [
+        "ocp_mx_spec",
+        "mx_formats_paper",
+        "microxcaling_repo",
+        "ptq_mx_paper"
+      ]
     },
     {
       "precision": "MXINT8",
@@ -995,7 +895,12 @@
         "activation_format": "dense signed INT4 or INT8 lanes consumed by the existing tile MAC array",
         "decode_path": "shared sparsity-decode microengine expands 2:4 INT4 rows into dense lane input; no MAC array redesign",
         "accumulator": "signed int32",
-        "sources": ["sparsegpt_paper", "wanda_paper", "maskllm_paper", "trainium2_aws_docs"]
+        "sources": [
+          "sparsegpt_paper",
+          "wanda_paper",
+          "maskllm_paper",
+          "trainium2_aws_docs"
+        ]
       }
     ]
   },

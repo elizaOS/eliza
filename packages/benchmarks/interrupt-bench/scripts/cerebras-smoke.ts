@@ -8,7 +8,7 @@
  *
  * Usage:
  *   bun run scripts/cerebras-smoke.ts
- *   bun run scripts/cerebras-smoke.ts --model=gpt-oss-120b
+ *   bun run scripts/cerebras-smoke.ts --model=gemma-4-31b
  */
 
 import { callCerebras, isCerebrasConfigured } from "../src/llm-cerebras.ts";

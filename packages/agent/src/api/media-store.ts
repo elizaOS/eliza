@@ -171,11 +171,12 @@ function mediaSecurityHeaders(
 let cachedMediaDir: string | null = null;
 
 function mediaDir(): string {
-  if (cachedMediaDir) return cachedMediaDir;
   const dir = path.join(resolveStateDir(), "media");
-  fs.mkdirSync(dir, { recursive: true });
-  cachedMediaDir = dir;
-  return dir;
+  if (cachedMediaDir !== dir) {
+    cachedMediaDir = dir;
+  }
+  fs.mkdirSync(cachedMediaDir, { recursive: true });
+  return cachedMediaDir;
 }
 
 function extForMime(mimeType: string): string {
@@ -395,6 +396,58 @@ export function mediaFileNameFromUrl(url: string): string | null {
   return MEDIA_FILE_NAME.test(name) ? name : null;
 }
 
+// ── Background-wallpaper pins ────────────────────────────────────────────────
+// The active wallpaper (generated or uploaded via the background routes) is
+// referenced only from the CLIENT's persisted config — no message or document
+// carries its URL — so the orphan GC would delete it after the grace window
+// and the wallpaper would 404 on the next load. Pinning is a tiny, capped,
+// append-only exemption list the GC unions into its reference set: not a
+// refcount engine, just a named "still in use" ledger for the one media class
+// with no server-side referent. Capped so replaced wallpapers eventually GC.
+
+const BACKGROUND_PINS_FILE = "background-pins.json";
+/** Keep the last N wallpapers pinned — covers the 10-deep client undo history. */
+const MAX_BACKGROUND_PINS = 12;
+
+function backgroundPinsPath(): string {
+  return path.join(mediaDir(), BACKGROUND_PINS_FILE);
+}
+
+/** Stored filenames (`<sha256>.<ext>`) of pinned wallpapers, newest last. */
+export function readBackgroundPins(): string[] {
+  try {
+    const raw = fs.readFileSync(backgroundPinsPath(), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (name): name is string =>
+        typeof name === "string" && MEDIA_FILE_NAME.test(name),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Pin a served wallpaper URL so the orphan GC never collects it. */
+export function pinBackgroundMedia(url: string): void {
+  const name = mediaFileNameFromUrl(url);
+  if (!name) return;
+  try {
+    const pins = readBackgroundPins().filter((existing) => existing !== name);
+    pins.push(name);
+    fs.writeFileSync(
+      backgroundPinsPath(),
+      JSON.stringify(pins.slice(-MAX_BACKGROUND_PINS)),
+    );
+  } catch (err) {
+    logger.warn(
+      `[media-store] could not pin background media ${name}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
 // Orphan GC grace: never delete files younger than this, so media that was just
 // persisted but not yet referenced by a saved message (or just served) survives.
 const GC_MIN_AGE_MS = 60 * 60 * 1000;
@@ -402,7 +455,9 @@ const GC_MIN_AGE_MS = 60 * 60 * 1000;
 /**
  * Delete stored media files not referenced by any live attachment. `referenced`
  * is the set of `<sha256>.<ext>` filenames still in use (built from message
- * attachment URLs via {@link mediaFileNameFromUrl}). Files younger than the
+ * attachment URLs via {@link mediaFileNameFromUrl}); pinned wallpapers (see
+ * {@link pinBackgroundMedia} — client-side-only referents) are unioned in
+ * here so every GC caller is safe by construction. Files younger than the
  * grace window are kept. Best-effort; returns counts.
  */
 export function gcUnreferencedMedia(referenced: Set<string>): {
@@ -414,10 +469,11 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
   try {
     const dir = mediaDir();
     const now = Date.now();
+    const pinned = new Set(readBackgroundPins());
     for (const name of fs.readdirSync(dir)) {
       if (!MEDIA_FILE_NAME.test(name)) continue;
       scanned += 1;
-      if (referenced.has(name)) continue;
+      if (referenced.has(name) || pinned.has(name)) continue;
       try {
         const stat = fs.statSync(path.join(dir, name));
         if (now - stat.mtimeMs < GC_MIN_AGE_MS) continue; // grace window

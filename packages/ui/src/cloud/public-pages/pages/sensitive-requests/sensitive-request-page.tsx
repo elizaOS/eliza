@@ -37,8 +37,12 @@ type SensitiveRequestKind = "secret" | "private_info" | "payment" | "oauth";
 interface SensitiveRequestField {
   name: string;
   label: string;
-  input: "secret" | "text" | "email" | "url";
+  input: "secret" | "text" | "email" | "url" | "image" | "file";
   required: boolean;
+  /** For `input: "image" | "file"` — accepted MIME types (file input `accept`). */
+  mimeTypes?: string[];
+  /** For `input: "image" | "file"` — max upload size in bytes. */
+  maxBytes?: number;
 }
 
 interface HostedSensitiveRequest {
@@ -97,7 +101,9 @@ function fieldsForRequest(
         (field.input === "secret" ||
           field.input === "text" ||
           field.input === "email" ||
-          field.input === "url"),
+          field.input === "url" ||
+          field.input === "image" ||
+          field.input === "file"),
     );
   }
 
@@ -179,6 +185,9 @@ export default function SensitiveRequestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  // Image/file fields can't ride FormData as a string, so their base64 data URL
+  // is held in controlled state keyed by field name. #8910
+  const [fileValues, setFileValues] = useState<Record<string, string>>({});
 
   usePageTitle("Sensitive Request | Eliza Cloud");
 
@@ -229,6 +238,15 @@ export default function SensitiveRequestPage() {
       ? "expired"
       : (request?.status ?? "pending");
   const copy = statusCopy(effectiveStatus);
+  // A required image/file field can't be validated by the browser's native
+  // `required` (its value lives in `fileValues`, populated async by FileReader),
+  // so gate submit on every required upload having been read. #8910
+  const hasRequiredUploads = fields.every(
+    (field) =>
+      (field.input !== "image" && field.input !== "file") ||
+      !field.required ||
+      Boolean(fileValues[field.name]),
+  );
   const canSubmit = Boolean(
     request && effectiveStatus === "pending" && fields.length > 0,
   );
@@ -243,16 +261,24 @@ export default function SensitiveRequestPage() {
       const formData = new FormData(form);
       const values: Record<string, string> = {};
       for (const field of fields) {
-        const value = formData.get(field.name);
-        const textValue = typeof value === "string" ? value : "";
+        const isUpload = field.input === "image" || field.input === "file";
+        const rawValue = isUpload
+          ? (fileValues[field.name] ?? "")
+          : formData.get(field.name);
+        const textValue = typeof rawValue === "string" ? rawValue : "";
         if (field.required && !textValue.trim()) {
-          setError("Fill out the required fields before submitting.");
+          setError(
+            isUpload
+              ? "Attach the requested file before submitting."
+              : "Fill out the required fields before submitting.",
+          );
           return;
         }
         if (textValue) values[field.name] = textValue;
       }
 
       form.reset();
+      setFileValues({});
       setSubmitting(true);
       setError(null);
       try {
@@ -276,7 +302,7 @@ export default function SensitiveRequestPage() {
         setSubmitting(false);
       }
     },
-    [canSubmit, fields, location.search, request, submitPath],
+    [canSubmit, fields, fileValues, location.search, request, submitPath],
   );
 
   if (loading) {
@@ -336,10 +362,87 @@ export default function SensitiveRequestPage() {
             autoComplete="off"
           >
             {fields.map((field) => {
+              const isUpload =
+                field.input === "image" || field.input === "file";
               const type = field.input === "secret" ? "password" : field.input;
               const useTextarea =
                 field.input === "text" && field.name.length > 24;
               const inputId = `field-${field.name}`;
+              if (isUpload) {
+                const accept =
+                  field.mimeTypes && field.mimeTypes.length > 0
+                    ? field.mimeTypes.join(",")
+                    : field.input === "image"
+                      ? "image/*"
+                      : undefined;
+                const hasValue = Boolean(fileValues[field.name]);
+                return (
+                  <label
+                    htmlFor={inputId}
+                    className="block space-y-2"
+                    key={field.name}
+                  >
+                    <span className="text-sm font-medium text-white/85">
+                      {field.label}
+                    </span>
+                    <Input
+                      id={inputId}
+                      name={field.name}
+                      data-testid={`sensitive-request-file-${field.name}`}
+                      type="file"
+                      accept={accept}
+                      // Mobile: prefer the rear camera for image capture (2FA QR/seed).
+                      capture={
+                        field.input === "image" ? "environment" : undefined
+                      }
+                      required={field.required && !hasValue}
+                      disabled={submitting}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        if (!file) {
+                          setFileValues((prev) => {
+                            const next = { ...prev };
+                            delete next[field.name];
+                            return next;
+                          });
+                          return;
+                        }
+                        if (field.maxBytes && file.size > field.maxBytes) {
+                          setFileValues((prev) => {
+                            const next = { ...prev };
+                            delete next[field.name];
+                            return next;
+                          });
+                          setError(
+                            `${field.label} is too large (max ${Math.round(
+                              field.maxBytes / 1024,
+                            )} KB).`,
+                          );
+                          event.currentTarget.value = "";
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setError(null);
+                          setFileValues((prev) => ({
+                            ...prev,
+                            [field.name]: String(reader.result ?? ""),
+                          }));
+                        };
+                        reader.onerror = () => {
+                          setFileValues((prev) => {
+                            const next = { ...prev };
+                            delete next[field.name];
+                            return next;
+                          });
+                          setError(`Could not read ${field.label}.`);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                );
+              }
               return (
                 <label
                   htmlFor={inputId}
@@ -376,7 +479,11 @@ export default function SensitiveRequestPage() {
                 </label>
               );
             })}
-            <Button className="w-full" type="submit" disabled={submitting}>
+            <Button
+              className="w-full"
+              type="submit"
+              disabled={submitting || !hasRequiredUploads}
+            >
               {submitting ? "Submitting..." : submitLabel}
             </Button>
           </form>

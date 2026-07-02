@@ -47,9 +47,24 @@
         "policy": "BOOM is consumed exclusively as a Chipyard submodule. We do not independently bump BOOM; the next Chipyard tip pull-through will advance it. Until then, hold at d2a64f7 to keep Chipyard tree internally consistent."
       },
       "tracked_open_prs": [
-        {"pr": 736, "title": "matrix scheduler", "merged_into_master": false, "status": "open"},
-        {"pr": 725, "title": "NSI BOOM",        "merged_into_master": false, "status": "open"},
-        {"pr": 763, "title": "mispredicted branch commit fix", "merged_into_master": false, "status": "open"}
+        {
+          "pr": 736,
+          "title": "matrix scheduler",
+          "merged_into_master": false,
+          "status": "open"
+        },
+        {
+          "pr": 725,
+          "title": "NSI BOOM",
+          "merged_into_master": false,
+          "status": "open"
+        },
+        {
+          "pr": 763,
+          "title": "mispredicted branch commit fix",
+          "merged_into_master": false,
+          "status": "open"
+        }
       ],
       "follow_up": "On next Chipyard SHA bump, re-resolve generators/boom HEAD, update external/boom/pin-manifest.json and check_boom_pin in lockstep, then re-audit the three open PRs above.",
       "last_audited": "2026-05-20"

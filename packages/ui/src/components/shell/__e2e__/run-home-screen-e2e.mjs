@@ -7,7 +7,7 @@
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,10 +17,30 @@ import {
   LAYOUT_SHIFT_OBSERVER_INIT,
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
+import {
+  touchLongPress,
+  touchSwipe,
+} from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
 await mkdir(outDir, { recursive: true });
+const RECORDED_VIDEO_FILE = "mobile-launcher-flow.webm";
+
+async function clearGeneratedVideoArtifacts() {
+  await rm(join(outDir, RECORDED_VIDEO_FILE), { force: true });
+  for (const entry of await readdir(outDir)) {
+    if (/^page@.+\.webm$/.test(entry)) {
+      await rm(join(outDir, entry), { force: true });
+    }
+  }
+}
+
+function stripTrailingLineWhitespace(text) {
+  return text.replace(/[ \t]+$/gm, "");
+}
+
+await clearGeneratedVideoArtifacts();
 
 let failures = 0;
 function assert(cond, msg) {
@@ -59,6 +79,13 @@ const stubResolver = {
     }));
     b.onResolve({ filter: /platform-guards$/ }, () => ({
       path: join(here, "home-screen-fixture.platform-stub.ts"),
+    }));
+    // Since #11084 (#11107/#11122) the widget pollers gate on
+    // useIsAuthenticated(); the fixture has no auth backend, so present an
+    // authenticated local session or every gated widget stays dormant and
+    // self-hides (see the auth-stub header).
+    b.onResolve({ filter: /\/hooks\/useAuthStatus$/ }, () => ({
+      path: join(here, "home-screen-fixture.auth-stub.ts"),
     }));
     // The widget components reach the hooks barrel only for
     // `useIntervalWhenDocumentVisible` (verified: every bare `../../../hooks`
@@ -142,14 +169,19 @@ const result = await build({
   write: false,
 });
 const js = result.outputFiles[0].text;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
+const html = stripTrailingLineWhitespace(`<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
+<!-- Match the real app's viewport (packages/app/index.html): without it a
+     mobile page falls back to the 980px layout viewport, so CSS \`vw\` units
+     (the sheet's \`w-[min(440px,100vw-1rem)]\`) mis-measure and the overlay
+     mis-centers — a test-only artifact that hid the real overlay geometry. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}
 :root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
 <!-- Shim node-ish globals some of the dead-in-browser graph touches at module
      init (e.g. \`process.env\`). The real code paths never execute at render. -->
 <script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
+</head><body><div id="root"></div><script>${js}</script></body></html>`);
 const htmlPath = join(outDir, "home-screen.html");
 await writeFile(htmlPath, html);
 const url = `file://${htmlPath}`;
@@ -163,6 +195,9 @@ async function snap(p, name) {
   await p.screenshot({ path: join(outDir, file) });
   console.log(`  📸 ${file}`);
 }
+// Mouse-drag paging for the DESKTOP page only (its context has no touch
+// support, and dragging the rail with a mouse is the real desktop input).
+// Every mobile-context swipe below goes through real CDP touch instead.
 async function swipeLeft(locator) {
   const box = await locator.boundingBox();
   if (!box) throw new Error("missing swipe target bounds");
@@ -174,6 +209,9 @@ async function swipeLeft(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
+// Mirror of swipeLeft for the mouse drag-paging regression section (the
+// real-touch conversion dropped this helper but kept its call site — the
+// nested-pager mouse arbitration asserts genuinely need MOUSE input).
 async function swipeRight(locator) {
   const box = await locator.boundingBox();
   if (!box) throw new Error("missing swipe target bounds");
@@ -185,32 +223,36 @@ async function swipeRight(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
-// Press a tile and PAN past the slop while HOLDING past the long-press window:
-// a real swipe-back that starts on a tile. It must NOT ghost-fire edit mode.
-async function longPressPan(page, tileTestId) {
-  const btn = page.getByTestId(tileTestId).locator("button").first();
-  const box = await btn.boundingBox();
-  if (!box) throw new Error(`missing tile bounds: ${tileTestId}`);
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  await page.mouse.move(cx + 32, cy + 2, { steps: 4 }); // pan past the slop
-  await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450) while panned
-  await page.mouse.up();
+// Horizontal touch-swipes across an element, driven through Chromium's real
+// touch input path. These keep the mobile pagers honest — the inner launcher
+// pager AND the outer home↔launcher rail: hit-testing, touch-action, implicit
+// capture, and pointer cancellation all stay in play.
+async function touchSwipeLeft(page, testId) {
+  await touchSwipe(page, `[data-testid="${testId}"]`, -280, 0, {
+    steps: 10,
+    stepDelayMs: 16,
+  });
 }
-// A STATIONARY hold past the long-press window: the intentional gesture that
-// enters edit mode now that the Edit button is gone.
+async function touchSwipeRight(page, testId) {
+  await touchSwipe(page, `[data-testid="${testId}"]`, 280, 0, {
+    steps: 10,
+    stepDelayMs: 16,
+  });
+}
+// A real downward touch drag — the home notification pull-down (#10706) is a
+// vertical gesture, so this drives it through the same CDP touch path as the
+// horizontal rail swipes.
+async function touchSwipeDown(page, testId, dy = 180) {
+  await touchSwipe(page, `[data-testid="${testId}"]`, 0, dy, {
+    steps: 12,
+    stepDelayMs: 16,
+  });
+}
+
+// A STATIONARY hold past the long-press window. On the curated launcher this
+// must NOT enter edit mode (the launcher is read-only, fixed placement).
 async function longPressHold(page, tileTestId) {
-  const btn = page.getByTestId(tileTestId).locator("button").first();
-  const box = await btn.boundingBox();
-  if (!box) throw new Error(`missing tile bounds: ${tileTestId}`);
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450), no movement
-  await page.mouse.up();
+  await touchLongPress(page, `[data-testid="${tileTestId}"] button`, 600);
 }
 async function waitForSurfacePageSettled(p, pageName) {
   await p.waitForFunction((expectedPage) => {
@@ -242,6 +284,8 @@ try {
   const mobileContext = await browser.newContext({
     viewport: { width: 402, height: 874 },
     deviceScaleFactor: 2,
+    hasTouch: true,
+    isMobile: true,
     recordVideo: {
       dir: outDir,
       size: { width: 402, height: 874 },
@@ -249,6 +293,25 @@ try {
   });
   const mobile = await mobileContext.newPage();
   mobile.on("pageerror", (e) => sink.errors.push(String(e)));
+  await mobile.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    const coarsePointer = (query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    });
+    window.matchMedia = (query) =>
+      /hover:\s*hover|pointer:\s*fine/.test(query)
+        ? coarsePointer(query)
+        : real(query);
+  });
   // Install the shared layout-shift PerformanceObserver BEFORE any paint, so
   // every shift during the home settle lands in window.__ELIZA_LAYOUT_SHIFTS__
   // (the same contract HomeScreen's dev observer + the KPI specs use). We read
@@ -259,6 +322,13 @@ try {
   await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
+  assert(
+    (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-next").count()) === 0,
+    "mobile coarse-pointer: no rail or launcher edge buttons on home",
+  );
   assert(
     (await mobile.getByTestId("home-launcher-surface").getAttribute(
       "data-page",
@@ -316,6 +386,17 @@ try {
       );
     }
   }
+  // No home widget may fall back to the "Widget failed to render" boundary — an
+  // ErrorBoundary catch is invisible to the page-error guard, so assert it here.
+  {
+    const errorCards = await mobile
+      .locator('[data-testid^="widget-error-"]')
+      .allTextContents();
+    assert(
+      errorCards.length === 0,
+      `no home widget hit its error boundary (${errorCards.length})`,
+    );
+  }
   // No general quick-access tiles anymore — Launcher is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
   // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
@@ -348,35 +429,109 @@ try {
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
 
-  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  // Real touch pull-DOWN on the notification zone opens the NotificationCenter
+  // sheet (#10706) — previously only jsdom synthetic pointer events covered it.
+  assert(
+    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    "notification sheet starts closed",
+  );
+  await touchSwipeDown(mobile, "home-notification-pull-zone");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "visible", timeout: 4000 });
+  assert(
+    await mobile.getByTestId("notification-sheet-close").isVisible(),
+    "real-touch pull-down opens the notification sheet",
+  );
+  // On-screen + horizontally centered: the sheet must sit within the viewport,
+  // not clipped to one side. (A `position: fixed` sheet trapped in the
+  // transformed home↔launcher rail anchors to the 2×-wide rail and renders
+  // half-off-screen to the right — this catches that regression.)
+  {
+    const sheetBox = await mobile.getByTestId("notification-sheet").boundingBox();
+    const vw = mobile.viewportSize().width;
+    const center = (sheetBox?.x ?? 0) + (sheetBox?.width ?? 0) / 2;
+    assert(
+      sheetBox != null &&
+        sheetBox.x >= -2 &&
+        sheetBox.x + sheetBox.width <= vw + 2 &&
+        Math.abs(center - vw / 2) < 24,
+      `notification sheet is on-screen + centered (x ${Math.round(sheetBox?.x ?? -1)}, w ${Math.round(sheetBox?.width ?? -1)}, vw ${vw})`,
+    );
+  }
+  // Visual evidence of the mobile pull-down sheet shell (flat, full-width,
+  // safe-area aware) while it is open.
+  await snap(mobile, "mobile-notification-sheet");
+  // Close it again (Escape — the sheet's documented dismiss) so the rail swipe
+  // below starts from a clean, settled home.
+  await mobile.keyboard.press("Escape");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "detached", timeout: 4000 });
+  assert(
+    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    "the notification sheet closes again (Escape)",
+  );
+  await waitForSurfacePageSettled(mobile, "home");
+
+  // Real touch left-swipe on the home half pages the outer rail to the
+  // launcher (the halves are `touch-pan-y`, so a horizontal touch gesture is
+  // the rail's — exactly the phone input this profile emulates).
+  await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
   assert(
-    await mobile.getByTestId("launcher-tile-settings").isVisible(),
-    "Settings renders inside Launcher favorites",
-  );
-  assert(
-    (await mobile.getByTestId("launcher-tile-chat").count()) === 0,
-    "Chat self-link is absent from Launcher",
-  );
-  assert(
-    (await mobile.getByTestId("launcher-tile-views").count()) === 0,
-    "Views self-link is absent from Launcher",
+    (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-next").count()) === 0,
+    "mobile coarse-pointer: no rail or launcher edge buttons on launcher",
   );
 
-  // ── Real image icons — the favorites carry a hero image, so each renders an
+  // ── Curated apps page — the everyday apps render as tiles, in curated order.
+  for (const id of ["wallet", "automations", "browser", "settings"]) {
+    assert(
+      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      `curated app "${id}" renders on the launcher apps page`,
+    );
+  }
+  // ── No dock: every view (Chat included) tiles on the page grid. The
+  // featured-views dock was removed, so there is no `launcher-dock` element.
+  assert(
+    (await mobile.getByTestId("launcher-dock").count()) === 0,
+    "the launcher renders no dock (featured-views header removed)",
+  );
+  assert(
+    await mobile.getByTestId("launcher-tile-chat").isVisible(),
+    "Chat renders as a page tile on the launcher (no dock)",
+  );
+  // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
+  // and the deduped duplicate registrations.
+  for (const id of ["views", "shopify", "hyperliquid", "inventory", "triggers"]) {
+    assert(
+      (await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0,
+      `"${id}" is absent from the launcher (removed/hidden/deduped)`,
+    );
+  }
+  // A single Wallet tile survives the duplicate wallet + inventory registrations.
+  assert(
+    (await mobile.getByTestId("launcher-tile-wallet").count()) === 1,
+    "duplicate wallet registrations collapse to one tile",
+  );
+
+  // ── Real image icons — curated tiles carry hero images, so each renders an
   // <img> tile (not the glyph fallback). On device the agent serves the branded
   // SVG at /api/views/:id/hero, resolved through the runtime API base so it
   // loads on native (file://) shells too.
-  for (const id of ["settings", "activity", "files", "tasks"]) {
+  for (const id of ["wallet", "automations", "browser", "character"]) {
     const img = mobile.getByTestId(`launcher-image-${id}`);
     assert(
       (await img.count()) === 1 && (await img.isVisible()),
-      `favorite "${id}" renders a real image icon (hero <img>, not a glyph)`,
+      `curated app "${id}" renders a real image icon (hero <img>, not a glyph)`,
     );
     const src = await img.getAttribute("src");
     assert(
       typeof src === "string" && src.startsWith("data:image/svg+xml"),
-      `favorite "${id}" image src is the branded hero (${String(src).slice(0, 24)}…)`,
+      `curated app "${id}" image src is the branded hero (${String(src).slice(0, 24)}…)`,
     );
   }
 
@@ -426,50 +581,96 @@ try {
     `no tile falls back to a bare glyph-only visual (${imageCount}/${visualCount} have images)`,
   );
 
-  // ── A swipe that starts ON a tile never ghost-fires edit mode (#3) ───────
-  await longPressPan(mobile, "launcher-tile-app0");
-  assert(
-    (await mobile.getByTestId("launcher-fav-app0").count()) === 0,
-    "a pan/swipe that starts on a tile does NOT enter edit mode",
-  );
-
-  // ── Long-press → edit → swipe back → HOME, with edit mode RESET (#3) ──────
-  // There is no Edit button: a STATIONARY long-press on a tile is the sole entry
-  // into edit mode (per-tile pin badges appear).
-  await longPressHold(mobile, "launcher-tile-app0");
+  // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
+  // (fixed placement, no reorder). Edit mode animates tiles with `animate-pulse`,
+  // so its absence after a stationary hold is the real read-only signal. #3
+  await longPressHold(mobile, "launcher-tile-wallet");
   await mobile.waitForTimeout(150);
   assert(
-    (await mobile.getByTestId("launcher-fav-app0").count()) === 1,
-    "a stationary long-press enters edit mode (pin badges shown, no Edit button)",
+    (await mobile
+      .getByTestId("launcher-tile-wallet")
+      .locator("button.animate-pulse")
+      .count()) === 0,
+    "a stationary long-press does NOT enter edit mode (curated launcher is read-only)",
   );
-  await snap(mobile, "mobile-launcher-edit");
-  await swipeRight(mobile.getByTestId("home-launcher-launcher-page"));
+  // A REAL touch right-swipe still returns HOME cleanly (at the launcher's
+  // first page the boundary right-swipe belongs to the outer rail).
+  await touchSwipeRight(mobile, "home-launcher-launcher-page");
   await waitForSurfacePageSettled(mobile, "home");
   assert(
     (await mobile
       .getByTestId("home-launcher-surface")
       .getAttribute("data-page")) === "home",
-    "swipe-back FROM edit mode returns HOME (never stranded in jiggle mode)",
+    "swipe-back from the launcher returns HOME",
   );
-  // Re-open: a clean launch view, NOT stale edit mode.
-  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
-  assert(
-    (await mobile.getByTestId("launcher-fav-app0").count()) === 0,
-    "re-opening the launcher is a clean launch view (edit mode auto-reset)",
-  );
 
-  // ── Swipe to page 2 (no dots — paging is swipe-only now) ─────────────────
-  // page 1 holds app0–app19; app20 lives on page 2.
+  // ── Swipe to page 2 = the Developer tools (no dots — paging is swipe-only).
+  // Developer tools live on page 2's grid; they are NOT on the apps page (page
+  // 0). Both pages are in the DOM, so scope the check to the page-0 container.
   assert(
-    (await mobile.getByTestId("launcher-tile-app20").count()) === 0,
-    "page-2 tile (app20) is not on page 1",
+    (await mobile
+      .getByTestId("launcher-page-0")
+      .getByTestId("launcher-tile-trajectories")
+      .count()) === 0,
+    "developer tool (trajectories) is not on the apps page (page 0)",
   );
-  await swipeLeft(mobile.getByTestId("home-launcher-launcher-page"));
-  await mobile.waitForTimeout(450);
+  // Touch-swipe the INNER launcher viewport forward to the developer page. On a
+  // real device the launcher pager owns forward paging (touch does not grab
+  // pointer capture the way mouse does, so the outer home↔launcher rail does not
+  // hijack the gesture). Drive true `pointerType:"touch"` events so this matches
+  // the mobile experience, then assert the rail actually paged.
+  await touchSwipeLeft(mobile, "launcher-page-window");
+  await mobile.waitForTimeout(750);
+  const pagedOffset = await mobile
+    .getByTestId("launcher-page-rail")
+    .evaluate((el) => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
+    });
   assert(
-    await mobile.getByTestId("launcher-tile-app20").isVisible(),
-    "swiping the launcher pages forward to page 2 (app20 visible)",
+    pagedOffset.x < -pagedOffset.width * 0.5,
+    `launcher paged forward to the developer page (rail x=${Math.round(pagedOffset.x)})`,
+  );
+  for (const id of ["trajectories", "database", "runtime", "logs", "skills", "plugins"]) {
+    assert(
+      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      `developer tool "${id}" renders on the launcher developer page`,
+    );
+  }
+
+  // ── MOUSE drag-paging across the nested pagers. The outer rail used to steal
+  // pointer capture from the inner grid pager mid-drag (both pagers commit the
+  // axis on the same bubbled move; the outer's later setPointerCapture won), so
+  // a mouse drag left on launcher page 0 could NEVER reach the developer page.
+  // The claim registry now hands the gesture to the movable inner pager. Drive
+  // real mouse drags over the inner page window: back to the apps page, then
+  // forward again through the historically dead path.
+  const innerRailX = async () =>
+    mobile.getByTestId("launcher-page-rail").evaluate((el) => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
+    });
+  await swipeRight(mobile.getByTestId("launcher-page-window"));
+  await mobile.waitForTimeout(750);
+  const backToApps = await innerRailX();
+  assert(
+    backToApps.x > -backToApps.width * 0.5,
+    `mouse swipe right pages the inner grid back to apps (rail x=${Math.round(backToApps.x)})`,
+  );
+  assert(
+    (await mobile
+      .getByTestId("home-launcher-surface")
+      .getAttribute("data-page")) === "launcher",
+    "inner mouse paging stays on the launcher (the rail did not hijack the drag)",
+  );
+  await swipeLeft(mobile.getByTestId("launcher-page-window"));
+  await mobile.waitForTimeout(750);
+  const forwardAgain = await innerRailX();
+  assert(
+    forwardAgain.x < -forwardAgain.width * 0.5,
+    `mouse swipe left from page 0 reaches the developer page (rail x=${Math.round(forwardAgain.x)})`,
   );
   await snap(mobile, "mobile-launcher-page2");
 
@@ -488,7 +689,9 @@ try {
   await mobileContext.close();
   if (mobileVideo) {
     const videoPath = await mobileVideo.path();
-    console.log(`  🎥 ${videoPath}`);
+    const stableVideoPath = join(outDir, RECORDED_VIDEO_FILE);
+    await rename(videoPath, stableVideoPath);
+    console.log(`  🎥 ${stableVideoPath}`);
   }
 
   // Desktop width
@@ -514,6 +717,97 @@ try {
   await waitForSurfacePageSettled(desktop, "launcher");
   await snap(desktop, "desktop-launcher");
   await desktop.close();
+
+  // #10717: the web/desktop `< >` edge buttons render ONLY on fine-pointer /
+  // hover-capable devices. The mobile path above explicitly emulates touch /
+  // coarse-pointer and asserts the buttons are absent; this page forces the
+  // fine-pointer media features before load to exercise + capture them.
+  const finePointer = await browser.newPage({
+    viewport: { width: 1180, height: 900 },
+  });
+  finePointer.on("pageerror", (e) => sink.errors.push(String(e)));
+  await finePointer.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    const stub = (query) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    });
+    window.matchMedia = (query) =>
+      /hover: hover|pointer: fine/.test(query) ? stub(query) : real(query);
+  });
+  await finePointer.goto(url);
+  await finePointer.waitForSelector('[data-testid="home-launcher-surface"]');
+  await finePointer.waitForTimeout(400);
+  // On the HOME half the rail offers a `>` (→ launcher) and no `<` (home is the
+  // first view).
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-next").count()) === 1,
+    "desktop fine-pointer: `>` edge button present on home",
+  );
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-prev").count()) === 0,
+    "desktop fine-pointer: no `<` edge button on the first (home) view",
+  );
+  await snap(finePointer, "desktop-edge-buttons-home");
+  // Click `>` to page to the launcher; the `<` (→ home) now appears.
+  await finePointer.getByTestId("rail-pager-edge-next").click();
+  await waitForSurfacePageSettled(finePointer, "launcher");
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-prev").count()) === 1,
+    "desktop fine-pointer: `<` edge button (→ home) present on the launcher",
+  );
+  await snap(finePointer, "desktop-edge-buttons-launcher");
+
+  // Desktop notification PANEL (#10706 / per-surface shells): page back to home
+  // and open the home notification affordance. On a fine-pointer wide surface
+  // HomeScreen's `variant="auto"` NotificationCenter must render the top-RIGHT
+  // anchored PANEL — not the mobile pull-down sheet. Assert the shell + its
+  // right anchoring, capture it, then dismiss via the transparent backdrop.
+  await finePointer.getByTestId("rail-pager-edge-prev").click();
+  await waitForSurfacePageSettled(finePointer, "home");
+  await finePointer.getByTestId("home-notification-pull-zone").click();
+  await finePointer
+    .getByTestId("notification-panel")
+    .waitFor({ state: "visible", timeout: 4000 });
+  assert(
+    (await finePointer.getByTestId("notification-panel").count()) === 1 &&
+      (await finePointer.getByTestId("notification-sheet").count()) === 0,
+    "desktop fine-pointer opens the PANEL shell (not the mobile sheet)",
+  );
+  {
+    const panelBox = await finePointer
+      .getByTestId("notification-panel")
+      .boundingBox();
+    const vw = finePointer.viewportSize().width;
+    const rightEdge = (panelBox?.x ?? 0) + (panelBox?.width ?? 0);
+    // Right-anchored AND on-screen: the panel's right edge hugs the viewport's
+    // right edge WITHOUT overshooting it. (A `position: fixed` panel trapped in
+    // the transformed home↔launcher rail would anchor to the 2×-wide rail and
+    // land at ~2×vw — off-screen right; this catches that regression.)
+    assert(
+      panelBox != null && rightEdge > vw - 40 && rightEdge <= vw + 2,
+      `desktop notification panel is right-anchored on-screen (right edge ${Math.round(rightEdge)}, vw ${vw})`,
+    );
+  }
+  await snap(finePointer, "desktop-notification-panel");
+  await finePointer.getByTestId("notification-panel-backdrop").click();
+  await finePointer
+    .getByTestId("notification-panel")
+    .waitFor({ state: "detached", timeout: 4000 });
+  assert(
+    (await finePointer.getByTestId("notification-panel").count()) === 0,
+    "desktop notification panel dismisses on outside click (backdrop)",
+  );
+
+  await finePointer.close();
 } finally {
   await browser.close();
 }

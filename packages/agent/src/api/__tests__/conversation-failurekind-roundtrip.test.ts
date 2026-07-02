@@ -359,3 +359,142 @@ describe("conversation failureKind round-trip", () => {
     expect(payload.failureKind).toBe("insufficient_credits");
   });
 });
+
+/**
+ * Parallel round-trip coverage for the chat `accountConnect` field so the
+ * in-chat "add another account" entry point survives a turn the same three
+ * ways `failureKind` does: (a) GET /messages re-emits it from
+ * `content.accountConnect`, (b) the streaming `done` frame carries it, and
+ * (c) the non-streaming JSON response carries it. Malformed/empty requests are
+ * dropped by `normalizeAccountConnectRequest` and never surface.
+ */
+describe("conversation accountConnect round-trip", () => {
+  beforeEach(() => {
+    generateResult = {};
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("GET /messages re-emits accountConnect from content.accountConnect", async () => {
+    const state = createState([
+      userMemory(),
+      assistantMemory({
+        text: "Pick a provider below to connect another account.",
+        accountConnect: {
+          providers: ["anthropic-subscription", "openai-codex"],
+          reason: "You asked to connect another provider account.",
+        },
+      }),
+    ]);
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      messages: Array<{
+        role: string;
+        accountConnect?: { providers: string[]; reason?: string };
+      }>;
+    };
+    const assistant = payload.messages.find((m) => m.role === "assistant");
+    expect(assistant?.accountConnect).toEqual({
+      providers: ["anthropic-subscription", "openai-codex"],
+      reason: "You asked to connect another provider account.",
+    });
+  });
+
+  it("GET /messages drops a malformed accountConnect (no valid providers)", async () => {
+    const state = createState([
+      userMemory(),
+      assistantMemory({
+        text: "hi",
+        accountConnect: { providers: ["not-a-real-provider"] },
+      }),
+    ]);
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      messages: Array<{ role: string; accountConnect?: unknown }>;
+    };
+    const assistant = payload.messages.find((m) => m.role === "assistant");
+    expect(assistant?.accountConnect).toBeUndefined();
+  });
+
+  it("GET /messages omits accountConnect for a normal turn", async () => {
+    const state = createState([
+      userMemory(),
+      assistantMemory({ text: "All good!" }),
+    ]);
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      messages: Array<{ role: string; accountConnect?: unknown }>;
+    };
+    const assistant = payload.messages.find((m) => m.role === "assistant");
+    expect(assistant?.accountConnect).toBeUndefined();
+  });
+
+  it("streaming `done` frame carries accountConnect when the result carries one", async () => {
+    generateResult = {
+      accountConnect: {
+        providers: ["anthropic-subscription"],
+        reason: "You asked to connect another Claude Subscription account.",
+      },
+    };
+    const state = createState();
+    const { ctx, record } = createCtx(
+      "POST",
+      "/api/conversations/conv-1/messages/stream",
+      state,
+    );
+
+    const done = handleConversationRoutes(ctx);
+    for (let i = 0; i < 12; i++) await new Promise((r) => setImmediate(r));
+    await done;
+
+    const doneFrame = record.writes.find((w) => w.includes('"type":"done"'));
+    expect(doneFrame).toBeDefined();
+    const parsed = JSON.parse(
+      (doneFrame as string).replace(/^data: /, "").trim(),
+    ) as { accountConnect?: { providers: string[] } };
+    expect(parsed.accountConnect?.providers).toEqual([
+      "anthropic-subscription",
+    ]);
+  });
+
+  it("non-streaming JSON response carries accountConnect when the result carries one", async () => {
+    generateResult = {
+      accountConnect: { providers: ["openai-codex"] },
+    };
+    const state = createState();
+    const { ctx, captured } = createCtx(
+      "POST",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      accountConnect?: { providers: string[] };
+    };
+    expect(payload.accountConnect?.providers).toEqual(["openai-codex"]);
+  });
+});

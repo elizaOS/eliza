@@ -10,6 +10,7 @@ import {
   type PricingChargeUnit,
   type PricingProductFamily,
 } from "../ai-pricing-definitions";
+import { getCachedPersistedEntries } from "./cache";
 import {
   chooseBestCandidatePricingEntry,
   expandPricingCatalogModelCandidates,
@@ -65,12 +66,21 @@ async function resolvePreparedPricingEntry(params: {
       }));
     });
 
-    const allPersisted = await aiPricingRepository.listActiveEntriesForProviderModelPairs({
-      billingSource: source,
-      productFamily: params.productFamily,
-      chargeType: params.chargeType,
-      pairs: providerModelPairs,
-    });
+    // Cache the per-request active-pricing read (~2 cross-region Postgres trips on
+    // every inference). Key fully captures the query inputs; pairs sorted for a
+    // stable key. Short TTL (see cache.ts) keeps billing correct.
+    const persistedCacheKey = `persisted|${source ?? ""}|${params.productFamily ?? ""}|${params.chargeType ?? ""}|${providerModelPairs
+      .map((p) => `${p.provider}:${p.model}`)
+      .sort()
+      .join(",")}`;
+    const allPersisted = await getCachedPersistedEntries(persistedCacheKey, () =>
+      aiPricingRepository.listActiveEntriesForProviderModelPairs({
+        billingSource: source,
+        productFamily: params.productFamily,
+        chargeType: params.chargeType,
+        pairs: providerModelPairs,
+      }),
+    );
 
     const persistedCandidates = modelCandidates.flatMap(
       (modelId): CandidatePreparedPricingEntry[] => {

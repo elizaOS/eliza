@@ -30,13 +30,24 @@ export type ConnectorCertificationAxis =
 type ConnectorTurnConfig = {
   name: string;
   text: string;
+  /** Executor-enforced reply matcher (emitted as turn `responseIncludesAny`). */
   responseIncludesAny: Array<string | RegExp>;
-  acceptedActions: string[];
-  includesAny?: Array<string | RegExp>;
   /**
-   * Optional per-turn LLM judge rubric. If omitted, the factory derives a
-   * default rubric for the *first* turn so every certification scenario has
-   * at least one rubric assertion (WS8 contract).
+   * Executor-enforced (emitted as turn `expectedActions`): at least one real
+   * (non-synthesized) action called this turn must match the list. Also fed to
+   * `expectTurnToCallAction` so payload matching applies to the same actions.
+   */
+  expectedActions: string[];
+  /**
+   * Payload matcher over the called action blob (name + args + result),
+   * enforced via `expectTurnToCallAction` and the scenario-wide
+   * action-coverage predicate.
+   */
+  actionPayloadIncludesAny?: Array<string | RegExp>;
+  /**
+   * Optional per-turn LLM judge rubric, enforced by the executor's
+   * `responseJudge` path. The factory always adds a scenario-level
+   * `judgeRubric` final check as well.
    */
   responseJudge?: { rubric: string; minimumScore?: number };
 };
@@ -60,16 +71,20 @@ export function buildConnectorCertificationScenario(
   config: ConnectorCertificationScenarioConfig,
 ) {
   const acceptedActions = Array.from(
-    new Set(config.turns.flatMap((turn) => turn.acceptedActions)),
+    new Set(config.turns.flatMap((turn) => turn.expectedActions)),
   );
-  const includesAny = config.turns.flatMap((turn) => turn.includesAny ?? []);
+  const includesAny = config.turns.flatMap(
+    (turn) => turn.actionPayloadIncludesAny ?? [],
+  );
 
   function buildCertificationTurnText(turn: ConnectorTurnConfig): string {
     return [
       `Connector certification run for ${config.connector}.`,
       config.axis === "core"
         ? "Perform the requested workflow now using the real connector path that best matches the request."
-        : `Perform the requested workflow now, but respect the seeded ${config.axis} connector state instead of pretending the connector is healthy.`,
+        : // Deliberately does NOT name the seeded degradation: the agent must
+          // discover the connector's real condition itself and report it.
+          "Perform the requested workflow now, and if the connector is not healthy, surface its real condition instead of pretending it is.",
       turn.text,
     ]
       .filter((part) => part.length > 0)
@@ -107,10 +122,11 @@ export function buildConnectorCertificationScenario(
       name: turn.name,
       room: "main",
       text: buildCertificationTurnText(turn),
+      expectedActions: turn.expectedActions,
       assertTurn: expectTurnToCallAction({
-        acceptedActions: turn.acceptedActions,
+        acceptedActions: turn.expectedActions,
         description: `${config.connector} connector step "${turn.name}"`,
-        includesAny: turn.includesAny,
+        includesAny: turn.actionPayloadIncludesAny,
       }),
       responseIncludesAny: turn.responseIncludesAny,
       responseJudge: turn.responseJudge,

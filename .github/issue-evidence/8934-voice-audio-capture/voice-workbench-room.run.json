@@ -1,10 +1,6 @@
 {
   "scenarioId": "voice-room-demo",
-  "classes": [
-    "multi-speaker",
-    "respond-no-respond",
-    "voice-recognition"
-  ],
+  "classes": ["multi-speaker", "respond-no-respond", "voice-recognition"],
   "status": "ran",
   "cases": [
     {

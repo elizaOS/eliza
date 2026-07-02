@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { type Database, dbWrite } from "../../db/helpers";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
@@ -16,7 +17,6 @@ import {
   agentSandboxesRepository,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
-import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
@@ -99,6 +99,32 @@ export interface CreateAgentParams {
    * for one org and must NOT collapse them.
    */
   reuseExistingNonTerminal?: boolean;
+  /**
+   * Ceiling on an org's NON-TERMINAL (`pending`/`provisioning`/`running`,
+   * non-pool) agent sandboxes, enforced ATOMICALLY under the org advisory lock
+   * before a fresh (non-reuse) insert. Prevents a user-facing caller from
+   * minting unbounded dedicated containers on the shared fleet (#11023: a
+   * `forceCreate`+`alwaysOn` loop on a ~$0.11 balance otherwise exhausts the
+   * fleet — the credit gate is threshold-only, never a per-agent debit). The
+   * user-facing `POST /api/v1/eliza/agents` route sets this from the org's
+   * balance tier; trusted internal multi-agent callers leave it unset (uncapped).
+   * A create that would exceed the cap throws {@link AgentQuotaExceededError}.
+   */
+  maxNonTerminalAgents?: number;
+}
+
+/** Thrown by createAgent when a fresh create would exceed `maxNonTerminalAgents`. */
+export class AgentQuotaExceededError extends Error {
+  readonly count: number;
+  readonly max: number;
+  constructor(count: number, max: number) {
+    super(
+      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}). Delete or stop an agent, or add credits to raise the limit.`,
+    );
+    this.name = "AgentQuotaExceededError";
+    this.count = count;
+    this.max = max;
+  }
 }
 
 export type ProvisionResult =
@@ -642,8 +668,43 @@ export class ElizaSandboxService {
     // Multi-agent-per-org callers (waifu launches, compat) leave the flag unset
     // and keep the plain insert — they legitimately mint several agents per org.
     if (!params.reuseExistingNonTerminal) {
-      const created = await agentSandboxesRepository.create(this.buildAgentInsertData(params));
-      return { agent: created, idempotent: false };
+      // Uncapped fast path for trusted internal multi-agent callers.
+      if (params.maxNonTerminalAgents === undefined) {
+        const created = await agentSandboxesRepository.create(this.buildAgentInsertData(params));
+        return { agent: created, idempotent: false };
+      }
+
+      // Capped path (#11023): a user-facing forceCreate that bypasses the reuse
+      // guard must still not mint unbounded dedicated containers. Count the org's
+      // non-terminal sandboxes UNDER the same org advisory lock the reuse guard
+      // uses — so the count→insert is atomic and two concurrent creates can't both
+      // read `count = max-1` and both insert — and refuse past the cap.
+      const cap = params.maxNonTerminalAgents;
+      return dbWrite.transaction(async (tx) => {
+        await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+
+        const [{ count } = { count: 0 }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.organization_id, params.organizationId),
+              sql`${agentSandboxes.pool_status} IS NULL`,
+              sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
+            ),
+          );
+
+        if (count >= cap) {
+          throw new AgentQuotaExceededError(count, cap);
+        }
+
+        const [created] = await tx
+          .insert(agentSandboxes)
+          .values(this.buildAgentInsertData(params))
+          .returning();
+        if (!created) throw new Error("Failed to create agent record");
+        return { agent: created, idempotent: false };
+      });
     }
 
     // Mirrors createCodingContainerAgent: an org-scoped advisory lock + a
@@ -696,6 +757,13 @@ export class ElizaSandboxService {
     });
 
     return dbWrite.transaction(async (tx) => {
+      // Acquire the per-ORG agent-create lock BEFORE the per-image lock. The
+      // image lock alone (keyed on the exact docker_image) does NOT serialize
+      // two concurrent creates for DIFFERENT images against one org, so the
+      // quota count below would not be atomic without the org lock. Taking the
+      // org lock first everywhere gives a strict org→image lock order, so this
+      // path and createAgent (org lock only) can never deadlock. (#11023)
+      await tx.execute(elizaAgentCreateAdvisoryLockSql(createParams.organizationId));
       await tx.execute(
         elizaCodingContainerImageAdvisoryLockSql(
           createParams.organizationId,
@@ -720,6 +788,29 @@ export class ElizaSandboxService {
 
       if (existing) {
         return { agent: existing, idempotent: true };
+      }
+
+      // Per-org quota (#11023): the per-image reuse guard collapses only
+      // same-image retries, so a distinct-image loop (`:v1`/`:v2`/`@sha256…`
+      // under an allowlisted namespace) would otherwise mint unbounded custom
+      // containers on the shared fleet. #11042 capped createAgent's plain-insert
+      // branch but not this route; enforce the SAME per-org ceiling here, under
+      // the org lock so the count→insert is atomic against concurrent creates.
+      // Trusted internal callers pass no cap and stay uncapped.
+      if (createParams.maxNonTerminalAgents !== undefined) {
+        const [{ count } = { count: 0 }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.organization_id, createParams.organizationId),
+              sql`${agentSandboxes.pool_status} IS NULL`,
+              sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
+            ),
+          );
+        if (count >= createParams.maxNonTerminalAgents) {
+          throw new AgentQuotaExceededError(count, createParams.maxNonTerminalAgents);
+        }
       }
 
       const [created] = await tx
@@ -1262,10 +1353,7 @@ export class ElizaSandboxService {
         // free dedicated compute forever. The service-key resume/restart routes
         // already reactivate; do it here so ALL provision paths re-enter billing.
         // Idempotent + exempt-guarded (ne billing_status 'exempt').
-        await agentBillingRepository.reactivateSandboxBillingAfterFunding(
-          rec.id,
-          new Date(),
-        );
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
 
         logger.info("[agent-sandbox] Provisioned", {
           agentId: rec.id,

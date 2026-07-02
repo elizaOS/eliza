@@ -29,10 +29,15 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { LogEntry, ReadJsonBodyOptions } from "@elizaos/shared";
+import type {
+  LinkedAccountProviderId,
+  LogEntry,
+  ReadJsonBodyOptions,
+} from "@elizaos/shared";
 import {
   asRecord,
   extractAssistantReplyText,
+  isLinkedAccountProviderId,
   normalizeCharacterLanguage,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
@@ -691,6 +696,18 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
 // Exported types
 // ---------------------------------------------------------------------------
 
+/**
+ * "Connect another account" request an assistant turn can carry, emitted by the
+ * CONNECT_ACCOUNT action when the user asks to add/log into an additional
+ * provider account. Threaded to the client the same way `failureKind` is (a
+ * structured field on the turn that round-trips), so the renderer can offer an
+ * inline entry point into the existing `AddAccountDialog` flow.
+ */
+export interface AccountConnectRequest {
+  providers: LinkedAccountProviderId[];
+  reason?: string;
+}
+
 export interface ChatGenerationResult {
   text: string;
   agentName: string;
@@ -698,6 +715,8 @@ export interface ChatGenerationResult {
   thought?: string;
   noResponseReason?: "ignored";
   failureKind?: ChatFailureKind;
+  /** Structured "connect another account" request carried from the CONNECT_ACCOUNT action. */
+  accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   usedActionCallbacks?: boolean;
   actionCallbackHistory?: string[];
@@ -1048,6 +1067,34 @@ function classifySyntheticChatFailureText(
     return "transient_failure";
   }
   return null;
+}
+
+/**
+ * Validate an untrusted `accountConnect` payload from a response Content into a
+ * strict {@link AccountConnectRequest}. Returns `undefined` when the value is
+ * absent, malformed, or carries no valid provider id — a broken/empty request
+ * must not surface an empty block on the client.
+ */
+export function normalizeAccountConnectRequest(
+  value: unknown,
+): AccountConnectRequest | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.providers)) return undefined;
+  const providers: LinkedAccountProviderId[] = [];
+  for (const provider of record.providers) {
+    if (isLinkedAccountProviderId(provider) && !providers.includes(provider)) {
+      providers.push(provider);
+    }
+  }
+  if (providers.length === 0) return undefined;
+  const reason =
+    typeof record.reason === "string" && record.reason.trim()
+      ? record.reason.trim()
+      : undefined;
+  return reason ? { providers, reason } : { providers };
 }
 
 export function markSyntheticChatFailureContent<T extends Content>(
@@ -2796,8 +2843,12 @@ export async function generateChatResponse(
       | (Record<string, unknown> & {
           localInference?: LocalInferenceChatMetadata;
           failureKind?: ChatFailureKind;
+          accountConnect?: unknown;
         })
       | null;
+    const accountConnect = normalizeAccountConnectRequest(
+      responseRecord?.accountConnect,
+    );
     const localInference =
       responseRecord?.localInference &&
       typeof responseRecord.localInference === "object"
@@ -2836,6 +2887,7 @@ export async function generateChatResponse(
         ? { noResponseReason: "ignored" as const }
         : {}),
       ...(failureKind ? { failureKind } : {}),
+      ...(accountConnect ? { accountConnect } : {}),
       ...(localInference ? { localInference } : {}),
       ...(actionCallbacksSeen > 0 ? { usedActionCallbacks: true } : {}),
       ...(actionCallbackHistory.length > 0

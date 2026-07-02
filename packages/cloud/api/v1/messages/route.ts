@@ -43,6 +43,7 @@ import {
   getLanguageModel,
   resolveAiProviderSource,
 } from "@/lib/providers/language-model";
+import { getRequestIdempotencyKey } from "@/lib/runtime/request-context";
 import {
   billUsage,
   estimateInputTokens,
@@ -54,11 +55,11 @@ import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
-import {
-  type CreditReconciliationResult,
-  type CreditReservation,
-  creditsService,
+import type {
+  CreditReconciliationResult,
+  CreditReservation,
 } from "@/lib/services/credits";
+import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
@@ -138,10 +139,6 @@ type AnthropicStopReason =
   | "tool_use";
 
 type ToolNameMap = Map<string, string>;
-type AppCreditsInfo = {
-  appId: string;
-  estimatedBaseCost: number;
-};
 
 function normalizeModelId(model: string): string {
   const canonicalCerebrasModel = canonicalizeCerebrasModelId(model);
@@ -485,12 +482,38 @@ app.post("/", async (c) => {
 
   let user: { id: string; organization_id: string };
   let apiKey: { id: string } | null = null;
+  // #9899 fast-path: collapse auth + org + suspension into ONE KV read for the
+  // API-key inference path (this is the eliza-code / anthropic-proxy route, which
+  // previously did serial auth + a separate apiKeyId lookup + an uncached
+  // moderation Postgres read = ~2.5x slower than /v1/chat/completions). Mirrors
+  // that route's resolver; falls to the authoritative serial path for
+  // JWT/cookie/wallet creds or a cold cache.
+  let moderationAlreadyChecked = false;
   try {
-    const auth = await requireUserOrApiKeyWithOrg(c);
-    user = { id: auth.id, organization_id: auth.organization_id };
-    // Workers auth shim does not surface the apiKey row; attribution by
-    // apiKey id requires a separate lookup.
-    apiKey = await getRequestApiKeyId(c);
+    const resolution = await resolveInferenceAuthContext(c.req.raw);
+    if (resolution.kind === "suspended") {
+      return anthropicError(
+        "permission_error",
+        "Your account has been suspended due to policy violations.",
+        403,
+      );
+    }
+    if (resolution.kind === "authorized") {
+      user = {
+        id: resolution.ctx.userId,
+        organization_id: resolution.ctx.orgId,
+      };
+      apiKey = { id: resolution.ctx.apiKeyId };
+      // The resolver already verified not-suspended (cache hit = at populate;
+      // origin miss = just now), so the synchronous moderation read is skipped.
+      moderationAlreadyChecked = true;
+    } else {
+      const auth = await requireUserOrApiKeyWithOrg(c);
+      user = { id: auth.id, organization_id: auth.organization_id };
+      // Workers auth shim does not surface the apiKey row; attribution by
+      // apiKey id requires a separate lookup.
+      apiKey = await getRequestApiKeyId(c);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return anthropicError("authentication_error", message, 401);
@@ -541,7 +564,10 @@ app.post("/", async (c) => {
   const normalizedModel = normalizeModelName(model);
   const systemPrompt = normalizeSystemPrompt(request.system);
 
-  if (await contentModerationService.shouldBlockUser(user.id)) {
+  if (
+    !moderationAlreadyChecked &&
+    (await contentModerationService.shouldBlockUser(user.id))
+  ) {
     return anthropicError(
       "permission_error",
       "Your account has been suspended due to policy violations.",
@@ -584,7 +610,6 @@ app.post("/", async (c) => {
     resolveAiProviderSource(model) ?? "bitrouter";
 
   let reservation: CreditReservation;
-  let appCreditsInfo: AppCreditsInfo | undefined;
 
   if (useAppCredits && appId && monetizedApp) {
     const { totalCost } = await calculateCost(
@@ -594,29 +619,39 @@ app.post("/", async (c) => {
       estimatedOutputTokens,
       billingSource,
     );
-    const costWithMarkup = await appCreditsService.calculateCostWithMarkup(
-      appId,
-      totalCost,
-    );
-    const balanceCheck = await appCreditsService.checkBalance(
-      appId,
-      user.id,
-      costWithMarkup.totalCost,
-    );
+    // #10423: prefer the request-stable key (Idempotency-Key/X-Request-Id via
+    // the bootstrap ALS) so a client retry of the SAME request dedupes the
+    // creator-earnings legs; a fresh uuid per invocation would never match.
+    const idempotencyKey = getRequestIdempotencyKey() ?? crypto.randomUUID();
 
-    if (!balanceCheck.sufficient) {
-      return anthropicError(
-        "rate_limit_error",
-        `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
-        429,
-      );
+    try {
+      reservation = await appCreditsService.reserveInferenceCredits({
+        appId,
+        userId: user.id,
+        estimatedBaseCost: totalCost,
+        description: `Messages API: ${model}`,
+        idempotencyKey,
+        metadata: {
+          model,
+          provider,
+          billingSource,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          streaming: Boolean(request.stream),
+        },
+        app: monetizedApp,
+      });
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        return anthropicError(
+          "rate_limit_error",
+          `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
+          429,
+        );
+      }
+
+      throw error;
     }
-
-    appCreditsInfo = {
-      appId,
-      estimatedBaseCost: 0,
-    };
-    reservation = creditsService.createAnonymousReservation();
   } else {
     try {
       reservation = await reserveCredits(
@@ -665,7 +700,6 @@ app.post("/", async (c) => {
         request,
         user,
         apiKey,
-        appCreditsInfo,
         affiliateCode,
         startTime,
         estimatedInputTokens,
@@ -686,7 +720,6 @@ app.post("/", async (c) => {
       request,
       user,
       apiKey,
-      appCreditsInfo,
       affiliateCode,
       startTime,
       safeParams,
@@ -730,7 +763,6 @@ async function handleNonStream(
   request: AnthropicMessagesRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo: AppCreditsInfo | undefined,
   affiliateCode: string | null,
   startTime: number,
   safeParams: ReturnType<typeof getSafeModelParams>,
@@ -791,17 +823,6 @@ async function handleNonStream(
       result.usage,
     );
     await settleReservation(billing.totalCost);
-
-    if (appCreditsInfo) {
-      await appCreditsService.reconcileCredits({
-        appId: appCreditsInfo.appId,
-        userId: user.id,
-        estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-        actualBaseCost: billing.totalCost,
-        description: `Messages API: ${model}`,
-        metadata: { model, provider, billingSource, streaming: false },
-      });
-    }
 
     await recordUsageAnalytics(
       {
@@ -880,7 +901,6 @@ async function handleStream(
   request: AnthropicMessagesRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo: AppCreditsInfo | undefined,
   affiliateCode: string | null,
   startTime: number,
   estimatedInputTokens: number,
@@ -942,17 +962,6 @@ async function handleStream(
           totalUsage,
         );
         await settleReservation(billing.totalCost);
-
-        if (appCreditsInfo) {
-          await appCreditsService.reconcileCredits({
-            appId: appCreditsInfo.appId,
-            userId: user.id,
-            estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-            actualBaseCost: billing.totalCost,
-            description: `Messages API stream: ${model}`,
-            metadata: { model, provider, billingSource, streaming: true },
-          });
-        }
 
         await recordUsageAnalytics(
           {

@@ -4,6 +4,7 @@
  */
 import http from "node:http";
 import { v4 as uuidv4 } from "uuid";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing";
 import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../src/runtime";
 import { detectInferenceProviders } from "../../src/testing/inference-provider";
@@ -174,7 +175,7 @@ function applyProviderSettings(
 					process.env.OPENAI_SMALL_MODEL?.trim() ||
 					process.env.LARGE_MODEL?.trim() ||
 					process.env.SMALL_MODEL?.trim() ||
-					"gpt-oss-120b";
+					DEFAULT_CEREBRAS_TEXT_MODEL;
 				runtime.setSetting(
 					"OPENAI_SMALL_MODEL",
 					process.env.OPENAI_SMALL_MODEL?.trim() || cerebrasModel,

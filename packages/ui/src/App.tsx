@@ -74,10 +74,12 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
+  CONNECT_EVENT,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import { FirstRunRuntimeChooser } from "./first-run/FirstRunRuntimeChooser";
+import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
+import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
@@ -86,7 +88,6 @@ import {
   APPS_ENABLED,
   getAppSlugFromPath,
   getWindowNavigationPath,
-  isAndroidPhoneSurfaceEnabled,
   isAospShellEnabled,
   isRouteRootPath,
   pathForTab,
@@ -94,6 +95,7 @@ import {
   TAB_PATHS,
   tabFromPath,
 } from "./navigation";
+import { applyLaunchConnection } from "./platform";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
@@ -103,6 +105,8 @@ import {
 } from "./state";
 import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
+import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
+import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -110,6 +114,14 @@ const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
+
+function gatewayHostForDisplay(gatewayUrl: string): string {
+  try {
+    return new URL(gatewayUrl).host || gatewayUrl;
+  } catch {
+    return gatewayUrl;
+  }
+}
 
 // Single source of truth for the lazy route-view chunk loaders. Each
 // lazyNamedView() call registers its import() thunk here so prefetch (below)
@@ -137,6 +149,7 @@ function lazyNamedView<
   });
 }
 
+import { client } from "./api";
 import { fetchWithCsrf } from "./api/csrf-client";
 // Import the page registry from its standalone module, NOT the
 // `app-shell-components` barrel — that barrel statically re-exports every page
@@ -154,6 +167,10 @@ import {
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { LauncherSurface } from "./components/pages/LauncherSurface";
+import {
+  isWalletSectionPath,
+  WalletSectionNav,
+} from "./components/pages/WalletSectionNav";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
@@ -468,13 +485,16 @@ function KioskShell() {
 function TabScrollView({
   children,
   className = "",
+  nav,
 }: {
   children: ReactNode;
   className?: string;
+  nav?: ReactNode;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
+      nav={nav}
       main={
         <div
           data-shell-scroll-region="true"
@@ -490,14 +510,17 @@ function TabScrollView({
 function TabContentView({
   children,
   surface = "opaque",
+  nav,
 }: {
   children: ReactNode;
   surface?: "opaque" | "transparent";
+  nav?: ReactNode;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
       surface={surface}
+      nav={nav}
       main={
         <div
           data-shell-content-region="true"
@@ -626,6 +649,7 @@ function RegisteredAppShellPage({
     return (
       <RetainedLazyComponent
         loader={registration.loader}
+        cacheKey={registration.id}
         componentProps={APP_SHELL_VIEW_PROPS}
         fallback={
           <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
@@ -881,10 +905,10 @@ function findRemoteViewForRoute(
   );
 }
 
-function renderRemoteView(view: ViewRegistryEntry): ReactNode {
+function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl) return null;
   return (
-    <TabContentView>
+    <TabContentView nav={nav}>
       <DynamicViewLoader
         bundleUrl={view.bundleUrl}
         componentExport={view.componentExport}
@@ -1058,14 +1082,16 @@ function renderAppsSurface(navigationPath: string): ReactNode {
 
 function renderStaticViewRouterTab({
   tab,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
+  walletNav,
 }: {
   tab: string;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
+  walletNav?: ReactNode;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     tutorial: (
@@ -1159,13 +1185,13 @@ function renderStaticViewRouterTab({
     return renderPhoneSurface(isAospShellEnabled(), CameraPageView);
   }
   if (tab === "phone") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, PhonePageView);
   }
   if (tab === "messages") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, MessagesPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, MessagesPageView);
   }
   if (tab === "contacts") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, ContactsPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, ContactsPageView);
   }
   if (tab === "views" || tab === "apps") {
     return renderAppsSurface(navigationPath);
@@ -1190,7 +1216,7 @@ function renderStaticViewRouterTab({
   }
   if (tab === "inventory") {
     return (
-      <TabScrollView>
+      <TabScrollView nav={walletNav}>
         <WalletInventoryPage />
       </TabScrollView>
     );
@@ -1213,7 +1239,7 @@ function renderViewRouterContent({
   navigationPath,
   availableViews,
   appSlug,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   settingsInitialSection,
 }: {
   tab: string;
@@ -1223,7 +1249,7 @@ function renderViewRouterContent({
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   settingsInitialSection?: string | null;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
@@ -1240,13 +1266,19 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
+  // Hyperliquid + Polymarket are sub-views of Wallet: the wallet family of
+  // routes shares one sub-nav rendered in the workspace chrome nav slot.
+  const walletNav = isWalletSectionPath(navigationPath) ? (
+    <WalletSectionNav activePath={navigationPath} />
+  ) : undefined;
+
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
     isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
     return (
-      <TabContentView>
+      <TabContentView nav={walletNav}>
         <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
@@ -1257,12 +1289,13 @@ function renderViewRouterContent({
     tab,
     appSlug,
   );
-  if (remoteView?.bundleUrl) return renderRemoteView(remoteView);
+  if (remoteView?.bundleUrl) return renderRemoteView(remoteView, walletNav);
   return renderStaticViewRouterTab({
     tab,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
+    walletNav,
   });
 }
 
@@ -1280,7 +1313,10 @@ function ViewRouter({
 }) {
   const activeTab = useAppSelector((s) => s.tab);
   const tab = routeOverride?.tab ?? activeTab;
-  const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
+  // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
+  // camera + the home tiles + the launcher tiles) — never rendered on web,
+  // desktop, iOS, or stock Play-Store Android, even via a deep link.
+  const nativeOsSurfaceEnabled = isAospShellEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(
     () =>
@@ -1320,7 +1356,7 @@ function ViewRouter({
     navigationPath,
     availableViews,
     appSlug,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     settingsInitialSection,
   });
 
@@ -1633,6 +1669,7 @@ export function App() {
     tab,
     setTab,
     setState,
+    setActionNotice,
     actionNotice,
     activeOverlayApp,
     uiTheme,
@@ -1640,6 +1677,7 @@ export function App() {
     activeGameViewerUrl,
     gameOverlayEnabled,
     uiShellMode,
+    uiLanguage,
     t,
   } = useAppSelectorShallow((s) => ({
     startupError: s.startupError,
@@ -1648,6 +1686,7 @@ export function App() {
     tab: s.tab,
     setTab: s.setTab,
     setState: s.setState,
+    setActionNotice: s.setActionNotice,
     actionNotice: s.actionNotice,
     activeOverlayApp: s.activeOverlayApp,
     uiTheme: s.uiTheme,
@@ -1655,6 +1694,7 @@ export function App() {
     activeGameViewerUrl: s.activeGameViewerUrl,
     gameOverlayEnabled: s.gameOverlayEnabled,
     uiShellMode: s.uiShellMode,
+    uiLanguage: s.uiLanguage,
     t: s.t,
   }));
   const isPopout = useIsPopout();
@@ -1672,6 +1712,88 @@ export function App() {
   // Runtime-dependent effects and overlay apps below stay gated on
   // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+
+  useEffect(() => {
+    if (!isShellPaintableNow) return;
+
+    const handleConnect = async (event: Event): Promise<void> => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const payload =
+        detail && typeof detail === "object" && !Array.isArray(detail)
+          ? (detail as {
+              gatewayUrl?: unknown;
+              token?: unknown;
+              completeFirstRun?: unknown;
+              skipConfirm?: unknown;
+            })
+          : null;
+      if (typeof payload?.gatewayUrl !== "string") {
+        return;
+      }
+
+      const completeFirstRun = payload.completeFirstRun === true;
+      const skipConfirm = payload.skipConfirm === true;
+      if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
+        const approved = await confirmDesktopAction({
+          type: "warning",
+          title: "Connect to this server?",
+          message: `Point this app at "${gatewayHostForDisplay(payload.gatewayUrl)}"?`,
+          detail:
+            "A link asked to connect this app to a different agent server. Only continue if you trust it — that server will handle your messages and data.",
+          confirmLabel: "Connect",
+          cancelLabel: "Cancel",
+        });
+        if (!approved) {
+          setActionNotice("Connection request cancelled.", "info", 4200);
+          return;
+        }
+      }
+
+      try {
+        const connection = applyLaunchConnection({
+          kind: "remote",
+          apiBase: payload.gatewayUrl,
+          token: typeof payload.token === "string" ? payload.token : null,
+          allowPublicHttps: true,
+        });
+        persistMobileRuntimeModeForServerTarget("remote");
+        setState("firstRunRuntimeTarget", "remote");
+        setState("firstRunRemoteApiBase", connection.apiBase);
+        setState("firstRunRemoteToken", connection.token ?? "");
+        setState("firstRunRemoteConnected", true);
+        setState("firstRunRemoteError", null);
+        if (completeFirstRun) {
+          await adoptRemoteAgentFirstRun(client, {
+            apiBase: connection.apiBase,
+            token: connection.token,
+            uiLanguage,
+          });
+          setState("firstRunComplete", true);
+          startupCoordinator.dispatch({ type: "FIRST_RUN_COMPLETE" });
+        }
+        setActionNotice("Connected to remote backend.", "success", 4200);
+        retryStartup();
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error
+            ? err.message
+            : "Failed to connect remote backend.",
+          "error",
+          8000,
+        );
+      }
+    };
+
+    document.addEventListener(CONNECT_EVENT, handleConnect);
+    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
+  }, [
+    isShellPaintableNow,
+    retryStartup,
+    setActionNotice,
+    setState,
+    startupCoordinator.dispatch,
+    uiLanguage,
+  ]);
 
   // Skip the auth probe during first-run-required: there is no agent/session
   // yet, so /api/auth/me would spuriously trip server_unavailable/unauthenticated
@@ -2110,12 +2232,20 @@ export function App() {
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +
-  // waveform over a transparent background, no app chrome or onboarding gate.
+  // waveform over a transparent background, no app chrome and no blocking
+  // StartupScreen gate. The desktop bottom bar boots straight into this branch
+  // (createMainWindow appends ?shellMode=chat-overlay), so a fresh install's
+  // FIRST surface is this overlay — the in-chat first-run conductor must mount
+  // here too (#9952/#10720): while firstRunComplete is false it seeds the
+  // onboarding greeting + choices into the SAME live transcript the overlay
+  // renders. The hook self-gates on firstRunComplete, so after onboarding (and
+  // on any plain web ?shellMode=chat-overlay load) it is a headless no-op.
   if (shellMode === "chat-overlay") {
     return (
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
           <ChatOverlayShell />
+          <FirstRunConductorMount />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
@@ -2301,7 +2431,6 @@ export function App() {
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
         <FirstRunConductorMount />
-        <FirstRunRuntimeChooser />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

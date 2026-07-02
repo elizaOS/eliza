@@ -55,10 +55,9 @@ export function CharacterRoster({
   if (entries.length === 0) {
     return (
       <div
-        className={`rounded-sm border p-4 text-sm ${
-          useWhiteBorders
-            ? "border-[var(--first-run-card-border)] bg-[var(--first-run-card-bg)] text-[var(--first-run-text-faint)]"
-            : "border-border/40 bg-black/10 text-muted"
+        /* Flat — no card/border. */
+        className={`p-4 text-sm ${
+          useWhiteBorders ? "text-[var(--first-run-text-faint)]" : "text-muted"
         }`}
       >
         {t("characterroster.LoadingPresets", {
@@ -95,7 +94,8 @@ export function CharacterRoster({
             aria-pressed={isSelected}
           >
             <div
-              className="relative aspect-[14/15] w-full p-0.5 transition-all duration-300 bg-border"
+              /* Frameless at rest; the accent gradient frame below is the selection state. */
+              className="relative aspect-[14/15] w-full p-0.5 transition-all duration-300"
               style={{
                 clipPath: SLANT_CLIP,
                 ...(isSelected

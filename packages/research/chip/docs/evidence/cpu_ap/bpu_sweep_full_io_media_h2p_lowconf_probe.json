@@ -26,11 +26,7 @@
     "ittage_useful_aging"
   ],
   "max_branches_per_trace": 0,
-  "ranking": [
-    "h2p_lowconf_only",
-    "h2p_off",
-    "baseline"
-  ],
+  "ranking": ["h2p_lowconf_only", "h2p_off", "baseline"],
   "results": {
     "baseline": {
       "ittage_counter_totals": {

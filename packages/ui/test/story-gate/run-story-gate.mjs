@@ -7,7 +7,8 @@
  * For each story it:
  *   1. Injects the determinism shim (frozen clock / seeded RNG / en-US-UTC /
  *      animations off) so renders are byte-stable.
- *   2. Navigates to the static `iframe.html?id=<id>` and waits for render.
+ *   2. Navigates to the static `iframe.html?id=<id>` and waits for render plus
+ *      Storybook's autoplayed `play` interaction, when the story exports one.
  *   3. Captures console + pageerror + failed-network via the shared log helper.
  *   4. Detects Storybook's error display (a thrown story does NOT raise a
  *      pageerror; Storybook swallows it into `.sb-show-errordisplay`).
@@ -290,6 +291,11 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
     issues: [],
     consoleErrors: [],
     a11y: [],
+    play: {
+      expected: Boolean(story.tags?.includes("play-fn")),
+      prepared: false,
+      phase: null,
+    },
   };
 
   try {
@@ -328,6 +334,52 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
       result.verdict = "needs-runtime";
       result.issues.push("did-not-settle: no sb-show-* state in time");
     }
+
+    // Storybook autoplays `play` functions in the iframe. The old gate only
+    // waited for `sb-show-main` and then slept for 80ms, which could move on
+    // while an async interaction was still running. Wait for the preview
+    // render phase to finish so interaction assertions can actually fail here.
+    const finished = await page
+      .waitForFunction(
+        () => {
+          const phase = window.__STORYBOOK_PREVIEW__?.currentRender?.phase;
+          return phase === "finished" || phase === "errored";
+        },
+        { timeout: Number(process.env.STORY_GATE_FINISH_MS) || 10000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    const playState = await page
+      .evaluate(async (storyId) => {
+        const preview = window.__STORYBOOK_PREVIEW__;
+        const phase = preview?.currentRender?.phase ?? null;
+        let prepared = false;
+        try {
+          const preparedStory = await preview?.storyStoreValue?.loadStory?.({
+            storyId,
+          });
+          prepared = typeof preparedStory?.playFunction === "function";
+        } catch {
+          prepared = false;
+        }
+        return { phase, prepared };
+      }, story.id)
+      .catch(() => ({ phase: null, prepared: false }));
+    result.play.phase = playState.phase;
+    result.play.prepared = playState.prepared;
+    if (!finished && result.verdict === "good") {
+      result.verdict = "broken";
+      result.issues.push(
+        `story-not-finished: Storybook render phase stayed at ${playState.phase ?? "unknown"}`,
+      );
+    }
+    if (result.play.expected && !result.play.prepared) {
+      result.verdict = "broken";
+      result.issues.push(
+        "play-missing: story index is tagged play-fn but runtime playFunction was not prepared",
+      );
+    }
+
     // Give layout/fonts a deterministic beat to settle.
     await page.waitForTimeout(80);
     await page.evaluate(() => document.fonts?.ready).catch(() => {});
@@ -588,6 +640,8 @@ async function main() {
       needsRuntime: results.filter((r) => r.verdict === "needs-runtime").length,
       withConsoleErrors: results.filter((r) => r.consoleErrors.length).length,
       withA11yViolations: results.filter((r) => r.a11y.length).length,
+      playExpected: results.filter((r) => r.play.expected).length,
+      playPrepared: results.filter((r) => r.play.prepared).length,
       failures: failures.length,
     },
     failures,
@@ -648,7 +702,8 @@ async function main() {
   console.log(
     `\nstory-gate: ${results.length} stories | good=${report.totals.good} | ` +
       `broken=${broken.length} | needs-runtime=${report.totals.needsRuntime} | ` +
-      `console-err=${report.totals.withConsoleErrors} | a11y=${report.totals.withA11yViolations}`,
+      `console-err=${report.totals.withConsoleErrors} | a11y=${report.totals.withA11yViolations} | ` +
+      `play=${report.totals.playPrepared}/${report.totals.playExpected}`,
   );
   if (failures.length && !args.updateBaseline) {
     console.error(`\nX story-gate FAILED - ${failures.length} regression(s):`);

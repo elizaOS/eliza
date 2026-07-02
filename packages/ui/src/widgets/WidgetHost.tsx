@@ -95,7 +95,7 @@ class WidgetErrorBoundary extends Component<
     if (this.state.error) {
       return (
         <div
-          className="rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
+          className="px-3 py-2 text-xs text-danger"
           data-testid={`widget-error-${this.props.widgetId}`}
         >
           Widget "{this.props.widgetId}" failed to render.

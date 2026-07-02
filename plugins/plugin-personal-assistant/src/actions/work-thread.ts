@@ -7,9 +7,9 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { Semaphore } from "@elizaos/core";
+import type { ScheduledTaskTrigger } from "@elizaos/plugin-scheduling";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
-import type { ScheduledTaskTrigger } from "@elizaos/plugin-scheduling";
 import { OptimisticLockError, withOptimisticRetry } from "../lifeops/sql.js";
 import {
   createWorkThreadStore,

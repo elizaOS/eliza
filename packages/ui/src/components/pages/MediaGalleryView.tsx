@@ -201,10 +201,10 @@ function MediaFilterChip({
       variant="ghost"
       size="sm"
       aria-current={isActive ? "page" : undefined}
-      className={`h-auto min-h-[2.25rem] rounded-sm border px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
+      className={`h-auto min-h-[2.25rem] rounded-sm px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
         isActive
-          ? "border-accent/35 bg-accent/14 text-txt-strong"
-          : "border-border/45 bg-bg/35 text-muted hover:border-border/60 hover:bg-bg-hover hover:text-txt"
+          ? "bg-accent/14 text-txt-strong"
+          : "bg-bg/35 text-muted hover:bg-bg-hover hover:text-txt"
       }`}
       onClick={() => onSelect(chip)}
       {...agentProps}
@@ -256,9 +256,7 @@ const MediaListItem = memo(function MediaListItem({
         </SidebarContent.ItemTitle>
         <SidebarContent.ItemDescription>
           <span className="truncate">{item.source}</span>
-          <span className="rounded-full border border-border/45 px-2 py-0.5 uppercase tracking-[0.16em]">
-            {typeLabel}
-          </span>
+          <span className="uppercase tracking-[0.16em]">{typeLabel}</span>
         </SidebarContent.ItemDescription>
       </SidebarContent.ItemBody>
     </SidebarContent.Item>
@@ -529,7 +527,7 @@ export function MediaGalleryView({
         ) : !selectedItem ? (
           <PagePanel.Empty
             variant="surface"
-            className="min-h-[18rem] rounded-sm px-5 py-10"
+            className="min-h-[18rem] px-5 py-10"
             title={t("mediagalleryview.NoMediaFound")}
             description={
               media.length === 0
@@ -545,17 +543,14 @@ export function MediaGalleryView({
         ) : (
           <div className="w-full">
             <PagePanel variant="surface" as="section" className="px-6 py-5">
-              <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
-                {t("mediagalleryview.Media", { defaultValue: "Media" })}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-2xl font-semibold text-txt">
                   {selectedItem.filename ||
                     t("mediagalleryview.MediaItem", {
                       defaultValue: "Media item",
                     })}
                 </h2>
-                <span className="rounded-full border border-accent/30 bg-accent/12 px-3 py-1 text-xs-tight font-semibold uppercase tracking-[0.16em] text-accent-fg">
+                <span className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-accent">
                   {mediaTypeLabel(t, selectedItem.type)}
                 </span>
               </div>
@@ -617,7 +612,7 @@ export function MediaGalleryView({
                   <track kind="captions" />
                 </video>
               ) : (
-                <div className="flex w-full max-w-xl flex-col items-center gap-5 rounded-sm border border-border/35 bg-bg/35 px-8 py-10 text-center">
+                <div className="flex w-full max-w-xl flex-col items-center gap-5 px-8 py-10 text-center">
                   <div className="text-lg font-semibold text-txt">
                     {t("mediagalleryview.AudioPreview", {
                       defaultValue: "Audio Preview",
@@ -634,7 +629,8 @@ export function MediaGalleryView({
               )}
             </PagePanel>
 
-            <div className="mt-5 rounded-sm border border-border/40 bg-card/45 px-5 py-4 text-sm text-muted">
+            {/* Flat — no card/border. Whitespace separates the details block. */}
+            <div className="mt-6 text-sm text-muted">
               <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
                 {t("mediagalleryview.MediaDetails", {
                   defaultValue: "Media Details",

@@ -67,7 +67,9 @@ export interface CalendarTravelBufferDep {
     travelIntent: CalendarTravelIntent;
   }): Promise<CalendarTravelBufferResult>;
   /** Narrow an unknown error to the travel-time-unavailable case. */
-  isTravelTimeUnavailable(error: unknown): error is { code: string; message: string };
+  isTravelTimeUnavailable(
+    error: unknown,
+  ): error is { code: string; message: string };
 }
 
 /**

@@ -8,66 +8,13 @@
 // relocates in world space, then capture a screenshot + per-frame pose/hit JSON.
 // No headset, byte-stable.
 import { expect, test } from "../src/playwright-fixture.ts";
-import type { SpatialAction } from "../src/types.ts";
-
-const SCENE = "/scene";
-
-/** Read the scene's per-panel placement directly from the published bridge. */
-async function scenePanels(page: import("@playwright/test").Page) {
-  return page.evaluate(() => window.__elizaXRScene!.getPanels());
-}
-
-async function fixtureActions(
-  page: import("@playwright/test").Page,
-): Promise<SpatialAction[]> {
-  return page.evaluate(() => window.__xrSceneFixture.actions);
-}
-
-async function setPanels(
-  page: import("@playwright/test").Page,
-  ids: string[],
-): Promise<void> {
-  await page.evaluate((list) => window.__xrSceneFixture.setPanels(list), ids);
-  // Wait for React to commit exactly these panels.
-  await page.waitForFunction(
-    (n) => document.querySelectorAll("[data-xr-panel]").length === n,
-    ids.length,
-  );
-  // Wait for the scene to lay them out (non-zero rects).
-  await page.waitForFunction(() => {
-    const wraps = Array.from(document.querySelectorAll("[data-xr-panel]"));
-    return (
-      wraps.length > 0 &&
-      wraps.every((w) => (w as HTMLElement).getBoundingClientRect().width > 1)
-    );
-  });
-}
-
-async function bootScene(xrPage: {
-  goto: (u: string) => Promise<void>;
-  startSession: () => Promise<boolean>;
-  setPose: (p: {
-    position: { x: number; y: number; z: number };
-    orientation: { x: number; y: number; z: number; w: number };
-  }) => Promise<void>;
-  page: import("@playwright/test").Page;
-}) {
-  await xrPage.goto(SCENE);
-  await xrPage.page.waitForFunction(
-    () => !!window.__elizaXRScene && !!window.__xrSceneFixture,
-    { timeout: 8000 },
-  );
-  expect(await xrPage.startSession()).toBe(true);
-  expect(await xrPage.page.evaluate(() => window.__XREmulator.hasScene())).toBe(
-    true,
-  );
-  // Eye-height head looking down −Z, matching the panels' auto-arrange height so
-  // the scene is centred and deterministic.
-  await xrPage.setPose({
-    position: { x: 0, y: 1.6, z: 0 },
-    orientation: { x: 0, y: 0, z: 0, w: 1 },
-  });
-}
+import {
+  bootScene,
+  clearActions,
+  fixtureActions,
+  scenePanels,
+  setPanels,
+} from "./scene-helpers.ts";
 
 test.describe("XR spatial scene — real 3D placement + hit-test", () => {
   test("every gallery view mounts as a visible 3D panel", async ({
@@ -136,9 +83,7 @@ test.describe("XR spatial scene — real 3D placement + hit-test", () => {
       expect(hit?.panelId).toBe(id);
 
       if (target.isButton) {
-        await xrPage.page.evaluate(() =>
-          window.__xrSceneFixture.clearActions(),
-        );
+        await clearActions(xrPage.page);
         await xrPage.pressSelect("right");
         const actions = await fixtureActions(xrPage.page);
         expect(
@@ -169,7 +114,7 @@ test.describe("XR spatial scene — real 3D placement + hit-test", () => {
     );
     expect(before).toBeDefined();
 
-    await xrPage.page.evaluate(() => window.__xrSceneFixture.clearActions());
+    await clearActions(xrPage.page);
     const moved = await xrPage.dragController("right", { x: 0.6, y: 0, z: 0 });
     expect(moved).not.toBeNull();
     expect(moved!.x).toBeCloseTo(before!.position.x + 0.6, 5);

@@ -1,54 +1,47 @@
-/**
- * Owner-authenticated credential-tunnel submit route.
- *
- *   POST /api/credential-tunnel/submit
- *     body: { credentialScopeId, childSessionId, key, value }
- *     → { ok: true }
- *
- * This is the redemption seam for the in-chat / DM `SensitiveRequestBlock`:
- * when a secret request carries `delivery.tunnel`, the owner's submitted value
- * is routed here instead of to the agent secret store. The handler resolves the
- * parent runtime's `SubAgentCredentialBridge` service and calls
- * `tunnelCredential`, which encrypts the value under the one-shot scope key so
- * the blocked child can redeem it via the loopback bridge GET.
- *
- * Ownership is enforced by the caller (`ensureRouteMinRole(..., "OWNER")` in
- * `server.ts`) — `owner_only` actor policy. Scope membership is enforced by the
- * tunnel service (`key_not_in_scope`). The value is never logged and never
- * written to the long-term secret store; the two submit paths are mutually
- * exclusive by construction (this route never touches `updateSecrets`).
- */
-
 import type http from "node:http";
-import type { Service, SubAgentCredentialBridge } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { CredentialScopeError } from "../services/credential-tunnel-service.js";
-import type { CompatRuntimeState } from "./compat-route-shared.js";
-import { readCompatJsonBody } from "./compat-route-shared.js";
-import { sendJson } from "./response.js";
+import {
+  CredentialScopeError,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  type SubAgentCredentialBridge,
+} from "../services/credential-tunnel-service";
+import { ensureRouteMinRole } from "./auth";
+import type { CompatRuntimeState } from "./compat-route-shared";
+import { readCompatJsonBody } from "./compat-route-shared";
+import { sendJson, sendJsonError } from "./response";
 
-const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE = "SubAgentCredentialBridge";
+const ROUTES = new Set([
+  "/api/credential-tunnel",
+  "/api/credential-tunnel/submit",
+]);
+const SAFE_ID_RE = /^[A-Za-z0-9._:-]{1,256}$/;
+const SAFE_KEY_RE = /^[A-Za-z0-9_.-]{1,256}$/;
 
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
+function requiredString(
+  body: Record<string, unknown>,
+  key: string,
+  re: RegExp,
+): string | null {
+  const value = body[key];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed && re.test(trimmed) ? trimmed : null;
 }
 
-/**
- * Map a tunnel-service error code to an HTTP status. Terminal scope/auth
- * failures surface as 4xx; the value is never echoed back.
- */
-function statusForScopeError(code: CredentialScopeError["code"]): number {
-  switch (code) {
-    case "scope_expired":
-      return 410;
+function errorStatus(error: CredentialScopeError): number {
+  switch (error.code) {
+    case "invalid_input":
+    case "key_not_in_scope":
+    case "invalid_token":
+      return 400;
     case "unknown_scope":
       return 404;
+    case "scope_expired":
+      return 410;
     case "session_mismatch":
-    case "key_not_in_scope":
     case "already_redeemed":
       return 403;
-    default:
-      return 400;
+    case "no_ciphertext":
+      return 409;
   }
 }
 
@@ -56,73 +49,71 @@ export async function handleCredentialTunnelRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: CompatRuntimeState,
-  method: string,
-  pathname: string,
 ): Promise<boolean> {
-  if (method !== "POST" || pathname !== "/api/credential-tunnel/submit") {
-    return false;
-  }
+  const method = (req.method ?? "GET").toUpperCase();
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (!ROUTES.has(pathname)) return false;
 
-  const runtime = state.current;
-  if (!runtime) {
-    sendJson(res, 503, {
-      error: "credential bridge unavailable",
-      code: "no_adapter",
-    });
+  if (method !== "POST") {
+    sendJsonError(res, 405, "method not allowed");
     return true;
   }
-
-  const bridge = runtime.getService<Service & SubAgentCredentialBridge>(
-    SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
-  );
-  if (!bridge) {
-    sendJson(res, 503, {
-      error: "credential bridge unavailable",
-      code: "no_adapter",
-    });
-    return true;
-  }
+  if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
 
   const body = await readCompatJsonBody(req, res);
-  if (!body) return true; // readCompatJsonBody already sent the error response
+  if (!body) return true;
+  const childSessionId = requiredString(body, "childSessionId", SAFE_ID_RE);
+  const credentialScopeId = requiredString(
+    body,
+    "credentialScopeId",
+    SAFE_ID_RE,
+  );
+  const key = requiredString(body, "key", SAFE_KEY_RE);
+  const value = typeof body.value === "string" ? body.value : null;
+  if (!childSessionId || !credentialScopeId || !key || !value) {
+    sendJsonError(
+      res,
+      400,
+      "childSessionId, credentialScopeId, key, and non-empty value are required",
+    );
+    return true;
+  }
 
-  const { credentialScopeId, childSessionId, key, value } = body;
-  if (
-    !nonEmptyString(credentialScopeId) ||
-    !nonEmptyString(childSessionId) ||
-    !nonEmptyString(key) ||
-    !nonEmptyString(value)
-  ) {
-    sendJson(res, 400, {
-      error:
-        "credentialScopeId, childSessionId, key and value are all required",
-      code: "invalid_body",
+  const bridge = state.current?.getService?.(
+    SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  ) as SubAgentCredentialBridge | null | undefined;
+  if (!bridge) {
+    sendJson(res, 503, {
+      ok: false,
+      error: "credential bridge unavailable",
+      code: "no_adapter",
     });
     return true;
   }
 
   try {
     await bridge.tunnelCredential({
-      childSessionId: childSessionId.trim(),
-      credentialScopeId: credentialScopeId.trim(),
-      key: key.trim(),
+      childSessionId,
+      credentialScopeId,
+      key,
       value,
+    });
+    sendJson(res, 200, {
+      ok: true,
+      credentialScopeId,
+      childSessionId,
+      key,
     });
   } catch (error) {
     if (error instanceof CredentialScopeError) {
-      // Log code + scope id only — never the value.
-      logger.warn(
-        `[credential-tunnel] submit rejected (${error.code}) for scope ${credentialScopeId}`,
-      );
-      sendJson(res, statusForScopeError(error.code), {
-        error: error.message,
+      sendJson(res, errorStatus(error), {
+        ok: false,
+        error: error.code,
         code: error.code,
       });
       return true;
     }
-    throw error;
+    sendJsonError(res, 500, "credential_tunnel_failed");
   }
-
-  sendJson(res, 200, { ok: true });
   return true;
 }

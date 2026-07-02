@@ -28,27 +28,87 @@ function summarizeEvents(
     .slice(0, 3000);
 }
 
-/** A deterministic stand-in for the verifier model: PASS only when the prompt
- * (which embeds the completion evidence) carries a pasted passing-test line —
- * exactly the discrimination a real judge makes. Mirrors the live model's
- * behavior closely enough to keep the keyless lane green. */
+/** A deterministic stand-in for the verifier model, tuned to mirror how a real
+ * demanding judge (verified live against Cerebras `gemma-4-31b`) actually
+ * discriminates: a self-reported summary line like "12 passing, 0 failing" is
+ * NOT proof — the judge requires actual test-RUNNER output plus a code diff.
+ * Keeping this in step with the live model matters: an over-lenient stub (the
+ * prior `\d+ passing` regex accepted the bare summary) makes the keyless lane
+ * green on evidence the live model correctly rejects, giving false confidence. */
 export const contentAwareVerifierModel: VerifierModel = async (
   ..._args: unknown[]
 ) => {
   const opts = _args[1] as { prompt?: string } | undefined;
   const prompt = opts?.prompt ?? "";
-  const hasPassingTests =
-    /\d+\s+passing|tests?\s+pass(ed)?\b.*\d|0\s+fail/i.test(prompt);
+  // Actual runner results block ("Tests 3 passed (3)" / "✓ file (N tests)" /
+  // "Test Files 1 passed") — not just a claimed count.
+  const hasRunnerOutput =
+    /Test Files\s+\d+\s+passed|Tests?\s+\d+\s+passed\s*\(\d+\)|✓\s+.+\(\d+\s+tests?\)/i.test(
+      prompt,
+    );
+  const hasDiff = /diff --git|^\+\+\+\s|^---\s/m.test(prompt);
+  const passed = hasRunnerOutput && hasDiff;
   return JSON.stringify(
-    hasPassingTests
-      ? { passed: true, summary: "all criteria proven", missing: [] }
+    passed
+      ? {
+          passed: true,
+          summary: "raw test-runner output and a diff prove the criteria",
+          missing: [],
+        }
       : {
           passed: false,
-          summary: "no pasted test output",
+          summary:
+            "a self-reported claim is not proof — need actual test-runner output and a diff",
           missing: ["tests pass"],
         },
   );
 };
+
+/** Realistic "strong" completion a competent sub-agent would post: a code diff
+ * plus the actual test-runner output, internally consistent (3 tests in the
+ * diff → "3 passed (3)" in the output). Verified live: gemma-4-31b marks this
+ * done, while rejecting both a bare summary and an inconsistent diff/output
+ * pair. Shared so the deterministic and live grilling checks assert on the same
+ * evidence a real sub-agent would produce. */
+export const STRONG_COMPLETION_EVIDENCE = `Done. Implemented the widget and ran the tests.
+
+\`\`\`diff
+diff --git a/src/widget.ts b/src/widget.ts
+new file mode 100644
+--- /dev/null
++++ b/src/widget.ts
+@@
++export function widget(n: number): number {
++  return n * 2;
++}
+diff --git a/src/widget.test.ts b/src/widget.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/widget.test.ts
+@@
++import { describe, it, expect } from "vitest";
++import { widget } from "./widget";
++describe("widget", () => {
++  it("doubles a positive", () => expect(widget(21)).toBe(42));
++  it("doubles zero", () => expect(widget(0)).toBe(0));
++  it("doubles a negative", () => expect(widget(-5)).toBe(-10));
++});
+\`\`\`
+
+\`\`\`
+$ npm test
+
+> widget@1.0.0 test
+> vitest run
+
+ RUN  v4.1.5 /work/widget
+ ✓ src/widget.test.ts (3 tests) 41ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Duration  0.63s
+\`\`\`
+`;
 
 /**
  * grilling-happy-path: a sub-agent claims done with NO test output → the grill
@@ -79,10 +139,11 @@ export async function runGrillingHappyPathCheck(
       return "task was marked done despite no test evidence";
     }
 
-    // Round 2: re-report WITH pasted passing test output → verified done.
+    // Round 2: re-report WITH real test-runner output + diff → verified done.
+    // (A bare "12 passing" summary is deliberately NOT used: the live judge
+    // rejects it as an unproven claim — see STRONG_COMPLETION_EVIDENCE.)
     acp.emit(sessionId, "task_complete", {
-      response:
-        "Done. Ran `npm test` — 12 passing, 0 failing. The widget renders correctly.",
+      response: STRONG_COMPLETION_EVIDENCE,
     });
     const done = await waitFor(
       async () => (await store.getTask(taskId))?.task.status === "done",

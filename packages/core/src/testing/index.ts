@@ -90,6 +90,8 @@ export {
 // Live LLM provider selection
 export {
 	availableProviderNames,
+	CLI_SUBSCRIPTION_SENTINEL_API_KEY,
+	cliBackendCredentialsPath,
 	isLiveTestEnabled,
 	type LiveProviderConfig,
 	type LiveProviderName,

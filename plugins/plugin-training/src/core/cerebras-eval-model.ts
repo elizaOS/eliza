@@ -80,7 +80,7 @@ function resolveEvalModel(): string {
   return (
     readEnv("EVAL_MODEL", "EVAL_MODEL_NAME") ??
     readEnv("CEREBRAS_MODEL") ??
-    "gpt-oss-120b"
+    "gemma-4-31b"
   );
 }
 
@@ -88,7 +88,7 @@ function resolveTrainingModel(): string {
   return (
     readEnv("TRAIN_MODEL", "TRAINING_MODEL", "TRAIN_MODEL_NAME") ??
     readEnv("CEREBRAS_MODEL") ??
-    "gpt-oss-120b"
+    "gemma-4-31b"
   );
 }
 
@@ -217,10 +217,14 @@ async function callCerebras(
     temperature: req.temperature ?? 0,
     max_tokens: req.maxTokens ?? 1024,
   };
-  // gpt-oss exposes a `reasoning_effort` knob; match it on the bare id and on
-  // the `<vendor>/gpt-oss-*` form used by OpenAI-compatible relays.
-  if (/(^|\/)gpt-oss/.test(config.model)) {
-    body.reasoning_effort = req.reasoningEffort ?? "low";
+  // Cerebras models accept a `reasoning_effort` knob. gpt-oss defaults to
+  // "low" (reasoning-first model); others (gemma-4-31b) keep reasoning off
+  // unless the caller asks for it. Match bare ids and `<vendor>/gpt-oss-*`.
+  const reasoningEffort =
+    req.reasoningEffort ??
+    (/(^|\/)gpt-oss/.test(config.model) ? "low" : undefined);
+  if (reasoningEffort) {
+    body.reasoning_effort = reasoningEffort;
   }
 
   const response = await fetchChatWithRetry(config, body);

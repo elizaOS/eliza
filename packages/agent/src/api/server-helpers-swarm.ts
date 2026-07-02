@@ -258,14 +258,6 @@ export function getCoordinatorFromRuntime(runtime: AgentRuntime): {
   if (coordinator) {
     return coordinator as ReturnType<typeof getCoordinatorFromRuntime>;
   }
-  const ptyService = runtime.getService("PTY_SERVICE") as
-    | (PTYService & { coordinator?: unknown })
-    | null;
-  if (ptyService?.coordinator) {
-    return ptyService.coordinator as ReturnType<
-      typeof getCoordinatorFromRuntime
-    >;
-  }
   return null;
 }
 
@@ -959,7 +951,10 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
 // ---------------------------------------------------------------------------
 
 export function getPtyConsoleBridge(st: ServerState) {
+  return getPtyService(st)?.consoleBridge ?? null;
+}
+
+export function getPtyService(st: ServerState): PTYService | null {
   if (!st.runtime) return null;
-  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
-  return ptyService?.consoleBridge ?? null;
+  return st.runtime.getService("PTY_SERVICE") as PTYService | null;
 }

@@ -245,9 +245,9 @@ const modelTierEntry = {
 };
 
 const modelVoiceEntry = {
-  id: "omnivoice",
-  path: "voice/omnivoice",
-  displayName: "OmniVoice",
+  id: "kokoro",
+  path: "voice/kokoro",
+  displayName: "Kokoro",
   roles: ["tts", "voice"],
   capabilities: ["text-to-speech"],
 };
@@ -457,7 +457,7 @@ assert(
 assert(state.modelCatalog[0]?.id === "eliza-1-2b", "model catalog is stored");
 assert(state.modelEliza1Tiers[0]?.tier === "2b", "Eliza-1 tiers are stored");
 assert(
-  state.modelVoiceComponents[0]?.id === "omnivoice",
+  state.modelVoiceComponents[0]?.id === "kokoro",
   "voice components are stored",
 );
 

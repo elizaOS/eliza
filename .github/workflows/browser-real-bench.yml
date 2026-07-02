@@ -1,13 +1,16 @@
-name: Browser Real-Chromium Benchmark
+name: Browser Benchmark Lanes
 
-# The deferred "Needs CI infra" lane of #9476, tracked by #10333: run the
-# plugin-browser MiniWoB++ benchmark suite against a REAL Chromium engine
-# (puppeteer-core) instead of JSDOM web mode. The `*.real.test.ts` lane is
-# excluded from the default `vitest run` and self-skips without a Chromium
-# binary, so it ONLY executes here, after `bunx playwright install chromium`
-# (mirroring scenario-pr.yml's `app-browser-core`). Gated like the other heavy
-# real lanes — nightly + on-demand + on changes to the benchmark/executor — not
-# on every PR.
+# Deferred "Needs CI infra" lanes of #9476, tracked by #10333:
+# - MiniWoB++ benchmark suite against a REAL Chromium engine (puppeteer-core)
+# - ScreenSpot-Web-style grounding against a REAL Chromium engine
+# - committed Mind2Web/WebArena-style external dataset fixtures through the
+#   plugin-browser BROWSER command router, including a REAL Chromium pass
+#
+# The `*.real.test.ts` lanes are excluded from the default `vitest run` and
+# self-skip without a Chromium binary, so they only execute here after
+# `bunx playwright install chromium` (mirroring scenario-pr.yml's
+# `app-browser-core`). Gated like the other heavy real lanes — nightly +
+# on-demand + on changes to the benchmark/executor — not on every PR.
 
 on:
   schedule:
@@ -17,7 +20,10 @@ on:
   pull_request:
     paths:
       - "plugins/plugin-browser/src/benchmark/**"
-      - "plugins/plugin-browser/scripts/run-miniwob-chromium-benchmark.mjs"
+      - "plugins/plugin-browser/vitest.real.config.ts"
+      - "plugins/plugin-browser/scripts/*benchmark*.mjs"
+      - "plugins/plugin-browser/scripts/capture-web-grounding-evidence.mjs"
+      - "plugins/plugin-browser/package.json"
       - ".github/workflows/browser-real-bench.yml"
 
 concurrency:
@@ -33,8 +39,8 @@ env:
   BUN_VERSION: "canary"
 
 jobs:
-  miniwob-chromium:
-    name: MiniWoB++ on real Chromium
+  browser-real-bench:
+    name: Browser benchmarks on real Chromium
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -63,18 +69,33 @@ jobs:
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
 
-      - name: Run MiniWoB++ on real Chromium (engine-parity lane)
-        run: bunx vitest run --config plugins/plugin-browser/vitest.real.config.ts plugins/plugin-browser/src/benchmark/__tests__/miniwob-chromium.real.test.ts
+      - name: Run real Chromium benchmark lanes
+        run: bun run --cwd plugins/plugin-browser test:real-chromium
 
-      - name: Generate run-report artifacts (oracle + noop)
+      - name: Generate MiniWoB++ run-report artifacts (oracle + noop)
         run: |
           bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy oracle --seeds 3
           bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy noop --seeds 2
+
+      - name: Generate web-grounding artifacts
+        run: bun run --cwd plugins/plugin-browser bench:grounding:chromium
+
+      - name: Generate external-dataset artifacts
+        run: |
+          bun run --cwd plugins/plugin-browser bench:external --policy oracle
+          bun run --cwd plugins/plugin-browser bench:external --policy noop
+          bun run --cwd plugins/plugin-browser bench:external --policy wrong
+          bun run --cwd plugins/plugin-browser bench:external:chromium --policy oracle
+          bun run --cwd plugins/plugin-browser bench:external:chromium --policy noop
+          bun run --cwd plugins/plugin-browser bench:external:chromium --policy wrong
 
       - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: miniwob-chromium-run
-          path: .github/issue-evidence/10333-browser-real-chromium/*.json
+          name: browser-real-benchmark-runs
+          path: |
+            .github/issue-evidence/10333-browser-real-chromium/*
+            .github/issue-evidence/10333-web-grounding/*
+            .github/issue-evidence/10333-browser-external-dataset/*.json
           if-no-files-found: warn

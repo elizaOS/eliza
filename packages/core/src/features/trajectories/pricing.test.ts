@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	computeCallCostUsd,
 	isLocalProvider,
+	lookupModelContextWindow,
 	lookupModelPrice,
 	MODEL_PRICES_USD_PER_M_TOKENS,
 	PRICE_TABLE_ID,
@@ -82,8 +83,8 @@ describe("lookupModelPrice", () => {
 	});
 
 	it("returns an exact match with the canonical key", () => {
-		const result = lookupModelPrice("gpt-oss-120b");
-		expect(result?.matchedKey).toBe("gpt-oss-120b");
+		const result = lookupModelPrice("gemma-4-31b");
+		expect(result?.matchedKey).toBe("gemma-4-31b");
 		expect(result?.price.provider).toBe("cerebras");
 	});
 
@@ -97,6 +98,16 @@ describe("lookupModelPrice", () => {
 	it("prefers the longest matching family key when prefixes overlap", () => {
 		const result = lookupModelPrice("gpt-5.5-mini-experimental");
 		expect(result?.matchedKey).toBe("gpt-5.5-mini");
+	});
+});
+
+describe("lookupModelContextWindow", () => {
+	it("returns the documented Cerebras Gemma 4 31B context window", () => {
+		const result = lookupModelContextWindow("gemma-4-31b");
+		expect(result).toEqual({
+			matchedKey: "gemma-4-31b",
+			contextWindowTokens: 131_000,
+		});
 	});
 });
 
@@ -216,6 +227,17 @@ describe("computeCallCostUsd", () => {
 			totalTokens: 1_000_000,
 		});
 		expect(cost).toBeCloseTo(0.5, 6);
+	});
+
+	it("computes a real cost for Cerebras Gemma 4 31B", () => {
+		// gemma-4-31b: input $0.99, output $1.49.
+		// 1M input = $0.99, 1M output = $1.49, total = $2.48.
+		const cost = computeCallCostUsd("gemma-4-31b", {
+			promptTokens: 1_000_000,
+			completionTokens: 1_000_000,
+			totalTokens: 2_000_000,
+		});
+		expect(cost).toBeCloseTo(2.48, 6);
 	});
 
 	it("computes a real cost for Google Gemini", () => {

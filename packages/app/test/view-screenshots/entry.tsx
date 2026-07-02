@@ -102,7 +102,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.stack || error.message : String(error);
+  const message =
+    error instanceof Error ? error.stack || error.message : String(error);
   window.__VIEW_HARNESS_ERROR__ = message;
   const rootEl = document.getElementById("root");
   if (rootEl) {

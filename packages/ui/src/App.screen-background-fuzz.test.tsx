@@ -299,7 +299,9 @@ vi.mock("./state/useBackgroundConfig", () => ({
     backgroundConfig: bgState.config,
     setBackgroundConfig: vi.fn(),
     undoBackgroundConfig: vi.fn(),
+    redoBackgroundConfig: vi.fn(),
     canUndoBackground: false,
+    canRedoBackground: false,
   }),
 }));
 vi.mock("./backgrounds/useBackgroundApplyChannel", () => ({

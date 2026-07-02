@@ -62,7 +62,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
-const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
 const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
 const STAGING_DIRECT_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
 const STAGING_DIRECT_CLOUD_API_BASE_URL = "https://api-staging.elizacloud.ai";
@@ -234,6 +234,19 @@ function generateCloudLoginSessionId(): string {
 
 function shouldUseNativeCloudHttp(): boolean {
   return Capacitor.isNativePlatform();
+}
+
+function resolveBrowserCloudApiRequestUrl(url: string): string {
+  if (shouldUseNativeCloudHttp() || typeof window === "undefined") return url;
+  try {
+    const parsed = new URL(url);
+    if (!DIRECT_ELIZA_CLOUD_API_BY_HOST.has(parsed.hostname.toLowerCase())) {
+      return url;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return url;
+  }
 }
 
 function resolveDirectCloudWebBase(cloudBase: string): string {
@@ -500,8 +513,9 @@ async function directCloudJsonResponse<T>(
     };
   }
 
+  const requestUrl = resolveBrowserCloudApiRequestUrl(url);
   const res = await fetchDirectCloudWithTimeout(
-    url,
+    requestUrl,
     { ...init, method, headers },
     { method, url },
   );
@@ -584,8 +598,9 @@ async function directCloudRequest<T>(
     return parsed;
   }
 
+  const requestUrl = resolveBrowserCloudApiRequestUrl(url);
   const res = await fetchDirectCloudWithTimeout(
-    url,
+    requestUrl,
     { ...init, method, headers },
     { method, url },
   );
@@ -2571,11 +2586,14 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       };
     }
 
-    const res = await fetch(`${authApiBase}/api/auth/cli-session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    });
+    const res = await fetch(
+      resolveBrowserCloudApiRequestUrl(`${authApiBase}/api/auth/cli-session`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      },
+    );
     if (!res.ok) {
       return { ok: false, error: `Login failed (${res.status})` };
     }
@@ -2632,7 +2650,9 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
     }
 
     const res = await fetch(
-      `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      resolveBrowserCloudApiRequestUrl(
+        `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      ),
     );
     if (!res.ok) {
       if (res.status === 404) {
@@ -3155,7 +3175,7 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
           )
         ).status
       : (
-          await fetch(url, {
+          await fetch(resolveBrowserCloudApiRequestUrl(url), {
             method: "DELETE",
             headers,
             signal: AbortSignal.timeout(20_000),

@@ -22,13 +22,24 @@ export default scenario({
       kind: "message",
       name: "water hourly preview",
       text: "Remind me to drink water every hour on weekdays.",
-      responseIncludesAny: ["water", "hour", "weekday"],
+      // Two-phase commit (#9310): the old keywords ("water"/"hour"/"weekday")
+      // were echoes of this turn's own text. The preview must not claim
+      // persistence before the owner confirms; definitionCountDelta stays
+      // load-bearing.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose an hourly Monday-through-Friday water reminder and ask the owner to confirm before saving. Claiming it is already saved, or a bare acknowledgement with no concrete cadence, fails.",
+      },
     },
     {
       kind: "message",
       name: "water hourly confirm",
       text: "Yes, save that reminder.",
-      responseIncludesAny: ["saved", "water"],
+      // Save-confirmation semantics in words the prompt never used; the real
+      // outcome is the persisted definition asserted in finalChecks.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [

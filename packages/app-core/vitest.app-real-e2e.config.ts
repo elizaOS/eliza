@@ -23,12 +23,21 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  */
 export default defineConfig({
   ...baseConfig,
+  resolve: {
+    ...baseConfig.resolve,
+    preserveSymlinks: false,
+  },
   test: {
     ...baseConfig.test,
     setupFiles: [path.join(here, "test/setup.ts")],
     include: [
       "test/app/**/*.real.e2e.test.ts",
       "test/app/**/*.live.e2e.test.ts",
+      // Keyless-but-heavyweight wire coverage: boots the full real runtime +
+      // HTTP/WS server, so it lives in this nightly full-build lane rather
+      // than the PR unit lane (which excludes live-agent e2e wholesale). It
+      // has no provider-key gate — it runs on every nightly invocation.
+      "test/live-agent/views-interact-ws-roundtrip.real.e2e.test.ts",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 600_000,

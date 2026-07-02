@@ -15,7 +15,9 @@ afterAll(() => {
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 
-const { persistMediaBytes } = await import("./media-store.ts");
+const { persistMediaBytes, gcUnreferencedMedia } = await import(
+  "./media-store.ts"
+);
 const { collectReferencedMedia, mediaFileRoute, registerMediaPipelineHook } =
   await import("./media-runtime.ts");
 
@@ -196,6 +198,71 @@ describe("collectReferencedMedia", () => {
     const referenced = collectReferencedMedia(memories);
 
     expect(referenced.size).toBe(0);
+  });
+
+  it("collects an attachment's thumbnailUrl alongside its full-image url", () => {
+    // Full image and its downscaled preview are two separate stored files.
+    const memories = [
+      {
+        content: {
+          text: "look",
+          attachments: [
+            {
+              url: `/api/media/${HASH_A}.png`,
+              thumbnailUrl: `/api/media/${HASH_B}.jpg`,
+            },
+          ],
+        },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.has(`${HASH_A}.png`)).toBe(true);
+    expect(referenced.has(`${HASH_B}.jpg`)).toBe(true);
+    expect(referenced.size).toBe(2);
+  });
+});
+
+describe("thumbnail GC protection (data-loss regression)", () => {
+  function mediaPath(fileName: string): string {
+    return path.join(stateDir, "media", fileName);
+  }
+
+  it("keeps a live attachment's thumbnail after GC, not just its full image", () => {
+    // A stored image and its thumbnail are two distinct content-addressed files.
+    const full = persistMediaBytes(
+      Buffer.from("full-image-bytes-regression"),
+      "image/png",
+    );
+    const thumb = persistMediaBytes(
+      Buffer.from("thumbnail-bytes-regression"),
+      "image/jpeg",
+    );
+    expect(full.fileName).not.toBe(thumb.fileName);
+
+    // A live message renders the preview via `thumbnailUrl` and opens the
+    // full-res original via `url` — both must survive the GC sweep.
+    const memories = [
+      {
+        content: {
+          text: "look at this",
+          attachments: [{ url: full.url, thumbnailUrl: thumb.url }],
+        },
+      },
+    ] as unknown as Memory[];
+
+    // Age BOTH past the 1h grace window so only the reference set protects them.
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(mediaPath(full.fileName), old, old);
+    fs.utimesSync(mediaPath(thumb.fileName), old, old);
+
+    gcUnreferencedMedia(collectReferencedMedia(memories));
+
+    // Pre-fix the thumbnail was orphaned and deleted (inline preview 404s);
+    // now the collector protects it exactly like the full image.
+    expect(fs.existsSync(mediaPath(full.fileName))).toBe(true);
+    expect(fs.existsSync(mediaPath(thumb.fileName))).toBe(true);
   });
 });
 

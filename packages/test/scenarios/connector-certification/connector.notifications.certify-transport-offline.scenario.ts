@@ -20,10 +20,17 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "notifications-transport-offline",
-      text: "Send the reminder to my desktop and phone, but if the push transport is offline, tell me that explicitly instead of pretending the ladder fired.",
-      responseIncludesAny: ["desktop", "phone", "offline", "push"],
-      acceptedActions: ["DEVICE_INTENT", "DEVICE_INTENT"],
-      includesAny: ["desktop", "phone", "offline", "push"],
+      // The prompt never names the seeded failure; the agent must discover the
+      // dead transport from the dispatch result itself and report it.
+      text: "Get that reminder in front of me on my desktop and my phone. If it never actually reaches either device, say so plainly rather than assuming it fired.",
+      responseIncludesAny: [
+        "offline",
+        "transport",
+        "unreachable",
+        "not deliver",
+      ],
+      expectedActions: ["DEVICE_INTENT"],
+      actionPayloadIncludesAny: ["desktop", "phone", "offline", "push"],
     },
   ],
   finalChecks: [

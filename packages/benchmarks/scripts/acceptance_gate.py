@@ -33,7 +33,7 @@ WORKSPACE_ROOT = PACKAGE_ROOT.parent.parent  # eliza/ root used by orchestrator
 DB_PATH = PACKAGE_ROOT / "benchmark_results" / "orchestrator.sqlite"
 
 CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
-CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b"
+CEREBRAS_DEFAULT_MODEL = "gemma-4-31b"
 DEFAULT_BENCHMARK_FALLBACK = "bfcl"
 DEFAULT_BENCHMARK_PRIMARY = "hermes_tblite"
 DEFAULT_SCORE_FLOOR = 0.1

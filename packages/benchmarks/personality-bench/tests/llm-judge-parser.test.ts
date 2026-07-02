@@ -1,10 +1,11 @@
 /**
  * @fileoverview Tolerant JSON parser tests for the LLM-judge layer.
  *
- * These cover the parse shapes Cerebras gpt-oss-120b is observed to emit even
- * with `response_format: {type: "json_object"}` set: strict JSON, fenced JSON,
- * leading prose + JSON, and trailing commentary after JSON. Garbage input must
- * surface as a clean null, never a thrown error.
+ * These cover the parse shapes Cerebras judge models emit even with
+ * `response_format: {type: "json_object"}` set (originally observed on
+ * gpt-oss-120b; the default judge is now gemma-4-31b): strict JSON, fenced
+ * JSON, leading prose + JSON, and trailing commentary after JSON. Garbage
+ * input must surface as a clean null, never a thrown error.
  */
 
 import { describe, expect, it } from "vitest";

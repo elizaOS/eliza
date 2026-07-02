@@ -22,6 +22,7 @@ const solanaTxHashRegex = /^[1-9A-HJ-NP-Za-km-z]{87,88}$/;
 
 const confirmSchema = z.object({
   transactionHash: z.string().min(1),
+  payerSignature: z.string().min(1),
 });
 
 const app = new Hono<AppEnv>();
@@ -42,7 +43,13 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const body = await c.req.json();
     const validation = confirmSchema.safeParse(body);
     if (!validation.success) {
-      return c.json({ error: "Invalid transaction hash" }, 400);
+      return c.json(
+        {
+          error: "Invalid request",
+          details: validation.error.flatten().fieldErrors,
+        },
+        400,
+      );
     }
 
     const network = String(payment.metadata?.direct_network ?? "");
@@ -64,6 +71,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       paymentId: id,
       txHash: transactionHash,
       userId: user.id,
+      payerSignature: validation.data.payerSignature,
     });
 
     return c.json({

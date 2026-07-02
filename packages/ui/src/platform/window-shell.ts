@@ -7,6 +7,7 @@ export type DetachedSurfaceTab =
   | "release"
   | "triggers"
   | "plugins"
+  | "connectors"
   | "cloud";
 
 export type WindowShellRoute =
@@ -47,6 +48,7 @@ export function parseWindowShellRoute(search: string): WindowShellRoute {
       tab === "release" ||
       tab === "triggers" ||
       tab === "plugins" ||
+      tab === "connectors" ||
       tab === "cloud"
     ) {
       return { mode: "surface", tab };
@@ -121,6 +123,11 @@ export function resolveDetachedShellTarget(
       return { tab: "triggers" };
     case "plugins":
       return { tab: "plugins" };
+    case "connectors":
+      // Connectors is a Settings section, not a standalone tab. Scope the
+      // window to that section (matching `cloud`/`release`) so the detached
+      // Connectors window renders the Connectors surface, not the full shell.
+      return { tab: "settings", settingsSection: "connectors" };
     case "cloud":
       return { tab: "settings", settingsSection: "cloud" };
   }

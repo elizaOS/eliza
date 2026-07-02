@@ -3,18 +3,28 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 /**
  * Behavior scenario for the `calendar_extract` LifeOps capability.
  *
- * The calendar planner (`extractCalendarPlanWithLlm` in `@elizaos/plugin-calendar`)
- * turns a natural-language request into a structured plan: a `subaction`
- * (feed / search_events / create_event / update_event / delete_event /
- * trip_window) plus an extracted time window and search queries. Its
- * instruction body is the GEPA-optimizable `calendar_extract` prompt routed
- * through `OptimizedPromptService`.
+ * The calendar planner (`extractCalendarPlanWithLlm` in
+ * `@elizaos/plugin-calendar`, model calls tagged `purpose: "calendar_extract"`)
+ * turns a natural-language request into a structured plan. Its instruction
+ * body is the GEPA-optimizable `calendar_extract` prompt routed through
+ * `OptimizedPromptService`.
  *
- * This scenario asserts the extraction routes each request to the calendar
- * action with the correct subaction and entities, across the read, create,
- * reschedule, and trip-window slices. It mirrors `calendar-llm-eval-mutations`
- * but is scoped to the extraction capability and adds a final selected-action
- * check so a regression in the wired prompt surfaces as a failing scenario.
+ * Routing reality (verified against the promoted-action registry):
+ * `@elizaos/plugin-personal-assistant` registers the CALENDAR umbrella via
+ * `promoteSubactionsToActions(calendarAction)`, so the planner sees the
+ * umbrella `CALENDAR` plus per-subaction virtuals (`CALENDAR_FEED`,
+ * `CALENDAR_CREATE_EVENT`, ...). Each virtual injects the discriminator
+ * (`"action":"create_event"` etc.) into the dispatched parameters, so the
+ * planner-trace assertions below match either routing shape.
+ *
+ * Capability prompt path: the seven calendar-target subactions — feed,
+ * next_event, search_events, create_event, update_event, delete_event,
+ * trip_window — all delegate to the `@elizaos/plugin-calendar` handler, which
+ * calls `extractCalendarPlanWithLlm` unconditionally, so any of those routes
+ * exercises the `calendar_extract` prompt. The sibling subactions
+ * bulk_reschedule / check_availability / propose_times / update_preferences
+ * route elsewhere and NEVER run the extract prompt; the final selected-action
+ * check therefore accepts only the extract-capable names.
  */
 export default scenario({
   lane: "live-only",
@@ -38,36 +48,73 @@ export default scenario({
       kind: "message",
       name: "extract-feed-window",
       text: "What do I have on my calendar tomorrow?",
-      plannerIncludesAll: ["calendar_action"],
-      plannerExcludes: ["gmail_action", "owner_send_message"],
+      // Any calendar read (feed / next_event / search_events) reaches the
+      // extract prompt; the bare umbrella (extraction resolves the subaction
+      // itself) also qualifies. `\b` does not match across the underscore in
+      // promoted names, so /\bCALENDAR\b/ alone would only match the umbrella.
+      plannerIncludesAll: [/\bCALENDAR(_(FEED|NEXT_EVENT|SEARCH_EVENTS))?\b/],
+      plannerExcludes: [
+        /\bCALENDAR_(CREATE_EVENT|UPDATE_EVENT|DELETE_EVENT|BULK_RESCHEDULE|CHECK_AVAILABILITY|PROPOSE_TIMES|UPDATE_PREFERENCES)\b|"action":"(create_event|update_event|delete_event)"/,
+        /\bMESSAGE(_[A-Z_]+)?\b/,
+      ],
     },
     {
       kind: "message",
       name: "extract-create-event",
       text: "Put a dinner with Priya on my calendar Friday at 7pm.",
-      plannerIncludesAll: ["calendar_action", "create_event", "priya"],
-      plannerExcludes: ["search_events", "gmail_action"],
+      plannerIncludesAll: [
+        /\bCALENDAR_CREATE_EVENT\b|"action":"create_event"/,
+        "priya",
+      ],
+      plannerExcludes: [
+        /\bCALENDAR_(SEARCH_EVENTS|DELETE_EVENT)\b|"action":"(search_events|delete_event)"/,
+        /\bMESSAGE(_[A-Z_]+)?\b/,
+      ],
     },
     {
       kind: "message",
       name: "extract-reschedule",
       text: "Move my standup to Wednesday at 9am.",
-      plannerIncludesAll: ["calendar_action", "update_event", "standup"],
-      plannerExcludes: ["create_event", "delete_event", "gmail_action"],
+      plannerIncludesAll: [
+        /\bCALENDAR_UPDATE_EVENT\b|"action":"update_event"/,
+        "standup",
+      ],
+      plannerExcludes: [
+        /\bCALENDAR_(CREATE_EVENT|DELETE_EVENT)\b|"action":"(create_event|delete_event)"/,
+        /\bMESSAGE(_[A-Z_]+)?\b/,
+      ],
     },
     {
       kind: "message",
       name: "extract-trip-window",
       text: "What's happening while I'm in Tokyo next week?",
-      plannerIncludesAll: ["calendar_action", "trip_window", "tokyo"],
-      plannerExcludes: ["create_event", "gmail_action"],
+      plannerIncludesAll: [
+        /\bCALENDAR_TRIP_WINDOW\b|"action":"trip_window"/,
+        "tokyo",
+      ],
+      plannerExcludes: [
+        /\bCALENDAR_(CREATE_EVENT|DELETE_EVENT)\b|"action":"(create_event|delete_event)"/,
+        /\bMESSAGE(_[A-Z_]+)?\b/,
+      ],
     },
   ],
   finalChecks: [
     {
       type: "selectedAction",
-      name: "calendar action selected for every extract turn",
-      actionName: "CALENDAR",
+      name: "calendar extract-capable action selected for every turn",
+      // Only names whose dispatch reaches extractCalendarPlanWithLlm — the
+      // four non-extract siblings (bulk_reschedule / check_availability /
+      // propose_times / update_preferences) are intentionally absent.
+      actionName: [
+        "CALENDAR",
+        "CALENDAR_FEED",
+        "CALENDAR_NEXT_EVENT",
+        "CALENDAR_SEARCH_EVENTS",
+        "CALENDAR_CREATE_EVENT",
+        "CALENDAR_UPDATE_EVENT",
+        "CALENDAR_DELETE_EVENT",
+        "CALENDAR_TRIP_WINDOW",
+      ],
     },
   ],
 });

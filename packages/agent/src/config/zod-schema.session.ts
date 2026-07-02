@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as zod from "zod";
 import {
   GroupChatSchema,
   InboundDebounceSchema,
@@ -7,6 +7,8 @@ import {
   QueueSchema,
   TtsConfigSchema,
 } from "./zod-schema.core.ts";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 const SessionResetConfigSchema = z
   .object({

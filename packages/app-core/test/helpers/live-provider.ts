@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { test } from "vitest";
 
 // Load `.env` from the repo root when `dotenv` is available.
@@ -225,8 +226,8 @@ const PROVIDERS: Array<{
     defaultBaseUrl: "https://api.cerebras.ai/v1",
     smallModelEnvVar: "OPENAI_SMALL_MODEL",
     largeModelEnvVar: "OPENAI_LARGE_MODEL",
-    defaultSmallModel: "gpt-oss-120b",
-    defaultLargeModel: "zai-glm-4.7",
+    defaultSmallModel: DEFAULT_CEREBRAS_TEXT_MODEL,
+    defaultLargeModel: DEFAULT_CEREBRAS_TEXT_MODEL,
   },
   {
     name: "groq",

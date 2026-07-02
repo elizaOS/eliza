@@ -7,15 +7,10 @@ import {
 } from "./helpers";
 
 // "Local, Cloud, etc. all work out of the box and are successfully
-// configurable." Onboarding now happens IN the chat (#9952): a fresh profile
-// auto-opens the REAL floating ContinuousChatOverlay and the headless conductor
-// seeds the runtime question as inline ChoiceWidgets — Cloud (Eliza Cloud
-// managed) / On this device / Bring your own keys. This spec lands on that
-// in-chat surface and drives each branch (including the Local → provider
-// sub-choice) to prove every runtime is reachable and configurable, not just
-// displayed. The full-screen onboarding gate and the separate Remote-connect
-// form were removed — "Bring your own keys" runs the local backend with the
-// other-provider default.
+// configurable." Runtime/provider setup now lives in the chat transcript:
+// Cloud (Eliza Cloud managed), Local (this device), and Bring your own keys.
+// This spec drives Local → provider to prove every runtime is reachable and
+// configurable, not just displayed.
 
 async function fulfillJson(
   route: Route,
@@ -70,8 +65,9 @@ async function expectInChatFirstRun(page: Page): Promise<void> {
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(
-    chatOverlay.getByText("Let's get you set up", { exact: false }),
+    page.getByText("First, where should your agent run?", { exact: false }),
   ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 }
 
 test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes and Local is configurable", async ({
@@ -87,7 +83,6 @@ test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes a
 
   await expectInChatFirstRun(page);
 
-  // All three runtimes are offered as inline ChoiceWidget options.
   const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
   const local = page.getByTestId("choice-__first_run__:runtime:local");
   const other = page.getByTestId("choice-__first_run__:runtime:other");
@@ -95,7 +90,7 @@ test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes a
   await expect(local).toBeVisible();
   await expect(other).toBeVisible();
 
-  // Local is configurable: selecting it advances to the provider sub-choice,
+  // Local is configurable: selecting it advances to the provider step,
   // where the on-device default, Eliza Cloud inference, and other are offered.
   await local.click();
   await expect(

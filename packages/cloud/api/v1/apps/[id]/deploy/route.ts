@@ -16,6 +16,7 @@ import { Hono } from "hono";
 import { appsDeployOrganizationDecision } from "@/api-app/lib/apps-deploy-gate";
 import { containersRepository } from "@/db/repositories/containers";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDeploymentsService } from "@/lib/services/app-deployments";
 import { appsService } from "@/lib/services/apps";
@@ -53,6 +54,10 @@ app.post("/", async (c) => {
     }
     if (appRow.organization_id !== user.organization_id) {
       // 403 — the caller is authed but not the owning org.
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 

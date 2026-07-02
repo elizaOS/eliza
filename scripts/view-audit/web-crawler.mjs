@@ -63,7 +63,9 @@ async function main() {
     } catch {}
   });
 
-  await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+  await page
+    .goto(BASE, { waitUntil: "domcontentloaded", timeout: 30000 })
+    .catch(() => {});
   await sleep(4000);
 
   const findings = [];
@@ -74,23 +76,34 @@ async function main() {
     const onConsole = (m) => {
       if (["error", "warning"].includes(m.type())) {
         const txt = m.text().slice(0, 300);
-        if (txt.trim() && !/favicon|DevTools/.test(txt)) consoleErrors.push(`[${m.type()}] ${txt}`);
+        if (txt.trim() && !/favicon|DevTools/.test(txt))
+          consoleErrors.push(`[${m.type()}] ${txt}`);
       }
     };
-    const onPageErr = (e) => pageErrors.push(String(e.message || e).slice(0, 300));
+    const onPageErr = (e) =>
+      pageErrors.push(String(e.message || e).slice(0, 300));
     const onResp = (r) => {
       const s = r.status();
-      if (s >= 400) netFailures.push(`${s} ${r.url().replace(/^https?:\/\/[^/]+/, "").slice(0, 120)}`);
+      if (s >= 400)
+        netFailures.push(
+          `${s} ${r
+            .url()
+            .replace(/^https?:\/\/[^/]+/, "")
+            .slice(0, 120)}`,
+        );
     };
     page.on("console", onConsole);
     page.on("pageerror", onPageErr);
     page.on("response", onResp);
 
-    await page.evaluate((u) => {
-      history.pushState(null, "", u);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-      if (u.includes("#")) window.dispatchEvent(new HashChangeEvent("hashchange"));
-    }, route).catch(() => {});
+    await page
+      .evaluate((u) => {
+        history.pushState(null, "", u);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        if (u.includes("#"))
+          window.dispatchEvent(new HashChangeEvent("hashchange"));
+      }, route)
+      .catch(() => {});
     await sleep(2600);
 
     let parsed = {};
@@ -137,9 +150,22 @@ async function main() {
     const line = `${slug.padEnd(24)} land=${(f.landedPath || "?").padEnd(20)} len=${String(f.bodyLen).padStart(5)} btn=${String(f.buttons.length).padStart(2)} inp=${String(f.inputs.length).padStart(2)} ${flags.join(" ") || "ok"}`;
     console.error(line);
     appendFileSync(`${OUT}/progress.log`, line + "\n");
-    writeFileSync(`${OUT}/report-web.json`, JSON.stringify({ surface: "web", count: findings.length, findings }, null, 2));
+    writeFileSync(
+      `${OUT}/report-web.json`,
+      JSON.stringify(
+        { surface: "web", count: findings.length, findings },
+        null,
+        2,
+      ),
+    );
   }
   await browser.close();
   console.error(`\nWROTE ${OUT}/report-web.json (${findings.length})`);
 }
-main().then(() => process.exit(0), (e) => { console.error("WEB CRAWLER ERR:", e.message); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error("WEB CRAWLER ERR:", e.message);
+    process.exit(1);
+  },
+);

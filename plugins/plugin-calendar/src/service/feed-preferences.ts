@@ -60,8 +60,7 @@ function resolvePreferences(value: unknown): CalendarFeedPreferences {
     calendarFeedIncludes: normalizeCalendarFeedIncludes(
       value.calendarFeedIncludes,
     ),
-    updatedAt:
-      typeof value.updatedAt === "string" ? value.updatedAt : null,
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
   };
 }
 

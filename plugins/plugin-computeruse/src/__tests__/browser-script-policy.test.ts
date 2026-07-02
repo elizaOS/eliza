@@ -9,7 +9,9 @@ import {
 describe("browser-script-policy", () => {
   it("never allows arbitrary browser script execution", () => {
     expect(isBrowserExecuteAllowed()).toBe(false);
-    expect(() => assertBrowserExecuteAllowed()).toThrow(BrowserExecuteDisabledError);
+    expect(() => assertBrowserExecuteAllowed()).toThrow(
+      BrowserExecuteDisabledError,
+    );
     expect(() => assertBrowserExecuteAllowed()).toThrow(
       BROWSER_EXECUTE_DISABLED_MESSAGE,
     );

@@ -62,6 +62,24 @@ export const NoProviderGate: Story = {
 };
 
 /**
+ * `accountConnect` renders the AccountConnectBlock: a per-provider row (name +
+ * current count + "Add account") that opens the existing AddAccountDialog
+ * OAuth/API-key flow inline. Live account counts come from the api client
+ * (`listAccounts`), so outside a running backend the rows show "0 connected".
+ */
+export const AccountConnect: Story = {
+  args: {
+    message: makeMessage({
+      text: "Sure — pick a provider below to sign into another account.",
+      accountConnect: {
+        providers: ["anthropic-subscription", "openai-codex"],
+        reason: "You asked to connect another provider account.",
+      },
+    }),
+  },
+};
+
+/**
  * `failureKind: "rate_limited"` (and `provider_issue`) render the graceful
  * message with a one-tap Retry that resends the preceding user turn.
  */
@@ -155,6 +173,45 @@ export const SecretRequestImageField: Story = {
               required: true,
               mimeTypes: ["image/png", "image/jpeg"],
               maxBytes: 5_000_000,
+            },
+          ],
+        },
+      },
+    }),
+  },
+};
+
+/**
+ * #8910 — a sensitive request can also collect a non-image file (e.g. a
+ * keystore/backup). Renders a plain file input scoped by `mimeTypes`, without
+ * the camera-capture hint reserved for image fields.
+ */
+export const SecretRequestFileField: Story = {
+  args: {
+    message: makeMessage({
+      text: "",
+      secretRequest: {
+        key: "WALLET_KEYSTORE",
+        reason: "Attach the encrypted keystore file to import.",
+        status: "pending",
+        delivery: {
+          mode: "inline_owner_app",
+          instruction: "Attach the .json keystore file.",
+          canCollectValueInCurrentChannel: true,
+        },
+        form: {
+          type: "sensitive_request_form",
+          kind: "secret",
+          mode: "inline_owner_app",
+          submitLabel: "Upload",
+          fields: [
+            {
+              name: "keystore",
+              label: "Keystore file",
+              input: "file",
+              required: true,
+              mimeTypes: ["application/json"],
+              maxBytes: 1_000_000,
             },
           ],
         },

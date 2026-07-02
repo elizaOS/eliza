@@ -7,7 +7,10 @@
  *      server-reported ERROR/FAILED short-circuits immediately.
  *   2. REACHABILITY — once READY, read the authoritative `production_url` from
  *      the app row (deriveAppPublicUrl semantics — NOT the create response) and
- *      probe `<production_url>/health` for a 2xx.
+ *      probe `<production_url>/health`, treating any answer EXCEPT a Caddy
+ *      gateway error (502/503/504) as reachable — the SAME rule the server uses
+ *      to mark the app READY, so the gate never contradicts the server (an
+ *      auth-gated 401/403 app, or one with no `/health` route, is still live).
  * Only when BOTH pass do we report the app live.
  *
  * The gate is pure and fully injectable (status fetch, app fetch, probe, sleep)
@@ -17,7 +20,11 @@
  */
 
 import type { AppDeployStatusResponse, AppResponse } from "@elizaos/cloud-sdk";
-import { healthUrl, type ReachabilityResult } from "./reachability.js";
+import {
+  healthUrl,
+  type ReachabilityResult,
+  respondedLive,
+} from "./reachability.js";
 
 /** Terminal outcome of the gate. */
 export type DeployPhase = "ready" | "error" | "timeout" | "unreachable";
@@ -146,7 +153,7 @@ export async function runDeployGate(
         };
       }
       const reachability = await deps.probe(healthUrl(url, config.healthPath));
-      return reachability.ok
+      return respondedLive(reachability)
         ? {
             phase: "ready",
             url,

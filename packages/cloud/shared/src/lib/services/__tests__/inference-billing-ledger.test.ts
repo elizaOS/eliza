@@ -20,12 +20,13 @@
  *     age-ordered across batches; inline-then-sweep never double-charges.
  *   - Concurrency: a same-org burst cannot collectively overdraw.
  *
- * Self-skips if PGlite is unavailable (mirrors the sibling suite).
+ * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 
@@ -659,4 +660,12 @@ describe("resolveInferenceBillingLedger — backstop selector", () => {
     expect(ledger.resolveInferenceBillingLedger({ INFERENCE_BILLING_LEDGER: "" })).toBe("kv");
     expect(ledger.resolveInferenceBillingLedger({})).toBe("kv");
   });
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+// early-return; this turns that silent no-op into a hard CI failure so a
+// money-path proof can never masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
 });

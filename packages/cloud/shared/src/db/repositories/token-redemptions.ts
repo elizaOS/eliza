@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { apps } from "../schemas/apps";
@@ -105,33 +105,6 @@ export class TokenRedemptionsRepository {
       where: and(eq(tokenRedemptions.user_id, userId), eq(tokenRedemptions.status, "pending")),
     });
     return !!pending;
-  }
-
-  /**
-   * Gets approved redemptions ready for processing.
-   * Excludes items that are currently being processed or have exceeded retry limit.
-   */
-  async getApprovedForProcessing(
-    batchSize: number,
-    lockTimeoutMs: number,
-    maxRetries: number,
-  ): Promise<TokenRedemption[]> {
-    const lockThreshold = new Date(Date.now() - lockTimeoutMs);
-
-    return await dbRead
-      .select()
-      .from(tokenRedemptions)
-      .where(
-        and(
-          eq(tokenRedemptions.status, "approved"),
-          or(
-            isNull(tokenRedemptions.processing_started_at),
-            lt(tokenRedemptions.processing_started_at, lockThreshold),
-          ),
-          lt(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, maxRetries),
-        ),
-      )
-      .limit(batchSize);
   }
 
   /**

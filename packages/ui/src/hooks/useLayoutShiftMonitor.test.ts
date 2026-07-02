@@ -54,6 +54,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  window.history.pushState(null, "", "/");
   delete (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY__;
 });
 
@@ -90,7 +91,7 @@ describe("startLayoutShiftMonitor", () => {
 
     expect(observe).toHaveBeenCalledWith({
       type: "layout-shift",
-      buffered: true,
+      buffered: false,
     });
 
     callback(entryList([shift(0.07), shift(0.05), shift(0.3, true)]));
@@ -231,6 +232,56 @@ describe("startLayoutShiftMonitor", () => {
       cls: 0.3,
       shiftCount: 1,
     });
+    stop();
+  });
+
+  it("attributes a coalesced window to the route where each shift was observed", () => {
+    vi.useFakeTimers();
+    const telemetry: unknown[] = [];
+    (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY__ =
+      telemetry;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    let callback: MockPerformanceObserverCallback = () => {
+      throw new Error("PerformanceObserver callback was not installed");
+    };
+    class MockPerformanceObserver {
+      constructor(cb: MockPerformanceObserverCallback) {
+        callback = cb;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("PerformanceObserver", MockPerformanceObserver);
+
+    window.history.pushState(null, "", "/apps/logs");
+    const stop = startLayoutShiftMonitor({
+      windowMs: 100,
+      clsBudget: 0.1,
+    });
+
+    callback(entryList([shift(0.12)]));
+    window.history.pushState(null, "", "/settings");
+    callback(entryList([shift(0.13)]));
+    vi.advanceTimersByTime(100);
+
+    expect(telemetry).toHaveLength(2);
+    expect(telemetry).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "layoutShift",
+          severity: "error",
+          cls: 0.12,
+          route: "/apps/logs",
+        }),
+        expect.objectContaining({
+          source: "layoutShift",
+          severity: "error",
+          cls: 0.13,
+          route: "/settings",
+        }),
+      ]),
+    );
     stop();
   });
 });

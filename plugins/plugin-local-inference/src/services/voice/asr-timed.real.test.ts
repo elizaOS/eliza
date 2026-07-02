@@ -2,8 +2,8 @@
  * Real-FFI test for fused ASR v12 per-word timings on REAL audio.
  *
  * Runs the ACTUAL fused `libelizainference` (`eliza_inference_asr_transcribe_timed`,
- * ABI v12) end-to-end on a real speech recording (`native/omnivoice.cpp/
- * examples/freeman.wav`) — decode → ASR → per-word `[startMs,endMs)` — and
+ * ABI v12) end-to-end on a real speech recording (`native/audio-fixtures/
+ * freeman.wav`) — decode → ASR → per-word `[startMs,endMs)` — and
  * asserts the transcript is non-empty and the word timings satisfy the playback
  * contract (`validateAsrWordTimings`) against the exact decoded audio duration.
  *
@@ -65,7 +65,7 @@ const HAVE_BUNDLE = existsSync(BUNDLE);
 
 const FREEMAN_WAV = fileURLToPath(
 	new URL(
-		"../../../native/omnivoice.cpp/examples/freeman.wav",
+		"../../../native/audio-fixtures/freeman.wav",
 		import.meta.url,
 	),
 );

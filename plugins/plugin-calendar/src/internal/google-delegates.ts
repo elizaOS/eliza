@@ -142,7 +142,9 @@ function googleCapabilitiesForAccount(
   ) {
     values.push("google.gmail.manage");
   }
-  const normalized = new Set<LifeOpsGoogleCapability>(["google.basic_identity"]);
+  const normalized = new Set<LifeOpsGoogleCapability>([
+    "google.basic_identity",
+  ]);
   for (const value of values) {
     const mapped = mapCapability(value);
     if (mapped) normalized.add(mapped);

@@ -201,11 +201,11 @@ export class FusedWakeManager {
         sampleRate: SAMPLE_RATE,
         program,
         argv: argvRaw.split("|"),
-      }) as unknown as MicLike;
+      }) as MicLike;
     }
     return new DesktopMicSource({
       sampleRate: SAMPLE_RATE,
-    }) as unknown as MicLike;
+    }) as MicLike;
   }
 }
 

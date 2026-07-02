@@ -13,6 +13,7 @@ import {
   type ApprovalRequestState,
   type ApprovalResolution,
   ApprovalStateTransitionError,
+  ApprovalTransitionConflictError,
 } from "./approval-queue.types.js";
 import {
   executeRawSql,
@@ -694,13 +695,52 @@ export class PgApprovalQueue implements ApprovalQueue {
     return ids;
   }
 
-  private async fetchById(id: string): Promise<ApprovalRequest | null> {
+  // Protected so tests can subclass and interleave work between the read and
+  // the compare-and-swap write (deterministic TOCTOU coverage).
+  protected async fetchById(id: string): Promise<ApprovalRequest | null> {
     const sql = `SELECT ${SELECT_COLUMNS} FROM approval_requests
       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
       LIMIT 1`;
     const rows = await executeRawSql(this.runtime, sql);
     if (rows.length === 0) return null;
     return rowToRequest(rows[0]);
+  }
+
+  /**
+   * The UPDATE affected no row even though the transition looked legal at
+   * read time: either the row vanished, or a concurrent writer moved it to a
+   * different state between our read and our compare-and-swap write (e.g.
+   * `purgeExpired` racing an in-flight `approve`). Re-read once to classify
+   * and surface the loss as a typed conflict — never retry the write.
+   */
+  private async raiseLostRace(
+    id: string,
+    target: ApprovalRequestState,
+  ): Promise<never> {
+    const actual = await this.fetchById(id);
+    if (!actual) throw new ApprovalNotFoundError(id);
+    logger.warn(
+      `[ApprovalQueue] transition conflict: request ${id} moved to ${actual.state} mid-flight, refusing ${actual.state} -> ${target}`,
+    );
+    throw new ApprovalTransitionConflictError(id, actual.state, target);
+  }
+
+  /**
+   * Lazily enforce expiry at the transition boundary (#11092): no production
+   * caller runs purgeExpired periodically, so without this check a request
+   * whose expiresAt has passed stays `pending` forever and remains approvable.
+   * A lapsed pending row is flipped to `expired` (CAS — a concurrent
+   * transition wins cleanly) and the attempted transition is refused as
+   * from-expired, the same typed error callers already handle.
+   */
+  private async refuseLapsedPending(
+    current: ApprovalRequest,
+    target: ApprovalRequestState,
+  ): Promise<void> {
+    if (current.state !== "pending" || target === "expired") return;
+    if (current.expiresAt.getTime() > Date.now()) return;
+    await this.transitionWithoutResolution(current.id, "expired");
+    throw new ApprovalStateTransitionError(current.id, "expired", target);
   }
 
   private async transitionWithResolution(
@@ -710,8 +750,12 @@ export class PgApprovalQueue implements ApprovalQueue {
   ): Promise<ApprovalRequest> {
     const current = await this.fetchById(id);
     if (!current) throw new ApprovalNotFoundError(id);
+    await this.refuseLapsedPending(current, target);
     assertTransition(id, current.state, target);
     const now = new Date();
+    // Compare-and-swap: the state guard makes the read-assert-write race-safe.
+    // A concurrent transition (e.g. purgeExpired) makes this UPDATE match no
+    // row instead of silently resurrecting a terminal state.
     const sql = `UPDATE approval_requests
       SET state = ${sqlText(target)},
           resolved_at = ${timestampLiteral(now)},
@@ -719,10 +763,11 @@ export class PgApprovalQueue implements ApprovalQueue {
           resolution_reason = ${sqlText(resolution.resolutionReason)},
           updated_at = ${timestampLiteral(now)}
       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
+        AND state = ${sqlText(current.state)}
       RETURNING ${SELECT_COLUMNS}`;
     const rows = await executeRawSql(this.runtime, sql);
     if (rows.length === 0) {
-      throw new ApprovalNotFoundError(id);
+      await this.raiseLostRace(id, target);
     }
     logger.info(
       `[ApprovalQueue] ${current.state} -> ${target} (${id}) by ${resolution.resolvedBy}`,
@@ -736,16 +781,19 @@ export class PgApprovalQueue implements ApprovalQueue {
   ): Promise<ApprovalRequest> {
     const current = await this.fetchById(id);
     if (!current) throw new ApprovalNotFoundError(id);
+    await this.refuseLapsedPending(current, target);
     assertTransition(id, current.state, target);
     const now = new Date();
+    // Compare-and-swap: see transitionWithResolution.
     const sql = `UPDATE approval_requests
       SET state = ${sqlText(target)},
           updated_at = ${timestampLiteral(now)}
       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
+        AND state = ${sqlText(current.state)}
       RETURNING ${SELECT_COLUMNS}`;
     const rows = await executeRawSql(this.runtime, sql);
     if (rows.length === 0) {
-      throw new ApprovalNotFoundError(id);
+      await this.raiseLostRace(id, target);
     }
     logger.info(`[ApprovalQueue] ${current.state} -> ${target} (${id})`);
     return rowToRequest(rows[0]);

@@ -45,6 +45,28 @@ function makeRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
+function makeDbRuntime(rowsFor: (sql: string) => unknown): {
+  runtime: IAgentRuntime;
+  calls: Array<{ sql: string }>;
+} {
+  const calls: Array<{ sql: string }> = [];
+  const runtime = {
+    ...makeRuntime(),
+    agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    adapter: {
+      db: {
+        execute: async (query: { queryChunks: Array<{ value?: unknown }> }) => {
+          const chunk = query.queryChunks[0]?.value;
+          const sql = Array.isArray(chunk) ? String(chunk[0]) : String(chunk);
+          calls.push({ sql });
+          return rowsFor(sql);
+        },
+      },
+    },
+  } as unknown as IAgentRuntime;
+  return { runtime, calls };
+}
+
 function makeMessage(text = "show my inbox"): Memory {
   return {
     id: "msg-inbox-1" as UUID,
@@ -83,6 +105,38 @@ function makeItem(
   };
 }
 
+function makeTriageRow(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: "entry-1",
+    agent_id: "11111111-1111-1111-1111-111111111111",
+    source: "gmail",
+    source_room_id: null,
+    source_entity_id: "alice@example.com",
+    source_message_id: "gmail-msg-1",
+    channel_name: "Email from Alice",
+    channel_type: "email",
+    deep_link: null,
+    classification: "needs_reply",
+    urgency: "high",
+    confidence: 0.9,
+    snippet: "Can you confirm the launch date?",
+    sender_name: "Alice",
+    thread_context: null,
+    triage_reasoning: "asks a direct question",
+    suggested_response: "Yes, Friday.",
+    draft_response: null,
+    auto_replied: false,
+    snoozed_until: null,
+    resolved: false,
+    resolved_at: null,
+    created_at: "2026-06-17T10:00:00.000Z",
+    updated_at: "2026-06-17T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("INBOX umbrella action — cross-channel inbox", () => {
   beforeEach(() => {
     __resetInboxFetchersForTests();
@@ -106,6 +160,8 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
     it("rejects calls with no subaction selector", async () => {
       const result = await callInbox(makeRuntime(), makeMessage(), {});
       expect(result.success).toBe(false);
+      expect(result.text).toContain("triage");
+      expect(result.text).toContain("approve");
       expect(result.data).toMatchObject({ error: "MISSING_SUBACTION" });
     });
 
@@ -190,7 +246,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       };
       expect(data.totalBeforeDedupe).toBe(2);
       expect(data.items).toHaveLength(1);
-      expect(data.items[0]!.id).toBe("g-2");
+      expect(data.items[0]?.id).toBe("g-2");
     });
   });
 
@@ -215,8 +271,8 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       });
       expect(result.success).toBe(true);
       expect(gmailFetcher).toHaveBeenCalledTimes(1);
-      const fetcherArgs = gmailFetcher.mock.calls[0]![0];
-      expect(fetcherArgs.query).toBe("launch plan");
+      const fetcherArgs = gmailFetcher.mock.calls[0]?.[0];
+      expect(fetcherArgs?.query).toBe("launch plan");
     });
   });
 
@@ -295,6 +351,55 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       const data = result.data as { items: unknown[] };
       expect(data.items).toHaveLength(0);
       expect(result.text).toContain("empty");
+    });
+  });
+
+  describe("triage queue operations", () => {
+    it("lists persisted unresolved triage entries and hides snoozed rows by default", async () => {
+      const { runtime, calls } = makeDbRuntime((sql) =>
+        sql.includes("life_inbox_triage_entries")
+          ? [makeTriageRow({ id: "entry-1" })]
+          : [],
+      );
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        limit: 5,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("Loaded 1");
+      const data = result.data as { entries: Array<{ id: string }> };
+      expect(data.entries[0]?.id).toBe("entry-1");
+      const select = calls[0]?.sql ?? "";
+      expect(select).toContain("resolved = FALSE");
+      expect(select).toContain("snoozed_until IS NULL");
+      expect(select).toContain("LIMIT 5");
+    });
+
+    it("snoozes a persisted triage entry until the provided timestamp", async () => {
+      const { runtime, calls } = makeDbRuntime((sql) => {
+        if (sql.startsWith("SELECT")) return [makeTriageRow({ id: "entry-1" })];
+        return [];
+      });
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "snooze",
+        entryId: "entry-1",
+        until: "2026-07-02T00:00:00-04:00",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        subaction: "snooze",
+        entryId: "entry-1",
+        snoozedUntil: "2026-07-02T04:00:00.000Z",
+      });
+      const update = calls.find((call) => call.sql.startsWith("UPDATE"));
+      expect(update?.sql).toContain(
+        "snoozed_until = '2026-07-02T04:00:00.000Z'",
+      );
+      expect(update?.sql).toContain("resolved = FALSE");
     });
   });
 });

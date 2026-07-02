@@ -53,11 +53,7 @@
     "signoff_regression_count": 23,
     "verdict": "stack_2x4 wins wirelength (-21.5%) and setup TNS (-90%) versus baseline, but REGRESSES post-route signoff (+4 antenna nets, +156 max-slew violations, +1 max-fanout). The post-route validator rejects it as a PPA/optimization win. No macro-array placement is promotable yet: all three have negative setup slack at 15 ns and the timing-best one trades signoff cleanliness."
   },
-  "measured_variants": [
-    "baseline_4x2",
-    "compact_4x2",
-    "stack_2x4"
-  ],
+  "measured_variants": ["baseline_4x2", "compact_4x2", "stack_2x4"],
   "per_variant_ppa": "see macro_array_<variant>.json in this directory",
   "placement_case_id": "e1-macro-array-weight-buffer-placement-case",
   "post_route_ranking": [

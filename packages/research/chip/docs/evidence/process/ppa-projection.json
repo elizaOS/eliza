@@ -1,10 +1,5 @@
 {
-  "advanced_targets": [
-    "n2p",
-    "a14",
-    "intel_14a",
-    "samsung_sf2p"
-  ],
+  "advanced_targets": ["n2p", "a14", "intel_14a", "samsung_sf2p"],
   "asap7_projection": [
     {
       "asap7": {

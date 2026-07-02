@@ -231,13 +231,6 @@ export class GoogleDomain {
     // methods.
   }
 
-  public async setPreferredGoogleConnectorMode(
-    _mode: LifeOpsConnectorMode | null,
-    _side?: LifeOpsConnectorSide,
-  ): Promise<LifeOpsConnectorGrant | null> {
-    return null;
-  }
-
   public async requireGoogleCalendarGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,

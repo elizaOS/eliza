@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ClaudeSdkSession, type SdkModule } from "../src/claude-sdk-session";
+import { ProviderApiError } from "../src/provider-errors";
 
 /**
  * Unit tests for the warm Agent SDK session, driven by a FAKE SdkModule via the
@@ -10,6 +11,8 @@ import { ClaudeSdkSession, type SdkModule } from "../src/claude-sdk-session";
  */
 
 interface TurnScript {
+  /** Never yield a message, used to test the per-turn timeout budget. */
+  hang?: boolean;
   /** ROUTE mode: invoke the captured tool handler with this decision. */
   toolCall?: { action: unknown; params?: unknown };
   /** Stream this as assistant text before the result. */
@@ -50,6 +53,9 @@ function makeFakeSdk(scripts: TurnScript[]): {
       async function* gen() {
         while (turn < scripts.length) {
           const s = scripts[turn++];
+          if (s.hang) {
+            await new Promise(() => undefined);
+          }
           if (s.toolCall && handler) {
             await handler({ action: s.toolCall.action, params: s.toolCall.params });
           }
@@ -85,7 +91,7 @@ const fakeZod = {
 
 function makeSession(
   scripts: TurnScript[],
-  opts: { router?: boolean; restartAfterTurns?: number } = {}
+  opts: { router?: boolean; restartAfterTurns?: number; turnTimeoutMs?: number } = {}
 ) {
   const { sdk, starts } = makeFakeSdk(scripts);
   const session = new ClaudeSdkSession({
@@ -93,6 +99,7 @@ function makeSession(
     systemPrompt: "test system",
     router: opts.router ?? false,
     restartAfterTurns: opts.restartAfterTurns,
+    turnTimeoutMs: opts.turnTimeoutMs,
     sdkModule: sdk,
     zodModule: fakeZod,
   });
@@ -123,6 +130,41 @@ describe("ClaudeSdkSession — TEXT mode", () => {
   it("THROWS when the generator ends before a result (session died mid-turn)", async () => {
     const { session } = makeSession([{ text: "partial", noResult: true }]);
     await expect(session.generate("hi")).rejects.toThrow(/session-ended|empty completion/);
+    await session.dispose();
+  });
+
+  it("THROWS when the subscription-limit envelope is only in result.result", async () => {
+    const { session } = makeSession([
+      {
+        text: "",
+        subtype: "success",
+        resultText: "You've hit your session limit · resets 9:30pm (UTC)",
+      },
+    ]);
+    await expect(session.generate("hi")).rejects.toThrow(/subscription rate limit reached/);
+    await session.dispose();
+  });
+
+  it("throws a typed provider error instead of returning streamed API Error text", async () => {
+    const { session } = makeSession([
+      {
+        text: "API Error: 529 Overloaded. This is a server-side issue, check https://status.claude.com.",
+        subtype: "success",
+      },
+    ]);
+    await expect(session.generate("hi")).rejects.toMatchObject({
+      name: "ProviderApiError",
+      statusCode: 529,
+      retryable: true,
+    });
+    await session.dispose();
+  });
+
+  it("bounds a hung SDK turn below connector timeouts", async () => {
+    const { session } = makeSession([{ hang: true }], { turnTimeoutMs: 5 });
+    const started = Date.now();
+    await expect(session.generate("hi")).rejects.toBeInstanceOf(ProviderApiError);
+    expect(Date.now() - started).toBeLessThan(1_000);
     await session.dispose();
   });
 
@@ -184,6 +226,25 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
     const out = JSON.parse(await session.route("hi"));
     expect(out.action).toBe("REPLY");
     expect(out.params.text).toBe("real");
+    await session.dispose();
+  });
+
+  it("the captured decision wins over residual subscription-limit text", async () => {
+    const { session } = makeSession(
+      [
+        {
+          toolCall: { action: "WEB_FETCH", params: { url: "https://example.test" } },
+          text: "You've hit your session limit · resets 9:30pm (UTC)",
+          subtype: "error_max_turns",
+        },
+      ],
+      { router: true }
+    );
+    const out = JSON.parse(await session.route("price?"));
+    expect(out).toEqual({
+      action: "WEB_FETCH",
+      params: { url: "https://example.test" },
+    });
     await session.dispose();
   });
 

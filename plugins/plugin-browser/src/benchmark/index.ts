@@ -16,7 +16,18 @@ export {
   launchChromiumBenchmarkBrowser,
   resolveChromiumExecutable,
   resolveChromiumExecutablePath,
+  resolveChromiumHeadlessShellExecutablePath,
 } from "./chromium-executor.js";
+export {
+  EXTERNAL_DATASET_ORIGIN,
+  EXTERNAL_WEB_DATASET_FIXTURE,
+  EXTERNAL_WEB_DATASET_TASKS,
+  type ExternalDatasetFamily,
+  type ExternalDatasetRecord,
+  type ExternalDatasetRewardCheck,
+  type ExternalDatasetRoute,
+  externalDatasetRecordToTask,
+} from "./external-dataset.js";
 export {
   type BenchmarkPolicy,
   type BenchmarkPolicyInput,
@@ -29,16 +40,6 @@ export {
   runBenchmarkSuite,
   runEpisode,
 } from "./runner.js";
-export {
-  EXTERNAL_DATASET_ORIGIN,
-  EXTERNAL_WEB_DATASET_FIXTURE,
-  EXTERNAL_WEB_DATASET_TASKS,
-  externalDatasetRecordToTask,
-  type ExternalDatasetFamily,
-  type ExternalDatasetRecord,
-  type ExternalDatasetRewardCheck,
-  type ExternalDatasetRoute,
-} from "./external-dataset.js";
 export { getTaskById, MINIWOB_TASKS, WOB_ORIGIN } from "./tasks.js";
 export type {
   BenchmarkAction,

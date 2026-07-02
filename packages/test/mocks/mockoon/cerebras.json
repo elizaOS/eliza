@@ -17,7 +17,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-0000000200fa",
-          "body": "{\n  \"id\": \"chatcmpl-mock-2026-05-09-001\",\n  \"object\": \"chat.completion\",\n  \"created\": 1746810600,\n  \"model\": \"gpt-oss-120b\",\n  \"choices\": [\n    {\n      \"index\": 0,\n      \"message\": {\n        \"role\": \"assistant\",\n        \"content\": \"{\\\"action\\\":\\\"route_to_inbox\\\",\\\"confidence\\\":0.91,\\\"rationale\\\":\\\"Routine standup confirmation; not urgent.\\\"}\"\n      },\n      \"finish_reason\": \"stop\"\n    }\n  ],\n  \"usage\": {\n    \"prompt_tokens\": 184,\n    \"completion_tokens\": 31,\n    \"total_tokens\": 215\n  }\n}",
+          "body": "{\n  \"id\": \"chatcmpl-mock-2026-05-09-001\",\n  \"object\": \"chat.completion\",\n  \"created\": 1746810600,\n  \"model\": \"gemma-4-31b\",\n  \"choices\": [\n    {\n      \"index\": 0,\n      \"message\": {\n        \"role\": \"assistant\",\n        \"content\": \"{\\\"action\\\":\\\"route_to_inbox\\\",\\\"confidence\\\":0.91,\\\"rationale\\\":\\\"Routine standup confirmation; not urgent.\\\"}\"\n      },\n      \"finish_reason\": \"stop\"\n    }\n  ],\n  \"usage\": {\n    \"prompt_tokens\": 184,\n    \"completion_tokens\": 31,\n    \"total_tokens\": 215\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",

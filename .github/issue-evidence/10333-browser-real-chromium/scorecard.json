@@ -1,7 +1,7 @@
 {
   "benchmark": "miniwob++",
   "engine": "chromium",
-  "executablePath": "C:\\Users\\Administrator\\AppData\\Local\\ms-playwright\\chromium-1228\\chrome-win64\\chrome.exe",
+  "executablePath": "/Users/shawwalters/Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell",
   "policy": "oracle",
   "seed": 0,
   "total": 6,
@@ -23,7 +23,7 @@
             "selector": "#btn-0",
             "note": "button \"THREE\""
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -51,7 +51,7 @@
             "selector": "#lnk-0",
             "note": "link \"Home\""
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -80,7 +80,7 @@
             "value": "Tobias",
             "note": "enter \"Tobias\""
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -89,7 +89,7 @@
             "selector": "#submit",
             "note": "submit"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -118,7 +118,7 @@
             "value": "Tobias100",
             "note": "enter \"Tobias100\""
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -127,7 +127,7 @@
             "selector": "#submit",
             "note": "submit"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -155,7 +155,7 @@
             "selector": "#cb-2",
             "note": "check lemon"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -183,7 +183,7 @@
             "selector": "#go-catalog",
             "note": "open catalog"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -192,7 +192,7 @@
             "selector": "#buy",
             "note": "buy featured item"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {

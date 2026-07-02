@@ -3,18 +3,16 @@ import { parseActionParams } from "../actions";
 import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
+	applyDirectCurrentCandidateBackstopToMessageHandler,
 	extractPlannerActionNames,
 	findWebLookupActionName,
 	findWebLookupActionNames,
 	inferDirectCurrentRequestCandidateActions,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
-	looksLikeSelfPolicyExplanationRequest,
 	shouldPreferDirectCurrentCandidateActions,
 	shouldPromoteExplicitReplyToOwnedAction,
-	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
-	suggestOwnedActionFromMetadata,
 } from "../services/message";
 
 const logger = {
@@ -23,6 +21,103 @@ const logger = {
 	warn: vi.fn(),
 	error: vi.fn(),
 };
+
+describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () => {
+	// Live regression: the Stage-1 model sometimes answers in plain prose instead
+	// of the structured field envelope. That path (synthesizeSimpleReplyFromPlainText)
+	// runs through applyDirectCurrentCandidateBackstopToMessageHandler, which infers
+	// WEB_FETCH/WEB_SEARCH candidates for almost any interrogative — so a COMPLETE
+	// plain-text answer ("Your lucky number is 4291.", a solved riddle) was promoted
+	// to requiresTool=true and forced through a pointless web search + a slow extra
+	// planner round, while the identical answer in JSON form went direct. The valve
+	// mirrors the structured path's shouldPreferCompleteDirectReply.
+	const WEB_ACTIONS = [
+		{ name: "REPLY" },
+		{ name: "WEB_SEARCH", similes: ["SEARCH_WEB"] },
+		{ name: "WEB_FETCH" },
+		{ name: "TASKS" },
+	] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+	const simplePlainReply = (reply: string) => ({
+		processMessage: "RESPOND" as const,
+		plan: { contexts: ["simple"], reply, simple: true },
+		thought: "",
+	});
+
+	it("keeps a COMPLETE plain-text answer direct instead of forcing a web search", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply("Your lucky number is 4291."),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "my lucky number is 4291. what is my lucky number?",
+			},
+		);
+		// inference DOES tag this with WEB_FETCH/WEB_SEARCH, but the finished
+		// answer + weak signals must win: stays simple, no forced tool.
+		expect(out.plan.simple).not.toBe(false);
+		expect(out.plan.requiresTool).not.toBe(true);
+	});
+
+	it("keeps a solved-reasoning plain-text answer direct", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply(
+				"3 minutes. Each machine makes one widget in 3 minutes, so 100 machines run in parallel and still finish in 3 minutes.",
+			),
+			{
+				actions: WEB_ACTIONS,
+				messageText:
+					"if 3 machines make 3 widgets in 3 minutes, how long for 100 machines to make 100 widgets?",
+			},
+		);
+		expect(out.plan.simple).not.toBe(false);
+		expect(out.plan.requiresTool).not.toBe(true);
+	});
+
+	it("still forces the tool for a live-info ACK reply (not a complete answer)", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply("Checking the current price now."),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "what is the current price of bitcoin right now?",
+			},
+		);
+		// an ack fails looksLikeCompleteDirectReply → live-info still fetches.
+		expect(out.plan.requiresTool).toBe(true);
+		expect(out.plan.candidateActions?.length ?? 0).toBeGreaterThan(0);
+	});
+
+	it("forces the fetch even when the model HALLUCINATES a complete answer to a fresh ask", () => {
+		// Adversarial-review hardening: the valve must never keep a
+		// confident-but-unverified plain-text "answer" to an explicitly fresh
+		// question — a stale price delivered confidently is worse than the extra
+		// fetch. looksLikeWebSearchRequest gates the valve off for the
+		// current-info + market/news/weather class.
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply(
+				"Bitcoin is trading at $45,000 right now, up 2% on the day.",
+			),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "what is the current price of bitcoin right now?",
+			},
+		);
+		expect(out.plan.requiresTool).toBe(true);
+		expect(out.plan.candidateActions?.length ?? 0).toBeGreaterThan(0);
+	});
+
+	it("still plans a coding-work request even with a complete-looking reply", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply(
+				"I'll build a simple hello-world web page with an h1 and some basic styling for you.",
+			),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "build me a simple hello-world web page",
+			},
+		);
+		// coding work must not be short-circuited by the complete-reply valve.
+		expect(out.plan.requiresTool).toBe(true);
+	});
+});
 
 describe("live routing regressions", () => {
 	it("extracts inline params from planner action strings", () => {
@@ -126,26 +221,6 @@ describe("live routing regressions", () => {
 	});
 
 	it("recognizes current-info requests as web search without spawning work", () => {
-		const runtime = {
-			actions: [
-				{
-					name: "SEARCH",
-					similes: ["WEB_SEARCH", "SEARCH_WEB"],
-					description: "Search the web or other registered backends",
-				},
-			],
-		} as Pick<IAgentRuntime, "actions">;
-
-		const suggestion = suggestOwnedActionFromMetadata(runtime, {
-			content: {
-				text: "what is the current BTC price in USD? answer briefly.",
-			},
-		});
-
-		expect(suggestion).toMatchObject({
-			actionName: "SEARCH",
-			reasons: ["direct:web-search"],
-		});
 		expect(
 			inferWebSearchQueryFromMessageText(
 				"what is the current BTC price in USD? answer briefly.",
@@ -291,27 +366,9 @@ describe("live routing regressions", () => {
 	});
 
 	it("does not promote explanation-only shell questions into execution", () => {
-		const runtime = {
-			actions: [
-				{
-					name: "SHELL_COMMAND",
-					description: "Run local shell commands",
-				},
-			],
-		} as Pick<IAgentRuntime, "actions">;
 		const text = "explain how df -h checks disk space on this VPS";
 		const howToRunText = "explain how to run df -h on this VPS";
 
-		expect(
-			suggestOwnedActionFromMetadata(runtime, {
-				content: { text },
-			}),
-		).toBeNull();
-		expect(
-			suggestOwnedActionFromMetadata(runtime, {
-				content: { text: howToRunText },
-			}),
-		).toBeNull();
 		expect(
 			shouldPromoteExplicitReplyToOwnedAction(
 				{ actions: ["REPLY"] },
@@ -339,58 +396,11 @@ describe("live routing regressions", () => {
 	});
 
 	it("does not route generic current status questions to web search", () => {
-		const runtime = {
-			actions: [
-				{
-					name: "SEARCH",
-					similes: ["WEB_SEARCH", "SEARCH_WEB"],
-					description: "Search the web or other registered backends",
-				},
-			],
-		} as Pick<IAgentRuntime, "actions">;
-
-		expect(
-			suggestOwnedActionFromMetadata(runtime, {
-				content: {
-					text: "what is the current status of the build?",
-				},
-			}),
-		).toBeNull();
 		expect(
 			inferWebSearchQueryFromMessageText(
 				"what is the current status of the build?",
 			),
 		).toBeNull();
-	});
-
-	it("does not rescue self-policy explanation questions into task actions", () => {
-		expect(
-			looksLikeSelfPolicyExplanationRequest({
-				content: {
-					text: "for a new monetized ai chat app, what workflow, example app, and sdk should you use? answer in one short sentence. do not build anything.",
-				},
-			}),
-		).toBe(true);
-	});
-
-	it("does not skip document rescue for ordinary second-person questions", () => {
-		expect(
-			shouldSkipDocumentProviderRescue({
-				content: {
-					text: "can you explain the uploaded document?",
-				},
-			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
-		).toBe(false);
-	});
-
-	it("does not skip document rescue for self-policy questions about documents", () => {
-		expect(
-			shouldSkipDocumentProviderRescue({
-				content: {
-					text: "what workflow should you use for processing documents in your knowledge base?",
-				},
-			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
-		).toBe(false);
 	});
 
 	it("stops continuation when an action result blocks the turn", () => {
@@ -470,5 +480,107 @@ describe("VIEWS request inference (PR #8446)", () => {
 				"open the dashboard window",
 			),
 		).toContain("OPEN_DASHBOARD");
+	});
+});
+
+// Regression fence for #9950: an installed-apps request ("show me the apps")
+// must surface the APP control action alongside VIEWS so the planner can
+// arbitrate between the applications themselves and the apps/views page —
+// previously only VIEWS was hinted and every apps ask was answered with the
+// UI view catalog.
+describe("APP surface request inference (#9950)", () => {
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: [],
+		tags: [],
+	};
+	const appAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "APP",
+		similes: ["LIST_APPS", "LAUNCH_APP"],
+		tags: ["apps"],
+	};
+
+	it("surfaces BOTH VIEWS and APP for an installed-apps request", () => {
+		const candidates = inferDirectCurrentRequestCandidateActions(
+			[viewsAction, appAction],
+			"show me the apps",
+		);
+		expect(candidates).toContain("VIEWS");
+		expect(candidates).toContain("APP");
+	});
+
+	it("does not invent APP when no app-control action is registered", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewsAction],
+				"show me the apps",
+			),
+		).toEqual(["VIEWS"]);
+	});
+
+	it("does not drag APP into pure view requests", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewsAction, appAction],
+				"open the notes panel",
+			),
+		).toEqual(["VIEWS"]);
+	});
+});
+
+// Regression fence for #9950 (voice-transcription contract): a message that is
+// nothing but a bare surface name the views action itself claims via tag or
+// navigation simile ("settings", "wallet") must surface VIEWS so the turn
+// plans a navigation instead of dead-ending in a Stage-1 clarifying reply.
+describe("bare view-name voice navigation inference (#9950)", () => {
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: ["OPEN_SETTINGS", "SHOW_WALLET"],
+		tags: ["settings", "wallet", "calendar"],
+	};
+
+	it("routes a bare tag-claimed noun to VIEWS", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions([viewsAction], "settings"),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions([viewsAction], "wallet"),
+		).toEqual(["VIEWS"]);
+	});
+
+	it("routes a bare navigation-simile noun to VIEWS", () => {
+		const simileOnly: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "VIEWS",
+			similes: ["OPEN_INBOX"],
+			tags: [],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateActions([simileOnly], "inbox"),
+		).toEqual(["VIEWS"]);
+	});
+
+	it("is inert for unclaimed words, multi-word messages, and generic surface words", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions([viewsAction], "hello"),
+		).toEqual([]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewsAction],
+				"settings please",
+			),
+		).toEqual([]);
+		// "views"/"view" alone stays ambiguous (list vs manager) — not promoted.
+		expect(
+			inferDirectCurrentRequestCandidateActions([viewsAction], "views"),
+		).toEqual([]);
+	});
+
+	it("is inert when no VIEWS action is registered", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[{ name: "REPLY", similes: [], tags: ["settings"] }],
+				"settings",
+			),
+		).toEqual([]);
 	});
 });

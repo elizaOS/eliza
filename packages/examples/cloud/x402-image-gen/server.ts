@@ -36,8 +36,11 @@ import {
 const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_DIR = new URL("./public/", import.meta.url);
 
-const CLOUD_URL = (process.env.ELIZA_CLOUD_URL ?? "https://www.elizacloud.ai").replace(/\/+$/, "");
-const API_KEY = process.env.ELIZAOS_CLOUD_API_KEY ?? process.env.ELIZA_CLOUD_API_KEY ?? "";
+const CLOUD_URL = (
+  process.env.ELIZA_CLOUD_URL ?? "https://elizacloud.ai"
+).replace(/\/+$/, "");
+const API_KEY =
+  process.env.ELIZAOS_CLOUD_API_KEY ?? process.env.ELIZA_CLOUD_API_KEY ?? "";
 const APP_ID = process.env.ELIZA_APP_ID ?? "";
 const NETWORK = process.env.X402_NETWORK ?? "base";
 const PRICE_USD = Number(process.env.X402_PRICE_USD ?? "0.05");
@@ -57,21 +60,36 @@ function cloudClient(): ElizaCloudClient {
 function jsonError(status: number, code: string, message: string): Response {
   return new Response(JSON.stringify({ error: { code, message } }), {
     status,
-    headers: { "content-type": "application/json", "cache-control": "no-store" },
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+    },
   });
 }
 
 function cloudErrorResponse(err: unknown): Response {
   if (err instanceof CloudApiError) {
-    return new Response(JSON.stringify(err.errorBody ?? { error: err.message }), {
-      status: err.statusCode,
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
-    });
+    return new Response(
+      JSON.stringify(err.errorBody ?? { error: err.message }),
+      {
+        status: err.statusCode,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        },
+      },
+    );
   }
-  return jsonError(502, "upstream_unreachable", "Eliza Cloud is not responding. Try again shortly.");
+  return jsonError(
+    502,
+    "upstream_unreachable",
+    "Eliza Cloud is not responding. Try again shortly.",
+  );
 }
 
-function firstImage(result: GenerateImageResponse): { url?: string; image?: string } | null {
+function firstImage(
+  result: GenerateImageResponse,
+): { url?: string; image?: string } | null {
   return result.images?.[0] ?? null;
 }
 
@@ -86,7 +104,10 @@ async function quote(prompt: string): Promise<Response> {
     network: NETWORK,
     appId: APP_ID,
     description: `Image: ${prompt.slice(0, 80)}`,
-    metadata: { kind: "payperpixel_image", promptPreview: prompt.slice(0, 120) },
+    metadata: {
+      kind: "payperpixel_image",
+      promptPreview: prompt.slice(0, 120),
+    },
   });
 
   return Response.json(
@@ -128,7 +149,9 @@ async function settleAndGenerate(
   try {
     const result = await cloud.settleX402PaymentRequest(
       paymentRequestId,
-      paymentPayload as Parameters<ElizaCloudClient["settleX402PaymentRequest"]>[1],
+      paymentPayload as Parameters<
+        ElizaCloudClient["settleX402PaymentRequest"]
+      >[1],
     );
     settled = result.paymentRequest;
   } catch (err) {
@@ -139,7 +162,11 @@ async function settleAndGenerate(
   }
 
   if (generatedFor.has(paymentRequestId)) {
-    return jsonError(409, "already_generated", "An image was already generated for this payment.");
+    return jsonError(
+      409,
+      "already_generated",
+      "An image was already generated for this payment.",
+    );
   }
 
   let result: GenerateImageResponse;
@@ -197,27 +224,44 @@ async function handleGenerate(req: Request): Promise<Response> {
     return jsonError(400, "missing_prompt", "A non-empty prompt is required.");
   }
   if (prompt.length > 1000) {
-    return jsonError(400, "prompt_too_long", "Prompt must be 1000 characters or fewer.");
+    return jsonError(
+      400,
+      "prompt_too_long",
+      "Prompt must be 1000 characters or fewer.",
+    );
   }
 
   const paymentRequestId =
     typeof body.paymentRequestId === "string" ? body.paymentRequestId : "";
   const payload = body.paymentPayload;
   const hasPayment =
-    paymentRequestId && typeof payload === "object" && payload !== null && !Array.isArray(payload);
+    paymentRequestId &&
+    typeof payload === "object" &&
+    payload !== null &&
+    !Array.isArray(payload);
 
   return hasPayment
-    ? settleAndGenerate(prompt, paymentRequestId, payload as Record<string, unknown>)
+    ? settleAndGenerate(
+        prompt,
+        paymentRequestId,
+        payload as Record<string, unknown>,
+      )
     : quote(prompt);
 }
 
 async function handleEarnings(): Promise<Response> {
   if (!API_KEY || !APP_ID) {
-    return jsonError(503, "not_configured", "Set ELIZAOS_CLOUD_API_KEY and ELIZA_APP_ID.");
+    return jsonError(
+      503,
+      "not_configured",
+      "Set ELIZAOS_CLOUD_API_KEY and ELIZA_APP_ID.",
+    );
   }
   try {
     const earnings = await cloudClient().getAppEarnings(APP_ID);
-    return Response.json(earnings, { headers: { "cache-control": "no-store" } });
+    return Response.json(earnings, {
+      headers: { "cache-control": "no-store" },
+    });
   } catch (err) {
     return cloudErrorResponse(err);
   }
@@ -273,7 +317,11 @@ const server = Bun.serve({
   },
 });
 
-console.log(`[payperpixel] listening on http://${server.hostname}:${server.port}`);
+console.log(
+  `[payperpixel] listening on http://${server.hostname}:${server.port}`,
+);
 console.log(`[payperpixel] cloud:   ${CLOUD_URL}`);
 console.log(`[payperpixel] app_id:  ${APP_ID || "(unset)"}`);
-console.log(`[payperpixel] price:   $${PRICE_USD.toFixed(2)} USDC on ${NETWORK}`);
+console.log(
+  `[payperpixel] price:   $${PRICE_USD.toFixed(2)} USDC on ${NETWORK}`,
+);

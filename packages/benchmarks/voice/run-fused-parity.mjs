@@ -41,15 +41,24 @@ const FUSED_SO = firstExisting([
 ]);
 const WAKEWORD_SO = firstExisting([
   process.env.WAKEWORD_SO,
-  path.join(repoRoot, "packages/native/plugins/wakeword-cpp/build/libwakeword.so"),
+  path.join(
+    repoRoot,
+    "packages/native/plugins/wakeword-cpp/build/libwakeword.so",
+  ),
 ]);
 const VOICE_CLASS_SO = firstExisting([
   process.env.VOICE_CLASS_SO,
-  path.join(repoRoot, "packages/native/plugins/voice-classifier-cpp/build/libvoice_classifier.so"),
+  path.join(
+    repoRoot,
+    "packages/native/plugins/voice-classifier-cpp/build/libvoice_classifier.so",
+  ),
 ]);
 const SILERO_VAD_SO = firstExisting([
   process.env.SILERO_VAD_SO,
-  path.join(repoRoot, "packages/native/plugins/silero-vad-cpp/build/libsilero_vad.so"),
+  path.join(
+    repoRoot,
+    "packages/native/plugins/silero-vad-cpp/build/libsilero_vad.so",
+  ),
 ]);
 const WESPEAKER_GGUF = firstExisting([
   process.env.WESPEAKER_GGUF,
@@ -63,17 +72,30 @@ const SILERO_GGUF = firstExisting([
   process.env.SILERO_GGUF,
   "/tmp/voice-models/silero-vad-v5.gguf",
 ]);
-const WAKE_DIR = firstExisting([process.env.WAKE_DIR, "/tmp/wakeword/gguf_norescale"]);
+const WAKE_DIR = firstExisting([
+  process.env.WAKE_DIR,
+  "/tmp/wakeword/gguf_norescale",
+]);
 const WAKE_HEAD = process.env.WAKE_HEAD || "hey-eliza";
 const FREEMAN_WAV = firstExisting([
   process.env.FREEMAN_WAV,
-  path.join(repoRoot, "plugins/plugin-local-inference/native/omnivoice.cpp/examples/freeman.wav"),
+  path.join(
+    repoRoot,
+    "plugins/plugin-local-inference/native/audio-fixtures/freeman.wav",
+  ),
 ]);
 
 const missing = [];
 for (const [k, v] of Object.entries({
-  FUSED_SO, WAKEWORD_SO, VOICE_CLASS_SO, SILERO_VAD_SO,
-  WESPEAKER_GGUF, PYANNOTE_GGUF, SILERO_GGUF, WAKE_DIR, FREEMAN_WAV,
+  FUSED_SO,
+  WAKEWORD_SO,
+  VOICE_CLASS_SO,
+  SILERO_VAD_SO,
+  WESPEAKER_GGUF,
+  PYANNOTE_GGUF,
+  SILERO_GGUF,
+  WAKE_DIR,
+  FREEMAN_WAV,
 })) {
   if (!v) missing.push(k);
 }
@@ -93,16 +115,29 @@ for (const kind of ["melspec", "embedding", "classifier"]) {
     path.join(bundle, "wake", `${WAKE_HEAD}.${kind}.gguf`),
   );
 }
-fs.symlinkSync(WESPEAKER_GGUF, path.join(bundle, "speaker", path.basename(WESPEAKER_GGUF)));
-fs.symlinkSync(PYANNOTE_GGUF, path.join(bundle, "diariz", path.basename(PYANNOTE_GGUF)));
-fs.symlinkSync(SILERO_GGUF, path.join(bundle, "vad", path.basename(SILERO_GGUF)));
+fs.symlinkSync(
+  WESPEAKER_GGUF,
+  path.join(bundle, "speaker", path.basename(WESPEAKER_GGUF)),
+);
+fs.symlinkSync(
+  PYANNOTE_GGUF,
+  path.join(bundle, "diariz", path.basename(PYANNOTE_GGUF)),
+);
+fs.symlinkSync(
+  SILERO_GGUF,
+  path.join(bundle, "vad", path.basename(SILERO_GGUF)),
+);
 
 /* Compile the harness. */
 const src = path.join(here, "fused-vs-standalone-parity.c");
 const bin = path.join(bundle, "parity");
 const cc = process.env.CC || "cc";
 console.log(`[parity] compile ${src}`);
-const compile = spawnSync(cc, ["-O2", "-std=c11", src, "-o", bin, "-ldl", "-lm"], { stdio: "inherit" });
+const compile = spawnSync(
+  cc,
+  ["-O2", "-std=c11", src, "-o", bin, "-ldl", "-lm"],
+  { stdio: "inherit" },
+);
 if (compile.status !== 0) {
   console.error("[parity] compile failed");
   process.exit(3);
@@ -117,11 +152,21 @@ console.log(`[parity] standalone vad=${SILERO_VAD_SO}\n`);
 const run = spawnSync(
   bin,
   [
-    FUSED_SO, WAKEWORD_SO, VOICE_CLASS_SO, SILERO_VAD_SO,
-    bundle, FREEMAN_WAV, WESPEAKER_GGUF, PYANNOTE_GGUF, SILERO_GGUF, WAKE_HEAD,
+    FUSED_SO,
+    WAKEWORD_SO,
+    VOICE_CLASS_SO,
+    SILERO_VAD_SO,
+    bundle,
+    FREEMAN_WAV,
+    WESPEAKER_GGUF,
+    PYANNOTE_GGUF,
+    SILERO_GGUF,
+    WAKE_HEAD,
   ],
   { stdio: "inherit" },
 );
 
-try { fs.rmSync(bundle, { recursive: true, force: true }); } catch {}
+try {
+  fs.rmSync(bundle, { recursive: true, force: true });
+} catch {}
 process.exit(run.status ?? 1);

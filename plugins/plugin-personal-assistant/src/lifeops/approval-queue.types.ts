@@ -206,6 +206,27 @@ export class ApprovalStateTransitionError extends Error {
   }
 }
 
+/**
+ * Thrown when a compare-and-swap state transition loses a concurrent race:
+ * the row's state changed between the read and the guarded write (e.g. an
+ * in-flight `approve` racing `purgeExpired`). `from` is the state the row
+ * actually holds after the lost race. Subclasses
+ * `ApprovalStateTransitionError` so existing invalid-transition handling
+ * still applies; callers may match this class first to surface the conflict
+ * distinctly.
+ */
+export class ApprovalTransitionConflictError extends ApprovalStateTransitionError {
+  constructor(
+    requestId: string,
+    actualState: ApprovalRequestState,
+    to: ApprovalRequestState,
+  ) {
+    super(requestId, actualState, to);
+    this.name = "ApprovalTransitionConflictError";
+    this.message = `[ApprovalQueue] transition conflict for request ${requestId}: state is now ${actualState}, refusing ${actualState} -> ${to}`;
+  }
+}
+
 /** Thrown when an operation references an unknown request id. */
 export class ApprovalNotFoundError extends Error {
   public readonly requestId: string;

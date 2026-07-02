@@ -7,16 +7,8 @@
       "id": "display_module_envelope_fit",
       "actual": {
         "screen_margin_mm": 0.45,
-        "ctp_outline_mm": [
-          77.1,
-          151.77,
-          3.39
-        ],
-        "device_envelope_mm": [
-          78.0,
-          153.6,
-          11.8
-        ]
+        "ctp_outline_mm": [77.1, 151.77, 3.39],
+        "device_envelope_mm": [78.0, 153.6, 11.8]
       },
       "target": ">=0.3 mm nominal CTP-to-orange-body margin",
       "pass": true
@@ -48,11 +40,7 @@
     {
       "id": "display_fpc_bend_and_connector",
       "actual": {
-        "fpc_connector_mm": [
-          19.0,
-          3.2,
-          1.15
-        ],
+        "fpc_connector_mm": [19.0, 3.2, 1.15],
         "fpc_bend_radius_mm": 1.0
       },
       "target": "FPC connector and keepout present, bend radius >=1.0 mm",

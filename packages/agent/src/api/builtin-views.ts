@@ -98,7 +98,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "automations",
-    viewKind: "preview",
+    viewKind: "system",
     label: "Automations",
     description: "Scheduled tasks and recurring workflows",
     icon: "Clock3",
@@ -110,7 +110,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "plugins-page",
-    viewKind: "preview",
+    viewKind: "system",
     label: "Plugins",
     description: "Manage installed plugins, configure credentials",
     icon: "Puzzle",
@@ -156,7 +156,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "memories",
-    viewKind: "preview",
+    viewKind: "system",
     developerOnly: false,
     label: "Memories",
     description: "Agent memory viewer and management",

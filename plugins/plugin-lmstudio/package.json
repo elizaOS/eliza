@@ -57,7 +57,7 @@
     "ai": "^6.0.174"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.2",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
     "bun-types": "^1.3.12",

@@ -51,6 +51,7 @@ export {
 	type StylePreset,
 } from "./contracts/first-run-options";
 export {
+	DEFAULT_CEREBRAS_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 	type DeploymentTargetConfig,
@@ -141,6 +142,7 @@ export {
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,
 } from "./features/secrets/index.ts";
+export * from "./features/sub-agent-credentials/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -187,9 +189,7 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
-export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
-export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
@@ -211,7 +211,6 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
-export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -220,10 +219,6 @@ export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
 export * from "./runtime/shortcut-registry";
-export {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "./runtime/stage1-honesty-detector";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";

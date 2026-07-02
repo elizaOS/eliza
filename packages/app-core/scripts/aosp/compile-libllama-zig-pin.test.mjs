@@ -63,7 +63,9 @@ describe("compile-libllama zig 0.13 pin", () => {
 
     it("stays in sync with ABI_TARGETS", () => {
       const abis = ABI_TARGETS.map((t) => t.androidAbi);
-      expect(zigTriplesForAbis(abis)).toEqual(ABI_TARGETS.map((t) => t.zigTarget));
+      expect(zigTriplesForAbis(abis)).toEqual(
+        ABI_TARGETS.map((t) => t.zigTarget),
+      );
     });
 
     it("throws on an unknown ABI rather than dropping it", () => {
@@ -99,10 +101,18 @@ describe("compile-libllama zig 0.13 pin", () => {
 
     it("exempts a riscv64-only run (RVV path needs 0.14+)", () => {
       expect(() =>
-        assertZigPinForTargets({ version: "0.16.0", zigTriples: riscv, env: {} }),
+        assertZigPinForTargets({
+          version: "0.16.0",
+          zigTriples: riscv,
+          env: {},
+        }),
       ).not.toThrow();
       expect(() =>
-        assertZigPinForTargets({ version: "0.14.0", zigTriples: riscv, env: {} }),
+        assertZigPinForTargets({
+          version: "0.14.0",
+          zigTriples: riscv,
+          env: {},
+        }),
       ).not.toThrow();
     });
 

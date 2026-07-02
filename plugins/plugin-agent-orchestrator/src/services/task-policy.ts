@@ -96,7 +96,7 @@ function parseTaskAgentPolicy(runtime: IAgentRuntime): TaskAgentPolicyConfig {
   }
 
   const record = parsed as Record<string, unknown>;
-  const connectors =
+  const parsedConnectors =
     record.connectors &&
     typeof record.connectors === "object" &&
     !Array.isArray(record.connectors)
@@ -108,7 +108,12 @@ function parseTaskAgentPolicy(runtime: IAgentRuntime): TaskAgentPolicyConfig {
             ],
           ),
         )
-      : DEFAULT_POLICY.connectors;
+      : {};
+  // MERGE over the built-in defaults, don't replace them: a partial override
+  // (e.g. only `{"slack":"ADMIN"}`) must not silently drop the built-in Discord
+  // ADMIN gate and fall through to the GUEST default — that would open
+  // task-agent create/interact in Discord to anyone.
+  const connectors = { ...DEFAULT_POLICY.connectors, ...parsedConnectors };
 
   return {
     default: normalizeConnectorPolicy(

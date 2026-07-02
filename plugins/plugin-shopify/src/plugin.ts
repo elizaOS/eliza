@@ -127,8 +127,9 @@ export const shopifyPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "ShopifyView",
       tags: ["shopify", "ecommerce", "store"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      // Store management is a connector surface (Settings), not a launcher app.
+      visibleInManager: false,
+      desktopTabEnabled: false,
     },
   ],
 };

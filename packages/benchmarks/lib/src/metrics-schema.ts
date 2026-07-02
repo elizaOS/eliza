@@ -12,8 +12,8 @@
  *   - `cacheSupported` is a hard boolean — not nullable, never inferred from
  *     missing data. Providers that do not support prompt caching set it false
  *     explicitly. Providers that do (Anthropic, OpenAI w/ cache key, Cerebras
- *     `gpt-oss-120b` default-on) set it true even when a particular call had
- *     no cache hit.
+ *     — caching default-on, e.g. the `gemma-4-31b` large tier) set it true
+ *     even when a particular call had no cache hit.
  *   - Cache hit / read / creation counts are `.nullable()` rather than
  *     defaulted, so "we don't know" stays distinguishable from "zero". No
  *     `?? 0` rescues anywhere downstream.

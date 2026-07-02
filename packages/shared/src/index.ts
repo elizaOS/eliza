@@ -13,6 +13,10 @@ export * from "./app-hero-art.js";
 export * from "./awareness/index.js";
 export * from "./character-presets.characters.js";
 export * from "./character-presets.js";
+// Chat-upload limits — the single source of truth for the attachment caps and
+// MIME allowlists enforced by the agent server's validateChatImages and
+// mirrored by the UI composer. Both sides import these so they cannot drift.
+export * from "./chat-upload-limits.js";
 export * from "./cli/parse-duration.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";
@@ -209,6 +213,7 @@ export {
 export * from "./contracts/index.js";
 export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
 export {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";

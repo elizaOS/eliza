@@ -9,19 +9,9 @@
       "interface_case": "usb_c_insertion_capture",
       "evidence_class": "deterministic_cad_simulation_not_physical_result",
       "actual": {
-        "usb_receptacle_shell_mm": [
-          8.94,
-          7.8,
-          3.25
-        ],
-        "aperture_mm": [
-          10.2,
-          3.6
-        ],
-        "plug_shell_mm": [
-          8.35,
-          2.6
-        ],
+        "usb_receptacle_shell_mm": [8.94, 7.8, 3.25],
+        "aperture_mm": [10.2, 3.6],
+        "plug_shell_mm": [8.35, 2.6],
         "shell_xy_clearance_each_side_mm": 0.63,
         "shell_z_clearance_each_side_mm": 0.175,
         "plug_min_clearance_mm": 0.5,

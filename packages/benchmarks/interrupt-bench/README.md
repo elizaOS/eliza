@@ -50,7 +50,7 @@ baselines by dropping JSON into `scenarios/<category>/`.
 # Scripted mode — deterministic, no LLM calls. Validates harness + scoring.
 bun run bench
 
-# Cerebras live mode — real LLM (gpt-oss-120b at https://api.cerebras.ai/v1).
+# Cerebras live mode — real LLM (gemma-4-31b at https://api.cerebras.ai/v1).
 # Requires CEREBRAS_API_KEY in your env.
 bun run bench -- --mode=cerebras
 
@@ -142,7 +142,7 @@ src/
   state.ts           # SimulatorState — threads, tasks, replies, side effects
   trace.ts           # append-only trace
   llm-scripted.ts    # deterministic provider for harness validation
-  llm-cerebras.ts    # live Cerebras client (gpt-oss-120b)
+  llm-cerebras.ts    # live Cerebras client (gemma-4-31b)
   scenarios.ts       # loader for scenarios/*.json
   types.ts           # public types
   index.ts           # public API

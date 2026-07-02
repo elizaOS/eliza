@@ -40,6 +40,8 @@ const score = await scoreWebGrounding(
     i += 1;
     const page = engine.currentPage();
     if (!page) return;
+    const tag = `${String(i).padStart(2, "0")}-${task.id}`;
+    console.log(`[grounding] ${tag}: overlay`);
     // Overlay the ground-truth bbox + the predicted point, then screenshot.
     await page.evaluate(
       ({ box, predicted }) => {
@@ -64,7 +66,11 @@ const score = await scoreWebGrounding(
       },
       { box, predicted },
     );
-    const tag = `${String(i).padStart(2, "0")}-${task.id}`;
+    console.log(`[grounding] ${tag}: screenshot`);
+    // Puppeteer's screenshot path can stall when request interception is still
+    // enabled on some Chromium builds. The page is already fully rendered and
+    // overlaid, and this executor page is disposed immediately after the sample.
+    await page.setRequestInterception(false).catch(() => {});
     await page.screenshot({ path: join(OUT, `${tag}.png`) });
     captured.push({
       tag,

@@ -253,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--harness", choices=["eliza", "hermes", "openclaw"], required=True)
     parser.add_argument("--provider", default=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"))
-    parser.add_argument("--model", default=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"))
+    parser.add_argument("--model", default=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"))
     parser.add_argument("--scenarios", default="single-message")
     parser.add_argument("--iterations", type=int, default=1)
     parser.add_argument("--generated-limit", type=int, default=3)

@@ -27,7 +27,7 @@ from .types import ExecutionContext, RunRequest
 
 CANONICAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
 DEFAULT_PROVIDER = "cerebras"
-DEFAULT_MODEL = "gpt-oss-120b"
+DEFAULT_MODEL = "gemma-4-31b"
 COMMON_ENV_KEYS: tuple[str, ...] = (
     "BENCHMARK_AGENT",
     "BENCHMARK_CAPTURE_TRAJECTORIES",

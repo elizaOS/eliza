@@ -21,7 +21,7 @@ function StatsCard({
   unit: string;
 }) {
   return (
-    <div className="border border-border rounded-sm p-2 text-center bg-card/50">
+    <div className="p-2 text-center">
       <div className="text-xs text-muted mb-1">{label}</div>
       <div className="text-sm font-semibold text-txt-strong">
         {value !== null ? `${value.toFixed(2)} ${unit}` : "—"}
@@ -152,7 +152,8 @@ export function InferenceEndpointPanel() {
   return (
     <div className="space-y-4">
       {showCreate ? (
-        <div className="border border-border rounded-sm p-4 bg-card space-y-3">
+        /* Flat — no card/border. The shell owns the page's horizontal padding. */
+        <div className="space-y-3 p-4">
           <div className="text-sm font-semibold">
             {t("inferenceendpoint.addTitle", {
               defaultValue: "Add Inference Endpoint",
@@ -236,10 +237,7 @@ export function InferenceEndpointPanel() {
       <div className="space-y-3">
         {endpoints && endpoints.length > 0 ? (
           endpoints.map((endpoint: InferenceEndpoint) => (
-            <div
-              key={endpoint.id}
-              className="border border-border rounded-sm p-3 bg-card space-y-2"
-            >
+            <div key={endpoint.id} className="space-y-2 p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold text-txt-strong">
@@ -292,7 +290,7 @@ export function InferenceEndpointPanel() {
             </div>
           ))
         ) : (
-          <div className="text-xs text-muted p-4 text-center border border-border rounded-sm">
+          <div className="text-xs text-muted p-4 text-center">
             {t("inferenceendpoint.noEndpoints", {
               defaultValue: "No inference endpoints configured",
             })}

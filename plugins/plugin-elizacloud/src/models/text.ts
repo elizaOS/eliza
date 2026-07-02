@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   logger,
   ModelType,
   recordInferenceSpan,
@@ -349,15 +350,42 @@ function isReasoningModel(modelName: string): boolean {
 }
 
 /**
- * True when the Cloud gateway routes this model to Cerebras (the gpt-oss
- * family). Cerebras's OpenAI-compatible endpoint rejects
+ * True when the Cloud gateway routes this model to Cerebras. Cerebras's
+ * OpenAI-compatible endpoint rejects
  * `response_format: { type: "json_schema", ... }` with a 400, so structured
  * output for these models must fall back to `{ type: "json_object" }`.
  * Mirrors plugin-openai's `isCerebrasMode` json_object scrub, detected by
  * model name here because one Cloud key serves many providers.
  */
+function normalizeCerebrasModelId(modelName: string): string {
+  return modelName
+    .trim()
+    .toLowerCase()
+    .replace(/^cerebras[:/]/, "")
+    .replace(/^openai\//, "")
+    .replace(/:(?!free$).+$/, "");
+}
+
 function isCerebrasServedModel(modelName: string): boolean {
-  return modelName.toLowerCase().includes("gpt-oss");
+  const id = normalizeCerebrasModelId(modelName);
+  return (
+    id === DEFAULT_CEREBRAS_TEXT_MODEL ||
+    id === "gpt-oss-120b" ||
+    id === "zai-glm-4.7"
+  );
+}
+
+function resolveCerebrasThinkingOffReasoningEffort(
+  modelName: string
+): "low" | "none" | undefined {
+  const id = normalizeCerebrasModelId(modelName);
+  if (id === "gpt-oss-120b") {
+    return "low";
+  }
+  if (id === DEFAULT_CEREBRAS_TEXT_MODEL || id === "zai-glm-4.7") {
+    return "none";
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -562,8 +590,8 @@ function buildNativeResponseFormat(responseSchema: unknown, modelName: string): 
     return undefined;
   }
 
-  // Cerebras-served models (gpt-oss) 400 on `response_format: json_schema`, so
-  // emit `json_object` and rely on the schema embedded in the prompt body.
+  // Cerebras-served models 400 on `response_format: json_schema`, so emit
+  // `json_object` and rely on the schema embedded in the prompt body.
   if (isCerebrasServedModel(modelName)) {
     return { type: "json_object" };
   }
@@ -696,18 +724,16 @@ function buildNativeRequestBody(
   if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
-  // cerebras gpt-oss runs a hidden-reasoning pass before answering even when the
-  // caller wants none — measured ~4s/call vs ~0.7s with reasoning suppressed. The
-  // runtime signals "don't reason" via providerOptions.eliza.thinking="off" (e.g.
-  // the Stage-1 RESPONSE_HANDLER formatting call), but resolveNativeProviderOptions
-  // drops the eliza block, so it never reached the wire. Honor it as cerebras's
-  // reasoning_effort:"low". Cerebras-gated (the plugin's isReasoningModel does NOT
-  // match gpt-oss); other providers ignore the field.
-  if (
-    isCerebrasServedModel(modelName) &&
-    recordAt(asRecord(params.providerOptions), "eliza").thinking === "off"
-  ) {
-    requestBody.reasoning_effort = "low";
+  // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"
+  // (e.g. the Stage-1 RESPONSE_HANDLER formatting call), but
+  // resolveNativeProviderOptions drops the eliza block, so it never reaches the
+  // wire automatically. Map that intent onto each Cerebras model's supported
+  // `reasoning_effort` suppression value.
+  if (recordAt(asRecord(params.providerOptions), "eliza").thinking === "off") {
+    const reasoningEffort = resolveCerebrasThinkingOffReasoningEffort(modelName);
+    if (reasoningEffort) {
+      requestBody.reasoning_effort = reasoningEffort;
+    }
   }
   if (tools) {
     requestBody.tools = tools;

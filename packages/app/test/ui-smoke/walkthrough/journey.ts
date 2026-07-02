@@ -78,6 +78,16 @@ const LIVE_CONSOLE_ERROR_ALLOWLIST: readonly string[] = [
   "THREE.WebGLRenderer",
 ];
 
+/** Optional resources whose non-2xx probe is expected and handled gracefully by
+ * the app, so a browser "Failed to load resource" console line for them is not a
+ * defect. Matched against the console message *location* (URL), in both lanes —
+ * kept narrow (a specific endpoint), never a message-text catch-all. */
+const OPTIONAL_RESOURCE_ALLOWLIST: readonly string[] = [
+  // The character VRM avatar is HEAD-probed on most views; with no configured
+  // avatar the app falls back to the default and the probe's 404 is expected.
+  "/api/avatar/vrm",
+];
+
 // ---------------------------------------------------------------------------
 // Diagnostics + capture recorder
 // ---------------------------------------------------------------------------
@@ -199,7 +209,8 @@ export class WalkthroughRecorder {
     return this.console.filter(
       (c) =>
         (c.type === "console.error" || c.type === "pageerror") &&
-        !allow.some((a) => c.text.includes(a)),
+        !allow.some((a) => c.text.includes(a)) &&
+        !OPTIONAL_RESOURCE_ALLOWLIST.some((url) => c.location.includes(url)),
     );
   }
 
@@ -537,6 +548,16 @@ export async function installJourneyRoutes(
     }
     await route.fallback();
   });
+  // The renderer HEAD-probes the OPTIONAL character VRM avatar on most views.
+  // Answer the probe with a 404 ("no VRM") so the gate fails only on real
+  // errors, without changing the fallback behaviour the UI already relies on.
+  await page.route("**/api/avatar/vrm", async (route) => {
+    if (route.request().method() === "HEAD") {
+      await route.fulfill({ status: 404 });
+      return;
+    }
+    await route.fallback();
+  });
   // installDefaultAppRoutes already serves a static complete first-run; override
   // it with a mutable one so the onboarding capture can start fresh.
   const firstRun = await installMutableFirstRun(page);
@@ -788,18 +809,21 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "cold-launch",
     title: "Cold app launch",
     expectation:
-      'First app load from / with first-run incomplete: the in-chat first-run greeting ("Let\'s get you set up") renders inside the auto-opened floating ContinuousChatOverlay (#9952 — onboarding IS the chat; no full-screen gate). No render failure, no stack trace.',
+      "First app load from / with first-run incomplete: the real chat overlay renders first-run choices in the transcript. No render failure, no stack trace.",
     async run({ page }) {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       const overlay = page.getByTestId("continuous-chat-overlay");
       await expect(overlay).toBeVisible({ timeout: 20_000 });
       await expect(
-        overlay.getByText("Let's get you set up", { exact: false }),
+        page.getByText("First, where should your agent run?", { exact: false }),
       ).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(
+        0,
+      );
       return {
         assertions: [
           "Loaded / with first-run incomplete",
-          "continuous-chat-overlay + in-chat greeting became visible within 20s",
+          "continuous-chat-overlay + transcript runtime choices became visible within 20s",
         ],
         dom: await domMarkers(page, {
           chatOverlay: '[data-testid="continuous-chat-overlay"]',
@@ -814,10 +838,10 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "onboarding-runtime",
     title: "Onboarding runtime choice",
     expectation:
-      "The in-chat first-run asks where the agent should run, as inline ChoiceWidget buttons (Eliza Cloud, on this device, bring your own keys).",
+      "The chat transcript asks how the agent should run, with Eliza Cloud, on-device, and bring-your-own-keys options.",
     async run({ page }) {
       await expect(
-        page.getByText("where should your agent run", { exact: false }),
+        page.getByText("First, where should your agent run?", { exact: false }),
       ).toBeVisible({ timeout: 15_000 });
       const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
       const local = page.getByTestId("choice-__first_run__:runtime:local");
@@ -843,12 +867,11 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "provisioning-ready",
     title: "Choose runtime → ready",
     expectation:
-      "Choosing the local runtime advances first-run (the 'Where should I run my AI?' provider step) and resolves to a ready agent: the chat overlay + composer are reachable.",
+      "Choosing the local runtime advances first-run to the provider step and resolves to a ready agent: the chat overlay + composer are reachable.",
     async run(ctx) {
       const { page } = ctx;
-      // Drive the real in-chat local-runtime selection (#9952): picking Local
-      // advances the conductor to the on-device provider sub-choice (a purely
-      // client-side seed — no network). We intentionally STOP before picking the
+      // Drive the local-runtime selection: picking Local advances the chat to
+      // the on-device provider step. We intentionally STOP before picking the
       // provider, because the on-device finish would POST /api/first-run + probe
       // local-inference, which the keyless mock lane does not stub (it would 501
       // and trip the 5xx gate). Real cloud/local provisioning is out of scope per
@@ -866,7 +889,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       await expect(composer(page)).toBeVisible({ timeout: 30_000 });
       return {
         assertions: [
-          "Selected the local runtime choice → on-device provider sub-choice",
+          "Selected the local runtime choice → on-device provider step",
           "first-run resolved to complete",
           "chat overlay + composer reachable (ready agent)",
         ],

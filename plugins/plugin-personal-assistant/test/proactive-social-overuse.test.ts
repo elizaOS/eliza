@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ActivityProfile } from "../src/activity-profile/types.js";
 import {
   planSocialOveruseCheck,
-  selectTargetPlatform,
   SOCIAL_OVERUSE_COOLDOWN_MS,
+  selectTargetPlatform,
 } from "../src/activity-profile/proactive-planner.js";
+import type { ActivityProfile } from "../src/activity-profile/types.js";
 
 /**
  * Proactive social-overuse nudge logic (#8795). It must fire only when the user

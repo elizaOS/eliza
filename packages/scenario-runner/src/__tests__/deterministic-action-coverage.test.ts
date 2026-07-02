@@ -709,6 +709,10 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["GENERATE_MEDIA"],
     minMessageTurns: 2,
   },
+  "deterministic-lifeops-multiday-journey": {
+    actionNames: ["SCHEDULED_TASKS"],
+    minMessageTurns: 5,
+  },
   "deterministic-lifeops-scheduled-tasks": {
     actionNames: ["SCHEDULED_TASKS"],
     minMessageTurns: 6,

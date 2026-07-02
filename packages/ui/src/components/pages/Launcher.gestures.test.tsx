@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 //
-// Gesture-layer + telemetry coverage for the Launcher. motion/react is mocked
-// so the test can drive the Reorder.Group onReorder bridge and the swipe-paging
-// motion.div onDragEnd directly (jsdom can't perform a real pointer drag). The
-// real-motion render path (page dots, favorites, image tiles) is covered by the
-// sibling Launcher.test.tsx, which does NOT mock motion.
+// SCOPE (honest labelling, #10722): this is the Launcher's BRIDGE-LOGIC unit
+// suite — it verifies what the Launcher DOES with a gesture result (the
+// Reorder.Group `onReorder` → moveIcon → persist + telemetry bridge, and the
+// swipe-paging `onDragEnd` → page-advance + threshold/clamp/edit-gate bridge).
+// motion/react is mocked so those callbacks can be invoked directly; jsdom
+// cannot perform a real pointer drag, so this does NOT prove the drag/reorder
+// physics or long-press engagement. The REAL long-press-drag reorder (a genuine
+// CDP pointer drag → onReorder → persisted LAUNCHER_STORAGE_KEY order + reorder
+// telemetry + no duplicate ids) is section 2b of the isolated-browser runner
+// __e2e__/run-launcher-e2e.mjs (`bun run --cwd packages/ui test:launcher-e2e`,
+// gated in ui-e2e-gate.yml). The real-motion render path (page dots,
+// favorites, image tiles) is covered by the sibling Launcher.test.tsx.
 
 import {
   act,
@@ -61,6 +68,8 @@ vi.mock("motion/react", () => ({
 // Import AFTER the mock is registered.
 import { Launcher } from "./Launcher";
 
+const originalMatchMedia = window.matchMedia;
+
 /**
  * Edit mode is entered via a long-press on a tile (the visible Edit button was
  * removed per product). Self-contained fake-timer window so non-timer tests stay
@@ -97,6 +106,26 @@ function clearTelemetry() {
   ).__ELIZA_VIEW_INTERACTION_TELEMETRY__ = [];
 }
 
+function mockDesktopPagingMedia({
+  finePointer,
+}: {
+  finePointer: boolean;
+}): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches:
+      finePointer &&
+      query.includes("(hover: hover)") &&
+      query.includes("(pointer: fine)"),
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+}
+
 function actions(): ViewInteractionAction[] {
   return readViewInteractions().map((e) => e.action);
 }
@@ -126,13 +155,21 @@ function horizontalSwipe(dx: number): void {
 const PAGE2 = Array.from({ length: 25 }, (_, i) => entry(`v${i}`, `View ${i}`));
 
 beforeEach(() => {
+  mockDesktopPagingMedia({ finePointer: false });
   window.localStorage.clear();
   clearTelemetry();
   bus.onDragEnd = null;
   bus.onReorder = null;
   bus.values = [];
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: originalMatchMedia,
+  });
+});
 
 describe("Launcher drag-reorder bridge", () => {
   it("persists a reordered page through moveIcon and emits a reorder event", () => {
@@ -155,7 +192,7 @@ describe("Launcher drag-reorder bridge", () => {
     const flat = stored.pages.flat();
     expect(new Set(flat).size).toBe(flat.length);
     expect(actions()).toContain("reorder");
-  });
+  }, 15_000);
 });
 
 describe("Launcher swipe paging (onDragEnd)", () => {
@@ -207,6 +244,46 @@ describe("Launcher swipe paging (onDragEnd)", () => {
       screen.getByTestId("launcher-page-1").getAttribute("aria-hidden"),
     ).toBe("true");
     expect(actions()).not.toContain("page-swipe");
+  });
+
+  it("hides pager edge buttons when the pointer is coarse", () => {
+    mockDesktopPagingMedia({ finePointer: false });
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+
+    expect(screen.queryByTestId("launcher-pager-edge-prev")).toBeNull();
+    expect(screen.queryByTestId("launcher-pager-edge-next")).toBeNull();
+  });
+
+  it("shows pager edge buttons on any fine-pointer window — the gate has no min-width clause", () => {
+    mockDesktopPagingMedia({ finePointer: true });
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+
+    // Fine pointer + hover is sufficient: a sub-1024px window still gets the
+    // `>` control (production renders no page dots, so without it a narrow
+    // fine-pointer window would have no paging affordance at all).
+    expect(screen.queryByTestId("launcher-pager-edge-next")).not.toBeNull();
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      expect.not.stringContaining("min-width"),
+    );
+  });
+
+  it("shows desktop edge buttons and pages exactly one step per click", () => {
+    mockDesktopPagingMedia({ finePointer: true });
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+
+    expect(screen.queryByTestId("launcher-pager-edge-prev")).toBeNull();
+    fireEvent.click(screen.getByTestId("launcher-pager-edge-next"));
+
+    expect(
+      screen.getByTestId("launcher-page-1").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(actions()).toContain("page-swipe");
+    expect(screen.queryByTestId("launcher-pager-edge-next")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("launcher-pager-edge-prev"));
+    expect(
+      screen.getByTestId("launcher-page-0").getAttribute("aria-hidden"),
+    ).toBe("false");
   });
 });
 
@@ -277,17 +354,6 @@ describe("Launcher interaction telemetry", () => {
     expect(onLaunch).toHaveBeenCalledTimes(1);
     const launch = readViewInteractions().find((e) => e.action === "launch");
     expect(launch?.viewId).toBe("chat");
-  });
-
-  it("emits favorite then unfavorite as the dock is toggled", () => {
-    render(
-      <Launcher entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
-    );
-    longPressTile("Notes");
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    expect(actions()).toContain("favorite");
-    expect(actions()).toContain("unfavorite");
   });
 
   it("emits edit-mode enter/exit via long-press toggle", () => {

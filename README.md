@@ -124,7 +124,11 @@ The repo is self-contained — runtime, CLI, dashboard, native OS forks, cloud b
 
 ## Contributing
 
-Contributions welcome. Open an issue before sending a non-trivial PR.
+Contributions welcome. Open an issue before sending a non-trivial PR. Before
+opening a PR, read [CONTRIBUTING.md](CONTRIBUTING.md) and the evidence standard
+in [PR_EVIDENCE.md](PR_EVIDENCE.md); frontend-testable changes need screenshots,
+video, logs, and any relevant real-LLM trajectories attached under
+[`.github/issue-evidence/`](.github/issue-evidence/).
 
 - [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)

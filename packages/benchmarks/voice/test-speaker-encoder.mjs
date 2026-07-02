@@ -73,8 +73,7 @@ class FormantBank {
   step(excitation) {
     let v = 0;
     for (let k = 0; k < this.a1.length; k++) {
-      const y =
-        excitation - this.a1[k] * this.z1[k] - this.a2[k] * this.z2[k];
+      const y = excitation - this.a1[k] * this.z1[k] - this.a2[k] * this.z2[k];
       this.z2[k] = this.z1[k];
       this.z1[k] = y;
       v += y * this.scale[k];
@@ -94,7 +93,12 @@ class FormantBank {
  * @param {number} [opts.sampleRate]
  * @param {number} [opts.durationSec]
  */
-function synthesizeVoice({ f0, seed, sampleRate = SAMPLE_RATE, durationSec = SPEECH_DURATION_SEC }) {
+function synthesizeVoice({
+  f0,
+  seed,
+  sampleRate = SAMPLE_RATE,
+  durationSec = SPEECH_DURATION_SEC,
+}) {
   // Formant frequencies define the "vocal tract" — fixed per voice class.
   // OWNER (high f0): brighter formants.  ATTACKER (low f0): darker formants.
   const F1 = f0 > 150 ? 800 : 550;
@@ -263,7 +267,10 @@ function computeEmbedding(pcm) {
 
   // Global band energy distribution percentiles (16 percentiles × 1 = 16)
   for (let b = 0; b < N_BANDS; b++) {
-    const vals = Array.from({ length: nFrames }, (_, fi) => bandEnergies[fi][b]).sort((a, b) => a - b);
+    const vals = Array.from(
+      { length: nFrames },
+      (_, fi) => bandEnergies[fi][b],
+    ).sort((a, b) => a - b);
     // Median
     const mid = Math.floor(vals.length / 2);
     features[cursor++] = vals.length > 0 ? vals[mid] : 0;
@@ -272,7 +279,10 @@ function computeEmbedding(pcm) {
 
   // Second pass: 16 more global stats across all bands per frame
   for (let b = 0; b < N_BANDS; b++) {
-    const vals = Array.from({ length: nFrames }, (_, fi) => bandEnergies[fi][b]).sort((a, b) => a - b);
+    const vals = Array.from(
+      { length: nFrames },
+      (_, fi) => bandEnergies[fi][b],
+    ).sort((a, b) => a - b);
     const p25 = vals[Math.floor(vals.length * 0.25)] ?? 0;
     features[cursor++] = p25;
   }
@@ -306,7 +316,10 @@ function computeEmbedding(pcm) {
       dSumSq += d * d;
     }
     const dMean = nFrames > 1 ? dSum / (nFrames - 1) : 0;
-    const dVar = Math.max(0, nFrames > 1 ? dSumSq / (nFrames - 1) - dMean * dMean : 0);
+    const dVar = Math.max(
+      0,
+      nFrames > 1 ? dSumSq / (nFrames - 1) - dMean * dMean : 0,
+    );
     features[cursor++] = dMean;
     features[cursor++] = Math.sqrt(dVar);
     // Spectral flux (sum of absolute deltas across all bands)
@@ -348,7 +361,10 @@ function computeEmbedding(pcm) {
       dSumSq += d * d;
     }
     const dMean = nFrames > 1 ? dSum / (nFrames - 1) : 0;
-    const dVar = Math.max(0, nFrames > 1 ? dSumSq / (nFrames - 1) - dMean * dMean : 0);
+    const dVar = Math.max(
+      0,
+      nFrames > 1 ? dSumSq / (nFrames - 1) - dMean * dMean : 0,
+    );
     features[cursor++] = dMean;
     features[cursor++] = Math.sqrt(dVar);
     features[cursor++] = 0; // reserved
@@ -358,7 +374,10 @@ function computeEmbedding(pcm) {
 
   // f0-related features: harmonic structure via autocorrelation at lag = 1/f0
   // Test candidate f0s from 80 to 400 Hz — 16 lags × 7 stats = 112 dim
-  const candidateF0s = [80, 100, 120, 140, 160, 180, 200, 240, 280, 320, 360, 400, 440, 500, 600, 700];
+  const candidateF0s = [
+    80, 100, 120, 140, 160, 180, 200, 240, 280, 320, 360, 400, 440, 500, 600,
+    700,
+  ];
   for (const cf0 of candidateF0s) {
     const lagSamples = Math.round(SAMPLE_RATE / cf0);
     let sum = 0;
@@ -370,7 +389,11 @@ function computeEmbedding(pcm) {
       const start = fi * HOP_SIZE;
       let ac = 0;
       let norm = 0;
-      for (let s = 0; s + lagSamples < FRAME_SIZE && start + s + lagSamples < pcm.length; s++) {
+      for (
+        let s = 0;
+        s + lagSamples < FRAME_SIZE && start + s + lagSamples < pcm.length;
+        s++
+      ) {
         ac += (pcm[start + s] ?? 0) * (pcm[start + s + lagSamples] ?? 0);
         norm += (pcm[start + s] ?? 0) * (pcm[start + s] ?? 0);
       }
@@ -383,7 +406,10 @@ function computeEmbedding(pcm) {
         count++;
       }
     }
-    if (count === 0) { cursor += 7; continue; }
+    if (count === 0) {
+      cursor += 7;
+      continue;
+    }
     const mean = sum / count;
     const variance = Math.max(0, sumSq / count - mean * mean);
     features[cursor++] = mean;
@@ -428,27 +454,60 @@ async function tryLoadGgmlEncoder() {
   try {
     // Check if model file exists
     if (!existsSync(GGUF_PATH)) {
-      return { available: false, reason: `GGUF model not found at ${GGUF_PATH}` };
+      return {
+        available: false,
+        reason: `GGUF model not found at ${GGUF_PATH}`,
+      };
     }
 
     // Check if native library exists
-    const buildDir = path.join(REPO_ROOT, "packages", "native-plugins", "voice-classifier-cpp", "build");
-    const libraryNames = ["libvoice_classifier.dylib", "libvoice_classifier.so", "voice_classifier.dll"];
+    const buildDir = path.join(
+      REPO_ROOT,
+      "packages",
+      "native-plugins",
+      "voice-classifier-cpp",
+      "build",
+    );
+    const libraryNames = [
+      "libvoice_classifier.dylib",
+      "libvoice_classifier.so",
+      "voice_classifier.dll",
+    ];
     let libPath = null;
     for (const name of libraryNames) {
       const candidate = path.join(buildDir, name);
-      if (existsSync(candidate)) { libPath = candidate; break; }
+      if (existsSync(candidate)) {
+        libPath = candidate;
+        break;
+      }
     }
 
     // Also check the known build dirs
     const knownBuilds = [
-      path.join(REPO_ROOT, "packages", "native", "plugins", "voice-classifier-cpp", "build-darwin"),
-      path.join(REPO_ROOT, "packages", "native", "plugins", "voice-classifier-cpp", "build"),
+      path.join(
+        REPO_ROOT,
+        "packages",
+        "native",
+        "plugins",
+        "voice-classifier-cpp",
+        "build-darwin",
+      ),
+      path.join(
+        REPO_ROOT,
+        "packages",
+        "native",
+        "plugins",
+        "voice-classifier-cpp",
+        "build",
+      ),
     ];
     for (const d of knownBuilds) {
       for (const name of libraryNames) {
         const candidate = path.join(d, name);
-        if (existsSync(candidate)) { libPath = candidate; break; }
+        if (existsSync(candidate)) {
+          libPath = candidate;
+          break;
+        }
       }
       if (libPath) break;
     }
@@ -473,7 +532,7 @@ async function tryLoadGgmlEncoder() {
 const OWNER_F0 = 200; // Hz — higher pitched voice
 const ATTACKER_F0 = 120; // Hz — lower pitched voice
 const SEEDS_OWNER = [0x0001, 0x0002, 0x0003, 0x0004, 0x0005];
-const SEEDS_ATTACKER = [0xA001, 0xA002, 0xA003];
+const SEEDS_ATTACKER = [0xa001, 0xa002, 0xa003];
 const SEEDS_OWNER_TEST = [0x0006, 0x0007, 0x0008];
 
 async function main() {
@@ -494,7 +553,9 @@ async function main() {
     console.log("[GGML] Falling back to pure-JS spectral feature extractor.");
     console.log();
     console.log("NOTE: Synthetic features have LOWER cosine similarity than");
-    console.log("real WeSpeaker embeddings (~0.85-0.95 intra vs ~0.1-0.3 inter");
+    console.log(
+      "real WeSpeaker embeddings (~0.85-0.95 intra vs ~0.1-0.3 inter",
+    );
     console.log("for real speech). This is documented and expected.");
     console.log();
   }
@@ -510,7 +571,13 @@ async function main() {
     const pcm = synthesizeVoice({ f0: OWNER_F0, seed });
     const emb = computeEmbedding(pcm);
     ownerTrainEmbeddings.push(emb);
-    console.log(`  Sample seed=0x${seed.toString(16).padStart(4, "0")}: dim=${emb.length}, norm=${Array.from(emb).reduce((s, v) => s + v * v, 0).toFixed(4)}`);
+    console.log(
+      `  Sample seed=0x${seed.toString(16).padStart(4, "0")}: dim=${emb.length}, norm=${Array.from(
+        emb,
+      )
+        .reduce((s, v) => s + v * v, 0)
+        .toFixed(4)}`,
+    );
   }
 
   // Build OWNER centroid (average + re-normalize)
@@ -519,7 +586,8 @@ async function main() {
     for (let i = 0; i < EMBEDDING_DIM; i++) ownerCentroid[i] += e[i];
   }
   let centroidNorm = 0;
-  for (let i = 0; i < EMBEDDING_DIM; i++) centroidNorm += ownerCentroid[i] * ownerCentroid[i];
+  for (let i = 0; i < EMBEDDING_DIM; i++)
+    centroidNorm += ownerCentroid[i] * ownerCentroid[i];
   centroidNorm = Math.sqrt(centroidNorm);
   for (let i = 0; i < EMBEDDING_DIM; i++) ownerCentroid[i] /= centroidNorm;
   console.log(`  Centroid built from ${ownerTrainEmbeddings.length} samples`);
@@ -536,7 +604,9 @@ async function main() {
     const sim = cosineSimilarity(ownerCentroid, emb);
     ownerSims.push(sim);
     const pass = sim > 0.8;
-    console.log(`  seed=0x${seed.toString(16).padStart(4, "0")}: cosine=${sim.toFixed(4)} ${pass ? "✅ RECOGNIZED" : "❌ REJECTED (unexpected)"}`);
+    console.log(
+      `  seed=0x${seed.toString(16).padStart(4, "0")}: cosine=${sim.toFixed(4)} ${pass ? "✅ RECOGNIZED" : "❌ REJECTED (unexpected)"}`,
+    );
   }
   const ownerMean = ownerSims.reduce((s, v) => s + v, 0) / ownerSims.length;
   console.log(`  Mean OWNER similarity: ${ownerMean.toFixed(4)}`);
@@ -551,20 +621,31 @@ async function main() {
     const sim = cosineSimilarity(ownerCentroid, emb);
     attackerSims.push(sim);
     const pass = sim < 0.78;
-    console.log(`  seed=0x${seed.toString(16).padStart(4, "0")}: cosine=${sim.toFixed(4)} ${pass ? "✅ REJECTED" : "❌ MATCHED (security gap)"}`);
+    console.log(
+      `  seed=0x${seed.toString(16).padStart(4, "0")}: cosine=${sim.toFixed(4)} ${pass ? "✅ REJECTED" : "❌ MATCHED (security gap)"}`,
+    );
   }
-  const attackerMean = attackerSims.reduce((s, v) => s + v, 0) / attackerSims.length;
+  const attackerMean =
+    attackerSims.reduce((s, v) => s + v, 0) / attackerSims.length;
   console.log(`  Mean ATTACKER similarity: ${attackerMean.toFixed(4)}`);
   console.log();
 
   // Summary
   console.log("--- SUMMARY ---");
   console.log(`  Encoder mode:        ${mode}`);
-  console.log(`  GGUF model present:  ${existsSync(GGUF_PATH) ? "yes" : "no"} (${GGUF_PATH})`);
+  console.log(
+    `  GGUF model present:  ${existsSync(GGUF_PATH) ? "yes" : "no"} (${GGUF_PATH})`,
+  );
   console.log(`  Native lib present:  ${ggmlStatus.available ? "yes" : "no"}`);
-  console.log(`  OWNER intra-cosine:  ${ownerMean.toFixed(4)} (want > 0.8 with real encoder)`);
-  console.log(`  ATTACKER cosine:     ${attackerMean.toFixed(4)} (want < 0.78 with real encoder)`);
-  console.log(`  Separation gap:      ${(ownerMean - attackerMean).toFixed(4)}`);
+  console.log(
+    `  OWNER intra-cosine:  ${ownerMean.toFixed(4)} (want > 0.8 with real encoder)`,
+  );
+  console.log(
+    `  ATTACKER cosine:     ${attackerMean.toFixed(4)} (want < 0.78 with real encoder)`,
+  );
+  console.log(
+    `  Separation gap:      ${(ownerMean - attackerMean).toFixed(4)}`,
+  );
 
   const separationOk = ownerMean > attackerMean;
   console.log(`  Voices separated:    ${separationOk ? "YES ✅" : "NO ❌"}`);
@@ -577,7 +658,9 @@ async function main() {
     console.log("     cmake -B build-darwin -DCMAKE_BUILD_TYPE=Release .");
     console.log("     cmake --build build-darwin");
     console.log("  2. Re-run this script.");
-    console.log("  With real WeSpeaker embeddings: intra-cosine ~0.85-0.95, inter-cosine ~0.10-0.30.");
+    console.log(
+      "  With real WeSpeaker embeddings: intra-cosine ~0.85-0.95, inter-cosine ~0.10-0.30.",
+    );
   }
 
   process.exit(separationOk ? 0 : 1);

@@ -6,14 +6,7 @@
       "__REQUIRED_EXACT_STREAM_LMBENCH_POINTER_CHASE_DMA_COMMANDS__"
     ],
     "contention_workload": {
-      "clients": [
-        "CPU",
-        "DMA",
-        "NPU",
-        "display",
-        "camera_or_isp",
-        "GPU_or_2D"
-      ],
+      "clients": ["CPU", "DMA", "NPU", "display", "camera_or_isp", "GPU_or_2D"],
       "duration_seconds": "__REQUIRED_NUMBER__",
       "raw_trace_path": "__REQUIRED_RELATIVE_TRACE_PATH__"
     },

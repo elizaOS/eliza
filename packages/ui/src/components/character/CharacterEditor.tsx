@@ -1299,7 +1299,8 @@ export function CharacterEditor({
             >
               <div className="flex flex-wrap items-center gap-3 shrink-0">
                 <div
-                  className="flex shrink-0 items-center gap-1 rounded-sm border border-border bg-elevated p-1"
+                  /* Flat — no card/border. Active tab carries the only fill. */
+                  className="flex shrink-0 items-center gap-1"
                   role="tablist"
                   aria-label={t("charactereditor.TabbedEditorGroupLabel", {
                     defaultValue: "Character editor sections",
@@ -1330,7 +1331,7 @@ export function CharacterEditor({
                         agentLabel={pageLabel}
                         isActive={activePage === page}
                         onSelect={requestPageChange}
-                        className="flex-initial cursor-pointer rounded-sm border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
+                        className="flex-initial cursor-pointer rounded-sm bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,color,box-shadow] duration-150 hover:bg-bg-hover hover:text-txt-strong"
                         style={
                           activePage === page ? accentGradientStyle : undefined
                         }

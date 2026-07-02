@@ -50,6 +50,7 @@
  */
 
 import { appEarningsRepository } from "@elizaos/cloud-shared/db/repositories/app-earnings";
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
@@ -212,6 +213,21 @@ test.describe("monetized full loop", () => {
     ).toBeLessThan(0.01);
 
     // ── e. Enable monetization (inference markup + purchase share). ─────────
+    const draftMonetization = await authed(
+      "PUT",
+      `/api/v1/apps/${appId}/monetization`,
+      {
+        monetizationEnabled: true,
+        inferenceMarkupPercentage: 100,
+        purchaseSharePercentage: 10,
+      },
+    );
+    expect(
+      draftMonetization.status,
+      "draft app cannot enable monetization before compliance approval",
+    ).toBe(403);
+    await approveAppForMonetizedLoop(appId);
+
     const monetization = await authed(
       "PUT",
       `/api/v1/apps/${appId}/monetization`,
@@ -545,3 +561,15 @@ test.describe("monetized full loop", () => {
     ).toBeLessThan(1e-9);
   });
 });
+
+async function approveAppForMonetizedLoop(appId: string): Promise<void> {
+  // This suite validates billing/monetization/payout behavior, not the live
+  // compliance-review classifier. Keep the draft 403 assertion above, then open
+  // the gate with the same deterministic grandfathered approval used by the
+  // review-gate e2e helper.
+  await appsRepository.update(appId, {
+    review_status: "approved",
+    review_content_hash: null,
+    reviewed_at: new Date(),
+  });
+}

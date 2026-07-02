@@ -3,23 +3,24 @@
  *
  * ── Two-phase confirm (connector-agnostic) ───────────────────────────────────
  * A destructive or paid action NEVER acts on the first ask. On the first turn it
- * returns a confirmation prompt that names the exact target and spells out what
- * will be destroyed, and it acts only when the FOLLOW-UP message carries an
- * explicit confirmation token (e.g. "yes delete <name>"). The token lives in the
- * user's plain message text, so the pattern behaves identically on Discord,
- * Telegram, the in-app chat, or any other surface — it never depends on a GUI
- * button or a connector-specific affordance. A bare first ask ("delete my Acme
- * app") carries no affirmation word, so it can never be mistaken for a
- * confirmation: the only way to proceed is to deliberately type the token.
+ * returns a confirmation prompt that names the exact target and stores a pending
+ * confirmation task. It acts only when a later turn carries the planner's
+ * structured `confirm: true` boolean for that pending task. The handler never
+ * authorizes money/security/destructive work by matching the user's prose, so
+ * non-English confirmations depend on the planner's structured extraction
+ * instead of English keyword banks.
  *
- * ── Connector-agnostic CTA (for the DEFERRED paid actions) ────────────────────
+ * ── Connector-agnostic CTA (for the paid actions) ────────────────────────────
  * Paid actions that must hand the user off to a browser (withdraw earnings, buy
- * a domain — both deferred to Phase 3c) build a neutral {label,url,kind} object
- * the connector renders however it can (Discord link button, Telegram URL
- * button, in-app card). Money and credentials NEVER transit the connector: the
- * CTA carries only a human label plus an https URL the user opens themselves.
- * {@link buildConnectorCta} is the single seam those actions will reuse.
+ * a domain) build a neutral {label,url,kind} object the connector renders
+ * however it can (Discord link button, Telegram URL button, in-app card). Money
+ * and credentials NEVER transit the connector: the CTA carries only a human
+ * label plus an https URL the user opens themselves. {@link buildConnectorCta}
+ * is the single seam those actions reuse.
  */
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 /** How a connector should render a call-to-action handed back by an action. */
 export type CtaKind = "link" | "button" | "card";
@@ -45,66 +46,161 @@ export interface ConfirmTarget {
   aliases?: string[];
 }
 
-export interface ConfirmCheckOptions {
+export type CloudAppConfirmationAction =
+  | "BUY_APP_DOMAIN"
+  | "DELETE_APP"
+  | "REGENERATE_APP_API_KEY"
+  | "WITHDRAW_APP_EARNINGS"
+  | "BOOK_INFLUENCER";
+
+export const CLOUD_APP_CONFIRM_TAG = "cloud-apps-confirm";
+
+export interface CloudAppConfirmationMetadata {
+  roomId: string;
+  action: CloudAppConfirmationAction;
+  appId: string;
+  appName: string;
+  appSlug?: string;
+  amount?: number;
   /**
-   * Verbs that, combined with an affirmation word, count as confirmation even
-   * when the target is not named. Defaults to the destructive set.
+   * The confirmed charge in integer USD cents (BUY_APP_DOMAIN) — compared
+   * exactly against the re-checked price at purchase time so the server never
+   * debits a price the user did not confirm.
    */
-  verbs?: string[];
+  amountUsdCents?: number;
+  /** The exact domain a pending BUY_APP_DOMAIN confirmation is for. */
+  domain?: string;
+  /**
+   * True when the pending BUY_APP_DOMAIN is a recovery retry of a purchase
+   * that already charged + registered but failed to attach (the server
+   * finishes it without a new charge).
+   */
+  recovery?: boolean;
+  cta?: ConnectorCta;
+  intentCreatedAt?: string;
+  /**
+   * BOOK_INFLUENCER only: the campaign brief for the pending booking. (For that
+   * action `appId`/`appName` carry the influencer profile id + display name.)
+   */
+  brief?: string;
 }
 
-/** Affirmation words that signal intent. Absent on a plain first ask. */
-const AFFIRMATION =
-  /\b(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead|proceed|i'm sure|im sure)\b/i;
-
-const DEFAULT_CONFIRM_VERBS = ["delete", "remove", "destroy"];
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export interface PendingCloudAppConfirmation {
+  taskId: string;
+  metadata: CloudAppConfirmationMetadata;
 }
 
-/** Lowercased references that unambiguously name the target. */
-function targetReferences(target: ConfirmTarget): string[] {
-  const refs: string[] = [];
-  const pushIf = (value: string | undefined, minLen: number): void => {
-    if (typeof value !== "string") return;
-    const v = value.trim().toLowerCase();
-    if (v.length >= minLen) refs.push(v);
-  };
-  // Names/slugs need >= 3 chars so a short alias can't match random words.
-  pushIf(target.name, 3);
-  for (const alias of target.aliases ?? []) pushIf(alias, 3);
-  // The id is matched verbatim (a UUID fragment never collides with prose).
-  pushIf(target.id, 6);
-  return refs;
+export function readStructuredConfirmation(options?: unknown): boolean | null {
+  if (!options || typeof options !== "object") return null;
+  const opts = options as Record<string, unknown>;
+  // Validated action parameters arrive nested under `options.parameters` on the
+  // real planner path (execute-planned-tool-call.ts sets `handlerOptions.parameters
+  // = validation.args`); only direct handler calls / scenario `action`-kind turns
+  // place them at the top level. Read the nested location first, then fall back.
+  const params =
+    opts.parameters && typeof opts.parameters === "object"
+      ? (opts.parameters as Record<string, unknown>)
+      : undefined;
+  const value =
+    params?.confirm ?? params?.confirmed ?? opts.confirm ?? opts.confirmed;
+  if (value === true || value === false) return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  return null;
 }
 
-/**
- * True only when `text` is an EXPLICIT confirmation of acting on `target`.
- *
- * Requires an affirmation word AND either an action verb ("delete"/"remove"/…)
- * or a direct reference to the target (its name/slug/id). This is deliberately
- * strict: a first ask like "delete my Acme app" has no affirmation word and so
- * returns false, guaranteeing the destructive call never fires on the first ask.
- */
-export function isExplicitConfirmation(
-  text: string,
-  target: ConfirmTarget,
-  options: ConfirmCheckOptions = {},
-): boolean {
-  const raw = (text ?? "").trim();
-  if (!raw) return false;
-  const lower = raw.toLowerCase();
-  if (!AFFIRMATION.test(lower)) return false;
+export function confirmationRoomId(
+  runtime: IAgentRuntime,
+  message: Memory,
+): string {
+  if (typeof message.roomId === "string" && message.roomId.length > 0) {
+    return message.roomId;
+  }
+  return String(runtime.agentId ?? "cloud-apps-default-room");
+}
 
-  const verbs = options.verbs ?? DEFAULT_CONFIRM_VERBS;
-  const mentionsVerb = verbs.some((v) =>
-    new RegExp(`\\b${escapeRegExp(v.toLowerCase())}\\b`).test(lower),
+function isCloudAppConfirmationMetadata(
+  metadata: Record<string, unknown> | undefined,
+  roomId: string,
+  action: CloudAppConfirmationAction,
+): metadata is Record<string, unknown> & CloudAppConfirmationMetadata {
+  return (
+    metadata?.roomId === roomId &&
+    metadata.action === action &&
+    typeof metadata.appId === "string" &&
+    typeof metadata.appName === "string"
   );
-  const mentionsTarget = targetReferences(target).some((ref) =>
-    lower.includes(ref),
-  );
-  return mentionsVerb || mentionsTarget;
+}
+
+export async function findPendingCloudAppConfirmation(
+  runtime: IAgentRuntime,
+  roomId: string,
+  action: CloudAppConfirmationAction,
+): Promise<PendingCloudAppConfirmation | null> {
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [CLOUD_APP_CONFIRM_TAG],
+  });
+  const matching = tasks
+    .map((task): PendingCloudAppConfirmation | null => {
+      const metadata = task.metadata as Record<string, unknown> | undefined;
+      if (
+        !task.id ||
+        !isCloudAppConfirmationMetadata(metadata, roomId, action)
+      ) {
+        return null;
+      }
+      return {
+        taskId: task.id,
+        metadata,
+      };
+    })
+    .filter((task): task is PendingCloudAppConfirmation => task !== null)
+    .sort((a, b) => {
+      const aAt =
+        typeof a.metadata.intentCreatedAt === "string"
+          ? Date.parse(a.metadata.intentCreatedAt) || 0
+          : 0;
+      const bAt =
+        typeof b.metadata.intentCreatedAt === "string"
+          ? Date.parse(b.metadata.intentCreatedAt) || 0
+          : 0;
+      return bAt - aAt;
+    });
+
+  return matching[0] ?? null;
+}
+
+export async function persistCloudAppConfirmation(
+  runtime: IAgentRuntime,
+  metadata: CloudAppConfirmationMetadata,
+): Promise<void> {
+  await runtime.createTask({
+    name: `${metadata.action} confirm`,
+    description: `Awaiting user confirmation for ${metadata.action}: ${metadata.appName}`,
+    tags: [CLOUD_APP_CONFIRM_TAG],
+    metadata: {
+      ...metadata,
+      intentCreatedAt: metadata.intentCreatedAt ?? new Date().toISOString(),
+    },
+  });
+}
+
+export async function deleteCloudAppConfirmation(
+  runtime: IAgentRuntime,
+  taskId: string,
+): Promise<void> {
+  await runtime
+    .deleteTask(taskId as UUID)
+    .catch((err) =>
+      logger.warn(
+        `[plugin-cloud-apps] failed to delete confirm task ${taskId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      ),
+    );
 }
 
 /**
@@ -127,7 +223,7 @@ export function confirmationPrompt(
       : "";
   return (
     `This will ${verb} ${label}.${destroyClause} This can't be undone. ` +
-    `To go ahead, reply: ${verb} ${target.name} — yes.`
+    `To go ahead, reply that you confirm ${verb} ${target.name}.`
   );
 }
 

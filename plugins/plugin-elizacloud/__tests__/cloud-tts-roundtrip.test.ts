@@ -9,11 +9,14 @@
  * Coverage:
  *   - voiceId + modelId are forwarded to the upstream endpoint
  *   - the handler returns a Uint8Array / ReadableStream-compatible body
- *   - throws `CloudTtsUnavailableError` when cloud is not connected
+ *   - serves in capability-only mode (key + ELIZAOS_CLOUD_USE_TTS=true,
+ *     ELIZAOS_CLOUD_ENABLED unset — elizaOS/eliza#10819 / #10961)
+ *   - throws `CloudTtsUnavailableError` when cloud TTS is not available
+ *     (no key, or key without ENABLED / USE_TTS)
  *   - each call respects its own voiceId (no hidden default lock-in)
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   type CloudTtsClient,
@@ -24,23 +27,62 @@ import {
 
 interface RuntimeOptions {
   connected?: boolean;
-  apiKey?: string;
+  apiKey?: string | null;
   baseUrl?: string;
+  /** Explicit ELIZAOS_CLOUD_ENABLED value; null leaves it unset. */
+  enabled?: string | null;
+  /** Explicit ELIZAOS_CLOUD_USE_TTS value; null leaves it unset. */
+  useTts?: string | null;
 }
 
 function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
-  const apiKey = opts.apiKey ?? "test-cloud-key";
+  const apiKey =
+    opts.apiKey !== undefined
+      ? opts.apiKey
+      : opts.connected === false
+        ? null
+        : "test-cloud-key";
   const baseUrl = opts.baseUrl ?? "https://cloud.test.local/api/v1";
-  const enabled = opts.connected === false ? "false" : "true";
+  const enabled =
+    opts.enabled !== undefined
+      ? opts.enabled
+      : opts.connected === false
+        ? "false"
+        : "true";
   const settings: Record<string, string | null> = {
-    ELIZAOS_CLOUD_API_KEY: opts.connected === false ? null : apiKey,
+    ELIZAOS_CLOUD_API_KEY: apiKey,
     ELIZAOS_CLOUD_ENABLED: enabled,
+    ELIZAOS_CLOUD_USE_TTS: opts.useTts ?? null,
     ELIZAOS_CLOUD_BASE_URL: baseUrl,
   };
   return {
     getSetting: (key: string) => settings[key] ?? undefined,
   } as unknown as IAgentRuntime;
 }
+
+// The availability gate reads via the plugin's getSetting, which falls back
+// to process.env — isolate the suite from the outer environment so a
+// host-written cloud key/flag can't skew the disconnected assertions.
+const GATE_ENV_KEYS = [
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_ENABLED",
+  "ELIZAOS_CLOUD_USE_TTS",
+] as const;
+let savedGateEnv: Record<string, string | undefined> = {};
+beforeEach(() => {
+  savedGateEnv = {};
+  for (const key of GATE_ENV_KEYS) {
+    savedGateEnv[key] = process.env[key];
+    delete process.env[key];
+  }
+});
+afterEach(() => {
+  for (const key of GATE_ENV_KEYS) {
+    const saved = savedGateEnv[key];
+    if (saved === undefined) delete process.env[key];
+    else process.env[key] = saved;
+  }
+});
 
 interface RecordedCall {
   voiceId?: string;
@@ -198,6 +240,85 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
       })
     ).rejects.toBeInstanceOf(CloudTtsUnavailableError);
     // The gate runs before the HTTP fetch, so the SDK was never called.
+    expect(calls).toHaveLength(0);
+  });
+
+  it("serves in capability-only mode: key + USE_TTS=true, ENABLED unset (#10961)", async () => {
+    // applyCloudConfigToEnv writes exactly this shape when an external
+    // provider owns the text brain but the operator cloud-routed TTS:
+    // key kept, ELIZAOS_CLOUD_ENABLED deleted, ELIZAOS_CLOUD_USE_TTS=true.
+    const expected = new Uint8Array([0xff, 0xfb, 0x42]);
+    const { client, calls } = makeFakeClient(expected);
+    setCloudTtsClientFactoryForTesting(() => client);
+
+    const out = await handleTextToSpeech(
+      makeRuntime({ enabled: null, useTts: "true" }),
+      {
+        text: "capability-only hello",
+        voiceId: "EXAVITQu4vr4xnSDxMaL",
+        modelId: "eleven_flash_v2_5",
+      }
+    );
+
+    // The gate let the request through to the (mocked) HTTP call…
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      voiceId: "EXAVITQu4vr4xnSDxMaL",
+      modelId: "eleven_flash_v2_5",
+      text: "capability-only hello",
+    });
+    // …and the audio round-trips.
+    expect(out).toBeInstanceOf(Uint8Array);
+    expect(Array.from(out as Uint8Array)).toEqual(Array.from(expected));
+  });
+
+  it("serves in capability-only mode when USE_TTS arrives via process.env", async () => {
+    // applyCloudConfigToEnv writes the per-service flags to process.env, not
+    // runtime settings — the gate must honor the env fallback of the
+    // plugin's getSetting.
+    process.env.ELIZAOS_CLOUD_USE_TTS = "true";
+    const { client, calls } = makeFakeClient(new Uint8Array([7]));
+    setCloudTtsClientFactoryForTesting(() => client);
+
+    await handleTextToSpeech(makeRuntime({ enabled: null }), {
+      text: "env-flag hello",
+      voiceId: "voice-env",
+      modelId: "eleven_flash_v2_5",
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text).toBe("env-flag hello");
+  });
+
+  it("throws CloudTtsUnavailableError when the key is set but neither ENABLED nor USE_TTS is", async () => {
+    const { client, calls } = makeFakeClient(new Uint8Array([1]));
+    setCloudTtsClientFactoryForTesting(() => client);
+
+    await expect(
+      handleTextToSpeech(makeRuntime({ enabled: null, useTts: null }), {
+        text: "hello",
+        voiceId: "EXAVITQu4vr4xnSDxMaL",
+        modelId: "eleven_flash_v2_5",
+      })
+    ).rejects.toBeInstanceOf(CloudTtsUnavailableError);
+    // Falls through to the next TTS handler without touching the SDK.
+    expect(calls).toHaveLength(0);
+  });
+
+  it("throws CloudTtsUnavailableError when USE_TTS=true but no API key is present", async () => {
+    const { client, calls } = makeFakeClient(new Uint8Array([1]));
+    setCloudTtsClientFactoryForTesting(() => client);
+
+    await expect(
+      handleTextToSpeech(
+        makeRuntime({ apiKey: null, enabled: null, useTts: "true" }),
+        {
+          text: "hello",
+          voiceId: "EXAVITQu4vr4xnSDxMaL",
+          modelId: "eleven_flash_v2_5",
+        }
+      )
+    ).rejects.toBeInstanceOf(CloudTtsUnavailableError);
     expect(calls).toHaveLength(0);
   });
 

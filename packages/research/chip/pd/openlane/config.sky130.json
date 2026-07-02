@@ -28,9 +28,7 @@
     "dir::../../rtl/memory/e1_behavioral_dram.sv",
     "dir::../../rtl/memory/e1_weight_buffer_sram.sv"
   ],
-  "EXTRA_VERILOG_MODELS": [
-    "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
-  ],
+  "EXTRA_VERILOG_MODELS": ["dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"],
   "MACROS": {
     "sky130_sram_2kbyte_1rw1r_32x512_8": {
       "gds": [
@@ -44,18 +42,13 @@
           "pdk_dir::libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
         ]
       },
-      "nl": [
-        "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
-      ],
+      "nl": ["dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"],
       "spice": [
         "pdk_dir::libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice"
       ],
       "instances": {
         "u_soc.u_weight_buffer.u_sram": {
-          "location": [
-            150,
-            150
-          ],
+          "location": [150, 150],
           "orientation": "N"
         }
       }
@@ -63,10 +56,7 @@
   },
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_PERIOD": 100,
-  "VERILOG_DEFINES": [
-    "E1_PD_SMALL_DRAM",
-    "E1_HAVE_HARD_SRAM"
-  ],
+  "VERILOG_DEFINES": ["E1_PD_SMALL_DRAM", "E1_HAVE_HARD_SRAM"],
   "PNR_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "FP_PIN_ORDER_CFG": "dir::../pin_order.cfg",
@@ -136,18 +126,10 @@
   "RUN_KLAYOUT_STREAMOUT": true,
   "RUN_KLAYOUT_DRC": true,
   "RUN_KLAYOUT_XOR": false,
-  "SETUP_VIOLATION_CORNERS": [
-    "*"
-  ],
-  "HOLD_VIOLATION_CORNERS": [
-    "*"
-  ],
-  "MAX_SLEW_VIOLATION_CORNERS": [
-    "*"
-  ],
-  "MAX_CAP_VIOLATION_CORNERS": [
-    "*"
-  ],
+  "SETUP_VIOLATION_CORNERS": ["*"],
+  "HOLD_VIOLATION_CORNERS": ["*"],
+  "MAX_SLEW_VIOLATION_CORNERS": ["*"],
+  "MAX_CAP_VIOLATION_CORNERS": ["*"],
   "QUIT_ON_TIMING_VIOLATIONS": true,
   "QUIT_ON_SLEW_VIOLATIONS": true,
   "QUIT_ON_MAGIC_DRC": true,

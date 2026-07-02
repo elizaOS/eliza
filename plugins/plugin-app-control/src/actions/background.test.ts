@@ -49,6 +49,29 @@ describe("inferBackgroundPlan", () => {
 		});
 	});
 
+	it("detects redo", () => {
+		expect(
+			inferBackgroundPlan("redo the background change", undefined),
+		).toEqual({
+			op: "redo",
+		});
+	});
+
+	it("detects redo from a 'go forward' phrasing", () => {
+		expect(
+			inferBackgroundPlan("go forward on the background", undefined),
+		).toEqual({ op: "redo" });
+	});
+
+	it("resolves a color word like 'red' to a set, not redo", () => {
+		expect(inferBackgroundPlan("make the background red", undefined)).toEqual({
+			op: "set",
+			mode: "shader",
+			color: "#dc2626",
+			colorLabel: "red",
+		});
+	});
+
 	it("detects reset", () => {
 		expect(
 			inferBackgroundPlan("reset the background to default", undefined),
@@ -121,6 +144,111 @@ describe("inferBackgroundPlan", () => {
 	});
 });
 
+describe("programmable GLSL shader plan (#10694)", () => {
+	it("maps a named preset to a glsl plan", () => {
+		expect(
+			inferBackgroundPlan("give me a cool animated lava background", undefined),
+		).toEqual({
+			op: "set",
+			mode: "glsl",
+			presetId: "lava",
+			presetLabel: "lava",
+		});
+	});
+
+	it("maps preset synonyms (molten → lava, ocean → waves, cosmic → nebula)", () => {
+		expect(
+			inferBackgroundPlan("make the background molten", undefined),
+		).toMatchObject({ mode: "glsl", presetId: "lava" });
+		expect(
+			inferBackgroundPlan("set the background to an ocean shader", undefined),
+		).toMatchObject({ mode: "glsl", presetId: "waves" });
+		expect(
+			inferBackgroundPlan("give me a cosmic background", undefined),
+		).toMatchObject({ mode: "glsl", presetId: "nebula" });
+	});
+
+	it("a generic 'animated shader' ask with no preset falls to the default preset", () => {
+		expect(
+			inferBackgroundPlan("make the background an animated shader", undefined),
+		).toMatchObject({ mode: "glsl", presetId: "aurora" });
+	});
+
+	it("honors an explicit preset option", () => {
+		expect(
+			inferBackgroundPlan("change my background", undefined, {
+				preset: "plasma",
+			}),
+		).toEqual({
+			op: "set",
+			mode: "glsl",
+			presetId: "plasma",
+			presetLabel: "plasma",
+		});
+	});
+
+	it("a resolvable color beats a planner-stuffed preset when the text never asks for a shader (#10694 run-3 finding)", () => {
+		// Live trajectory: "change the app background to teal" arrived as
+		// {op:"set", color:"teal", preset:"aurora"} and the old explicit-preset
+		// precedence turned a plain color request into the aurora shader.
+		expect(
+			inferBackgroundPlan("change the app background to teal", undefined, {
+				op: "set",
+				color: "teal",
+				preset: "aurora",
+			}),
+		).toMatchObject({ op: "set", mode: "shader", color: "#0891b2" });
+	});
+
+	it("an explicit preset still wins when the text asks for a shader — both directions", () => {
+		// Shader noun in the text → the preset is honored even with a color.
+		expect(
+			inferBackgroundPlan("make the background an animated teal", undefined, {
+				preset: "plasma",
+				color: "teal",
+			}),
+		).toMatchObject({ op: "set", mode: "glsl", presetId: "plasma" });
+		// Preset vocabulary in the text → same.
+		expect(
+			inferBackgroundPlan("give me a lava background", undefined, {
+				preset: "lava",
+				color: "red",
+			}),
+		).toMatchObject({ op: "set", mode: "glsl", presetId: "lava" });
+		// No resolvable color at all → the explicit preset applies as before.
+		expect(
+			inferBackgroundPlan("change my background", undefined, {
+				preset: "waves",
+			}),
+		).toMatchObject({ op: "set", mode: "glsl", presetId: "waves" });
+	});
+
+	it("maps a relative tweak to a glsl-tweak plan (uniform patch)", () => {
+		expect(
+			inferBackgroundPlan("make the background shader slower", undefined),
+		).toMatchObject({
+			op: "set",
+			mode: "glsl-tweak",
+			uniforms: { u_speed: 0.4 },
+		});
+		expect(
+			inferBackgroundPlan("make the shader background brighter", undefined),
+		).toMatchObject({ mode: "glsl-tweak", uniforms: { u_intensity: 1.7 } });
+	});
+
+	it("a concrete color beats a bare tweak word (red brighter → red)", () => {
+		expect(
+			inferBackgroundPlan("make the background red brighter", undefined),
+		).toMatchObject({ op: "set", mode: "shader", color: "#dc2626" });
+	});
+
+	it("a named preset beats a bare color (fiery → lava, not red)", () => {
+		expect(
+			inferBackgroundPlan("make the background fiery red", undefined),
+		).toMatchObject({ mode: "glsl", presetId: "lava" });
+	});
+});
+
 describe("BACKGROUND action handler", () => {
 	function setup() {
 		const emitted: BackgroundApplyPayload[] = [];
@@ -150,6 +278,35 @@ describe("BACKGROUND action handler", () => {
 		expect(emitted).toEqual([{ op: "set", mode: "shader", color: "#2563eb" }]);
 		expect(result.success).toBe(true);
 		expect(replies[0]).toContain("blue");
+	});
+
+	it("broadcasts a named shader preset and confirms", async () => {
+		const { action, emitted, replies, callback } = setup();
+		const result = await action.handler(
+			runtime,
+			message("give me an animated lava background"),
+			undefined,
+			undefined,
+			callback,
+		);
+		expect(emitted).toEqual([{ op: "set", mode: "glsl", presetId: "lava" }]);
+		expect(result.success).toBe(true);
+		expect(replies[0].toLowerCase()).toContain("lava");
+	});
+
+	it("broadcasts a uniform tweak (mode glsl, uniforms only) for a relative ask", async () => {
+		const { action, emitted, replies, callback } = setup();
+		await action.handler(
+			runtime,
+			message("make the shader background slower"),
+			undefined,
+			undefined,
+			callback,
+		);
+		expect(emitted).toEqual([
+			{ op: "set", mode: "glsl", uniforms: { u_speed: 0.4 } },
+		]);
+		expect(replies[0].toLowerCase()).toContain("slower");
 	});
 
 	it("generates an image then broadcasts it", async () => {
@@ -200,6 +357,21 @@ describe("BACKGROUND action handler", () => {
 			vi.fn(),
 		);
 		expect(emitted).toEqual([{ op: "undo" }]);
+	});
+
+	it("broadcasts redo", async () => {
+		const { action, emitted, replies, callback } = setup();
+		const result = await action.handler(
+			runtime,
+			message("redo the background"),
+			undefined,
+			undefined,
+			callback,
+		);
+		expect(emitted).toEqual([{ op: "redo" }]);
+		expect(result.success).toBe(true);
+		expect(result.values).toEqual({ op: "redo" });
+		expect(replies[0].toLowerCase()).toContain("re-applied");
 	});
 
 	it("reports a clear error when the broadcast fails", async () => {

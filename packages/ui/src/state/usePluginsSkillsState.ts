@@ -310,8 +310,14 @@ export function usePluginsSkillsState({
   );
 
   const handlePluginConfigSave = useCallback(
-    async (pluginId: string, config: Record<string, string>) => {
-      if (Object.keys(config).length === 0) return;
+    // Returns true only when the save actually persisted — callers keep the
+    // user's typed draft (pasted tokens/keys never echo back from the server)
+    // when the save failed, instead of silently wiping the form.
+    async (
+      pluginId: string,
+      config: Record<string, string>,
+    ): Promise<boolean> => {
+      if (Object.keys(config).length === 0) return true;
       setPluginSaving((prev) => new Set([...prev, pluginId]));
       try {
         const result = await client.updatePlugin(pluginId, { config });
@@ -385,12 +391,14 @@ export function usePluginsSkillsState({
             return next;
           });
         }, 2000);
+        return true;
       } catch (err) {
         setActionNotice(
           `Save failed: ${err instanceof Error ? err.message : "unknown error"}`,
           "error",
           3800,
         );
+        return false;
       } finally {
         setPluginSaving((prev) => {
           const next = new Set(prev);

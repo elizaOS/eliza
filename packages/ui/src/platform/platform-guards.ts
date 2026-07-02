@@ -8,11 +8,10 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 
 declare global {
   interface Window {
-    /** Set by the Electrobun desktop shell. */
-    __ELECTROBUN__?: unknown;
     /** Set by the XR view-host (plugin-facewear / plugin-xr) inside a headset. */
     __elizaXRContext?: unknown;
   }
@@ -25,12 +24,17 @@ export type FrontendPlatform = "ios" | "android" | "web" | "desktop";
  * Detect the current frontend platform.
  *
  * Resolution order:
- * 1. `window.__ELECTROBUN__` — set by the Electrobun desktop shell.
+ * 1. Electrobun desktop shell — via `isElectrobunRuntime()` (the renderer's
+ *    `__electrobunWindowId`/`__electrobunWebviewId` + RPC bridge, the same
+ *    signal platform/init.ts uses). The legacy `window.__ELECTROBUN__` flag
+ *    this used to read is set NOWHERE in the shell, so desktop was silently
+ *    mis-reported as "web" (wrong frontendPlatform to the server + wrong
+ *    provider / runtime-class / available-views gating on desktop).
  * 2. Capacitor.getPlatform() — set by the Capacitor runtime on iOS/Android.
  * 3. Default: "web".
  */
 export function getFrontendPlatform(): FrontendPlatform {
-  if (typeof window !== "undefined" && window.__ELECTROBUN__) {
+  if (isElectrobunRuntime()) {
     return "desktop";
   }
   const getPlatform = (Capacitor as { getPlatform?: () => unknown })

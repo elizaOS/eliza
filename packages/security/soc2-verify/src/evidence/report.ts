@@ -19,9 +19,7 @@ export function renderMarkdown(report: EvidenceReport): string {
   lines.push("");
   lines.push("## Overall");
   lines.push("");
-  lines.push(
-    `| Pass | Fail | Warn | Skip | Readiness Score |`,
-  );
+  lines.push(`| Pass | Fail | Warn | Skip | Readiness Score |`);
   lines.push(`| ---: | ---: | ---: | ---: | ---: |`);
   lines.push(
     `| ${report.overall.pass} | ${report.overall.fail} | ${report.overall.warn} | ${report.overall.skip} | ${(report.overall.readiness_score * 100).toFixed(1)}% |`,

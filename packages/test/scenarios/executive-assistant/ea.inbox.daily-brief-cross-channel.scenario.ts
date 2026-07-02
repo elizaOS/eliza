@@ -46,13 +46,10 @@ export default scenario({
           "document",
         ],
       }),
-      responseIncludesAny: [
-        "Actions First",
-        "Today's Schedule",
-        "Unread By Channel",
-        "Overdue Follow-Ups",
-        "Documents And Forms",
-      ],
+      // De-echoed (#9310): the old keyword array repeated the five section
+      // headers dictated in the user's own turn text, so parroting the
+      // request passed. The structural + grounding contract is enforced by
+      // the responseJudge and the action/memory/dispatch finalChecks below.
       responseJudge: {
         minimumScore: 0.7,
         rubric:

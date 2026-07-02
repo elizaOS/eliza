@@ -6,7 +6,7 @@ import {
   runJoinFlow,
 } from "./run-join-flow";
 
-const CLOUD_API_BASE = "https://www.elizacloud.ai";
+const CLOUD_API_BASE = "https://elizacloud.ai";
 const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
 
 function makeClient(
@@ -174,10 +174,10 @@ describe("runJoinFlow", () => {
     });
 
     expect(setBaseUrl).toHaveBeenCalledWith(
-      "https://www.elizacloud.ai/api/v1/eliza/agents/agent-new",
+      "https://elizacloud.ai/api/v1/eliza/agents/agent-new",
     );
     expect(result.apiBase).toBe(
-      "https://www.elizacloud.ai/api/v1/eliza/agents/agent-new",
+      "https://elizacloud.ai/api/v1/eliza/agents/agent-new",
     );
     expect(result.dedicated).toBe(false);
   });

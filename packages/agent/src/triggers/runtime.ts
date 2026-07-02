@@ -345,6 +345,26 @@ export async function executeTriggerTask(
       },
       `Trigger "${trigger.displayName}" executed successfully`,
     );
+    // Scheduled automations run without the user in the chat loop, so a
+    // successful completion is otherwise invisible — the rail only ever showed
+    // the failure path (#10697). Surface a low-priority "completed" so the user
+    // can see the agent finished the task. Grouped per trigger so a frequently
+    // scheduled automation updates ONE rail entry instead of spamming, and
+    // fire-and-forget so a notify failure never masks the successful run.
+    void getNotifier(runtime)
+      ?.notify({
+        title: `Automation "${trigger.displayName}" completed`,
+        category: "workflow",
+        priority: "low",
+        source: "trigger",
+        groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+        data: {
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+          workflowExecutionId,
+        },
+      })
+      .catch(() => {});
   }
 
   const finishedAt = Date.now();

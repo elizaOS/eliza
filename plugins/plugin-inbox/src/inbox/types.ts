@@ -117,6 +117,7 @@ export interface TriageEntry {
   suggestedResponse: string | null;
   draftResponse: string | null;
   autoReplied: boolean;
+  snoozedUntil: string | null;
   resolved: boolean;
   resolvedAt: string | null;
   createdAt: string;

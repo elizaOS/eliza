@@ -7,26 +7,30 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  applyBackgroundRedo,
+  applyBackgroundSet,
+  applyBackgroundUndo,
+  type BackgroundHistoryState,
+} from "./background-history";
+import {
   applyUiTheme,
   getSystemTheme,
   loadBackgroundConfig,
   loadBackgroundHistory,
+  loadBackgroundRedo,
+  loadHomeTimeWidgetHidden,
   loadUiThemeMode,
-  MAX_BACKGROUND_HISTORY,
   normalizeBackgroundConfig,
   normalizeUiThemeMode,
   resolveUiTheme,
   saveBackgroundConfig,
   saveBackgroundHistory,
+  saveBackgroundRedo,
+  saveHomeTimeWidgetHidden,
   saveUiTheme,
   saveUiThemeMode,
 } from "./persistence";
-import {
-  type BackgroundConfig,
-  backgroundConfigsEqual,
-  type UiTheme,
-  type UiThemeMode,
-} from "./ui-preferences";
+import type { BackgroundConfig, UiTheme, UiThemeMode } from "./ui-preferences";
 
 export function useDisplayPreferences() {
   const [uiThemeMode, setUiThemeModeState] =
@@ -42,10 +46,22 @@ export function useDisplayPreferences() {
   const [backgroundHistory, setBackgroundHistoryState] = useState<
     BackgroundConfig[]
   >(loadBackgroundHistory);
+  // Bounded REDO stack (#10694): configs that were undone, most-recent last, so
+  // "step back if you don't like it" can also step forward. Persisted
+  // symmetrically with the undo history (issue deliverable: "undo + redo,
+  // bounded, persisted") so it survives reload; cleared by any new edit.
+  const [backgroundRedo, setBackgroundRedoState] =
+    useState<BackgroundConfig[]>(loadBackgroundRedo);
+  // Home time/date tile visibility (#10706): shown by default, hideable from
+  // Appearance settings, persisted across reload.
+  const [homeTimeWidgetHidden, setHomeTimeWidgetHiddenState] =
+    useState<boolean>(loadHomeTimeWidgetHidden);
   const backgroundConfigRef = useRef(backgroundConfig);
   backgroundConfigRef.current = backgroundConfig;
   const backgroundHistoryRef = useRef(backgroundHistory);
   backgroundHistoryRef.current = backgroundHistory;
+  const backgroundRedoRef = useRef(backgroundRedo);
+  backgroundRedoRef.current = backgroundRedo;
 
   // Normalize + persist wrappers
   const setUiThemeMode = useCallback((mode: UiThemeMode) => {
@@ -60,25 +76,42 @@ export function useDisplayPreferences() {
     [setUiThemeMode],
   );
 
-  // Setting pushes the outgoing config onto the undo stack (unless unchanged).
-  const setBackgroundConfig = useCallback((config: BackgroundConfig) => {
-    const next = normalizeBackgroundConfig(config);
-    const prev = backgroundConfigRef.current;
-    if (backgroundConfigsEqual(prev, next)) return;
-    setBackgroundHistoryState((h) =>
-      [...h, prev].slice(-MAX_BACKGROUND_HISTORY),
-    );
-    setBackgroundConfigState(next);
+  const setHomeTimeWidgetHidden = useCallback((hidden: boolean) => {
+    setHomeTimeWidgetHiddenState(hidden);
   }, []);
 
-  // Undo restores the most recent previous config and pops it off the stack.
-  // There is no redo — stepping back simply discards the undone config.
-  const undoBackgroundConfig = useCallback(() => {
-    const history = backgroundHistoryRef.current;
-    if (history.length === 0) return;
-    setBackgroundConfigState(history[history.length - 1]);
-    setBackgroundHistoryState((h) => h.slice(0, -1));
+  // A snapshot of the live {config, history, redo} for the pure reducer — refs
+  // keep the callbacks identity-stable ([] deps) without reading stale state.
+  const snapshot = useCallback(
+    (): BackgroundHistoryState => ({
+      config: backgroundConfigRef.current,
+      history: backgroundHistoryRef.current,
+      redo: backgroundRedoRef.current,
+    }),
+    [],
+  );
+  const applyHistoryState = useCallback((s: BackgroundHistoryState) => {
+    setBackgroundConfigState(s.config);
+    setBackgroundHistoryState(s.history);
+    setBackgroundRedoState(s.redo);
   }, []);
+
+  // set / undo / redo all delegate to the pure reducer (shared with the e2e
+  // fixture so the two can never drift, #10694).
+  const setBackgroundConfig = useCallback(
+    (config: BackgroundConfig) => {
+      applyHistoryState(
+        applyBackgroundSet(snapshot(), normalizeBackgroundConfig(config)),
+      );
+    },
+    [applyHistoryState, snapshot],
+  );
+  const undoBackgroundConfig = useCallback(() => {
+    applyHistoryState(applyBackgroundUndo(snapshot()));
+  }, [applyHistoryState, snapshot]);
+  const redoBackgroundConfig = useCallback(() => {
+    applyHistoryState(applyBackgroundRedo(snapshot()));
+  }, [applyHistoryState, snapshot]);
 
   // Resolve mode -> concrete theme. When following the system, track OS
   // color-scheme changes live.
@@ -113,16 +146,28 @@ export function useDisplayPreferences() {
     saveBackgroundHistory(backgroundHistory);
   }, [backgroundHistory]);
 
+  useEffect(() => {
+    saveBackgroundRedo(backgroundRedo);
+  }, [backgroundRedo]);
+
+  useEffect(() => {
+    saveHomeTimeWidgetHidden(homeTimeWidgetHidden);
+  }, [homeTimeWidgetHidden]);
+
   return {
     state: {
       uiTheme,
       uiThemeMode,
       backgroundConfig,
       canUndoBackground: backgroundHistory.length > 0,
+      canRedoBackground: backgroundRedo.length > 0,
+      homeTimeWidgetHidden,
     },
     setUiTheme,
     setUiThemeMode,
     setBackgroundConfig,
     undoBackgroundConfig,
+    redoBackgroundConfig,
+    setHomeTimeWidgetHidden,
   };
 }

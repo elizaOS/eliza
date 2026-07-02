@@ -33,7 +33,15 @@ export default scenario({
         "health_today",
         "health",
       ],
-      responseIncludesAny: ["step", "heart", "sleep", "health"],
+      // De-echoed (#9310): the old keywords ("step"/"heart"/"sleep"/"health")
+      // were all echoes of the question. With no seeded samples the honest
+      // reply is grounded either way — real numbers or an explicit no-data
+      // statement — and the judge enforces exactly that.
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must either report concrete values for today's steps, heart rate, and sleep, or state plainly that health data is not available/connected. Invented numbers, or a vague deflection that neither reports data nor admits it is missing, fails.",
+      },
       plannerExcludes: ["gmail_action", "owner_send_message"],
     },
     {
@@ -41,8 +49,27 @@ export default scenario({
       name: "health-trend",
       text: "What's my trend for the last week?",
       plannerIncludesAny: ["OWNER_HEALTH", "health_trend", "trend"],
-      responseIncludesAny: ["week", "trend", "up", "down", "average"],
+      // "week"/"trend" echoed this turn's own text; keep only derived
+      // direction/aggregation words a parroted reply cannot contain.
+      responseIncludesAny: ["up", "down", "average", "steady", "improv"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must either summarize a real week-over-week trend with a direction (up, down, or steady), or state plainly that there is not enough data to compute a trend. Invented trend figures fail.",
+      },
       plannerExcludes: ["gmail_action", "owner_send_message"],
+    },
+  ],
+  // Load-bearing outcome (house pattern from health-checkin-sleep-recovery):
+  // selectedActionArguments is a registered final-check handler — it requires
+  // OWNER_HEALTH to actually be selected with a resolved subaction token,
+  // proving the health_checkin prompt path ran.
+  finalChecks: [
+    {
+      type: "selectedActionArguments",
+      name: "health status/trend routes to OWNER_HEALTH with a resolved subaction",
+      actionName: "OWNER_HEALTH",
+      includesAny: ["today", "trend", "by_metric", "status"],
     },
   ],
 });

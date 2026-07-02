@@ -443,7 +443,14 @@ export function scoreScenario(args: {
   mode?: ScoringMode;
   judge?: { pass: boolean; reason: string };
 }): ScenarioResult {
-  const { scenario, finalState, trace, durationMs, judge, mode = "scripted" } = args;
+  const {
+    scenario,
+    finalState,
+    trace,
+    durationMs,
+    judge,
+    mode = "scripted",
+  } = args;
   const state = scoreState(scenario, finalState);
   const intent = scoreIntent(scenario, trace);
   const routing = scoreRouting(scenario, finalState);

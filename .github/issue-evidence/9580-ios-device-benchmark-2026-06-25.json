@@ -26,10 +26,7 @@
   },
   "toolchain": {
     "xcodebuild": {
-      "command": [
-        "xcodebuild",
-        "-version"
-      ],
+      "command": ["xcodebuild", "-version"],
       "status": 0,
       "signal": null,
       "stdout": "Xcode 26.4.1\nBuild version 17E202\n",
@@ -37,11 +34,7 @@
       "error": null
     },
     "xctrace": {
-      "command": [
-        "xcrun",
-        "xctrace",
-        "version"
-      ],
+      "command": ["xcrun", "xctrace", "version"],
       "status": 0,
       "signal": null,
       "stdout": "xctrace version 16.0 (17E202)\n",
@@ -188,9 +181,7 @@
       "SupportedPlatform": "ios",
       "BinaryPath": "LlamaCpp.framework/LlamaCpp",
       "LibraryIdentifier": "ios-arm64",
-      "SupportedArchitectures": [
-        "arm64"
-      ]
+      "SupportedArchitectures": ["arm64"]
     }
   },
   "frameworkBinary": "/tmp/LlamaCpp-9580-text.xcframework/ios-arm64/LlamaCpp.framework/LlamaCpp",

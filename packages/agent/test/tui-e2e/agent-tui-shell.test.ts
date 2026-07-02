@@ -166,6 +166,50 @@ describe("agent terminal tui — whole-app e2e (real terminal grid)", () => {
     expect(text).toContain("WALLET BODY");
   });
 
+  it("bracketed paste round-trips the composer: split chunks render inline, large pastes collapse to a marker but submit the full text", async () => {
+    const { terminal, calls } = await bootShell({
+      routes: [viewsRoute([]), ...okViewRoutes, ...chatRoutes()],
+    });
+
+    // A real terminal delivers a paste in arbitrary chunks: the start marker,
+    // content, and end marker can arrive in separate stdin reads. Drive the
+    // exact byte sequences ProcessTerminal would forward, split mid-paste, so
+    // the editor's pasteBuffer accumulation branch runs — not just the
+    // single-chunk happy path.
+    await drive(terminal, ["\x1b[200~pasted one ", "and two\x1b[201~"]);
+    expect(screenText(terminal)).toContain("pasted one and two");
+
+    await drive(terminal, [KEYS.ENTER]);
+    const smallPasteCall = findCall(calls, (c) =>
+      c.url.endsWith("/api/conversations/conv-terminal/messages"),
+    );
+    expect(smallPasteCall?.body).toMatchObject({
+      text: "pasted one and two",
+      source: "terminal-tui",
+    });
+
+    // A >10-line paste must collapse to a "[paste #N +M lines]" marker in the
+    // rendered grid (the composer stays compact) while the SUBMITTED text is
+    // the full expanded paste — the marker is a display affordance, never data
+    // loss.
+    const bigLines = Array.from(
+      { length: 12 },
+      (_, i) => `line-${String(i + 1).padStart(2, "0")}`,
+    );
+    const bigPaste = bigLines.join("\n");
+    await drive(terminal, [`\x1b[200~${bigPaste}\x1b[201~`]);
+    const collapsed = screenText(terminal);
+    expect(collapsed).toContain("[paste #1 +12 lines]");
+    expect(collapsed).not.toContain("line-07");
+
+    await drive(terminal, [KEYS.ENTER]);
+    const messageCalls = calls.filter((c) =>
+      c.url.endsWith("/api/conversations/conv-terminal/messages"),
+    );
+    const bigPasteCall = messageCalls[messageCalls.length - 1];
+    expect(bigPasteCall?.body).toMatchObject({ text: bigPaste });
+  });
+
   it("quick-opens a registered view inline (digit key) and Esc returns to the list", async () => {
     let renders = 0;
     register("phone", {

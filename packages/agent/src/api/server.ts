@@ -60,6 +60,7 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
+import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
 // imported via module-scope top-level await, which forced both plugins to
@@ -1711,6 +1712,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
+  isTrustedLocalRequest as _isTrustedLocalRequest,
   isWaifuChatAuthorized as _isWaifuChatAuthorized,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
@@ -1741,6 +1743,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isWaifuChatAuthorized = _isWaifuChatAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
@@ -1805,6 +1808,7 @@ import {
 } from "./server-autonomy-helpers.ts";
 import {
   getPtyConsoleBridge,
+  getPtyService,
   wireCodingAgentChatBridge,
   wireCodingAgentSwarmSynthesis,
   wireCodingAgentWsBridge,
@@ -2718,51 +2722,18 @@ async function handleRequest(
   // is what makes a freshly scaffolded/edited local plugin (VIEWS/APP create)
   // actually appear without an agent restart — its views register via
   // runtime.registerPlugin. Must run BEFORE the generic /api/plugins/* handler.
-  if (method === "POST" && pathname === "/api/plugins/load-from-directory") {
-    const { isLocalCodeExecutionAllowed, buildStoreVariantBlockedMessage } =
-      await import("@elizaos/core");
-    if (!isLocalCodeExecutionAllowed()) {
-      error(res, buildStoreVariantBlockedMessage("Local plugin loading"), 403);
-      return;
-    }
-    if (!state.runtime) {
-      error(res, "Agent runtime is not available", 503);
-      return;
-    }
-    const body = await readJsonBody<{ directory?: unknown; entry?: unknown }>(
+  if (
+    await handlePluginDirectoryRoutes({
       req,
       res,
-    );
-    if (body === null) return;
-    const directory =
-      typeof body.directory === "string" ? body.directory.trim() : "";
-    if (!directory || !path.isAbsolute(directory)) {
-      error(res, "'directory' must be an absolute path", 400);
-      return;
-    }
-    const entry = typeof body.entry === "string" ? body.entry : undefined;
-    try {
-      const { loadPluginFromDirectory } = await import(
-        "../runtime/load-plugin-from-directory.ts"
-      );
-      const result = await loadPluginFromDirectory({
-        runtime: state.runtime as Parameters<
-          typeof loadPluginFromDirectory
-        >[0]["runtime"],
-        directory,
-        ...(entry ? { entry } : {}),
-      });
-      json(res, { ok: true, ...result });
-    } catch (err) {
-      json(
-        res,
-        {
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        422,
-      );
-    }
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
     return;
   }
 
@@ -3746,6 +3717,7 @@ async function handleRequest(
       res,
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
+      isTrustedLocal: () => isTrustedLocalRequest(req),
     })
   ) {
     return;
@@ -4848,6 +4820,7 @@ export async function startApiServer(opts?: {
 
   // Handle WebSocket connections
   wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
+    let wsClientId: string | null = null;
     let wsUrl: URL;
     try {
       wsUrl = new URL(
@@ -4855,7 +4828,10 @@ export async function startApiServer(opts?: {
         `http://${request.headers.host ?? "localhost"}`,
       );
       const clientId = normalizeWsClientId(wsUrl.searchParams.get("clientId"));
-      if (clientId) wsClientIds.set(ws, clientId);
+      if (clientId) {
+        wsClientId = clientId;
+        wsClientIds.set(ws, clientId);
+      }
     } catch {
       // Ignore malformed WS URL metadata; auth/path were already validated.
       wsUrl = new URL("ws://localhost/ws");
@@ -4917,6 +4893,31 @@ export async function startApiServer(opts?: {
       activateAuthenticatedConnection();
     }
 
+    const currentClientOwnsPtySession = (sessionId: string): boolean => {
+      const service = getPtyService(state);
+      const session = service
+        ?.listSessions?.()
+        .find((candidate) => candidate.sessionId === sessionId);
+      if (!session?.ownerClientId) return true;
+      return Boolean(wsClientId && session.ownerClientId === wsClientId);
+    };
+
+    const stopOwnedPtySessions = (reason: string): void => {
+      if (!wsClientId) return;
+      const service = getPtyService(state);
+      if (!service?.listSessions || !service.stopSession) return;
+      const owned = service
+        .listSessions()
+        .filter((session) => session.ownerClientId === wsClientId);
+      for (const session of owned) {
+        void service.stopSession(session.sessionId).catch((err) => {
+          logger.warn(
+            `[eliza-api] failed to stop PTY session ${session.sessionId} on ${reason}: ${err instanceof Error ? err.message : err}`,
+          );
+        });
+      }
+    };
+
     ws.on("message", async (data: unknown) => {
       try {
         const msg = JSON.parse(String(data));
@@ -4960,6 +4961,12 @@ export async function startApiServer(opts?: {
         ) {
           const bridge = getPtyConsoleBridge(state);
           if (bridge) {
+            if (!currentClientOwnsPtySession(msg.sessionId)) {
+              logger.warn(
+                `[eliza-api] pty-subscribe rejected: client ${wsClientId ?? "unknown"} does not own session ${msg.sessionId}`,
+              );
+              return;
+            }
             let subs = wsClientPtySubscriptions.get(ws);
             if (!subs) {
               subs = new Map();
@@ -5013,6 +5020,10 @@ export async function startApiServer(opts?: {
             logger.warn(
               `[eliza-api] pty-input rejected: client not subscribed to session ${msg.sessionId}`,
             );
+          } else if (!currentClientOwnsPtySession(msg.sessionId)) {
+            logger.warn(
+              `[eliza-api] pty-input rejected: client ${wsClientId ?? "unknown"} does not own session ${msg.sessionId}`,
+            );
           } else if (msg.data.length > 4096) {
             logger.warn(
               `[eliza-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
@@ -5035,6 +5046,10 @@ export async function startApiServer(opts?: {
           if (!subs?.has(msg.sessionId)) {
             logger.warn(
               `[eliza-api] pty-resize rejected: client not subscribed to session ${msg.sessionId}`,
+            );
+          } else if (!currentClientOwnsPtySession(msg.sessionId)) {
+            logger.warn(
+              `[eliza-api] pty-resize rejected: client ${wsClientId ?? "unknown"} does not own session ${msg.sessionId}`,
             );
           } else {
             const bridge = getPtyConsoleBridge(state);
@@ -5093,6 +5108,7 @@ export async function startApiServer(opts?: {
         for (const unsub of subs.values()) unsub();
         subs.clear();
       }
+      stopOwnedPtySessions("websocket close");
       addLog("info", "WebSocket client disconnected", "websocket", [
         "server",
         "websocket",
@@ -5111,11 +5127,22 @@ export async function startApiServer(opts?: {
         for (const unsub of subs.values()) unsub();
         subs.clear();
       }
+      stopOwnedPtySessions("websocket error");
     });
   });
 
   // Broadcast status to all connected WebSocket clients (flattened — PR #36 fix)
   const broadcastStatus = () => {
+    // Skip the payload build + computeCanRespond() when no dashboard is
+    // connected. This fires every 5s (statusInterval) plus on every state
+    // change for the whole process lifetime; a headless / background agent
+    // commonly has zero WS clients, so this was pure idle-CPU waste. A newly
+    // connected client gets its authoritative status on connect (see
+    // activateAuthenticatedConnection), so nothing depends on this running
+    // while the client set is empty.
+    if (wsClients.size === 0) {
+      return;
+    }
     broadcastWs({
       type: "status",
       state: state.agentState,

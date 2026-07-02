@@ -58,15 +58,7 @@
       "OFF_THE_SHELF": 67,
       "SML_316L": 20
     },
-    "subassemblies": [
-      "100",
-      "200",
-      "300",
-      "400",
-      "500",
-      "600",
-      "700"
-    ],
+    "subassemblies": ["100", "200", "300", "400", "500", "600", "700"],
     "step_files": [
       "100/ASV1_100.STEP",
       "100/FABRICATION/ALU_7075/ASV1_100_02A.STEP",

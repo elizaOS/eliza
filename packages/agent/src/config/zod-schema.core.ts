@@ -1,9 +1,11 @@
 import { isSafeExecutableValue } from "@elizaos/shared";
-import { z } from "zod";
+import * as zod from "zod";
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
 } from "./model-metadata.ts";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 export const ModelApiSchema = z.union([
   z.literal("openai-completions"),
@@ -309,7 +311,7 @@ export const normalizeAllowFrom = (values?: Array<string | number>): string[] =>
 export const requireOpenAllowFrom = (params: {
   policy?: string;
   allowFrom?: Array<string | number>;
-  ctx: z.RefinementCtx;
+  ctx: zod.RefinementCtx;
   path: Array<string | number>;
   message: string;
 }) => {

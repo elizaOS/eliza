@@ -506,9 +506,7 @@
     }
   },
   "provenance": "simulator",
-  "rtl_evidence_sources": [
-    "docs/evidence/cpu_ap/mpki_results_synthetic.json"
-  ],
+  "rtl_evidence_sources": ["docs/evidence/cpu_ap/mpki_results_synthetic.json"],
   "rtl_traces_without_model_pair": [
     "agent_decode",
     "agent_loop",

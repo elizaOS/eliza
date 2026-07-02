@@ -137,12 +137,6 @@ function deferred<T = void>(): {
   return { promise, resolve };
 }
 
-function abortError(): Error {
-  const err = new Error("aborted");
-  err.name = "AbortError";
-  return err;
-}
-
 function makeDeps(
   conversations: Conversation[],
   activeConversationId: string,
@@ -212,9 +206,17 @@ describe("useChatSend.handleChatStop", () => {
     });
   });
 
-  it("stops the growing assistant bubble and POSTs the backend turn abort", async () => {
+  it("keeps the interrupted partial (marked interrupted) and POSTs the backend turn abort", async () => {
     const started = deferred();
     let emitToken: ((token: string) => void) | null = null;
+    let lastStreamed = "";
+    // Mirror the REAL stream client (client-base.ts): a user Stop aborts the
+    // signal, and the client CANCELS the reader and RESOLVES with whatever
+    // streamed so far as an interrupted turn (`completed: false`) — it does NOT
+    // reject with an AbortError. That resolve is exactly what drives
+    // useChatSend's interrupt-marking + reattachInterruptedPartial; a mock that
+    // rejected instead would exercise the wrong (drop-empty-placeholder) path
+    // and could never assert the interrupted bubble is KEPT.
     mocks.client.sendConversationMessageStream.mockImplementation(
       (
         _id: string,
@@ -223,12 +225,22 @@ describe("useChatSend.handleChatStop", () => {
         _channelType: string,
         signal?: AbortSignal,
       ) => {
-        emitToken = (token: string) => onToken(token, token);
+        emitToken = (token: string) => {
+          lastStreamed = token;
+          onToken(token, token);
+        };
         started.resolve();
-        return new Promise((_resolve, reject) => {
-          signal?.addEventListener("abort", () => reject(abortError()), {
-            once: true,
-          });
+        return new Promise((resolve) => {
+          signal?.addEventListener(
+            "abort",
+            () =>
+              resolve({
+                text: lastStreamed,
+                agentName: "Eliza",
+                completed: false,
+              }),
+            { once: true },
+          );
         });
       },
     );
@@ -236,6 +248,19 @@ describe("useChatSend.handleChatStop", () => {
     const { deps, conversationMessagesRef } = makeDeps(
       [conversation("conv-1", "room-1")],
       "conv-1",
+    );
+    // Simulate the post-turn history reload: the server did NOT persist the
+    // reply that was cut off mid-stream, so the reload full-replaces the thread
+    // with just the user turn. This is precisely the case reattachInterruptedPartial
+    // exists to heal — without it the partial the user watched stream in would
+    // silently vanish. Assigned BEFORE renderHook so useChatSend's callbacks
+    // close over this override.
+    deps.loadConversationMessages = vi.fn(
+      async (): Promise<LoadConversationMessagesResult> => {
+        conversationMessagesRef.current =
+          conversationMessagesRef.current.filter((m) => m.role === "user");
+        return { ok: true };
+      },
     );
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -264,7 +289,8 @@ describe("useChatSend.handleChatStop", () => {
     );
     expect(assistantBefore?.text).toBe("partial reply so far");
 
-    // Stop: abort fires, the stream rejects, the bubble stops growing.
+    // Stop: abort fires, the stream resolves as interrupted, the partial is
+    // marked + reattached after the reload that dropped it.
     act(() => {
       result.current.handleChatStop();
     });
@@ -277,14 +303,21 @@ describe("useChatSend.handleChatStop", () => {
       "room-1",
       "ui-chat-stop",
     );
-    // No further token can grow the bubble after abort — its text is frozen at
-    // the last streamed value (the empty interrupted draft is dropped, a
-    // non-empty one stays put).
+    // STOP-keeps-the-partial (reattachInterruptedPartial): after the stop, the
+    // partial assistant bubble the user watched stream in MUST still exist,
+    // carry the interrupted marker, and hold exactly the partial text — even
+    // though the post-turn reload full-replaced the thread without it. No
+    // `?? fallback`: a deleted bubble (the pre-fix regression) fails here.
     const assistantAfter = conversationMessagesRef.current.find(
       (m) => m.role === "assistant",
     );
-    expect(assistantAfter?.text ?? "partial reply so far").toBe(
-      "partial reply so far",
-    );
+    expect(assistantAfter).toBeDefined();
+    expect(assistantAfter?.interrupted).toBe(true);
+    expect(assistantAfter?.text).toBe("partial reply so far");
+    // And it is the ONLY assistant turn — reattach never duplicates the bubble.
+    expect(
+      conversationMessagesRef.current.filter((m) => m.role === "assistant")
+        .length,
+    ).toBe(1);
   });
 });

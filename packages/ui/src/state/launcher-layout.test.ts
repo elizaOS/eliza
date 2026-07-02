@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   defaultLayout,
   emptyLayout,
-  LAUNCHER_DOCK_LIMIT,
   LAUNCHER_PAGE_SIZE,
   LAUNCHER_STORAGE_KEY,
   type LauncherLayout,
@@ -11,7 +10,6 @@ import {
   placedIds,
   readLauncherLayout,
   reconcileLayout,
-  toggleFavorite,
   writeLauncherLayout,
 } from "./launcher-layout.js";
 
@@ -19,7 +17,6 @@ describe("launcher-layout reconcile", () => {
   it("packs new available ids into pages of the given size", () => {
     const out = reconcileLayout(emptyLayout(), ["a", "b", "c"], 2);
     expect(out.pages).toEqual([["a", "b"], ["c"]]);
-    expect(out.favorites).toEqual([]);
   });
 
   it("uses a 4×6 = 24-tile default page size", () => {
@@ -44,34 +41,31 @@ describe("launcher-layout reconcile", () => {
   });
 
   it("drops ids that are no longer available", () => {
-    const layout = { favorites: ["x"], pages: [["a", "x", "b"]] };
+    const layout = { pages: [["a", "x", "b"]] };
     const out = reconcileLayout(layout, ["a", "b"], 4);
     expect(placedIds(out)).toEqual(new Set(["a", "b"]));
-    expect(out.favorites).toEqual([]);
   });
 
   it("preserves a manual order and appends new ids at the end", () => {
-    const layout = { favorites: [], pages: [["b", "a"]], manual: true };
+    const layout = { pages: [["b", "a"]], manual: true };
     const out = reconcileLayout(layout, ["a", "b", "c"], 4);
     expect(out.pages[0]).toEqual(["b", "a", "c"]);
   });
 
   it("follows the incoming catalog order until manually arranged", () => {
-    const layout = { favorites: [], pages: [["b", "a"]] };
+    const layout = { pages: [["b", "a"]] };
     const out = reconcileLayout(layout, ["a", "b", "c"], 4);
     expect(out.pages[0]).toEqual(["a", "b", "c"]);
   });
 
-  it("keeps favorites out of the page grid", () => {
-    const layout = { favorites: ["a"], pages: [["a", "b"]] };
-    const out = reconcileLayout(layout, ["a", "b"], 4);
-    expect(out.favorites).toEqual(["a"]);
-    expect(out.pages.flat()).toEqual(["b"]);
+  it("places every available view on a page (no dock reservation)", () => {
+    const layout = { pages: [["a", "b"]] };
+    const out = reconcileLayout(layout, ["a", "b", "c"], 4);
+    expect(out.pages.flat()).toEqual(["a", "b", "c"]);
   });
 
   it("repacks pages so removals leave no holes", () => {
     const layout = {
-      favorites: [],
       pages: [
         ["a", "b"],
         ["c", "d"],
@@ -82,42 +76,16 @@ describe("launcher-layout reconcile", () => {
   });
 });
 
-describe("launcher-layout favorites", () => {
-  it("toggles an id into and out of the dock", () => {
-    const added = toggleFavorite(emptyLayout(), "a");
-    expect(added.favorites).toEqual(["a"]);
-    const removed = toggleFavorite(added, "a");
-    expect(removed.favorites).toEqual([]);
-  });
-
-  it("evicts the oldest favorite when the dock is full", () => {
-    let layout = emptyLayout();
-    for (const id of ["a", "b", "c", "d", "e"]) {
-      layout = toggleFavorite(layout, id);
-    }
-    expect(layout.favorites).toHaveLength(LAUNCHER_DOCK_LIMIT);
-    expect(layout.favorites).toEqual(["b", "c", "d", "e"]);
-  });
-});
-
 describe("launcher-layout moveIcon", () => {
   it("moves an icon to a new page/index without duplicating it", () => {
-    const layout = { favorites: [], pages: [["a", "b", "c"]] };
+    const layout = { pages: [["a", "b", "c"]] };
     const out = moveIcon(layout, "a", 0, 2, 4);
     expect(out.pages.flat()).toEqual(["b", "c", "a"]);
     expect(out.pages.flat().filter((id) => id === "a")).toHaveLength(1);
   });
 
-  it("removes the icon from the dock when moved to a page", () => {
-    const layout = { favorites: ["a"], pages: [["b"]] };
-    const out = moveIcon(layout, "a", 0, 0, 4);
-    expect(out.favorites).toEqual([]);
-    expect(out.pages[0]).toEqual(["a", "b"]);
-  });
-
   it("marks the layout manual so the drag order is preserved", () => {
     const layout: LauncherLayout = {
-      favorites: [],
       pages: [["a", "b", "c"]],
     };
     expect(layout.manual).toBeUndefined();
@@ -131,7 +99,6 @@ describe("launcher-layout moveIcon", () => {
   it("moves an icon across pages, repacking the flattened order", () => {
     // Two full pages of size 2; drag the last icon to the front of page 0.
     const layout = {
-      favorites: [],
       pages: [
         ["a", "b"],
         ["c", "d"],
@@ -146,7 +113,7 @@ describe("launcher-layout moveIcon", () => {
   });
 
   it("clamps a target index beyond the page length to the end", () => {
-    const layout = { favorites: [], pages: [["a", "b"]] };
+    const layout = { pages: [["a", "b"]] };
     const out = moveIcon(layout, "a", 0, 99, 4);
     expect(out.pages.flat()).toEqual(["b", "a"]);
   });
@@ -156,19 +123,23 @@ describe("launcher-layout persistence", () => {
   beforeEach(() => window.localStorage.clear());
 
   it("round-trips through localStorage", () => {
-    const layout = { favorites: ["a"], pages: [["b", "c"]] };
+    const layout = { pages: [["b", "c"]] };
     writeLauncherLayout(layout);
     expect(readLauncherLayout()).toEqual(layout);
   });
 
-  it("returns an empty layout on malformed storage", () => {
+  it("falls back to the first-run default on malformed storage", () => {
     window.localStorage.setItem(LAUNCHER_STORAGE_KEY, "{not json");
-    expect(readLauncherLayout()).toEqual(emptyLayout());
+    expect(readLauncherLayout()).toEqual(defaultLayout());
+  });
+
+  it("first-run default is an empty page set (reconcile fills it)", () => {
+    expect(readLauncherLayout()).toEqual(defaultLayout());
+    expect(defaultLayout().pages).toEqual([]);
   });
 
   it("migrates a pre-rename 'springboard' layout forward (#9951)", () => {
     const legacy = {
-      favorites: ["a"],
       pages: [["b", "c"], ["d"]],
       manual: true,
     };
@@ -177,7 +148,7 @@ describe("launcher-layout persistence", () => {
       JSON.stringify(legacy),
     );
 
-    // First read migrates: the saved page order / favorites / manual flag survive.
+    // First read migrates: the saved page order / manual flag survive.
     expect(readLauncherLayout()).toEqual(legacy);
     // …and the layout is now persisted under the new key, old key cleared.
     expect(window.localStorage.getItem("elizaos.views.launcher")).toBe(
@@ -185,36 +156,21 @@ describe("launcher-layout persistence", () => {
     );
     expect(window.localStorage.getItem("elizaos.views.springboard")).toBeNull();
   });
-});
 
-describe("launcher-layout default dock (#9144)", () => {
-  beforeEach(() => window.localStorage.clear());
-
-  it("seeds an empty layout on first run — the favorites dock was removed", () => {
-    expect(readLauncherLayout()).toEqual(defaultLayout());
-    expect(readLauncherLayout().favorites).toEqual([]);
-    expect(readLauncherLayout().pages).toEqual([]);
-  });
-
-  it("first-run default seeds no favorites", () => {
-    expect(defaultLayout().favorites).toEqual([]);
-  });
-
-  it("flows every available view onto pages (no favorites reserved by default)", () => {
-    // With no default favorites, every available id lands on a page tile — none
-    // are held back in a dock.
-    const out = reconcileLayout(defaultLayout(), [
-      "settings",
-      "activity",
-      "files",
-      "notes",
-    ]);
-    expect(out.favorites).toEqual([]);
-    expect(out.pages.flat()).toEqual([
-      "settings",
-      "activity",
-      "files",
-      "notes",
-    ]);
+  it("drops a legacy 'favorites' field when parsing an old payload", () => {
+    // Pre-removal payloads carried a `favorites` array; parsing keeps only
+    // pages/manual so those docked ids flow back onto the grid via reconcile.
+    window.localStorage.setItem(
+      LAUNCHER_STORAGE_KEY,
+      JSON.stringify({
+        favorites: ["chat"],
+        pages: [["b", "a"]],
+        manual: true,
+      }),
+    );
+    const layout = readLauncherLayout();
+    expect(layout).toEqual({ pages: [["b", "a"]], manual: true });
+    const out = reconcileLayout(layout, ["chat", "a", "b"], 4);
+    expect(out.pages.flat()).toEqual(["b", "a", "chat"]);
   });
 });

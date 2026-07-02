@@ -3,7 +3,7 @@
  *
  * BACKGROUND action — lets the Eliza agent change the unified app background
  * from chat: pick a color, set an uploaded image, generate one from a prompt,
- * undo the last change, or reset to default.
+ * undo the last change, redo it, or reset to default.
  *
  * This is the single agent-side control path for the background. It drives the
  * SAME `BackgroundConfig` the Background view and the always-mounted
@@ -31,7 +31,17 @@ import {
 import { normalizeActionOptions, readStringOption } from "../params.js";
 
 /** Operation carried by the `background:apply` event. */
-export type BackgroundApplyOp = "set" | "undo" | "reset";
+export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
+
+/** Tunable GLSL uniform patch the agent can drive (#10694). The GLSL source
+ * itself lives in `@elizaos/ui` — the action only names a preset id + uniforms;
+ * the renderer resolves id → source and validates it. */
+export interface ShaderUniformPatch {
+	u_speed?: number;
+	u_scale?: number;
+	u_intensity?: number;
+	u_seed?: number;
+}
 
 /**
  * Payload broadcast to the renderer. Mirrors the contract consumed by
@@ -39,20 +49,33 @@ export type BackgroundApplyOp = "set" | "undo" | "reset";
  */
 export interface BackgroundApplyPayload {
 	op: BackgroundApplyOp;
-	/** "shader" (color field) or "image" (cover image). Omitted for undo/reset. */
-	mode?: "shader" | "image";
-	/** 6-digit hex for shader mode. */
+	/** "shader" (color field), "image" (cover image), or "glsl" (programmable
+	 * shader). Omitted for undo/redo/reset. */
+	mode?: "shader" | "image" | "glsl";
+	/** 6-digit hex for shader/glsl mode. */
 	color?: string;
 	/** Same-origin image URL (`/api/media/…`) for image mode. */
 	imageUrl?: string;
+	/** Named GLSL preset id (renderer resolves → source) for glsl mode. */
+	presetId?: string;
+	/** Uniform patch for glsl mode (named preset set or a live-shader tweak). */
+	uniforms?: ShaderUniformPatch;
 }
 
 /** The resolved plan for one BACKGROUND invocation. */
 type BackgroundPlan =
 	| { op: "undo" }
+	| { op: "redo" }
 	| { op: "reset" }
 	| { op: "set"; mode: "shader"; color: string; colorLabel: string }
 	| { op: "set"; mode: "image"; imageUrl: string }
+	| { op: "set"; mode: "glsl"; presetId: string; presetLabel: string }
+	| {
+			op: "set";
+			mode: "glsl-tweak";
+			uniforms: ShaderUniformPatch;
+			tweakLabel: string;
+	  }
 	| { op: "set"; generatePrompt: string };
 
 // Any reference to the background surface — gates the action so unrelated chat
@@ -62,6 +85,9 @@ const BACKGROUND_NOUN_RE = /\b(background|wallpaper|backdrop)\b/i;
 // History verbs (checked before set, so "go back" isn't read as an edit).
 const UNDO_RE =
 	/\b(undo|revert|go back|change it back|put it back|previous)\b/i;
+// Forward history verbs — mirror of UNDO_RE for the redo direction (#10694).
+// Matched before color resolution so "redo" can never false-match "red".
+const REDO_RE = /\b(redo|re-?do|go forward|step forward|re-?apply)\b/i;
 const RESET_RE = /\b(reset|restore (?:the )?default|default|factory)\b/i;
 // "set/make/change … background …" — a request to apply something.
 const SET_RE = /\b(set|make|change|use|turn|switch|give me|apply|put)\b/i;
@@ -72,6 +98,61 @@ const GENERATE_RE = /\b(generate|create|paint|draw|design|render|imagine)\b/i;
 // prompt like "from this attachment".
 const ATTACHMENT_REFERENCE_RE =
 	/\b(this|that|these|those|attached|attachment|upload(?:ed)?|file)\b/i;
+
+// ── Programmable GLSL shader (#10694) ───────────────────────────────────────
+// The action names a preset id; the GLSL source lives in @elizaos/ui, where the
+// renderer resolves id → source. Keep these ids in sync with SHADER_PRESETS.
+const SHADER_PRESET_TRIGGERS: ReadonlyArray<readonly [RegExp, string, string]> =
+	[
+		[/\b(aurora|northern lights|ribbons?)\b/i, "aurora", "aurora"],
+		[/\b(lava|molten|magma|volcano|fire|fiery|ember)\b/i, "lava", "lava"],
+		[/\b(plasma|psychedelic|trippy|kaleidoscop)\b/i, "plasma", "plasma"],
+		[/\b(waves?|ocean|water|sea|ripples?|tide)\b/i, "waves", "waves"],
+		[
+			/\b(nebula|space|cosmic|galaxy|stars?|clouds?|smoke)\b/i,
+			"nebula",
+			"nebula",
+		],
+	];
+// Any explicit ask for the programmable/animated shader mode.
+const SHADER_NOUN_RE = /\b(shaders?|animated|programmable|glsl|generative)\b/i;
+const DEFAULT_SHADER_PRESET = "aurora";
+// Relative tweak verbs → absolute uniform targets. Applied by the renderer only
+// when a GLSL shader is already live (a no-op otherwise).
+const SHADER_TWEAK_TRIGGERS: ReadonlyArray<
+	readonly [RegExp, ShaderUniformPatch, string]
+> = [
+	[
+		/\b(slower|slow down|calmer|gentler|relax(?:ed)?)\b/i,
+		{ u_speed: 0.4 },
+		"slower",
+	],
+	[
+		/\b(faster|speed up|quicker|energetic|livel(?:y|ier))\b/i,
+		{ u_speed: 2.2 },
+		"faster",
+	],
+	[
+		/\b(brighter|more intense|intenser|vivid|vibrant|bolder)\b/i,
+		{ u_intensity: 1.7 },
+		"brighter",
+	],
+	[
+		/\b(dimmer|darker|subtler|softer|muted|fade[rd]?)\b/i,
+		{ u_intensity: 0.5 },
+		"dimmer",
+	],
+	[
+		/\b(bigger|larger|zoom in|zoomed in|coarser)\b/i,
+		{ u_scale: 0.5 },
+		"bigger",
+	],
+	[
+		/\b(smaller|finer|more detail(?:ed)?|zoom out|zoomed out|busier)\b/i,
+		{ u_scale: 2.8 },
+		"more detailed",
+	],
+];
 
 /**
  * Curated color-name → hex map. Multi-word keys are listed first so "light
@@ -202,10 +283,20 @@ export function inferBackgroundPlan(
 	const explicitColor = readStringOption(options, "color");
 	const explicitImage = readStringOption(options, "imageUrl");
 	const explicitPrompt = readStringOption(options, "prompt");
+	const explicitPreset = readStringOption(options, "preset");
 	const trimmed = text.trim();
 	const mentionsBackground =
 		BACKGROUND_NOUN_RE.test(trimmed) ||
-		Boolean(explicitOp || explicitColor || explicitImage || explicitPrompt);
+		// "make the shader slower" is a background request even without the word
+		// "background" (but NOT bare "animated"/"generative" — too ambiguous).
+		/\b(shaders?|glsl)\b/i.test(trimmed) ||
+		Boolean(
+			explicitOp ||
+				explicitColor ||
+				explicitImage ||
+				explicitPrompt ||
+				explicitPreset,
+		);
 
 	if (!mentionsBackground) return null;
 
@@ -214,11 +305,56 @@ export function inferBackgroundPlan(
 		(UNDO_RE.test(trimmed) && !RESET_RE.test(trimmed))
 	)
 		return { op: "undo" };
+	if (
+		explicitOp === "redo" ||
+		(REDO_RE.test(trimmed) && !RESET_RE.test(trimmed))
+	)
+		return { op: "redo" };
 	if (explicitOp === "reset" || RESET_RE.test(trimmed)) return { op: "reset" };
 
 	// Explicit options win over text parsing.
 	if (explicitImage)
 		return { op: "set", mode: "image", imageUrl: explicitImage };
+	if (explicitPreset) {
+		// An explicit preset only outranks a resolvable color when the text
+		// itself asks for a shader (shader noun / preset vocabulary). Observed
+		// live in the #10694 trajectories: the planner stuffed `preset:"aurora"`
+		// alongside `color:"teal"` on "change the app background to teal",
+		// turning a plain color request into the aurora shader.
+		const textAsksForShader =
+			SHADER_NOUN_RE.test(trimmed) ||
+			SHADER_PRESET_TRIGGERS.some(([re]) => re.test(trimmed));
+		const presetColor = textAsksForShader
+			? null
+			: resolveColor(trimmed, explicitColor);
+		if (presetColor)
+			return {
+				op: "set",
+				mode: "shader",
+				color: presetColor.color,
+				colorLabel: presetColor.label,
+			};
+		return {
+			op: "set",
+			mode: "glsl",
+			presetId: explicitPreset,
+			presetLabel: explicitPreset,
+		};
+	}
+
+	// A named GLSL preset ("give me a lava background") is shader-specific
+	// vocabulary, so it resolves BEFORE a bare color — "molten" beats no color.
+	const presetMatch = SHADER_PRESET_TRIGGERS.find(([re]) => re.test(trimmed));
+	if (presetMatch)
+		return {
+			op: "set",
+			mode: "glsl",
+			presetId: presetMatch[1],
+			presetLabel: presetMatch[2],
+		};
+
+	// A concrete color wins over the generic "animated shader" / tweak words
+	// below (so "make it red brighter" lands on red, not a uniform tweak).
 	const color = resolveColor(trimmed, explicitColor);
 	if (color)
 		return {
@@ -227,6 +363,29 @@ export function inferBackgroundPlan(
 			color: color.color,
 			colorLabel: color.label,
 		};
+
+	// A relative tweak ("slower", "brighter") — checked BEFORE the generic
+	// shader fallback so "make the shader slower" is a uniform tweak, not a
+	// fresh default preset. The renderer applies it to the live shader's
+	// uniforms (a no-op if the current background isn't a shader).
+	const tweak = SHADER_TWEAK_TRIGGERS.find(([re]) => re.test(trimmed));
+	if (tweak)
+		return {
+			op: "set",
+			mode: "glsl-tweak",
+			uniforms: tweak[1],
+			tweakLabel: tweak[2],
+		};
+
+	// A generic ask for the programmable shader with no preset/tweak → default.
+	if (SHADER_NOUN_RE.test(trimmed))
+		return {
+			op: "set",
+			mode: "glsl",
+			presetId: DEFAULT_SHADER_PRESET,
+			presetLabel: DEFAULT_SHADER_PRESET,
+		};
+
 	if (explicitPrompt) return { op: "set", generatePrompt: explicitPrompt };
 
 	// An attached image the user wants to use.
@@ -323,26 +482,37 @@ export function createBackgroundAction(
 			"CHANGE_WALLPAPER",
 			"EDIT_BACKGROUND",
 			"UNDO_BACKGROUND",
+			"REDO_BACKGROUND",
 			"RESET_BACKGROUND",
 		],
 		description:
-			"Change the app background from chat: set a color, use an uploaded image, generate one from a description, undo the last change, or reset to default. Drives the unified background shared by the home and every view.",
+			"Change the app background from chat: set a color, run an animated programmable shader (aurora/lava/plasma/waves/nebula) and tweak it (slower/brighter/bigger), use an uploaded image, generate one from a description, undo the last change, redo it, or reset to default. Drives the unified background shared by the home and every view.",
 		descriptionCompressed:
-			"background set color|image|generate|undo|reset — recolor the app background, set an uploaded/generated wallpaper, undo, or reset to default",
+			"background set color|shader|image|generate|undo|redo|reset — recolor the app background, run an animated shader preset (aurora/lava/plasma/waves/nebula) + tweak (slower/brighter/bigger), set an uploaded/generated wallpaper, undo, redo, or reset",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
 				name: "op",
-				description: "Operation: set | undo | reset.",
+				description: "Operation: set | undo | redo | reset.",
 				required: false,
-				schema: { type: "string", enum: ["set", "undo", "reset"] },
+				schema: { type: "string", enum: ["set", "undo", "redo", "reset"] },
 			},
 			{
 				name: "color",
 				description: "A color name or hex (e.g. 'teal' or '#0891b2') for set.",
 				required: false,
 				schema: { type: "string" },
+			},
+			{
+				name: "preset",
+				description:
+					"Animated shader preset for set: aurora | lava | plasma | waves | nebula.",
+				required: false,
+				schema: {
+					type: "string",
+					enum: ["aurora", "lava", "plasma", "waves", "nebula"],
+				},
 			},
 			{
 				name: "prompt",
@@ -398,11 +568,40 @@ export function createBackgroundAction(
 					await callback?.({ text: reply });
 					return { success: true, text: reply, values: { op: "undo" } };
 				}
+				if (plan.op === "redo") {
+					await emit({ op: "redo" });
+					const reply = "Re-applied the background you undid.";
+					await callback?.({ text: reply });
+					return { success: true, text: reply, values: { op: "redo" } };
+				}
 				if (plan.op === "reset") {
 					await emit({ op: "reset" });
 					const reply = "Reset the background to the default.";
 					await callback?.({ text: reply });
 					return { success: true, text: reply, values: { op: "reset" } };
+				}
+				if ("mode" in plan && plan.mode === "glsl") {
+					// Named programmable-shader preset. The renderer resolves the
+					// preset id → GLSL source + its default uniforms.
+					await emit({ op: "set", mode: "glsl", presetId: plan.presetId });
+					const reply = `Set the background to the ${plan.presetLabel} shader.`;
+					await callback?.({ text: reply });
+					return {
+						success: true,
+						text: reply,
+						values: { op: "set", mode: "glsl", presetId: plan.presetId },
+					};
+				}
+				if ("mode" in plan && plan.mode === "glsl-tweak") {
+					// A relative tweak to the live shader's uniforms.
+					await emit({ op: "set", mode: "glsl", uniforms: plan.uniforms });
+					const reply = `Made the shader background ${plan.tweakLabel}.`;
+					await callback?.({ text: reply });
+					return {
+						success: true,
+						text: reply,
+						values: { op: "set", mode: "glsl", tweak: plan.tweakLabel },
+					};
 				}
 				if ("mode" in plan && plan.mode === "shader") {
 					await emit({ op: "set", mode: "shader", color: plan.color });
@@ -458,6 +657,32 @@ export function createBackgroundAction(
 			[
 				{
 					name: "{{user1}}",
+					content: { text: "give me a cool animated lava background" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Set the background to the lava shader.",
+						action: "BACKGROUND",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "make the shader slower" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Made the shader background slower.",
+						action: "BACKGROUND",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
 					content: { text: "generate a misty forest background" },
 				},
 				{
@@ -474,6 +699,16 @@ export function createBackgroundAction(
 					name: "{{agentName}}",
 					content: {
 						text: "Reverted the background to the previous one.",
+						action: "BACKGROUND",
+					},
+				},
+			],
+			[
+				{ name: "{{user1}}", content: { text: "redo the background" } },
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Re-applied the background you undid.",
 						action: "BACKGROUND",
 					},
 				},

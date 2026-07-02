@@ -39,6 +39,7 @@ import {
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type {
+  AccountConnectRequest,
   ChatFailureKind,
   ChatGenerationResult,
   LogEntry,
@@ -50,6 +51,7 @@ import {
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
+  normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
@@ -1196,6 +1198,13 @@ type ConversationRouteMessageRecord = {
    * here so the renderer's gate + Retry survive a GET /messages full-replace.
    */
   failureKind?: ChatFailureKind;
+  /**
+   * Structured "connect another account" request from the CONNECT_ACCOUNT
+   * action. Persisted on the assistant memory as `content.accountConnect`
+   * (spread through `buildPersistedAssistantContent`). Round-tripped here so
+   * the renderer's inline AddAccountDialog entry point survives a reload.
+   */
+  accountConnect?: AccountConnectRequest;
 };
 
 async function ensureConversationGreetingStored(
@@ -1679,6 +1688,12 @@ export async function handleConversationRoutes(
             rawFailureKind === "local_inference"
               ? rawFailureKind
               : undefined;
+          // The CONNECT_ACCOUNT action stamps `content.accountConnect` on the
+          // assistant memory. Validate + round-trip it so the inline
+          // AddAccountDialog entry point survives the GET /messages replace.
+          const accountConnect = normalizeAccountConnectRequest(
+            content.accountConnect,
+          );
           const role = m.entityId === agentId ? "assistant" : "user";
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
@@ -1761,6 +1776,7 @@ export async function handleConversationRoutes(
             senderEntityId:
               typeof m.entityId === "string" ? m.entityId : undefined,
             ...(failureKind ? { failureKind } : {}),
+            ...(accountConnect ? { accountConnect } : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -2328,6 +2344,12 @@ export async function handleConversationRoutes(
             // (e.g. a canned provider-issue phrase folded into the reply). Mirror
             // the error branch so the renderer's gate + Retry persist.
             ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+            // Structured "connect another account" request from CONNECT_ACCOUNT.
+            // Carried like failureKind so the renderer can offer the inline
+            // AddAccountDialog entry point instead of a plain reply bubble.
+            ...(result.accountConnect
+              ? { accountConnect: result.accountConnect }
+              : {}),
             ...(result.localInference
               ? { localInference: result.localInference }
               : {}),
@@ -2632,6 +2654,9 @@ export async function handleConversationRoutes(
           // (e.g. a canned provider-issue phrase folded into the reply). Mirror
           // the error branch so the renderer's gate + Retry persist.
           ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+          ...(result.accountConnect
+            ? { accountConnect: result.accountConnect }
+            : {}),
           ...(result.localInference
             ? { localInference: result.localInference }
             : {}),

@@ -3,6 +3,7 @@ import { ElizaSchema } from "../config/zod-schema";
 import {
   type AudioGenerationProvider,
   createAudioProvider,
+  createImageProvider,
   createVideoProvider,
   createVisionProvider,
 } from "./media-provider";
@@ -216,6 +217,76 @@ describe("media audio provider routing", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/voiceId/);
   });
+
+  it("does not expose a direct Eliza Cloud audio fetch provider", () => {
+    expect(() =>
+      createAudioProvider(undefined, {
+        cloudMediaDisabled: false,
+        elizaCloudApiKey: "eliza_cloud_key",
+        elizaCloudBaseUrl: "https://api.elizacloud.ai/api/v1",
+      }),
+    ).toThrow(/ModelType\.AUDIO\/TEXT_TO_SPEECH/);
+  });
+});
+
+describe("media image provider routing", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("does not expose a direct Eliza Cloud image fetch provider", () => {
+    expect(() =>
+      createImageProvider(undefined, {
+        cloudMediaDisabled: false,
+        elizaCloudApiKey: "eliza_cloud_key",
+        elizaCloudBaseUrl: "https://api.elizacloud.ai/api/v1",
+      }),
+    ).toThrow(/ModelType\.IMAGE/);
+  });
+
+  it("still creates configured own-key image providers", async () => {
+    const calls: FetchCall[] = [];
+    fakeMediaFetch(
+      Response.json({
+        images: [{ url: "https://cdn.example/fal-image.png" }],
+      }),
+      calls,
+    );
+
+    const provider = createImageProvider(
+      {
+        mode: "own-key",
+        provider: "fal",
+        fal: {
+          apiKey: "fal-key",
+          model: "fal-ai/flux-pro",
+          baseUrl: "https://fal.test",
+        },
+      },
+      { cloudMediaDisabled: false },
+    );
+
+    await expect(
+      provider.generate({
+        prompt: "glass lighthouse",
+        size: "square_hd",
+      }),
+    ).resolves.toEqual({
+      success: true,
+      data: {
+        imageUrl: "https://cdn.example/fal-image.png",
+      },
+    });
+    expect(calls[0].url).toBe("https://fal.test/fal-ai/flux-pro");
+    expect(calls[0].init?.headers).toMatchObject({
+      Authorization: "Key fal-key",
+    });
+    expect(calls[0].body).toMatchObject({
+      prompt: "glass lighthouse",
+      image_size: "square_hd",
+      num_images: 1,
+    });
+  });
 });
 
 describe("media video provider routing", () => {
@@ -294,6 +365,16 @@ describe("media video provider routing", () => {
       error: "No video returned from FAL",
     });
     expect(calls).toHaveLength(1);
+  });
+
+  it("does not expose a direct Eliza Cloud video fetch provider", () => {
+    expect(() =>
+      createVideoProvider(undefined, {
+        cloudMediaDisabled: false,
+        elizaCloudApiKey: "eliza_cloud_key",
+        elizaCloudBaseUrl: "https://api.elizacloud.ai/api/v1",
+      }),
+    ).toThrow(/ModelType\.VIDEO/);
   });
 });
 

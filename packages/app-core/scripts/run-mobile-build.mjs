@@ -77,12 +77,18 @@ import {
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
 import {
+  evaluateIosLocalLaneRuntime,
+  rendererLaneStampMismatches,
+  resolveExpectedRendererStamp,
+} from "./lib/mobile-lane-stamp.mjs";
+import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "./lib/mobile-web-build-reuse.mjs";
 import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
+  readRendererBuildManifest,
 } from "./lib/renderer-build-manifest.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
@@ -1002,6 +1008,22 @@ export function resolveMobileBuildPolicy(platform) {
 }
 
 async function buildWeb(platform) {
+  const lanePolicy = resolveMobileBuildPolicy(platform);
+  const laneExpected = resolveExpectedRendererStamp({
+    policy: lanePolicy,
+    env: process.env,
+  });
+  // Refuse to even START a renderer build that would bake the #11030 hang
+  // combination (ios-local + non-local runtime mode + no Agent.apiBase, which
+  // can only happen via a leaked VITE_ELIZA_IOS_RUNTIME_MODE override).
+  const laneRule = evaluateIosLocalLaneRuntime({
+    platform,
+    runtimeMode: laneExpected.runtimeMode,
+    env: process.env,
+  });
+  if (!laneRule.ok) {
+    throw new Error(`[mobile-build] ${laneRule.reason}`);
+  }
   // Auto-skip the full Vite renderer build when it is NOT explicitly forced and
   // the existing dist is already up-to-date for this variant/target (#9626).
   // This reuses the same manifest + staleness checks as the explicit-skip path
@@ -1009,13 +1031,15 @@ async function buildWeb(platform) {
   // mismatched dist simply does not match here and falls through to a rebuild.
   // Explicit ELIZA_MOBILE_SKIP_WEB_BUILD=1 keeps its force-reuse semantics below.
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1") {
-    const autoPolicy = resolveMobileBuildPolicy(platform);
     const autoStatus = mobileWebDistReuseStatus({
       appDir,
       repoRoot,
-      expectedVariant:
-        process.env.ELIZA_BUILD_VARIANT || autoPolicy.buildVariant,
-      expectedTarget: autoPolicy.capacitorTarget,
+      expectedVariant: laneExpected.variant,
+      expectedTarget: laneExpected.capacitorTarget,
+      // A dist built for another lane's runtime mode (e.g. a cloud-hybrid
+      // bundle left behind by an ios cloud build) must never be reused into
+      // this lane — it falls through to a fresh rebuild instead (#11030).
+      expectedRuntimeMode: laneExpected.runtimeMode,
     });
     if (autoStatus.reusable) {
       console.log(
@@ -1026,12 +1050,12 @@ async function buildWeb(platform) {
     }
   }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
-    const policy = resolveMobileBuildPolicy(platform);
     const status = mobileWebDistReuseStatus({
       appDir,
       repoRoot,
-      expectedVariant: process.env.ELIZA_BUILD_VARIANT || policy.buildVariant,
-      expectedTarget: policy.capacitorTarget,
+      expectedVariant: laneExpected.variant,
+      expectedTarget: laneExpected.capacitorTarget,
+      expectedRuntimeMode: laneExpected.runtimeMode,
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(
@@ -1073,7 +1097,7 @@ async function buildWeb(platform) {
     iosRuntimeMode,
     runtimeExecutionMode,
     releaseAuthority,
-  } = resolveMobileBuildPolicy(platform);
+  } = lanePolicy;
   const env = withMobileBuildNodeOptions({
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
@@ -1146,6 +1170,79 @@ async function buildWeb(platform) {
     cwd: appDir,
     env,
   });
+}
+
+/**
+ * Lane guard (#11030): assert packages/app/dist carries EXACTLY the renderer
+ * stamp this lane bakes, immediately before Capacitor sync copies it into the
+ * native project. Between buildWeb() and cap sync there is a window (agent
+ * bundle build, CocoaPods, platform templating) in which another lane's build
+ * can overwrite dist — that is how a cloud/store renderer left behind by
+ * `install:ios:cloud:sideload` was baked into every later `build:ios:local`
+ * artifact and hung real devices at "Booting up…".
+ *
+ * On mismatch the renderer is REBUILT for this lane (buildWeb already knows
+ * how); a mismatched bundle is never staged silently. The explicit
+ * ELIZA_MOBILE_SKIP_WEB_BUILD=1 + ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1
+ * escape hatch keeps its ship-anyway semantics for variant/target/staleness,
+ * but the known-broken ios-local hang combination (non-local runtime mode
+ * with no Agent.apiBase) stays a hard failure even then — that bundle is not
+ * merely stale, it cannot boot on a device.
+ */
+async function ensureRendererDistMatchesLane(platform) {
+  const policy = resolveMobileBuildPolicy(platform);
+  const expected = resolveExpectedRendererStamp({
+    policy,
+    env: process.env,
+  });
+  const distDir = path.join(appDir, "dist");
+  let manifest = readRendererBuildManifest(distDir);
+  let mismatches = rendererLaneStampMismatches(manifest, expected);
+  if (mismatches.length > 0) {
+    const detail = formatMobileWebDistProblems(mismatches);
+    const skipWebBuild = process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1";
+    const allowStale =
+      skipWebBuild &&
+      process.env.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE === "1";
+    if (allowStale) {
+      console.warn(
+        `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1 — staging a renderer that does not match the '${platform}' lane:\n${detail}`,
+      );
+    } else if (skipWebBuild) {
+      throw new Error(
+        `[mobile-build] refusing to stage packages/app/dist into the native project — it was not built for the '${platform}' lane:\n${detail}\n` +
+          `Drop ELIZA_MOBILE_SKIP_WEB_BUILD to rebuild for this lane, or set ` +
+          `ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1 to ship it anyway (NOT recommended).`,
+      );
+    } else {
+      console.warn(
+        `[mobile-build] packages/app/dist does not match the '${platform}' lane — rebuilding the renderer for this lane instead of staging a wrong-lane bundle (#11030):\n${detail}`,
+      );
+      await buildWeb(platform);
+      manifest = readRendererBuildManifest(distDir);
+      mismatches = rendererLaneStampMismatches(manifest, expected);
+      if (mismatches.length > 0) {
+        throw new Error(
+          `[mobile-build] packages/app/dist still does not match the '${platform}' lane after a rebuild:\n${formatMobileWebDistProblems(mismatches)}\n` +
+            `An env override (ELIZA_BUILD_VARIANT / VITE_ELIZA_IOS_RUNTIME_MODE / VITE_ELIZA_ANDROID_RUNTIME_MODE / ELIZA_RUNTIME_MODE) ` +
+            `is forcing a different stamp than this lane expects — unset it or use the matching build lane.`,
+        );
+      }
+    }
+  }
+  // Hard #11030 rule on the ACTUAL bundle about to be staged — applies even
+  // under the ALLOW_STALE escape hatch (a cloud-mode ios-local bundle with no
+  // endpoint is known-broken on device, not merely stale).
+  const distRule = evaluateIosLocalLaneRuntime({
+    platform,
+    runtimeMode: manifest?.runtimeMode ?? null,
+    env: process.env,
+  });
+  if (!distRule.ok) {
+    throw new Error(
+      `[mobile-build] refusing to stage packages/app/dist into the native project: ${distRule.reason}`,
+    );
+  }
 }
 
 async function buildMobileAgentBundle({ target = "android" } = {}) {
@@ -5075,6 +5172,7 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
+  "ElizaAgentWatchdogPolicy.java",
   "ElizaAccessibilityService.java",
   "ElizaAssistActivity.java",
   "ElizaBootReceiver.java",
@@ -6333,6 +6431,7 @@ export async function runAndroidBuild(
   await buildWeb(target.webTarget);
   if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
   await ensurePlatform("android");
+  await ensureRendererDistMatchesLane(target.webTarget);
   await runCapacitor(["sync", "android"]);
   ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
@@ -7019,6 +7118,10 @@ async function buildIos({ local = false } = {}) {
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
+  // Whether sync runs or is skipped, dist is about to be staged into
+  // ios/App/App/public (cap sync webDir copy and/or the mirror overlay just
+  // below) — verify it matches this lane first (#11030).
+  await ensureRendererDistMatchesLane(local ? "ios-local" : "ios");
   if (shouldSkipIosCapacitorSync()) {
     console.log("[mobile-build] Skipping Capacitor iOS sync.");
   } else {

@@ -126,7 +126,7 @@ jobs:
         run: node packages/scripts/turbo-cache-key.mjs --github-output
 
       - name: Restore Turbo cache (GitHub Actions)
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-release-${{ steps.turbo_cache_key.outputs.turbo_cache_key }}
@@ -135,7 +135,7 @@ jobs:
             turbo-${{ runner.os }}-
 
       - name: Cache Bun install
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
@@ -787,7 +787,7 @@ jobs:
       # Create GitHub Release for beta (not for production, as it already exists)
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

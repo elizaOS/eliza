@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
   RateLimitPresets,
   rateLimit,
@@ -19,7 +20,7 @@ async function handlePOST(
     );
   }
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;
 
     const existingApp = await appsService.getById(id);
@@ -40,6 +41,14 @@ async function handlePOST(
           success: false,
           error: "Access denied",
         },
+        { status: 403 },
+      );
+    }
+    // An app-scoped API key may only rotate its OWN app's key, never a sibling's
+    // (#10852) — otherwise App A's key could DoS App B by rotating B's key.
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+      return Response.json(
+        { success: false, error: "Access denied" },
         { status: 403 },
       );
     }

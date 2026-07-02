@@ -48,7 +48,9 @@ export function voiceRunVerdict(
  * under `<runDir>/audio/<scenarioId>` and record run-dir-relative paths so the
  * run viewer (served from the run dir) can link/play them. Unset ⇒ no audio IO.
  */
-function resolveAudioCaptureSink(scenario: VoiceScenario): VoiceAudioCaptureSink | undefined {
+function resolveAudioCaptureSink(
+  scenario: VoiceScenario,
+): VoiceAudioCaptureSink | undefined {
   const runDir = process.env.ELIZA_LIFEOPS_RUN_DIR;
   if (!runDir) {
     return undefined;

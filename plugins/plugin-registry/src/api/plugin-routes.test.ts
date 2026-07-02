@@ -52,7 +52,10 @@ vi.mock("@elizaos/shared", () => {
   };
 });
 
-import { handlePluginRoutes, type PluginRouteContext } from "./plugin-routes.js";
+import {
+  handlePluginRoutes,
+  type PluginRouteContext,
+} from "./plugin-routes.js";
 
 const originalEnv = { ...process.env };
 
@@ -189,10 +192,7 @@ describe("handlePluginRoutes config persistence", () => {
         },
       },
     };
-    const ctx = makeContext(
-      { config: { DISCORD_API_TOKEN: " " } },
-      config,
-    );
+    const ctx = makeContext({ config: { DISCORD_API_TOKEN: " " } }, config);
 
     await handlePluginRoutes(ctx);
 
@@ -210,29 +210,28 @@ describe("handlePluginRoutes config persistence", () => {
     expect(process.env.DISCORD_API_TOKEN).toBeUndefined();
   });
 
-  it.each(["../../evil", "@scope/../evil", "plugin name", "", "   "])(
-    "rejects hostile install package name %j before installer access",
-    async (name) => {
-      const config = { env: {}, plugins: { entries: {} } };
-      const requirePluginManager = vi.fn();
-      const ctx = {
-        ...makeContext({ name }, config, {
-          method: "POST",
-          pathname: "/api/plugins/install",
-          url: new URL("http://localhost/api/plugins/install"),
-        }),
-        requirePluginManager,
-      } as PluginRouteContext;
+  it.each([
+    "../../evil",
+    "@scope/../evil",
+    "plugin name",
+    "",
+    "   ",
+  ])("rejects hostile install package name %j before installer access", async (name) => {
+    const config = { env: {}, plugins: { entries: {} } };
+    const requirePluginManager = vi.fn();
+    const ctx = {
+      ...makeContext({ name }, config, {
+        method: "POST",
+        pathname: "/api/plugins/install",
+        url: new URL("http://localhost/api/plugins/install"),
+      }),
+      requirePluginManager,
+    } as PluginRouteContext;
 
-      const handled = await handlePluginRoutes(ctx);
+    const handled = await handlePluginRoutes(ctx);
 
-      expect(handled).toBe(true);
-      expect(requirePluginManager).not.toHaveBeenCalled();
-      expect(ctx.error).toHaveBeenCalledWith(
-        ctx.res,
-        expect.any(String),
-        400,
-      );
-    },
-  );
+    expect(handled).toBe(true);
+    expect(requirePluginManager).not.toHaveBeenCalled();
+    expect(ctx.error).toHaveBeenCalledWith(ctx.res, expect.any(String), 400);
+  });
 });

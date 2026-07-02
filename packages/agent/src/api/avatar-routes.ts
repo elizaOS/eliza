@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { readRequestBodyBuffer } from "@elizaos/core";
-import { resolveStateDir } from "../config/paths.ts";
 
 // Lazy memoized loader — previously module-scope `await import`, which forced
 // @elizaos/plugin-discord to load on every agent boot just for two pure path
@@ -40,7 +38,7 @@ export interface AvatarRouteContext {
 export async function handleAvatarRoutes(
   ctx: AvatarRouteContext,
 ): Promise<boolean> {
-  const { req, res, method, pathname, json, error } = ctx;
+  const { res, method, pathname, error } = ctx;
 
   if (
     (method === "GET" || method === "HEAD") &&
@@ -100,154 +98,12 @@ export async function handleAvatarRoutes(
     }
   }
 
-  // ── POST /api/avatar/vrm ─────────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/avatar/vrm") {
-    const MAX_VRM_BYTES = 50 * 1024 * 1024; // 50 MB
-    const rawBody = await readRequestBodyBuffer(req, {
-      maxBytes: MAX_VRM_BYTES,
-      returnNullOnTooLarge: true,
-    });
-    if (!rawBody || rawBody.length === 0) {
-      error(res, "Request body is empty or exceeds 50 MB", 400);
-      return true;
-    }
-    const GLB_MAGIC = Buffer.from([0x67, 0x6c, 0x54, 0x46]); // "glTF"
-    if (rawBody.length < 4 || !rawBody.subarray(0, 4).equals(GLB_MAGIC)) {
-      error(res, "Invalid VRM file: not a valid glTF/GLB file", 400);
-      return true;
-    }
-    const avatarDir = path.join(resolveStateDir(), "avatars");
-    fs.mkdirSync(avatarDir, { recursive: true });
-    const vrmPath = path.join(avatarDir, "custom.vrm");
-    fs.writeFileSync(vrmPath, rawBody);
-    json(res, { ok: true, size: rawBody.length });
-    return true;
-  }
-
-  // ── GET /api/avatar/vrm ──────────────────────────────────────────────
-  if (
-    (method === "GET" || method === "HEAD") &&
-    pathname === "/api/avatar/vrm"
-  ) {
-    const vrmPath = path.join(resolveStateDir(), "avatars", "custom.vrm");
-    try {
-      const stat = fs.statSync(vrmPath);
-      if (!stat.isFile()) {
-        error(res, "No custom avatar found", 404);
-        return true;
-      }
-      const headers: Record<string, string | number> = {
-        "Content-Type": "model/gltf-binary",
-        "Content-Length": stat.size,
-        "Cache-Control": "no-cache",
-      };
-      if (method === "HEAD") {
-        res.writeHead(200, headers);
-        res.end();
-        return true;
-      }
-      const body = fs.readFileSync(vrmPath);
-      res.writeHead(200, headers);
-      res.end(body);
-    } catch {
-      error(res, "No custom avatar found", 404);
-    }
-    return true;
-  }
-
-  // ── POST /api/avatar/background ──────────────────────────────────────
-  if (method === "POST" && pathname === "/api/avatar/background") {
-    const MAX_BG_BYTES = 10 * 1024 * 1024; // 10 MB
-    const rawBody = await readRequestBodyBuffer(req, {
-      maxBytes: MAX_BG_BYTES,
-      returnNullOnTooLarge: true,
-    });
-    if (!rawBody || rawBody.length === 0) {
-      error(res, "Request body is empty or exceeds 10 MB", 400);
-      return true;
-    }
-    let ext = "";
-    if (
-      rawBody[0] === 0x89 &&
-      rawBody[1] === 0x50 &&
-      rawBody[2] === 0x4e &&
-      rawBody[3] === 0x47
-    ) {
-      ext = "png";
-    } else if (rawBody[0] === 0xff && rawBody[1] === 0xd8) {
-      ext = "jpg";
-    } else if (
-      rawBody[0] === 0x52 &&
-      rawBody[1] === 0x49 &&
-      rawBody[2] === 0x46 &&
-      rawBody[3] === 0x46 &&
-      rawBody.length >= 12 &&
-      rawBody[8] === 0x57 &&
-      rawBody[9] === 0x45 &&
-      rawBody[10] === 0x42 &&
-      rawBody[11] === 0x50
-    ) {
-      ext = "webp";
-    } else {
-      error(res, "Invalid image file: expected PNG, JPEG, or WebP", 400);
-      return true;
-    }
-    const avatarDir = path.join(resolveStateDir(), "avatars");
-    fs.mkdirSync(avatarDir, { recursive: true });
-    for (const old of ["png", "jpg", "webp"]) {
-      const p = path.join(avatarDir, `custom-background.${old}`);
-      try {
-        fs.unlinkSync(p);
-      } catch {}
-    }
-    const bgPath = path.join(avatarDir, `custom-background.${ext}`);
-    fs.writeFileSync(bgPath, rawBody);
-    json(res, { ok: true, size: rawBody.length });
-    return true;
-  }
-
-  // ── GET /api/avatar/background ─────────────────────────────────────────
-  if (
-    (method === "GET" || method === "HEAD") &&
-    pathname === "/api/avatar/background"
-  ) {
-    const avatarDir = path.join(resolveStateDir(), "avatars");
-    const MIME: Record<string, string> = {
-      png: "image/png",
-      jpg: "image/jpeg",
-      webp: "image/webp",
-    };
-    let found = "";
-    for (const ext of ["png", "jpg", "webp"]) {
-      const p = path.join(avatarDir, `custom-background.${ext}`);
-      try {
-        if (fs.statSync(p).isFile()) {
-          found = p;
-          break;
-        }
-      } catch {}
-    }
-    if (!found) {
-      error(res, "No custom background found", 404);
-      return true;
-    }
-    const stat = fs.statSync(found);
-    const fileExt = path.extname(found).slice(1);
-    const headers: Record<string, string | number> = {
-      "Content-Type": MIME[fileExt] || "application/octet-stream",
-      "Content-Length": stat.size,
-      "Cache-Control": "no-cache",
-    };
-    if (method === "HEAD") {
-      res.writeHead(200, headers);
-      res.end();
-      return true;
-    }
-    const body = fs.readFileSync(found);
-    res.writeHead(200, headers);
-    res.end(body);
-    return true;
-  }
+  // The custom VRM (`/api/avatar/vrm`) and custom background
+  // (`/api/avatar/background`) upload/serve routes were removed with the 3D
+  // companion feature (#10434): nothing renders an uploaded model or scene
+  // background anymore, so the routes only produced onboarding 404 noise from
+  // the startup existence probes. Only the Discord avatar cache route above
+  // remains. Bundled/content-pack avatars use `avatarIndex` (client-side).
 
   return false;
 }

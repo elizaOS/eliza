@@ -38,7 +38,10 @@ export default scenario({
         description: "travel readiness review",
         includesAny: ["NYC", "flight", "hotel", "buffer", "receipt", "expense"],
       }),
-      responseIncludesAny: ["NYC", /flight|hotel|buffer|receipt|expense/i],
+      // Derived readiness status: a real checklist marks each item's state
+      // (booked/confirmed/missing/gap) — none of these tokens appear in the
+      // user turn, so a parroted list of the request's nouns cannot pass.
+      responseIncludesAny: ["booked", "confirmed", "missing", "gap"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

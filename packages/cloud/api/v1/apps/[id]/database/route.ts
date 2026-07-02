@@ -16,6 +16,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   type AppDatabaseMode,
@@ -37,6 +38,9 @@ async function loadOwnedApp(c: AppContext) {
   const appRow = await appsService.getById(appId);
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
+  }
+  if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+    return { error: "Access denied", status: 403 as const };
   }
   return { appRow, appId };
 }

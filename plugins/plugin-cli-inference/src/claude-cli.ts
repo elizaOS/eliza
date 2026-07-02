@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
 import { flattenPrompt } from "./prompt-flatten";
+import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 import { filterEnv, redactStderr, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
 
 /**
@@ -222,6 +223,12 @@ export class ClaudeCli {
         );
       }
       const text = result.stdout.trim();
+      const apiError = parseProviderApiErrorText(text);
+      if (apiError) {
+        throw new ProviderApiError(`[cli-inference] claude upstream ${text.slice(0, 160)}`, {
+          statusCode: apiError.statusCode,
+        });
+      }
       if (text.length === 0) {
         throw new Error(
           `[cli-inference] claude returned empty stdout: ${redactStderr(result.stderr)}`

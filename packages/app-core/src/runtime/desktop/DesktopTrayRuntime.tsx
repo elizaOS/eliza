@@ -1,13 +1,18 @@
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
+  openDesktopAppWindow,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
-import { TRAY_ACTION_EVENT } from "@elizaos/ui/events";
+import {
+  dispatchOpenNotificationCenter,
+  TRAY_ACTION_EVENT,
+} from "@elizaos/ui/events";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
 import { useEffect } from "react";
+import { DESKTOP_VIEW_WINDOWS, parseTrayOpenViewItemId } from "./tray-menu";
 
 interface TrayActionDetail {
   itemId?: string;
@@ -121,6 +126,25 @@ export function DesktopTrayRuntime() {
       };
 
       const run = async () => {
+        // "Views" submenu (#10716): open the selected view in its own desktop
+        // window via the same app-window path detached surfaces use.
+        const viewId = parseTrayOpenViewItemId(itemId);
+        if (viewId) {
+          const view = DESKTOP_VIEW_WINDOWS.find(
+            (entry) => entry.id === viewId,
+          );
+          if (view) {
+            await openDesktopAppWindow({
+              slug: `view-${view.id}`,
+              title: t(`desktop.views.${view.id}`, {
+                defaultValue: view.label,
+              }),
+              path: view.path,
+            });
+          }
+          return;
+        }
+
         switch (itemId) {
           case "tray-open-chat":
             switchShellView("desktop");
@@ -130,6 +154,14 @@ export function DesktopTrayRuntime() {
           case "tray-open-plugins":
             switchShellView("desktop");
             setTab("plugins");
+            await showAndFocusWindow();
+            return;
+          case "tray-open-notifications":
+            // Desktop-native entry (#10706): open the notification center in
+            // place (the always-mounted headless NotificationCenter listens for
+            // the event) instead of navigating a tab.
+            switchShellView("desktop");
+            dispatchOpenNotificationCenter();
             await showAndFocusWindow();
             return;
           case "tray-open-desktop-workspace":

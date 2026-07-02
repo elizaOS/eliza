@@ -157,7 +157,7 @@ describe("TranscriptViewerOverlay", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it("copies the text to the clipboard", async () => {
+  it("copies the text to the clipboard and reports 'Copied' on success", async () => {
     render(
       <TranscriptViewerOverlay
         attachment={transcriptAttachment()}
@@ -168,6 +168,57 @@ describe("TranscriptViewerOverlay", () => {
     fireEvent.click(screen.getByTestId("transcript-copy"));
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith("hello world"),
+    );
+    // "Copied" is shown only because the write actually resolved.
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-copy").textContent).toContain(
+        "Copied",
+      ),
+    );
+  });
+
+  it("does NOT report 'Copied' when the clipboard write rejects — surfaces the failure", async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+    });
+    render(
+      <TranscriptViewerOverlay
+        attachment={transcriptAttachment()}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => screen.getByTestId("transcript-text"));
+    fireEvent.click(screen.getByTestId("transcript-copy"));
+    // The failure is surfaced on the control, and it never claims success.
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-copy").textContent).toMatch(
+        /failed/i,
+      ),
+    );
+    expect(screen.getByTestId("transcript-copy").textContent).not.toContain(
+      "Copied",
+    );
+  });
+
+  it("does NOT report 'Copied' when the clipboard is unavailable and the Share fallback also fails", async () => {
+    // No Clipboard API and no Web Share API — Share falls back to copy, which
+    // then has nothing to write to.
+    Object.assign(navigator, { clipboard: undefined, share: undefined });
+    render(
+      <TranscriptViewerOverlay
+        attachment={transcriptAttachment()}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => screen.getByTestId("transcript-text"));
+    fireEvent.click(screen.getByTestId("transcript-share"));
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-copy").textContent).toMatch(
+        /failed/i,
+      ),
+    );
+    expect(screen.getByTestId("transcript-copy").textContent).not.toContain(
+      "Copied",
     );
   });
 

@@ -1562,6 +1562,33 @@ def _score_from_hermes_env_json(data: JSONValue) -> ScoreExtraction:
     }
     if "placeholder" in metric_keys and not (metric_keys & score_metric_keys):
         raise ValueError("hermes_env: placeholder-only score is not publishable")
+
+    def _metric_number(key: str) -> float | None:
+        value = metrics_dict.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value)
+
+    # A score derived from rollouts that ALL failed to complete is not a real
+    # measurement — like the placeholder-only gate above, publishing it would
+    # larp a "0.0" the harness never actually measured. Reject when every sampled
+    # rollout is incomplete so the run is rerun / manually reviewed instead.
+    incomplete_rollouts = _metric_number("incomplete_rollouts")
+    sampled = _metric_number("sample_rows")
+    if sampled is None:
+        sampled = _metric_number("total_tasks")
+    if (
+        incomplete_rollouts is not None
+        and incomplete_rollouts > 0
+        and sampled is not None
+        and sampled > 0
+        and incomplete_rollouts >= sampled
+    ):
+        raise ValueError(
+            "hermes_env: all sampled rollouts are incomplete; a zero from "
+            "incomplete rollouts is not a real measurement and is not publishable"
+        )
+
     env_id_public = get_optional(root, "env_id_public") or get_optional(root, "env_id")
     if env_id_public is not None:
         metrics_dict["env_id"] = env_id_public

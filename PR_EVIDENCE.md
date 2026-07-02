@@ -79,7 +79,7 @@ leave it blank.
 | **Frontend logs** | any UI / client | browser console + network trace showing the request/response and state change | paste in PR + screenshot |
 | **Full-page screenshots** | any UI change | `audit:app` (app) / `audit:cloud` (cloud-frontend) or `test:e2e:record` sheets; before **and** after; desktop **and** mobile; portrait **and** landscape | `.github/issue-evidence/` |
 | **Video walkthrough** | any user-facing flow | `bun run test:e2e:record` (records the run) — a full click-through of the feature, start to finish | `.github/issue-evidence/` (link if large) |
-| **Audio/voice walkthrough** | voice, transcript, TTS/STT, omnivoice | captured audio of the real round-trip + a narrated walkthrough | `.github/issue-evidence/` (link if large) |
+| **Audio/voice walkthrough** | voice, transcript, TTS/STT, kokoro | captured audio of the real round-trip + a narrated walkthrough | `.github/issue-evidence/` (link if large) |
 | **Domain artifacts** | memory, knowledge, DB, wallet/chain, scheduled tasks, files, devices | the *things the change produced* — memory rows, embeddings, knowledge, DB rows, scheduled-task records, relationships, wallet balance before/after, on-chain tx hashes + explorer links, generated files, device output — inspected by hand | paste/screenshot in PR + `.github/issue-evidence/` |
 
 The point of all of them is the same: **prove the real thing happened.** Real

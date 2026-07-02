@@ -15,7 +15,7 @@ import { expandBitRouterModelIdCandidates } from "../providers/model-id-translat
  * - Local: http://localhost:3000/api/v1
  * - Test: http://localhost:3000/api/v1 (same as local)
  * - Development: https://dev.elizacloud.ai/api/v1
- * - Production: https://www.elizacloud.ai/api/v1
+ * - Production: https://elizacloud.ai/api/v1
  */
 export function getElizaCloudApiUrl(): string {
   // Allow explicit override via environment variable
@@ -42,7 +42,7 @@ export function getElizaCloudApiUrl(): string {
   }
 
   // Production (default)
-  return "https://www.elizacloud.ai/api/v1";
+  return "https://elizacloud.ai/api/v1";
 }
 
 /**

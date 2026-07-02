@@ -31,7 +31,7 @@ export type { TokenUsageForCost } from "./pricing-types";
  * so consumers can disambiguate cost numbers computed against different
  * snapshots.
  */
-export const PRICE_TABLE_ID = "eliza-v1-2026-05-11" as const;
+export const PRICE_TABLE_ID = "eliza-v1-2026-07-01" as const;
 export type PriceTableId = typeof PRICE_TABLE_ID;
 
 /**
@@ -173,6 +173,15 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 		cacheRead: 0,
 		cacheWrite: 0,
 	},
+	// Source: https://inference-docs.cerebras.ai/models/gemma-4-31b
+	// (captured 2026-07-01).
+	"gemma-4-31b": {
+		provider: "cerebras",
+		input: 0.99,
+		output: 1.49,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
 	"llama-3.3-70b": {
 		provider: "cerebras",
 		input: 0.85,
@@ -279,6 +288,10 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 	// Source: api.cerebras.ai/v1 self-reported limits (`context_length_exceeded`
 	// body cites the per-model ceiling). Captured 2026-05-11.
 	"gpt-oss-120b": 131_000,
+	// Source: https://inference-docs.cerebras.ai/models/gemma-4-31b
+	// (captured 2026-07-01). Paid tier context is 131k tokens; the public
+	// free tier is 65k.
+	"gemma-4-31b": 131_000,
 	"qwen-3-235b-a22b-instruct-2507": 64_000,
 	"zai-glm-4.7": 131_000,
 	"llama3.1-8b": 32_000,

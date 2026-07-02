@@ -6,11 +6,11 @@ import {
   type MessageRef,
   type MessageSource,
 } from "@elizaos/core/node";
-import type { CalendlyScheduledEvent } from "./types.js";
 import {
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
 } from "./calendly-client.js";
+import type { CalendlyScheduledEvent } from "./types.js";
 
 function eventToMessageRef(event: CalendlyScheduledEvent): MessageRef {
   const startMs = Date.parse(event.startTime);

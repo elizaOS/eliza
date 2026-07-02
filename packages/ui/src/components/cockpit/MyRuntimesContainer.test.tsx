@@ -10,9 +10,9 @@ const mocks = vi.hoisted(() => ({
   addAgentProfile: vi.fn(),
   // The container only reads `ok` + `reason`; type the mock to the subset it
   // consumes so both success and the untrusted-remote case are assignable.
-  switchRuntimeNonDestructive: vi.fn(
-    (): { ok: boolean; reason?: string } => ({ ok: true }),
-  ),
+  switchRuntimeNonDestructive: vi.fn((): { ok: boolean; reason?: string } => ({
+    ok: true,
+  })),
   isTrustedRestoreApiBaseUrl: vi.fn(() => true),
   isStoreBuild: vi.fn(() => false),
   isAndroidCloudBuild: vi.fn(() => false),
@@ -82,17 +82,34 @@ describe("MyRuntimesContainer", () => {
     expect(screen.getByTestId("runtime-local-1-active")).toBeTruthy();
   });
 
-  it("hides the local runtime on an android-cloud build (phone gating)", () => {
+  it("hides a NON-active local runtime on an android-cloud build (phone gating)", () => {
     mocks.isAndroidCloudBuild.mockReturnValue(true);
+    mocks.loadAgentProfileRegistry.mockReturnValue({
+      ...REG,
+      activeProfileId: "vps-1",
+    });
     render(<MyRuntimesContainer />);
     expect(screen.queryByTestId("runtime-local-1")).toBeNull();
     expect(screen.getByTestId("runtime-vps-1")).toBeTruthy();
   });
 
-  it("hides the local runtime on a store build too", () => {
+  it("hides a non-active local runtime on a store build too", () => {
     mocks.isStoreBuild.mockReturnValue(true);
+    mocks.loadAgentProfileRegistry.mockReturnValue({
+      ...REG,
+      activeProfileId: "vps-1",
+    });
     render(<MyRuntimesContainer />);
     expect(screen.queryByTestId("runtime-local-1")).toBeNull();
+  });
+
+  it("keeps the ACTIVE local visible with its Active badge even when gated", () => {
+    // default REG: local-1 is the active profile. Under hideLocal it must stay
+    // visible (with the Active badge), else the UI shows no active runtime.
+    mocks.isAndroidCloudBuild.mockReturnValue(true);
+    render(<MyRuntimesContainer />);
+    expect(screen.getByTestId("runtime-local-1")).toBeTruthy();
+    expect(screen.getByTestId("runtime-local-1-active")).toBeTruthy();
   });
 
   it("refuses switching to local when gated, and does not call the switch", async () => {

@@ -22,6 +22,7 @@ import {
   Profiler,
   type ProfilerOnRenderCallback,
   useCallback,
+  useEffect,
   useRef,
 } from "react";
 import { percentile } from "../../hooks/frame-budget";
@@ -36,6 +37,7 @@ import {
   WINDOW_MS,
 } from "../../hooks/useRenderGuard";
 import { snapshotResourceCounters } from "../../perf/resource-counters";
+import { resolveHeapUsage } from "../../state/bounded-view-lru";
 import { useViewLifecycle } from "../../state/useViewLifecycle";
 import type { ViewLifecyclePhase } from "../../state/view-lifecycle-types";
 import {
@@ -44,15 +46,8 @@ import {
   type ViewRuntimeTelemetryReason,
 } from "../../view-runtime-telemetry";
 
-interface PerfMemory {
-  usedJSHeapSize?: number;
-}
-
 function readJsHeapUsedSize(): number | undefined {
-  if (typeof performance === "undefined") return undefined;
-  const memory = (performance as Performance & { memory?: PerfMemory }).memory;
-  const used = memory?.usedJSHeapSize;
-  return typeof used === "number" && Number.isFinite(used) ? used : undefined;
+  return resolveHeapUsage()?.usedJSHeapSize;
 }
 
 export interface ViewTelemetryProfilerProps {
@@ -141,6 +136,10 @@ export function ViewTelemetryProfiler({
     },
     [viewId],
   );
+
+  useEffect(() => {
+    emit("active", "show");
+  }, [emit]);
 
   useViewLifecycle({
     onShow: () => emit("active", "show"),

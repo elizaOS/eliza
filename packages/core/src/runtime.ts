@@ -5,6 +5,7 @@ import {
 	withCanonicalProviderDocs,
 } from "./action-docs";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
+import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
@@ -54,6 +55,19 @@ import {
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { BM25 } from "./search";
+import {
+	CompositeEntityRecognizer,
+	DEFAULT_PSEUDONYM_BLOCKLIST,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	PII_SWAP_DISABLED_KINDS_SETTING,
+	PII_SWAP_ENABLED_SETTING,
+	PII_SWAP_EXEMPT_VALUES_SETTING,
+	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
+	PseudonymSession,
+	parsePiiSwapList,
+	RegexEntityRecognizer,
+} from "./security/index.js";
 import { redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -62,6 +76,8 @@ import {
 	SecretSwapSession,
 } from "./security/secret-swap";
 import { DefaultMessageService } from "./services/message";
+import { isModelProviderFallbackError } from "./services/message/fallback-reply";
+import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -164,6 +180,7 @@ import {
 	type SendHandlerFunction,
 	type Service,
 	type ServiceClass,
+	ServiceType,
 	type ServiceTypeName,
 	type SetConnectorAccountCredentialRefParams,
 	type State,
@@ -311,6 +328,39 @@ export class NoModelProviderConfiguredError extends Error {
 	) {
 		super(message);
 		this.name = "NoModelProviderConfiguredError";
+	}
+}
+
+/** One failed TEXT_EMBEDDING dimension-probe attempt, kept for diagnostics. */
+export interface EmbeddingProbeAttempt {
+	provider: string;
+	modelKey: string;
+	error: string;
+}
+
+/**
+ * Thrown by `AgentRuntime.ensureEmbeddingDimension` when EVERY registered
+ * TEXT_EMBEDDING provider failed the null dimension probe. Carries the
+ * per-provider failure list so callers (and logs) can show exactly which
+ * providers were tried and why each one failed.
+ *
+ * `AgentRuntime.initialize` catches this error type — and only this type —
+ * non-fatally: the runtime keeps booting with embedding generation disabled
+ * (memory writes persist without vectors) instead of either crashing boot or
+ * leaving the vector column at its default width, where later real vectors
+ * would be silently dropped on dimension mismatch by the SQL adapter (#8769).
+ */
+export class EmbeddingDimensionProbeError extends Error {
+	readonly attempts: readonly EmbeddingProbeAttempt[];
+	constructor(attempts: readonly EmbeddingProbeAttempt[]) {
+		const detail = attempts
+			.map((attempt) => `${attempt.provider}: ${attempt.error}`)
+			.join("; ");
+		super(
+			`All ${attempts.length} registered TEXT_EMBEDDING provider(s) failed the embedding dimension probe — ${detail}`,
+		);
+		this.name = "EmbeddingDimensionProbeError";
+		this.attempts = attempts;
 	}
 }
 
@@ -757,6 +807,12 @@ function timeoutAfter(ms: number): Promise<"timeout"> {
 	});
 }
 
+interface ResolvedModelRegistration {
+	handler: ModelHandler["handler"];
+	modelKey: string;
+	provider: string;
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100;
 	readonly agentId: UUID;
@@ -796,6 +852,26 @@ export class AgentRuntime implements IAgentRuntime {
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
 	models = new Map<string, ModelHandler[]>();
 	routes: Route[] = [];
+	/**
+	 * Provider that answered the boot-time TEXT_EMBEDDING dimension probe. The
+	 * SQL adapter's vector column is sized from that provider's output, so all
+	 * later embedding calls without an explicit provider are pinned to it —
+	 * letting a different registration serve an embedding call can emit a
+	 * different-width vector that the adapter silently drops on dimension
+	 * mismatch (#8769). Re-set on every successful `ensureEmbeddingDimension`.
+	 */
+	private pinnedEmbeddingProvider: string | undefined;
+	/**
+	 * Non-null while embedding generation is disabled because every registered
+	 * TEXT_EMBEDDING provider failed the dimension probe. While set, memory
+	 * writes skip vector generation entirely (see `addEmbeddingToMemory` /
+	 * `queueEmbeddingGeneration`) instead of producing vectors the SQL adapter
+	 * would silently drop against a default-sized column. Cleared by the next
+	 * successful `ensureEmbeddingDimension` (e.g. the deferred boot re-probe).
+	 */
+	private embeddingGenerationDisabledReason: string | null = null;
+	/** Once-latch so the embedding-skip warning fires once, not per write. */
+	private embeddingSkipWarned = false;
 	private taskWorkers = new Map<string, TaskWorker>();
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	private messageConnectors = new Map<string, MessageConnector>();
@@ -1156,7 +1232,8 @@ export class AgentRuntime implements IAgentRuntime {
 			values: Record<string, unknown> | undefined,
 		): Record<string, string | undefined> => {
 			const result: Record<string, string | undefined> = {};
-			for (const [key, value] of Object.entries(values ?? {})) {
+			const entries = values ? Object.entries(values) : [];
+			for (const [key, value] of entries) {
 				if (typeof value === "string") {
 					result[key] = value;
 				}
@@ -1173,8 +1250,15 @@ export class AgentRuntime implements IAgentRuntime {
 						this.character.settings.secrets as Record<string, unknown>,
 					)
 				: undefined;
+		// Registry/config-derived catalog (#10469): seed every secret-bearing env
+		// value so a plugin's `FOO_API_KEY` is swapped even when it never appears
+		// in a recognised inline token shape. Character secrets win on conflict.
+		const envSecrets = deriveKnownSecrets(
+			process.env as Record<string, string | undefined>,
+		);
 		return new SecretSwapSession({
 			knownSecrets: {
+				...envSecrets,
 				...settingsSecrets,
 				...toSecretStrings(this.character.secrets),
 			},
@@ -1182,6 +1266,64 @@ export class AgentRuntime implements IAgentRuntime {
 				this.getSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING),
 			),
 		});
+	}
+
+	private isPiiSwapEnabled(): boolean {
+		return (
+			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
+		);
+	}
+
+	/**
+	 * Build the turn's PII pseudonymization session (#10469 / #7007). The
+	 * recognizer is the composite of the runtime's built-in regex recognizer
+	 * (street addresses) and — if a plugin registered the
+	 * `PII_ENTITY_RECOGNIZER_SERVICE` — the local NER model (person/org/location).
+	 * With no model plugin present the layer runs regex-only: degraded coverage,
+	 * but still never leaks what it does detect. The agent's own name is added to
+	 * the blocklist so the model's identity is never pseudonymized.
+	 */
+	private createPiiSwapSession(): PseudonymSession {
+		const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()];
+		const nerService = this.getService(
+			PII_ENTITY_RECOGNIZER_SERVICE,
+		) as unknown as PiiEntityRecognizerService | null;
+		const nerRecognizer = nerService?.getRecognizer?.() ?? null;
+		if (nerRecognizer) recognizers.push(nerRecognizer);
+
+		const blocklist = [
+			...DEFAULT_PSEUDONYM_BLOCKLIST,
+			...(this.character.name ? [this.character.name] : []),
+			...parsePiiSwapList(this.getSetting(PII_SWAP_EXEMPT_VALUES_SETTING)),
+		];
+		return new PseudonymSession({
+			recognizer: new CompositeEntityRecognizer(recognizers, { blocklist }),
+			blocklist,
+			disabledKinds: parsePiiSwapList(
+				this.getSetting(PII_SWAP_DISABLED_KINDS_SETTING),
+			),
+		});
+	}
+
+	/** Flatten every string leaf of the model params plus the system prompt into
+	 * one text blob for the PII recognizer to scan. */
+	private collectPromptText(
+		params: unknown,
+		systemPrompt: string | undefined,
+	): string {
+		const parts: string[] = [];
+		const walk = (value: unknown): void => {
+			if (typeof value === "string") {
+				parts.push(value);
+			} else if (Array.isArray(value)) {
+				for (const item of value) walk(item);
+			} else if (value && typeof value === "object") {
+				for (const child of Object.values(value)) walk(child);
+			}
+		};
+		walk(params);
+		if (systemPrompt) parts.push(systemPrompt);
+		return parts.join("\n");
 	}
 
 	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
@@ -2323,8 +2465,53 @@ export class AgentRuntime implements IAgentRuntime {
 		// Merge DB-persisted settings back into runtime character
 		// This ensures settings from previous runs are available
 		if (existingAgent.settings) {
+			const dbSettings = isPlainObject(existingAgent.settings)
+				? existingAgent.settings
+				: {};
+			const dbExtraSettings = isPlainObject(dbSettings.extra)
+				? dbSettings.extra
+				: {};
+			const dbSettingsSecrets = isPlainObject(dbSettings.secrets)
+				? dbSettings.secrets
+				: {};
+			const characterSettings = isPlainObject(this.character.settings)
+				? this.character.settings
+				: {};
+			const characterExtraSettings = isPlainObject(characterSettings.extra)
+				? characterSettings.extra
+				: {};
+			const characterSettingsSecrets = isPlainObject(characterSettings.secrets)
+				? characterSettings.secrets
+				: {};
+			const characterSecrets =
+				this.character.secrets && typeof this.character.secrets === "object"
+					? this.character.secrets
+					: {};
+			const dbSettingsWithRuntimeOverrides = { ...existingAgent.settings };
+
+			for (const key of Object.keys(this.settings)) {
+				const runtimeValue = this.getRuntimeSettingValue(key);
+				if (runtimeValue === undefined) {
+					continue;
+				}
+
+				const hasDbValue =
+					Object.hasOwn(dbSettings, key) ||
+					Object.hasOwn(dbExtraSettings, key) ||
+					Object.hasOwn(dbSettingsSecrets, key);
+				const hasCharacterValue =
+					Object.hasOwn(characterSettings, key) ||
+					Object.hasOwn(characterExtraSettings, key) ||
+					Object.hasOwn(characterSettingsSecrets, key) ||
+					Object.hasOwn(characterSecrets, key);
+
+				if (hasDbValue && !hasCharacterValue) {
+					dbSettingsWithRuntimeOverrides[key] = runtimeValue;
+				}
+			}
+
 			this.character.settings = {
-				...existingAgent.settings,
+				...dbSettingsWithRuntimeOverrides,
 				...this.character.settings, // Character file overrides DB
 			};
 
@@ -2334,27 +2521,34 @@ export class AgentRuntime implements IAgentRuntime {
 				existingAgent.secrets && typeof existingAgent.secrets === "object"
 					? existingAgent.secrets
 					: {};
-			const dbSettingsSecrets =
-				existingAgent.settings.secrets &&
-				typeof existingAgent.settings.secrets === "object"
-					? existingAgent.settings.secrets
-					: {};
-			const settingsSecrets =
-				this.character.settings.secrets &&
-				typeof this.character.settings.secrets === "object"
-					? this.character.settings.secrets
-					: {};
-			const characterSecrets =
-				this.character.secrets && typeof this.character.secrets === "object"
-					? this.character.secrets
-					: {};
+			const runtimeSecretOverrides: Record<string, string | boolean | number> =
+				{};
+
+			for (const key of Object.keys(this.settings)) {
+				const runtimeValue = this.getRuntimeSettingValue(key);
+				if (runtimeValue === undefined) {
+					continue;
+				}
+
+				const hasDbSecret =
+					Object.hasOwn(dbSecrets, key) ||
+					Object.hasOwn(dbSettingsSecrets, key);
+				const hasCharacterSecret =
+					Object.hasOwn(characterSecrets, key) ||
+					Object.hasOwn(characterSettingsSecrets, key);
+
+				if (hasDbSecret && !hasCharacterSecret) {
+					runtimeSecretOverrides[key] = runtimeValue;
+				}
+			}
 
 			// Merge into both locations that getSetting() checks
 			const mergedSecrets = {
 				...dbSecrets,
 				...dbSettingsSecrets,
+				...runtimeSecretOverrides,
 				...characterSecrets,
-				...settingsSecrets, // settings.secrets has priority
+				...characterSettingsSecrets, // character settings.secrets has priority
 			};
 
 			if (Object.keys(mergedSecrets).length > 0) {
@@ -2443,7 +2637,28 @@ export class AgentRuntime implements IAgentRuntime {
 				"No TEXT_EMBEDDING model registered, skipping embedding setup",
 			);
 		} else {
-			await this.ensureEmbeddingDimension();
+			try {
+				await this.ensureEmbeddingDimension();
+			} catch (error) {
+				if (!(error instanceof EmbeddingDimensionProbeError)) {
+					throw error;
+				}
+				// Every registered TEXT_EMBEDDING provider failed the dimension
+				// probe. Do not abort boot: ensureEmbeddingDimension() has already
+				// flipped the runtime into embedding-disabled mode, so memory writes
+				// skip vector generation instead of emitting vectors the SQL adapter
+				// would silently drop against its default-sized column (#8769). The
+				// deferred boot re-probe (packages/agent) re-runs the probe after
+				// late plugins register and re-enables embeddings on success.
+				this.logger.error(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						attempts: error.attempts,
+					},
+					"All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
+				);
+			}
 		}
 
 		// Resolve init promise to allow services to start
@@ -2643,6 +2858,20 @@ export class AgentRuntime implements IAgentRuntime {
 		return undefined;
 	}
 
+	private getRuntimeSettingValue(
+		key: string,
+	): string | boolean | number | undefined {
+		const value = this.settings[key];
+		if (
+			typeof value === "string" ||
+			typeof value === "boolean" ||
+			typeof value === "number"
+		) {
+			return value;
+		}
+		return undefined;
+	}
+
 	getSetting(key: string): string | boolean | number | null {
 		const settings = this.character.settings;
 		const secrets = this.character.secrets;
@@ -2672,7 +2901,7 @@ export class AgentRuntime implements IAgentRuntime {
 			extraSettings?.[key] ??
 			nestedSecrets?.[key] ??
 			this.getCharacterEnvSetting(key) ??
-			this.settings[key];
+			this.getRuntimeSettingValue(key);
 
 		// Handle each type appropriately
 		if (value === undefined || value === null) {
@@ -4417,17 +4646,16 @@ export class AgentRuntime implements IAgentRuntime {
 	private resolveModelRegistration(
 		modelType: ModelTypeName | string,
 		provider?: string,
-	):
-		| {
-				handler: (
-					runtime: IAgentRuntime,
-					params: Record<string, JsonValue | object>,
-				) => Promise<JsonValue | object>;
-				modelKey: string;
-				provider: string;
-		  }
-		| undefined {
+	): ResolvedModelRegistration | undefined {
+		return this.resolveModelRegistrations(modelType, provider)[0];
+	}
+
+	private resolveModelRegistrations(
+		modelType: ModelTypeName | string,
+		provider?: string,
+	): ResolvedModelRegistration[] {
 		const requestedModelKey = String(modelType);
+		const resolvedModels: ResolvedModelRegistration[] = [];
 
 		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
 			const models = this.models.get(candidateKey);
@@ -4437,36 +4665,91 @@ export class AgentRuntime implements IAgentRuntime {
 
 			const modelWithProvider =
 				provider && models.find((model) => model.provider === provider);
-			if (provider && !modelWithProvider) {
-				continue;
+			const candidateModels = provider
+				? modelWithProvider
+					? [modelWithProvider]
+					: []
+				: models;
+
+			for (const resolvedModel of candidateModels) {
+				if (candidateKey !== requestedModelKey) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							requestedModel: requestedModelKey,
+							resolvedModel: candidateKey,
+							provider: resolvedModel.provider,
+						},
+						"Model fallback applied",
+					);
+				}
+
+				resolvedModels.push({
+					handler: resolvedModel.handler,
+					modelKey: candidateKey,
+					provider: resolvedModel.provider,
+				});
 			}
 
-			const resolvedModel = modelWithProvider ?? models[0];
-			if (!resolvedModel) {
-				continue;
+			if (provider && candidateModels.length > 0) {
+				break;
 			}
-
-			if (candidateKey !== requestedModelKey) {
-				this.logger.debug(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						requestedModel: requestedModelKey,
-						resolvedModel: candidateKey,
-						provider: resolvedModel.provider,
-					},
-					"Model fallback applied",
-				);
-			}
-
-			return {
-				handler: resolvedModel.handler,
-				modelKey: candidateKey,
-				provider: resolvedModel.provider,
-			};
 		}
 
-		return undefined;
+		return resolvedModels;
+	}
+
+	private logModelProviderFailover(args: {
+		requestedModelKey: string;
+		failedModel: ResolvedModelRegistration;
+		nextModel: ResolvedModelRegistration;
+		error: unknown;
+	}): void {
+		this.logger.warn(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				requestedModel: args.requestedModelKey,
+				failedModel: args.failedModel.modelKey,
+				failedProvider: args.failedModel.provider,
+				nextModel: args.nextModel.modelKey,
+				nextProvider: args.nextModel.provider,
+				error:
+					args.error instanceof Error ? args.error.message : String(args.error),
+			},
+			"Model provider failed; trying next registered provider",
+		);
+	}
+
+	private shouldFailOverModelProvider(error: unknown): boolean {
+		return isModelProviderFallbackError(error);
+	}
+
+	private throwNoModelHandler(requestedModelKey: string): never {
+		// If the request is for a text-generation model AND no text-generation
+		// handler is registered for ANY of the text model types, this is the
+		// "no LLM provider configured at all" state — surface a typed error
+		// so callers (chat UI, etc.) can render an actionable hint instead of
+		// a generic "No handler found for delegate type" parse-failure message.
+		// Issue: elizaOS/eliza#7203.
+		if (TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)) {
+			const hasAnyTextHandler = TEXT_GENERATION_MODEL_KEYS.some((key) => {
+				const handlers = this.models.get(key);
+				return Array.isArray(handlers) && handlers.length > 0;
+			});
+			if (!hasAnyTextHandler) {
+				throw new NoModelProviderConfiguredError();
+			}
+		}
+		throw new Error(`No handler found for delegate type: ${requestedModelKey}`);
+	}
+
+	private rethrowModelFailoverError(error: unknown): never {
+		if (error instanceof Error) {
+			throw error;
+		}
+		throw new Error(String(error));
 	}
 
 	getModel(
@@ -4799,619 +5082,756 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		const resolvedModel = this.resolveModelRegistration(
+		// TEXT_EMBEDDING calls without an explicit provider are pinned to the
+		// provider that answered the dimension probe: the vector column was sized
+		// from its output, so serving an embedding call from any other
+		// registration (including via rate-limit failover) can emit a
+		// different-width vector that the SQL adapter silently drops (#8769).
+		// Pinning also disables mid-call provider failover for embeddings — an
+		// embedding either comes from the provider the column was sized for, or
+		// the call fails loudly. An explicit provider argument still wins.
+		const requestedProvider =
+			provider === undefined &&
+			requestedModelKey === ModelType.TEXT_EMBEDDING &&
+			this.pinnedEmbeddingProvider !== undefined
+				? this.pinnedEmbeddingProvider
+				: provider;
+
+		const resolvedModels = this.resolveModelRegistrations(
 			requestedModelKey,
-			provider,
+			requestedProvider,
 		);
-		const resolvedModelKey = resolvedModel?.modelKey ?? requestedModelKey;
-		const handler = resolvedModel?.handler;
-		if (!handler) {
-			// If the request is for a text-generation model AND no text-generation
-			// handler is registered for ANY of the text model types, this is the
-			// "no LLM provider configured at all" state — surface a typed error
-			// so callers (chat UI, etc.) can render an actionable hint instead of
-			// a generic "No handler found for delegate type" parse-failure message.
-			// Issue: elizaOS/eliza#7203.
-			if (TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)) {
-				const hasAnyTextHandler = TEXT_GENERATION_MODEL_KEYS.some((key) => {
-					const handlers = this.models.get(key);
-					return Array.isArray(handlers) && handlers.length > 0;
-				});
-				if (!hasAnyTextHandler) {
-					throw new NoModelProviderConfiguredError();
-				}
-			}
-			const errorMsg = `No handler found for delegate type: ${requestedModelKey}`;
-			throw new Error(errorMsg);
+		if (resolvedModels.length === 0) {
+			this.throwNoModelHandler(requestedModelKey);
 		}
 
-		const binaryModels: string[] = [
-			ModelType.TRANSCRIPTION,
-			ModelType.IMAGE,
-			ModelType.AUDIO,
-			ModelType.VIDEO,
-		];
-		let modelParams: ModelParamsMap[T];
-		const paramsClone = isPlainObject(params)
-			? { ...(params as Record<string, JsonValue | object>) }
-			: params;
-		if (
-			params === null ||
-			params === undefined ||
-			typeof params !== "object" ||
-			Array.isArray(params) ||
-			BufferUtils.isBuffer(params)
+		let lastModelError: unknown;
+		let providerAttemptStartedOutput = false;
+		for (
+			let resolvedIndex = 0;
+			resolvedIndex < resolvedModels.length;
+			resolvedIndex++
 		) {
-			modelParams = paramsClone as ModelParamsMap[T];
-		} else {
-			// Include model settings from character configuration if available
-			const modelSettings = this.getModelSettings(requestedModelKey);
+			const resolvedModel = resolvedModels[resolvedIndex];
+			if (!resolvedModel) {
+				continue;
+			}
+			const resolvedModelKey = resolvedModel.modelKey;
+			const handler = resolvedModel.handler;
+			providerAttemptStartedOutput = false;
 
-			if (modelSettings) {
-				// Apply model settings if configured — merged object is narrowed at handlers after routing.
-				const merged: object = {
-					...modelSettings,
-					...(paramsClone as Record<string, JsonValue | object>),
+			try {
+				const binaryModels: string[] = [
+					ModelType.TRANSCRIPTION,
+					ModelType.IMAGE,
+					ModelType.AUDIO,
+					ModelType.VIDEO,
+				];
+				// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
+				// (a random per-turn surrogate would destabilize embeddings), but — unlike
+				// the secret gate — swaps IMAGE prompts, whose text can carry real names.
+				const PII_SWAP_SKIP_MODELS: string[] = [
+					ModelType.TRANSCRIPTION,
+					ModelType.AUDIO,
+					ModelType.VIDEO,
+					ModelType.TEXT_EMBEDDING,
+				];
+				let modelParams: ModelParamsMap[T];
+				const paramsClone = isPlainObject(params)
+					? { ...(params as Record<string, JsonValue | object>) }
+					: params;
+				if (
+					params === null ||
+					params === undefined ||
+					typeof params !== "object" ||
+					Array.isArray(params) ||
+					BufferUtils.isBuffer(params)
+				) {
+					modelParams = paramsClone as ModelParamsMap[T];
+				} else {
+					// Include model settings from character configuration if available
+					const modelSettings = this.getModelSettings(requestedModelKey);
+
+					if (modelSettings) {
+						// Apply model settings if configured — merged object is narrowed at handlers after routing.
+						const merged: object = {
+							...modelSettings,
+							...(paramsClone as Record<string, JsonValue | object>),
+						};
+						modelParams = merged as ModelParamsMap[T];
+					} else {
+						// No model settings configured, use params as-is
+						modelParams = paramsClone as ModelParamsMap[T];
+					}
+
+					// Auto-populate user parameter from character name if not provided
+					// The `user` parameter is used by LLM providers for tracking and analytics purposes.
+					// We only auto-populate when user is undefined (not explicitly set to empty string or null)
+					// to allow users to intentionally set an empty identifier if needed.
+					const shouldAttachUser =
+						requestedModelKey === ModelType.TEXT_NANO ||
+						requestedModelKey === ModelType.TEXT_SMALL ||
+						requestedModelKey === ModelType.TEXT_MEDIUM ||
+						requestedModelKey === ModelType.TEXT_LARGE ||
+						requestedModelKey === ModelType.TEXT_MEGA ||
+						requestedModelKey === ModelType.RESPONSE_HANDLER ||
+						requestedModelKey === ModelType.ACTION_PLANNER ||
+						requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
+						requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
+						requestedModelKey === ModelType.TEXT_COMPLETION;
+					if (
+						shouldAttachUser &&
+						isPlainObject(modelParams) &&
+						this.character.name
+					) {
+						const modelParamsRecord = modelParams as Record<
+							string,
+							JsonValue | object
+						>;
+						if (modelParamsRecord.user === undefined) {
+							modelParamsRecord.user = this.character.name;
+						}
+					}
+				}
+				const startTime =
+					typeof performance !== "undefined" &&
+					typeof performance.now === "function"
+						? performance.now()
+						: Date.now();
+
+				// Get streaming config
+				// Define interface for params that may have streaming properties
+				interface StreamingParams {
+					stream?: boolean;
+					onStreamChunk?: StreamChunkCallback;
+					signal?: AbortSignal;
+					streamStructured?: boolean;
+					responseSkeleton?: ResponseSkeleton;
+				}
+				const streamingCtx = getStreamingContext();
+				const paramsAsStreaming = isPlainObject(modelParams)
+					? (modelParams as StreamingParams)
+					: undefined;
+				const paramsChunk = paramsAsStreaming?.onStreamChunk;
+				const ctxChunk = streamingCtx?.onStreamChunk;
+				const msgId = streamingCtx?.messageId;
+				const abortSignal = streamingCtx?.abortSignal;
+				const explicitStream = paramsAsStreaming?.stream;
+				const resolvedProviderName = resolvedModel?.provider;
+				// stream: false = force no stream, otherwise stream if any callback exists.
+				// Vision describes are often hidden preprocessing/OCR calls inside a chat
+				// turn; do not leak those chunks into the visible chat stream unless the
+				// call itself opts in.
+				const requiresExplicitStreaming =
+					requestedModelKey === ModelType.IMAGE_DESCRIPTION;
+				const shouldStream =
+					explicitStream === false
+						? false
+						: requiresExplicitStreaming
+							? explicitStream === true
+							: !!(paramsChunk || ctxChunk || explicitStream);
+				const structuredStreamFields =
+					shouldStream && paramsAsStreaming?.streamStructured === true
+						? resolveResponseSkeletonStreamFields(
+								paramsAsStreaming.responseSkeleton,
+							)
+						: [];
+				const downstreamChunk = (chunk: string, accumulated?: string): void => {
+					void (async () => {
+						if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
+						if (ctxChunk) await ctxChunk(chunk, msgId, accumulated);
+					})();
 				};
-				modelParams = merged as ModelParamsMap[T];
-			} else {
-				// No model settings configured, use params as-is
-				modelParams = paramsClone as ModelParamsMap[T];
-			}
+				const structuredExtractor =
+					structuredStreamFields.length > 0 &&
+					paramsAsStreaming?.responseSkeleton
+						? new ResponseSkeletonStreamExtractor({
+								skeleton: paramsAsStreaming.responseSkeleton,
+								streamFields: structuredStreamFields,
+								unordered: true,
+								onChunk: (chunk, _field, accumulated) =>
+									downstreamChunk(chunk, accumulated),
+								...(abortSignal ? { abortSignal } : {}),
+							})
+						: undefined;
+				let handlerDeliveredStream = false;
+				let streamedText = "";
+				let secretSwapSession: SecretSwapSession | null = null;
+				let guardedStreamBuffer = "";
+				let piiSwapSession: PseudonymSession | null = null;
+				const emitModelStreamChunk = async (
+					safeChunk: string,
+					visibleChunk = safeChunk,
+				): Promise<void> => {
+					if (abortSignal?.aborted) return;
+					if (safeChunk.length > 0) {
+						providerAttemptStartedOutput = true;
+					}
+					if (streamedText === "" && safeChunk.length > 0) {
+						markInference(INFERENCE_MARKS.firstToken);
+					}
+					streamedText += safeChunk;
+					const trajStream = getTrajectoryContext();
+					await this.invokePipelineHooks(
+						"model_stream_chunk",
+						modelStreamChunkPipelineHookContext({
+							source: "use_model",
+							chunk: safeChunk,
+							messageId: msgId,
+							roomId:
+								(trajStream?.roomId as UUID | undefined) ??
+								this.currentRoomId ??
+								this.agentId,
+							runId: this.getCurrentRunId(),
+							...(trajStream?.messageId
+								? { responseId: trajStream.messageId as UUID }
+								: {}),
+							accumulated: streamedText,
+						}),
+						"Model stream chunk (useModel)",
+						false,
+					);
+					await runInsideModelStreamChunkDelivery(async () => {
+						if (structuredExtractor) {
+							structuredExtractor.push(visibleChunk);
+							return;
+						}
+						if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined);
+						if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
+					});
+				};
+				const deliverModelStreamChunk = async (
+					chunk: string,
+				): Promise<void> => {
+					if (abortSignal?.aborted) return;
+					if (secretSwapSession || piiSwapSession) {
+						guardedStreamBuffer += chunk;
+						return;
+					}
+					await emitModelStreamChunk(chunk);
+				};
+				const flushGuardedStream = async (): Promise<void> => {
+					if (
+						abortSignal?.aborted ||
+						(!secretSwapSession && !piiSwapSession) ||
+						guardedStreamBuffer.length === 0
+					) {
+						return;
+					}
+					let safeText = guardedStreamBuffer;
+					guardedStreamBuffer = "";
+					if (secretSwapSession) {
+						safeText = secretSwapSession.substituteText(safeText);
+					}
+					if (piiSwapSession) {
+						safeText = piiSwapSession.substituteText(safeText);
+					}
+					if (safeText.length > 0) {
+						const visibleText = piiSwapSession
+							? piiSwapSession.restoreText(safeText)
+							: safeText;
+						await emitModelStreamChunk(safeText, visibleText);
+					}
+				};
+				// Wire the handler-facing stream callback for local providers AND for the
+				// prefer-local router ("eliza-router"): the router resolves to itself as
+				// the top-priority handler but invokes the underlying provider's handler
+				// directly and forwards `onStreamChunk` transparently, so on mobile (where
+				// the router is always the resolved provider, dispatching to the on-device
+				// capacitor-llama / bionic host) streaming is only wired if we recognize
+				// it here. Scoped to the streaming gate only — it intentionally does NOT
+				// change validation/pricing semantics keyed on isLocalProvider().
+				const resolvedIsStreamableLocal =
+					!!resolvedProviderName &&
+					(isLocalProvider(resolvedProviderName) ||
+						resolvedProviderName === "eliza-router");
+				const handlerStreamChunk: StreamChunkCallback | undefined =
+					shouldStream &&
+					resolvedIsStreamableLocal &&
+					(paramsChunk || ctxChunk || structuredExtractor)
+						? async (chunk) => {
+								handlerDeliveredStream = true;
+								await deliverModelStreamChunk(chunk);
+							}
+						: undefined;
 
-			// Auto-populate user parameter from character name if not provided
-			// The `user` parameter is used by LLM providers for tracking and analytics purposes.
-			// We only auto-populate when user is undefined (not explicitly set to empty string or null)
-			// to allow users to intentionally set an empty identifier if needed.
-			const shouldAttachUser =
-				requestedModelKey === ModelType.TEXT_NANO ||
-				requestedModelKey === ModelType.TEXT_SMALL ||
-				requestedModelKey === ModelType.TEXT_MEDIUM ||
-				requestedModelKey === ModelType.TEXT_LARGE ||
-				requestedModelKey === ModelType.TEXT_MEGA ||
-				requestedModelKey === ModelType.RESPONSE_HANDLER ||
-				requestedModelKey === ModelType.ACTION_PLANNER ||
-				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
-				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
-				requestedModelKey === ModelType.TEXT_COMPLETION;
-			if (
-				shouldAttachUser &&
-				isPlainObject(modelParams) &&
-				this.character.name
-			) {
-				const modelParamsRecord = modelParams as Record<
-					string,
-					JsonValue | object
-				>;
-				if (modelParamsRecord.user === undefined) {
-					modelParamsRecord.user = this.character.name;
+				if (isPlainObject(modelParams) && paramsAsStreaming) {
+					paramsAsStreaming.stream = shouldStream;
+					if (handlerStreamChunk) {
+						paramsAsStreaming.onStreamChunk = handlerStreamChunk;
+					} else {
+						delete paramsAsStreaming.onStreamChunk;
+					}
+					// Plumb the streaming-context abort signal into model params so the
+					// underlying handler can wire it into its transport (e.g. local
+					// llama's `stopOnAbortSignal`, fetch's `signal`). Only inject when
+					// the caller didn't already pass one explicitly.
+					if (paramsAsStreaming.signal === undefined && abortSignal) {
+						paramsAsStreaming.signal = abortSignal;
+					}
 				}
-			}
-		}
-		const startTime =
-			typeof performance !== "undefined" &&
-			typeof performance.now === "function"
-				? performance.now()
-				: Date.now();
 
-		// Get streaming config
-		// Define interface for params that may have streaming properties
-		interface StreamingParams {
-			stream?: boolean;
-			onStreamChunk?: StreamChunkCallback;
-			signal?: AbortSignal;
-			streamStructured?: boolean;
-			responseSkeleton?: ResponseSkeleton;
-		}
-		const streamingCtx = getStreamingContext();
-		const paramsAsStreaming = isPlainObject(modelParams)
-			? (modelParams as StreamingParams)
-			: undefined;
-		const paramsChunk = paramsAsStreaming?.onStreamChunk;
-		const ctxChunk = streamingCtx?.onStreamChunk;
-		const msgId = streamingCtx?.messageId;
-		const abortSignal = streamingCtx?.abortSignal;
-		const explicitStream = paramsAsStreaming?.stream;
-		const resolvedProviderName = resolvedModel?.provider;
-		// stream: false = force no stream, otherwise stream if any callback exists.
-		// Vision describes are often hidden preprocessing/OCR calls inside a chat
-		// turn; do not leak those chunks into the visible chat stream unless the
-		// call itself opts in.
-		const requiresExplicitStreaming =
-			requestedModelKey === ModelType.IMAGE_DESCRIPTION;
-		const shouldStream =
-			explicitStream === false
-				? false
-				: requiresExplicitStreaming
-					? explicitStream === true
-					: !!(paramsChunk || ctxChunk || explicitStream);
-		const structuredStreamFields =
-			shouldStream && paramsAsStreaming?.streamStructured === true
-				? resolveResponseSkeletonStreamFields(
-						paramsAsStreaming.responseSkeleton,
-					)
-				: [];
-		const downstreamChunk = (chunk: string, accumulated?: string): void => {
-			void (async () => {
-				if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
-				if (ctxChunk) await ctxChunk(chunk, msgId, accumulated);
-			})();
-		};
-		const structuredExtractor =
-			structuredStreamFields.length > 0 && paramsAsStreaming?.responseSkeleton
-				? new ResponseSkeletonStreamExtractor({
-						skeleton: paramsAsStreaming.responseSkeleton,
-						streamFields: structuredStreamFields,
-						unordered: true,
-						onChunk: (chunk, _field, accumulated) =>
-							downstreamChunk(chunk, accumulated),
-						...(abortSignal ? { abortSignal } : {}),
-					})
-				: undefined;
-		let handlerDeliveredStream = false;
-		let streamedText = "";
-		let secretSwapSession: SecretSwapSession | null = null;
-		let secretSwapStreamBuffer = "";
-		const emitModelStreamChunk = async (safeChunk: string): Promise<void> => {
-			if (abortSignal?.aborted) return;
-			if (streamedText === "" && safeChunk.length > 0) {
-				markInference(INFERENCE_MARKS.firstToken);
-			}
-			streamedText += safeChunk;
-			const trajStream = getTrajectoryContext();
-			await this.invokePipelineHooks(
-				"model_stream_chunk",
-				modelStreamChunkPipelineHookContext({
-					source: "use_model",
-					chunk: safeChunk,
-					messageId: msgId,
-					roomId:
-						(trajStream?.roomId as UUID | undefined) ??
-						this.currentRoomId ??
-						this.agentId,
-					runId: this.getCurrentRunId(),
-					...(trajStream?.messageId
-						? { responseId: trajStream.messageId as UUID }
-						: {}),
-					accumulated: streamedText,
-				}),
-				"Model stream chunk (useModel)",
-				false,
-			);
-			await runInsideModelStreamChunkDelivery(async () => {
-				if (structuredExtractor) {
-					structuredExtractor.push(safeChunk);
-					return;
+				const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
+					String(resolvedModelKey),
+				)
+					? String(resolvedModelKey)
+					: requestedModelKey;
+				let effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
+					textModelKey,
+					modelParams,
+				);
+
+				if (
+					this.isSecretSwapEnabled() &&
+					!binaryModels.includes(resolvedModelKey)
+				) {
+					// Reuse one session per turn so every model call in the turn shares a
+					// nonce and the action-execution boundary can restore what this call
+					// swapped. The session hangs off the turn-scoped trajectory context;
+					// calls outside a trajectory scope fall back to a per-call session
+					// (no egress restore — there is no execution boundary to restore at).
+					const trajectoryCtx = getTrajectoryContext();
+					secretSwapSession =
+						trajectoryCtx?.secretSwapSession ?? this.createSecretSwapSession();
+					if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
+						trajectoryCtx.secretSwapSession = secretSwapSession;
+					}
+					modelParams = secretSwapSession.substituteInValue(modelParams);
+					effectiveSystemPrompt =
+						effectiveSystemPrompt === undefined
+							? undefined
+							: secretSwapSession.substituteText(effectiveSystemPrompt);
 				}
-				if (paramsChunk) await paramsChunk(safeChunk, msgId, undefined);
-				if (ctxChunk) await ctxChunk(safeChunk, msgId, undefined);
-			});
-		};
-		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
-			if (abortSignal?.aborted) return;
-			if (secretSwapSession) {
-				secretSwapStreamBuffer += chunk;
-				return;
-			}
-			await emitModelStreamChunk(chunk);
-		};
-		const flushSecretSwapStream = async (): Promise<void> => {
-			if (
-				abortSignal?.aborted ||
-				!secretSwapSession ||
-				secretSwapStreamBuffer.length === 0
-			) {
-				return;
-			}
-			const safeText = secretSwapSession.substituteText(secretSwapStreamBuffer);
-			secretSwapStreamBuffer = "";
-			if (safeText.length > 0) {
-				await emitModelStreamChunk(safeText);
-			}
-		};
-		// Wire the handler-facing stream callback for local providers AND for the
-		// prefer-local router ("eliza-router"): the router resolves to itself as
-		// the top-priority handler but invokes the underlying provider's handler
-		// directly and forwards `onStreamChunk` transparently, so on mobile (where
-		// the router is always the resolved provider, dispatching to the on-device
-		// capacitor-llama / bionic host) streaming is only wired if we recognize
-		// it here. Scoped to the streaming gate only — it intentionally does NOT
-		// change validation/pricing semantics keyed on isLocalProvider().
-		const resolvedIsStreamableLocal =
-			!!resolvedProviderName &&
-			(isLocalProvider(resolvedProviderName) ||
-				resolvedProviderName === "eliza-router");
-		const handlerStreamChunk: StreamChunkCallback | undefined =
-			shouldStream &&
-			resolvedIsStreamableLocal &&
-			(paramsChunk || ctxChunk || structuredExtractor)
-				? async (chunk) => {
-						handlerDeliveredStream = true;
+
+				// Models the PII swap must NOT touch: binary-input modalities (nothing to
+				// swap) and — unlike the secret gate — IMAGE is INCLUDED (its text prompt
+				// can carry real names), while TEXT_EMBEDDING is EXCLUDED (a per-turn-random
+				// surrogate would embed the same real text differently every turn and wreck
+				// semantic memory retrieval; embeddings stay on the real text).
+				let piiIngressText = "";
+				if (
+					this.isPiiSwapEnabled() &&
+					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
+				) {
+					// Turn-scoped like the secret session (same mapping all turn), so the
+					// execution boundary can restore what this call swapped.
+					const trajectoryCtx = getTrajectoryContext();
+					piiSwapSession =
+						trajectoryCtx?.piiSwapSession ?? this.createPiiSwapSession();
+					if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
+						trajectoryCtx.piiSwapSession = piiSwapSession;
+					}
+					// The awaited detection step: learn every named entity in the assembled
+					// prompt (params + system prompt), then substitute synchronously. Ordered
+					// after the secret pass, so the NER model reads opaque
+					// `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
+					// inference is offloaded to onnxruntime's threadpool, so it overlaps the
+					// event loop rather than blocking other turns.
+					piiIngressText = this.collectPromptText(
+						modelParams,
+						effectiveSystemPrompt,
+					);
+					await piiSwapSession.learn(piiIngressText);
+					modelParams = piiSwapSession.substituteInValue(modelParams);
+					effectiveSystemPrompt =
+						effectiveSystemPrompt === undefined
+							? undefined
+							: piiSwapSession.substituteText(effectiveSystemPrompt);
+				}
+
+				await this.invokePipelineHooks(
+					"pre_model",
+					preModelPipelineHookContext({
+						requestedModelType: String(modelType),
+						resolvedModelKey,
+						provider: resolvedModel.provider,
+						roomId: getTrajectoryContext()?.roomId,
+						params: modelParams,
+					}),
+					"Pre-model pipeline hook",
+				);
+				if (secretSwapSession) {
+					modelParams = secretSwapSession.substituteInValue(modelParams);
+					const postHookSystemPrompt = resolveEffectiveSystemPrompt({
+						params: modelParams,
+						fallback: effectiveSystemPrompt,
+					});
+					effectiveSystemPrompt =
+						postHookSystemPrompt === undefined
+							? undefined
+							: secretSwapSession.substituteText(postHookSystemPrompt);
+				}
+				if (piiSwapSession) {
+					// pre_model hooks may have injected fresh text (RAG snippets, extra
+					// context) with never-seen PII. If the assembled text changed, re-run
+					// detection so that new PII is swapped too — not just already-learned
+					// values re-masked. learn() is idempotent, so this only adds new entities.
+					const postHookText = this.collectPromptText(
+						modelParams,
+						effectiveSystemPrompt,
+					);
+					if (postHookText !== piiIngressText) {
+						await piiSwapSession.learn(postHookText);
+					}
+					modelParams = piiSwapSession.substituteInValue(modelParams);
+					const postHookSystemPrompt = resolveEffectiveSystemPrompt({
+						params: modelParams,
+						fallback: effectiveSystemPrompt,
+					});
+					effectiveSystemPrompt =
+						postHookSystemPrompt === undefined
+							? undefined
+							: piiSwapSession.substituteText(postHookSystemPrompt);
+				}
+
+				const hookedParamsObj =
+					modelParams &&
+					typeof modelParams === "object" &&
+					!Array.isArray(modelParams)
+						? (modelParams as Record<string, JsonValue | object>)
+						: null;
+				const promptContent =
+					(hookedParamsObj &&
+					"prompt" in hookedParamsObj &&
+					typeof hookedParamsObj.prompt === "string"
+						? hookedParamsObj.prompt
+						: null) ||
+					(hookedParamsObj &&
+					"input" in hookedParamsObj &&
+					typeof hookedParamsObj.input === "string"
+						? hookedParamsObj.input
+						: null) ||
+					(hookedParamsObj &&
+					"messages" in hookedParamsObj &&
+					Array.isArray(hookedParamsObj.messages)
+						? stringifyStructuredForPrompt({
+								messages: hookedParamsObj.messages,
+							})
+						: null) ||
+					(typeof modelParams === "string" ? modelParams : null);
+
+				if (!binaryModels.includes(resolvedModelKey)) {
+					this.logger.trace(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							model: resolvedModelKey,
+							params: modelParams,
+						},
+						"Model input",
+					);
+				} else {
+					let sizeInfo = "unknown size";
+					if (Buffer.isBuffer(modelParams)) {
+						sizeInfo = `${modelParams.length} bytes`;
+					} else if (
+						typeof Blob !== "undefined" &&
+						modelParams instanceof Blob
+					) {
+						sizeInfo = `${modelParams.size} bytes`;
+					} else if (typeof modelParams === "object" && modelParams !== null) {
+						if ("audio" in modelParams && Buffer.isBuffer(modelParams.audio)) {
+							sizeInfo = `${(modelParams.audio as Buffer).length} bytes`;
+						} else if (
+							"audio" in modelParams &&
+							typeof Blob !== "undefined" &&
+							modelParams.audio instanceof Blob
+						) {
+							sizeInfo = `${(modelParams.audio as Blob).size} bytes`;
+						}
+					}
+					this.logger.trace(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							model: resolvedModelKey,
+							size: sizeInfo,
+						},
+						"Model input (binary)",
+					);
+				}
+
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						model: resolvedModelKey,
+						provider: resolvedModel.provider,
+						...(lookupCaller?.caller ? { caller: lookupCaller.caller } : {}),
+						...(lookupCaller?.callerStack.length
+							? { callerStack: lookupCaller.callerStack }
+							: {}),
+					},
+					"Using model",
+				);
+
+				const rawResponse = await handler(
+					this,
+					modelParams as Record<string, JsonValue | object>,
+				);
+
+				let safeRawResponse: unknown =
+					secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
+				safeRawResponse =
+					piiSwapSession?.substituteInValue(safeRawResponse) ?? safeRawResponse;
+				const resultRef: { current: unknown } = { current: safeRawResponse };
+				const modelOutToTrajectoryString = (v: unknown) =>
+					typeof v === "string"
+						? v
+						: stringifyStructuredForPrompt({ response: v });
+
+				// Stream: broadcast to callbacks if streaming
+				if (
+					shouldStream &&
+					(paramsChunk || ctxChunk) &&
+					isTextStreamResult(rawResponse)
+				) {
+					for await (const chunk of rawResponse.textStream) {
+						if (abortSignal?.aborted) break;
 						await deliverModelStreamChunk(chunk);
 					}
-				: undefined;
+					await flushGuardedStream();
+					structuredExtractor?.flush();
 
-		if (isPlainObject(modelParams) && paramsAsStreaming) {
-			paramsAsStreaming.stream = shouldStream;
-			if (handlerStreamChunk) {
-				paramsAsStreaming.onStreamChunk = handlerStreamChunk;
-			} else {
-				delete paramsAsStreaming.onStreamChunk;
-			}
-			// Plumb the streaming-context abort signal into model params so the
-			// underlying handler can wire it into its transport (e.g. local
-			// llama's `stopOnAbortSignal`, fetch's `signal`). Only inject when
-			// the caller didn't already pass one explicitly.
-			if (paramsAsStreaming.signal === undefined && abortSignal) {
-				paramsAsStreaming.signal = abortSignal;
-			}
-		}
+					const trajStreamEnd = getTrajectoryContext();
+					await this.invokePipelineHooks(
+						"model_stream_end",
+						modelStreamEndPipelineHookContext({
+							source: "use_model",
+							roomId:
+								(trajStreamEnd?.roomId as UUID | undefined) ??
+								this.currentRoomId ??
+								this.agentId,
+							runId: this.getCurrentRunId(),
+							messageId: msgId ?? trajStreamEnd?.messageId,
+							text: streamedText,
+						}),
+						"Model stream end (useModel)",
+						true,
+					);
 
-		const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
-			String(resolvedModelKey),
-		)
-			? String(resolvedModelKey)
-			: requestedModelKey;
-		let effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
-			textModelKey,
-			modelParams,
-		);
+					// Signal stream end to allow context to reset state between useModel calls
+					const streamingCtxEnd = getStreamingContext();
+					const ctxEnd = streamingCtxEnd?.onStreamEnd;
+					if (ctxEnd) ctxEnd();
 
-		if (
-			this.isSecretSwapEnabled() &&
-			!binaryModels.includes(resolvedModelKey)
-		) {
-			// Reuse one session per turn so every model call in the turn shares a
-			// nonce and the action-execution boundary can restore what this call
-			// swapped. The session hangs off the turn-scoped trajectory context;
-			// calls outside a trajectory scope fall back to a per-call session
-			// (no egress restore — there is no execution boundary to restore at).
-			const trajectoryCtx = getTrajectoryContext();
-			secretSwapSession =
-				trajectoryCtx?.secretSwapSession ?? this.createSecretSwapSession();
-			if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
-				trajectoryCtx.secretSwapSession = secretSwapSession;
-			}
-			modelParams = secretSwapSession.substituteInValue(modelParams);
-			effectiveSystemPrompt =
-				effectiveSystemPrompt === undefined
-					? undefined
-					: secretSwapSession.substituteText(effectiveSystemPrompt);
-		}
+					// Preserve tool calls + finishReason + usage from the stream result.
+					// The streaming branch used to collapse the response to `streamedText`
+					// (a bare string), discarding any `toolCalls` surfaced by the provider
+					// as a Promise. Callers like `parsePlannerOutput` then saw
+					// `toolCalls.length === 0` and incremented `required_tool_misses` even
+					// though the LLM had emitted a valid native tool call.
+					const streamRaw = rawResponse as {
+						toolCalls?: unknown;
+						finishReason?: unknown;
+						usage?: unknown;
+						providerMetadata?: unknown;
+					};
+					const hasToolCallsField = "toolCalls" in streamRaw;
+					const resolvedToolCalls = hasToolCallsField
+						? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
+						: [];
+					const hasResolvedToolCalls =
+						Array.isArray(resolvedToolCalls) && resolvedToolCalls.length > 0;
+					// Only widen to a GenerateText-shape result when the stream actually
+					// surfaced tool calls. The original streaming contract returns a bare
+					// string; the wider object exists solely to preserve `toolCalls` for
+					// `parsePlannerOutput`, which is irrelevant when none were emitted.
+					if (hasResolvedToolCalls) {
+						const resolvedFinishReason =
+							"finishReason" in streamRaw
+								? await Promise.resolve(streamRaw.finishReason).catch(
+										() => undefined,
+									)
+								: undefined;
+						const resolvedUsage =
+							"usage" in streamRaw
+								? await Promise.resolve(streamRaw.usage).catch(() => undefined)
+								: undefined;
+						resultRef.current = {
+							text: streamedText,
+							toolCalls: resolvedToolCalls,
+							finishReason: resolvedFinishReason,
+							usage: resolvedUsage,
+							providerMetadata: streamRaw.providerMetadata,
+						};
+					} else {
+						resultRef.current = streamedText;
+					}
 
-		await this.invokePipelineHooks(
-			"pre_model",
-			preModelPipelineHookContext({
-				requestedModelType: String(modelType),
-				resolvedModelKey,
-				provider: resolvedModel.provider,
-				roomId: getTrajectoryContext()?.roomId,
-				params: modelParams,
-			}),
-			"Pre-model pipeline hook",
-		);
-		if (secretSwapSession) {
-			modelParams = secretSwapSession.substituteInValue(modelParams);
-			const postHookSystemPrompt = resolveEffectiveSystemPrompt({
-				params: modelParams,
-				fallback: effectiveSystemPrompt,
-			});
-			effectiveSystemPrompt =
-				postHookSystemPrompt === undefined
-					? undefined
-					: secretSwapSession.substituteText(postHookSystemPrompt);
-		}
+					const elapsedTime =
+						(typeof performance !== "undefined" &&
+						typeof performance.now === "function"
+							? performance.now()
+							: Date.now()) - startTime;
 
-		const hookedParamsObj =
-			modelParams &&
-			typeof modelParams === "object" &&
-			!Array.isArray(modelParams)
-				? (modelParams as Record<string, JsonValue | object>)
-				: null;
-		const promptContent =
-			(hookedParamsObj &&
-			"prompt" in hookedParamsObj &&
-			typeof hookedParamsObj.prompt === "string"
-				? hookedParamsObj.prompt
-				: null) ||
-			(hookedParamsObj &&
-			"input" in hookedParamsObj &&
-			typeof hookedParamsObj.input === "string"
-				? hookedParamsObj.input
-				: null) ||
-			(hookedParamsObj &&
-			"messages" in hookedParamsObj &&
-			Array.isArray(hookedParamsObj.messages)
-				? stringifyStructuredForPrompt({ messages: hookedParamsObj.messages })
-				: null) ||
-			(typeof modelParams === "string" ? modelParams : null);
+					await this.invokePipelineHooks(
+						"post_model",
+						postModelPipelineHookContext({
+							requestedModelType: String(modelType),
+							resolvedModelKey,
+							provider: resolvedModel.provider,
+							roomId: getTrajectoryContext()?.roomId,
+							durationMs: Math.round(elapsedTime),
+							params: modelParams,
+							result: resultRef,
+							streaming: true,
+						}),
+						"Post-model pipeline hook",
+					);
+					resultRef.current =
+						secretSwapSession?.substituteInValue(resultRef.current) ??
+						resultRef.current;
+					resultRef.current =
+						piiSwapSession?.substituteInValue(resultRef.current) ??
+						resultRef.current;
 
-		if (!binaryModels.includes(resolvedModelKey)) {
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					model: resolvedModelKey,
-					params: modelParams,
-				},
-				"Model input",
-			);
-		} else {
-			let sizeInfo = "unknown size";
-			if (Buffer.isBuffer(modelParams)) {
-				sizeInfo = `${modelParams.length} bytes`;
-			} else if (typeof Blob !== "undefined" && modelParams instanceof Blob) {
-				sizeInfo = `${modelParams.size} bytes`;
-			} else if (typeof modelParams === "object" && modelParams !== null) {
-				if ("audio" in modelParams && Buffer.isBuffer(modelParams.audio)) {
-					sizeInfo = `${(modelParams.audio as Buffer).length} bytes`;
-				} else if (
-					"audio" in modelParams &&
-					typeof Blob !== "undefined" &&
-					modelParams.audio instanceof Blob
-				) {
-					sizeInfo = `${(modelParams.audio as Blob).size} bytes`;
+					this.logger.trace(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							model: resolvedModelKey,
+							duration: Number(elapsedTime.toFixed(2)),
+							streaming: true,
+						},
+						"Model output (stream with callback complete)",
+					);
+
+					this.logModelCall(
+						String(modelType),
+						resolvedModelKey,
+						modelParams,
+						promptContent,
+						effectiveSystemPrompt,
+						elapsedTime,
+						resolvedModel.provider,
+						resultRef.current,
+					);
+
+					if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+						await this.recordUseModelTrajectory({
+							modelType: String(modelType),
+							resolvedModelKey: String(resolvedModelKey),
+							provider: resolvedModel.provider,
+							modelParams,
+							promptContent,
+							result: resultRef.current,
+							response: modelOutToTrajectoryString(resultRef.current),
+							elapsedTime,
+						});
+					}
+
+					return resultRef.current as R;
 				}
-			}
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					model: resolvedModelKey,
-					size: sizeInfo,
-				},
-				"Model input (binary)",
-			);
-		}
 
-		this.logger.debug(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				model: resolvedModelKey,
-				provider: resolvedModel.provider,
-				...(lookupCaller?.caller ? { caller: lookupCaller.caller } : {}),
-				...(lookupCaller?.callerStack.length
-					? { callerStack: lookupCaller.callerStack }
-					: {}),
-			},
-			"Using model",
-		);
+				if (handlerDeliveredStream) {
+					await flushGuardedStream();
+					structuredExtractor?.flush();
+					const trajStreamEnd = getTrajectoryContext();
+					await this.invokePipelineHooks(
+						"model_stream_end",
+						modelStreamEndPipelineHookContext({
+							source: "use_model",
+							roomId:
+								(trajStreamEnd?.roomId as UUID | undefined) ??
+								this.currentRoomId ??
+								this.agentId,
+							runId: this.getCurrentRunId(),
+							messageId: msgId ?? trajStreamEnd?.messageId,
+							text: streamedText,
+						}),
+						"Model stream end (useModel)",
+						true,
+					);
+					const streamingCtxEnd = getStreamingContext();
+					const ctxEnd = streamingCtxEnd?.onStreamEnd;
+					if (ctxEnd) ctxEnd();
+				}
 
-		const rawResponse = await handler(
-			this,
-			modelParams as Record<string, JsonValue | object>,
-		);
+				const elapsedTime =
+					(typeof performance !== "undefined" &&
+					typeof performance.now === "function"
+						? performance.now()
+						: Date.now()) - startTime;
 
-		const resultRef: { current: unknown } = {
-			current: secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse,
-		};
-		const modelOutToTrajectoryString = (v: unknown) =>
-			typeof v === "string" ? v : stringifyStructuredForPrompt({ response: v });
+				await this.invokePipelineHooks(
+					"post_model",
+					postModelPipelineHookContext({
+						requestedModelType: String(modelType),
+						resolvedModelKey,
+						provider: resolvedModel.provider,
+						roomId: getTrajectoryContext()?.roomId,
+						durationMs: Math.round(elapsedTime),
+						params: modelParams,
+						result: resultRef,
+						streaming: handlerDeliveredStream,
+					}),
+					"Post-model pipeline hook",
+				);
+				resultRef.current =
+					secretSwapSession?.substituteInValue(resultRef.current) ??
+					resultRef.current;
+				resultRef.current =
+					piiSwapSession?.substituteInValue(resultRef.current) ??
+					resultRef.current;
 
-		// Stream: broadcast to callbacks if streaming
-		if (
-			shouldStream &&
-			(paramsChunk || ctxChunk) &&
-			isTextStreamResult(rawResponse)
-		) {
-			for await (const chunk of rawResponse.textStream) {
-				if (abortSignal?.aborted) break;
-				await deliverModelStreamChunk(chunk);
-			}
-			await flushSecretSwapStream();
-			structuredExtractor?.flush();
+				this.logger.trace(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						model: resolvedModelKey,
+						duration: Number(elapsedTime.toFixed(2)),
+					},
+					"Model output",
+				);
 
-			const trajStreamEnd = getTrajectoryContext();
-			await this.invokePipelineHooks(
-				"model_stream_end",
-				modelStreamEndPipelineHookContext({
-					source: "use_model",
-					roomId:
-						(trajStreamEnd?.roomId as UUID | undefined) ??
-						this.currentRoomId ??
-						this.agentId,
-					runId: this.getCurrentRunId(),
-					messageId: msgId ?? trajStreamEnd?.messageId,
-					text: streamedText,
-				}),
-				"Model stream end (useModel)",
-				true,
-			);
-
-			// Signal stream end to allow context to reset state between useModel calls
-			const streamingCtxEnd = getStreamingContext();
-			const ctxEnd = streamingCtxEnd?.onStreamEnd;
-			if (ctxEnd) ctxEnd();
-
-			// Preserve tool calls + finishReason + usage from the stream result.
-			// The streaming branch used to collapse the response to `streamedText`
-			// (a bare string), discarding any `toolCalls` surfaced by the provider
-			// as a Promise. Callers like `parsePlannerOutput` then saw
-			// `toolCalls.length === 0` and incremented `required_tool_misses` even
-			// though the LLM had emitted a valid native tool call.
-			const streamRaw = rawResponse as {
-				toolCalls?: unknown;
-				finishReason?: unknown;
-				usage?: unknown;
-				providerMetadata?: unknown;
-			};
-			const hasToolCallsField = "toolCalls" in streamRaw;
-			const resolvedToolCalls = hasToolCallsField
-				? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
-				: [];
-			const hasResolvedToolCalls =
-				Array.isArray(resolvedToolCalls) && resolvedToolCalls.length > 0;
-			// Only widen to a GenerateText-shape result when the stream actually
-			// surfaced tool calls. The original streaming contract returns a bare
-			// string; the wider object exists solely to preserve `toolCalls` for
-			// `parsePlannerOutput`, which is irrelevant when none were emitted.
-			if (hasResolvedToolCalls) {
-				const resolvedFinishReason =
-					"finishReason" in streamRaw
-						? await Promise.resolve(streamRaw.finishReason).catch(
-								() => undefined,
-							)
-						: undefined;
-				const resolvedUsage =
-					"usage" in streamRaw
-						? await Promise.resolve(streamRaw.usage).catch(() => undefined)
-						: undefined;
-				resultRef.current = {
-					text: streamedText,
-					toolCalls: resolvedToolCalls,
-					finishReason: resolvedFinishReason,
-					usage: resolvedUsage,
-					providerMetadata: streamRaw.providerMetadata,
-				};
-			} else {
-				resultRef.current = streamedText;
-			}
-
-			const elapsedTime =
-				(typeof performance !== "undefined" &&
-				typeof performance.now === "function"
-					? performance.now()
-					: Date.now()) - startTime;
-
-			await this.invokePipelineHooks(
-				"post_model",
-				postModelPipelineHookContext({
-					requestedModelType: String(modelType),
+				this.logModelCall(
+					String(modelType),
 					resolvedModelKey,
-					provider: resolvedModel.provider,
-					roomId: getTrajectoryContext()?.roomId,
-					durationMs: Math.round(elapsedTime),
-					params: modelParams,
-					result: resultRef,
-					streaming: true,
-				}),
-				"Post-model pipeline hook",
-			);
-			resultRef.current =
-				secretSwapSession?.substituteInValue(resultRef.current) ??
-				resultRef.current;
-
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					model: resolvedModelKey,
-					duration: Number(elapsedTime.toFixed(2)),
-					streaming: true,
-				},
-				"Model output (stream with callback complete)",
-			);
-
-			this.logModelCall(
-				String(modelType),
-				resolvedModelKey,
-				params,
-				promptContent,
-				effectiveSystemPrompt,
-				elapsedTime,
-				resolvedModel.provider,
-				resultRef.current,
-			);
-
-			if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
-				await this.recordUseModelTrajectory({
-					modelType: String(modelType),
-					resolvedModelKey: String(resolvedModelKey),
-					provider: resolvedModel.provider,
 					modelParams,
 					promptContent,
-					result: resultRef.current,
-					response: modelOutToTrajectoryString(resultRef.current),
+					effectiveSystemPrompt,
 					elapsedTime,
+					resolvedModel.provider,
+					resultRef.current,
+				);
+
+				if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+					await this.recordUseModelTrajectory({
+						modelType: String(modelType),
+						resolvedModelKey: String(resolvedModelKey),
+						provider: resolvedModel.provider,
+						modelParams,
+						promptContent,
+						result: resultRef.current,
+						response: modelOutToTrajectoryString(resultRef.current),
+						elapsedTime,
+					});
+				}
+				return resultRef.current as R;
+			} catch (error) {
+				lastModelError = error;
+				const nextModel = resolvedModels[resolvedIndex + 1];
+				if (
+					requestedProvider !== undefined ||
+					!nextModel ||
+					providerAttemptStartedOutput ||
+					!this.shouldFailOverModelProvider(error)
+				) {
+					this.rethrowModelFailoverError(error);
+				}
+				this.logModelProviderFailover({
+					requestedModelKey,
+					failedModel: resolvedModel,
+					nextModel,
+					error,
 				});
 			}
-
-			return resultRef.current as R;
 		}
-
-		if (handlerDeliveredStream) {
-			await flushSecretSwapStream();
-			structuredExtractor?.flush();
-			const trajStreamEnd = getTrajectoryContext();
-			await this.invokePipelineHooks(
-				"model_stream_end",
-				modelStreamEndPipelineHookContext({
-					source: "use_model",
-					roomId:
-						(trajStreamEnd?.roomId as UUID | undefined) ??
-						this.currentRoomId ??
-						this.agentId,
-					runId: this.getCurrentRunId(),
-					messageId: msgId ?? trajStreamEnd?.messageId,
-					text: streamedText,
-				}),
-				"Model stream end (useModel)",
-				true,
-			);
-			const streamingCtxEnd = getStreamingContext();
-			const ctxEnd = streamingCtxEnd?.onStreamEnd;
-			if (ctxEnd) ctxEnd();
-		}
-
-		const elapsedTime =
-			(typeof performance !== "undefined" &&
-			typeof performance.now === "function"
-				? performance.now()
-				: Date.now()) - startTime;
-
-		await this.invokePipelineHooks(
-			"post_model",
-			postModelPipelineHookContext({
-				requestedModelType: String(modelType),
-				resolvedModelKey,
-				provider: resolvedModel.provider,
-				roomId: getTrajectoryContext()?.roomId,
-				durationMs: Math.round(elapsedTime),
-				params: modelParams,
-				result: resultRef,
-				streaming: handlerDeliveredStream,
-			}),
-			"Post-model pipeline hook",
+		this.rethrowModelFailoverError(
+			lastModelError ??
+				new Error(`No handler found for delegate type: ${requestedModelKey}`),
 		);
-		resultRef.current =
-			secretSwapSession?.substituteInValue(resultRef.current) ??
-			resultRef.current;
-
-		this.logger.trace(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				model: resolvedModelKey,
-				duration: Number(elapsedTime.toFixed(2)),
-			},
-			"Model output",
-		);
-
-		this.logModelCall(
-			String(modelType),
-			resolvedModelKey,
-			params,
-			promptContent,
-			effectiveSystemPrompt,
-			elapsedTime,
-			resolvedModel.provider,
-			resultRef.current,
-		);
-
-		if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
-			await this.recordUseModelTrajectory({
-				modelType: String(modelType),
-				resolvedModelKey: String(resolvedModelKey),
-				provider: resolvedModel.provider,
-				modelParams,
-				promptContent,
-				result: resultRef.current,
-				response: modelOutToTrajectoryString(resultRef.current),
-				elapsedTime,
-			});
-		}
-		return resultRef.current as R;
 	}
 
 	/**
@@ -7656,41 +8076,163 @@ ${section_end}`;
 		}
 	}
 
+	/**
+	 * True while embedding generation is disabled because every registered
+	 * TEXT_EMBEDDING provider failed the dimension probe. While true, memory
+	 * writes persist without vectors (recall over new memories is degraded)
+	 * rather than emitting vectors the SQL adapter would silently drop against
+	 * a default-sized column. Cleared by the next successful
+	 * {@link ensureEmbeddingDimension} (e.g. the deferred boot re-probe).
+	 */
+	isEmbeddingGenerationDisabled(): boolean {
+		return this.embeddingGenerationDisabledReason !== null;
+	}
+
+	private disableEmbeddingGeneration(reason: string): void {
+		this.embeddingGenerationDisabledReason = reason;
+		this.embeddingSkipWarned = false;
+	}
+
+	private enableEmbeddingGeneration(): void {
+		if (this.embeddingGenerationDisabledReason !== null) {
+			this.logger.info(
+				{ src: "agent", agentId: this.agentId },
+				"TEXT_EMBEDDING provider recovered; embedding generation re-enabled",
+			);
+		}
+		this.embeddingGenerationDisabledReason = null;
+		this.embeddingSkipWarned = false;
+	}
+
+	/**
+	 * Once-latch warn for skipped embedding generation: the first skipped write
+	 * logs a structured warning, subsequent skips stay quiet until the flag is
+	 * cleared and re-set (a fresh degradation event warns again).
+	 */
+	private warnEmbeddingGenerationSkipped(): void {
+		if (this.embeddingSkipWarned) {
+			return;
+		}
+		this.embeddingSkipWarned = true;
+		this.logger.warn(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				reason: this.embeddingGenerationDisabledReason,
+			},
+			"Embedding generation is disabled (every TEXT_EMBEDDING provider failed the dimension probe); memory writes are persisted WITHOUT vectors — recall over new memories is degraded until a provider recovers",
+		);
+	}
+
 	async ensureEmbeddingDimension() {
 		if (!this.adapter) {
 			throw new Error(
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
-		const model = this.getModel(ModelType.TEXT_EMBEDDING);
-		if (!model) {
+		const registrations = this.resolveModelRegistrations(
+			ModelType.TEXT_EMBEDDING,
+		);
+		if (registrations.length === 0) {
 			throw new Error("No TEXT_EMBEDDING model registered");
 		}
 
-		// Pass null to get a test vector for dimension detection
-		// Model handlers should return a zero-filled vector of the correct dimension when null is passed
-		let embedding: unknown;
-		try {
-			embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-		} catch (error) {
-			if (error instanceof NoModelProviderConfiguredError) {
-				this.logger.warn(
-					{ src: "agent", agentId: this.agentId },
-					"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
-				);
-				return;
+		// Probe every registered TEXT_EMBEDDING provider in the same priority
+		// order useModel resolves them. The probe passes null; handlers return a
+		// zero-filled vector of their real output width. A provider that cannot
+		// answer the null probe cannot produce usable vectors either, so ANY
+		// probe failure — not just a rate limit — advances to the next
+		// registration. First success wins: it sizes the adapter's vector column
+		// and pins that provider for subsequent embedding calls, so the column
+		// width and the vectors written to it always come from the same provider.
+		const attempts: EmbeddingProbeAttempt[] = [];
+		const probedProviders = new Set<string>();
+		let allFailuresBenign = true;
+		for (const registration of registrations) {
+			if (probedProviders.has(registration.provider)) {
+				continue;
 			}
-			throw error;
-		}
-		if (!Array.isArray(embedding) || embedding.length === 0) {
-			throw new Error("Invalid embedding received");
+			probedProviders.add(registration.provider);
+
+			let embedding: unknown;
+			try {
+				embedding = await this.useModel(
+					ModelType.TEXT_EMBEDDING,
+					null,
+					registration.provider,
+				);
+			} catch (error) {
+				if (!(error instanceof NoModelProviderConfiguredError)) {
+					allFailuresBenign = false;
+				}
+				attempts.push({
+					provider: registration.provider,
+					modelKey: registration.modelKey,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						provider: registration.provider,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
+				);
+				continue;
+			}
+			if (!Array.isArray(embedding) || embedding.length === 0) {
+				allFailuresBenign = false;
+				attempts.push({
+					provider: registration.provider,
+					modelKey: registration.modelKey,
+					error: `Invalid embedding received (${Array.isArray(embedding) ? "empty array" : typeof embedding})`,
+				});
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						provider: registration.provider,
+					},
+					"TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
+				);
+				continue;
+			}
+
+			await this.adapter.ensureEmbeddingDimension(embedding.length);
+			this.pinnedEmbeddingProvider = registration.provider;
+			this.enableEmbeddingGeneration();
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					dimension: embedding.length,
+					provider: registration.provider,
+					failedProviders: attempts.map((attempt) => attempt.provider),
+				},
+				"Embedding dimension set",
+			);
+			return;
 		}
 
-		await this.adapter.ensureEmbeddingDimension(embedding.length);
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, dimension: embedding.length },
-			"Embedding dimension set",
-		);
+		// Every registered handler reported "no backing provider configured"
+		// (e.g. a cloud proxy handler before login). Nothing can emit vectors,
+		// so a default-width column cannot cause a dimension mismatch — keep the
+		// long-standing benign skip.
+		if (allFailuresBenign) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId },
+				"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
+			);
+			return;
+		}
+
+		// All probes failed for real. Disable embedding generation so memory
+		// writes skip vector generation coherently (no silent drops downstream),
+		// and surface a typed error carrying every provider's failure.
+		const probeError = new EmbeddingDimensionProbeError(attempts);
+		this.disableEmbeddingGeneration(probeError.message);
+		throw probeError;
 	}
 
 	registerTaskWorker(taskHandler: TaskWorker): void {
@@ -7946,6 +8488,14 @@ ${section_end}`;
 		if (!memoryText) {
 			throw new Error("Cannot generate embedding: Memory content is empty");
 		}
+		if (this.embeddingGenerationDisabledReason !== null) {
+			// Every TEXT_EMBEDDING provider failed the dimension probe, so the
+			// vector column was never sized for this runtime. Skip generation
+			// explicitly (warn once) instead of producing a vector the SQL
+			// adapter would silently drop on dimension mismatch (#8769).
+			this.warnEmbeddingGenerationSkipped();
+			return memory;
+		}
 		memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
 			text: memoryText,
 		});
@@ -7962,6 +8512,13 @@ ${section_end}`;
 	): Promise<void> {
 		priority = priority || "normal";
 		if (!memory || memory.embedding || !memory.content.text) {
+			return;
+		}
+		if (this.embeddingGenerationDisabledReason !== null) {
+			// See addEmbeddingToMemory: no provider passed the dimension probe,
+			// so queueing would only produce per-item generation failures (or
+			// silently dropped vectors). Skip explicitly, warn once.
+			this.warnEmbeddingGenerationSkipped();
 			return;
 		}
 
@@ -8412,8 +8969,19 @@ ${section_end}`;
 		}).catch(() => {});
 	}
 
+	/**
+	 * Nudge the local TaskService (same process) so its dirty-gated tick re-queries the DB.
+	 * WHY: the companion POST above only reaches a REMOTE receiver; without this, in-process
+	 * task mutations never re-arm the tick and tasks created after boot are never seen.
+	 */
+	private _markLocalTasksDirty(): void {
+		const taskService = this.getService<TaskService>(ServiceType.TASK);
+		taskService?.markDirty();
+	}
+
 	async createTask(task: Task): Promise<UUID> {
 		const ids = await this.adapter.createTasks([task]);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 		return ids[0];
 	}
@@ -8425,11 +8993,13 @@ ${section_end}`;
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
 		await this.adapter.updateTasks([{ id, task }]);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
-		return this.adapter.deleteTasks([id]);
+		await this.adapter.deleteTasks([id]);
+		this._markLocalTasksDirty();
 	}
 
 	async log(params: {
@@ -8461,6 +9031,7 @@ ${section_end}`;
 	// Batch task methods
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids = await this.adapter.createTasks(tasks);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 		return ids;
 	}
@@ -8473,11 +9044,13 @@ ${section_end}`;
 		updates: Array<{ id: UUID; task: Partial<Task> }>,
 	): Promise<void> {
 		await this.adapter.updateTasks(updates);
+		this._markLocalTasksDirty();
 		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTasks(taskIds: UUID[]): Promise<void> {
-		return this.adapter.deleteTasks(taskIds);
+		await this.adapter.deleteTasks(taskIds);
+		this._markLocalTasksDirty();
 	}
 
 	/**

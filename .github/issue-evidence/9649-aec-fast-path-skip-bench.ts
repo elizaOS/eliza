@@ -15,13 +15,13 @@ const FRAMES = 20000; // ~6.7 min of 20 ms frames
 const EMPTY = new Float32Array(0);
 
 function micFrame(seed: number): Float32Array {
-	const x = new Float32Array(BLOCK);
-	let s = seed >>> 0;
-	for (let i = 0; i < BLOCK; i++) {
-		s = (s * 1103515245 + 12345) & 0x7fffffff;
-		x[i] = s / 0x3fffffff - 1;
-	}
-	return x;
+  const x = new Float32Array(BLOCK);
+  let s = seed >>> 0;
+  for (let i = 0; i < BLOCK; i++) {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    x[i] = s / 0x3fffffff - 1;
+  }
+  return x;
 }
 const frames = Array.from({ length: FRAMES }, (_, i) => micFrame(i + 1));
 
@@ -30,8 +30,8 @@ const aec = new NlmsEchoCanceller();
 let t0 = performance.now();
 let checksumOld = 0;
 for (const f of frames) {
-	const out = aec.process(f, EMPTY);
-	checksumOld += out[0];
+  const out = aec.process(f, EMPTY);
+  checksumOld += out[0];
 }
 const oldMs = performance.now() - t0;
 
@@ -41,9 +41,9 @@ const silentAec = new NlmsEchoCanceller();
 t0 = performance.now();
 let checksumNew = 0;
 for (const f of frames) {
-	silentAec.observeFarEndSilence(f);
-	const out = f; // cancelEcho() short-circuit when reference is null/empty
-	checksumNew += out[0];
+  silentAec.observeFarEndSilence(f);
+  const out = f; // cancelEcho() short-circuit when reference is null/empty
+  checksumNew += out[0];
 }
 const newMs = performance.now() - t0;
 

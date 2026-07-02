@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyCloudConfigToEnv,
+  cloudApiKeyFingerprint,
   ensureProvisionedCloudContainerConfig,
   shouldStartElizaCloudThinClient,
 } from "./eliza.ts";
@@ -23,6 +24,10 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
   "ELIZAOS_CLOUD_API_KEY",
+  "EMBEDDING_BASE_URL",
+  "EMBEDDING_API_KEY",
+  "EMBEDDING_MODEL",
+  "EMBEDDING_DIMENSIONS",
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_CLOUD_AGENT_ID",
   "ELIZAOS_CLOUD_NANO_MODEL",
@@ -71,6 +76,37 @@ describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
   });
 
+  it("honors BYO embedding ownership from config.env in a cloud-provisioned container", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    applyCloudConfigToEnv({
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+          EMBEDDING_BASE_URL: "http://172.17.0.1:11434/v1",
+          EMBEDDING_API_KEY: "ollama",
+        },
+      },
+    } as ElizaConfig);
+
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+  });
+
+  it("lets an explicit BYO embedding endpoint own embeddings in a cloud-provisioned container", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+    process.env.EMBEDDING_BASE_URL = "http://172.17.0.1:11434/v1";
+    process.env.EMBEDDING_API_KEY = "ollama";
+    process.env.EMBEDDING_MODEL = "nomic-embed-text";
+    process.env.EMBEDDING_DIMENSIONS = "768";
+
+    applyCloudConfigToEnv({} as ElizaConfig);
+
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+  });
+
   it("is a no-op when neither cloud config nor ELIZA_CLOUD_PROVISIONED is present", () => {
     // No cloud + not a container → the function returns early and must not
     // touch any cloud-usage env (so a local-only agent isn't flipped to cloud).
@@ -113,6 +149,56 @@ describe("provisioned cloud container topology (#9887)", () => {
       transport: "cloud-proxy",
       smallModel: "small-test",
     });
+  });
+
+  it("does not synthesize cloud embedding routing when config.env selects BYO embeddings", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+          EMBEDDING_BASE_URL: "http://172.17.0.1:11434/v1",
+          EMBEDDING_API_KEY: "ollama",
+        },
+      },
+    } as ElizaConfig;
+
+    ensureProvisionedCloudContainerConfig(config);
+
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+    expect(config.serviceRouting?.embeddings).toBeUndefined();
+  });
+
+  it("does not synthesize cloud embedding routing when BYO embeddings are explicitly selected", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+    process.env.EMBEDDING_BASE_URL = "http://172.17.0.1:11434/v1";
+    process.env.EMBEDDING_API_KEY = "ollama";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    ensureProvisionedCloudContainerConfig(config);
+
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+    expect(config.serviceRouting?.embeddings).toBeUndefined();
   });
 
   it("repairs topology from config.env when container env has only the provisioned marker", () => {
@@ -176,8 +262,8 @@ describe("provisioned cloud container topology (#9887)", () => {
         llmText: {
           backend: "elizacloud",
           transport: "cloud-proxy",
-          smallModel: "gpt-oss-120b",
-          largeModel: "zai-glm-4.7",
+          smallModel: "gemma-4-31b",
+          largeModel: "gemma-4-31b",
         },
         embeddings: {
           backend: "elizacloud",
@@ -203,8 +289,8 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(topology.runtime).toBe("cloud");
     expect(topology.services.inference).toBe(true);
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
-    expect(process.env.SMALL_MODEL).toBe("gpt-oss-120b");
-    expect(process.env.LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(process.env.SMALL_MODEL).toBe("gemma-4-31b");
+    expect(process.env.LARGE_MODEL).toBe("gemma-4-31b");
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(infoSpy).toHaveBeenCalledWith(
@@ -363,6 +449,88 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
+  it("marks inference explicitly OFF while loading the plugin for media (#10819)", () => {
+    // Capability-only topology: an external provider owns the text brain,
+    // media is cloud-routed. The plugin must load with the credential intact
+    // and an EXPLICIT inference denial, so image generation works without the
+    // cloud stealing the chat-brain slots.
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      serviceRouting: {
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const topology = resolveElizaCloudTopology(
+      config as Record<string, unknown>,
+    );
+    expect(topology.services.inference).toBe(false);
+    expect(topology.services.media).toBe(true);
+    expect(topology.shouldLoadPlugin).toBe(true);
+
+    applyCloudConfigToEnv(config);
+
+    // Tri-state contract with plugin-elizacloud's registerTextInferenceModels:
+    // explicit "false" (not unset) → skip chat-brain handlers, keep IMAGE/TTS.
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_MEDIA).toBe("true");
+    // The credential survives for the selected capabilities…
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("cloud-test");
+    // …without flipping the inference-coupled ENABLED flag.
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
+  });
+
+  it("keeps an env-provided key when config carries none but cloud services are selected (#10819)", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "env-key";
+    const config: ElizaConfig = {
+      cloud: { enabled: true, agentId: "agent-test" },
+      serviceRouting: {
+        media: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("env-key");
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+  });
+
+  it("still scrubs a leaked [REDACTED] placeholder from the env (#10819)", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "[REDACTED]";
+    const config: ElizaConfig = {
+      cloud: { enabled: true, agentId: "agent-test" },
+      serviceRouting: {
+        media: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+  });
+
+  it("still clears a stale env key when cloud is disabled with no service selected", () => {
+    // BYOK / disconnected hygiene must survive the capability-only change:
+    // cloud present-but-disabled and nothing routed → full env cleanse, so a
+    // leftover key can never zombie-load cloud behavior.
+    process.env.ELIZAOS_CLOUD_API_KEY = "stale-key";
+    const config: ElizaConfig = {
+      cloud: { enabled: false, apiKey: "stale-key" },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBeUndefined();
+  });
+
   it("keeps managed cloud containers on the full runtime, not the thin client", () => {
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -380,5 +548,71 @@ describe("provisioned cloud container topology (#9887)", () => {
 
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     expect(shouldStartElizaCloudThinClient(config)).toBe(false);
+  });
+});
+
+describe("stale vault/config key clobber guard (#11038)", () => {
+  const cloudConfig = (apiKey: string): ElizaConfig =>
+    ({
+      cloud: {
+        enabled: true,
+        apiKey,
+        connection: { provider: "eliza-cloud" },
+      },
+    }) as unknown as ElizaConfig;
+
+  it("warns with fingerprints when the config key differs from a non-empty env key (config still wins)", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    process.env.ELIZAOS_CLOUD_API_KEY =
+      "eliza_real_key_0123456789012345678901234567890123456789012345678901234567890123";
+    const placeholder = "eliza_test_placeholder_0123456";
+
+    applyCloudConfigToEnv(cloudConfig(placeholder));
+
+    // The config/vault value wins (documented behavior)…
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe(placeholder);
+    // …but the override is loudly fingerprinted so 401s are diagnosable.
+    const msg = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toContain("differs from process.env.ELIZAOS_CLOUD_API_KEY");
+    // Fingerprints of both keys (first-6 + computed length), never the secret.
+    expect(msg).toContain(`eliza_…(len ${placeholder.length})`);
+    expect(msg).toContain("(len 79)");
+    expect(msg).toContain("#11038");
+    // Never the full secret.
+    expect(msg).not.toContain("0123456789012345678901234567890123456789");
+    warn.mockRestore();
+  });
+
+  it("does not warn when config and env agree", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_same_key_012345678901234567890123456789";
+    applyCloudConfigToEnv(
+      cloudConfig("eliza_same_key_012345678901234567890123456789"),
+    );
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes("differs from")),
+    ).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("does not warn when there is no env key to clobber", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    applyCloudConfigToEnv(cloudConfig("eliza_fresh_key_01234567890123456789"));
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe(
+      "eliza_fresh_key_01234567890123456789",
+    );
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes("differs from")),
+    ).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("fingerprints keys without leaking them", () => {
+    expect(cloudApiKeyFingerprint(undefined)).toBe("(none)");
+    expect(cloudApiKeyFingerprint("  ")).toBe("(none)");
+    expect(cloudApiKeyFingerprint("eliza_abcdef123456")).toBe(
+      "eliza_…(len 18)",
+    );
   });
 });

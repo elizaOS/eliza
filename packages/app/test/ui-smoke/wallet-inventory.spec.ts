@@ -75,12 +75,18 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
   page,
   browserName,
 }) => {
-  test.skip(
-    browserName !== "chromium",
-    "Clipboard permission behavior is only asserted in Chromium smoke.",
-  );
-
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  // Engine difference (documented, per-assertion — not a whole-spec skip):
+  // WebKit exposes no Playwright-grantable "clipboard-read" permission and
+  // gates navigator.clipboard.readText() behind a transient user gesture, so
+  // the copy READ-BACK is asserted on Chromium only. Everything else —
+  // badges, rows, tabs, copy-control clicks, hide state, persistence — runs
+  // on every engine, including the desktop-webkit lane.
+  const clipboardReadable = browserName === "chromium";
+  if (clipboardReadable) {
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
+  }
   await openAppPath(page, "/wallet");
 
   await expect(page).toHaveURL(/\/wallet$/, { timeout: 20_000 });
@@ -108,18 +114,22 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
   ).toContainText("SOL");
 
   await sidebar.getByTestId("wallet-copy-evm-address").click();
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()), {
-      message: "EVM copy control writes the fixture address",
-    })
-    .toBe("0x1234567890abcdef1234567890abcdef12345678");
+  if (clipboardReadable) {
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()), {
+        message: "EVM copy control writes the fixture address",
+      })
+      .toBe("0x1234567890abcdef1234567890abcdef12345678");
+  }
 
   await sidebar.getByTestId("wallet-copy-sol-address").click();
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()), {
-      message: "Solana copy control writes the fixture address",
-    })
-    .toBe("So11111111111111111111111111111111111111112");
+  if (clipboardReadable) {
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()), {
+        message: "Solana copy control writes the fixture address",
+      })
+      .toBe("So11111111111111111111111111111111111111112");
+  }
 
   await sidebar.getByTestId("wallet-tab-nfts").click();
   await expect(sidebar.getByText("Smoke Test NFT #42")).toBeVisible();

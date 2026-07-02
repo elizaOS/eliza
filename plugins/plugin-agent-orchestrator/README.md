@@ -173,23 +173,35 @@ Session state is persisted with a tiered backend:
 
 ## End-to-end smoke tests
 
-Two smokes ship with the repo:
+These live smokes ship with the repo:
 
 ```bash
-# Raw AcpService against installed acpx + codex:
+# Native AcpService against Codex ACP. No global acpx is required; the default
+# native Codex command is `npx -y @zed-industries/codex-acp@0.14.0`.
+# Authenticate Codex first.
+bun run build
+RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
+
+# Native ACP smoke through Vitest (gated):
+RUN_LIVE_NATIVE_ACP=1 bun run test -- __tests__/live/native-acp-smoke.live.test.ts
+
+# Legacy CLI transport smoke against installed acpx + codex:
 npm install -g acpx@latest
-# authenticate codex first
-npm run build
-node tests/e2e/acp-codex-smoke.mjs
+ELIZA_ACP_TRANSPORT=cli node tests/e2e/acp-codex-smoke.mjs
 
-# Full router loop (vitest, gated):
-RUN_LIVE_ACPX=1 bun run test
-
-# Native ACP adapter smoke (gated, no-op unless enabled):
-RUN_LIVE_NATIVE_ACP=1 node tests/e2e/live-native-acp-smoke.mjs
+# Legacy full router loop through acpx (vitest, gated):
+RUN_LIVE_ACPX=1 ELIZA_ACP_TRANSPORT=cli bun run test -- __tests__/live/sub-agent-router.live.test.ts
 ```
 
-`acp-codex-smoke.mjs` exercises the legacy `acpx` path by spawning a real codex session, sending "what is 7 + 8?", and verifying `task_complete` fires with response `"15"`. The vitest live test (`__tests__/live/sub-agent-router.live.test.ts`) verifies the synthetic Memory routes back from a real subprocess into a test `messageService.handleMessage` with all routing keys intact. Both no-op (skip) when `acpx` isn't installed.
+`live-native-acp-smoke.mjs` exercises the default native path by spawning a
+real Codex ACP session through `npx -y @zed-industries/codex-acp@0.14.0`,
+sending "what is 7 + 8?", and verifying `task_complete` fires with response
+`"15"`. The Vitest wrapper is skipped unless `RUN_LIVE_NATIVE_ACP=1` is set;
+when enabled, it requires `NATIVE ACP SMOKE PASSED`.
+
+`acp-codex-smoke.mjs` and `__tests__/live/sub-agent-router.live.test.ts`
+exercise the legacy `acpx` CLI transport. They require `ELIZA_ACP_TRANSPORT=cli`
+and an installed/authenticated `acpx` + Codex environment.
 
 `live-native-acp-smoke.mjs` sets `ELIZA_ACP_TRANSPORT=native`, starts a native ACP adapter over stdio, sends a tiny math prompt, and verifies the prompt response ended with `stopReason: "end_turn"` and final text containing `15`. Optional providers require explicit commands:
 
@@ -212,6 +224,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 | `bun run test` | Run the plugin vitest suite. |
 | `bun run test:unit` | Run unit tests only. |
 | `bun run test:e2e:manual` | Run the manual `acp-codex-smoke.mjs` smoke against installed/authenticated `acpx` + Codex. |
+| `bun run test:e2e:native` | Run the gated native ACP smoke using the configured native agent command. |
 | `bun run test:watch` | Run the vitest suite in watch mode. |
 | `bun run lint:check` | Run Biome checks without writing changes. |
 | `bun run lint` | Run Biome checks with write/unsafe fixes. |

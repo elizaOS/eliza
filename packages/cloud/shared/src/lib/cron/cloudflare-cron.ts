@@ -26,7 +26,12 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "0 0 * * *": ["/api/cron/container-billing", "/api/cron/release-pending-earnings"],
   "0 1 * * *": ["/api/cron/compute-metrics"],
   "0 2 * * *": ["/api/cron/cleanup-webhook-events"],
-  "0 3 * * *": ["/api/cron/domain-renewals"],
+  "0 3 * * *": [
+    "/api/cron/domain-renewals",
+    // #11058: release external domain rows still unverified after the reclaim
+    // TTL (48h default, MANAGED_DOMAIN_UNVERIFIED_TTL_MS override).
+    "/api/cron/reclaim-stale-domains",
+  ],
   "0 * * * *": ["/api/cron/agent-billing"],
   "*/5 * * * *": [
     "/api/cron/social-automation",
@@ -54,6 +59,10 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "* * * * *": [
     "/api/v1/cron/deployment-monitor",
     "/api/v1/cron/health-check",
+    // Alerts ops when the provisioning-worker daemon's heartbeat goes
+    // stale/absent — the daemon can't page about its own death, so this
+    // runs separately on the Worker (#9853).
+    "/api/v1/cron/provisioning-worker-health",
     "/api/v1/cron/process-provisioning-jobs",
     "/api/cron/process-stripe-queue",
     "/api/v1/cron/pool-replenish",

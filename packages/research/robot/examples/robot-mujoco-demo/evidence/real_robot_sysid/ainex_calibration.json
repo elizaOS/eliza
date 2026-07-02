@@ -1,12 +1,6 @@
 {
   "host": "192.168.1.218:9090",
-  "probe_angles_rel_home": [
-    -0.4,
-    -0.2,
-    0.0,
-    0.2,
-    0.4
-  ],
+  "probe_angles_rel_home": [-0.4, -0.2, 0.0, 0.2, 0.4],
   "fits": {
     "head_pan": {
       "name": "head_pan",

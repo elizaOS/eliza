@@ -4,6 +4,7 @@ import {
   computeAwakeProbability,
   computePersonalBaseline,
   computeSleepRegularity,
+  isSystemInactivityApp,
   type LifeOpsActivityWindow,
   type LifeOpsSleepEpisode,
   listHistoricalSleepEpisodes,
@@ -28,7 +29,6 @@ import {
   type LifeOpsUnclearReason,
 } from "@elizaos/shared";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
-import { isSystemInactivityApp } from "@elizaos/plugin-health";
 import { probeContinuityDevices } from "./continuity-probe.js";
 import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";

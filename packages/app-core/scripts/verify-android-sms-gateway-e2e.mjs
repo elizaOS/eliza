@@ -14,7 +14,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
-const adbPath = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
+const adbPath =
+  "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 const defaultEvidencePath = path.join(
   repoRoot,
   ".eliza-local",
@@ -81,8 +82,10 @@ function parseArgs(argv) {
       return value;
     };
     if (arg === "--serial") args.serial = next();
-    else if (arg === "--wait-device") args.waitDeviceSeconds = Number.parseInt(next(), 10);
-    else if (arg === "--timeout") args.timeoutSeconds = Number.parseInt(next(), 10);
+    else if (arg === "--wait-device")
+      args.waitDeviceSeconds = Number.parseInt(next(), 10);
+    else if (arg === "--timeout")
+      args.timeoutSeconds = Number.parseInt(next(), 10);
     else if (arg === "--skip-install") args.install = false;
     else if (arg === "--from") args.from = next();
     else if (arg === "--evidence") args.evidencePath = path.resolve(next());
@@ -95,7 +98,12 @@ function parseArgs(argv) {
     }
   }
   for (const [key, value] of Object.entries(args)) {
-    if (key === "serial" || key === "install" || key === "from" || key === "evidencePath") {
+    if (
+      key === "serial" ||
+      key === "install" ||
+      key === "from" ||
+      key === "evidencePath"
+    ) {
       continue;
     }
     if (!Number.isInteger(value) || value < 0) {
@@ -105,7 +113,16 @@ function parseArgs(argv) {
   return args;
 }
 
-function writeEvidence({ evidencePath, ok, serial, from, timeoutSeconds, seen, missing, buffer }) {
+function writeEvidence({
+  evidencePath,
+  ok,
+  serial,
+  from,
+  timeoutSeconds,
+  seen,
+  missing,
+  buffer,
+}) {
   if (!evidencePath) return;
   fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
   const evidence = {
@@ -138,7 +155,12 @@ function parseAdbService(line) {
   };
 }
 
-function writeNoDeviceEvidence({ evidencePath, waitDeviceSeconds, from, services }) {
+function writeNoDeviceEvidence({
+  evidencePath,
+  waitDeviceSeconds,
+  from,
+  services,
+}) {
   if (!evidencePath) return;
   fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
   const parsedServices = services.map(parseAdbService);
@@ -180,7 +202,9 @@ function run(command, args, { allowFailure = false } = {}) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0 && !allowFailure) {
-    throw new Error(`${command} ${args.join(" ")} failed:\n${result.stderr || result.stdout}`);
+    throw new Error(
+      `${command} ${args.join(" ")} failed:\n${result.stderr || result.stdout}`,
+    );
   }
   return result;
 }
@@ -216,7 +240,9 @@ async function resolveSerial(args) {
     const devices = listDevices();
     if (devices.length === 1) return devices[0];
     if (devices.length > 1) {
-      throw new Error(`Multiple adb devices are connected; pass --serial. Devices: ${devices.join(", ")}`);
+      throw new Error(
+        `Multiple adb devices are connected; pass --serial. Devices: ${devices.join(", ")}`,
+      );
     }
     lastServices = adbMdnsServices();
     await sleep(1000);
@@ -293,7 +319,9 @@ async function watchMilestones({ serial, timeoutSeconds, from }) {
       for (const milestone of milestones) {
         if (!seen.has(milestone.key) && milestone.pattern.test(line)) {
           seen.set(milestone.key, line);
-          console.log(`[sms-gateway-e2e] PASS ${milestone.label}: ${line.trim()}`);
+          console.log(
+            `[sms-gateway-e2e] PASS ${milestone.label}: ${line.trim()}`,
+          );
         }
       }
     }
@@ -353,10 +381,14 @@ async function main() {
     missing: [],
     buffer: result.buffer,
   });
-  console.log("[sms-gateway-e2e] Physical Android SMS gateway verification passed.");
+  console.log(
+    "[sms-gateway-e2e] Physical Android SMS gateway verification passed.",
+  );
 }
 
 main().catch((error) => {
-  console.error(`[sms-gateway-e2e] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[sms-gateway-e2e] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });

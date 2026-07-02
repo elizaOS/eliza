@@ -105,14 +105,21 @@ export function estimateSelfSpendCostUsd(
   command: string,
   params?: Record<string, unknown>,
 ): number | null {
-  const hint = toNonNegativeNumber(params?.[SPEND_HINT_PARAM]);
+  const rawHint = toNonNegativeNumber(params?.[SPEND_HINT_PARAM]);
+  // A declared cost of exactly 0 for a *paid* command is not a credible price —
+  // treat it as "no hint". Otherwise an attacker-declared `spendEstimateUsd: 0`
+  // meters the command at $0 and slips under any cap forever (the old
+  // `hint ?? default` also returned 0, because `??` only catches null/undefined).
+  const positiveHint = rawHint !== null && rawHint > 0 ? rawHint : null;
   if (command === "containers.create" || command === "containers.update") {
-    // Containers have a known base daily cost even without a hint.
-    return hint ?? CONTAINER_DAILY_COST_USD;
+    // Containers have a known base daily cost. Never meter below it — a caller
+    // that omits or under-declares the hint is still charged at least the base.
+    return Math.max(positiveHint ?? 0, CONTAINER_DAILY_COST_USD);
   }
-  // domains.buy, media.*, promote.*, advertising.* — require an explicit hint
-  // (e.g. the quoted price from domains.check). Unknown → confirm.
-  return hint;
+  // domains.buy, media.*, promote.*, advertising.* — require an explicit,
+  // positive hint (e.g. the quoted price from domains.check). Unknown or a
+  // non-positive declared cost → null → the caller asks a human to confirm.
+  return positiveHint;
 }
 
 export interface SpendDecisionInput {

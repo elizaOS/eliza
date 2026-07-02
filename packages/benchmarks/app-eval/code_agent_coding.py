@@ -426,7 +426,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run App Eval coding tasks through a code-agent adapter.")
     parser.add_argument("--task-agent", default="elizaos")
     parser.add_argument("--model-provider", default="cerebras")
-    parser.add_argument("--model", default="gpt-oss-120b")
+    parser.add_argument("--model", default="gemma-4-31b")
     parser.add_argument("--output", required=True)
     parser.add_argument("--trajectory-dir", default="")
     parser.add_argument("--max-tasks", type=int, default=1)

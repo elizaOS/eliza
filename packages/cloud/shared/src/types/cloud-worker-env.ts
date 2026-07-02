@@ -74,6 +74,13 @@ export interface Bindings {
    * URLs returned to clients. Defaults to "blob.elizacloud.ai" if unset.
    */
   R2_PUBLIC_HOST?: string;
+  /**
+   * Base domain for managed frontend hosting system hosts. When set (e.g.
+   * "sites.elizacloud.ai"), a request to `<app-slug>.<suffix>` is served from
+   * the app's active frontend deployment by the Worker entry (see
+   * `getHostedFrontendServeRewrite` in `packages/cloud/api/src/index.ts`).
+   */
+  ELIZA_FRONTEND_HOST_SUFFIX?: string;
   SQL_HEAVY_PAYLOAD_STORAGE?: string;
   SQL_HEAVY_PAYLOAD_MIN_BYTES?: string;
   SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES?: string;
@@ -176,6 +183,9 @@ export interface Bindings {
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
   TWILIO_SMS_COST_PER_SEGMENT_USD?: string;
+  // #11058: reclaim TTL (ms) for the reclaim-stale-domains cron — external
+  // managed-domain rows still unverified after this age are released. 48h default.
+  MANAGED_DOMAIN_UNVERIFIED_TTL_MS?: string;
 
   // Allow overflow — handlers can read any env var via c.env.
   [key: string]: unknown;

@@ -79,4 +79,28 @@ describe("ConnectorsSection mode routing", () => {
       }),
     ).toBe(true);
   });
+
+  it("shows the credential form for connectors with NO declared mode list (farcaster, bluesky, …)", () => {
+    // Connectors outside the hardcoded mode map fall through with an undefined
+    // selected mode; when they declare parameters, the env form IS their setup
+    // surface — not the dead-end "uses its own setup surface" text.
+    for (const connectorId of ["farcaster", "bluesky", "matrix", "nostr"]) {
+      expect(getConnectorModes(connectorId, {}).length).toBe(0);
+    }
+    expect(
+      shouldRenderConnectorConfigForm({
+        managementMode: undefined,
+        hasParameters: true,
+        setupTargetsPlugin: true,
+      }),
+    ).toBe(true);
+    // …but a no-mode connector with no parameters still has nothing to render.
+    expect(
+      shouldRenderConnectorConfigForm({
+        managementMode: undefined,
+        hasParameters: false,
+        setupTargetsPlugin: true,
+      }),
+    ).toBe(false);
+  });
 });

@@ -20,6 +20,7 @@ import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
 import { FEE_CONFIG, WalletService } from "@feed/engine";
 import type { MessageTag } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -32,7 +33,7 @@ export const checkPerpsAction: Action = {
   name: "CHECK_PERPS",
   description:
     "Check perpetual/stock market data - prices, 24h changes, volume, funding rates. Tickers are AI-themed (e.g., TSLAI for Tesla, AIPPL for Apple).",
-  parameters: {
+  parameters: defineActionParameters({
     ticker: {
       type: "string",
       description:
@@ -51,7 +52,7 @@ export const checkPerpsAction: Action = {
         'Sort by: "price", "change", "volume", "name" (default: "volume"). Only used when ticker is not provided.',
       required: false,
     },
-  },
+  }),
   examples: [
     [
       {

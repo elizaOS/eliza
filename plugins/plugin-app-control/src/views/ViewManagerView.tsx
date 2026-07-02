@@ -19,6 +19,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
 import { useCallback, useEffect, useState } from "react";
 import {
 	type ViewManagerSnapshot,
@@ -51,6 +52,9 @@ export function ViewManagerView() {
 	}, []);
 
 	useEffect(() => {
+		void fetchViews();
+	}, [fetchViews]);
+	useViewEvent(VIEW_EVENTS.PLUGIN_RELOADED, () => {
 		void fetchViews();
 	}, [fetchViews]);
 

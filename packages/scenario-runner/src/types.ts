@@ -16,16 +16,27 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 
-export type FinalCheckStatus =
-  | "passed"
-  | "failed"
-  | "skipped-dependency-missing";
+/**
+ * `skipped` means the check's runtime dependency was missing (e.g. no
+ * approval-queue service registered). A skipped check FAILS the scenario in
+ * the `pr-deterministic` lane — that lane must never silently lose coverage —
+ * and is loudly counted in reports for live lanes.
+ */
+export type FinalCheckStatus = "passed" | "failed" | "skipped";
 
 export interface FinalCheckReport {
   label: string;
   type: string;
   status: FinalCheckStatus;
   detail: string;
+  /**
+   * Numeric LLM-judge score in [0, 1] when this check ran a judge
+   * (`judgeRubric`). Absent for non-judged checks and when the judge itself
+   * errored. Serialized so downstream training/quality tooling can
+   * reward-weight trajectories instead of re-parsing the detail string
+   * (#8795).
+   */
+  score?: number;
 }
 
 export interface TurnReport {
@@ -38,6 +49,12 @@ export interface TurnReport {
   actionsCalled: CapturedAction[];
   durationMs: number;
   failedAssertions: string[];
+  /**
+   * Numeric `responseJudge` score in [0, 1] when this turn ran an LLM judge.
+   * Recorded for passing turns too — before this field the score only
+   * appeared inside a failure detail string (#8795).
+   */
+  judgeScore?: number;
   /** `.wav` artifacts a `voice` turn wrote when run under `--run-dir`. */
   audioArtifacts?: VoiceAudioArtifact[];
 }
@@ -56,6 +73,20 @@ export interface ScenarioReport {
   failedAssertions: Array<{ label: string; detail: string }>;
   providerName: string | null;
   error?: string;
+  /**
+   * Minimum judge score in [0, 1] across every judged turn and `judgeRubric`
+   * final check in the scenario — the binding quality constraint. Absent when
+   * no judge ran. Carried into `--export-native` rows as
+   * `metadata.judge_score` for reward-weighted training (#8795).
+   */
+  judgeScore?: number;
+  /**
+   * True when the LLM-judge scores above were produced by the model under
+   * test itself (no independent Cerebras judge configured and no
+   * deterministic judge fixtures active) — the run self-graded (#9310).
+   * `SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1` turns this into a failure.
+   */
+  judgeSelfGraded?: boolean;
 }
 
 export interface AggregateReport {
@@ -78,6 +109,13 @@ export interface AggregateReport {
     skipped: number;
     flakyPassed: number;
     costUsd: number;
+    /**
+     * finalChecks across all scenarios that reported status `skipped`
+     * (dependency missing). Non-zero means real coverage was lost — surfaced
+     * loudly in the stdout summary for live lanes; the pr-deterministic lane
+     * turns these into scenario failures instead.
+     */
+    finalChecksSkipped: number;
   };
   // Present for benchmark compatibility.
   totalCount: number;

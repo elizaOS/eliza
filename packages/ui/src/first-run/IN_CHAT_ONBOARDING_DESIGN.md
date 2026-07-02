@@ -1,91 +1,94 @@
-# In-chat onboarding (chat-centric first-run) — design + work order
+# In-chat onboarding status
 
-Closes the real intent of #9952 (and feeds #10198's walkthrough). The first
-surface a fresh user sees is the **real floating chat over the homescreen**, with
-the agent greeting + onboarding choices rendered as the SAME inline widgets the
-live chat uses — not a separate full-screen wizard, and not a separate
-chat-looking surface.
+First-run onboarding now renders in the real `ContinuousChatOverlay` over the
+normal app shell. The old full-screen first-run gate, `FirstRunChat` surface,
+and standalone runtime chooser are no longer part of the shipped UI.
 
-## What shipped before this (verified gap)
+The current first-run flow is seeded by `use-first-run-conductor.ts` as inline
+chat choices:
 
-- `CompactOnboarding.tsx` was deleted (#10167), but first-run is still a
-  **full-screen pre-shell gate**: `App.tsx:2122` (`!isShellPaintableNow →
-  <StartupScreen/>`) → `StartupShell` (`view.kind === "first-run"`) →
-  `StartupFirstRunBackground` → `FirstRunChat`. The chat shell never paints
-  during first-run, so the agent is not the first surface.
-- `FirstRunChat.tsx` is a **separate** `fixed inset-0` surface that hand-renders
-  an `AgentBubble` transcript with `ChoiceWidget`/`CredentialRequestWidget` — a
-  second chat-looking UI, not the live `ContinuousChatOverlay`.
-- `useFirstRunController.ts` (1,454 LOC) is still a step machine; a **duplicate**
-  provisioning path lives in `useFirstRunCallbacks.ts:runFirstRunChatHandoff`.
-- A dedicated first-run **voice TTS/ASR** stack exists only for onboarding.
-- No **tutorial-or-skip** step after onboarding.
+- `choice-__first_run__:runtime:{cloud|local|other}`
+- `choice-__first_run__:provider:{on-device|elizacloud|other}`
+- `choice-__first_run__:tutorial:{start|skip}`
 
-## Target architecture
+Those choices route into the headless first-run finish path and produce a single
+`POST /api/first-run`. Tests should assert the real chat overlay plus transcript
+choices and should keep negative assertions for deleted surfaces such as
+`first-run-runtime-chooser`, `first-run-chat`, and
+`startup-first-run-background`.
 
-1. **Land in chat.** When `firstRunComplete=false`, the startup coordinator's
-   `first-run-required` phase is **shell-paintable** (`startup-coordinator.ts`
-   `isShellPaintable`) and `use-startup-shell-controller.ts` no longer forces a
-   `first-run` view. The app mounts the homescreen + `ContinuousChatOverlay`,
-   auto-opened.
-2. **Seed onboarding into the live transcript.** A headless first-run conductor
-   pushes synthetic assistant `ConversationMessage`s via `setConversationMessages`:
-   greeting → `[CHOICE:first-run id=runtime]` (Cloud / Local / Other) → Cloud OAuth
-   via the message `secretRequest` field → `[CHOICE:first-run id=provider]`
-   (role-correct default pre-highlighted) → "other" → Settings handoff → final
-   `[CHOICE:first-run id=tutorial]` (Take the tutorial / Skip). Widgets render for
-   free via `InlineWidgetText` (`ContinuousChatOverlay:974`) + `SensitiveRequestBlock`.
-3. **Display-only widgets, logic in a use case.** First-run-scoped choice
-   `sendAction(value)` is intercepted and routed to the headless use case
-   (the surviving `finishLocal`/`finishCloud`/`finishCloudWithSelection`/
-   `selectOrProvisionCloudAgent`/`submitFirstRun` from `useFirstRunController`,
-   plus `first-run-config.ts` defaults). One `POST /api/first-run`.
-4. **Delete** `FirstRunChat.tsx`, the first-run startup phase +
-   `StartupFirstRunBackground`, the dead `.eliza-onboarding-overlay-shell` CSS,
-   the step/picker presentation, the duplicate `runFirstRunChatHandoff`, and the
-   dedicated first-run voice stack (voice = normal chat voice).
-5. **Test the whole walkthrough in chat** — deterministic "ideal" mock-LLM lane
-   (seeded onboarding driven end-to-end + SSE-mock chat round-trip) AND a
-   real-LLM scenario for the post-onboarding chat; per-step screenshots
-   desktop+mobile + vision review; tutorial-or-skip exercised.
+Current end-to-end evidence for issue #10709 lives in
+`.github/issue-evidence/10709-onboarding-chat/`.
 
-## Key seams (file:line)
+## The onboarding lock (#9952 follow-up)
 
-- Floating chat + widget render: `components/shell/ContinuousChatOverlay.tsx:974`
-  (`InlineWidgetText content={message.content}`), `:978` (`secretRequest`).
-- CHOICE marker grammar: `components/chat/message-choice-parser.ts` —
-  `[CHOICE:<scope> id=<id> allow_custom]\nvalue=label\n[/CHOICE]`; pick →
-  `ctx.sendAction(value)`.
-- Seed point: `state/ConversationMessagesContext.hooks.ts` `setConversationMessages`
-  (functional form precedent at `state/useChatCallbacks.ts:644`).
-- Startup gating: `state/startup-coordinator.ts` (`isShellPaintable` ~:463,
-  phase union ~:41), `state/use-startup-shell-controller.ts:248-260` (`showFirstRun`),
-  `App.tsx:1661/2122`.
-- Use case to keep/move: `first-run/use-first-run-controller.ts`
-  (`finishLocal` @562, `finishCloud` @933, `finishCloudWithSelection` @744,
-  `selectOrProvisionCloudAgent` via client, `submitFirstRun` @544);
-  `first-run/first-run-config.ts` (`defaultProviderForRuntime`, `needsProviderSetup`);
-  `first-run/first-run.ts` (`buildFirstRunSubmitPlan`).
-- Persist: `app-core/src/api/first-run-routes.ts:167` (POST /api/first-run, sets
-  `meta.firstRunComplete`).
-- Tutorial: `components/pages/tutorial/tutorial-controller.ts` (`startTutorial`).
+While first-run is pending, the shell passes `firstRunOpen={firstRunComplete
+=== false}` to `ContinuousChatOverlay` (`App.tsx`). `firstRunOpen` turns the
+overlay into a **modal onboarding surface** — the chat is the first painted
+surface, it is non-interactive except for the seeded choices, and it cannot be
+dismissed until onboarding completes. The contract, enforced in
+`ContinuousChatOverlay.tsx` and covered by `ContinuousChatOverlay.firstrun.test.tsx`:
 
-## Test harnesses
+- **Opens pinned at FULL.** Initial detent is `full` when `firstRunOpen`; a
+  falling-edge-guarded effect re-pins to FULL on every change while
+  `firstRunOpen` is true, so nothing can step it down.
+- **Composer is locked.** The textarea is `disabled` with the placeholder
+  "Choose an option to continue"; attach, mic/push-to-talk, and send are all
+  disabled. `submitText` hard-returns while `firstRunOpen`, closing the
+  non-keyboard side doors (chat-prefill event, dictation, slash commands). The
+  `AppContext` `sendActionMessage` backstop additionally drops any non
+  `__first_run__:` value while first-run is incomplete — nothing reaches the
+  server before a runtime exists.
+- **Undismissable.** Every collapse path is a no-op while `firstRunOpen`:
+  `collapse()` (the single funnel for Escape on document/thread/composer,
+  outside-tap, and the grabber close/tap), the live drag (`onDragOffset`),
+  pull-down and settle-free drag gestures, the header **clear** and **launcher**
+  buttons, the conversation swipe, and — defense-in-depth — the
+  `TUTORIAL_CHAT_CONTROL_EVENT` rest/reset/prefill handlers (unreachable in the
+  real flow because the tour starts only after `completeFirstRun`, but gated so
+  a stray/adversarial event cannot collapse the pinned sheet).
+- **Auto-collapses once on completion.** A one-shot falling-edge (`firstRunOpen`
+  true → false, tracked by `wasFirstRunOpenRef`) collapses the sheet to the
+  input bar, revealing the home screen. An ordinary session (onboarding never
+  active) never triggers this collapse, and the collapse gate is released so
+  Escape/outside-tap/etc. work normally afterward.
 
-- Deterministic/"ideal" mock LLM: Playwright `page.route` SSE interception of
-  `/messages/stream` (precedent: `walkthrough/walkthrough-capture-smoke.spec.ts`
-  `installWalkthroughConversationStore`). Onboarding itself is seeded (deterministic
-  by construction); the post-onboarding chat round-trip uses the SSE mock.
-- Real LLM: `packages/scenario-runner` scenario with a live key (`--report`);
-  `SCENARIO_USE_LLM_PROXY=1` flips to the deterministic proxy.
-- Screenshots/review: `bun run --cwd packages/app audit:app` + a dedicated
-  `full-walkthrough` ui-smoke spec writing `NN-step.png` (desktop+mobile) fed to
-  `scripts/ai-qa/review-screenshots.mjs`.
+The desktop `?shellMode=chat-overlay` shell mounts the (headless,
+`firstRunComplete`-gated) conductor too, so a fresh chat-first desktop install
+seeds the same in-chat onboarding; once first-run completes the mount is a
+no-op (`App.chat-overlay-first-run.test.tsx`). Only the transcript's CHOICE
+widgets and any OAuth/secret blocks stay interactive during onboarding.
 
-## Status
+## Confused-user guards (conductor + send funnel)
 
-- [ ] Phase 1: land-in-chat gating + seed onboarding into `ContinuousChatOverlay`.
-- [ ] Phase 2: route first-run choices → headless use case; persist once; tutorial-or-skip.
-- [ ] Phase 3: delete `FirstRunChat` + gate + dead CSS + duplicate handoff + voice stack.
-- [ ] Phase 4: full in-chat walkthrough spec (mock-LLM) + real-LLM scenario + screenshots/review.
-- [ ] Phase 5: `audit:app` 5-loop, evidence, PR.
+Onboarding must survive a user who taps the wrong things, taps them twice, or
+taps them out of order. The contract, enforced in `use-first-run-conductor.ts`
+/ `first-run-action-channel.ts` / `first-run-finish.ts` and covered by
+`use-first-run-conductor.test.ts` + the seeded storms in
+`use-first-run-conductor.fuzz.test.ts`:
+
+- **One flow at a time.** While a finish/provision call is in flight
+  (`busyRef`), every other first-run pick — stale widgets, error re-seeds, the
+  cloud-agent picker — is consumed as a no-op. No concurrent local+cloud
+  provisioning is reachable.
+- **Provisioned latch.** After provisioning succeeds only the tutorial pick is
+  live; taps on leftover runtime/provider/cloud-agent widgets no-op instead of
+  re-provisioning. The tutorial pick itself latches (`completedRef`), so a
+  double-tap cannot re-fire `completeFirstRun` or launch a second tour.
+- **Strict values.** Group ids are validated per group; malformed values under
+  the reserved `__first_run__:` prefix are consumed, never acted on.
+- **The prefix is reserved forever.** `classifyActionMessage` (the send
+  funnel's routing contract in `AppContext.sendActionMessage`) drops
+  `__first_run__:` values unconditionally — even after onboarding completes, a
+  tap on a leftover onboarding widget never reaches the server as a literal
+  sentinel chat message.
+- **Exactly-once POST, even under races.** `persistFirstRun` memoizes its
+  in-flight promise: concurrently double-fired finishes share one
+  `POST /api/first-run`, and a failed POST releases the guard so a retry can
+  post again.
+- **No cloud dead end.** A failed/cancelled cloud login re-offers an UNLOCKED
+  runtime CHOICE in the retry turn (earlier widgets lock on first tap), and
+  arms a connect-and-resume continuation: if the user instead connects from
+  the OAuth block, the interrupted flow resumes automatically when the store
+  learns the connection landed. A fresh pick always supersedes the pending
+  resume.

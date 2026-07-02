@@ -188,7 +188,38 @@ export function inferDirectCurrentRequestCandidateActions(
 		if (codingAction) return [codingAction];
 	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
-	if (viewShellAction) return [viewShellAction];
+	if (viewShellAction) {
+		// A request that names the application surface itself ("show me the
+		// apps", "list running apps", "launch the shopify app") is ambiguous
+		// between the views/apps *page* (VIEWS) and the applications themselves
+		// (the APP control action). Surface BOTH candidates and let the planner
+		// arbitrate from the exposed routing hints — previously only VIEWS was
+		// hinted, so every installed-apps ask was answered with the UI view
+		// catalog (#9950). Structurally anchored to a registered app-control
+		// action, so runtimes without one are unaffected.
+		const appControlAction = findAppControlActionNameForAppRequest(
+			actions,
+			messageText,
+		);
+		if (appControlAction && appControlAction !== viewShellAction) {
+			return [viewShellAction, appControlAction];
+		}
+		return [viewShellAction];
+	}
+	// Voice-transcription contract: a message that is nothing but a bare
+	// surface name ("settings", "wallet", "inbox") is a navigation command, not
+	// small talk — a voice pass emits exactly the transcribed noun. Stage-1
+	// models routinely answer it with a clarifying question instead, so this
+	// deterministic backstop keeps the turn on the planning path where the
+	// views action can navigate (#9950). Structurally anchored to a registered
+	// VIEWS/VIEW_CAPABILITY action's OWN tag/simile vocabulary, so it is inert
+	// for agents without one and never fires on words the views surface does
+	// not itself claim.
+	const bareViewNavigationAction = findBareViewNavigationActionName(
+		actions,
+		messageText,
+	);
+	if (bareViewNavigationAction) return [bareViewNavigationAction];
 	const viewCapabilityAction = findViewCapabilityActionName(
 		actions,
 		messageText,
@@ -371,6 +402,81 @@ function collectViewActionMetadataEntries(
 			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
 		);
 	});
+}
+
+// Navigation-verb prefixes that mark a views-action simile as a navigation
+// alias (OPEN_SETTINGS, SHOW_WALLET, GO_TO_SETTINGS, …). Compared in the
+// singular-normalized phrase space of normalizedMetadataPhrase.
+const BARE_VIEW_NAVIGATION_SIMILE_PREFIXES = [
+	"OPEN",
+	"SHOW",
+	"GO",
+	"GO_TO",
+	"NAVIGATE",
+	"NAVIGATE_TO",
+	"SWITCH",
+	"SWITCH_TO",
+] as const;
+
+function findBareViewNavigationActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	messageText: string,
+): string | undefined {
+	const tokens = tokenizeActionMetadata(messageText);
+	if (tokens.length !== 1) return undefined;
+	const bare = normalizeSingularToken(tokens[0]);
+	if (
+		!bare ||
+		VIEW_REQUEST_OPERATION_TOKENS.has(bare) ||
+		VIEW_REQUEST_GENERIC_TOKENS.has(bare)
+	) {
+		return undefined;
+	}
+	const viewActionName = findViewsActionName(actions);
+	if (!viewActionName) return undefined;
+	for (const entry of collectViewActionMetadataEntries(
+		actions,
+		viewActionName,
+	)) {
+		for (const tag of entry.tags ?? []) {
+			if (normalizedMetadataPhrase(String(tag)) === bare) {
+				return entry.name;
+			}
+		}
+		for (const simile of entry.similes ?? []) {
+			const phrase = normalizedMetadataPhrase(String(simile));
+			for (const prefix of BARE_VIEW_NAVIGATION_SIMILE_PREFIXES) {
+				if (phrase === `${prefix}_${bare}`) {
+					return entry.name;
+				}
+			}
+		}
+	}
+	return undefined;
+}
+
+// App-control action names/similes, in preference order. Consulted only when
+// the message names the application surface itself (an APP/APPLICATION token),
+// so agents without an app-control action are unaffected.
+const APP_CONTROL_ACTION_NAMES = [
+	"APP",
+	"APP_CONTROL",
+	"MANAGE_APPS",
+	"LIST_APPS",
+	"LAUNCH_APP",
+] as const;
+
+function findAppControlActionNameForAppRequest(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	messageText: string,
+): string | undefined {
+	const tokens = tokenizeActionMetadata(messageText).map(
+		normalizeSingularToken,
+	);
+	if (!tokens.some((token) => token === "APP" || token === "APPLICATION")) {
+		return undefined;
+	}
+	return findAvailableActionName(actions, APP_CONTROL_ACTION_NAMES);
 }
 
 function findViewShellActionName(

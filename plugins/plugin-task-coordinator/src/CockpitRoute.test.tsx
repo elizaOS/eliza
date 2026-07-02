@@ -11,6 +11,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ButtonHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -19,11 +20,35 @@ const mocks = vi.hoisted(() => ({
   addOrchestratorAgent: vi.fn(),
 }));
 
+type ButtonMockProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
+  agent?: string;
+  children?: ReactNode;
+  onPress?: MouseEventHandler<HTMLButtonElement>;
+  size?: string;
+  variant?: string;
+};
+
 vi.mock("@elizaos/ui", () => ({
   client: {
     getOrchestratorRooms: mocks.getOrchestratorRooms,
     createOrchestratorTask: mocks.createOrchestratorTask,
     addOrchestratorAgent: mocks.addOrchestratorAgent,
+  },
+  Button: (props: ButtonMockProps) => {
+    const {
+      children,
+      variant: _variant,
+      size: _size,
+      agent: _agent,
+      onPress,
+      onClick,
+      ...rest
+    } = props;
+    return (
+      <button type="button" {...rest} onClick={onClick ?? onPress}>
+        {children}
+      </button>
+    );
   },
   // Stub the presentational view: surface the deck count + a spawn button that
   // fires onCreateSession with a representative create-task input.
@@ -48,7 +73,7 @@ vi.mock("@elizaos/ui", () => ({
             providerPolicy: {
               preferredFramework: "elizaos",
               providerSource: "eliza-cloud",
-              model: "gpt-oss-120b",
+              model: "gemma-4-31b",
             },
           })
         }
@@ -126,7 +151,7 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
         expect.objectContaining({
           framework: "elizaos",
           providerSource: "eliza-cloud",
-          model: "gpt-oss-120b",
+          model: "gemma-4-31b",
           task: "fix the auth bug",
         }),
       ),

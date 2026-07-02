@@ -3,6 +3,7 @@
 // Document*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 import type {
   ConversationMetadata,
   ConversationScope,
@@ -209,6 +210,7 @@ export interface SensitiveRequestDelivery {
   tunnel?: {
     credentialScopeId: string;
     childSessionId: string;
+    keys?: readonly string[];
   };
 }
 
@@ -257,6 +259,22 @@ export interface ConversationSecretRequest {
   status: SensitiveRequestStatus;
   delivery?: SensitiveRequestDelivery;
   form?: SensitiveRequestForm;
+}
+
+/**
+ * Structured "connect another account" request emitted by the agent when the
+ * user asks to add/log into an additional Claude or Codex account. The renderer
+ * turns this into an inline entry point (per-provider count + "Add account")
+ * that opens the existing, already-audited `AddAccountDialog` OAuth/API-key
+ * flow — the block never manages accounts itself, it only offers a shortcut
+ * into the canonical dialog. Round-trips on the assistant turn the same way
+ * `failureKind` does so it survives a GET /messages reload.
+ */
+export interface AccountConnectRequest {
+  /** Providers the user may connect a new account for (offer order preserved). */
+  providers: LinkedAccountProviderId[];
+  /** Optional short reason the agent surfaced this (e.g. "you asked to add a second Claude account"). */
+  reason?: string;
 }
 
 export interface ConversationMessage {
@@ -319,6 +337,13 @@ export interface ConversationMessage {
   localInference?: LocalInferenceChatMetadata;
   /** Structured sensitive/private information request metadata. */
   secretRequest?: ConversationSecretRequest;
+  /**
+   * Structured "connect another account" request. When set, this assistant
+   * turn offers to add another Claude/Codex account: the renderer substitutes
+   * the `AccountConnectBlock` (per-provider count + "Add account" opening
+   * `AddAccountDialog`) for the plain reply text.
+   */
+  accountConnect?: AccountConnectRequest;
   /**
    * Voice speaker attribution carried back from the server when this turn was
    * captured via voice and R2's speaker-id pipeline labelled it. Populated by

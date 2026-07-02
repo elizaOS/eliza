@@ -248,7 +248,8 @@ export function SecretsView({
     return (
       <ShellViewAgentSurface viewId="secrets">
         <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-          <div className="rounded-sm border border-border/50 bg-card/92 px-4 py-8 text-center">
+          {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
+          <div className="px-4 py-8 text-center">
             <div className="mb-2 text-sm text-danger">{error}</div>
             <Button
               variant="outline"
@@ -268,12 +269,11 @@ export function SecretsView({
     <ShellViewAgentSurface viewId="secrets">
       <ContentLayout contentHeader={contentHeader} inModal={inModal}>
         <div className="space-y-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="m-0 max-w-2xl text-sm leading-6 text-muted" />
+          <div className="flex justify-end">
             <Button
               variant="default"
               size="sm"
-              className="h-9 flex-shrink-0 px-3 text-sm "
+              className="h-9 flex-shrink-0 px-3 text-sm"
               onClick={() => {
                 setPickerOpen(true);
                 setPickerSearch("");
@@ -298,7 +298,7 @@ export function SecretsView({
 
           {/* Empty state */}
           {vaultSecrets.length === 0 && (
-            <div className="rounded-sm border border-border/50 bg-card/92 border-dashed px-4 py-8 text-center text-sm italic text-muted">
+            <div className="px-4 py-8 text-center text-sm text-muted">
               {t("secretsview.YourVaultIsEmpty")}
             </div>
           )}
@@ -308,7 +308,7 @@ export function SecretsView({
             <section key={category} className="space-y-3">
               <Button
                 variant="ghost"
-                className="mb-3 h-auto w-full items-center gap-2 rounded-sm border border-transparent px-3 py-2 text-left hover:border-border/50 hover:bg-bg-hover"
+                className="mb-3 h-auto w-full items-center gap-2 rounded-sm px-3 py-2 text-left hover:bg-bg-hover"
                 onClick={() => toggleCollapse(category)}
                 aria-expanded={!collapsed.has(category)}
               >
@@ -347,7 +347,7 @@ export function SecretsView({
 
           {/* Save bar */}
           {vaultSecrets.length > 0 && (
-            <div className="rounded-sm border border-border/50 bg-card/92 flex flex-col gap-3 border-border/60 px-4 py-3 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
               <Button
                 variant="default"
                 size="sm"
@@ -409,7 +409,7 @@ function SecretPicker({
     >
       <DialogContent
         showCloseButton={false}
-        className="w-[min(calc(100%_-_2rem),35rem)] max-h-[min(80vh,36rem)] overflow-hidden rounded-sm border border-border/60 bg-card/96 p-0 "
+        className="w-[min(calc(100%_-_2rem),35rem)] max-h-[min(80vh,36rem)] overflow-hidden rounded-sm border border-border/60 bg-card/96 p-0"
       >
         <DialogHeader className="flex flex-row items-center justify-between px-4 py-3">
           <div className="min-w-0">
@@ -432,7 +432,7 @@ function SecretPicker({
         </DialogHeader>
         <Input
           type="text"
-          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none  font-body"
+          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none font-body"
           placeholder={t("secretsview.SearchByKeyDescr")}
           aria-label={t("secretsview.SearchByKeyDescr")}
           value={search}
@@ -441,7 +441,7 @@ function SecretPicker({
         />
         <div className="flex-1 overflow-y-auto p-3">
           {available.length === 0 ? (
-            <div className="rounded-sm border border-dashed border-border/60 py-6 text-center text-sm text-muted">
+            <div className="py-6 text-center text-sm text-muted">
               {search
                 ? "No matching secrets found."
                 : "All available secrets are already in your vault."}
@@ -460,7 +460,7 @@ function SecretPicker({
                   return (
                     <div
                       key={s.key}
-                      className="flex items-start justify-between gap-3 rounded-sm border border-transparent px-3 py-2 hover:border-border/40 hover:bg-bg-hover"
+                      className="flex items-start justify-between gap-3 rounded-sm px-3 py-2 hover:bg-bg-hover"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="truncate text-sm font-mono text-txt">
@@ -532,7 +532,8 @@ const SecretCard = memo(function SecretCard({
   const showRequired = secret.required && enabledPlugins.length > 0;
 
   return (
-    <div className="rounded-sm border border-border/50 bg-card/92 flex flex-col gap-3 p-4">
+    /* Flat — no card/border. Whitespace separates secret entries. */
+    <div className="flex flex-col gap-3 p-4">
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -550,7 +551,7 @@ const SecretCard = memo(function SecretCard({
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           {showRequired && (
-            <span className="rounded-sm border border-danger/35 bg-danger/10 px-1.5 py-0.5 text-2xs font-medium text-danger">
+            <span className="text-2xs font-medium text-danger">
               {t("secretsview.Required")}
             </span>
           )}
@@ -581,7 +582,7 @@ const SecretCard = memo(function SecretCard({
 
       {/* Current value */}
       {secret.isSet && !hasDraft && (
-        <div className="rounded-sm border border-border/50 bg-bg px-2 py-1 text-xs font-mono text-muted">
+        <div className="rounded-sm bg-bg px-2 py-1 text-xs font-mono text-muted">
           {secret.maskedValue}
         </div>
       )}
@@ -590,7 +591,7 @@ const SecretCard = memo(function SecretCard({
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
         <Input
           type={isVisible ? "text" : "password"}
-          className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt   "
+          className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt"
           placeholder={
             secret.isSet ? "Enter new value to update" : "Enter value"
           }

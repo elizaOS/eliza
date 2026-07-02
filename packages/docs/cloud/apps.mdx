@@ -59,14 +59,12 @@ curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
     "allowed_origins": ["https://placeholder.invalid"],
     "created_at": "2026-05-05T10:30:00Z"
   },
-  "apiKey": {
-    "id": "key_abc123"
-  }
+  "apiKey": "eliza_abc123..."
 }
 ```
 
 <Warning>
-  The app API key is server-side only. For user-facing chat, forward the user's bearer token to the app-scoped chat endpoint so the user's organization balance is charged.
+  The app API key is returned as one-time plaintext and is server-side only. Store it immediately. For user-facing chat, forward the user's bearer token to the app-scoped chat endpoint so the user's organization balance is charged.
 </Warning>
 
 ## Creating an App

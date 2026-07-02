@@ -924,16 +924,39 @@ export interface TextToSpeechParams {
  * Parameters for audio processing models
  */
 export interface AudioProcessingParams {
-	audioUrl: string;
-	processingType: string;
+	audioUrl?: string;
+	processingType?: string;
+	prompt?: string;
+	audioKind?: "music" | "sfx" | "tts" | string;
+	text?: string;
+	duration?: number;
+	durationSeconds?: number;
+	instrumental?: boolean;
+	genre?: string;
+	voice?: string;
+	model?: string;
+	provider?: string;
+	outputFormat?: string;
+	referenceUrl?: string;
+	seed?: number;
 }
 
 /**
  * Parameters for video processing models
  */
 export interface VideoProcessingParams {
-	videoUrl: string;
-	processingType: string;
+	videoUrl?: string;
+	processingType?: string;
+	prompt?: string;
+	duration?: number;
+	durationSeconds?: number;
+	aspectRatio?: string;
+	imageUrl?: string;
+	referenceUrl?: string;
+	model?: string;
+	resolution?: string;
+	audio?: boolean;
+	voiceControl?: boolean;
 }
 
 // ============================================================================

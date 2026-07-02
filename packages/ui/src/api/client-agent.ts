@@ -603,10 +603,6 @@ declare module "./client-base" {
       providerId: LinkedAccountProviderId;
       strategy: AccountStrategy;
     }>;
-    uploadCustomVrm(file: File): Promise<void>;
-    hasCustomVrm(): Promise<boolean>;
-    uploadCustomBackground(file: File): Promise<void>;
-    hasCustomBackground(): Promise<boolean>;
     getConnectors(): Promise<{
       connectors: Record<string, ConnectorConfig>;
     }>;
@@ -801,7 +797,12 @@ declare module "./client-base" {
       childSessionId: string;
       key: string;
       value: string;
-    }): Promise<{ ok: boolean }>;
+    }): Promise<{
+      ok: boolean;
+      childSessionId: string;
+      credentialScopeId: string;
+      key: string;
+    }>;
     testPluginConnection(id: string): Promise<{
       success: boolean;
       pluginId: string;
@@ -1108,6 +1109,24 @@ declare module "./client-base" {
       name?: string,
     ): Promise<CodingAgentScratchWorkspace | null>;
     spawnShellSession(workdir?: string): Promise<{ sessionId: string }>;
+    /**
+     * Spawn an interactive PTY session (a real CLI in the web terminal) via
+     * `@elizaos/plugin-pty`'s `POST /api/pty/sessions`. Default `kind`
+     * (`"eliza-code"`) launches the interactive eliza-code CLI on Eliza
+     * Cloud/cerebras. Subscribe to its output with {@link subscribePtyOutput}
+     * and drive it with {@link sendPtyInput} / {@link resizePty}.
+     */
+    spawnPtySession(options?: {
+      kind?: "eliza-code";
+      cwd?: string;
+      tier?: "fast" | "smart";
+      apiKey?: string;
+      baseUrl?: string;
+      cols?: number;
+      rows?: number;
+    }): Promise<{ sessionId: string }>;
+    /** Kill an interactive PTY session (DELETE /api/pty/sessions/:id). */
+    stopPtySession(sessionId: string): Promise<boolean>;
     subscribePtyOutput(sessionId: string): void;
     unsubscribePtyOutput(sessionId: string): void;
     sendPtyInput(sessionId: string, data: string): void;
@@ -1852,56 +1871,6 @@ ElizaClient.prototype.updateConfig = async function (this: ElizaClient, patch) {
     transport,
   });
   return out;
-};
-
-ElizaClient.prototype.uploadCustomVrm = async function (
-  this: ElizaClient,
-  file,
-) {
-  const buf = await file.arrayBuffer();
-  await this.fetch("/api/avatar/vrm", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: buf,
-  });
-};
-
-ElizaClient.prototype.hasCustomVrm = async function (this: ElizaClient) {
-  try {
-    const res = await this.rawRequest(
-      "/api/avatar/vrm",
-      { method: "HEAD" },
-      { allowNonOk: true },
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
-};
-
-ElizaClient.prototype.uploadCustomBackground = async function (
-  this: ElizaClient,
-  file,
-) {
-  const buf = await file.arrayBuffer();
-  await this.fetch("/api/avatar/background", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: buf,
-  });
-};
-
-ElizaClient.prototype.hasCustomBackground = async function (this: ElizaClient) {
-  try {
-    const res = await this.rawRequest(
-      "/api/avatar/background",
-      { method: "HEAD" },
-      { allowNonOk: true },
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
 };
 
 ElizaClient.prototype.getConnectors = async function (this: ElizaClient) {
@@ -2788,18 +2757,27 @@ ElizaClient.prototype.tunnelCredential = async function (
 ) {
   // SECURITY: never log the value. Only the scope/session/key are safe to
   // surface for debugging.
-  logSettingsClient("POST /api/credential-tunnel/submit → start", {
+  logSettingsClient("POST /api/credential-tunnel → start", {
     baseUrl: this.getBaseUrl(),
     credentialScopeId: input.credentialScopeId,
     childSessionId: input.childSessionId,
     key: input.key,
+    hasValue: Boolean(input.value),
   });
-  const out = (await this.fetch("/api/credential-tunnel/submit", {
+  const out = (await this.fetch("/api/credential-tunnel", {
     method: "POST",
     body: JSON.stringify(input),
-  })) as { ok: boolean };
-  logSettingsClient("POST /api/credential-tunnel/submit ← ok", {
+  })) as {
+    ok: boolean;
+    childSessionId: string;
+    credentialScopeId: string;
+    key: string;
+  };
+  logSettingsClient("POST /api/credential-tunnel ← ok", {
     baseUrl: this.getBaseUrl(),
+    credentialScopeId: out.credentialScopeId,
+    childSessionId: out.childSessionId,
+    key: out.key,
     ok: out.ok,
   });
   return out;
@@ -4284,6 +4262,35 @@ ElizaClient.prototype.spawnShellSession = async function (
   return { sessionId: res.sessionId };
 };
 
+ElizaClient.prototype.spawnPtySession = async function (
+  this: ElizaClient,
+  options,
+) {
+  const res = await this.fetch<{ session: { sessionId: string } }>(
+    "/api/pty/sessions",
+    {
+      method: "POST",
+      body: JSON.stringify(options ?? {}),
+    },
+  );
+  return { sessionId: res.session.sessionId };
+};
+
+ElizaClient.prototype.stopPtySession = async function (
+  this: ElizaClient,
+  sessionId,
+) {
+  try {
+    await this.fetch<{ ok: boolean }>(
+      `/api/pty/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 ElizaClient.prototype.subscribePtyOutput = function (
   this: ElizaClient,
   sessionId,
@@ -4319,6 +4326,14 @@ ElizaClient.prototype.getPtyBufferedOutput = async function (
   this: ElizaClient,
   sessionId,
 ) {
+  try {
+    const res = await this.fetch<{ output: string }>(
+      `/api/pty/sessions/${encodeURIComponent(sessionId)}/buffered-output`,
+    );
+    return res.output ?? "";
+  } catch {
+    // Older coding-agent PTY sessions keep their buffer behind the legacy route.
+  }
   try {
     const res = await this.fetch<{ output: string }>(
       `/api/coding-agents/${encodeURIComponent(sessionId)}/buffered-output`,

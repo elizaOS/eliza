@@ -9,36 +9,6 @@ import {
 } from "@elizaos/core";
 import type { MusicLibraryService } from "../services/musicLibraryService";
 
-/**
- * Extract search query from message text
- * Handles various natural language patterns for searching
- */
-const extractSearchQuery = (messageText: string): string | null => {
-  if (!messageText) return null;
-
-  // Patterns for search requests
-  const patterns = [
-    /(?:find|search|look up|get|show me)(?:\s+(?:the|a))?\s+(?:youtube|video|song|music)?\s*(?:link|url)?\s+for\s+(.+)/i,
-    /(?:what's|what is|whats)\s+(?:the\s+)?(?:youtube|video|song)?\s*(?:link|url)?\s+for\s+(.+)/i,
-    /(?:can you|could you|please)\s+(?:find|search|get|show me)\s+(?:the\s+)?(?:youtube|video|song)?\s*(?:link|url)?\s+(?:for\s+)?(.+)/i,
-    /youtube\s+search\s+(?:for\s+)?(.+)/i,
-    /search\s+youtube\s+(?:for\s+)?(.+)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = messageText.match(pattern);
-    if (match?.[1]) {
-      const query = match[1].trim();
-      // Require minimum 3 characters to avoid ambiguous searches
-      if (query.length >= 3) {
-        return query;
-      }
-    }
-  }
-
-  return null;
-};
-
 function readOptions(options: unknown): Record<string, unknown> {
   const direct =
     options && typeof options === "object"
@@ -51,13 +21,13 @@ function readOptions(options: unknown): Record<string, unknown> {
   return { ...direct, ...params };
 }
 
-function readSearchQuery(messageText: string, options: unknown): string | null {
+function readSearchQuery(options: unknown): string | null {
   const params = readOptions(options);
   const query = params.query ?? params.searchQuery;
   if (typeof query === "string" && query.trim().length >= 3) {
     return query.trim();
   }
-  return extractSearchQuery(messageText);
+  return null;
 }
 
 function readLimit(options: unknown): number {
@@ -84,12 +54,11 @@ export const searchYouTubeSimiles = [
 
 export async function validateSearchYouTube(
   _runtime: IAgentRuntime,
-  message: Memory,
+  _message: Memory,
   _state?: State,
   options?: unknown,
 ): Promise<boolean> {
-  const messageText = message.content.text || "";
-  const searchQuery = readSearchQuery(messageText, options);
+  const searchQuery = readSearchQuery(options);
   return !!searchQuery;
 }
 
@@ -102,8 +71,7 @@ export async function handleSearchYouTube(
 ): Promise<ActionResult | undefined> {
   if (!callback) return { success: false, error: "Missing callback" };
 
-  const messageText = message.content.text || "";
-  const searchQuery = readSearchQuery(messageText, options);
+  const searchQuery = readSearchQuery(options);
 
   if (!searchQuery) {
     await callback({

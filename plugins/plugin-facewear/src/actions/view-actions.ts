@@ -31,6 +31,33 @@ function agentBaseUrl(): string {
   return process.env.XR_AGENT_URL ?? `http://localhost:${port}`;
 }
 
+/** Read a structured action param (planner-emitted `options.parameters`, with a
+ *  legacy top-level `options` fallback). No natural-language inference (#10471). */
+function readRawParam(options: unknown, key: string): unknown {
+  const opts = (options ?? {}) as Record<string, unknown>;
+  const fromParams = (opts.parameters as Record<string, unknown> | undefined)?.[
+    key
+  ];
+  return fromParams ?? opts[key];
+}
+
+function readStringParam(options: unknown, key: string): string | undefined {
+  const value = readRawParam(options, key);
+  return typeof value === "string" ? value : undefined;
+}
+
+function readNumberParam(options: unknown, key: string): number | undefined {
+  const value = readRawParam(options, key);
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function readBooleanParam(options: unknown, key: string): boolean | undefined {
+  const value = readRawParam(options, key);
+  return typeof value === "boolean" ? value : undefined;
+}
+
 // ── XR_OPEN_VIEW ───────────────────────────────────────────────────────────
 
 export const xrOpenViewAction: Action = {
@@ -268,7 +295,36 @@ export const xrResizeViewAction: Action = {
   name: "XR_RESIZE_VIEW",
   similes: ["RESIZE_XR_PANEL", "XR_MAKE_BIGGER", "XR_MAKE_SMALLER", "XR_SCALE"],
   description:
-    "Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
+    "Resizes or repositions the active XR view panel. Set scale (0.5 = half, 1.0 = default, 2.0 = double), distance in meters (1.5 = default, smaller = closer), or fullscreen.",
+  parameters: [
+    {
+      name: "scale",
+      description:
+        "Panel scale multiplier — e.g. 1.5 for bigger, 0.6 for smaller, 1.0 default.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "distance",
+      description:
+        "Panel distance from the user in meters — e.g. 0.8 for closer, 2.5 for farther, 1.5 default.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "fullscreen",
+      description: "Set true to fullscreen the panel.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "viewId",
+      description:
+        "Optional id of the view/panel to resize; defaults to the active panel.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   examples: [
     [
       { name: "user", content: { text: "make the panel bigger" } },
@@ -294,7 +350,7 @@ export const xrResizeViewAction: Action = {
     return svc?.hasActiveConnections() ?? false;
   },
 
-  handler: async (runtime, message, _state, options, callback) => {
+  handler: async (runtime, _message, _state, options, callback) => {
     const svc = getService(runtime);
     if (!svc) {
       const text = "No XR service.";
@@ -308,36 +364,27 @@ export const xrResizeViewAction: Action = {
       return { success: false, text };
     }
 
-    const inputText = message.content.text?.toLowerCase() ?? "";
-    let scale = (options?.scale as number | undefined) ?? 1.0;
-    let distance = (options?.distance as number | undefined) ?? 1.5;
+    // #10471: scale/distance/fullscreen come from structured params the planner
+    // emits (in any language), not from English keywords in the user's text.
+    const viewId = readStringParam(options, "viewId") ?? "";
+    const scale = readNumberParam(options, "scale");
+    const distance = readNumberParam(options, "distance");
+    const fullscreen = readBooleanParam(options, "fullscreen") ?? false;
 
-    if (
-      inputText.includes("bigger") ||
-      inputText.includes("larger") ||
-      inputText.includes("bigger")
-    )
-      scale = 1.5;
-    if (inputText.includes("smaller") || inputText.includes("tiny"))
-      scale = 0.6;
-    if (inputText.includes("closer") || inputText.includes("nearer"))
-      distance = 0.8;
-    if (
-      inputText.includes("farther") ||
-      inputText.includes("further") ||
-      inputText.includes("away")
-    )
-      distance = 2.5;
-    if (inputText.includes("fullscreen") || inputText.includes("full screen")) {
-      svc.resizeView(connId, "", { scale: 2.0, fullscreen: true });
+    if (fullscreen) {
+      svc.resizeView(connId, viewId, { scale: scale ?? 2.0, fullscreen: true });
       const text = "Panel fullscreened.";
       await callback?.({ text });
       return { success: true, text };
     }
 
-    const viewId = (options?.viewId as string | undefined) ?? "";
-    svc.resizeView(connId, viewId, { scale, distance });
-    const text = `Panel resized to ${scale}× at ${distance}m.`;
+    const finalScale = scale ?? 1.0;
+    const finalDistance = distance ?? 1.5;
+    svc.resizeView(connId, viewId, {
+      scale: finalScale,
+      distance: finalDistance,
+    });
+    const text = `Panel resized to ${finalScale}× at ${finalDistance}m.`;
     await callback?.({ text });
     return { success: true, text };
   },

@@ -2532,7 +2532,7 @@ const MOBILE_QUERY = "(max-width: 767px)";
 // generates the plugin's responsive (`md:`) variants. So responsiveness is
 // driven in JS via matchMedia and applied with always-present classes + inline
 // styles instead of breakpoint utilities.
-function useIsMobile(): boolean {
+export function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === "undefined" || !window.matchMedia) return false;
     return window.matchMedia(MOBILE_QUERY).matches;
@@ -2550,7 +2550,7 @@ function useIsMobile(): boolean {
 
 // Mobile inspector slide-over geometry. Inline styles (not `md:` utilities)
 // because the bundle has no CSS of its own — see useIsMobile.
-const INSPECTOR_DRAWER_STYLE: CSSProperties = {
+export const INSPECTOR_DRAWER_STYLE: CSSProperties = {
   position: "absolute",
   insetBlock: 0,
   right: 0,
@@ -2560,7 +2560,7 @@ const INSPECTOR_DRAWER_STYLE: CSSProperties = {
   boxShadow: "0 10px 30px rgba(0, 0, 0, 0.45)",
 };
 
-const HIDDEN_STYLE: CSSProperties = { display: "none" };
+export const HIDDEN_STYLE: CSSProperties = { display: "none" };
 
 // Timeline header above the message stream. Desktop packs it into one row;
 // mobile splits into a title row (back · status · title · details) and a

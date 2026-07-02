@@ -47,6 +47,7 @@ src/
     composites/               Higher-level pieces (sidebar, page-panel, ...)
     shell/                    ChatSurface, AssistantOverlay, HomePill, shell-state reducer
     apps/                     Overlay/game app surfaces + registries + AppWindowRenderer
+    cockpit/                  Coding-cockpit deck primitives (CockpitView, CockpitModePicker, CockpitTierToggle, CockpitNewSessionForm) — barrel-exported for plugin-task-coordinator's /cockpit route
     character/ chat/ config-ui/ pages/ settings/ steward/ voice/ voice-pill/ ...
   cloud-ui/                   Cloud-frontend component set (@elizaos/ui/cloud-ui):
                               dashboard, docs, data-list, monetization, analytics,
@@ -130,18 +131,16 @@ This is a library — no dev server (use the host app's). Scripts from package.j
 
 ```bash
 bun run --cwd packages/ui build               # build:dist → dist/ (locked tsc + asset copy)
-bun run --cwd packages/ui typecheck           # generate:css-strings + tsgo --noEmit
+bun run --cwd packages/ui typecheck           # tsgo --noEmit
 bun run --cwd packages/ui test                # vitest (vitest.config.ts)
 bun run --cwd packages/ui test:e2e            # slow suite (vitest.e2e.config.ts)
 bun run --cwd packages/ui test:agent-surface-e2e   # agent-surface __e2e__ runner
 bun run --cwd packages/ui test:chat-sheet-e2e      # continuous-chat pull-sheet drag-gesture __e2e__ runner
 bun run --cwd packages/ui test:home-screen-e2e     # home-screen __e2e__ runner
-bun run --cwd packages/ui test:onboarding-e2e      # first-run onboarding (CompactOnboarding) screenshot __e2e__ runner
 bun run --cwd packages/ui test:chat-ambient-e2e    # /chat ambient orange-pulse background screenshot __e2e__ runner
 bun run --cwd packages/ui lint                # biome check src
 bun run --cwd packages/ui lint:fix            # biome check --write src
 bun run --cwd packages/ui format / format:fix # biome format
-bun run --cwd packages/ui generate:css-strings # regenerate CSS-as-string modules
 bun run --cwd packages/ui stories:dev         # Vite stories (stories/vite.config.ts)
 bun run --cwd packages/ui storybook           # Storybook dev server (port 6006)
 bun run --cwd packages/ui build-storybook     # Storybook static build

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { BrowserBridgeSettings } from "@elizaos/plugin-browser";
+import { describe, expect, it } from "vitest";
 import {
   browserOriginFromUrl,
   browserUrlAllowedBySettings,

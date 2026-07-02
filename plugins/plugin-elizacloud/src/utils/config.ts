@@ -1,8 +1,12 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, resolveSetting } from "@elizaos/core";
+import {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  logger,
+  resolveSetting,
+} from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 
-export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "zai-glm-4.7";
+export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 
 /**
  * Runtime config first, then `process.env`, then the supplied default.
@@ -37,7 +41,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   const baseURL = (
     isBrowser() && browserURL
       ? browserURL
-      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://www.elizacloud.ai/api/v1")
+      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://elizacloud.ai/api/v1")
   ) as string;
   return baseURL;
 }
@@ -57,6 +61,59 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
 
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
   return getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+}
+
+/**
+ * The Eliza Cloud app this agent's inference should be attributed to (#10423).
+ *
+ * The managed deploy path injects the platform-authoritative `ELIZA_APP_ID`
+ * (the app's UUID) into a deployed app container, so its inference bills the
+ * app's credits + the creator's earnings rather than the caller's own org. When
+ * set, {@link createCloudApiClient} attaches it as the `X-App-Id` header on
+ * every request. The cloud verifies the caller is authorized for the app and
+ * falls back to normal (caller-org) billing when it is not — so a non-app agent
+ * that happens to carry an unrelated `ELIZA_APP_ID` (e.g. the desktop bundle id)
+ * is simply billed normally, never rejected.
+ */
+export function getAppId(runtime: IAgentRuntime): string | undefined {
+  return getSetting(runtime, "ELIZA_APP_ID");
+}
+
+/**
+ * Truthiness for host-written cloud flags: "true" or "1" (trimmed,
+ * case-insensitive), mirroring how core `isCloudConnected` reads
+ * `ELIZAOS_CLOUD_ENABLED`. Runtime boolean `true` arrives here as the
+ * string "true" (getSetting/resolveSetting coerce to string).
+ */
+function isTruthyCloudFlag(value: string | undefined): boolean {
+  if (!value) return false;
+  const lower = value.trim().toLowerCase();
+  return lower === "true" || lower === "1";
+}
+
+/**
+ * Whether Cloud TTS may serve: a Cloud API key is present AND the operator
+ * turned cloud audio on — either through the full cloud connection
+ * (`ELIZAOS_CLOUD_ENABLED`) or through the per-service routing flag
+ * (`ELIZAOS_CLOUD_USE_TTS`) that `applyCloudConfigToEnv` writes in
+ * capability-only mode (elizaOS/eliza#10819), where an external provider
+ * owns the text brain so `ELIZAOS_CLOUD_ENABLED` deliberately stays unset.
+ *
+ * This is deliberately NOT a change to core `isCloudConnected`: its other
+ * consumers (wallet RPC proxy routing, streaming, tailscale) read ENABLED as
+ * "Eliza Cloud is the inference brain" and must keep that coupling. TTS is a
+ * capability with an explicit per-service opt-in that has to work without
+ * the inference coupling — gating it on ENABLED alone made the registered
+ * TEXT_TO_SPEECH handler throw `CloudTtsUnavailableError` on every call in
+ * capability-only mode, even when the operator cloud-routed TTS.
+ */
+export function isCloudTtsAvailable(runtime: IAgentRuntime): boolean {
+  const apiKey = getApiKey(runtime);
+  if (!apiKey?.trim()) return false;
+  return (
+    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_ENABLED")) ||
+    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_USE_TTS"))
+  );
 }
 
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
@@ -140,9 +197,14 @@ export function getImageDescriptionModel(runtime: IAgentRuntime): string {
 }
 
 export function getImageGenerationModel(runtime: IAgentRuntime): string {
+  // Must be a cloud SUPPORTED_IMAGE_MODELS id with an image:generation price;
+  // the retired BitRouter default (google/gemini-2.5-flash-image) 500'd (#11005).
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL", "google/gemini-2.5-flash-image") ??
-    "google/gemini-2.5-flash-image"
+    getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL",
+      "google/nano-banana-2/text-to-image",
+    ) ?? "google/nano-banana-2/text-to-image"
   );
 }
 

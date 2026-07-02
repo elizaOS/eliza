@@ -69,13 +69,16 @@ export default scenario({
           "whatsapp",
         ],
       }),
+      // De-echoed (#9310): the old keywords ("Priya", "unread", "Gmail",
+      // "Signal", "Telegram", "WhatsApp") all appeared in the user's own turn
+      // text. The reply must now express the derived dedupe outcome in words
+      // the prompt never used.
       responseIncludesAny: [
-        "Priya",
-        "unread",
-        "Gmail",
-        "Signal",
-        "Telegram",
-        "WhatsApp",
+        "one person",
+        "single",
+        "merged",
+        "consolidated",
+        "deduplicated",
       ],
       responseJudge: {
         minimumScore: 0.75,

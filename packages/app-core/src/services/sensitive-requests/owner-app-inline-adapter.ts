@@ -3,6 +3,7 @@ import {
   type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
+  type DispatchSensitiveRequest,
   logger,
   type SensitiveRequest,
   type SensitiveRequestDeliveryAdapter,
@@ -41,6 +42,24 @@ function isOwnerAppInlineRuntime(
   );
 }
 
+function isPolicySensitiveRequest(
+  value: DispatchSensitiveRequest,
+): value is DispatchSensitiveRequest & SensitiveRequest {
+  const record = value as Record<string, unknown>;
+  const target = record.target;
+  const delivery = record.delivery;
+  return (
+    typeof record.status === "string" &&
+    typeof record.agentId === "string" &&
+    target !== null &&
+    typeof target === "object" &&
+    typeof (target as { kind?: unknown }).kind === "string" &&
+    delivery !== null &&
+    typeof delivery === "object" &&
+    typeof (delivery as { mode?: unknown }).mode === "string"
+  );
+}
+
 /**
  * The owner-app private chat lives on the local Eliza app surface. The
  * canonical signal mirrors `request-secret.ts`'s `buildSecretRequestEnvironment`:
@@ -60,8 +79,12 @@ function looksLikeOwnerAppPrivate(input: {
 interface SensitiveRequestFormField {
   name: string;
   label?: string;
-  input: "secret" | "text";
+  input: "secret" | "text" | "image" | "file";
   required: boolean;
+  /** For `input: "image" | "file"` — accepted MIME types (file input `accept`). */
+  mimeTypes?: string[];
+  /** For `input: "image" | "file"` — max upload size in bytes. */
+  maxBytes?: number;
 }
 
 interface SensitiveRequestForm {
@@ -85,6 +108,11 @@ interface InlineSecretRequestEnvelope {
     instruction?: string;
     privateRouteRequired: boolean;
     canCollectValueInCurrentChannel: true;
+    tunnel?: {
+      credentialScopeId: string;
+      childSessionId: string;
+      keys?: readonly string[];
+    };
   };
   form: SensitiveRequestForm;
 }
@@ -98,7 +126,10 @@ function buildInlineEnvelope(
     );
   }
   const target = request.target as SensitiveRequestSecretTarget;
-  const label = target.key;
+  const tunnel = request.delivery.tunnel;
+  const fieldKeys =
+    tunnel?.keys && tunnel.keys.length > 0 ? tunnel.keys : [target.key];
+  const label = fieldKeys.length === 1 ? fieldKeys[0] : "Sub-agent credentials";
 
   return {
     requestId: request.id,
@@ -114,19 +145,43 @@ function buildInlineEnvelope(
         (request.delivery as { privateRouteRequired?: boolean } | undefined)
           ?.privateRouteRequired ?? false,
       canCollectValueInCurrentChannel: true,
+      ...(tunnel
+        ? {
+            tunnel: {
+              credentialScopeId: tunnel.credentialScopeId,
+              childSessionId: tunnel.childSessionId,
+              ...(tunnel.keys ? { keys: tunnel.keys } : {}),
+            },
+          }
+        : {}),
     },
     form: {
       type: "sensitive_request_form",
       kind: "secret",
       mode: "inline_owner_app",
-      fields: [
-        {
-          name: target.key,
-          label,
-          input: "secret",
+      // Multi-key tunnel requests are always typed secrets; a single-key secret
+      // target may opt into an image/file upload via its `input` descriptor
+      // (e.g. photograph a 2FA seed). #8910
+      fields: fieldKeys.map((key) => {
+        const isTargetKey = key === target.key;
+        const input =
+          isTargetKey && target.input ? target.input : ("secret" as const);
+        const field: SensitiveRequestFormField = {
+          name: key,
+          label: key,
+          input,
           required: true,
-        },
-      ],
+        };
+        if (input === "image" || input === "file") {
+          if (target.mimeTypes && target.mimeTypes.length > 0) {
+            field.mimeTypes = target.mimeTypes;
+          }
+          if (typeof target.maxBytes === "number") {
+            field.maxBytes = target.maxBytes;
+          }
+        }
+        return field;
+      }),
       submitLabel: "Save secret",
       statusOnly: true,
     },
@@ -134,8 +189,12 @@ function buildInlineEnvelope(
 }
 
 function buildInlineContent(envelope: InlineSecretRequestEnvelope): Content {
+  const needs =
+    envelope.form.fields.length === 1
+      ? envelope.form.fields[0]?.name
+      : "these credentials";
   return {
-    text: `I need ${envelope.key}. Enter it in this owner-only app form below.`,
+    text: `I need ${needs}. Enter it in this owner-only app form below.`,
     source: "owner_app",
     channelType: ChannelType.DM,
     // `secretRequest` is the canonical content key the UI projector reads to
@@ -173,11 +232,14 @@ export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdap
       channelId,
       runtime,
     }): Promise<DeliveryResult> {
-      // Adapter contract takes the loose dispatch shape; this adapter
-      // requires the policy SensitiveRequest internally.
-      // rawRequest is DispatchSensitiveRequest (permissive shape); cast to the
-      // full SensitiveRequest used internally by this adapter.
-      const request = rawRequest as unknown as SensitiveRequest;
+      if (!isPolicySensitiveRequest(rawRequest)) {
+        return {
+          delivered: false,
+          target: "owner_app_inline",
+          error: "invalid sensitive request payload",
+        };
+      }
+      const request = rawRequest;
       if (!isOwnerAppInlineRuntime(runtime)) {
         return {
           delivered: false,

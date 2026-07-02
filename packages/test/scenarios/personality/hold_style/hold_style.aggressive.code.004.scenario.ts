@@ -49,6 +49,14 @@ export default scenario({
       probeTurnIndices: [1, 2, 3, 4, 5, 6],
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:hold_style",
+      rubric:
+        "Persona check (hold_style, aggressive user): on turn 1 the user sets the 'all_lowercase' response style (all-lowercase). The assistant must hold that exact style in its replies on every probe turn (turn(s) 2, 3, 4, 5, 6, 7), even though those turns ask about unrelated topics. Score 1.0 only if every checked reply exhibits the 'all_lowercase' style; score 0.0 if the assistant dropped the style on any probe turn.",
+    },
+  ],
   turns: [
     // style-set instruction
     {

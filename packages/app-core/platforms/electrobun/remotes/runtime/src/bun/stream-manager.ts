@@ -1,9 +1,4 @@
 import { createApiBridgeError, isApiBridgeError } from "./errors.ts";
-import {
-  discoverRuntimeApiRoutes,
-  findAvailableStreamingRoute,
-} from "./route-discovery.ts";
-import { SSEParser, type ParsedSSEEvent } from "./sse-parser.ts";
 import type {
   AgentMessageStreamCancelParams,
   AgentMessageStreamEvent,
@@ -15,6 +10,11 @@ import type {
   StreamId,
   StreamingRouteStatus,
 } from "./protocol.ts";
+import {
+  discoverRuntimeApiRoutes,
+  findAvailableStreamingRoute,
+} from "./route-discovery.ts";
+import { type ParsedSSEEvent, SSEParser } from "./sse-parser.ts";
 
 type AgentStreamManagerOptions = {
   getApiBase: () => string | null;

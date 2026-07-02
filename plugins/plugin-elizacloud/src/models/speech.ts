@@ -1,8 +1,13 @@
 import type { Readable } from "node:stream";
 import type { AudioStreamResult, IAgentRuntime } from "@elizaos/core";
-import { isCloudConnected, logger, toRuntimeSettings } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { OpenAITextToSpeechParams } from "../types";
-import { getSetting, isBrowser, resolveCloudTimeoutMs } from "../utils/config";
+import {
+  getSetting,
+  isBrowser,
+  isCloudTtsAvailable,
+  resolveCloudTimeoutMs,
+} from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
@@ -57,7 +62,7 @@ export interface CloudTextToSpeechParams extends OpenAITextToSpeechParams {
 
 /**
  * Marker error used so the runtime can fall through to the next TTS handler
- * (e.g. local omnivoice) when Eliza Cloud is not connected.
+ * (e.g. local Kokoro) when Eliza Cloud is not connected.
  */
 export class CloudTtsUnavailableError extends Error {
   constructor(message = "Eliza Cloud is not connected") {
@@ -272,11 +277,16 @@ function buildAudioStreamResult(
  * TEXT_TO_SPEECH handler for plugin-elizacloud.
  *
  * Behavior:
- *   - When Eliza Cloud is **not** connected, throws `CloudTtsUnavailableError`
- *     so the runtime's model-handler fallback chain can pick the next
- *     provider (e.g. local omnivoice, ElevenLabs direct, etc.).
- *   - When connected, forwards `text`, `voiceId`, and `modelId` to the
- *     upstream cloud TTS proxy and returns the audio stream.
+ *   - When Cloud TTS is **not** available — no API key, or neither
+ *     `ELIZAOS_CLOUD_ENABLED` nor `ELIZAOS_CLOUD_USE_TTS` is set — throws
+ *     `CloudTtsUnavailableError` so the runtime's model-handler fallback
+ *     chain can pick the next provider (e.g. local Kokoro, ElevenLabs
+ *     direct, etc.).
+ *   - When available (full cloud connection, or capability-only mode where
+ *     the host cloud-routed TTS via `ELIZAOS_CLOUD_USE_TTS=true` while an
+ *     external provider owns the text brain), forwards `text`, `voiceId`,
+ *     and `modelId` to the upstream cloud TTS proxy and returns the audio
+ *     stream.
  *
  * Accepts both OpenAI-style (`voice` / `model`) and ElevenLabs-style
  * (`voiceId` / `modelId`) input fields. ElevenLabs-style wins when both are
@@ -286,9 +296,9 @@ export async function handleTextToSpeech(
   runtime: IAgentRuntime,
   input: string | CloudTextToSpeechParams | OpenAITextToSpeechParams,
 ): Promise<Uint8Array | AudioStreamResult> {
-  if (!isCloudConnected(toRuntimeSettings(runtime))) {
+  if (!isCloudTtsAvailable(runtime)) {
     throw new CloudTtsUnavailableError(
-      "Eliza Cloud is not connected — falling through to next TTS handler",
+      "Eliza Cloud TTS is not available — falling through to next TTS handler",
     );
   }
 

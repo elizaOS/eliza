@@ -2,7 +2,8 @@
 
 Date: 2026-05-28. Scope: `packages/benchmarks`. Method: discovered adapters via
 `orchestrator.discover_adapters`, inspected per-harness factory coverage, and
-ran live BFCL smoke runs on Cerebras `gpt-oss-120b`.
+ran live BFCL smoke runs on Cerebras `gpt-oss-120b` (the default Cerebras eval
+model at the time; the default is now `gemma-4-31b`).
 
 ## Harness coverage at a glance
 
@@ -99,6 +100,7 @@ BFCL, Cerebras `gpt-oss-120b`, identical small samples:
 | eliza | TS bridge | requires `bun run dev` (not run this pass) |
 
 All three OpenAI-compatible harnesses ballpark together on BFCL; smithers is
-within range. Full 53-benchmark × 4-harness certification requires the gated
-infra (Docker, audio, multimodal, HL key, eliza bridge) and meaningful paid API
-spend — see `COST_REPORT.md` for the projected cost.
+within range. Full 4-harness certification across all benchmarks (44 registered
++ 9 adapter-only) requires the gated infra (Docker, audio, multimodal, HL key,
+eliza bridge) and meaningful paid API spend — see `COST_REPORT.md` for the
+projected cost.

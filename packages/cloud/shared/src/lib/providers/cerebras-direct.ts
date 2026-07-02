@@ -2,7 +2,7 @@
  * Cerebras direct provider.
  *
  * Cerebras exposes an OpenAI-compatible `/chat/completions` API, but its native
- * model ids are bare (`gpt-oss-120b`, `zai-glm-4.7`). Dedicated agents can emit
+ * model ids are bare (`gemma-4-31b`, `gpt-oss-120b`, `zai-glm-4.7`). Dedicated agents can emit
  * decorated OpenRouter-style ids such as `openai/gpt-oss-120b:nitro`; collapse
  * those before forwarding so raw-fetch app chat matches the AI-SDK route.
  */

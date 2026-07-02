@@ -163,6 +163,48 @@ describe("useAvailableViews", () => {
     });
   });
 
+  it("strips native-OS views (phone/messages/contacts/camera) off the AOSP fork", async () => {
+    fetchWithCsrf
+      .mockResolvedValueOnce(
+        response(200, {
+          views: [
+            view("phone"),
+            view("messages"),
+            view("contacts"),
+            view("camera"),
+            view("wallet"),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }));
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // jsdom has no ElizaOS UA marker → not the AOSP fork → natives stripped.
+    expect(result.current.views.map((v) => v.id)).toEqual(["wallet"]);
+  });
+
+  it("keeps native-OS views on the AOSP fork (?android=true)", async () => {
+    window.history.replaceState(null, "", "/?android=true");
+    fetchWithCsrf
+      .mockResolvedValueOnce(
+        response(200, { views: [view("phone"), view("wallet")] }),
+      )
+      .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }));
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.views.map((v) => v.id).sort()).toEqual([
+      "phone",
+      "wallet",
+    ]);
+    window.history.replaceState(null, "", "/");
+  });
+
   it("keeps XR views returned by the explicit XR registry endpoint", async () => {
     fetchWithCsrf
       .mockResolvedValueOnce(response(200, { views: [] }))

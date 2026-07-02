@@ -13,7 +13,7 @@ export interface CockpitTierToggleProps {
 /**
  * Standalone Fast/Smart tier toggle for a RUNNING Eliza Cloud session (the
  * session pane mounts it). Flipping it re-points the task's `providerPolicy` to
- * the other Cerebras model (`gpt-oss-120b` ⇄ `zai-glm-4.7`); the orchestrator
+ * the selected Eliza Cloud tier model; the orchestrator
  * applies it on the next agent turn. There is intentionally no in-place
  * "no-restart" model swap — an ACP subprocess binds its model at spawn, so the
  * honest mechanism is persist-policy + re-spawn, which the container wires.

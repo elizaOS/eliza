@@ -64,6 +64,8 @@ const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const PRE_DOCUMENTS_TABLE = "knowledge";
+const CHARACTER_DOCUMENT_EMBEDDING_WAIT_TIMEOUT_MS = 120_000;
+const CHARACTER_DOCUMENT_EMBEDDING_WAIT_INTERVAL_MS = 1_000;
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"global",
 	"owner-private",
@@ -643,24 +645,24 @@ export class DocumentService extends Service {
 				(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
 					existingDocument.metadata?.type === MemoryType.CUSTOM)
 			) {
-				logger.info(`"${options.originalFilename}" already exists - skipping`);
+				const fragmentCount =
+					await this.getDocumentFragmentCount(contentBasedId);
+				if (fragmentCount === 0) {
+					logger.warn(
+						`"${options.originalFilename}" already exists with 0 fragments; deleting stale document stub and reprocessing`,
+					);
+					await this.runtime.deleteMemory(contentBasedId);
+				} else {
+					logger.info(
+						`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
+					);
 
-				const fragments = await this.runtime.getMemories({
-					tableName: DOCUMENT_FRAGMENTS_TABLE,
-				});
-
-				const relatedFragments = fragments.filter(
-					(f) =>
-						f.metadata?.type === MemoryType.FRAGMENT &&
-						(f.metadata as DocumentFragmentMemoryMetadata | undefined)
-							?.documentId === contentBasedId,
-				);
-
-				return {
-					clientDocumentId: contentBasedId,
-					storedDocumentMemoryId: existingDocument.id as UUID,
-					fragmentCount: relatedFragments.length,
-				};
+					return {
+						clientDocumentId: contentBasedId,
+						storedDocumentMemoryId: existingDocument.id as UUID,
+						fragmentCount,
+					};
+				}
 			}
 		} catch (error) {
 			logger.debug(
@@ -869,9 +871,42 @@ export class DocumentService extends Service {
 		}
 	}
 
+	private async getDocumentFragmentCount(documentId: UUID): Promise<number> {
+		const fragments = await this.runtime.getMemories({
+			tableName: DOCUMENT_FRAGMENTS_TABLE,
+			agentId: this.runtime.agentId,
+			count: 10_000,
+		});
+
+		return fragments.filter(
+			(f) =>
+				f.metadata?.type === MemoryType.FRAGMENT &&
+				(f.metadata as DocumentFragmentMemoryMetadata | undefined)
+					?.documentId === documentId,
+		).length;
+	}
+
 	async checkExistingDocument(documentId: UUID): Promise<boolean> {
 		const existingDocument = await this.runtime.getMemoryById(documentId);
-		return !!existingDocument;
+		if (!existingDocument) {
+			return false;
+		}
+
+		if (
+			existingDocument.metadata?.type === MemoryType.DOCUMENT ||
+			existingDocument.metadata?.type === MemoryType.CUSTOM
+		) {
+			const fragmentCount = await this.getDocumentFragmentCount(documentId);
+			if (fragmentCount === 0) {
+				logger.warn(
+					`Document ${documentId} already exists with 0 fragments; deleting stale document stub and reprocessing`,
+				);
+				await this.runtime.deleteMemory(documentId);
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	async searchDocuments(
@@ -1249,8 +1284,68 @@ export class DocumentService extends Service {
 		}
 	}
 
-	async processCharacterDocuments(items: string[]): Promise<void> {
+	private async waitForCharacterDocumentEmbeddingModel(options?: {
+		timeoutMs?: number;
+		intervalMs?: number;
+	}): Promise<boolean> {
+		if (this.runtime.getModel(ModelType.TEXT_EMBEDDING)) {
+			return true;
+		}
+
+		const timeoutMs =
+			options?.timeoutMs ?? CHARACTER_DOCUMENT_EMBEDDING_WAIT_TIMEOUT_MS;
+		const intervalMs = Math.max(
+			1,
+			options?.intervalMs ?? CHARACTER_DOCUMENT_EMBEDDING_WAIT_INTERVAL_MS,
+		);
+		const deadline = Date.now() + timeoutMs;
+		let attempts = 0;
+
+		logger.info(
+			`TEXT_EMBEDDING model is not registered yet; waiting up to ${timeoutMs}ms before processing character documents`,
+		);
+
+		while (Date.now() < deadline) {
+			attempts++;
+			await new Promise((resolve) =>
+				setTimeout(
+					resolve,
+					Math.min(intervalMs, Math.max(1, deadline - Date.now())),
+				),
+			);
+
+			if (this.runtime.getModel(ModelType.TEXT_EMBEDDING)) {
+				logger.info(
+					`TEXT_EMBEDDING model registered after ${attempts} wait attempt(s); processing character documents`,
+				);
+				return true;
+			}
+		}
+
+		logger.warn(
+			`TEXT_EMBEDDING model was still not registered after ${timeoutMs}ms; skipping character document ingestion to avoid creating empty-fragment stubs`,
+		);
+		return false;
+	}
+
+	async processCharacterDocuments(
+		items: string[],
+		options?: {
+			embeddingWaitTimeoutMs?: number;
+			embeddingWaitIntervalMs?: number;
+		},
+	): Promise<void> {
 		await new Promise((resolve) => setTimeout(resolve, 1000));
+		const hasEmbeddingModel = await this.waitForCharacterDocumentEmbeddingModel(
+			{
+				timeoutMs: options?.embeddingWaitTimeoutMs,
+				intervalMs: options?.embeddingWaitIntervalMs,
+			},
+		);
+		if (!hasEmbeddingModel) {
+			return;
+		}
+
 		logger.info(`Processing ${items.length} character documents items`);
 
 		const processingPromises = items.map(async (item) => {

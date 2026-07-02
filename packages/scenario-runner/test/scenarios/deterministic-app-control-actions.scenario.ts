@@ -5,6 +5,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { subviewsForView } from "../../../../plugins/plugin-app-control/src/actions/settings-subviews.ts";
 import {
   jsonResponse,
   readAppControlHttpRequests,
@@ -121,6 +122,16 @@ const views = [
     tags: ["feed", "editorial"],
   },
 ];
+
+// The list table deep-links addressable sub-sections for the settings view
+// (views-list.ts renders one indented `subviews[...]` line sourced from
+// SETTINGS_SECTION_META via subviewsForView). Derive the expected line from
+// the same source of truth so the exact-text assertion tracks the canonical
+// section metadata instead of a hand-copied list.
+const settingsSubviews = subviewsForView("settings") ?? [];
+const settingsSubviewsLine = `    subviews[${settingsSubviews.length}]{id:label}: ${settingsSubviews
+  .map((subview) => `${subview.id}:${subview.label}`)
+  .join(", ")}`;
 
 const currentView = {
   viewId: "remote-ledger",
@@ -546,14 +557,14 @@ export default scenario({
         expectActionTurn(execution, {
           actionName: "VIEWS",
           parameters: { action: "list", viewType: "gui" },
-          responseText:
-            "available_views:\n  type: gui\n  count: 3\nviews[3]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes\n  feed-board,Feed Board,gui,/feed-board,yes",
+          responseText: `available_views:\n  type: gui\n  count: 3\nviews[3]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes\n${settingsSubviewsLine}\n  feed-board,Feed Board,gui,/feed-board,yes`,
           resultFields: {
             "values.mode": "list",
             "values.viewCount": 3,
             "values.viewType": "gui",
             "data.views.0.id": "remote-ledger",
             "data.views.1.id": "settings",
+            "data.views.1.subviews": settingsSubviews,
             "data.views.2.id": "feed-board",
           },
         }),

@@ -78,9 +78,7 @@ test("neither track-latest nor a confirmed tag is a hard FAIL", async () => {
   broken.pinnedRelease.confirmed = false;
   const result = checkDstackPins(broken, schema, manifest);
   assert.equal(result.ok, false);
-  assert.ok(
-    result.errors.some((e) => e.includes("pinnedRelease is INVALID")),
-  );
+  assert.ok(result.errors.some((e) => e.includes("pinnedRelease is INVALID")));
 });
 
 test("an empty appAuth allowlist is a hard FAIL (fail-closed)", async () => {

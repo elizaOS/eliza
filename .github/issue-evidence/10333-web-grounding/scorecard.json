@@ -1,7 +1,7 @@
 {
   "benchmark": "web-element-grounding (ScreenSpot-Web style)",
   "engine": "chromium",
-  "executablePath": "C:\\Users\\Administrator\\AppData\\Local\\ms-playwright\\chromium-1228\\chrome-win64\\chrome.exe",
+  "executablePath": "/Users/shawwalters/Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell",
   "grounder": "center",
   "total": 3,
   "correct": 3,
@@ -31,13 +31,13 @@
       "correct": true,
       "box": {
         "x": 202.71875,
-        "y": 62,
+        "y": 60,
         "width": 85.453125,
         "height": 38
       },
       "predicted": {
         "x": 245.4453125,
-        "y": 81
+        "y": 79
       }
     },
     {
@@ -46,14 +46,14 @@
       "group": "link",
       "correct": true,
       "box": {
-        "x": 195.96875,
-        "y": 62,
-        "width": 81.875,
-        "height": 41
+        "x": 199.265625,
+        "y": 60,
+        "width": 85.25,
+        "height": 39
       },
       "predicted": {
-        "x": 236.90625,
-        "y": 82.5
+        "x": 241.890625,
+        "y": 79.5
       }
     },
     {
@@ -62,13 +62,13 @@
       "group": "icon",
       "correct": true,
       "box": {
-        "x": 166.46875,
-        "y": 62,
-        "width": 57.234375,
-        "height": 41
+        "x": 164,
+        "y": 60,
+        "width": 56,
+        "height": 45
       },
       "predicted": {
-        "x": 195.0859375,
+        "x": 192,
         "y": 82.5
       }
     }

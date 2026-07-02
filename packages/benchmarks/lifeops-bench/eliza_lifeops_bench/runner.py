@@ -2870,7 +2870,7 @@ class LifeOpsBenchRunner:
         self,
         agent_fn: AgentFn | None = None,
         world_factory: WorldFactory | None = None,
-        evaluator_model: str = "gpt-oss-120b",
+        evaluator_model: str = "gemma-4-31b",
         judge_model: str = "claude-opus-4-7",
         scenarios: list[Scenario] | None = None,
         concurrency: int = 4,

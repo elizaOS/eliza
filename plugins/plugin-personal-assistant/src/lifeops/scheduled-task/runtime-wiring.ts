@@ -45,6 +45,7 @@ import {
 } from "@elizaos/plugin-scheduling";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
+import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import {
@@ -78,10 +79,11 @@ function makeRepositoryBackedStores(
           nextFireAtIso: options?.nextFireAtIso ?? null,
         });
       },
-      async claimForFire({ taskId, firedAtIso }) {
+      async claimForFire({ taskId, firedAtIso, expected }) {
         return repo.claimScheduledTaskForFire(agentId, {
           taskId,
           firedAtIso,
+          ...(expected ? { expected } : {}),
         });
       },
       async get(taskId: string) {
@@ -288,6 +290,34 @@ function deniedDecisionToDispatchResult(
   };
 }
 
+/**
+ * Apply the runner's dispatch fallback policy to a raw `DispatchResult` before
+ * handing it back to the ScheduledTask runner. This is where
+ * {@link decideDispatchPolicy} is actually exercised in production (it was
+ * previously unit-tested but never wired to a live dispatch): for a
+ * retry-class failure such as `rate_limited` that a connector reported WITHOUT
+ * an explicit `retryAfterMinutes`, the policy supplies the default backoff so
+ * the runner reschedules the same escalation step instead of treating it as a
+ * hard failure. Non-retry decisions leave the result untouched — the runner
+ * reads the spine-owned `ok` / `retryAfterMinutes` fields and routes the rest.
+ */
+function applyDispatchPolicy(result: DispatchResult): DispatchResult {
+  if (result.ok) return result;
+  const decision = decideDispatchPolicy(result, {
+    // A dispatcher issues a single send attempt; ladder advancement and the
+    // step-dependent advance / surface_degraded / fail decisions belong to the
+    // runner, which owns the escalation cursor. Here we only consume the
+    // step-independent retry decision to fill a missing backoff, so a
+    // single-step context is the correct view.
+    currentStepIndex: 0,
+    totalSteps: 1,
+  });
+  if (decision.kind === "retry" && result.retryAfterMinutes === undefined) {
+    return { ...result, retryAfterMinutes: decision.retryAfterMinutes };
+  }
+  return result;
+}
+
 export function createProductionScheduledTaskDispatcher(opts: {
   runtime: IAgentRuntime;
 }): ScheduledTaskDispatcher {
@@ -325,6 +355,13 @@ export function createProductionScheduledTaskDispatcher(opts: {
           record.channelKey === "push" ||
           record.output?.destination === "in_app_card"
         ) {
+          // Honest delivery accounting: an in_app dispatch "succeeded" only
+          // if at least one real surface accepted the payload — the live
+          // assistant event bus (transient stream) or the notification
+          // service (durable inbox). Previously this branch returned
+          // ok:true unconditionally, fabricating delivery on hosts where
+          // both surfaces were absent, so nothing ever retried/escalated.
+          let surfacesAccepted = 0;
           const eventService = getAgentEventService(opts.runtime) as {
             emit?: (event: {
               runId: string;
@@ -333,59 +370,75 @@ export function createProductionScheduledTaskDispatcher(opts: {
               agentId?: string;
             }) => void;
           } | null;
-          eventService?.emit?.({
-            runId: crypto.randomUUID(),
-            stream: "assistant",
-            agentId: opts.runtime.agentId,
-            data: {
-              text: record.promptInstructions,
-              source: "lifeops-scheduled-task",
-              taskId: record.taskId,
-              firedAtIso: record.firedAtIso,
-              channelKey: record.channelKey,
-              target: normalizeChannelTarget(
-                record.channelKey,
-                record.output?.target,
-              ),
-              ...(record.intensity ? { intensity: record.intensity } : {}),
-              ...(record.contextRequest
-                ? { contextRequest: record.contextRequest }
-                : {}),
-            },
-          });
-          const isUrgent = record.intensity === "urgent";
-          void getNotifier(opts.runtime)
-            ?.notify({
-              title: isUrgent ? "Approval needed" : "Reminder",
-              body: record.promptInstructions,
-              category: isUrgent ? "approval" : "reminder",
-              priority: isUrgent ? "urgent" : "normal",
-              source: "lifeops",
-              groupKey: `lifeops:${record.taskId}`,
-              deepLink: "/chat",
+          if (typeof eventService?.emit === "function") {
+            eventService.emit({
+              runId: crypto.randomUUID(),
+              stream: "assistant",
+              agentId: opts.runtime.agentId,
               data: {
+                text: record.promptInstructions,
+                source: "lifeops-scheduled-task",
                 taskId: record.taskId,
                 firedAtIso: record.firedAtIso,
                 channelKey: record.channelKey,
+                target: normalizeChannelTarget(
+                  record.channelKey,
+                  record.output?.target,
+                ),
+                ...(record.intensity ? { intensity: record.intensity } : {}),
+                ...(record.contextRequest
+                  ? { contextRequest: record.contextRequest }
+                  : {}),
               },
-            })
-            .catch((error: unknown) => {
-              logger.debug(
+            });
+            surfacesAccepted += 1;
+          }
+          const isUrgent = record.intensity === "urgent";
+          const notifier = getNotifier(opts.runtime);
+          if (notifier) {
+            try {
+              await notifier.notify({
+                title: isUrgent ? "Approval needed" : "Reminder",
+                body: record.promptInstructions,
+                category: isUrgent ? "approval" : "reminder",
+                priority: isUrgent ? "urgent" : "normal",
+                source: "lifeops",
+                groupKey: `lifeops:${record.taskId}`,
+                deepLink: "/chat",
+                data: {
+                  taskId: record.taskId,
+                  firedAtIso: record.firedAtIso,
+                  channelKey: record.channelKey,
+                },
+              });
+              surfacesAccepted += 1;
+            } catch (error) {
+              logger.warn(
                 { src: "lifeops:scheduled-task", error },
                 "Notification emit failed",
               );
-            });
+            }
+          }
+          if (surfacesAccepted === 0) {
+            return {
+              ok: false,
+              reason: "disconnected",
+              userActionable: false,
+              message:
+                "No in-app surface (assistant event bus or notification service) accepted the payload.",
+            };
+          }
           return {
             ok: true,
             messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
           };
         }
-        return {
+        return applyDispatchPolicy({
           ok: false,
           reason: "disconnected",
           userActionable: true,
           message: `Channel "${record.channelKey}" is not connected for send.`,
-        };
+        });
       }
 
       const payload = {
@@ -416,10 +469,10 @@ export function createProductionScheduledTaskDispatcher(opts: {
       });
       if (policyDecision) {
         const denied = deniedDecisionToDispatchResult(policyDecision);
-        if (denied) return denied;
+        if (denied) return applyDispatchPolicy(denied);
       }
 
-      return channel.send(payload);
+      return applyDispatchPolicy(await channel.send(payload));
     },
   };
 }

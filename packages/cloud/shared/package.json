@@ -27,6 +27,7 @@
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
     "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",
     "test": "bun test --isolate",
+    "test:vitest": "vitest run",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
     "db:check-migrations": "drizzle-kit check",
@@ -94,7 +95,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.0",
+    "@biomejs/biome": "2.5.2",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",

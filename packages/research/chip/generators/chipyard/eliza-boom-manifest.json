@@ -23,9 +23,18 @@
   },
   "isa": "RV64GC",
   "extensions": [
-    "I", "M", "A", "F", "D", "C",
-    "Zicsr", "Zifencei", "Zicntr", "Zihpm",
-    "Zba", "Zbb"
+    "I",
+    "M",
+    "A",
+    "F",
+    "D",
+    "C",
+    "Zicsr",
+    "Zifencei",
+    "Zicntr",
+    "Zihpm",
+    "Zba",
+    "Zbb"
   ],
   "privilege_modes": ["M", "S", "U"],
   "mmu": "Sv39",

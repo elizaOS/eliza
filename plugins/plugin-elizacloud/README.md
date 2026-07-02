@@ -107,10 +107,10 @@ Get an API key from
 | `ELIZAOS_CLOUD_API_KEY` | API key used for authenticated Cloud requests | Required |
 | `ELIZAOS_CLOUD_BASE_URL` | Eliza Cloud API base URL | `https://elizacloud.ai/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | Enables container provisioning, device auth, bridge, and backup services | `false` |
-| `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `gpt-oss-120b` |
-| `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `gpt-oss-120b` |
+| `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `gemma-4-31b` |
+| `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `gemma-4-31b` |
 | `ELIZAOS_CLOUD_MEDIUM_MODEL` | Medium planning model override | `MEDIUM_MODEL` or small model |
-| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `zai-glm-4.7` |
+| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `gemma-4-31b` |
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | large model |
@@ -121,7 +121,7 @@ Get an API key from
 | `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | Embedding vector size | `1536` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | Vision model used for image descriptions | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | Max image-description response tokens | `8192` |
-| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/gemini-2.5-flash-image` |
+| `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/nano-banana-2/text-to-image` |
 | `ELIZAOS_CLOUD_TTS_MODEL` | Text-to-speech model | `gpt-5-mini-tts` |
 | `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | Audio transcription model | `gpt-5-mini-transcribe` |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | Enables experimental telemetry metadata | `false` |

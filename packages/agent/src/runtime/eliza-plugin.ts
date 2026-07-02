@@ -15,6 +15,7 @@ import {
 } from "@elizaos/core";
 import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
+import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { filesAction } from "../actions/files.ts";
@@ -27,7 +28,10 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
-import { backgroundGenerateImageRoute } from "../api/background-routes.ts";
+import {
+  backgroundGenerateImageRoute,
+  backgroundUploadImageRoute,
+} from "../api/background-routes.ts";
 import { filesRoutes } from "../api/files-routes.ts";
 import {
   mediaFileRoute,
@@ -231,7 +235,12 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     // Public media route — only reached on iOS (in-process dispatch, no HTTP
     // server). HTTP platforms serve media via the pre-auth handler in server.ts.
-    routes: [mediaFileRoute, backgroundGenerateImageRoute, ...filesRoutes],
+    routes: [
+      mediaFileRoute,
+      backgroundGenerateImageRoute,
+      backgroundUploadImageRoute,
+      ...filesRoutes,
+    ],
 
     actions: [
       terminalAction,
@@ -245,6 +254,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(runtimeAction),
       ...promoteSubactionsToActions(databaseAction),
       compactConversationAction,
+      connectAccountAction,
       notifyAction,
       ...promoteSubactionsToActions(memoryAction),
       filesAction,

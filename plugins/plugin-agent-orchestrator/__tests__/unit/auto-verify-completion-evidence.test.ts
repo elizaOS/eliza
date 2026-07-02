@@ -189,8 +189,11 @@ describe("auto-verify completion evidence pipeline", () => {
     expect(prompt).toContain("Added caching and verified it works.");
     expect(prompt).toContain("## TEST / BUILD / TYPECHECK OUTPUT");
     expect(prompt).toContain("Tests  8 passed (8)");
-    expect(prompt).toContain("## VERIFIED URLS");
+    // The URL is only MENTIONED in the sub-agent's stdout (no router probe ran),
+    // so it is surfaced as an unproven claim — never as a probe-verified deploy.
+    expect(prompt).toContain("## CLAIMED URLS");
     expect(prompt).toContain("https://app.example.com");
+    expect(prompt).not.toContain("## VERIFIED URLS");
   });
 
   it("falls back to the bare summary when no richer evidence exists", async () => {

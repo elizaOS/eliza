@@ -35,7 +35,7 @@ SUITES: tuple[SuiteId, ...] = (
 )
 
 # How each suite is scored.
-#   "judge"          : open-ended; rubric judged by an LLM (gpt-oss-120b).
+#   "judge"          : open-ended; rubric judged by an LLM (gemma-4-31b).
 #   "mcq"            : deterministic letter match (A/B/C/D).
 #   "refusal"        : deterministic keyword-based refusal detection.
 #   "ifeval"         : deterministic instruction-following checkers

@@ -27,13 +27,25 @@ export default scenario({
       kind: "message",
       name: "evening stack preview",
       text: "Help me set up an evening wind-down: dim the lights, journal for 5 minutes, and stretch before bed.",
-      responseIncludesAny: ["lights", "journal", "stretch", "evening", "wind"],
+      // Derived schedule: the user gave no time, so any concrete evening
+      // clock time in the preview is computed, not echoed ("three" cannot
+      // anchor this file — it appears in the confirm turn's text).
+      responseIncludesAny: [" pm", ":00", ":30"],
+      // Two-phase commit: no completion claim before the owner confirms.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose three distinct evening habits (dim lights, 5-minute journal, stretch) anchored to a concrete evening time and ask the owner to confirm before saving. Claiming they are already saved, or leaving the timing unspecified, fails.",
+      },
     },
     {
       kind: "message",
       name: "evening stack confirm",
       text: "Yes, save all three as evening habits.",
-      responseIncludesAny: ["saved", "evening", "night"],
+      // Save-confirmation semantics in words the prompt never used ("set
+      // up" is omitted because the preview prompt itself says "set up").
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "recorded"],
     },
   ],
   finalChecks: [

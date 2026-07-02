@@ -1234,7 +1234,7 @@ export class LocalInferenceEngine {
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws
 	 *     `AsrUnavailableError` when the fused decoder is unavailable — the
 	 *     fused build is the sole on-device ASR runtime),
-	 *   - a real OmniVoice TTS backend on the bridge (the `StubOmniVoiceBackend`
+	 *   - a real TTS backend on the bridge (the `StubTtsBackend`
 	 *     is rejected — it emits zeros).
 	 * Any missing piece fails loudly with the specific component named.
 	 *
@@ -1337,7 +1337,7 @@ export class LocalInferenceEngine {
 		if (backendId === "stub") {
 			throw new VoiceStartupError(
 				"missing-fused-build",
-				"[voice] Cannot start a live voice session on the StubOmniVoiceBackend (it emits silence). Start the bridge with useFfiBackend:true or a real backendOverride.",
+				"[voice] Cannot start a live voice session on the StubTtsBackend (it emits silence). Start the bridge with useFfiBackend:true or a real backendOverride.",
 			);
 		}
 
@@ -1675,7 +1675,7 @@ export class LocalInferenceEngine {
 		if ((bridge.backend as { id?: string }).id === "stub") {
 			throw new VoiceStartupError(
 				"missing-fused-build",
-				"[voice] Cannot synthesize speech with StubOmniVoiceBackend (it emits silence). Start voice with useFfiBackend:true or inject a real backend.",
+				"[voice] Cannot synthesize speech with StubTtsBackend (it emits silence). Start voice with useFfiBackend:true or inject a real backend.",
 			);
 		}
 		return bridge.synthesizeTextToWav(text, signal);

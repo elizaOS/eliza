@@ -43,11 +43,60 @@
  */
 
 import { logger } from "@elizaos/core";
+import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 
 const DEFAULT_MODEL = "claude-opus-4-7";
 const DEFAULT_RESTART_AFTER_TURNS = 20;
+const DEFAULT_TURN_TIMEOUT_MS = 90_000;
 /** Fully-qualified name the SDK assigns our in-process MCP tool. */
 const ROUTE_TOOL = "mcp__eliza__route_action";
+
+/**
+ * When the monthly Agent SDK credit runs dry (documented caveat: the subscription
+ * limit can be hit mid-month), the SDK ends the turn CLEANLY but streams the
+ * subscription limit UI string as the assistant text — e.g. "You've hit your
+ * session limit · resets 9:30pm (UTC)". Without this guard that meta-string is
+ * returned as the turn's completion and relayed verbatim to the user as the reply.
+ * Match the SDK's own limit envelope (a fixed provider string, NOT user content)
+ * so the caller can THROW to failover / a graceful rate-limit reply instead of
+ * leaking it. Kept narrow to the subscription-limit signature to avoid catching a
+ * genuine model answer that happens to discuss limits.
+ */
+export function isClaudeSubscriptionLimitMessage(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (t.length > 160) return false; // the real limit string is short; a long answer isn't it
+  // A genuine short ANSWER about limits ("No, you haven't hit your rate limit
+  // yet.") shares vocabulary with the envelope; the envelope itself never
+  // contains negation.
+  if (/\b(no|not|haven't|havent|hasn't|hasnt|didn't|didnt|isn't|isnt|wasn't|wasnt)\b/.test(t)) {
+    return false;
+  }
+  return (
+    // The UI envelope's interpunct separator ("· resets 9:30pm (UTC)",
+    // "∙ resets 3am") — model prose doesn't join clauses with an interpunct.
+    /[·∙•]\s*resets\b/.test(t) ||
+    // The envelope IS the whole message and opens second-person: "You've hit
+    // your session limit …". Anchored at the start so a genuine answer that
+    // merely contains the phrase mid-sentence ("Yes — you've hit your daily
+    // limit on that key") does not match.
+    /^you'?ve (hit|reached|exceeded) your\b[^.]*\blimit\b/.test(t) ||
+    // The classic Claude CLI form: "Claude AI usage limit reached|<unix-epoch>".
+    /\bclaude( ai)? usage limit reached\s*\|/.test(t)
+  );
+}
+
+/**
+ * The Claude Code / Agent SDK surfaces API failures by STREAMING its error
+ * string as assistant text and terminating the turn cleanly — e.g.
+ * "API Error: 400 messages: text content blocks must be non-empty" (observed
+ * live 18x when empty relay lines produced an empty text content block).
+ * That format is the SDK's own error envelope, never a genuine completion:
+ * real answers don't open with "API Error: <status>". Detect it so callers
+ * throw to failover instead of relaying the raw error to the user.
+ */
+export function isClaudeSdkApiErrorMessage(text: string): boolean {
+  return parseProviderApiErrorText(text) !== null;
+}
 
 /** The model's captured routing decision (ROUTE mode). */
 export interface RouteDecision {
@@ -116,6 +165,8 @@ export interface ClaudeSdkSessionConfig {
   claudeExecutablePath?: string | null;
   /** Restart the warm session after this many turns (bounds context growth). */
   restartAfterTurns?: number;
+  /** Hard wall-clock budget for one SDK turn. Defaults below common 120s connector timeouts. */
+  turnTimeoutMs?: number;
   /** Injected for tests; defaults to the real SDK + zod. */
   sdkModule?: SdkModule;
   zodModule?: ZodModule;
@@ -177,6 +228,7 @@ export class ClaudeSdkSession {
   private readonly textMaxTurns: number;
   private readonly claudeExecutablePath: string | null;
   private readonly restartAfterTurns: number;
+  private readonly turnTimeoutMs: number;
   private readonly sdkOverride?: SdkModule;
   private readonly zodOverride?: ZodModule;
 
@@ -200,6 +252,10 @@ export class ClaudeSdkSession {
       config.restartAfterTurns && config.restartAfterTurns > 0
         ? config.restartAfterTurns
         : DEFAULT_RESTART_AFTER_TURNS;
+    this.turnTimeoutMs =
+      config.turnTimeoutMs && config.turnTimeoutMs > 0
+        ? config.turnTimeoutMs
+        : DEFAULT_TURN_TIMEOUT_MS;
     this.sdkOverride = config.sdkModule;
     this.zodOverride = config.zodModule;
   }
@@ -313,7 +369,9 @@ export class ClaudeSdkSession {
                   : {},
             };
           }
-          return { content: [{ type: "text", text: "ACK. Routing recorded. Stop now." }] };
+          return {
+            content: [{ type: "text", text: "ACK. Routing recorded. Stop now." }],
+          };
         }
       );
       const mcp = sdk.createSdkMcpServer({
@@ -339,9 +397,45 @@ export class ClaudeSdkSession {
     this.iterator = this.query[Symbol.asyncIterator]();
     this.turns = 0;
     logger.debug(
-      { src: "cli-inference:sdk", model: this.model, mode: this.router ? "route" : "text" },
+      {
+        src: "cli-inference:sdk",
+        model: this.model,
+        mode: this.router ? "route" : "text",
+      },
       "warm Claude Agent SDK session started"
     );
+  }
+
+  private async nextWithTurnTimeout(): Promise<IteratorResult<SdkMessage>> {
+    const iterator = this.iterator;
+    if (!iterator) {
+      throw new Error("[cli-inference:sdk] session not started");
+    }
+
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        iterator.next(),
+        new Promise<IteratorResult<SdkMessage>>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new ProviderApiError(
+                `[cli-inference:sdk] turn timed out after ${this.turnTimeoutMs}ms`,
+                { retryable: true }
+              )
+            );
+          }, this.turnTimeoutMs);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof ProviderApiError) {
+        await this.dispose();
+      }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /** Push one user message and read the turn's assistant text + result envelope. */
@@ -360,7 +454,7 @@ export class ClaudeSdkSession {
     let resultSubtype: string | undefined;
     let sawResult = false;
     while (true) {
-      const { value, done } = await this.iterator.next();
+      const { value, done } = await this.nextWithTurnTimeout();
       if (done) {
         // Generator ended WITHOUT a terminating `result` message — the session
         // died mid-turn. Force a restart next turn; `sawResult` stays false so
@@ -384,14 +478,51 @@ export class ClaudeSdkSession {
       }
     }
 
-    if (mode === "route") {
+    if (mode === "route" && this.pendingDecision) {
       // The decision is captured in the MCP handler the moment the model calls
       // route_action — that IS the success signal (the turn then ends
       // subtype=error_max_turns, which is normal). Return it regardless of how
-      // the turn terminated.
-      if (this.pendingDecision) {
-        return JSON.stringify(this.pendingDecision);
-      }
+      // the turn terminated, and BEFORE the limit guard below: a validly
+      // captured decision must never be discarded because residual preamble
+      // text happened to mention limits.
+      return JSON.stringify(this.pendingDecision);
+    }
+
+    // A dried-up subscription credit ends the turn cleanly but surfaces the
+    // limit string as the "answer" — as streamed assistant text and/or as the
+    // result-envelope echo. Detect BOTH before either mode returns so it fails
+    // over / becomes a graceful rate-limit reply instead of leaking "You've hit
+    // your session limit ..." to the user (route mode would otherwise relay it
+    // as a REPLY, text mode as the completion). "rate limit" in the thrown
+    // message routes it through isRateLimitError.
+    const limitEnvelope = [text, resultText ?? ""].find((candidate) =>
+      isClaudeSubscriptionLimitMessage(candidate)
+    );
+    if (sawResult && limitEnvelope !== undefined) {
+      throw new Error(
+        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`
+      );
+    }
+
+    // Same leak shape, different envelope: an upstream API failure ("API
+    // Error: 400 messages: text content blocks must be non-empty", 429s, 5xx)
+    // is streamed as assistant text and the turn terminates cleanly — without
+    // this guard it is returned as the completion and relayed verbatim to the
+    // user (observed live 18x). Throw per the failover contract; the message
+    // keeps the SDK's status text so isRateLimitError/isAuthError classify
+    // 429/401 correctly downstream.
+    const apiErrorEnvelope = [text, resultText ?? ""].find((candidate) =>
+      isClaudeSdkApiErrorMessage(candidate)
+    );
+    if (apiErrorEnvelope !== undefined) {
+      const parsed = parseProviderApiErrorText(apiErrorEnvelope);
+      throw new ProviderApiError(
+        `[cli-inference:sdk] upstream ${apiErrorEnvelope.trim().slice(0, 160)}`,
+        { statusCode: parsed?.statusCode }
+      );
+    }
+
+    if (mode === "route") {
       // No decision: the model went off-contract (it was told to call the tool
       // and "produce no plain-text answer"), so any residual text is a planning
       // preamble, not a finished reply — never surface it as a user REPLY. Only

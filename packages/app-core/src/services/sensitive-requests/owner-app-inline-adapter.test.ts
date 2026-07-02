@@ -170,6 +170,162 @@ describe("ownerAppInlineSensitiveRequestAdapter", () => {
     ]);
   });
 
+  it("preserves sub-agent tunnel metadata and renders one field per requested key", async () => {
+    const { runtime, calls } = makeRuntime();
+    const request = makeOwnerAppPrivateRequest() as DispatchSensitiveRequest & {
+      delivery: {
+        tunnel?: {
+          credentialScopeId: string;
+          childSessionId: string;
+          keys?: readonly string[];
+        };
+      };
+      target: { kind: "secret"; key: string };
+    };
+    request.target.key = "SUB_AGENT_CREDENTIALS";
+    request.delivery.tunnel = {
+      credentialScopeId: "cred_scope_test",
+      childSessionId: "pty-1-abc",
+      keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    };
+
+    const result = await ownerAppInlineSensitiveRequestAdapter.deliver({
+      request,
+      channelId: "ch_owner_app",
+      runtime,
+    });
+
+    expect(result.delivered).toBe(true);
+    const envelope = calls[0]?.content.secretRequest as {
+      key: string;
+      label: string;
+      delivery: {
+        tunnel?: {
+          credentialScopeId: string;
+          childSessionId: string;
+          keys?: readonly string[];
+        };
+      };
+      form: {
+        fields: Array<{
+          name: string;
+          label?: string;
+          input: string;
+          required: boolean;
+        }>;
+      };
+    };
+    expect(envelope.key).toBe("SUB_AGENT_CREDENTIALS");
+    expect(envelope.label).toBe("Sub-agent credentials");
+    expect(envelope.delivery.tunnel).toEqual({
+      credentialScopeId: "cred_scope_test",
+      childSessionId: "pty-1-abc",
+      keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    });
+    expect(envelope.form.fields).toEqual([
+      {
+        name: "OPENAI_API_KEY",
+        label: "OPENAI_API_KEY",
+        input: "secret",
+        required: true,
+      },
+      {
+        name: "STRIPE_KEY",
+        label: "STRIPE_KEY",
+        input: "secret",
+        required: true,
+      },
+    ]);
+    expect(JSON.stringify(envelope)).not.toContain("scopedToken");
+  });
+
+  it("propagates an image secret target into an image field with accept/size metadata (#8910)", async () => {
+    const { runtime, calls } = makeRuntime();
+    const request = makeOwnerAppPrivateRequest() as DispatchSensitiveRequest & {
+      target: {
+        kind: "secret";
+        key: string;
+        input?: string;
+        mimeTypes?: string[];
+        maxBytes?: number;
+      };
+    };
+    request.target.key = "TOTP_SEED_PHOTO";
+    request.target.input = "image";
+    request.target.mimeTypes = ["image/png", "image/jpeg"];
+    request.target.maxBytes = 5_000_000;
+
+    const result = await ownerAppInlineSensitiveRequestAdapter.deliver({
+      request,
+      channelId: "ch_owner_app",
+      runtime,
+    });
+
+    expect(result.delivered).toBe(true);
+    const envelope = calls[0]?.content.secretRequest as {
+      form: {
+        fields: Array<{
+          name: string;
+          input: string;
+          required: boolean;
+          mimeTypes?: string[];
+          maxBytes?: number;
+        }>;
+      };
+    };
+    // The single-key secret target now renders as an image upload — not a
+    // hardcoded masked-text field — so a real agent request is reachable
+    // end-to-end by SensitiveRequestBlock.
+    expect(envelope.form.fields).toEqual([
+      {
+        name: "TOTP_SEED_PHOTO",
+        label: "TOTP_SEED_PHOTO",
+        input: "image",
+        required: true,
+        mimeTypes: ["image/png", "image/jpeg"],
+        maxBytes: 5_000_000,
+      },
+    ]);
+  });
+
+  it("keeps multi-key tunnel fields as typed secrets even when a target.input is set (#8910)", async () => {
+    const { runtime, calls } = makeRuntime();
+    const request = makeOwnerAppPrivateRequest() as DispatchSensitiveRequest & {
+      target: { kind: "secret"; key: string; input?: string };
+      delivery: {
+        tunnel?: {
+          credentialScopeId: string;
+          childSessionId: string;
+          keys?: readonly string[];
+        };
+      };
+    };
+    request.target.key = "SUB_AGENT_CREDENTIALS";
+    request.target.input = "image";
+    request.delivery.tunnel = {
+      credentialScopeId: "cred_scope_test",
+      childSessionId: "pty-1-abc",
+      keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    };
+
+    const result = await ownerAppInlineSensitiveRequestAdapter.deliver({
+      request,
+      channelId: "ch_owner_app",
+      runtime,
+    });
+
+    expect(result.delivered).toBe(true);
+    const envelope = calls[0]?.content.secretRequest as {
+      form: { fields: Array<{ name: string; input: string }> };
+    };
+    // Multi-key tunnel credentials are always typed secrets — the image
+    // descriptor only applies to a single-key secret target.
+    expect(envelope.form.fields.map((f) => f.input)).toEqual([
+      "secret",
+      "secret",
+    ]);
+  });
+
   it("rejects delivery when the channel is not owner-app-private", async () => {
     const { runtime, calls } = makeRuntime();
     const request = makePublicRequest();

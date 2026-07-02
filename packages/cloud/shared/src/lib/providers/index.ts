@@ -7,12 +7,7 @@
  * `getProviderForModelWithFallback`.
  */
 
-import {
-  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
-  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-  isGroqNativeModel,
-  isVastNativeModel,
-} from "../models";
+import { CEREBRAS_NATIVE_TEXT_MODELS, isGroqNativeModel, isVastNativeModel } from "../models";
 import { AnthropicDirectProvider } from "./anthropic-direct";
 import { CerebrasDirectProvider } from "./cerebras-direct";
 import { GroqProvider } from "./groq";
@@ -75,8 +70,9 @@ export function getGroqProvider(): AIProvider {
 
 function cerebrasModelId(model: string): string | null {
   const canonical = canonicalizeCerebrasModelId(model);
-  return canonical === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL ||
-    canonical === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+  return CEREBRAS_NATIVE_TEXT_MODELS.includes(
+    canonical as (typeof CEREBRAS_NATIVE_TEXT_MODELS)[number],
+  )
     ? canonical
     : null;
 }
@@ -87,8 +83,8 @@ function isCerebrasCatalogModel(model: string): boolean {
   else if (id.startsWith("cerebras/")) id = id.slice("cerebras/".length);
   else if (id.startsWith("cerebras:")) id = id.slice("cerebras:".length);
   const baseId = id.split(":")[0];
-  return (
-    baseId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL || baseId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+  return CEREBRAS_NATIVE_TEXT_MODELS.includes(
+    baseId as (typeof CEREBRAS_NATIVE_TEXT_MODELS)[number],
   );
 }
 

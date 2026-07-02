@@ -11,11 +11,20 @@ function targetLabel(expectedTarget) {
   return expectedTarget ? `'${expectedTarget}'` : "an unset target";
 }
 
+/**
+ * `expectedRuntimeMode` semantics (issue #11030): pass the runtime mode the
+ * lane bakes (`local`, `cloud-hybrid`, `cloud`, …), or `null` to assert the
+ * lane bakes no runtime mode. Omit the option (undefined) ONLY for surfaces
+ * with no runtime-mode lane at all (plain web/desktop dist reuse) — when
+ * omitted the runtime-mode check is skipped, which is how a stale cloud-mode
+ * dist once leaked into `build:ios:local` via cap sync.
+ */
 export function mobileWebDistReuseStatus({
   appDir,
   repoRoot,
   expectedVariant,
   expectedTarget,
+  expectedRuntimeMode,
   readManifest = readRendererBuildManifest,
   buildNeeded = viteRendererBuildNeeded,
 } = {}) {
@@ -56,6 +65,21 @@ export function mobileWebDistReuseStatus({
           ? `dist manifest is missing capacitor target; this build targets ${targetLabel(expectedTarget)}`
           : `dist built for capacitor target '${manifest.capacitorTarget}' but this build targets ${targetLabel(expectedTarget)}`,
       );
+    }
+    if (expectedRuntimeMode !== undefined) {
+      const manifestRuntimeMode = manifest.runtimeMode ?? null;
+      const wantedRuntimeMode = expectedRuntimeMode ?? null;
+      if (manifestRuntimeMode !== wantedRuntimeMode) {
+        const wantedLabel =
+          wantedRuntimeMode == null
+            ? "an unset runtime mode"
+            : `'${wantedRuntimeMode}'`;
+        problems.push(
+          manifestRuntimeMode == null
+            ? `dist manifest is missing runtime mode; this build targets ${wantedLabel}`
+            : `dist built for runtime mode '${manifestRuntimeMode}' but this build targets ${wantedLabel}`,
+        );
+      }
     }
   }
 

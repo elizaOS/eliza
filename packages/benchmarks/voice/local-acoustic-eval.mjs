@@ -28,9 +28,15 @@ const pluginVoice = path.resolve(
   here,
   "../../../plugins/plugin-local-inference/src/services/voice",
 );
-const { loadElizaInferenceFfi } = await import(`${pluginVoice}/ffi-bindings.ts`);
-const { FusedDiarizer } = await import(`${pluginVoice}/speaker/diarizer-fused.ts`);
-const { FusedSpeakerEncoder } = await import(`${pluginVoice}/speaker/encoder-fused.ts`);
+const { loadElizaInferenceFfi } = await import(
+  `${pluginVoice}/ffi-bindings.ts`
+);
+const { FusedDiarizer } = await import(
+  `${pluginVoice}/speaker/diarizer-fused.ts`
+);
+const { FusedSpeakerEncoder } = await import(
+  `${pluginVoice}/speaker/encoder-fused.ts`
+);
 
 const need = (k) => {
   const v = process.env[k];
@@ -65,7 +71,8 @@ function decodeWav(p) {
   }
   const n = Math.floor(dataLen / (fmt.bits / 8) / fmt.ch);
   const pcm = new Float32Array(n);
-  for (let i = 0; i < n; i++) pcm[i] = b.readInt16LE(dataOff + i * 2 * fmt.ch) / 32768;
+  for (let i = 0; i < n; i++)
+    pcm[i] = b.readInt16LE(dataOff + i * 2 * fmt.ch) / 32768;
   return { pcm, sr: fmt.sr };
 }
 function resampleTo16k(pcm, sr) {
@@ -114,7 +121,11 @@ console.log(
 );
 const ctx = ffi.create(need("ELIZA_BUNDLE_DIR"));
 
-const diar = await FusedDiarizer.load({ ffi, ctx: () => ctx, ggufPath: PYANNOTE });
+const diar = await FusedDiarizer.load({
+  ffi,
+  ctx: () => ctx,
+  ggufPath: PYANNOTE,
+});
 const segs = await diar.diarizeWindow(stream);
 console.log(
   `\n[REAL pyannote] segments=${segs.segments.length}  distinct speakers=${segs.localSpeakerCount} (GT=2)`,
@@ -136,7 +147,11 @@ console.log(
   `[DER proxy] frame agreement vs 2-spk GT: ${((100 * correct) / total).toFixed(1)}% (DER≈${(100 * (1 - correct / total)).toFixed(1)}%)`,
 );
 
-const enc = await FusedSpeakerEncoder.load({ ffi, ctx: () => ctx, ggufPath: WESPEAKER });
+const enc = await FusedSpeakerEncoder.load({
+  ffi,
+  ctx: () => ctx,
+  ggufPath: WESPEAKER,
+});
 const ea = await enc.encode(a);
 const eb = await enc.encode(b);
 console.log(

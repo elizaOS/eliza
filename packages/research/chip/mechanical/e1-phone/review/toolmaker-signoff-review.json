@@ -6,14 +6,8 @@
   "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency",
   "process_window": {
     "material_family": "PC+ABS or glass-filled PC/ABS, molded orange",
-    "melt_temp_c": [
-      245,
-      275
-    ],
-    "mold_temp_c": [
-      70,
-      95
-    ],
+    "melt_temp_c": [245, 275],
+    "mold_temp_c": [70, 95],
     "drying": "Dry PC+ABS per resin datasheet before molding; record dryer dew point and residence time.",
     "pack_hold": "Start with 95-99% fill transfer, stepped pack/hold DOE, and gate-freeze study.",
     "venting": "Add vents at end-of-fill around top corners, camera window, USB saddle, and snap-hook roots.",

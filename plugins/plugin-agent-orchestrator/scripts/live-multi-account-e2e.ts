@@ -30,6 +30,8 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+// Pure readiness assessor — no app-core graph, safe to import before the gate.
+import { assessCodingAccountReadiness } from "../src/services/coding-account-selection.js";
 
 // The runtime deps (account storage + coding-account bridge) pull in the full
 // app-core/core graph. They are dynamically imported AFTER the gate so the
@@ -196,6 +198,26 @@ async function main(): Promise<void> {
 
   await assertRotation("claude", "CLAUDE_CODE_OAUTH_TOKEN", claudeIds);
   await assertRotation("codex", "CODEX_HOME", codexIds);
+
+  // Loud readiness gate (#9960): the seeded pool must actually be ready for live
+  // coding work — ≥1 healthy Claude AND ≥1 healthy Codex, and ≥2 each (rotation
+  // posture) when ≥2 of each were seeded. A thin/unhealthy pool fails HERE
+  // instead of silently degrading to single-account at spawn time.
+  const wantRotation = claudeIds.length >= 2 && codexIds.length >= 2;
+  const readiness = assessCodingAccountReadiness(
+    getCodingAgentSelectorBridge()?.describe() ?? {},
+    { rotation: wantRotation },
+  );
+  if (!readiness.ready) {
+    throw new Error(
+      `account-readiness gate failed (rotation=${wantRotation}): ${readiness.problems.join("; ")}`,
+    );
+  }
+  log(
+    `readiness OK (rotation=${wantRotation}) — ${readiness.providers
+      .map((p) => `${p.agentType}:${p.healthy}/${p.required}`)
+      .join(" ")}`,
+  );
 
   // Materialization check: Codex selection writes a per-account auth.json.
   const bridge = getCodingAgentSelectorBridge();

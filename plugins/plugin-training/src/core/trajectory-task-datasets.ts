@@ -49,7 +49,7 @@ export type TrajectoryTrainingTask =
   (typeof ALL_TRAJECTORY_TRAINING_TASKS)[number];
 
 /** The LifeOps per-capability subset of {@link ALL_TRAJECTORY_TRAINING_TASKS}. */
-export const LIFEOPS_TRAINING_TASKS: readonly TrajectoryTrainingTask[] = [
+export const LIFEOPS_TRAINING_TASKS = [
   "calendar_extract",
   "schedule_plan",
   "reminder_dispatch",
@@ -58,7 +58,9 @@ export const LIFEOPS_TRAINING_TASKS: readonly TrajectoryTrainingTask[] = [
   "morning_brief",
   "health_checkin",
   "screentime_recap",
-];
+] as const satisfies readonly TrajectoryTrainingTask[];
+
+export type LifeOpsTrainingTask = (typeof LIFEOPS_TRAINING_TASKS)[number];
 
 /** Build a full per-task record by deriving an entry for every training task. */
 export function buildTaskRecord<T>(
@@ -107,6 +109,12 @@ export interface TrajectoryTaskDatasetSummary {
   trajectoryCount: number;
   llmCallCount: number;
   skippedNonNativeRows: number;
+  /**
+   * Rows dropped because their scenario outcome was `failed`/`skipped`
+   * (quality gate — a failed trajectory must not be cloned as gold-weight
+   * supervision, #8795).
+   */
+  excludedFailedScenarioRows: number;
   warnings: string[];
   counts: Record<TrajectoryTrainingTask, number>;
   tasks: TrajectoryTrainingTask[];
@@ -149,6 +157,7 @@ interface TrajectoryTaskExtractionResult {
   sourceTrajectoryIds: TaskTrajectoryIdMap;
   llmCallCount: number;
   skippedNonNativeRows: number;
+  excludedFailedScenarioRows: number;
   warnings: string[];
 }
 
@@ -192,6 +201,85 @@ function normalizeTrainingTask(value: unknown): TrajectoryTrainingTask | null {
     return normalized as TrajectoryTrainingTask;
   }
   return null;
+}
+
+/**
+ * Quality signal attached to a trajectory row (#8795).
+ *
+ * What exists today:
+ * - The scenario-runner CLI (`eliza-scenarios run … --export-native`) stamps
+ *   each exported row with `metadata.scenario_status` (passed/failed/skipped,
+ *   from the scenario report) and, when a judge ran, `metadata.judge_score`
+ *   (0..1 numeric).
+ * - The runtime recorder tags trajectories with `scenarioId` (via
+ *   `ELIZA_LIFEOPS_SCENARIO_ID`) but does NOT record pass/fail itself — a
+ *   producer that knows the outcome (scenario CLI, benchmark runner) must
+ *   stamp `scenario_status` / `judge_score` onto `trajectory.metadata`, which
+ *   `buildElizaNativeTrajectoryRows` copies into
+ *   `metadata.trajectory_metadata`.
+ *
+ * Both locations are read here so either path reward-weights identically.
+ */
+export interface TrajectoryQualitySignal {
+  scenarioStatus?: "passed" | "failed" | "skipped";
+  judgeScore?: number;
+}
+
+function readQualityBag(bag: Record<string, unknown>): TrajectoryQualitySignal {
+  const out: TrajectoryQualitySignal = {};
+  const status = bag.scenario_status;
+  if (status === "passed" || status === "failed" || status === "skipped") {
+    out.scenarioStatus = status;
+  }
+  const score = bag.judge_score;
+  if (typeof score === "number" && Number.isFinite(score)) {
+    out.judgeScore = Math.min(1, Math.max(0, score));
+  }
+  return out;
+}
+
+/**
+ * Extract the quality signal for a native row's metadata. Direct keys win;
+ * the nested `trajectory_metadata` bag (runtime-trajectory path) is the
+ * fallback.
+ */
+export function qualitySignalForRowMetadata(
+  metadata: Record<string, unknown> | undefined,
+): TrajectoryQualitySignal {
+  if (!metadata) return {};
+  const direct = readQualityBag(metadata);
+  const nested =
+    metadata.trajectory_metadata &&
+    typeof metadata.trajectory_metadata === "object" &&
+    !Array.isArray(metadata.trajectory_metadata)
+      ? readQualityBag(metadata.trajectory_metadata as Record<string, unknown>)
+      : {};
+  return {
+    scenarioStatus: direct.scenarioStatus ?? nested.scenarioStatus,
+    judgeScore: direct.judgeScore ?? nested.judgeScore,
+  };
+}
+
+/**
+ * Reward for an optimization example derived from its quality signal:
+ * numeric judge score when present, else 1.0 for a passed scenario, else
+ * undefined (no signal — never fabricate). Failed/skipped rows should be
+ * excluded before this is consulted ({@link isFailedScenarioSignal}).
+ */
+export function rewardForQualitySignal(
+  signal: TrajectoryQualitySignal,
+): number | undefined {
+  if (typeof signal.judgeScore === "number") return signal.judgeScore;
+  if (signal.scenarioStatus === "passed") return 1;
+  return undefined;
+}
+
+export function isFailedScenarioSignal(
+  signal: TrajectoryQualitySignal,
+): boolean {
+  return (
+    signal.scenarioStatus === "failed" || signal.scenarioStatus === "skipped"
+  );
 }
 
 function collectCallHints(call: TrajectoryCallLike): string[] {
@@ -512,9 +600,15 @@ function collectTrajectoryExamplesByTask(
   const sourceTrajectoryIds = createEmptyTrajectoryIdMap();
   let llmCallCount = 0;
   let skippedNonNativeRows = 0;
+  let excludedFailedScenarioRows = 0;
   const warnings: string[] = [];
   const warnSkip = (message: string, count = 1): void => {
     skippedNonNativeRows += count;
+    warnings.push(message);
+    console.warn(message);
+  };
+  const warnExcludeFailed = (message: string): void => {
+    excludedFailedScenarioRows += 1;
     warnings.push(message);
     console.warn(message);
   };
@@ -536,6 +630,13 @@ function collectTrajectoryExamplesByTask(
         );
         continue;
       }
+      const quality = qualitySignalForRowMetadata(row.metadata);
+      if (isFailedScenarioSignal(quality)) {
+        warnExcludeFailed(
+          `[trajectory-task-datasets] excluded ${task} row from trajectory ${row.trajectoryId} call ${row.callId}; scenario_status=${quality.scenarioStatus} must not train as gold (#8795)`,
+        );
+        continue;
+      }
       examples[task].push(row);
       sourceCallCounts[task] += 1;
       if (typeof row.trajectoryId === "string") {
@@ -548,6 +649,7 @@ function collectTrajectoryExamplesByTask(
       sourceTrajectoryIds,
       llmCallCount,
       skippedNonNativeRows,
+      excludedFailedScenarioRows,
       warnings,
     };
   }
@@ -561,6 +663,21 @@ function collectTrajectoryExamplesByTask(
 
   for (const trajectory of trajectories) {
     const trajectoryId = trajectory.trajectoryId;
+    // Trajectory-level quality gate: a producer that knows the scenario
+    // outcome stamps `scenario_status` / `judge_score` onto
+    // trajectory.metadata (see TrajectoryQualitySignal). A failed/skipped
+    // trajectory is excluded wholesale — cloning its responses as
+    // expectedOutput would train the failure.
+    const trajectoryQuality = readQualityBag(trajectory.metadata ?? {});
+    if (isFailedScenarioSignal(trajectoryQuality)) {
+      const callTotal = listTrajectoryCallEntries(trajectory).length;
+      llmCallCount += callTotal;
+      excludedFailedScenarioRows += callTotal;
+      const message = `[trajectory-task-datasets] excluded trajectory ${trajectoryId} (${callTotal} call(s)); scenario_status=${trajectoryQuality.scenarioStatus} must not train as gold (#8795)`;
+      warnings.push(message);
+      console.warn(message);
+      continue;
+    }
     for (const entry of listTrajectoryCallEntries(trajectory)) {
       llmCallCount += 1;
       const call = entry.call as TrajectoryCallLike;
@@ -593,6 +710,7 @@ function collectTrajectoryExamplesByTask(
     sourceTrajectoryIds,
     llmCallCount,
     skippedNonNativeRows,
+    excludedFailedScenarioRows,
     warnings,
   };
 }
@@ -646,6 +764,7 @@ export async function exportTrajectoryTaskDatasets(
         : new Set(nativeRows.map((row) => row.trajectoryId)).size,
     llmCallCount: extraction.llmCallCount,
     skippedNonNativeRows: extraction.skippedNonNativeRows,
+    excludedFailedScenarioRows: extraction.excludedFailedScenarioRows,
     warnings: extraction.warnings,
     counts,
     tasks: ALL_TRAJECTORY_TRAINING_TASKS.filter(

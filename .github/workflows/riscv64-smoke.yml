@@ -45,7 +45,7 @@ jobs:
             cmake build-essential file binutils python3 jq
 
       - name: Restore Zig toolchain cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/elizaos/zig/${{ env.ZIG_VERSION }}
           key: zig-${{ runner.os }}-x86_64-${{ env.ZIG_VERSION }}
@@ -87,8 +87,7 @@ jobs:
             git ls-files -s \
               packages/native/plugins \
               scripts/build-riscv64-artifacts.sh \
-              packages/app-core/scripts/aosp/compile-libllama.mjs \
-              plugins/plugin-local-inference/native/build-omnivoice.mjs
+              packages/app-core/scripts/aosp/compile-libllama.mjs
           } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
 
       # build-riscv64-artifacts.sh is idempotent via existence sentinels, but its
@@ -99,12 +98,11 @@ jobs:
       # artifact — a false green. A source/submodule change busts the key and
       # forces a full rebuild.
       - name: Cache riscv64 build outputs
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             packages/native/plugins/*/build/riscv64
             packages/app-core/platforms/android/app/src/main/assets/agent/riscv64
-            plugins/plugin-local-inference/native/build-omnivoice-linux-riscv64-cpu
             ~/.cache/eliza-android-agent/seccomp-shim/riscv64
           key: riscv64-out-${{ runner.os }}-${{ steps.riscv64-fp.outputs.hash }}
 

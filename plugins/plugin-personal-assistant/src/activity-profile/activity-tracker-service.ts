@@ -11,12 +11,12 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { isSystemInactivityApp } from "@elizaos/plugin-health";
 import {
   createLifeOpsActivitySignal,
   LifeOpsRepository,
 } from "../lifeops/repository.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
-import { isSystemInactivityApp } from "@elizaos/plugin-health";
 
 export type ActivityTrackerMode =
   | "running"

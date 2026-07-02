@@ -1,16 +1,28 @@
 /**
  * InboxService unit tests.
  *
- * Exercises the triage back-end end to end with a fake runtime DB and a stubbed
- * classifier model: triage classifies each inbound message and persists a
- * triage entry; search/list read the persisted queue back. The classifier
- * itself (LLM JSON parsing) is covered by the model stub returning the
- * structured `{results:[...]}` shape it expects.
+ * Exercises the triage back-end end to end with a fake runtime DB and a
+ * stubbed classifier model. The classification tests exercise the REAL
+ * classifier contract, not an echo of the stub:
+ *
+ *  - the prompt actually sent to the model carries the email content,
+ *    sender, channel, and the label whitelist instructions;
+ *  - raw model output is PARSED and NORMALIZED (case/whitespace/string
+ *    numbers) before anything downstream sees it;
+ *  - malformed output — prose, out-of-vocabulary labels, pipe-echoed
+ *    "a|b" labels, omitted messages, out-of-range confidence — fails
+ *    CLOSED: `triage` rejects with `InboxTriageClassificationError` and
+ *    persists nothing.
+ *
+ * Persistence, dedupe-by-source-id, classifyOnly, and the search/list reads
+ * are covered against the fake DB.
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { InboxService } from "../src/inbox/service.ts";
+import { InboxTriageClassificationError } from "../src/inbox/triage-classifier.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
 
 interface DbState {
@@ -108,6 +120,7 @@ function triageRow(
     suggested_response: null,
     draft_response: null,
     auto_replied: false,
+    snoozed_until: null,
     resolved: false,
     resolved_at: null,
     created_at: "2026-06-17T10:00:00.000Z",
@@ -116,8 +129,8 @@ function triageRow(
   };
 }
 
-describe("InboxService.triage", () => {
-  it("classifies each message and persists a triage entry", async () => {
+describe("InboxService.triage — classifier contract", () => {
+  it("sends the email content and the label whitelist to the model", async () => {
     const modelResponse = JSON.stringify({
       results: [
         {
@@ -125,23 +138,68 @@ describe("InboxService.triage", () => {
           urgency: "high",
           confidence: 0.92,
           reasoning: "asks a direct question",
-          suggestedResponse: "Yes, the launch is Friday.",
         },
       ],
     });
-    const { runtime, db, useModel } = makeRuntime({ modelResponse });
+    const { runtime, useModel } = makeRuntime({ modelResponse });
+    const service = new InboxService(runtime);
+
+    await service.triage([
+      inbound({
+        text: "Can you confirm the launch date for Project Neptune?",
+        senderName: "Alice Chen",
+        channelName: "Email from Alice Chen",
+        gmailIsImportant: true,
+      }),
+    ]);
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    const [modelType, args] = useModel.mock.calls[0] as [
+      string,
+      { prompt: string },
+    ];
+    expect(modelType).toBe(ModelType.TEXT_SMALL);
+    // The classifier must show the model the actual message, not a summary
+    // the test invented.
+    expect(args.prompt).toContain(
+      "Can you confirm the launch date for Project Neptune?",
+    );
+    expect(args.prompt).toContain("Alice Chen");
+    expect(args.prompt).toContain("Email from Alice Chen");
+    expect(args.prompt).toContain("Gmail-marked-important");
+    // The label vocabulary is part of the prompt contract.
+    for (const label of ["ignore", "info", "notify", "needs_reply", "urgent"]) {
+      expect(args.prompt).toContain(label);
+    }
+  });
+
+  it("normalizes raw model output (case, whitespace, string numbers) before persisting", async () => {
+    // Deliberately messy-but-valid model output: the values the service
+    // returns must be the PARSED/normalized forms, so an echo of this
+    // response cannot satisfy the assertions.
+    const modelResponse = JSON.stringify({
+      results: [
+        {
+          classification: "  NEEDS_REPLY ",
+          urgency: "High",
+          confidence: "0.92",
+          reasoning: "asks a direct question",
+          suggestedResponse: "  Yes, the launch is Friday.  ",
+        },
+      ],
+    });
+    const { runtime, db } = makeRuntime({ modelResponse });
     const service = new InboxService(runtime);
 
     const result = await service.triage([inbound({})]);
 
-    expect(useModel).toHaveBeenCalledTimes(1);
     expect(result.triaged).toHaveLength(1);
     const triaged = result.triaged[0]!;
     expect(triaged.classification).toBe("needs_reply");
     expect(triaged.urgency).toBe("high");
     expect(triaged.confidence).toBeCloseTo(0.92);
     expect(triaged.suggestedResponse).toBe("Yes, the launch is Friday.");
-    // Persisted exactly one triage entry into the app_lifeops table.
+    // Persisted exactly one triage entry into the app_inbox table.
     expect(
       db.inserted.filter((s) =>
         s.includes("INSERT INTO app_inbox.life_inbox_triage_entries"),
@@ -150,6 +208,128 @@ describe("InboxService.triage", () => {
     expect(triaged.entry?.classification).toBe("needs_reply");
   });
 
+  it('normalizes the literal string "null" suggestedResponse to absent', async () => {
+    const modelResponse = JSON.stringify({
+      results: [
+        {
+          classification: "notify",
+          urgency: "low",
+          confidence: 0.6,
+          reasoning: "fyi",
+          suggestedResponse: "null",
+        },
+      ],
+    });
+    const { runtime } = makeRuntime({ modelResponse });
+    const service = new InboxService(runtime);
+    const result = await service.triage([inbound({})], { classifyOnly: true });
+    expect(result.triaged[0]?.suggestedResponse).toBeUndefined();
+  });
+
+  it("fails closed on prose output: rejects and persists nothing", async () => {
+    const { runtime, db } = makeRuntime({
+      modelResponse:
+        "I think this message needs a reply because it asks a question.",
+    });
+    const service = new InboxService(runtime);
+
+    await expect(service.triage([inbound({})])).rejects.toThrow(
+      InboxTriageClassificationError,
+    );
+    expect(db.inserted).toHaveLength(0);
+  });
+
+  it("fails closed on an out-of-vocabulary label", async () => {
+    const { runtime, db } = makeRuntime({
+      modelResponse: JSON.stringify({
+        results: [
+          {
+            classification: "important",
+            urgency: "high",
+            confidence: 0.9,
+            reasoning: "made-up label",
+          },
+        ],
+      }),
+    });
+    const service = new InboxService(runtime);
+
+    await expect(service.triage([inbound({})])).rejects.toThrow(
+      InboxTriageClassificationError,
+    );
+    expect(db.inserted).toHaveLength(0);
+  });
+
+  it('fails closed on a pipe-echoed label ("needs_reply|urgent")', async () => {
+    // Small local models echo the `a|b|c` placeholder from the prompt; the
+    // whitelist must reject the compound string rather than store it.
+    const { runtime, db } = makeRuntime({
+      modelResponse: JSON.stringify({
+        results: [
+          {
+            classification: "needs_reply|urgent",
+            urgency: "low|medium|high",
+            confidence: 0.9,
+            reasoning: "echoed the placeholder",
+          },
+        ],
+      }),
+    });
+    const service = new InboxService(runtime);
+
+    await expect(service.triage([inbound({})])).rejects.toThrow(
+      InboxTriageClassificationError,
+    );
+    expect(db.inserted).toHaveLength(0);
+  });
+
+  it("fails closed when the model omits a message from the batch", async () => {
+    const { runtime, db } = makeRuntime({
+      modelResponse: JSON.stringify({
+        results: [
+          {
+            classification: "ignore",
+            urgency: "low",
+            confidence: 0.5,
+            reasoning: "only one result for two messages",
+          },
+        ],
+      }),
+    });
+    const service = new InboxService(runtime);
+
+    await expect(
+      service.triage([
+        inbound({ id: "msg-1" }),
+        inbound({ id: "msg-2", text: "Second message" }),
+      ]),
+    ).rejects.toThrow(InboxTriageClassificationError);
+    expect(db.inserted).toHaveLength(0);
+  });
+
+  it("fails closed on out-of-range confidence", async () => {
+    const { runtime, db } = makeRuntime({
+      modelResponse: JSON.stringify({
+        results: [
+          {
+            classification: "urgent",
+            urgency: "high",
+            confidence: 1.7,
+            reasoning: "confidence must be within [0, 1]",
+          },
+        ],
+      }),
+    });
+    const service = new InboxService(runtime);
+
+    await expect(service.triage([inbound({})])).rejects.toThrow(
+      InboxTriageClassificationError,
+    );
+    expect(db.inserted).toHaveLength(0);
+  });
+});
+
+describe("InboxService.triage — persistence", () => {
   it("classifyOnly returns the decision without persisting", async () => {
     const modelResponse = JSON.stringify({
       results: [

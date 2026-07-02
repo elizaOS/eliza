@@ -1,0 +1,23 @@
+{
+  "$comment": "Ratchet allowlist for lint-test-integrity.mjs (issue #10718). Each entry grandfathers a disabled real test. Reduce `count` / remove entries as skips are fixed or linked to a tracking issue; the gate fails on unused capacity so the debt only shrinks.",
+  "entries": [
+    {
+      "file": "packages/app/test/ui-smoke/multi-client-desync.spec.ts",
+      "title": "two clients on the same agent converge and do not desync",
+      "count": 1,
+      "reason": "Cross-client convergence e2e — needs two live browser contexts driving one agent with real BroadcastChannel sync; not run in the deterministic ui-smoke lane. Tracked in #10718."
+    },
+    {
+      "file": "packages/app/test/ui-smoke/multi-window-sync.spec.ts",
+      "title": "a synced preference toggled in window A propagates to window B",
+      "count": 1,
+      "reason": "Cross-window useTabSync/BroadcastChannel propagation e2e — needs two same-context pages; not run in the deterministic ui-smoke lane. Tracked in #10718."
+    },
+    {
+      "file": "packages/cloud/api/test/e2e/group-g2-mcp-registry.test.ts",
+      "title": "Group G2 — user MCP registry CRUD writes",
+      "count": 1,
+      "reason": "MCP registry CRUD writes 500 under the workerd + PGlite-over-TCP e2e harness (Broken pipe on the 48-col INSERT); passes on real Postgres/Railway. Un-skip when the harness handles workerd writes or the group runs against Railway. Tracked in #10718."
+    }
+  ]
+}

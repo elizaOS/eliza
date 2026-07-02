@@ -8,6 +8,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
   getBaseUrlMock: vi.fn(() => "http://localhost"),
   publishHomeAttentionSpy: vi.fn(),
@@ -61,19 +70,18 @@ function message(patch: {
   };
 }
 
-function mockInbox(messages: ReturnType<typeof message>[]): void {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        messages,
-        channelCounts: {},
-        fetchedAt: "2026-01-01T00:00:00.000Z",
-      }),
-    })),
-  );
+function mockInbox(messages: ReturnType<typeof message>[]) {
+  const stub = vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      messages,
+      channelCounts: {},
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+    }),
+  }));
+  vi.stubGlobal("fetch", stub);
+  return stub;
 }
 
 const fetchProps: Partial<WidgetProps> = { slot: "home" };
@@ -84,6 +92,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  authMock.authenticated = true;
   getBaseUrlMock.mockReturnValue("http://localhost");
   publishHomeAttentionSpy.mockClear();
 });
@@ -175,5 +184,40 @@ describe("InboxUnreadWidget (#9143)", () => {
     window.removeEventListener("eliza:navigate:view", onNav);
 
     expect(navEvents).toContain("/inbox");
+  });
+
+  // #11084 — the widget mounts before the auth probe resolves; the 20s inbox
+  // poll must not fire a single request while the session is unauthenticated.
+  it("does not poll the inbox while unauthenticated", async () => {
+    authMock.authenticated = false;
+    const fetchStub = mockInbox([
+      message({ id: "m1", sender: "Dana", priorityScore: 90 }),
+    ]);
+
+    const { container } = render(<InboxUnreadWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("starts the inbox poll once the session flips to authenticated", async () => {
+    authMock.authenticated = false;
+    const fetchStub = mockInbox([
+      message({ id: "m1", sender: "Dana", priorityScore: 90 }),
+    ]);
+
+    const { rerender } = render(<InboxUnreadWidget {...fetchProps} />);
+    await Promise.resolve();
+    expect(fetchStub).not.toHaveBeenCalled();
+
+    authMock.authenticated = true;
+    rerender(<InboxUnreadWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-inbox-unread")).toBeTruthy();
+    });
+    expect(fetchStub).toHaveBeenCalled();
   });
 });

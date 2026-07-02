@@ -1,29 +1,12 @@
 {
   "claim_boundary": "CAD compactness optimization audit from selected off-the-shelf module envelopes; not proof that supplier final STEP or routed PCB cannot reduce size further.",
   "status": "cad_compactness_optimized",
-  "current_envelope_mm": [
-    78.0,
-    153.6,
-    11.8
-  ],
-  "physical_span_with_external_features_mm": [
-    81.1,
-    153.6,
-    11.8
-  ],
+  "current_envelope_mm": [78.0, 153.6, 11.8],
+  "physical_span_with_external_features_mm": [81.1, 153.6, 11.8],
   "lower_bounds": {
-    "display_touch_panel_mm": [
-      77.7,
-      152.37
-    ],
-    "pcb_edge_clearance_mm": [
-      69.0,
-      137.0
-    ],
-    "battery_with_wall_mm": [
-      66.3,
-      89.3
-    ]
+    "display_touch_panel_mm": [77.7, 152.37],
+    "pcb_edge_clearance_mm": [69.0, 137.0],
+    "battery_with_wall_mm": [66.3, 89.3]
   },
   "width_excess_over_bound_mm": 0.3,
   "height_excess_over_bound_mm": 1.23,
@@ -80,19 +63,9 @@
     {
       "id": "pcb_battery_do_not_drive_outer_envelope",
       "actual": {
-        "pcb_bound_mm": [
-          69.0,
-          137.0
-        ],
-        "battery_bound_mm": [
-          66.3,
-          89.3
-        ],
-        "current_envelope_mm": [
-          78.0,
-          153.6,
-          11.8
-        ]
+        "pcb_bound_mm": [69.0, 137.0],
+        "battery_bound_mm": [66.3, 89.3],
+        "current_envelope_mm": [78.0, 153.6, 11.8]
       },
       "target": "selected display, not PCB or battery, remains the outer-envelope driver",
       "pass": true

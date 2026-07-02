@@ -152,10 +152,7 @@
           "parameters": {
             "parameters": {
               "action": "click",
-              "coordinate": [
-                10,
-                20
-              ],
+              "coordinate": [10, 20],
               "displayId": 0
             }
           },
@@ -325,10 +322,7 @@
       "parameters": {
         "parameters": {
           "action": "click",
-          "coordinate": [
-            10,
-            20
-          ],
+          "coordinate": [10, 20],
           "displayId": 0
         }
       },

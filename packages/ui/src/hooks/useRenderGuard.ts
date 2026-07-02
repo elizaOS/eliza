@@ -11,7 +11,7 @@ export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 // behaviour — startup data settling, typing, dragging, token streaming — easily
 // produces a handful of commits per second, and React StrictMode double-invokes
 // the mount effect in dev, so the previous 2/3 thresholds fired constantly on
-// healthy components (e.g. FirstRunScreen during first-run). A real loop renders
+// healthy components (e.g. chat-first onboarding during first-run). A real loop renders
 // continuously, far faster than any interaction sustains, so only a rate well
 // above one commit per frame is flagged.
 export const INFO_THRESHOLD = 60;
@@ -71,6 +71,7 @@ export function nextRenderTelemetrySequence(): number {
 }
 
 type RenderTelemetryGlobal = typeof globalThis & {
+  __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
   __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;
 };
 
@@ -94,6 +95,12 @@ export function isRenderTelemetryEnabled(): boolean {
       .__ELIZA_RENDER_TELEMETRY_DISABLED__ === true
   ) {
     return false;
+  }
+  if (
+    (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY_ENABLED__ ===
+    true
+  ) {
+    return true;
   }
 
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");

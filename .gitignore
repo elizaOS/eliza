@@ -17,6 +17,8 @@ packages/ui/src/components/chat/widgets/__e2e__/output-ftu/
 packages/ui/src/components/views/__e2e__/output-view-lifecycle/
 # Desktop bottom-bar e2e output (screenshots + webm — regenerate via test:bottombar-e2e; committed evidence lives in .github/issue-evidence/9953-windows-bottom-bar/)
 packages/ui/src/components/shell/__e2e__/output-bottombar/
+# Connector card e2e output (screenshots + bundles — regenerate via test:connectors-e2e; committed evidence lives in .github/issue-evidence/10705-connector-config-co-render/)
+packages/ui/src/components/pages/__e2e__/output-connectors/
 
 .next/
 **/.next/**
@@ -147,6 +149,9 @@ plugins/plugin-local-inference/src/services/voice-prewarm.js
 # Human-verifiable audio evidence is force-tracked under issue-evidence.
 !.github/issue-evidence/**/*.wav
 !.github/issue-evidence/**/*.mp3
+# Real-speech ASR/decode test fixtures (relocated out of the removed
+# omnivoice.cpp submodule; see that dir's README).
+!plugins/plugin-local-inference/native/audio-fixtures/*.wav
 
 logs/
 tokencache/
@@ -442,10 +447,6 @@ packages/ui/src/**/*.d.ts.map
 !packages/ui/src/cloud-ui/types/nprogress.d.ts
 !packages/ui/src/cloud-ui/types/react-syntax-highlighter.d.ts
 !packages/ui/src/import-meta-glob.d.ts
-# Generated CSS-string modules (see packages/scripts/generate-css-strings.mjs).
-# A component opts in by creating an empty `.css.ts` sibling next to its `.css`;
-# regenerated on every `bun run build` in packages/ui.
-packages/ui/src/components/**/*.css.ts
 packages/app-core/src/**/*.d.ts
 packages/app-core/src/**/*.d.ts.map
 !packages/app-core/src/ambient-modules.d.ts
@@ -1324,8 +1325,6 @@ waifu.fun/
 /packages/benchmarks/claw-eval/tasks/T085_officeqa_army_expenditures/fixtures/ocr/treasury_bulletin_1952_12.txt
 /packages/benchmarks/claw-eval/tasks/M086_doc_figure_reproduction_line/fixtures/gt.png
 /packages/ui/src/components/shell/__e2e__/output/26-state-responding.png
-/packages/app-core/platforms/electrobun/assets/appIcon.png
-/packages/elizaos/templates/project/apps/app/electrobun/assets/appIcon.png
 /packages/os/linux/tails/wiki/src/lib/fontawesome/webfonts/fa-solid-900.ttf
 /packages/ui/src/components/shell/__e2e__/output/27-state-typing-send.png
 /packages/benchmarks/claw-eval/tasks/T080_officeqa_bond_yield_change/fixtures/ocr/treasury_bulletin_1960_07.txt

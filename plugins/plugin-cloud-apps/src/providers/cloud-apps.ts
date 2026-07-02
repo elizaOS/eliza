@@ -26,6 +26,16 @@ const TTL = 60_000;
 const MAX_APPS_RENDERED = 10;
 const appsCaches = new WeakMap<IAgentRuntime, { apps: AppDto[]; at: number }>();
 
+/**
+ * Drop the cached app list for a runtime so the next provider read re-fetches
+ * live. Call after a mutating action (create/delete/deploy) so the CLOUD_APPS
+ * provider never keeps serving a just-deleted app (or hiding a just-created one)
+ * inside the 60s TTL window of the same conversation.
+ */
+export function invalidateAppsCache(runtime: IAgentRuntime): void {
+  appsCaches.delete(runtime);
+}
+
 const EMPTY: ProviderResult = { text: "" };
 
 function render(apps: AppDto[]): ProviderResult {

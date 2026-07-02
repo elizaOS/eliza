@@ -282,6 +282,158 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		},
 	},
 	{
+		id: "confusable-names-clean",
+		description:
+			"Three people with confusable names (Jon / John / Joan) introduce themselves in a quiet room; each name must bind to exactly its own entity, never a near-miss neighbor. minEntityF1 1 makes one cross-bind (precision) or one collapse (recall) fail the gate.",
+		classes: [
+			"entity-extraction",
+			"name-disambiguation",
+			"multi-speaker",
+			"voice-recognition",
+			"diarization",
+		],
+		knownSpeakerEntityIds: ["entity-jon", "entity-john", "entity-joan"],
+		participants: [
+			{ label: "jon", entityId: "entity-jon" },
+			{ label: "john", entityId: "entity-john" },
+			{ label: "joan", entityId: "entity-joan" },
+		],
+		turns: [
+			{
+				speaker: "jon",
+				text: "hey Eliza I am Jon and I live next door",
+				expectRespond: true,
+				expectedEntity: "entity-jon",
+			},
+			{
+				speaker: "john",
+				text: "Eliza I am John from the accounting team",
+				expectRespond: true,
+				expectedEntity: "entity-john",
+			},
+			{
+				speaker: "joan",
+				text: "Eliza I am Joan and my house is the blue one",
+				expectRespond: true,
+				expectedEntity: "entity-joan",
+			},
+		],
+		// maxWer 0.25 (not the default 0.2) because Jon/John are homophones: a
+		// real-lane ASR spelling either one the other way is legitimate acoustic
+		// ambiguity, not a transcription regression.
+		assertions: {
+			minRespondAccuracy: 0.9,
+			maxDer: 0.2,
+			maxWer: 0.25,
+			minVoiceEntityMatchRate: 0.9,
+			minEntityF1: 1,
+		},
+	},
+	{
+		id: "confusable-names-noisy",
+		description:
+			"Confusable-name introductions (Erik / Erika, Mia / Maya) in a noisy, reverberant room; every name still binds to exactly its own entity.",
+		classes: [
+			"entity-extraction",
+			"name-disambiguation",
+			"multi-speaker",
+			"voice-recognition",
+			"robustness",
+		],
+		environment: { noiseSnrDb: 10, noiseKind: "pink", reverb: 0.3, seed: 707 },
+		knownSpeakerEntityIds: [
+			"entity-erik",
+			"entity-erika",
+			"entity-mia",
+			"entity-maya",
+		],
+		participants: [
+			{ label: "erik", entityId: "entity-erik" },
+			{ label: "erika", entityId: "entity-erika" },
+			{ label: "mia", entityId: "entity-mia" },
+			{ label: "maya", entityId: "entity-maya" },
+		],
+		turns: [
+			{
+				speaker: "erik",
+				text: "hey Eliza I am Erik and I just moved here",
+				expectRespond: true,
+				expectedEntity: "entity-erik",
+			},
+			{
+				speaker: "erika",
+				text: "Eliza I am Erika and I work in the city",
+				expectRespond: true,
+				expectedEntity: "entity-erika",
+			},
+			{
+				speaker: "mia",
+				text: "hey Eliza I am Mia and I love this garden",
+				expectRespond: true,
+				expectedEntity: "entity-mia",
+			},
+			{
+				speaker: "maya",
+				text: "Eliza I am Maya and I brought the cake",
+				expectRespond: true,
+				expectedEntity: "entity-maya",
+			},
+		],
+		assertions: {
+			minRespondAccuracy: 0.9,
+			maxDer: 0.3,
+			maxWer: 0.4,
+			minVoiceEntityMatchRate: 0.9,
+			minEntityF1: 1,
+		},
+	},
+	{
+		id: "confusable-name-garbled-transcript",
+		description:
+			"ASR garbles a confusable name (Mia heard as 'Maia') — ambiguous between the enrolled Mia and Maya, so the extractor must bind NOTHING rather than guess a neighbor. A fuzzy matcher that guesses either drops precision and trips the minEntityF1 gate.",
+		classes: [
+			"entity-extraction",
+			"name-disambiguation",
+			"multi-speaker",
+			"voice-recognition",
+		],
+		knownSpeakerEntityIds: ["entity-pam", "entity-mia", "entity-maya"],
+		participants: [
+			{ label: "pam", entityId: "entity-pam" },
+			{ label: "mia", entityId: "entity-mia" },
+			{ label: "maya", entityId: "entity-maya" },
+		],
+		turns: [
+			{
+				speaker: "pam",
+				text: "hey Eliza I am Pam and these are my friends",
+				expectRespond: true,
+				expectedEntity: "entity-pam",
+			},
+			{
+				// Mia's introduction mis-transcribed as "Maia" — a token BETWEEN the
+				// two enrolled confusables. Ground truth binds nothing (no
+				// expectedEntity); the garbled form goes straight into `text`,
+				// mirroring the echo-mistranscribed precedent.
+				speaker: "mia",
+				text: "Eliza I am Maia and this is my first visit",
+				expectRespond: true,
+			},
+			{
+				speaker: "maya",
+				text: "Eliza the garden looks wonderful today",
+				expectRespond: true,
+			},
+		],
+		assertions: {
+			minRespondAccuracy: 0.9,
+			maxDer: 0.2,
+			maxWer: 0.25,
+			minVoiceEntityMatchRate: 0.9,
+			minEntityF1: 1,
+		},
+	},
+	{
 		id: "echo-mistranscribed",
 		description:
 			"The agent's echo is mis-transcribed (no word overlap); the ACOUSTIC self-voice gate still rejects it.",

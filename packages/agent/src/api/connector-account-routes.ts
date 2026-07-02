@@ -16,7 +16,7 @@ import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
-const z = zod.z;
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 export interface ConnectorAccountRouteContext {
   req: http.IncomingMessage;

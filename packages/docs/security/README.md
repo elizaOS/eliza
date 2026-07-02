@@ -12,6 +12,7 @@ response for the runtime, Cloud, and agent surfaces in this repo.
 - `KEY-LIFECYCLE.md` — per-class key lifecycle.
 - `AUDIT-EVIDENCE-INVENTORY.md` — what the auditor will request.
 - `ai-pr-review-policy.md` — AI-assisted PR review policy.
+- `MODEL-BOUNDARY-PRIVACY.md` — opt-in secret swap + PII pseudonymization that keep secrets and personal data out of the LLM provider.
 
 ## Package-specific security docs
 

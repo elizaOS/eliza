@@ -1,20 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { createDesktopBrowserWorkspaceCommandScript } from "../browser-workspace-desktop.js";
 import {
   assertBrowserWorkspaceUserScriptAllowed,
   BROWSER_WORKSPACE_USER_SCRIPT_FORBIDDEN,
   createBrowserWorkspaceJsdomScriptExecutionError,
   isBrowserWorkspaceUserScriptAllowed,
 } from "../browser-workspace-helpers.js";
-import { createDesktopBrowserWorkspaceCommandScript } from "../browser-workspace-desktop.js";
 
 describe("browser workspace user script policy (GHSA-mhhr-9ph9-64j7)", () => {
   it("disallows user script on web (JSDOM) backend", () => {
     expect(() =>
-      assertBrowserWorkspaceUserScriptAllowed(
-        "document.cookie",
-        "eval",
-        "web",
-      ),
+      assertBrowserWorkspaceUserScriptAllowed("document.cookie", "eval", "web"),
     ).toThrow(createBrowserWorkspaceJsdomScriptExecutionError("eval").message);
   });
 

@@ -152,11 +152,9 @@ test("selecting on-device inference drops the user into chat while the model dow
   await seedAppStorage(page, { "eliza:first-run-complete": "" });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  // #9952: onboarding is in-chat. The conductor greets first inside the REAL
-  // floating ContinuousChatOverlay and offers the runtime choice as inline
-  // ChoiceWidget buttons.
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   const runtimeChoice = page.getByTestId("choice-__first_run__:runtime:local");
   await expect(runtimeChoice).toBeVisible({ timeout: 15_000 });
 

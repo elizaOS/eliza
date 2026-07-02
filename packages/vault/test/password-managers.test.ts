@@ -14,25 +14,25 @@ type ExecFileCallback = (
 ) => void;
 
 function resolveExec(stdout: string): void {
-  execFileMock.mockImplementation((((
+  execFileMock.mockImplementation(((
     _cmd: string,
     _args: readonly string[],
     _opts: Record<string, unknown>,
     callback: ExecFileCallback,
   ) => {
     callback(null, { stdout, stderr: "" }, "");
-  }) as unknown) as typeof execFile);
+  }) as unknown as typeof execFile);
 }
 
 function rejectExec(error: NodeJS.ErrnoException): void {
-  execFileMock.mockImplementation((((
+  execFileMock.mockImplementation(((
     _cmd: string,
     _args: readonly string[],
     _opts: Record<string, unknown>,
     callback: ExecFileCallback,
   ) => {
     callback(error, "", "");
-  }) as unknown) as typeof execFile);
+  }) as unknown as typeof execFile);
 }
 
 describe("resolveReference", () => {

@@ -116,7 +116,7 @@ def _openai_tool_call_record(tc: dict[str, Any]) -> dict[str, Any]:
 class _HarnessTauAgentBase(BaseTauAgent):
     """Shared tau-bench solve loop. Subclasses provide :meth:`_chat_step`."""
 
-    def __init__(self, model: str = "gpt-oss-120b", temperature: float = 0.0) -> None:
+    def __init__(self, model: str = "gemma-4-31b", temperature: float = 0.0) -> None:
         self.model = model
         self.temperature = temperature
 
@@ -229,7 +229,7 @@ class _HarnessTauAgentBase(BaseTauAgent):
 class HermesTauAgent(_HarnessTauAgentBase):
     """Route each tau-bench step through :class:`HermesClient` in_process mode."""
 
-    def __init__(self, model: str = "gpt-oss-120b", temperature: float = 0.0) -> None:
+    def __init__(self, model: str = "gemma-4-31b", temperature: float = 0.0) -> None:
         super().__init__(model=model, temperature=temperature)
         import importlib.util
 
@@ -281,7 +281,7 @@ class HermesTauAgent(_HarnessTauAgentBase):
 class OpenClawTauAgent(_HarnessTauAgentBase):
     """Route each tau-bench step through :class:`OpenClawClient` direct mode."""
 
-    def __init__(self, model: str = "gpt-oss-120b", temperature: float = 0.0) -> None:
+    def __init__(self, model: str = "gemma-4-31b", temperature: float = 0.0) -> None:
         super().__init__(model=model, temperature=temperature)
         from openclaw_adapter.client import OpenClawClient
 
@@ -334,7 +334,7 @@ class ElizaTauAgent(_HarnessTauAgentBase):
     correct way to attribute scores to the elizaOS stack as a whole.
     """
 
-    def __init__(self, model: str = "gpt-oss-120b", temperature: float = 0.0) -> None:
+    def __init__(self, model: str = "gemma-4-31b", temperature: float = 0.0) -> None:
         super().__init__(model=model, temperature=temperature)
         from eliza_adapter.client import ElizaClient
 

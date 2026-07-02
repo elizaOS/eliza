@@ -70,6 +70,32 @@ describe("createDeepLinkHandler — universal (https) app links", () => {
     expect(window.location.hash).toBe("#connectors");
   });
 
+  it("opens the notification center on a notifications deep link without changing route (#10706)", async () => {
+    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import(
+      "@elizaos/ui/events"
+    );
+    const { handle, dispatchDeepLinkCallback } = makeHandler();
+    let opened = 0;
+    const onOpen = () => {
+      opened += 1;
+    };
+    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    try {
+      handle("elizaos://notifications");
+      // In-place open — no route change — and the callback still fires.
+      expect(opened).toBe(1);
+      expect(window.location.hash).toBe("");
+      expect(dispatchDeepLinkCallback).toHaveBeenCalledWith(
+        "elizaos://notifications",
+      );
+      // Same via a universal https app link.
+      handle("https://eliza.app/notifications");
+      expect(opened).toBe(2);
+    } finally {
+      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    }
+  });
+
   it("carries query params through a universal link", () => {
     const { handle } = makeHandler();
     handle("https://eliza.app/messages?to=alice");

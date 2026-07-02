@@ -302,7 +302,7 @@ async def main() -> int:
             os.environ.get("BENCHMARK_MODEL_NAME")
             or os.environ.get("MODEL_NAME")
             or os.environ.get("CEREBRAS_MODEL")
-            or "gpt-oss-120b"
+            or "gemma-4-31b"
         )
         if runtime_name == "hermes":
             from hermes_adapter.agentbench import build_agentbench_agent_fn

@@ -28,9 +28,9 @@ import {
 import { type ProcessBodyConfig, processBody } from "./process-body.js";
 import { reverseMap } from "./reverse-map.js";
 import type { Pair } from "./sanitize.js";
-import type { SystemPromptStripConfig } from "./system-prompt.js";
 import { createSseStream } from "./sse-rewrite.js";
 import { getStainlessHeaders } from "./stainless-headers.js";
+import type { SystemPromptStripConfig } from "./system-prompt.js";
 
 export interface ProxyServerOptions {
   port?: number;

@@ -13,7 +13,13 @@ export default scenario({
 	rooms: [
 		{
 			id: "main",
-			source: "telegram",
+			// Voice transcription happens on the device running the app, so the
+			// utterance lands in the in-app chat ("dashboard"), never on a remote
+			// text connector. On telegram/discord the #8613 gate deliberately
+			// removes VIEWS show/open from the planner surface (views are
+			// invisible to the asker there), so a telegram room cannot express
+			// this contract at all.
+			source: "dashboard",
 			title: "Views Voice Navigate",
 		},
 	],

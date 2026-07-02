@@ -84,7 +84,11 @@ function encodeRepoPath(path: string): string {
     .join("/");
 }
 
-function datasetFileUrl(repoId: string, revision: string, file: string): string {
+function datasetFileUrl(
+  repoId: string,
+  revision: string,
+  file: string,
+): string {
   return `https://huggingface.co/datasets/${encodeRepoPath(
     repoId,
   )}/resolve/${encodeURIComponent(revision)}/${encodeRepoPath(file)}`;
@@ -116,9 +120,8 @@ export async function ingestHuggingFaceDataset(
 ): Promise<HuggingFaceDatasetIngestResult> {
   const repoId = options.repoId?.trim() || DEFAULT_ELIZA1_HF_DATASET_REPO;
   const revision = options.revision?.trim() || "main";
-  const files = (options.files?.length
-    ? options.files
-    : [...DEFAULT_ELIZA1_HF_DATASET_FILES]
+  const files = (
+    options.files?.length ? options.files : [...DEFAULT_ELIZA1_HF_DATASET_FILES]
   )
     .map((file) => file.trim())
     .filter(Boolean);
@@ -196,7 +199,11 @@ export async function ingestHuggingFaceDataset(
     files: receipts,
   };
 
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
   return { outputDir, manifestPath, manifest };
 }
 

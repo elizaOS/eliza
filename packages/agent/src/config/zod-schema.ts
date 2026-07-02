@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as zod from "zod";
 import {
   AgentDefaultsSchema,
   AgentEntrySchema,
@@ -45,6 +45,8 @@ import {
   SessionSchema,
   SessionSendPolicySchema,
 } from "./zod-schema.session.ts";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 // --- Agents (merged from zod-schema.agents.ts) ---
 

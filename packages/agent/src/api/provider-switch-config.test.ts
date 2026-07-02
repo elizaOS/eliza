@@ -272,7 +272,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     for (const key of CEREBRAS_ENV) delete process.env[key];
   });
 
-  it("sets CEREBRAS_API_KEY + a valid CEREBRAS_MODEL and never strays into OpenAI vars", async () => {
+  it("sets CEREBRAS_API_KEY + the default Gemma CEREBRAS_MODEL and never strays into OpenAI vars", async () => {
     const config: Partial<ElizaConfig> = {};
 
     await applyFirstRunConnectionConfig(config, {
@@ -286,7 +286,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     expect(vars?.CEREBRAS_API_KEY).toBe("csk-test-123");
     // Without a valid Cerebras model the OpenAI plugin would fall back to
     // gpt-5* ids that 404 on api.cerebras.ai — this is the load-bearing default.
-    expect(vars?.CEREBRAS_MODEL).toBe("gpt-oss-120b");
+    expect(vars?.CEREBRAS_MODEL).toBe("gemma-4-31b");
     // Setting any OPENAI_* var here would knock the plugin out of Cerebras
     // mode (isCerebrasMode requires no OPENAI_API_KEY / OPENAI_BASE_URL).
     expect(vars?.OPENAI_API_KEY).toBeUndefined();
@@ -295,7 +295,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     expect(vars?.OPENAI_LARGE_MODEL).toBeUndefined();
     // Same values land in process.env so a hot-reloaded runtime picks them up.
     expect(process.env.CEREBRAS_API_KEY).toBe("csk-test-123");
-    expect(process.env.CEREBRAS_MODEL).toBe("gpt-oss-120b");
+    expect(process.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
     // The agent routes its text inference at Cerebras.
     expect(config.serviceRouting?.llmText?.backend).toBe("cerebras");
     expect(config.serviceRouting?.llmText?.transport).toBe("direct");

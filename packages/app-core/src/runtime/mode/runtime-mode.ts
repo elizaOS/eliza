@@ -21,7 +21,9 @@ import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
-import { z } from "zod";
+import * as zod from "zod";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 export const RUNTIME_MODES = [
   "local",
@@ -60,7 +62,7 @@ const RuntimeModeConfigSchema = z
   })
   .passthrough();
 
-type RuntimeModeConfigShape = z.infer<typeof RuntimeModeConfigSchema>;
+type RuntimeModeConfigShape = zod.infer<typeof RuntimeModeConfigSchema>;
 
 function parseRuntimeModeConfig(
   config: unknown,

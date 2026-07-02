@@ -269,7 +269,23 @@ function fragmentMatchesDefinition(
   );
 }
 
-async function listFragmentIdsForDocument(
+/**
+ * List the ids of all document_fragments rows attached to a bundled document.
+ *
+ * Only ids and metadata are inspected, so embeddings are explicitly excluded
+ * (`includeEmbedding: false`). Selecting them here forced the SQL adapter to
+ * deserialize every pgvector embedding in the table on each boot, which on
+ * self-hosted PGlite nodes pegged the main thread at 100% CPU and starved the
+ * API before the agent finished starting.
+ *
+ * Pagination must use `offset` (skip N rows), not `start` (a createdAt
+ * timestamp filter): passing the row offset as `start` re-scanned nearly the
+ * whole table on every iteration and never advanced for documents with more
+ * than one batch of fragments.
+ *
+ * Exported for tests.
+ */
+export async function listFragmentIdsForDocument(
   runtime: AgentRuntime,
   documentId: UUID,
 ): Promise<UUID[]> {
@@ -281,7 +297,8 @@ async function listFragmentIdsForDocument(
       tableName: DOCUMENT_FRAGMENTS_TABLE,
       roomId: runtime.agentId,
       limit: DOCUMENT_BATCH_SIZE,
-      start: offset,
+      offset,
+      includeEmbedding: false,
     });
 
     if (batch.length === 0) break;

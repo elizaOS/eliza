@@ -11,11 +11,13 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
+import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import {
   getIpKey,
   getRequestIp,
   rateLimit,
+  rateLimitConfigVerdict,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
@@ -175,10 +177,18 @@ export function createApp(): Hono<AppEnv> {
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
       async () =>
-        // Expose the client IP to shared library code (anti-sybil grant checks)
-        // without threading it through every call site.
-        runWithRequestContext({ clientIp: getRequestIp(c) }, async () =>
-          runWithDbCacheAsync(async () => next()),
+        // Expose the client IP + a stable per-request idempotency key to shared
+        // library code (anti-sybil grant checks; idempotent money settlement,
+        // #10423) without threading them through every call site.
+        runWithRequestContext(
+          {
+            clientIp: getRequestIp(c),
+            idempotencyKey:
+              c.req.header("idempotency-key") ||
+              c.req.header("x-request-id") ||
+              crypto.randomUUID(),
+          },
+          async () => runWithDbCacheAsync(async () => next()),
         ),
     );
   });
@@ -257,6 +267,48 @@ export function createApp(): Hono<AppEnv> {
     );
   });
   app.route("/.well-known/jwks.json", jwksRoute);
+
+  // Rate-limit config guard (#9853 P1.1) — never let production silently serve
+  // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING
+  // is not "true" or no Redis client is reachable, which would leave the
+  // anon-mint / metered-inference paths unbounded. This evaluates once per
+  // isolate against the request-scoped env (the Worker has no boot-time env):
+  //   - prod + REDIS_RATE_LIMITING="true" but NO reachable Redis  → fail CLOSED
+  //     (503) — a deploy misconfiguration; surface it loudly instead of running
+  //     with limiters silently disabled.
+  //   - prod + REDIS_RATE_LIMITING!="true"  → loud WARN once (limiters disabled;
+  //     the documented #9853 ops cutover is: set REDIS_URL, flip the flag true).
+  let rateLimitConfigLogged = false;
+  app.use("*", async (c, next) => {
+    const env = c.env as { ENVIRONMENT?: string; REDIS_RATE_LIMITING?: string };
+    const verdict = rateLimitConfigVerdict({
+      environment: env.ENVIRONMENT,
+      redisRateLimiting: env.REDIS_RATE_LIMITING,
+      hasRedisClient: Boolean(buildRedisClient(c.env)),
+    });
+    if (!rateLimitConfigLogged) {
+      rateLimitConfigLogged = true;
+      if (verdict === "fail-closed") {
+        logger.error(
+          "[bootstrap-app] FATAL: REDIS_RATE_LIMITING=true in production but no Redis client is reachable (set the REDIS_URL secret). Failing closed — refusing traffic rather than serving with rate limiting silently disabled.",
+        );
+      } else if (verdict === "warn-disabled") {
+        logger.warn(
+          '[bootstrap-app] Rate limiting is DISABLED in production (REDIS_RATE_LIMITING!="true") — limiters fall open. Cutover (#9853 P1.1): provision Redis, set REDIS_URL, then set REDIS_RATE_LIMITING="true" and redeploy.',
+        );
+      }
+    }
+    if (verdict === "fail-closed") {
+      return c.json(
+        {
+          error: "Rate limiting misconfigured",
+          code: "RATE_LIMIT_UNAVAILABLE",
+        },
+        503,
+      );
+    }
+    await next();
+  });
 
   // Global IP-keyed backstop limiter. Routes with their own (tighter) limiter
   // still enforce it; this only guarantees that a route which forgot to add one

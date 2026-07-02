@@ -7,7 +7,7 @@ Four axes, ordered by determinism:
   (c) coherence - is the multi-turn dialogue coherent? (LLM judge)
   (d) safety - did the agent refuse / comply when it had to? (deterministic)
 
-The LLM judge defaults to Cerebras ``gpt-oss-120b`` and is bypassed only when
+The LLM judge defaults to Cerebras ``gemma-4-31b`` and is bypassed only when
 the operator explicitly passes ``--no-judge``.
 """
 
@@ -184,13 +184,13 @@ def score_coherence(
 
 
 class CoherenceJudge:
-    """Cerebras gpt-oss-120b judge for multi-turn coherence."""
+    """Cerebras gemma-4-31b judge for multi-turn coherence."""
 
     def __init__(
         self,
         *,
         api_key: str | None = None,
-        model: str = "gpt-oss-120b",
+        model: str = "gemma-4-31b",
         base_url: str | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("CEREBRAS_API_KEY")

@@ -36,7 +36,9 @@ function parseArgs(argv) {
     apply: false,
     apiKey: process.env.PORKBUN_API_KEY || "",
     secretApiKey:
-      process.env.PORKBUN_SECRET_API_KEY || process.env.PORKBUN_SECRET_KEY || "",
+      process.env.PORKBUN_SECRET_API_KEY ||
+      process.env.PORKBUN_SECRET_KEY ||
+      "",
     apiBase: process.env.PORKBUN_API_BASE || porkbunBaseUrl,
   };
 
@@ -61,7 +63,9 @@ function parseArgs(argv) {
   }
 
   if (args.domain !== defaultDomain) {
-    throw new Error(`Refusing to manage ${args.domain}; this helper is scoped to ${defaultDomain}.`);
+    throw new Error(
+      `Refusing to manage ${args.domain}; this helper is scoped to ${defaultDomain}.`,
+    );
   }
   return args;
 }
@@ -105,7 +109,9 @@ function printDesiredRecordsWithoutCredentials() {
 }
 
 function normalizeRecordName(record, domain) {
-  const name = String(record.name ?? "").replace(/\.$/, "").toLowerCase();
+  const name = String(record.name ?? "")
+    .replace(/\.$/, "")
+    .toLowerCase();
   if (!name || name === domain) return "";
   if (name.endsWith(`.${domain}`)) return name.slice(0, -(domain.length + 1));
   return name;
@@ -120,7 +126,9 @@ function isApexA(record, domain) {
 }
 
 function isWwwCname(record, domain) {
-  return record.type === "CNAME" && normalizeRecordName(record, domain) === "www";
+  return (
+    record.type === "CNAME" && normalizeRecordName(record, domain) === "www"
+  );
 }
 
 function desiredApexRecordsPresent(records, domain) {
@@ -152,12 +160,20 @@ function buildPlan(records, domain) {
       type: "A",
       name: "",
       content,
-      reason: wantedApex.has(content) ? "duplicate apex A" : "unexpected apex A",
+      reason: wantedApex.has(content)
+        ? "duplicate apex A"
+        : "unexpected apex A",
     });
   }
   for (const content of expectedApexRecords) {
     if (!seenApex.has(content)) {
-      plan.push({ action: "create", type: "A", name: "", content, ttl: defaultTtl });
+      plan.push({
+        action: "create",
+        type: "A",
+        name: "",
+        content,
+        ttl: defaultTtl,
+      });
     }
   }
 
@@ -174,7 +190,10 @@ function buildPlan(records, domain) {
       type: "CNAME",
       name: "www",
       content,
-      reason: content === expectedWwwCname ? "duplicate www CNAME" : "unexpected www CNAME",
+      reason:
+        content === expectedWwwCname
+          ? "duplicate www CNAME"
+          : "unexpected www CNAME",
     });
   }
   if (!keptWww) {
@@ -208,7 +227,9 @@ async function applyPlan(args, plan) {
   for (const item of plan) {
     if (item.action === "delete") {
       await postPorkbun(args, `/dns/delete/${args.domain}/${item.id}`);
-      console.log(`[homepage-porkbun-dns] applied: deleted ${item.type} ${item.name || "@"} ${item.content}`);
+      console.log(
+        `[homepage-porkbun-dns] applied: deleted ${item.type} ${item.name || "@"} ${item.content}`,
+      );
     } else if (item.action === "create") {
       await postPorkbun(args, `/dns/create/${args.domain}`, {
         type: item.type,
@@ -216,7 +237,9 @@ async function applyPlan(args, plan) {
         content: item.content,
         ttl: item.ttl,
       });
-      console.log(`[homepage-porkbun-dns] applied: created ${item.type} ${item.name || "@"} ${item.content}`);
+      console.log(
+        `[homepage-porkbun-dns] applied: created ${item.type} ${item.name || "@"} ${item.content}`,
+      );
     }
   }
 }
@@ -230,7 +253,9 @@ async function main() {
       );
     }
     printDesiredRecordsWithoutCredentials();
-    console.log("[homepage-porkbun-dns] dry-run only. No DNS changes were attempted.");
+    console.log(
+      "[homepage-porkbun-dns] dry-run only. No DNS changes were attempted.",
+    );
     return;
   }
 
@@ -240,7 +265,9 @@ async function main() {
   printPlan(plan);
 
   if (!args.apply) {
-    console.log("[homepage-porkbun-dns] dry-run only. Pass --apply to mutate Porkbun DNS.");
+    console.log(
+      "[homepage-porkbun-dns] dry-run only. Pass --apply to mutate Porkbun DNS.",
+    );
     return;
   }
 
@@ -253,10 +280,14 @@ async function main() {
   ) {
     throw new Error("Porkbun DNS sync did not produce the expected records.");
   }
-  console.log("[homepage-porkbun-dns] PASS Porkbun DNS records match GitHub Pages target.");
+  console.log(
+    "[homepage-porkbun-dns] PASS Porkbun DNS records match GitHub Pages target.",
+  );
 }
 
 main().catch((error) => {
-  console.error(`[homepage-porkbun-dns] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[homepage-porkbun-dns] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });

@@ -121,7 +121,7 @@ The SDK reads no env vars at runtime — callers must supply credentials via `El
 | `ELIZA_CLOUD_SDK_LIVE` | `"1"` to run any live tests |
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZA_CLOUD_API_KEY` | API key for authenticated checks |
 | `ELIZA_CLOUD_SESSION_TOKEN` | Bearer token for browser-session checks |
-| `ELIZA_CLOUD_BASE_URL` | Override base URL (default `https://www.elizacloud.ai`) |
+| `ELIZA_CLOUD_BASE_URL` | Override base URL (default `https://elizacloud.ai`) |
 | `ELIZA_CLOUD_API_BASE_URL` | Override API base URL (default `https://api.elizacloud.ai/api/v1`) |
 | `ELIZA_CLOUD_SDK_LIVE_GENERATION` | `"1"` to enable paid generation checks |
 | `ELIZA_CLOUD_SDK_LIVE_RELAY` | `"1"` to enable gateway relay checks |

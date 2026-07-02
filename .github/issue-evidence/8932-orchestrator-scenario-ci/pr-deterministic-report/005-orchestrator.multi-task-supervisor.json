@@ -2,12 +2,7 @@
   "id": "orchestrator.multi-task-supervisor",
   "title": "Multi-task supervisor: per-room isolation + change-driven digest",
   "domain": "agent-orchestrator",
-  "tags": [
-    "orchestrator",
-    "multi-task",
-    "supervisor",
-    "deterministic"
-  ],
+  "tags": ["orchestrator", "multi-task", "supervisor", "deterministic"],
   "status": "passed",
   "durationMs": 10,
   "turns": [],

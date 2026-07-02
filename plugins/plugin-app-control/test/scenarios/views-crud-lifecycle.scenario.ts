@@ -496,6 +496,9 @@ export default scenario({
 			name: "confirm lifecycle view delete",
 			text: "yes",
 			actionName: "VIEWS",
+			options: {
+				confirm: true,
+			},
 			responseIncludesAny: [`Deleted ${DISPLAY_NAME}`],
 			responseExcludes: ["Deletion partially failed"],
 			assertTurn: (execution) =>

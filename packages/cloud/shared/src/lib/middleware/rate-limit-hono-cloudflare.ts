@@ -27,6 +27,29 @@ function getRedis(env: Bindings): CompatibleRedis | null {
 }
 
 /**
+ * Verdict for the production rate-limit config guard (#9853 P1.1). The limiters
+ * fall open whenever Redis is unreachable, so production must never silently run
+ * with limiting disabled:
+ *   - `ok`            — limiting is on and Redis is reachable (or not production).
+ *   - `fail-closed`   — prod + REDIS_RATE_LIMITING="true" but no reachable Redis:
+ *                       a deploy misconfiguration — reject traffic + alert loudly.
+ *   - `warn-disabled` — prod + limiting not enabled: falls open; warn loudly so
+ *                       the ops cutover (provision Redis, flip the flag) is visible.
+ * Pure (takes a resolved `hasRedisClient`) so it is unit-testable without booting
+ * the Worker or a live Redis.
+ */
+export type RateLimitConfigVerdict = "ok" | "fail-closed" | "warn-disabled";
+export function rateLimitConfigVerdict(opts: {
+  environment?: string;
+  redisRateLimiting?: string;
+  hasRedisClient: boolean;
+}): RateLimitConfigVerdict {
+  if (opts.environment !== "production") return "ok";
+  if (opts.redisRateLimiting !== "true") return "warn-disabled";
+  return opts.hasRedisClient ? "ok" : "fail-closed";
+}
+
+/**
  * Resolve the client IP, preferring `cf-connecting-ip` (set by Cloudflare and
  * not spoofable by the client) over `x-forwarded-for` so a forged XFF header
  * cannot evade IP-keyed limits. Returns `undefined` when no IP is known.
@@ -66,7 +89,15 @@ function getDefaultKey(c: AppContext): string {
     null;
   if (anon) return `anon:${anon}`;
 
-  return "public";
+  // Unauthenticated public traffic buckets PER-IP, not a global constant.
+  // Returning the literal "public" put ALL anonymous traffic worldwide into one
+  // window, so a single flooder (600/min) 429-locked every anonymous client on
+  // every route using the default key generator (#11087). Per-IP confines the
+  // limit to the abuser. "public" survives only as the last resort when the IP
+  // is unresolvable (e.g. a proxy stripped forwarding headers) — still bounded,
+  // but no longer the common path.
+  const ip = getRequestIp(c);
+  return ip ? `ip:${ip}` : "public";
 }
 
 interface CheckResult {
@@ -99,7 +130,7 @@ function applyRateLimitHeaders(c: Context, headers: Record<string, string>): voi
   }
 }
 
-async function checkUpstash(
+export async function checkUpstash(
   redis: CompatibleRedis,
   key: string,
   windowMs: number,
@@ -107,11 +138,20 @@ async function checkUpstash(
 ): Promise<CheckResult> {
   const fullKey = `ratelimit:${key}`;
   const count = await redis.incr(fullKey);
-  if (count === 1) {
+  let ttl = count === 1 ? null : await redis.pttl(fullKey);
+  if (count === 1 || ttl === null || ttl < 0) {
+    // First request of a window — or an ORPHANED counter: if the pexpire after
+    // a previous window's first incr ever failed (Workers sub-request drop),
+    // the key has no TTL (pttl -1), so the counter grows forever and the
+    // client is permanently 429'd while resetAt/retryAfter keep promising a
+    // 60s reset that never happens (observed live: an IP at ~26 req/hour
+    // locked out of every endpoint, including public /models). Always re-arm
+    // the window here so a missed expiry heals on the next request instead of
+    // bricking the key.
     await redis.pexpire(fullKey, windowMs);
+    ttl = windowMs;
   }
-  const ttl = await redis.pttl(fullKey);
-  const resetAt = Date.now() + (ttl !== null && ttl > 0 ? ttl : windowMs);
+  const resetAt = Date.now() + (ttl > 0 ? ttl : windowMs);
   const allowed = count <= maxRequests;
   return {
     allowed,

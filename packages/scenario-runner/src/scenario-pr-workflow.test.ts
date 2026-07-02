@@ -6,6 +6,10 @@ const workflowPath = resolve(
   import.meta.dirname,
   "../../../.github/workflows/scenario-pr.yml",
 );
+const testWorkflowPath = resolve(
+  import.meta.dirname,
+  "../../../.github/workflows/test.yml",
+);
 const rootPackagePath = resolve(import.meta.dirname, "../../../package.json");
 const scenarioRunnerPackagePath = resolve(
   import.meta.dirname,
@@ -370,7 +374,7 @@ describe("scenario PR workflow contract", () => {
       "ensureRealAppRegistryService",
     );
     expect(deterministicGeneratedAppRoutesScenario).toContain(
-      "/api/apps/hero/${GENERATED_SLUG}",
+      ["/api/apps/hero/", "{GENERATED_SLUG}"].join("$"),
     );
     expect(deterministicGeneratedAppRoutesScenario).toContain(
       "registerRuntimeAppRouteModule",
@@ -529,9 +533,7 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicMediaActionsScenario).toContain(
       "Deterministic media generation actions",
     );
-    expect(deterministicMediaActionsScenario).toContain(
-      "GENERATE_MEDIA_AUDIO",
-    );
+    expect(deterministicMediaActionsScenario).toContain("GENERATE_MEDIA_AUDIO");
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );
@@ -737,6 +739,30 @@ describe("scenario PR workflow contract", () => {
     ]) {
       expect(appTtsSttFlow).toContain(required);
     }
+  });
+
+  it("folds per-plugin keyless harness proofs into the required zero-key test status", () => {
+    const workflow = readFileSync(testWorkflowPath, "utf8");
+
+    expect(workflow).toContain("zero-key-harness-e2e:");
+    expect(workflow).toContain(
+      "bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/",
+    );
+    expect(workflow).toContain(
+      "bun run --cwd plugins/plugin-anthropic test:harness",
+    );
+    expect(workflow).toContain(
+      "bun run --cwd plugins/plugin-discord test:harness",
+    );
+    expect(workflow).toContain("- zero-key-harness-e2e");
+    expect(workflow).toContain(
+      [
+        '"zero-key-harness-e2e:',
+        '{{ needs.zero-key-harness-e2e.result }}"',
+      ].join("$"),
+    );
+    expect(workflow).toContain("- zero-key-e2e");
+    expect(workflow).toContain("test-status:");
   });
 
   it("keeps PR-gated view manager coverage on local and remote create/edit/delete flows", () => {

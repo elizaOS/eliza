@@ -122,6 +122,15 @@ const HANDLE_RESPONSE_TOOL = {
         "facts",
         "addressedTo",
       ],
+      // Cerebras strict-grammar models diverge here: `gpt-oss-120b` tolerates a
+      // strict tool schema whose root omits `additionalProperties`, but
+      // `zai-glm-4.7` (GLM) 400s with `'additionalProperties' is required to be
+      // supplied and set to false`. Production never hits this because the
+      // OpenAI plugin runs every tool schema through `sanitizeJsonSchema` /
+      // `normalizeSchemaForCerebras` (models/text.ts), which inject this on
+      // every object node. This raw-fetch reproduction must mirror that wire
+      // contract, otherwise the GLM trials never reach the model under test.
+      additionalProperties: false,
     },
     strict: true,
   },
@@ -280,7 +289,11 @@ Sample leaked refusal: ${bucket.samples.leak ? `"${bucket.samples.leak}"` : "(no
 
 const TRIALS = Number.parseInt(process.env.CEREBRAS_REFUSAL_TRIALS ?? "20", 10);
 const TIMEOUT_MS = TRIALS * 20_000 + 30_000;
-const CEREBRAS_REFUSAL_MODELS = ["gpt-oss-120b", "zai-glm-4.7"] as const;
+const CEREBRAS_REFUSAL_MODELS = [
+  "gemma-4-31b",
+  "gpt-oss-120b",
+  "zai-glm-4.7",
+] as const;
 
 liveDescribe("Cerebras `spawn sub-agent` Stage-1 refusal suppression — elizaOS/eliza#7620", () => {
   for (const model of CEREBRAS_REFUSAL_MODELS) {

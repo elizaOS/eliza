@@ -50,9 +50,48 @@ export interface SupervisorTaskView {
   activeSessions: number;
   /** Latest session label (often "agentType · account"), if any. */
   sessionLabel?: string | null;
+  /** Coarse staleness indicator for a progress-expected task that has gone
+   *  idle (e.g. "⏳ idle 8m+"), or undefined when fresh. Folded into the digest
+   *  line so a genuinely STUCK task changes the digest and re-posts, instead of
+   *  being deduped into silence after the first post. */
+  staleness?: string;
   /** The originating chat target; null tasks (no chat origin) are skipped. */
   origin: { roomId: string; source: string } | null;
 }
+
+// Coarse staleness bands (minutes → label), highest first. Bucketed on purpose:
+// steady progress within a band still dedups, but a stall crossing into the
+// next band changes the digest and re-posts, escalating as it worsens.
+const SUPERVISOR_STALENESS_BANDS: ReadonlyArray<readonly [number, string]> = [
+  [45, "⚠️ stalled 45m+"],
+  [20, "⏳ idle 20m+"],
+  [8, "⏳ idle 8m+"],
+  [3, "⏳ idle 3m+"],
+];
+
+/** Coarse staleness label for a progress-expected task, or undefined when it is
+ *  fresh / has no known activity time. Pure (takes `nowMs`) so the digest stays
+ *  deterministic and unit-testable without a clock. */
+export function supervisorStalenessLabel(
+  latestActivityAt: number | null | undefined,
+  nowMs: number,
+): string | undefined {
+  if (typeof latestActivityAt !== "number" || latestActivityAt <= 0) {
+    return undefined;
+  }
+  const ageMin = (nowMs - latestActivityAt) / 60_000;
+  for (const [min, label] of SUPERVISOR_STALENESS_BANDS) {
+    if (ageMin >= min) return label;
+  }
+  return undefined;
+}
+
+/** Statuses where the sub-agent is expected to be MAKING PROGRESS, so a long
+ *  idle indicates a stall worth surfacing. (waiting_on_user / blocked are
+ *  legitimately idle — no stall indicator there.) */
+const PROGRESS_EXPECTED_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set(
+  ["active", "validating"],
+);
 
 /** Compose the digest body for one room's set of live tasks. Deterministic. */
 export function composeRoomDigest(views: SupervisorTaskView[]): string {
@@ -67,7 +106,8 @@ export function composeRoomDigest(views: SupervisorTaskView[]): string {
       const detail = v.sessionLabel ? ` · ${v.sessionLabel}` : "";
       const sessions =
         v.activeSessions > 0 ? ` (${v.activeSessions} running)` : "";
-      return `${statusEmoji(v.status)} ${v.label} — ${v.status}${sessions}${detail}`;
+      const stale = v.staleness ? ` ${v.staleness}` : "";
+      return `${statusEmoji(v.status)} ${v.label} — ${v.status}${sessions}${detail}${stale}`;
     });
   return [header, ...lines].join("\n");
 }
@@ -167,6 +207,7 @@ interface TaskServiceLike {
       status: OrchestratorTaskStatus;
       activeSessionCount: number;
       latestSessionLabel: string | null;
+      latestActivityAt: number | null;
     }>
   >;
   getTaskOriginTarget(
@@ -180,6 +221,10 @@ export class TaskSupervisorService extends Service {
     "Proactively posts a per-room status digest of all in-flight orchestrator tasks (the multi-task juggler).";
 
   private timer: ReturnType<typeof setInterval> | undefined;
+  /** Guards against overlapping ticks: a slow `runOnce` (N network sends) must
+   *  not have the next interval fire a concurrent one — two ticks would race the
+   *  `seen` dedup map and double-post. */
+  private ticking = false;
   /** roomId → last-posted digest, for change-driven dedup. */
   private readonly seen = new Map<string, string>();
   private readonly digestSinks = new Map<
@@ -207,7 +252,14 @@ export class TaskSupervisorService extends Service {
 
   private startTimer(): void {
     this.timer = setInterval(() => {
-      void this.runOnce();
+      // Skip this tick if the previous one is still in flight — never run two
+      // concurrently. `runOnce` swallows its own errors, so the `finally`
+      // always clears the flag.
+      if (this.ticking) return;
+      this.ticking = true;
+      void this.runOnce().finally(() => {
+        this.ticking = false;
+      });
     }, this.intervalMs());
     // The digest loop must never, by itself, keep the process alive.
     (this.timer as { unref?: () => void }).unref?.();
@@ -264,29 +316,47 @@ export class TaskSupervisorService extends Service {
     ) {
       return { posted: [], skipped: [] };
     }
-    const tasks = await taskSvc.listTasks({ includeArchived: false });
-    const live = tasks.filter((t) => LIVE_STATUSES.has(t.status));
-    const views: SupervisorTaskView[] = await Promise.all(
-      live.map(async (t) => ({
-        id: t.id,
-        label: t.title,
-        status: t.status,
-        activeSessions: t.activeSessionCount,
-        sessionLabel: t.latestSessionLabel,
-        origin: await taskSvc.getTaskOriginTarget(t.id),
-      })),
-    );
-    const result = await runSupervisorTick(
-      views,
-      (target, content) => this.sendDigest(target, content, send),
-      this.seen,
-    );
-    if (result.posted.length > 0) {
-      logger.info(
-        `[TaskSupervisorService] digest posted to ${result.posted.length} room(s)`,
+    // Guard the whole tick: a rejected `listTasks` / origin lookup / send would
+    // otherwise surface as an unhandled rejection on every interval (the timer
+    // calls this fire-and-forget) — noisy, and fatal under strict handling.
+    try {
+      const tasks = await taskSvc.listTasks({ includeArchived: false });
+      const live = tasks.filter((t) => LIVE_STATUSES.has(t.status));
+      const now = Date.now();
+      const views: SupervisorTaskView[] = await Promise.all(
+        live.map(async (t) => ({
+          id: t.id,
+          label: t.title,
+          status: t.status,
+          activeSessions: t.activeSessionCount,
+          sessionLabel: t.latestSessionLabel,
+          // Surface a stall only for progress-expected statuses; waiting_on_user
+          // / blocked are legitimately idle.
+          staleness: PROGRESS_EXPECTED_STATUSES.has(t.status)
+            ? supervisorStalenessLabel(t.latestActivityAt, now)
+            : undefined,
+          origin: await taskSvc.getTaskOriginTarget(t.id),
+        })),
       );
+      const result = await runSupervisorTick(
+        views,
+        (target, content) => this.sendDigest(target, content, send),
+        this.seen,
+      );
+      if (result.posted.length > 0) {
+        logger.info(
+          `[TaskSupervisorService] digest posted to ${result.posted.length} room(s)`,
+        );
+      }
+      return result;
+    } catch (error) {
+      logger.warn(
+        `[TaskSupervisorService] tick failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { posted: [], skipped: [] };
     }
-    return result;
   }
 
   async stop(): Promise<void> {

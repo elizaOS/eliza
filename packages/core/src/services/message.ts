@@ -19,7 +19,6 @@ import {
 	enforceVerbosity,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
-import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
@@ -127,10 +126,6 @@ import type {
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
-import {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "../runtime/stage1-honesty-detector";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -139,7 +134,6 @@ import {
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
-import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
@@ -272,9 +266,6 @@ export {
 	inferWebSearchQueryFromMessageText,
 };
 
-const PLANNER_CONTROL_ACTIONS = new Set(
-	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
-);
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -650,100 +641,6 @@ function resolvePlannerActionNameFromLookup(
 	}
 
 	return [];
-}
-
-function normalizePlannerProviders(
-	parsedPlanner: Record<string, unknown>,
-	runtime?: IAgentRuntime,
-): string[] {
-	const providerNames = extractPlannerProviderNames(parsedPlanner);
-
-	if (!runtime) {
-		return providerNames;
-	}
-
-	const providerLookup = new Map<string, string>();
-	for (const provider of runtime.providers ?? []) {
-		const normalized = normalizeActionIdentifier(provider.name);
-		if (!normalized || providerLookup.has(normalized)) {
-			continue;
-		}
-		providerLookup.set(normalized, provider.name);
-	}
-	const normalizedProviders = providerNames.flatMap((providerName) => {
-		const normalizedProviderName = normalizeActionIdentifier(providerName);
-		const canonicalProvider =
-			providerLookup.get(normalizedProviderName) ??
-			(() => {
-				const aliasedProvider = PLANNER_PROVIDER_ALIASES.get(
-					normalizedProviderName,
-				);
-				if (!aliasedProvider) {
-					return undefined;
-				}
-				return providerLookup.get(normalizeActionIdentifier(aliasedProvider));
-			})();
-		if (canonicalProvider) {
-			return canonicalProvider;
-		}
-		runtime.logger.warn(
-			{
-				src: "service:message",
-				providerName,
-			},
-			"Dropping unknown planner provider",
-		);
-		return [];
-	});
-
-	if (normalizedProviders.length === 0) {
-		return normalizedProviders;
-	}
-
-	const providerDefinitions = new Map(
-		(runtime.providers ?? []).map((provider) => [
-			normalizeActionIdentifier(provider.name),
-			provider,
-		]),
-	);
-	const expandedProviders = [...normalizedProviders];
-	const seenProviders = new Set(
-		expandedProviders.map((providerName) =>
-			normalizeActionIdentifier(providerName),
-		),
-	);
-
-	for (let index = 0; index < expandedProviders.length; index += 1) {
-		const providerName = expandedProviders[index];
-		const providerDefinition = providerDefinitions.get(
-			normalizeActionIdentifier(providerName),
-		);
-		const companionProviders = providerDefinition?.companionProviders ?? [];
-		for (const companionProvider of companionProviders) {
-			const canonicalCompanion = providerLookup.get(
-				normalizeActionIdentifier(companionProvider),
-			);
-			if (!canonicalCompanion) {
-				runtime.logger.warn(
-					{
-						src: "service:message",
-						providerName,
-						companionProvider,
-					},
-					"Dropping unknown companion provider",
-				);
-				continue;
-			}
-			const normalizedCompanion = normalizeActionIdentifier(canonicalCompanion);
-			if (seenProviders.has(normalizedCompanion)) {
-				continue;
-			}
-			seenProviders.add(normalizedCompanion);
-			expandedProviders.push(canonicalCompanion);
-		}
-	}
-
-	return expandedProviders;
 }
 
 function isStructuredPlannerIdentifier(value: string): boolean {
@@ -1506,9 +1403,23 @@ type FailureReplyAttempt =
 	| { kind: "rateLimited" }
 	| { kind: "authFailed" };
 
+export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
+	const content = memory.content as Record<string, unknown> | undefined;
+	const metadata = memory.metadata as Record<string, unknown> | undefined;
+	return (
+		content?.doNotPersist === true ||
+		content?.skipMemory === true ||
+		content?.transient === true ||
+		metadata?.doNotPersist === true ||
+		metadata?.skipMemory === true ||
+		metadata?.transient === true
+	);
+}
+
 export {
 	buildFailureReplyPrompt,
 	isAuthError,
+	isModelProviderFallbackError,
 	isRateLimitError,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
@@ -1766,6 +1677,24 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	return cleaned;
 }
 
+/**
+ * Restore PII surrogates → real values at the final user-facing reply egress
+ * (#10827). The NER pseudonymization layer swaps real PII to surrogates on
+ * ingress and restores them at the tool-call execution boundary
+ * (`execute-planned-tool-call.ts`) — but a direct/terminal reply that does NOT
+ * go through a tool call was still shipping the surrogate to the user. Mirror
+ * the tool-call egress restore here so the user (and the persisted assistant
+ * message they read back) sees the real value, while the model, trajectory,
+ * logs, and providers upstream keep the surrogate. Best-effort + a zero-cost
+ * no-op when PII swap is disabled (no session on the trajectory context) or the
+ * text carries no surrogate. Scoped to the reply TEXT only — the `thought`
+ * (reasoning trajectory) is intentionally left pseudonymized.
+ */
+export function restorePiiInUserReplyText(text: string): string {
+	const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
+	return piiSwapSession ? piiSwapSession.restoreInValue(text) : text;
+}
+
 function createV5ReplyStrategyResult(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1780,7 +1709,7 @@ function createV5ReplyStrategyResult(args: {
 		thought: args.thought,
 		actions: ["REPLY"],
 		providers: [],
-		text: args.text,
+		text: restorePiiInUserReplyText(args.text),
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
@@ -3842,11 +3771,6 @@ export function messageHandlerFromFieldResult(
 	);
 	const requestedPlanning =
 		initialPlanningContexts.length > 0 || validCandidateCount > 0;
-	const stage1HonestyViolation = looksLikeStage1HonestyViolation(replyTextRaw);
-	const forceHonestyPlanning =
-		processMessage === "RESPOND" &&
-		looksLikeNonRefusalStage1HonestyViolation(replyTextRaw);
-	const requestedPlanningForRouting = requestedPlanning || forceHonestyPlanning;
 	// The model can explicitly commit to delegation: for a genuine coding-work
 	// request it routes to a non-simple context of its OWN choosing AND names a
 	// runnable coding-delegation / spawn-class action in its OWN candidate list
@@ -3861,18 +3785,37 @@ export function messageHandlerFromFieldResult(
 	// candidate backstop (which excludes creative-writing / explanation asks), so
 	// it is model-agnostic and regresses neither the direct-answer nor the
 	// poem-about-an-app path.
+	// An explicit, runnable spawn/delegation candidate in the model's OWN
+	// candidate list — for a message that structurally looks like coding work — is
+	// a firm "delegate this" commitment, and must win EVEN when the model ALSO
+	// (contradictorily) routed contexts=[simple] with a chatty complete-looking
+	// replyText. Previously this also required a non-simple planning context
+	// (`initialPlanningContexts.length > 0`); dropping that requirement closes the
+	// live bug where "build the app" came back with contexts=[simple] +
+	// candidateActionNames=[TASKS_SPAWN_AGENT], so shouldPreferCompleteDirectReply
+	// treated the spawn as "weak", suppressed it, and the bot said "I'm building
+	// it" while never spawning. Still safe: looksLikeCodingWorkRequest excludes
+	// creative-writing / explanation asks, and the candidate must be a REGISTERED
+	// delegation action — so this never fires on a poem or a how-do-I question.
 	const modelCommittedToDelegation =
 		!preemptDirect &&
-		initialPlanningContexts.length > 0 &&
 		looksLikeCodingWorkRequest(currentMessageText) &&
 		modelProvidedRunnableDelegationCandidate(
 			rawCandidateActions,
 			runtimeContext?.actions ?? [],
+			// With a planning context the model's own routing already signals
+			// work, so any delegation-class candidate (including the ambiguous
+			// legacy alias "TASKS") confirms the commitment. In the contradictory
+			// contexts=[simple] shape the candidate is the ONLY delegation
+			// signal, so it must be unambiguous — bare "TASKS" (task-list
+			// management as much as delegation) on a loosely coding-shaped
+			// message ("update me on the project") must not override a complete
+			// direct answer into forced planning.
+			{ requireUnambiguous: initialPlanningContexts.length === 0 },
 		);
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
-		!stage1HonestyViolation &&
 		!modelCommittedToDelegation &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
@@ -3889,7 +3832,7 @@ export function messageHandlerFromFieldResult(
 		});
 	const shouldPlan =
 		!preemptDirect &&
-		requestedPlanningForRouting &&
+		requestedPlanning &&
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
@@ -3905,13 +3848,7 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	// Stage-1 honesty suppression for the planning path (elizaOS/eliza#7620).
-	// Mirrors the logic in `parseMessageHandlerOutput`: when the planner is
-	// about to run, a prompt-contract violation in `replyText` from a
-	// safety-tuned hosted model — a refusal, a training-metadata/knowledge-cutoff
-	// leak, or a fabricated-moderation claim — is dropped so the planner's own
-	// message reaches the user instead.
-	const replyText = shouldPlan && stage1HonestyViolation ? "" : replyTextRaw;
+	const replyText = replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
@@ -4042,7 +3979,7 @@ function filterRunnableCandidateActions(
 	});
 }
 
-function applyDirectCurrentCandidateBackstopToMessageHandler(
+export function applyDirectCurrentCandidateBackstopToMessageHandler(
 	messageHandler: MessageHandlerResult,
 	runtimeContext:
 		| {
@@ -4075,6 +4012,45 @@ function applyDirectCurrentCandidateBackstopToMessageHandler(
 		runtimeContext,
 	);
 	if (runnableCandidateActions.length === 0) return messageHandler;
+
+	// The structured-envelope path (messageHandlerFromFieldResult) already refuses
+	// to force-plan over a finished answer whose only planning signals are weak,
+	// injectable ones (a simple/general context + search/shell-class candidates)
+	// via shouldPreferCompleteDirectReply. The plain-text fallback lands here
+	// instead and previously skipped that valve, so a COMPLETE plain-text answer
+	// ("Your lucky number is 4291." / a solved logic puzzle) that this backstop
+	// happened to tag with an inferred WEB_SEARCH candidate got promoted to
+	// requiresTool=true — forcing a pointless web search + a slow extra planner
+	// round, even though the identical answer in JSON form (contexts=[simple])
+	// went direct. Apply the same structural valve here so the two Stage-1 shapes
+	// route identically. Live-info stays correct: its Stage-1 reply is an ack
+	// ("Checking the price now."), not a complete answer, so it fails
+	// looksLikeCompleteDirectReply and still forces the fetch. Coding/spawn stays
+	// correct too: a strong (non-weak) candidate fails hasOnlyWeakDirectReplyPlanningSignals.
+	// The extra !looksLikeCodingWorkRequest guard mirrors the structured path's
+	// !modelCommittedToDelegation gate: spawn-class actions (TASKS_SPAWN_AGENT, …)
+	// are ALSO in the weak-override set, so without this a plain-text "build the
+	// app" reply that read as a complete sentence could be kept direct and never
+	// spawn. Restricting the valve to non-coding-work turns keeps the build-spawn
+	// path intact while still short-circuiting finished plain-text answers.
+	// The !looksLikeWebSearchRequest guard closes the freshness hole the valve
+	// would otherwise open (adversarial review): on an explicitly fresh ask
+	// ("what's the current BTC price?") a model that confidently HALLUCINATES a
+	// complete-looking plain-text answer must not be kept direct — a stale price
+	// delivered confidently is worse than the extra fetch. The valve's wins
+	// (lucky-number echoes, solved riddles, static knowledge) carry no
+	// current-info signal and keep taking the direct path.
+	if (
+		!looksLikeCodingWorkRequest(currentMessageText) &&
+		!looksLikeWebSearchRequest(currentMessageText) &&
+		shouldPreferCompleteDirectReply({
+			replyText: String(messageHandler.plan.reply ?? ""),
+			candidateActions: runnableCandidateActions,
+			contexts: messageHandler.plan.contexts ?? [],
+		})
+	) {
+		return messageHandler;
+	}
 
 	const planningContexts = (messageHandler.plan.contexts ?? []).filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
@@ -4116,7 +4092,6 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	const normalized = replyText.trim();
 	if (normalized.length < 24) return false;
 	if (looksLikeProgressOnlyReply(normalized)) return false;
-	if (looksLikeStage1HonestyViolation(normalized)) return false;
 	return (
 		/[.!?。！？]$/u.test(normalized) || normalized.split(/\s+/u).length >= 8
 	);
@@ -4169,13 +4144,22 @@ function shouldPreferCompleteDirectReply(args: {
 function modelProvidedRunnableDelegationCandidate(
 	candidateActions: readonly string[],
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	opts?: { requireUnambiguous?: boolean },
 ): boolean {
 	if (candidateActions.length === 0) return false;
 	const delegationActionName = findCodingDelegationActionName(actions);
 	if (!delegationActionName) return false;
+	// Bare "TASKS" is the one legacy alias that is ambiguous — it names task-list
+	// management as readily as coding delegation. When the caller needs an
+	// unambiguous commitment (no planning context backing the candidate), it only
+	// counts if the REGISTERED delegation action is itself named TASKS (then the
+	// model named the real action, not the ambiguous alias).
+	const legacyNames = opts?.requireUnambiguous
+		? LEGACY_CODING_DELEGATION_ACTION_NAMES.filter((name) => name !== "TASKS")
+		: LEGACY_CODING_DELEGATION_ACTION_NAMES;
 	const wanted = new Set<string>([
 		normalizeActionIdentifier(delegationActionName),
-		...LEGACY_CODING_DELEGATION_ACTION_NAMES.map(normalizeActionIdentifier),
+		...legacyNames.map(normalizeActionIdentifier),
 	]);
 	return candidateActions.some((name) =>
 		wanted.has(normalizeActionIdentifier(name)),
@@ -4213,6 +4197,7 @@ const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
 		"TASKS",
 		"TASKS_SPAWN_AGENT",
 		"TERMINAL",
+		"WEB_FETCH",
 		"WEB_SEARCH",
 	].map(normalizeActionIdentifier),
 );
@@ -5212,6 +5197,78 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 	return false;
 }
 
+/**
+ * One entry per executed sub-planner step, projected for the parent loop. This
+ * is the structured record the outer planner's next turn reasons over so it can
+ * see which multi-step operations already succeeded and advance to the next one
+ * instead of re-dispatching the umbrella action from scratch (issue
+ * elizaOS/eliza#8007).
+ */
+interface SubPlannerSubStep {
+	action: string;
+	success: boolean;
+	summary?: string;
+	error?: string;
+}
+
+const SUB_STEP_SUMMARY_MAX_CHARS = 400;
+
+function truncateSubStepText(text: string): string {
+	const trimmed = text.trim();
+	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
+	return `${trimmed.slice(0, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+}
+
+function collectSubPlannerSubSteps(
+	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
+): SubPlannerSubStep[] {
+	const subSteps: SubPlannerSubStep[] = [];
+	for (const step of subResult.trajectory.steps) {
+		if (!step.toolCall?.name || !step.result) continue;
+		const result = step.result;
+		const errorText =
+			typeof result.error === "string"
+				? result.error
+				: result.error instanceof Error
+					? result.error.message
+					: undefined;
+		const summarySource =
+			typeof result.text === "string" && result.text.trim().length > 0
+				? result.text
+				: typeof result.userFacingText === "string"
+					? result.userFacingText
+					: undefined;
+		subSteps.push({
+			action: step.toolCall.name,
+			success: result.success,
+			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
+			...(errorText ? { error: truncateSubStepText(errorText) } : {}),
+		});
+	}
+	return subSteps;
+}
+
+/**
+ * Diagnostic, log-shaped projection of the full sub-planner trajectory. Renders
+ * every executed sub-step as `OK/FAIL <action>: <summary/error>` so the parent
+ * planner's tool-result message carries the progression (e.g.
+ * `OK provision_workspace, OK spawn_agent, FAIL submit_workspace`) instead of
+ * only the terminal step. Without this the outer LLM cannot tell that step 1
+ * already succeeded and re-dispatches the umbrella action on every CONTINUE
+ * turn.
+ */
+function renderSubStepDiagnosticText(subSteps: SubPlannerSubStep[]): string {
+	return subSteps
+		.map((step) => {
+			const marker = step.success ? "OK" : "FAIL";
+			const detail = step.error ?? step.summary;
+			return detail
+				? `${marker} ${step.action}: ${detail}`
+				: `${marker} ${step.action}`;
+		})
+		.join("\n");
+}
+
 export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
@@ -5220,17 +5277,47 @@ export function subPlannerResultToPlannerToolResult(
 		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
 	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
+
+	// Aggregate every executed sub-step, not just the terminal one, so the
+	// parent planner's next turn can see which operations already succeeded and
+	// advance to the next op instead of re-running the umbrella action from the
+	// first step (issue elizaOS/eliza#8007). The per-step progression flows to
+	// the outer LLM through `text` (the diagnostic tool-result projection) and
+	// to downstream action context through `data.subSteps` /
+	// `data.completedSubActions`.
+	const subSteps = collectSubPlannerSubSteps(subResult);
+	const diagnosticText = renderSubStepDiagnosticText(subSteps);
+	const completedSubActions = subSteps
+		.filter((step) => step.success)
+		.map((step) => step.action);
+	const terminalData = lastStep?.result?.data;
+	const data =
+		terminalData || subSteps.length > 0
+			? {
+					...(terminalData ?? {}),
+					...(subSteps.length > 0
+						? {
+								subSteps,
+								completedSubActions,
+							}
+						: {}),
+				}
+			: undefined;
+
 	return {
 		success,
-		text: userFacingText,
+		// Diagnostic channel: the whole progression, so CONTINUE re-planning
+		// sees the completed steps. Falls back to the user-facing text when the
+		// sub-planner executed no discrete steps.
+		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
 		userFacingText,
-		data: lastStep?.result?.data,
+		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
 		// loop. A sub-action that returns `continueChain: false` (e.g.
-		// TASKS_SPAWN_AGENT — fire-and-forget) terminates the sub-planner,
+		// TASKS_SPAWN_AGENT, fire-and-forget) terminates the sub-planner,
 		// but without this the parent planner loop never sees the flag,
-		// evaluates CONTINUE, and re-runs the umbrella action — producing
+		// evaluates CONTINUE, and re-runs the umbrella action, producing
 		// duplicate spawns on a single user turn.
 		continueChain: lastStep?.result?.continueChain,
 	};
@@ -6111,7 +6198,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			typeof onResponseHandlerEarlyReply === "function";
 		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
 			await onResponseHandlerEarlyReply({
-				text: earlyReplyText,
+				text: restorePiiInUserReplyText(earlyReplyText),
 				messageHandler,
 			});
 		}
@@ -6964,22 +7051,8 @@ function unwrapPlannerIdentifier(value: string): string {
 	return trimmed;
 }
 
-const PLANNER_PROVIDER_ALIASES = new Map(
-	[
-		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
-		["INBOX_TRIAGE", "inboxTriage"],
-		["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
-		["PENDING_DRAFTS", "inboxTriage"],
-		["DRAFTS", "inboxTriage"],
-	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
-);
-
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
-);
-
-const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
-	["REPLY", "RESPOND", "NONE", "IGNORE"].map(normalizeActionIdentifier),
 );
 
 // Actions the planner selects as explicit delegation / orchestration intent.
@@ -6992,8 +7065,8 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // structure the planner matches on ("every N minutes", "at 7am daily",
 // "schedule a cron task") does not keyword-overlap with the action's
 // description the way owner reminder/todo prose does.
-// Without these entries, the correction layer (findOwnedActionCorrectionFromMetadata)
-// routinely overrides a correct CREATE_CRON / WORKFLOW pick on
+// Without these entries, the metadata-overlap correction path routinely
+// overrides a correct CREATE_CRON / WORKFLOW pick on
 // page-automations with owner task actions based on fuzzy description overlap — breaking
 // the scope-gated routing on the page-automations surface.
 // CONTACT/ENTITY are explicit umbrella actions for contacts /
@@ -7020,599 +7093,12 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // scoring over-values for owner/life actions. If the planner already selected
 // a concrete media/ad action, do not rewrite it to LIFE/CALENDAR/etc. based on
 // incidental overlap.
-const EXPLICIT_INTENT_ACTIONS = new Set(
-	[
-		"SPAWN_AGENT",
-		"START_CODING_TASK",
-		"CREATE_TASK",
-		"GENERATE_IMAGE",
-		"GENERATE_MEDIA",
-		"CREATE_IMAGE",
-		"CAPTURE_IMAGE",
-		"PRODUCE_AGENT_AD_CREATIVE",
-		"PUBLISH_AGENT_AD_PACK",
-		"MANAGE_AGENT_ADS",
-		"ATTACHMENT",
-		"TRANSCRIBE_MEDIA",
-		"DOWNLOAD_MEDIA",
-		"CHAT_WITH_ATTACHMENTS",
-		"MESSAGE",
-		"POST",
-		"SUMMARIZE_CONVERSATION",
-		"SERVER_INFO",
-		"WORKFLOW",
-		"TRIGGER",
-		"CREATE_TRIGGER",
-		"SCHEDULE_TRIGGER",
-		"SCHEDULE_TASK",
-		"CREATE_HEARTBEAT",
-		"SCHEDULE_HEARTBEAT",
-		"CREATE_AUTOMATION",
-		"SCHEDULE_AUTOMATION",
-		"CREATE_CRON",
-		"CREATE_RECURRING",
-		"CONTACT",
-		"ENTITY",
-		// Owner task actions pick routine / reminder / todo / habit / goal intents that
-		// frequently mention a verb-noun pair the corrector will mis-rewrite.
-		// "remember to call mom on Sunday" → planner correctly picks OWNER_REMINDERS
-		// (a reminder), but the corrector keyword-rescores it to
-		// VOICE_CALL because of "call". Trust the planner's pick.
-		"OWNER_REMINDERS",
-		"OWNER_TODOS",
-		"OWNER_ROUTINES",
-		"OWNER_GOALS",
-	].map(normalizeActionIdentifier),
-);
-
-function _shouldAttemptCanonicalActionRepair(
-	rawPlannerActions: string[],
-	normalizedActions: string[],
-): boolean {
-	const hasUnknownOperationalAction = rawPlannerActions.some((actionName) => {
-		const normalized = normalizeActionIdentifier(actionName);
-		return (
-			normalized.length > 0 &&
-			!ACTION_REPAIR_PASSIVE_ACTIONS.has(normalized) &&
-			!PLANNER_CONTROL_ACTIONS.has(normalized)
-		);
-	});
-
-	if (!hasUnknownOperationalAction) {
-		return false;
-	}
-
-	return (
-		normalizedActions.length === 0 ||
-		normalizedActions.every((actionName) =>
-			ACTION_REPAIR_PASSIVE_ACTIONS.has(normalizeActionIdentifier(actionName)),
-		)
-	);
-}
-
-function buildCanonicalActionRepairPrompt(args: {
-	userText: string;
-	rawPlannerActions: string[];
-	rawPlannerProviders: string[];
-	plannerReplyText: string;
-	availableActionNames: string[];
-}): string {
-	const plannerReplyText =
-		args.plannerReplyText.trim().length > 0
-			? args.plannerReplyText.trim()
-			: "(empty)";
-	const rawPlannerActions = `planner_actions_raw: ${JSON.stringify(args.rawPlannerActions)}`;
-	const rawPlannerProviders = `planner_providers_raw: ${JSON.stringify(args.rawPlannerProviders)}`;
-	const availableRuntimeActions = `available_runtime_actions: ${JSON.stringify(args.availableActionNames)}`;
-
-	return [
-		"You are repairing an action-planner output that used a non-canonical action name.",
-		"Choose ONLY from the available runtime actions below.",
-		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
-		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
-		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
-		"Return ONLY a JSON object with top-level fields: actions, providers, params, and optional text.",
-		'Use "actions": ["ACTION_NAME"] for selected actions and a params object keyed by action name when inputs are needed.',
-		"Do not include text unless there is truly no matching runtime action.",
-		"",
-		`user_message:\n${args.userText}`,
-		"",
-		rawPlannerActions,
-		"",
-		rawPlannerProviders,
-		"",
-		`planner_reply_text:\n${plannerReplyText}`,
-		"",
-		availableRuntimeActions,
-		"",
-		"Example:",
-		'user_message: "Pull up a dossier on Satya Nadella."',
-		'planner_actions_raw: ["LOOKUP"]',
-		"output:",
-		JSON.stringify(
-			{
-				actions: ["DOSSIER"],
-				providers: [],
-				params: { DOSSIER: { subject: "Satya Nadella" } },
-			},
-			null,
-			2,
-		),
-	].join("\n");
-}
-
-async function _repairCanonicalPlannerActions(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	rawPlannerActions: string[];
-	rawPlannerProviders: string[];
-	plannerReplyText: string;
-}): Promise<Record<string, unknown> | null> {
-	const availableActionNames = Array.from(
-		new Set(
-			(args.runtime.actions ?? [])
-				.map((action) => action.name?.trim())
-				.filter((name): name is string => Boolean(name)),
-		),
-	).sort();
-
-	if (availableActionNames.length === 0) {
-		return null;
-	}
-
-	const repairPrompt = buildCanonicalActionRepairPrompt({
-		userText: String(args.message.content.text ?? ""),
-		rawPlannerActions: args.rawPlannerActions,
-		rawPlannerProviders: args.rawPlannerProviders,
-		plannerReplyText: args.plannerReplyText,
-		availableActionNames,
-	});
-
-	return args.runtime.dynamicPromptExecFromState({
-		state: { values: {}, data: {}, text: "" } as State,
-		params: {
-			prompt: repairPrompt,
-		},
-		schema: [
-			{
-				field: "actions",
-				description: "Selected canonical runtime action names",
-				type: "array",
-				items: { description: "One canonical runtime action name" },
-				required: true,
-				validateField: false,
-				streamField: false,
-			},
-			{
-				field: "providers",
-				description: "Optional provider names needed before the action",
-				type: "array",
-				items: { description: "One provider name" },
-				required: false,
-				validateField: false,
-				streamField: false,
-			},
-			{
-				field: "params",
-				description:
-					"Optional JSON object keyed by action name with repaired action params",
-				type: "object",
-				required: false,
-				validateField: false,
-				streamField: false,
-			},
-			{
-				field: "text",
-				description:
-					"Optional fallback reply only when no runtime action matches",
-				required: false,
-				validateField: false,
-				streamField: false,
-			},
-		],
-		options: {
-			modelType: ModelType.TEXT_LARGE,
-			contextCheckLevel: 0,
-			maxRetries: 1,
-		},
-	});
-}
-
-function _buildProviderFollowupPrompt(basePrompt: string): string {
-	return `${basePrompt}
-
-[PROVIDER FOLLOW-UP]
-The requested providers have already been executed, and their grounded results are now present in context above.
-Use those provider results to produce the final reply and/or action plan for this turn.
-Do not ask for the same providers again.
-If the provider results fully answer the user, reply directly.
-If DOCUMENTS contains a direct answer, prefer that grounded answer even when DOCUMENTS lists multiple files.
-Do not ask "which file?" when the grounded DOCUMENTS result already resolves the request.`;
-}
-
-function _buildActionRescuePrompt(
-	basePrompt: string,
-	draftReply: string,
-): string {
-	const trimmedDraftReply = draftReply.trim();
-	const draftSection =
-		trimmedDraftReply.length > 0
-			? `\n[PREVIOUS DRAFT REPLY]\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n`
-			: "";
-
-	return `${basePrompt}
-
-	[ACTION RESCUE]
-	The previous draft stayed in prose-only mode or selected only passive reply actions.
-	Re-evaluate the turn using the same available actions and providers already in context above.
-	If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
-	Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
-	Missing details like the exact time, participant list, channel, platform, portal login, file arrival, itinerary specifics, or which item is at risk are not a reason to fall back to REPLY when a listed action can own the follow-up.
-	When the user is defining a durable policy or future-condition workflow such as missed-call repair, contextual bumping, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, multi-device meeting ladders, cancellation-fee warnings, outstanding event-asset checklists, or calling the owner if the agent gets stuck, picking only REPLY is wrong if a listed action can store or queue that behavior.
-	For live checklist questions like what slides, bio, title, portal assets, drafts, or pending items the owner still owes, choose the owning inbox/calendar/computer-use action instead of answering from memory or treating it like a generic LifeOps reminder.
-	If the draft reply merely acknowledges the task or asks for details before selecting an owning action, treat that draft as incomplete and repair it.
-	Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
-}
-
-function _buildActionOnlyRescuePrompt(draftReply: string): string {
-	const trimmedDraftReply = draftReply.trim();
-	const draftSection =
-		trimmedDraftReply.length > 0
-			? `Draft reply:\n${trimmedDraftReply}\n\n`
-			: "";
-
-	return `Select the single best action for this turn using only the available actions already in context above.
-
-	Rules:
-	- Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
-	- If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
-	- If the right action still needs clarification, choose that action anyway.
-	- A reply that only says "tell me more", "which one?", "send it over", "I can do that", or "let me know the details" is wrong when an owning action can store or queue the workflow.
-	- Durable requests like missed-call repair, contextual bump rules, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, device reminder ladders, cancellation-fee warnings, event-asset checklists, and call-me-if-stuck escalations must choose the owning action on this turn.
-	- Choose REPLY only when no listed action owns the request.
-	- Do not invent action names.
-
-Examples:
-- "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> CALENDAR
-- "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> CALENDAR
-- "repair that missed call and hold the note for approval" -> MESSAGE action=triage
-- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> MESSAGE action=draft_followup
-	- "if direct relaying gets messy, suggest a group chat handoff" -> MESSAGE action=triage
-	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> MESSAGE action=list_inbox
-	- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> CALENDAR
-	- "capture my reusable flight and hotel preferences" -> REPLY
-	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> CALENDAR
-	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> PERSONAL_ASSISTANT action=book_travel
-	- "when I'm done with the PPT, upload it to the speaker portal for me" -> COMPUTER_USE
-	- "if you get stuck in the browser or on my computer, call me" -> VOICE_CALL
-- "check disk space on this VPS with df -h" -> SHELL
-	- "what is the current BTC price in USD?" -> SEARCH
-
-${draftSection}Return JSON only:
-{
-  "thought": "short reasoning",
-  "actions": ["ACTION_NAME"]
-}`;
-}
-
-const ROUTING_REASSESS_ACTIONS = new Set(
-	["OWNER_TODOS", "OWNER_REMINDERS", "COMPUTER_USE", "OWNER_FINANCES"].map(
-		normalizeActionIdentifier,
-	),
-);
-
-const ACTION_OWNERSHIP_STOPWORDS = new Set([
-	"a",
-	"an",
-	"and",
-	"are",
-	"as",
-	"at",
-	"be",
-	"because",
-	"can",
-	"could",
-	"do",
-	"for",
-	"from",
-	"get",
-	"go",
-	"here",
-	"i",
-	"if",
-	"in",
-	"into",
-	"is",
-	"it",
-	"just",
-	"let",
-	"me",
-	"my",
-	"now",
-	"of",
-	"on",
-	"or",
-	"our",
-	"please",
-	"so",
-	"that",
-	"the",
-	"them",
-	"this",
-	"to",
-	"up",
-	"we",
-	"when",
-	"with",
-	"you",
-	"your",
-]);
-
-const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
-	/\b(?:if|when)\b/iu,
-	/\b(?:upload|send over|send|attach)\b/iu,
-	/\b(?:remind|warning|warn|nudge|alert)\b/iu,
-	/\b(?:book|schedule|reschedule|follow up|bump|handoff|route|escalat|calls?)\b/iu,
-	/\b(?:cancel|push|move|meeting|meetings|partnership|next month)\b/iu,
-	/\b(?:remember|store|save|keep track|set (?:up|a|an)|policy|workflow)\b/iu,
-	/\b(?:asset|assets|checklist|owe|owed|deadline|slides|bio|portal)\b/iu,
-	/\b(?:sign|signature|appointment|clinic|docs?)\b/iu,
-];
-
-const ACTION_METADATA_FUTURE_HINTS =
-	/\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
-
 export type ActionOwnershipSuggestion = {
 	actionName: string;
 	score: number;
 	secondBestScore: number;
 	reasons: string[];
 };
-
-type ActionOwnershipCandidate = {
-	actionName: string;
-	score: number;
-	reasons: string[];
-};
-
-function tokenizeOwnershipText(text: string): string[] {
-	return text
-		.toLowerCase()
-		.split(/[^a-z0-9]+/u)
-		.map((token) => token.trim())
-		.filter(
-			(token) => token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
-		);
-}
-
-function buildTokenSet(text: string): Set<string> {
-	return new Set(tokenizeOwnershipText(text));
-}
-
-function exampleContentText(action: Action): string[] {
-	return (action.examples ?? []).flatMap((example) =>
-		example.flatMap((turn) => {
-			const text =
-				typeof turn.content?.text === "string" ? turn.content.text.trim() : "";
-			return text.length > 0 ? [text] : [];
-		}),
-	);
-}
-
-function splitActionMetadataText(value: string): string[] {
-	const trimmed = value.trim();
-	if (trimmed.length === 0) {
-		return [];
-	}
-	return trimmed
-		.split(/(?:[\r\n]+|(?<=[.!?;])\s+)/u)
-		.map((chunk) => chunk.trim())
-		.filter((chunk) => chunk.length > 0);
-}
-
-function actionMetadataTexts(action: Action): string[] {
-	return [
-		action.name,
-		action.description,
-		action.descriptionCompressed,
-		...(action.tags ?? []),
-		...(action.similes ?? []),
-		...exampleContentText(action),
-	]
-		.filter(
-			(value): value is string =>
-				typeof value === "string" && value.trim().length > 0,
-		)
-		.flatMap((value) => splitActionMetadataText(value));
-}
-
-function scoreActionOwnershipMatch(
-	messageText: string,
-	action: Action,
-): { score: number; reasons: string[] } {
-	const messageTokens = buildTokenSet(messageText);
-	if (messageTokens.size === 0) {
-		return { score: 0, reasons: [] };
-	}
-
-	let score = 0;
-	const reasons: string[] = [];
-	let bestExampleScore = 0;
-	const normalizedMessage = messageText.toLowerCase();
-	const actionMetadataBlob = actionMetadataTexts(action)
-		.join(" ")
-		.toLowerCase();
-
-	for (const chunk of actionMetadataTexts(action)) {
-		const chunkTokens = buildTokenSet(chunk);
-		if (chunkTokens.size === 0) {
-			continue;
-		}
-		const overlap = [...messageTokens].filter((token) =>
-			chunkTokens.has(token),
-		);
-		if (overlap.length === 0) {
-			continue;
-		}
-		const normalizedChunk = chunk.toLowerCase();
-		const overlapRatio = overlap.length / Math.max(3, chunkTokens.size);
-		if (
-			/\b(?:do not use this for|don't use this for|not for|belongs? to)\b/iu.test(
-				normalizedChunk,
-			)
-		) {
-			score -= overlap.length * 1.25 + overlapRatio;
-			if (overlap.length >= 2) {
-				reasons.push(`negative:${overlap.slice(0, 4).join(",")}`);
-			}
-			continue;
-		}
-		score += overlap.length * 1.25 + overlapRatio;
-		if (overlap.length >= 2) {
-			reasons.push(`overlap:${overlap.slice(0, 4).join(",")}`);
-		}
-
-		if (
-			normalizedChunk.length > 12 &&
-			(normalizedMessage.includes(normalizedChunk) ||
-				normalizedChunk.includes(normalizedMessage))
-		) {
-			score += 3;
-			reasons.push("phrase");
-		}
-
-		const exampleTokens = tokenizeOwnershipText(chunk);
-		if (exampleTokens.length >= 3) {
-			const exampleOverlap = overlap.length / exampleTokens.length;
-			if (exampleOverlap > bestExampleScore) {
-				bestExampleScore = exampleOverlap;
-			}
-		}
-	}
-
-	if (bestExampleScore >= 0.6) {
-		score += 4;
-		reasons.push("example");
-	}
-
-	if (
-		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
-			messageText,
-		) &&
-		/\b(?:sleep window|no-call|blackout|preferred hours?|meeting preferences|scheduling rules)\b/iu.test(
-			actionMetadataBlob,
-		)
-	) {
-		score += 4;
-		reasons.push("schedule-policy");
-	}
-
-	if (
-		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
-			pattern.test(messageText),
-		) &&
-		ACTION_METADATA_FUTURE_HINTS.test(
-			[action.description, ...(action.tags ?? []), ...(action.similes ?? [])]
-				.filter(Boolean)
-				.join(" "),
-		)
-	) {
-		score += 2;
-		reasons.push("workflow");
-	}
-
-	return { score, reasons };
-}
-
-function findDirectOwnedActionSuggestion(
-	runtime: Pick<IAgentRuntime, "actions">,
-	messageText: string,
-): ActionOwnershipSuggestion | null {
-	if (looksLikeLocalShellRequest(messageText)) {
-		const shellAction = findRuntimeActionByNames(runtime, [
-			"SHELL",
-			"RUN_IN_TERMINAL",
-			"RUN_COMMAND",
-			"EXECUTE_COMMAND",
-			"TERMINAL",
-			"SHELL",
-			"RUN_SHELL",
-			"EXEC",
-		]);
-		if (shellAction) {
-			return {
-				actionName: shellAction.name,
-				score: 100,
-				secondBestScore: 0,
-				reasons: ["direct:local-shell-check"],
-			};
-		}
-	}
-
-	if (looksLikeWebSearchRequest(messageText)) {
-		const searchAction = findRuntimeActionByNames(runtime, [
-			"SEARCH",
-			"WEB_SEARCH",
-			"SEARCH_WEB",
-			"BRAVE_SEARCH",
-			"INTERNET_SEARCH",
-			"SEARCH_INTERNET",
-			"LOOKUP_WEB",
-			"GOOGLE",
-		]);
-		if (searchAction) {
-			return {
-				actionName: searchAction.name,
-				score: 100,
-				secondBestScore: 0,
-				reasons: ["direct:web-search"],
-			};
-		}
-	}
-
-	if (
-		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
-			messageText,
-		)
-	) {
-		const calendarAction = (runtime.actions ?? []).find(
-			(action) =>
-				normalizeActionIdentifier(action.name) ===
-				normalizeActionIdentifier("CALENDAR"),
-		);
-		if (calendarAction) {
-			return {
-				actionName: calendarAction.name,
-				score: 100,
-				secondBestScore: 0,
-				reasons: ["direct:schedule-policy"],
-			};
-		}
-	}
-
-	return null;
-}
-
-function findRuntimeActionByNames(
-	runtime: Pick<IAgentRuntime, "actions">,
-	names: string[],
-): Action | undefined {
-	// Resolve in `names` PRIORITY order, not action-registration order, so the
-	// leading preference wins (mirrors findAvailableActionName in
-	// direct-action-heuristics.ts).
-	const actions = runtime.actions ?? [];
-	for (const want of names) {
-		const wanted = normalizeActionIdentifier(want);
-		const match = actions.find((action) => {
-			const candidates = [action.name, ...(action.similes ?? [])]
-				.filter((value): value is string => typeof value === "string")
-				.map(normalizeActionIdentifier);
-			return candidates.includes(wanted);
-		});
-		if (match) return match;
-	}
-	return undefined;
-}
 
 function looksLikeActionExplanationRequest(text: string): boolean {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
@@ -7764,207 +7250,6 @@ function looksLikeCreativeCodingWorkRequest(text: string): boolean {
 	);
 }
 
-function _hasSelectedShellCommandAction(
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): boolean {
-	return (
-		responseContent?.actions?.some(
-			(actionName) =>
-				typeof actionName === "string" &&
-				[normalizeActionIdentifier("SHELL")].includes(
-					normalizeActionIdentifier(actionName),
-				),
-		) ?? false
-	);
-}
-
-function _hasSelectedSearchAction(
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): boolean {
-	return (
-		responseContent?.actions?.some((actionName) => {
-			if (typeof actionName !== "string") {
-				return false;
-			}
-			const normalized = normalizeActionIdentifier(actionName);
-			return (
-				normalized === normalizeActionIdentifier("SEARCH") ||
-				normalized === normalizeActionIdentifier("WEB_SEARCH")
-			);
-		}) ?? false
-	);
-}
-
-function _mergeLocalShellCommandParams(
-	existingParams: Content["params"],
-	command: string,
-): Content["params"] {
-	if (
-		existingParams &&
-		typeof existingParams === "object" &&
-		!Array.isArray(existingParams)
-	) {
-		return {
-			...(existingParams as Record<string, unknown>),
-			SHELL: {
-				...(((existingParams as Record<string, unknown>).SHELL as
-					| Record<string, unknown>
-					| undefined) ?? {}),
-				command,
-			},
-		} as Content["params"];
-	}
-
-	return {
-		SHELL: { command },
-	} as Content["params"];
-}
-
-function _mergeWebSearchQueryParams(
-	existingParams: Content["params"],
-	query: string,
-): Content["params"] {
-	if (
-		existingParams &&
-		typeof existingParams === "object" &&
-		!Array.isArray(existingParams)
-	) {
-		return {
-			...(existingParams as Record<string, unknown>),
-			SEARCH: {
-				...(((existingParams as Record<string, unknown>).SEARCH as
-					| Record<string, unknown>
-					| undefined) ?? {}),
-				category: "web",
-				query,
-			},
-		} as Content["params"];
-	}
-
-	return {
-		SEARCH: { category: "web", query },
-	} as Content["params"];
-}
-
-export function suggestOwnedActionFromMetadata(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Pick<Memory, "content">,
-): ActionOwnershipSuggestion | null {
-	const messageText = getUserMessageText(message);
-	if (messageText.length === 0) {
-		return null;
-	}
-
-	const directSuggestion = findDirectOwnedActionSuggestion(
-		runtime,
-		messageText,
-	);
-	if (directSuggestion) {
-		return directSuggestion;
-	}
-
-	if (
-		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
-			pattern.test(messageText),
-		)
-	) {
-		return null;
-	}
-
-	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
-		.filter((action) => {
-			const normalized = normalizeActionIdentifier(action.name);
-			return (
-				normalized.length > 0 &&
-				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(normalized) &&
-				normalized !== normalizeActionIdentifier("IGNORE") &&
-				normalized !== normalizeActionIdentifier("STOP")
-			);
-		})
-		.map((action) => ({
-			actionName: action.name,
-			...scoreActionOwnershipMatch(messageText, action),
-		}))
-		.filter((candidate) => candidate.score > 0)
-		.sort((left, right) => right.score - left.score);
-
-	if (ranked.length === 0) {
-		return null;
-	}
-
-	const best = ranked[0];
-	const secondBestScore = ranked[1]?.score ?? 0;
-	if (best.score < 8 || best.score - secondBestScore < 1.5) {
-		return null;
-	}
-
-	return {
-		actionName: best.actionName,
-		score: best.score,
-		secondBestScore,
-		reasons: best.reasons,
-	};
-}
-
-export function findOwnedActionCorrectionFromMetadata(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Pick<Memory, "content">,
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): ActionOwnershipSuggestion | null {
-	const hasExplicitIntent = (responseContent?.actions ?? []).some(
-		(actionName) =>
-			typeof actionName === "string" &&
-			EXPLICIT_INTENT_ACTIONS.has(normalizeActionIdentifier(actionName)),
-	);
-	if (hasExplicitIntent) {
-		return null;
-	}
-
-	const currentAction = responseContent?.actions?.find(
-		(actionName) =>
-			typeof actionName === "string" &&
-			!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
-				normalizeActionIdentifier(actionName),
-			) &&
-			normalizeActionIdentifier(actionName) !==
-				normalizeActionIdentifier("IGNORE") &&
-			normalizeActionIdentifier(actionName) !==
-				normalizeActionIdentifier("STOP"),
-	);
-	if (!currentAction) {
-		return null;
-	}
-
-	const suggestion = suggestOwnedActionFromMetadata(runtime, message);
-	if (!suggestion) {
-		return null;
-	}
-
-	if (
-		normalizeActionIdentifier(suggestion.actionName) ===
-		normalizeActionIdentifier(currentAction)
-	) {
-		return null;
-	}
-
-	const currentActionDef = (runtime.actions ?? []).find(
-		(action) =>
-			normalizeActionIdentifier(action.name) ===
-			normalizeActionIdentifier(currentAction),
-	);
-	const currentScore = currentActionDef
-		? scoreActionOwnershipMatch(
-				typeof message.content?.text === "string" ? message.content.text : "",
-				currentActionDef,
-			).score
-		: 0;
-	if (suggestion.score - currentScore < 4) {
-		return null;
-	}
-
-	return suggestion;
-}
-
 function hasNonPassiveAction(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -8040,481 +7325,6 @@ export function shouldPromoteExplicitReplyToOwnedAction(
 		suggestion.reasons.includes("direct:local-shell-check") ||
 		suggestion.reasons.includes("direct:web-search")
 	);
-}
-
-function _shouldAttemptActionRescue(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Memory,
-	state: State,
-	responseContent:
-		| Pick<Content, "actions" | "providers" | "text">
-		| null
-		| undefined,
-): boolean {
-	if (!responseContent) {
-		return false;
-	}
-
-	if (hasNonPassiveAction(responseContent)) {
-		return false;
-	}
-
-	const draftText = String(responseContent.text ?? "").trim();
-	const source =
-		typeof message.content === "object" && message.content
-			? (message.content as { source?: unknown }).source
-			: undefined;
-	if (source === "discord" && draftText.length > 0) {
-		return false;
-	}
-	if (hasExplicitReplyIntent(responseContent) && draftText.length > 0) {
-		return false;
-	}
-
-	if (looksLikeNonActionableChatter(message)) {
-		return false;
-	}
-
-	if (looksLikeSelfPolicyExplanationRequest(message)) {
-		return false;
-	}
-
-	const availableActionNames =
-		typeof state.values?.actionNames === "string"
-			? state.values.actionNames
-			: "";
-	if (
-		availableActionNames.trim().length === 0 &&
-		(runtime.actions?.length ?? 0) === 0
-	) {
-		return false;
-	}
-
-	return true;
-}
-
-function getMessageText(message: Memory): string {
-	return getUserMessageText(message);
-}
-
-function looksLikeOwnershipSensitiveRequest(message: Memory): boolean {
-	const text = getMessageText(message).toLowerCase();
-	if (!text) {
-		return false;
-	}
-
-	return [
-		/\bif\b/,
-		/\bwhen\b/,
-		/\bwhenever\b/,
-		/\bapproval\b/,
-		/\bapprove\b/,
-		/\bgood with you\b/,
-		/\bif needed\b/,
-		/\brebook\b/,
-		/\bgroup chat\b/,
-		/\bhandoff\b/,
-		/\bbump me again\b/,
-		/\bwith context\b/,
-		/\bwhat .* still owe\b/,
-		/\bslides\b/,
-		/\bportal assets?\b/,
-		/\bupdated copy\b/,
-		/\bexpired\b/,
-		/\bcancellation fee\b/,
-		/\bimportant meetings?\b/,
-		/\bstuck\b/,
-		/\bupload it to the portal\b/,
-	].some((pattern) => pattern.test(text));
-}
-
-function _shouldAttemptOwnershipRepair(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Memory,
-	state: State,
-	responseContent:
-		| Pick<Content, "actions" | "providers" | "text">
-		| null
-		| undefined,
-): boolean {
-	if (!responseContent || !hasNonPassiveAction(responseContent)) {
-		return false;
-	}
-
-	if (looksLikeNonActionableChatter(message)) {
-		return false;
-	}
-
-	const availableActionNames =
-		typeof state.values?.actionNames === "string"
-			? state.values.actionNames
-			: "";
-	if (
-		availableActionNames.trim().length === 0 &&
-		(runtime.actions?.length ?? 0) === 0
-	) {
-		return false;
-	}
-
-	const normalizedActions = (responseContent.actions ?? [])
-		.map((actionName) =>
-			typeof actionName === "string"
-				? normalizeActionIdentifier(actionName)
-				: "",
-		)
-		.filter((actionName) => actionName.length > 0);
-	if (normalizedActions.length !== 1) {
-		return false;
-	}
-
-	return (
-		ROUTING_REASSESS_ACTIONS.has(normalizedActions[0]) &&
-		looksLikeOwnershipSensitiveRequest(message)
-	);
-}
-
-function _buildOwnershipRepairPrompt(
-	basePrompt: string,
-	selectedActionName: string,
-	draftReply: string,
-): string {
-	const trimmedDraftReply = draftReply.trim();
-	const draftSection =
-		trimmedDraftReply.length > 0
-			? `\n[PREVIOUS DRAFT REPLY]\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n`
-			: "";
-
-	return `${basePrompt}
-
-[OWNERSHIP REPAIR]
-The previous plan selected ${selectedActionName}, but that action may be too broad or the wrong surface.
-Re-evaluate the request and choose the single best owning action from the listed actions above.
-Prefer the most specific owning action for inbox coordination, calendar conflict/rebooking, approval-gated travel booking, browser/portal workflows, device-warning policies, or owner-escalation workflows.
-Generic contextual bump rules about unanswered events belong to MESSAGE action=draft_followup or an OWNER_* task surface, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
-Missing-ID or blocked-workflow prompts belong to VOICE_CALL or MESSAGE with the appropriate inbox/draft action, not COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
-Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to OWNER_TODOS unless the request is explicitly about personal todo/habit state.
-Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to calendar, OWNER_FINANCES, or call escalation actions; email unsubscribe belongs to MESSAGE action=manage unless the user explicitly asks to audit, cancel, or status-check a paid subscription.
-Flight-conflict rebooking belongs to CALENDAR even when the exact flight time or event ID still needs a follow-up.
-If the current action is already the most specific owner, keep it.${draftSection}`;
-}
-
-function _shouldAttemptProviderRescue(
-	responseContent: Pick<Content, "actions" | "providers"> | null | undefined,
-): boolean {
-	if (!responseContent) {
-		return false;
-	}
-
-	if ((responseContent.providers?.length ?? 0) > 0) {
-		return false;
-	}
-
-	const normalizedActions = (responseContent.actions ?? [])
-		.map((actionName) =>
-			typeof actionName === "string"
-				? normalizeActionIdentifier(actionName)
-				: "",
-		)
-		.filter((actionName) => actionName.length > 0);
-
-	if (normalizedActions.length === 0) {
-		return true;
-	}
-
-	return normalizedActions.every((actionName) =>
-		PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(actionName),
-	);
-}
-
-export function looksLikeSelfPolicyExplanationRequest(
-	message: Pick<Memory, "content">,
-): boolean {
-	const text =
-		typeof message.content.text === "string"
-			? message.content.text.toLowerCase()
-			: "";
-	if (!text.trim()) {
-		return false;
-	}
-
-	const hasNoWorkDirective =
-		/\b(?:do not|don't|dont|without)\s+(?:build|create|edit|change|modify|write|scaffold|run|execute|use|touch|commit|push|open|make)\b/iu.test(
-			text,
-		) ||
-		/\b(?:answer|respond)\s+(?:in|with)\s+(?:one|1|a)\s+(?:short\s+)?sentence\b/iu.test(
-			text,
-		) ||
-		/\bdo not run commands?\b/iu.test(text);
-	const asksMonetizedAppGuidance =
-		/\b(?:monetized|monetised)\b/iu.test(text) &&
-		/\b(?:workflow|skill|sdk|example app|reference app|build[- ]?monetized[- ]?app)\b/iu.test(
-			text,
-		);
-	const asksWorkspaceMap =
-		/\b(?:which|what|where)\b[\s\S]{0,120}\b(?:folder|folders|path|paths|repo|repos|repository|repositories|workspace|worktree|source)\b/iu.test(
-			text,
-		) &&
-		/\b(?:live|read[- ]?only|allowed|touch|edit|pr work|github|git config|default branch|latest)\b/iu.test(
-			text,
-		);
-	const asksAgentMethod =
-		/\b(?:what|which|how)\b[\s\S]{0,120}\b(?:workflow|workflows|skill|skills|sdk|example app|routing|configured|allowed|supposed to use|should you use)\b/iu.test(
-			text,
-		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/iu.test(text);
-	const asksQuestion =
-		/\?/.test(text) || /\b(?:what|which|where|how|should)\b/iu.test(text);
-	const asksActualWork =
-		/\b(?:build|create|make|implement|fix|edit|change|modify|write|scaffold|deploy|commit|push|open)\b[\s\S]{0,120}\b(?:app|code|file|files|pr|pull request|branch|repo|feature|bug)\b/iu.test(
-			text,
-		);
-
-	if (
-		hasNoWorkDirective &&
-		asksQuestion &&
-		(asksMonetizedAppGuidance || asksWorkspaceMap || asksAgentMethod)
-	) {
-		return true;
-	}
-
-	return (
-		asksQuestion &&
-		!asksActualWork &&
-		(asksWorkspaceMap || asksAgentMethod || asksMonetizedAppGuidance)
-	);
-}
-
-export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
-	if ((message.content.attachments?.length ?? 0) > 0) {
-		return true;
-	}
-
-	const text =
-		typeof message.content.text === "string"
-			? message.content.text.toLowerCase()
-			: "";
-	if (!text) {
-		return false;
-	}
-
-	if (looksLikeLocalShellRequest(text)) {
-		return true;
-	}
-
-	const asksSelfPolicy =
-		/\b(?:configured|routing|workflow|workflows?|folders?|repos?|repositories|source|workspace|workspaces|skills?|sdk|example app|read-only|pr work)\b/.test(
-			text,
-		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/.test(text);
-	const asksDocument =
-		/\b(uploaded|upload|attachment|attached|document|documents?|file|files?|document base|kb)\b/.test(
-			text,
-		);
-
-	if (asksDocument) {
-		return false;
-	}
-
-	if (looksLikeSelfPolicyExplanationRequest(message)) {
-		return true;
-	}
-
-	return asksSelfPolicy;
-}
-
-function buildProviderSelectionPrompt(draftReply?: string): string {
-	const trimmedDraftReply = draftReply?.trim() ?? "";
-	const draftReplySection =
-		trimmedDraftReply.length > 0
-			? `draft_reply:\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n\n`
-			: "";
-	const draftReplyRules =
-		trimmedDraftReply.length > 0
-			? [
-					"- if the draft reply asks the user to resend, restate, or clarify information that may already exist in provider context, choose the relevant providers instead of sending the draft reply as-is",
-					'- when the recent conversation already identifies a prior upload or document store question, prefer grounded provider lookup over asking "which file?" again',
-				]
-			: [];
-	return `task: Decide whether any providers should be called before sending the assistant's reply.
-
-recent conversation:
-{{recentMessages}}
-
-${draftReplySection}rules[${4 + draftReplyRules.length}]:
-- choose providers only when they can supply grounded information needed before the assistant replies
-- uploaded files, documents, prior uploads, and document store questions should use the relevant providers before asking the user to resend the material
-- if the user asks about an uploaded file or document and DOCUMENTS is available, prefer DOCUMENTS before sending any clarification reply
-- return an empty providers field when no provider lookup is needed
-- do not include actions, text, or thought in the output
-${draftReplyRules.join("\n")}
-
-output:
-JSON only. Return exactly one JSON object containing only provider names. No prose before or after it. No <think>.
-
-Examples:
-- user asks: "what is the qa codeword from the uploaded file?"
-  draft reply: "Which file are you referring to?"
-  output:
-  {"providers":["DOCUMENTS","DOCUMENTS"]}
-- user asks: "what is the qa codeword from the uploaded file?"
-  draft reply: "I don't have the file in my context. Which file contains the QA codeword?"
-  output:
-  {"providers":["DOCUMENTS","DOCUMENTS"]}
-- user asks: "thanks, that's all"
-  draft reply: "Glad to help."
-  output:
-  {"providers":[]}`;
-}
-
-async function _recoverProvidersForTurn(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	draftReply?: string;
-	attachments?: GenerateTextAttachment[];
-}): Promise<string[]> {
-	if (shouldSkipDocumentProviderRescue(args.message)) {
-		return [];
-	}
-
-	try {
-		const parsed = await args.runtime.dynamicPromptExecFromState({
-			state: args.state,
-			params: {
-				prompt: buildProviderSelectionPrompt(args.draftReply),
-				...(args.attachments ? { attachments: args.attachments } : {}),
-			},
-			schema: [
-				{
-					field: "providers",
-					description:
-						"Provider names to call before replying, or an empty array",
-					type: "array",
-					items: { description: "One provider name" },
-					required: true,
-					validateField: false,
-					streamField: false,
-				},
-			],
-			options: {
-				modelType: ModelType.TEXT_LARGE,
-				contextCheckLevel: 0,
-				maxRetries: 1,
-			},
-		});
-		const normalizedProviders = normalizePlannerProviders(
-			parsed ?? { providers: [] },
-			args.runtime,
-		);
-		if (normalizedProviders.length > 0) {
-			return normalizedProviders;
-		}
-		const shouldUseDocuments = await shouldUseDocumentProviders(
-			args.runtime,
-			args.state,
-			args.attachments,
-		);
-		return shouldUseDocuments ? ["DOCUMENTS"] : [];
-	} catch (error) {
-		args.runtime.logger.warn(
-			{
-				src: "service:message",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Provider rescue model call failed",
-		);
-		return [];
-	}
-}
-
-function _buildGroundedFallbackReplyPrompt(): string {
-	return `task: Write the next assistant reply using grounded context.
-
-grounded context:
-{{providers}}
-
-recent conversation:
-{{recentMessages}}
-
-rules[5]:
-- answer directly from grounded context when it fully answers the user
-- do not ask the user to resend, rename, or specify a file if grounded document or document context already answers the request
-- do not say you cannot access the file when grounded context is already present above
-- if DOCUMENTS contains a direct answer, prefer that grounded answer even when DOCUMENTS lists multiple files
-- if grounded context is still insufficient, say exactly what is missing
-- return only the reply text
-
-output:
-Plain text only. No XML, JSON, bullets, or <think>.`;
-}
-
-function buildDocumentProviderDecisionPrompt(): string {
-	return `task: Decide whether the assistant should consult uploaded-document or document providers before replying.
-
-recent conversation:
-{{recentMessages}}
-
-rules[5]:
-- return true when the user is asking about an uploaded file, document, prior upload, or document store content
-- return true when the answer is likely already stored in uploaded documents or semantic document search
-- when DOCUMENTS is available and the user refers to an uploaded file or prior upload, return true
-- return false for generic chat, thanks, or requests that clearly do not depend on uploaded or document store content
-- return only the structured output, with no prose
-
-output:
-JSON only. Return exactly one JSON object.
-
-Examples:
-- user asks: "what is the qa codeword from the uploaded file?" -> useDocumentProviders: true
-- user asks: "thanks, that's all" -> useDocumentProviders: false`;
-}
-
-async function shouldUseDocumentProviders(
-	runtime: IAgentRuntime,
-	state: State,
-	attachments?: GenerateTextAttachment[],
-): Promise<boolean> {
-	try {
-		const parsed = await runtime.dynamicPromptExecFromState({
-			state,
-			params: {
-				prompt: buildDocumentProviderDecisionPrompt(),
-				...(attachments ? { attachments } : {}),
-			},
-			schema: [
-				{
-					field: "useDocumentProviders",
-					description:
-						"true when uploaded-document or document providers should be consulted before replying",
-					type: "boolean",
-					required: true,
-					validateField: false,
-					streamField: false,
-				},
-			],
-			options: {
-				modelType: ModelType.TEXT_LARGE,
-				contextCheckLevel: 0,
-				maxRetries: 1,
-			},
-		});
-		const value =
-			parsed?.useDocumentProviders ?? parsed?.use_document_providers;
-		if (typeof value === "boolean") {
-			return value;
-		}
-		if (typeof value === "string") {
-			return value.trim().toLowerCase() === "true";
-		}
-		return false;
-	} catch (error) {
-		runtime.logger.warn(
-			{
-				src: "service:message",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Documents provider decision model call failed",
-		);
-		return false;
-	}
 }
 
 function buildRuntimeActionLookup(runtime: {
@@ -8613,20 +7423,6 @@ export function getActionContinuationDecision(
 		continuingActions,
 		suppressingActions,
 	};
-}
-
-function _shouldContinueAfterActions(
-	runtime: IAgentRuntime,
-	responseContent: Content | null | undefined,
-): boolean {
-	return getActionContinuationDecision(runtime, responseContent).shouldContinue;
-}
-
-function _suppressesPostActionContinuation(
-	runtime: IAgentRuntime,
-	responseContent: Content | null | undefined,
-): boolean {
-	return getActionContinuationDecision(runtime, responseContent).suppressed;
 }
 
 export function actionResultsSuppressPostActionContinuation(
@@ -8994,75 +7790,6 @@ async function rewriteActionCallbackInCharacter(args: {
 		);
 		return fallback();
 	}
-}
-
-function getLatestVisibleReplyText(
-	responseContent: Content | null | undefined,
-	actionResults: ActionResult[],
-): string {
-	for (let index = actionResults.length - 1; index >= 0; index--) {
-		const result = actionResults[index];
-		const actionName =
-			typeof result?.data?.actionName === "string"
-				? result.data.actionName
-				: "";
-		if (!isReplyActionIdentifier(actionName)) {
-			continue;
-		}
-
-		if (typeof result.text === "string" && result.text.trim().length > 0) {
-			return result.text.trim();
-		}
-	}
-
-	const responseText =
-		typeof responseContent?.text === "string"
-			? responseContent.text.trim()
-			: "";
-	return responseText;
-}
-
-function isLikelyClarifyingQuestion(text: string): boolean {
-	const normalized = text.trim();
-	if (!normalized) {
-		return false;
-	}
-
-	if (/[?؟]\s*$/.test(normalized)) {
-		return true;
-	}
-
-	const firstSentence = extractFirstSentence(normalized)
-		.first.trim()
-		.toLowerCase();
-	return /^(what|which|when|where|who|whom|whose|why|how|can you|could you|would you|will you|do you|did you|are you|is it|should i|should we)\b/.test(
-		firstSentence,
-	);
-}
-
-function _shouldWaitForUserAfterIncompleteReflection(
-	responseContent: Content | null | undefined,
-	actionResults: ActionResult[],
-): boolean {
-	const latestVisibleReply = getLatestVisibleReplyText(
-		responseContent,
-		actionResults,
-	);
-	if (!isLikelyClarifyingQuestion(latestVisibleReply)) {
-		return false;
-	}
-
-	if (actionResults.length === 0) {
-		return isSimpleReplyResponse(responseContent);
-	}
-
-	return actionResults.every((result) => {
-		const actionName =
-			typeof result?.data?.actionName === "string"
-				? result.data.actionName
-				: "";
-		return isReplyActionIdentifier(actionName);
-	});
 }
 
 export function withActionResultsForPrompt(
@@ -10541,6 +9268,13 @@ export class DefaultMessageService implements IMessageService {
 					if (responseContent) {
 						responseMemory.content = responseContent;
 					}
+					if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+						runtime.logger.debug(
+							{ src: "service:message", memoryId: responseMemory.id },
+							"Skipping transient response memory persistence",
+						);
+						continue;
+					}
 					runtime.logger.debug(
 						{ src: "service:message", memoryId: responseMemory.id },
 						"Saving response to memory",
@@ -10593,6 +9327,13 @@ export class DefaultMessageService implements IMessageService {
 							}
 							if (responseContent) {
 								responseMemory.content = responseContent;
+							}
+							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+								runtime.logger.debug(
+									{ src: "service:message", memoryId: responseMemory.id },
+									"Skipping transient response memory persistence",
+								);
+								continue;
 							}
 							runtime.logger.debug(
 								{ src: "service:message", memoryId: responseMemory.id },
@@ -10945,20 +9686,7 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// 5. Clear self-modification requests should bypass the ignore-biased
-		// classifier even in group chat, but only for narrow personality/style
-		// update phrasing to avoid broad false positives.
-		if (isExplicitSelfModificationRequest(message.content.text || "")) {
-			return {
-				shouldRespond: true,
-				skipEvaluation: true,
-				reason: "explicit self-modification request",
-				primaryContext: "social",
-				secondaryContexts: ["admin"],
-			};
-		}
-
-		// 6. All other cases are ambiguous enough to need the classifier.
+		// 5. All other cases are ambiguous enough to need the classifier.
 		// Lack of a platform mention is not proof the message isn't directed
 		// at the agent in a fast-moving group conversation.
 		return {
@@ -11080,12 +9808,17 @@ export class DefaultMessageService implements IMessageService {
 							url,
 							isRemote,
 						);
-						const isPlainText = contentType.startsWith("text/plain");
+						// Any text/* document (plain, csv, markdown — all on the chat
+						// upload allow-list) is readable as text; PDFs are extracted via
+						// unpdf. Previously only text/plain was handled, so csv/markdown/
+						// pdf were skipped and never seen by the agent (#10714).
+						const isText = contentType.startsWith("text/");
+						const isPdf = contentType.startsWith("application/pdf");
 
-						if (isPlainText) {
+						if (isText) {
 							runtime.logger.debug(
 								{ src: "service:message", documentUrl: attachment.url },
-								"Processing plain text document",
+								"Processing text document",
 							);
 
 							const textContent = buffer.toString("utf8");
@@ -11100,10 +9833,30 @@ export class DefaultMessageService implements IMessageService {
 								},
 								"Extracted text content",
 							);
+						} else if (isPdf) {
+							const { convertPdfToTextFromBuffer } = await import(
+								"../features/documents/utils.ts"
+							);
+							const textContent = await convertPdfToTextFromBuffer(
+								buffer,
+								processedAttachment.title ?? undefined,
+							);
+							processedAttachment.text = textContent;
+							processedAttachment.title =
+								processedAttachment.title || "PDF Document";
+
+							runtime.logger.debug(
+								{
+									src: "service:message",
+									textLength: textContent.length,
+									textPreview: textContent.substring(0, 100),
+								},
+								"Extracted PDF text content",
+							);
 						} else {
 							runtime.logger.warn(
 								{ src: "service:message", contentType },
-								"Skipping non-plain-text document",
+								"Skipping unsupported document type",
 							);
 						}
 					} else if (
@@ -11431,6 +10184,10 @@ export class DefaultMessageService implements IMessageService {
 		const responseContent: Content = {
 			thought: `Handle a temporary reply failure during ${stage}.`,
 			actions: ["REPLY"],
+			failureKind: "transient_failure",
+			elizaSyntheticFailure: true,
+			transient: true,
+			doNotPersist: true,
 			providers: [],
 			text: replyText,
 			responseId,

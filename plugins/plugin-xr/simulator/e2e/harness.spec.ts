@@ -27,9 +27,9 @@ test.describe("XR harness — pose → ray → hit → press", () => {
     await xrPage.startSession();
 
     // Aim the right controller at the Submit panel, then read telemetry back.
-    expect(await xrPage.aimControllerAt("right", '[data-agent-id="submit"]')).toBe(
-      true,
-    );
+    expect(
+      await xrPage.aimControllerAt("right", '[data-agent-id="submit"]'),
+    ).toBe(true);
     const telemetry = await xrPage.getElementTelemetry();
 
     // Element telemetry carries real screen rects for every tagged element.
@@ -40,7 +40,11 @@ test.describe("XR harness — pose → ray → hit → press", () => {
     const rightRay = telemetry.rays.find((r) => r.source === "right");
     expect(rightRay).toBeDefined();
     expect(
-      Math.hypot(rightRay!.direction.x, rightRay!.direction.y, rightRay!.direction.z),
+      Math.hypot(
+        rightRay!.direction.x,
+        rightRay!.direction.y,
+        rightRay!.direction.z,
+      ),
     ).toBeCloseTo(1, 5);
 
     // …and the COMPUTED hit resolves to the Submit element, not pixels.
@@ -48,28 +52,45 @@ test.describe("XR harness — pose → ray → hit → press", () => {
     expect(rightHit?.elementId).toBe("submit");
   });
 
-  test("connects an aimed controller and fires select/squeeze without error", async ({
+  test("connects an aimed controller and fires real select/squeeze session events", async ({
     xrPage,
   }) => {
     await xrPage.goto("/");
     await xrPage.startSession();
-    expect(await xrPage.aimControllerAt("right", '[data-agent-id="submit"]')).toBe(
-      true,
-    );
+    expect(
+      await xrPage.aimControllerAt("right", '[data-agent-id="submit"]'),
+    ).toBe(true);
 
     // The aimed controller is a connected device whose ray resolves to the target.
     const telemetry = await xrPage.getElementTelemetry();
     expect(telemetry.controllers.right).toBeDefined();
-    expect(
-      telemetry.hits.find((h) => h.source === "right")?.elementId,
-    ).toBe("submit");
+    expect(telemetry.hits.find((h) => h.source === "right")?.elementId).toBe(
+      "submit",
+    );
 
-    // Firing select/squeeze drives IWER input and resolves cleanly. The
-    // session-level select EVENT dispatch needs the immersive render loop
-    // (deferred spatial-renderer scope — see WEBXR_STATUS / #9968); getSelectLog()
-    // is wired for when that lands.
-    await expect(xrPage.pressSelect("right")).resolves.toBeUndefined();
-    await expect(xrPage.pressSqueeze("right")).resolves.toBeUndefined();
+    // pressSelect pulses the trigger across real session frames (startSession
+    // attaches an offscreen XRWebGLLayer so IWER's frame loop runs), and the
+    // session dispatches exactly one `select` from the controller source.
+    await xrPage.pressSelect("right");
+    await xrPage.page.waitForFunction(
+      () => window.__XREmulator.getSelectLog().length > 0,
+    );
+    const selects = await xrPage.getSelectLog();
+    expect(selects).toHaveLength(1);
+    expect(selects[0]).toMatchObject({
+      handedness: "right",
+      viaHand: false,
+      targetRayMode: "tracked-pointer",
+    });
+
+    // pressSqueeze pulses the grip button → exactly one session `squeeze`.
+    await xrPage.pressSqueeze("right");
+    await xrPage.page.waitForFunction(
+      () => window.__XREmulator.getSqueezeLog().length > 0,
+    );
+    const squeezes = await xrPage.getSqueezeLog();
+    expect(squeezes).toHaveLength(1);
+    expect(squeezes[0]).toMatchObject({ handedness: "right", viaHand: false });
   });
 
   test("captures a screenshot + per-frame pose/hit JSON for every element", async ({

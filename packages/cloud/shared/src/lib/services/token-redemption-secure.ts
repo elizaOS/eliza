@@ -39,6 +39,7 @@ import {
   type TokenRedemption,
   tokenRedemptions,
 } from "../../db/schemas/token-redemptions";
+import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import {
   checkKnownAddress,
@@ -46,6 +47,11 @@ import {
   getNonEOAWarning,
   getWalletRecommendation,
 } from "../config/redemption-addresses";
+import {
+  isUsdcPayoutNetwork,
+  type PayoutAsset,
+  USDC_PAYOUT_NETWORKS,
+} from "../config/payout-assets";
 import { ARBITRAGE_PROTECTION } from "../config/redemption-security";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -72,8 +78,9 @@ const SECURE_CONFIG = {
   DAILY_LIMIT_USD: 5000,
   MAX_DAILY_REDEMPTIONS: 10,
 
-  // Admin thresholds
-  ADMIN_APPROVAL_THRESHOLD_USD: 500,
+  // Admin thresholds — every payout requires admin approval (#10732). The
+  // creation path already forces requiresReview=true; 0 keeps this consistent.
+  ADMIN_APPROVAL_THRESHOLD_USD: 0,
 
   // Retry limits
   MAX_RETRY_ATTEMPTS: 3,
@@ -115,6 +122,8 @@ interface SecureRedemptionRequest {
   appId?: string; // Optional - earnings are user-level, not app-level
   pointsAmount: number;
   network: SupportedNetwork;
+  /** Payout asset (#10732). Defaults to USDC; `eliza` keeps the legacy token path. */
+  asset?: PayoutAsset;
   payoutAddress: string;
   signature?: string; // EIP-712 signature
   nonce?: string;
@@ -212,6 +221,7 @@ export class SecureTokenRedemptionService {
       appId,
       pointsAmount,
       network,
+      asset = "usdc",
       payoutAddress,
       signature,
       nonce,
@@ -251,6 +261,14 @@ export class SecureTokenRedemptionService {
     // Validate network
     if (!ELIZA_TOKEN_ADDRESSES[network]) {
       return { success: false, error: `Unsupported network: ${network}` };
+    }
+
+    // USDC payouts (#10732) are offered on Solana + Base only.
+    if (asset === "usdc" && !isUsdcPayoutNetwork(network)) {
+      return {
+        success: false,
+        error: `USDC payouts are available on ${USDC_PAYOUT_NETWORKS.join(" or ")} only.`,
+      };
     }
 
     // SECURITY: Require signature for large redemptions (>$100)
@@ -348,45 +366,58 @@ export class SecureTokenRedemptionService {
     }
 
     // ========================================
-    // PRICING PHASE (Fix #8, #14: Use TWAP exclusively)
+    // PRICING PHASE
     // ========================================
-
-    const quoteResult = await twapPriceOracle.getRedemptionQuote(network, pointsAmount, userId);
-
-    if (!quoteResult.success) {
-      return {
-        success: false,
-        error: quoteResult.error,
-      };
-    }
-
-    const twapQuote = quoteResult.quote!;
-
-    // Fix #11: Use Decimal for precise calculations
+    //
+    // USDC (#10732): 1 USDC ≈ $1, so there is no price oracle, no safety spread,
+    // and no elizaOS-token availability check — the payout amount is simply the
+    // USD value and the payout processor guards the USDC hot-wallet balance
+    // before broadcast. The elizaOS path keeps the full TWAP pricing (Fix #8,#14).
     const usdValue = new Decimal(pointsAmount).div(100);
-    const twapPrice = new Decimal(twapQuote.twapPrice);
-    const elizaAmount = calculateTokenAmount(usdValue, twapPrice);
+    let twapPrice: Decimal;
+    let elizaAmount: Decimal;
+    let quoteExpiresAt: Date;
+    let priceSource: string;
+    let twapSampleCount: number | undefined;
+    let twapVolatility: number | undefined;
 
-    // ========================================
-    // BALANCE & AVAILABILITY CHECK PHASE
-    // ========================================
+    if (asset === "usdc") {
+      twapPrice = new Decimal(1);
+      elizaAmount = usdValue;
+      quoteExpiresAt = new Date(Date.now() + SECURE_CONFIG.QUOTE_VALIDITY_MS);
+      priceSource = "usdc_fixed";
+    } else {
+      const quoteResult = await twapPriceOracle.getRedemptionQuote(network, pointsAmount, userId);
+      if (!quoteResult.success) {
+        return { success: false, error: quoteResult.error };
+      }
+      const twapQuote = quoteResult.quote!;
+      // Fix #11: Use Decimal for precise calculations
+      twapPrice = new Decimal(twapQuote.twapPrice);
+      elizaAmount = calculateTokenAmount(usdValue, twapPrice);
+      quoteExpiresAt = twapQuote.expiresAt;
+      priceSource = "twap";
+      twapSampleCount = twapQuote.sampleCount;
+      twapVolatility = twapQuote.volatility;
+      if (quoteResult.warnings?.length) {
+        warnings.push(...quoteResult.warnings);
+      }
 
-    // Check hot wallet has enough tokens
-    const tokenCheck = await this.checkTokenAvailability(network, elizaAmount.toNumber());
-
-    if (!tokenCheck.available) {
-      logger.warn("[SecureRedemption] Insufficient hot wallet balance", {
-        network,
-        required: elizaAmount.toString(),
-        available: tokenCheck.balance,
-      });
-
-      return {
-        success: false,
-        error:
-          tokenCheck.error ||
-          `Sorry, we don't have enough elizaOS tokens on ${network}. Try again later or choose a different network.`,
-      };
+      // Check hot wallet has enough elizaOS tokens (elizaOS payouts only).
+      const tokenCheck = await this.checkTokenAvailability(network, elizaAmount.toNumber());
+      if (!tokenCheck.available) {
+        logger.warn("[SecureRedemption] Insufficient hot wallet balance", {
+          network,
+          required: elizaAmount.toString(),
+          available: tokenCheck.balance,
+        });
+        return {
+          success: false,
+          error:
+            tokenCheck.error ||
+            `Sorry, we don't have enough elizaOS tokens on ${network}. Try again later or choose a different network.`,
+        };
+      }
     }
 
     // ========================================
@@ -507,7 +538,8 @@ export class SecureTokenRedemptionService {
           usd_value: usdValue.toString(),
           eliza_price_usd: twapPrice.toString(),
           eliza_amount: elizaAmount.toString(),
-          price_quote_expires_at: twapQuote.expiresAt,
+          price_quote_expires_at: quoteExpiresAt,
+          asset,
           network,
           payout_address: payoutAddress,
           address_signature: signature,
@@ -516,12 +548,12 @@ export class SecureTokenRedemptionService {
           metadata: {
             user_agent: metadata?.userAgent ? sanitizeForLog(metadata.userAgent) : undefined,
             ip_address: metadata?.ipAddress,
-            price_source: "twap",
+            price_source: priceSource,
             idempotency_key: finalIdempotencyKey,
             original_balance: currentAvailable.toNumber(),
             balance_after: currentAvailable.minus(deductionAmount).toNumber(),
-            twap_sample_count: twapQuote.sampleCount,
-            twap_volatility: twapQuote.volatility,
+            twap_sample_count: twapSampleCount,
+            twap_volatility: twapVolatility,
             ledger_entry_id: ledgerEntry.id,
             earnings_source: "redeemable_earnings", // Mark source for audit
           },
@@ -559,10 +591,10 @@ export class SecureTokenRedemptionService {
         elizaAmount: elizaAmount.toString(),
         network,
         payoutAddress,
-        expiresAt: twapQuote.expiresAt,
+        expiresAt: quoteExpiresAt,
         requiresReview,
       },
-      warnings: quoteResult.warnings,
+      warnings,
     };
   }
 
@@ -877,6 +909,20 @@ export class SecureTokenRedemptionService {
     requiredAmount: number,
   ): Promise<{ available: boolean; balance: number; error?: string }> {
     const env = getCloudAwareEnv();
+    if (shouldBlockPayoutAssumeOperational(env)) {
+      logger.error(
+        "[SecureRedemption] Refusing assumed-operational payout availability in production",
+        {
+          network,
+        },
+      );
+      return {
+        available: false,
+        balance: 0,
+        error:
+          "Token redemption is temporarily unavailable while payout infrastructure is being verified.",
+      };
+    }
     // When the operator has explicitly opted out of live balance reads
     // (PAYOUT_STATUS_ASSUME_OPERATIONAL=1, e.g. local/e2e with no funded wallet),
     // trust the configured wallet here too. The on-chain payout cron still

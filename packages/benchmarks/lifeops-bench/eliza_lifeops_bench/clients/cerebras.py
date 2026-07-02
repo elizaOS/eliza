@@ -53,7 +53,7 @@ CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
 }
 
 _DEFAULT_BASE_URL: Final[str] = "https://api.cerebras.ai/v1"
-_DEFAULT_MODEL: Final[str] = "gpt-oss-120b"
+_DEFAULT_MODEL: Final[str] = "gemma-4-31b"
 _REQUEST_TIMEOUT_SECONDS: Final[float] = 60.0
 
 # Retry policy: 5 attempts, exponential backoff (1, 2, 4, 8, 16s) honoring

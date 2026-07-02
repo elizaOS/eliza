@@ -1,12 +1,18 @@
-"""CI-lane coverage classification for every public benchmark (#9475).
+"""CI-lane coverage classification for every public benchmark (#9475, #10193).
 
-The de-larp audit found that 42/43 registered benchmarks had zero scheduled
-real-model runs — the orchestrator was invoked by exactly one workflow. To keep
-the suite honest going forward, every registered benchmark and every public
-orchestrator adapter is explicitly classified into a CI lane here, and
-``tests/test_ci_coverage.py`` asserts the classification stays complete: adding
-a benchmark to the registry or exposing a new adapter without giving it a lane
-(or an explicit manual-only marker) fails CI.
+The de-larp audit found that nearly every registered benchmark had zero
+scheduled real-model runs — the orchestrator was invoked by exactly one
+workflow. To keep the suite honest going forward, every registered benchmark
+and every public orchestrator adapter is explicitly classified into a CI lane
+here, and ``tests/test_ci_coverage.py`` asserts the classification stays
+complete: adding a benchmark to the registry or exposing a new adapter without
+giving it a lane (or an explicit manual-only marker) fails CI.
+
+The registry currently declares **44** benchmarks (``registry/commands.py``);
+counting adapter-only ids, **53** benchmarks are publicly runnable and every
+one carries a lane below. Do not hardcode a benchmark count in prose — derive
+it from ``registry_benchmark_ids`` / ``public_benchmark_ids`` so it cannot
+drift, which is exactly what the test gate enforces.
 
 Lanes
 -----
@@ -61,6 +67,7 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "openclaw_bench": "smoke",
     "orchestrator_lifecycle": "smoke",
     "realm": "smoke",
+    "recall_bench": "smoke",
     "rlm_bench": "smoke",
     "scambench": "smoke",
     "mind2web": "smoke",

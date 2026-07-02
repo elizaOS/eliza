@@ -45,10 +45,7 @@
                     "orchestrator-scenario-session-2",
                     "orchestrator-scenario-session-3"
                   ],
-                  "events": [
-                    "task_complete",
-                    "validation_passed"
-                  ],
+                  "events": ["task_complete", "validation_passed"],
                   "finalStatuses": {
                     "f3359e88-1c58-4492-bb32-a421e0d8ac7b": "done"
                   },
@@ -170,10 +167,7 @@
                       "orchestrator-scenario-session-2",
                       "orchestrator-scenario-session-3"
                     ],
-                    "events": [
-                      "task_complete",
-                      "validation_passed"
-                    ],
+                    "events": ["task_complete", "validation_passed"],
                     "finalStatuses": {
                       "f3359e88-1c58-4492-bb32-a421e0d8ac7b": "done"
                     },
@@ -317,10 +311,7 @@
                 "orchestrator-scenario-session-2",
                 "orchestrator-scenario-session-3"
               ],
-              "events": [
-                "task_complete",
-                "validation_passed"
-              ],
+              "events": ["task_complete", "validation_passed"],
               "finalStatuses": {
                 "f3359e88-1c58-4492-bb32-a421e0d8ac7b": "done"
               },
@@ -442,10 +433,7 @@
                   "orchestrator-scenario-session-2",
                   "orchestrator-scenario-session-3"
                 ],
-                "events": [
-                  "task_complete",
-                  "validation_passed"
-                ],
+                "events": ["task_complete", "validation_passed"],
                 "finalStatuses": {
                   "f3359e88-1c58-4492-bb32-a421e0d8ac7b": "done"
                 },

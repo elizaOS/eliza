@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
 import { appsService } from "@/lib/services/apps";
@@ -29,6 +30,9 @@ async function loadOwnedApp(c: AppContext) {
   const appRow = await appsService.getById(appId);
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
+  }
+  if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+    return { error: "Access denied", status: 403 as const };
   }
   return { user, app: appRow, appId };
 }
@@ -83,17 +87,27 @@ app.post("/", async (c) => {
     }
     const { domain } = parsed.data;
 
-    const existing = await managedDomainsService.getDomainByName(domain);
+    // Block only when another org holds the domain's EXCLUSIVE slot — a verified
+    // or cloudflare row. A mere unverified pending row from another org is NOT
+    // exclusive (getDomainByName returns null for it), so it can no longer squat
+    // the global namespace and deny a legitimate attach (#11024).
+    const exclusive = await managedDomainsService.getDomainByName(domain);
+    if (exclusive && exclusive.organizationId !== ctx.user.organization_id) {
+      return c.json(
+        {
+          success: false,
+          error: "Domain is already registered to a different organization",
+        },
+        409,
+      );
+    }
+
+    // Reuse the caller's OWN row (verified or pending) instead of minting a dup.
+    const existing = await managedDomainsService.getOwnDomainRow(
+      ctx.user.organization_id,
+      domain,
+    );
     if (existing) {
-      if (existing.organizationId !== ctx.user.organization_id) {
-        return c.json(
-          {
-            success: false,
-            error: "Domain is already registered to a different organization",
-          },
-          409,
-        );
-      }
       await managedDomainsService.assignToResource(existing.id, {
         type: "app",
         id: ctx.appId,
@@ -168,7 +182,10 @@ app.delete("/", async (c) => {
     }
     const { domain } = parsed.data;
 
-    const md = await managedDomainsService.getDomainByName(domain);
+    const md = await managedDomainsService.getOwnDomainRow(
+      ctx.user.organization_id,
+      domain,
+    );
     if (
       !md ||
       md.organizationId !== ctx.user.organization_id ||

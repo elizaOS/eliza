@@ -40,11 +40,14 @@ function setHostname(hostname: string): void {
   });
 }
 
-function renderCatchAll(): void {
+function renderCatchAll(initialPath = "/"): void {
   render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/login" element={<div data-testid="login-page" />} />
+        {/* The console home target. The real app renders billing here; the test
+            just needs a marker to prove the apex root redirected to it. */}
+        <Route path="/settings" element={<div data-testid="console-home" />} />
         <Route
           path="*"
           element={
@@ -73,11 +76,23 @@ describe("CloudRouterShell apex catch-all (Gate B)", () => {
     expect(screen.queryByTestId("agent-app")).toBeNull();
   });
 
-  it("renders the agent app on apex when a valid Steward session exists", () => {
+  it("redirects an authenticated apex ROOT visitor to the console home (credits/manage), not chat", () => {
     setHostname("elizacloud.ai");
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
-    renderCatchAll();
+    renderCatchAll("/");
+    expect(screen.getByTestId("console-home")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(screen.queryByTestId("login-page")).toBeNull();
+  });
+
+  it("still renders the agent app for an authenticated apex DEEP link (not the bare root)", () => {
+    // A shared-agent / deep link on the apex must keep working — only the bare
+    // landing is rerouted to the console home.
+    setHostname("elizacloud.ai");
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
+    renderCatchAll("/some/agent/deep-link");
     expect(screen.getByTestId("agent-app")).toBeTruthy();
+    expect(screen.queryByTestId("console-home")).toBeNull();
     expect(screen.queryByTestId("login-page")).toBeNull();
   });
 

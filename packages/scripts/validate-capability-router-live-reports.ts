@@ -633,10 +633,7 @@ function validateReportFile(
     assetResult.integrity,
     "conformance.assetResult.integrity",
   );
-  if (
-    manifestIntegrity !== undefined &&
-    manifestIntegrity !== assetIntegrity
-  ) {
+  if (manifestIntegrity !== undefined && manifestIntegrity !== assetIntegrity) {
     throw new Error(
       "conformance.assetResult.manifestIntegrity must match conformance.assetResult.integrity.",
     );
@@ -996,7 +993,10 @@ function validateExercisedTargetModule(
   return moduleId;
 }
 
-function requireRequiredSurface(value: unknown, field: string): RequiredSurface {
+function requireRequiredSurface(
+  value: unknown,
+  field: string,
+): RequiredSurface {
   const surface = requireString(value, field);
   if (!REQUIRED_SURFACES.includes(surface as RequiredSurface)) {
     throw new Error(`${field} must be a required remote capability surface.`);
@@ -1133,14 +1133,18 @@ function validateSyncEvidence(
         "sync.unloaded must not include plugins that are also registered.",
     },
   );
-  const skippedPluginNames = validatePluginNameList(sync.skipped, "sync.skipped", {
-    disallow: registeredPluginNames,
-    disallowMessage:
-      "sync.skipped must not include plugins that are also registered.",
-    disallowAdditional: new Set(unloadedPluginNames),
-    disallowAdditionalMessage:
-      "sync.skipped must not include plugins that are also unloaded.",
-  });
+  const skippedPluginNames = validatePluginNameList(
+    sync.skipped,
+    "sync.skipped",
+    {
+      disallow: registeredPluginNames,
+      disallowMessage:
+        "sync.skipped must not include plugins that are also registered.",
+      disallowAdditional: new Set(unloadedPluginNames),
+      disallowAdditionalMessage:
+        "sync.skipped must not include plugins that are also unloaded.",
+    },
+  );
   const trustDecisions = requireArray(
     sync.trustDecisions,
     "sync.trustDecisions",

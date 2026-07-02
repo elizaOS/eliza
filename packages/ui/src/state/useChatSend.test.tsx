@@ -9,9 +9,15 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { StreamGenerationError } from "../api/client-base";
 import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
-import { type UseChatSendDeps, useChatSend } from "./useChatSend";
+import {
+  buildSendFailureNotice,
+  getSendValidationFailureMessage,
+  type UseChatSendDeps,
+  useChatSend,
+} from "./useChatSend";
 
 const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
 const DEDICATED_BASE = "https://agent-456.elizacloud.ai";
@@ -283,6 +289,91 @@ describe("useChatSend stop handling", () => {
     // The abort path ran (server turn aborted) but no error notice was shown.
     expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
     expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("keeps a locally-committed partial reply after a STOP whose reload lacks it", async () => {
+    // STOP mid-stream resolves the stream with the partial + completed:false.
+    // The server never persisted the partial, so the post-turn history reload
+    // full-replaces local state with ONLY the persisted user turn. The partial
+    // the user was watching must survive that reload — re-attached as an
+    // interrupted assistant turn.
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("Here is the par", "Here is the par");
+        return { text: "Here is the par", completed: false };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // Server full-replace reload: only the persisted user turn survives (the
+    // stopped assistant reply was never written server-side).
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        { id: "server-user-1", role: "user", text: "hello", timestamp: 1 },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    const assistantMessages = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0].text).toBe("Here is the par");
+    expect(assistantMessages[0].interrupted).toBe(true);
+  });
+
+  it("does NOT duplicate the partial when the server persisted the stopped reply", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("Here is the par", "Here is the par");
+        return { text: "Here is the par", completed: false };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // Server DID persist the (truncated) reply — the reload carries it, so the
+    // partial must not be re-attached a second time.
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        { id: "server-user-1", role: "user", text: "hello", timestamp: 1 },
+        {
+          id: "server-asst-1",
+          role: "assistant",
+          text: "Here is the par",
+          timestamp: 2,
+          interrupted: true,
+        },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    const assistantMessages = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0].id).toBe("server-asst-1");
   });
 });
 
@@ -951,5 +1042,268 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
       (m) => m.role === "assistant",
     );
     expect(assistant.length).toBe(0);
+  });
+});
+
+describe("buildSendFailureNotice (#10231)", () => {
+  it("maps auth/rate/availability/kind failures to status-specific copy", () => {
+    expect(buildSendFailureNotice({ status: 401 })).toContain(
+      "session expired",
+    );
+    expect(buildSendFailureNotice({ status: 403 })).toContain(
+      "session expired",
+    );
+    expect(buildSendFailureNotice({ status: 429 })).toContain("busy");
+    expect(buildSendFailureNotice({ status: 503 })).toContain("waking up");
+    expect(buildSendFailureNotice({ status: 502 })).toContain("waking up");
+    expect(buildSendFailureNotice({ kind: "timeout" })).toContain(
+      "took too long",
+    );
+    expect(buildSendFailureNotice({ kind: "network" })).toContain(
+      "check your connection",
+    );
+  });
+
+  it("falls back to a generic resend notice for an unknown failure (never empty)", () => {
+    const notice = buildSendFailureNotice(new Error("boom"));
+    expect(notice.length).toBeGreaterThan(0);
+    expect(notice).toContain("resend");
+  });
+
+  it("surfaces the server's validation reason for a 4xx validation reject", () => {
+    // Regression: a 400 (e.g. attachment too large / unsupported type) got the
+    // generic "didn't go through — please resend" copy, which discards the only
+    // information that lets the user fix the payload; resending unchanged fails
+    // identically forever.
+    const err = Object.assign(new Error("Attachment too large (max 5 MB)"), {
+      status: 400,
+      kind: "http",
+    });
+    const notice = buildSendFailureNotice(err);
+    expect(notice).toContain("Attachment too large (max 5 MB)");
+    expect(notice).not.toContain("didn't go through");
+  });
+
+  it("keeps the generic copy for a body-less 4xx and for 5xx server messages", () => {
+    // No usable body → "HTTP 400" fallback message → generic copy.
+    expect(
+      buildSendFailureNotice(
+        Object.assign(new Error("HTTP 400"), { status: 400, kind: "http" }),
+      ),
+    ).toContain("didn't go through");
+    // 5xx bodies are internal noise, not user-actionable validation reasons.
+    expect(
+      buildSendFailureNotice(
+        Object.assign(new Error("upstream connect error"), {
+          status: 500,
+          kind: "http",
+        }),
+      ),
+    ).toContain("didn't go through");
+  });
+});
+
+describe("getSendValidationFailureMessage", () => {
+  it("extracts the message only for payload-validation statuses", () => {
+    for (const status of [400, 413, 415, 422]) {
+      expect(
+        getSendValidationFailureMessage(
+          Object.assign(new Error("bad payload"), { status }),
+        ),
+      ).toBe("bad payload");
+    }
+    for (const status of [401, 403, 404, 429, 500, 503]) {
+      expect(
+        getSendValidationFailureMessage(
+          Object.assign(new Error("bad payload"), { status }),
+        ),
+      ).toBeNull();
+    }
+    expect(getSendValidationFailureMessage(new Error("no status"))).toBeNull();
+  });
+});
+
+describe("useChatSend 4xx validation reject — honest notice + no-loss restore", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  function validationError(message: string): Error {
+    return Object.assign(new Error(message), { status: 400, kind: "http" });
+  }
+
+  it("restores the text AND attachments to the composer and says why", async () => {
+    // The destruction scenario: the composer was cleared at enqueue, the server
+    // 400s before persisting, and the reconcile reload wipes the optimistic
+    // bubble — without the restore the user's words are gone on a primary flow.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      validationError("Unsupported attachment type: image/heic"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    const images: ImageAttachment[] = [
+      { data: "AAAA", mimeType: "image/heic", name: "photo.heic" },
+    ];
+    await act(async () => {
+      await result.current.sendChatText("check out this photo", {
+        conversationId: "conv-1",
+        images,
+      });
+    });
+
+    // Text back in the composer, attachments back in the pending tray.
+    expect(deps.setChatInput).toHaveBeenCalledWith("check out this photo");
+    expect(deps.setChatPendingImages).toHaveBeenCalledWith(images);
+    // The notice carries the server's specific reason + the restore.
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+    const [noticeText, tone] = (
+      deps.setActionNotice as ReturnType<typeof vi.fn>
+    ).mock.calls[0];
+    expect(noticeText).toContain("Unsupported attachment type: image/heic");
+    expect(noticeText).toContain("restored to the input");
+    expect(tone).toBe("error");
+    // The message never persisted server-side, so the thread reconciles (the
+    // optimistic bubble is replaced by server truth; the draft lives in the
+    // composer now, not the thread).
+    expect(deps.loadConversationMessages).toHaveBeenCalledWith("conv-1");
+  });
+
+  it("restores just the text for a text-only validation reject", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      validationError("text is too long"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("a very long message", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setChatInput).toHaveBeenCalledWith("a very long message");
+    expect(deps.setChatPendingImages).not.toHaveBeenCalled();
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Your message was restored to the input."),
+      "error",
+      expect.any(Number),
+    );
+  });
+
+  it("does NOT restore the composer on a transient (5xx) failure", async () => {
+    // Transient failures keep the user bubble in the thread (resend can
+    // succeed); writing into the composer would clobber whatever the user
+    // typed since.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Service Unavailable"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    expect(deps.setChatInput).not.toHaveBeenCalled();
+    expect(deps.setChatPendingImages).not.toHaveBeenCalled();
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useChatSend — structured SSE error surfaces the gate (#10231)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("surfaces the no_provider gate on the assistant turn, not a generic notice", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      new StreamGenerationError({
+        message: "no provider configured",
+        failureKind: "no_provider",
+      }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // The assistant turn carries the structured gate (renderer swaps in the
+    // "Connect a provider" UI) — the empty placeholder is NOT dropped…
+    const messages = deps.conversationMessagesRef.current;
+    const assistant = messages.find((m) => m.role === "assistant") as
+      | (ConversationMessage & { failureKind?: string })
+      | undefined;
+    expect(assistant?.failureKind).toBe("no_provider");
+    // …and no generic error notice is shown (the gate replaces it).
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a connect-account request from an error event", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      new StreamGenerationError({
+        message: "connect an account",
+        // Minimal connect request — only its presence drives the block.
+        accountConnect: {
+          provider: "google",
+          reason: "reconnect",
+        } as never,
+      }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.find(
+      (m) => m.role === "assistant",
+    ) as (ConversationMessage & { accountConnect?: unknown }) | undefined;
+    expect(assistant?.accountConnect).toBeTruthy();
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("still shows a generic notice for a plain (unstructured) stream error", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      new Error("network blip"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // No structured gate → the existing generic-notice path is preserved.
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
   });
 });

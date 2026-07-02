@@ -283,10 +283,7 @@
       "port_length_mm": 1.15,
       "chamber_volume_mm3": 514.8,
       "resonance_hz": 6301.0,
-      "voiceband_hz": [
-        300,
-        3400
-      ],
+      "voiceband_hz": [300, 3400],
       "outside_voiceband": true,
       "note": "Grille-slot + chamber Helmholtz. Above the 3.4 kHz voiceband top it does not color speech; it adds a high-frequency port lift typical of a vented handset grille."
     },

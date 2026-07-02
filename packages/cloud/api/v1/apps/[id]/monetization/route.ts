@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appCreditsService } from "@/lib/services/app-credits";
+import { isAppMonetizationApproved } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -26,7 +28,7 @@ async function __hono_GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
     const app = await appsService.getById(id);
@@ -39,6 +41,12 @@ async function __hono_GET(
     }
 
     if (app.organization_id !== user.organization_id) {
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
+    }
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
       return Response.json(
         { success: false, error: "Access denied" },
         { status: 403 },
@@ -82,7 +90,7 @@ async function __hono_PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
     const app = await appsService.getById(id);
@@ -100,6 +108,12 @@ async function __hono_PUT(
         { status: 403 },
       );
     }
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
+    }
 
     const body = await request.json();
     const validationResult = UpdateMonetizationSchema.safeParse(body);
@@ -112,6 +126,23 @@ async function __hono_PUT(
           details: validationResult.error.format(),
         },
         { status: 400 },
+      );
+    }
+
+    // Compliance gate (#10732): monetization can only be *enabled* once the
+    // automated review has approved the app. Disabling is always allowed.
+    if (
+      validationResult.data.monetizationEnabled === true &&
+      !isAppMonetizationApproved(app)
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "App must pass compliance review before monetization can be enabled. Submit it for review and reach 'approved' status first.",
+          review_status: app.review_status,
+        },
+        { status: 403 },
       );
     }
 

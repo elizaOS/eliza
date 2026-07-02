@@ -50,6 +50,7 @@ export type BenchmarkActionType =
   | "fill"
   | "check"
   | "uncheck"
+  | "select"
   | "press"
   | "navigate"
   | "done";

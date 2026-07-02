@@ -66,6 +66,39 @@ function extractErrorMetadata(candidate: unknown): {
   };
 }
 
+/** True for a Postgres unique-constraint violation (23505), directly or via `cause`. */
+export function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if (extractErrorMetadata(error).code === "23505") return true;
+  return "cause" in error && extractErrorMetadata(error.cause).code === "23505";
+}
+
+/**
+ * One-line description of a sync failure with the Postgres fields
+ * (code/constraint/detail) inlined, falling through to `cause` for wrapped
+ * driver errors. Workers Logs only indexes the message STRING — an Error
+ * passed in a logger context object is dropped entirely — so callers must
+ * interpolate this into the log message itself, never attach it as metadata.
+ */
+export function describeSyncError(error: unknown): string {
+  const meta = extractErrorMetadata(error);
+  const causeMeta =
+    error && typeof error === "object" && "cause" in error
+      ? extractErrorMetadata(error.cause)
+      : { code: undefined, constraint: undefined, detail: undefined, message: "" };
+  const code = meta.code ?? causeMeta.code;
+  const constraint = meta.constraint ?? causeMeta.constraint;
+  const detail = meta.detail ?? causeMeta.detail;
+  const parts = [meta.message || causeMeta.message || String(error)];
+  if (code) parts.push(`code=${code}`);
+  if (constraint) parts.push(`constraint=${constraint}`);
+  if (detail) parts.push(`detail=${detail}`);
+  if (!code && error instanceof Error && error.stack) {
+    parts.push(`stack=${error.stack.split("\n").slice(0, 4).join(" | ")}`);
+  }
+  return parts.join(" ");
+}
+
 function isRecoverableStewardProjectionConflict(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -232,18 +265,36 @@ export async function syncUserFromSteward(
       (walletAddress && !user.wallet_verified);
 
     if (shouldUpdate) {
-      await usersService.update(user.id, {
-        name,
-        email: email || user.email,
-        email_verified: !!email || user.email_verified,
-        wallet_address: walletAddress || user.wallet_address,
-        wallet_chain_type: resolvedWalletChainType || user.wallet_chain_type,
-        wallet_verified: walletAddress ? true : user.wallet_verified,
-        updated_at: new Date(),
-      });
+      try {
+        await usersService.update(user.id, {
+          name,
+          email: email || user.email,
+          email_verified: !!email || user.email_verified,
+          wallet_address: walletAddress || user.wallet_address,
+          wallet_chain_type: resolvedWalletChainType || user.wallet_chain_type,
+          wallet_verified: walletAddress ? true : user.wallet_verified,
+          updated_at: new Date(),
+        });
 
-      // Re-read from primary to avoid replica lag
-      user = (await usersService.getByStewardIdForWrite(stewardUserId))!;
+        // Re-read from primary to avoid replica lag
+        user = (await usersService.getByStewardIdForWrite(stewardUserId))!;
+      } catch (error) {
+        // This refresh writes claims-derived email/wallet_address into UNIQUE
+        // columns. When another row already owns the value, the same user
+        // 23505s on EVERY login — but they are already identified by
+        // steward_user_id, so the conflict must not fail the whole sign-in:
+        // keep the stored profile and log the collision loudly instead.
+        // Anything other than a unique violation still aborts the sync.
+        if (!isUniqueViolation(error)) {
+          logger.error(
+            `[StewardSync] Existing-user profile refresh failed for user ${user.id}: ${describeSyncError(error)}`,
+          );
+          throw error;
+        }
+        logger.error(
+          `[StewardSync] Existing-user profile refresh conflicts with another row for user ${user.id} — continuing sign-in with the stored profile: ${describeSyncError(error)}`,
+        );
+      }
     }
 
     return user;
@@ -280,6 +331,9 @@ export async function syncUserFromSteward(
           await rollbackCreatedUserSafely(newUser.id, "invite", error);
         }
         if (!recovered) {
+          logger.error(
+            `[StewardSync] Invited-user creation failed for ${stewardUserId}: ${describeSyncError(error)}`,
+          );
           throw error;
         }
       }
@@ -334,6 +388,9 @@ export async function syncUserFromSteward(
         await usersService.upsertStewardIdentity(existingByEmail.id, stewardUserId);
       } catch (error) {
         await restorePreviousStewardUserIdSafely(existingByEmail.id, previousStewardUserId, error);
+        logger.error(
+          `[StewardSync] Identity projection upsert failed while email-linking user ${existingByEmail.id}: ${describeSyncError(error)}`,
+        );
         throw error;
       }
 
@@ -373,6 +430,9 @@ export async function syncUserFromSteward(
           existingByWallet.id,
           existingByWallet.steward_user_id,
           error,
+        );
+        logger.error(
+          `[StewardSync] Identity projection upsert failed while wallet-linking user ${existingByWallet.id}: ${describeSyncError(error)}`,
         );
         throw error;
       }
@@ -448,12 +508,7 @@ export async function syncUserFromSteward(
       });
     } catch (error) {
       logger.error(
-        "[StewardSync] addCredits failed for new org; rolling back signup organization",
-        {
-          organizationId: organization.id,
-          initialCredits,
-          error: error instanceof Error ? error.message : String(error),
-        },
+        `[StewardSync] addCredits failed for new org ${organization.id} (initialCredits=${initialCredits}); rolling back signup organization: ${describeSyncError(error)}`,
       );
       try {
         await organizationsService.delete(organization.id);
@@ -485,17 +540,7 @@ export async function syncUserFromSteward(
       is_active: true,
     });
   } catch (error) {
-    const isDuplicateError =
-      error &&
-      typeof error === "object" &&
-      (("code" in error && error.code === "23505") ||
-        ("cause" in error &&
-          error.cause &&
-          typeof error.cause === "object" &&
-          "code" in error.cause &&
-          error.cause.code === "23505"));
-
-    if (isDuplicateError) {
+    if (isUniqueViolation(error)) {
       let existingUser: UserWithOrganization | undefined;
       const maxRetries = 3;
 
@@ -565,10 +610,9 @@ export async function syncUserFromSteward(
       await organizationsService.delete(organization.id);
     }
 
-    logger.error("[StewardSync] Failed to create user", {
-      stewardUserId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.error(
+      `[StewardSync] Failed to create user for ${stewardUserId}: ${describeSyncError(error)}`,
+    );
     throw error;
   }
 
@@ -590,6 +634,9 @@ export async function syncUserFromSteward(
     if (!recovered) {
       await rollbackCreatedUserSafely(createdUser.id, "signup", error);
       await organizationsService.delete(organization.id);
+      logger.error(
+        `[StewardSync] Identity projection upsert failed for new user ${createdUser.id}: ${describeSyncError(error)}`,
+      );
       throw error;
     }
   }

@@ -16,6 +16,29 @@ import { getScreenCapturePlugin } from "../bridge/native-plugins";
 
 const POLL_INTERVAL_MS = 1500;
 
+/**
+ * Once this many polls fail in a row, stop hammering the route every 1500ms and
+ * back off exponentially. The common cause is a `404` — the vision plugin isn't
+ * loaded in this config (e.g. on-device inference with no vision), so
+ * `/api/vision/capture-requests` is unregistered and every 1500ms poll 404s
+ * forever, burning CPU/network/battery and spamming logs. A single success snaps
+ * the interval back to fast, so a vision backend that comes online later still
+ * recovers. (#10724)
+ */
+const BACKOFF_AFTER_FAILURES = 5;
+const MAX_BACKOFF_MS = 60_000;
+
+/**
+ * Poll delay (ms) for the current consecutive-failure streak: the fast interval
+ * until the streak crosses {@link BACKOFF_AFTER_FAILURES}, then exponential
+ * backoff capped at {@link MAX_BACKOFF_MS}. Pure — unit-tested without timers.
+ */
+export function computePollDelayMs(consecutiveFailures: number): number {
+  if (consecutiveFailures < BACKOFF_AFTER_FAILURES) return POLL_INTERVAL_MS;
+  const over = consecutiveFailures - BACKOFF_AFTER_FAILURES + 1;
+  return Math.min(MAX_BACKOFF_MS, POLL_INTERVAL_MS * 2 ** over);
+}
+
 interface CaptureRequest {
   requestId: string;
   createdAt: number;
@@ -27,7 +50,8 @@ interface CaptureRequest {
 }
 
 let started = false;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let consecutiveFailures = 0;
 
 /** Frugal screen-understanding defaults: half-res, q70 → tens of KB per frame. */
 function clampScale(scale: number): number {
@@ -104,12 +128,19 @@ async function poll(): Promise<void> {
   let requests: CaptureRequest[];
   try {
     const res = await fetch("/api/vision/capture-requests");
-    if (!res.ok) return;
+    if (!res.ok) {
+      // 404 = the vision route isn't registered in this config; other non-ok is
+      // transient. Either way, count toward backoff so we don't spin at 1500ms.
+      consecutiveFailures += 1;
+      return;
+    }
+    consecutiveFailures = 0;
     const data = (await res.json()) as { requests?: unknown };
     const list = Array.isArray(data.requests) ? data.requests : [];
     requests = list.filter(isCaptureRequest);
   } catch {
-    // Agent not reachable yet (early boot) — next tick retries.
+    // Agent not reachable yet (early boot) — count, next tick retries fast.
+    consecutiveFailures += 1;
     return;
   }
   for (const request of requests) {
@@ -121,20 +152,30 @@ async function poll(): Promise<void> {
  * Idempotent boot: start the capture-request poller on Android/iOS native.
  * No-op on web/desktop and on repeat calls.
  */
+function scheduleNextPoll(delayMs: number): void {
+  pollTimer = setTimeout(() => {
+    void poll().finally(() => {
+      // Re-arm from the current failure streak so a persistently-404 route backs
+      // off instead of polling forever; a success resets the streak to fast.
+      if (started) scheduleNextPoll(computePollDelayMs(consecutiveFailures));
+    });
+  }, delayMs);
+}
+
 export function initScreenCaptureBridge(): void {
   if (started) return;
   if (!isNativeMobile()) return;
   started = true;
-  pollTimer = setInterval(() => {
-    void poll();
-  }, POLL_INTERVAL_MS);
+  consecutiveFailures = 0;
+  scheduleNextPoll(POLL_INTERVAL_MS);
 }
 
 /** Test-only reset hook. */
 export function __resetScreenCaptureBridgeForTests(): void {
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
     pollTimer = null;
   }
   started = false;
+  consecutiveFailures = 0;
 }

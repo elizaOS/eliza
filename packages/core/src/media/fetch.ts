@@ -11,6 +11,7 @@
 import {
 	fetchWithSsrfGuard,
 	type LookupFn,
+	type PinnedLookupFetchLike,
 	type SsrfPolicy,
 } from "../network/index.js";
 import { detectMime, extensionForMime } from "./mime.js";
@@ -47,6 +48,7 @@ export type FetchMediaOptions = {
 	timeoutMs?: number;
 	ssrfPolicy?: SsrfPolicy;
 	lookupFn?: LookupFn;
+	pinnedFetchImpl?: PinnedLookupFetchLike;
 };
 
 function stripQuotes(value: string): string {
@@ -120,6 +122,7 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 			timeoutMs: options.timeoutMs,
 			policy: options.ssrfPolicy,
 			lookupFn: options.lookupFn,
+			pinnedFetchImpl: options.pinnedFetchImpl,
 		});
 	} catch (err) {
 		throw new MediaFetchError(

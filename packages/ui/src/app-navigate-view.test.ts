@@ -122,6 +122,7 @@ describe("App navigate-view shell handler", () => {
       pinned: true,
     });
     expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("remote-ledger");
+    expect(fixture.setTab).toHaveBeenCalledWith("apps");
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/remote-ledger");
   });
 
@@ -140,7 +141,19 @@ describe("App navigate-view shell handler", () => {
       pinned: false,
     });
     expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("local-notes");
+    expect(fixture.setTab).toHaveBeenCalledWith("apps");
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/local-notes");
+  });
+
+  it("activates the route tab before navigating app paths", () => {
+    const fixture = createHandlerFixture();
+
+    fixture.handler(
+      navigateEvent({ viewId: "plugins", viewPath: "/apps/plugins" }),
+    );
+
+    expect(fixture.setTab).toHaveBeenCalledWith("plugins");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/plugins");
   });
 
   it("closes a targeted desktop view tab and falls back to chat", () => {
@@ -370,6 +383,7 @@ describe("App navigate-view shell handler", () => {
     );
 
     await vi.waitFor(() => {
+      expect(fixture.setTab).toHaveBeenCalledWith("views");
       expect(fixture.navigatePath).toHaveBeenCalledWith("/views/remote-ledger");
     });
   });

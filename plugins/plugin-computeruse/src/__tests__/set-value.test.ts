@@ -13,8 +13,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { computerUsePlugin } from "../index.js";
-import * as driver from "../platform/driver.js";
 import * as desktop from "../platform/desktop.js";
+import * as driver from "../platform/driver.js";
 
 const actionNames = (computerUsePlugin.actions ?? []).map((a) => a.name);
 const driverSrc = readFileSync(

@@ -18,6 +18,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CHILD = path.join(HERE, "fixtures", "crash-injection-child.ts");
+const MEMORY_CHILD = path.join(HERE, "fixtures", "memory-watchdog-child.ts");
+const GUARDS_CHILD = path.join(HERE, "fixtures", "process-guards-child.ts");
 
 // Spawns real `bun` child processes — gated like `test:tui-pty` so it stays out
 // of the fast unit lane and runs in the post-merge / on-demand lane with
@@ -36,16 +38,20 @@ afterAll(() => {
   for (const f of tmpFiles) fs.rmSync(f, { force: true });
 });
 
-function runChild(env: Record<string, string>): Promise<number> {
+function runChildAt(
+  childPath: string,
+  env: Record<string, string>,
+  timeoutMs = 15_000,
+): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", [CHILD], {
+    const child = spawn("bun", [childPath], {
       env: { ...process.env, NODE_ENV: "test", ...env },
       stdio: ["ignore", "ignore", "ignore"],
     });
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error("child did not exit within 15s"));
-    }, 15_000);
+      reject(new Error(`child did not exit within ${timeoutMs}ms`));
+    }, timeoutMs);
     child.on("exit", (code, signal) => {
       clearTimeout(timer);
       resolve(signal ? -1 : (code ?? -2));
@@ -53,6 +59,18 @@ function runChild(env: Record<string, string>): Promise<number> {
     child.on("error", reject);
   });
 }
+
+const runChild = (env: Record<string, string>): Promise<number> =>
+  runChildAt(CHILD, env);
+
+// The memory-watchdog child allocates real heap and waits at least one sample
+// interval before tripping, so it needs a longer ceiling than the fast
+// crash-injection child.
+const runMemoryChild = (env: Record<string, string>): Promise<number> =>
+  runChildAt(MEMORY_CHILD, env, 25_000);
+
+const runGuardsChild = (env: Record<string, string>): Promise<number> =>
+  runChildAt(GUARDS_CHILD, env, 10_000);
 
 /** Supervisor mirroring run-node.mjs: respawn on 75, storm-guard, else propagate. */
 async function supervise(
@@ -151,4 +169,80 @@ describeE2E("supervisor restart contract (mirrors run-node.mjs)", () => {
     // spawned MAX+1 times, then the supervisor refuses to relaunch.
     expect(result.spawns).toBe(MAX_RESTARTS_IN_WINDOW + 1);
   }, 60_000);
+});
+
+// End-to-end proof for the memory watchdog (#10197): the unit test covers
+// createMemoryWatchdog's threshold/debounce logic and the block above covers the
+// supervisor's exit-75 respawn — but nothing drives a REAL process whose real
+// RSS crosses the threshold through the real requestRestart seam. These close
+// that gap with a spawned bun child under genuine memory pressure.
+describeE2E("memory watchdog -> supervised restart (real RSS pressure)", () => {
+  it("trips on sustained RSS over threshold and exits RESTART_EXIT_CODE", async () => {
+    const code = await runMemoryChild({
+      ELIZA_MEMORY_WATCHDOG: "1",
+      ELIZA_MEMORY_WATCHDOG_RSS_MB: "128", // floor; the child holds far more
+      ELIZA_MEMORY_WATCHDOG_INTERVAL_MS: "1000", // floor
+      ELIZA_MEMORY_WATCHDOG_SUSTAINED: "1",
+      CRASH_CHILD_ALLOC_MB: "400", // resident heap well above the threshold
+      CRASH_CHILD_WATCHDOG_TIMEOUT_MS: "12000",
+    });
+    expect(code).toBe(RESTART_EXIT_CODE);
+  }, 25_000);
+
+  it("does NOT restart while RSS stays under the threshold", async () => {
+    // Threshold far above anything the child allocates -> the watchdog samples,
+    // sees RSS below the line, never requests a restart, and the child times out
+    // to a deliberate non-75 exit.
+    const code = await runMemoryChild({
+      ELIZA_MEMORY_WATCHDOG: "1",
+      ELIZA_MEMORY_WATCHDOG_RSS_MB: "65536", // 64 GB — unreachable here
+      ELIZA_MEMORY_WATCHDOG_INTERVAL_MS: "1000",
+      ELIZA_MEMORY_WATCHDOG_SUSTAINED: "1",
+      CRASH_CHILD_ALLOC_MB: "64",
+      CRASH_CHILD_WATCHDOG_TIMEOUT_MS: "3000",
+    });
+    expect(code).not.toBe(RESTART_EXIT_CODE);
+    expect(code).toBe(2); // the child's "watchdog never fired" guard exit
+  }, 25_000);
+
+  it("does NOT restart when the watchdog is disabled, even under pressure", async () => {
+    // No ELIZA_MEMORY_WATCHDOG -> startMemoryWatchdog returns null -> clean exit 0
+    // regardless of RSS. Proves the opt-in gate holds.
+    const code = await runMemoryChild({
+      ELIZA_MEMORY_WATCHDOG_RSS_MB: "128",
+      ELIZA_MEMORY_WATCHDOG_SUSTAINED: "1",
+      CRASH_CHILD_ALLOC_MB: "400",
+    });
+    expect(code).toBe(0);
+  }, 25_000);
+});
+
+// End-to-end proof for installProcessCrashGuards (#10203): the packages/shared
+// unit test can only call the captured listeners by hand with a mocked exit —
+// attaching real guards would crash the runner. These spawn a real bun child
+// that installs the guards and triggers a REAL uncaughtException / unhandled
+// rejection, proving the actual process.on(...) wiring behaves per policy.
+describeE2E("installProcessCrashGuards -> real process fault handling", () => {
+  it("exits RESTART_EXIT_CODE on a real uncaught exception (restart policy)", async () => {
+    const code = await runGuardsChild({ PG_POLICY: "restart", PG_FAULT: "uncaught" });
+    expect(code).toBe(RESTART_EXIT_CODE);
+  }, 15_000);
+
+  it("exits 1 on a real uncaught exception (exit policy)", async () => {
+    const code = await runGuardsChild({ PG_POLICY: "exit", PG_FAULT: "uncaught" });
+    expect(code).toBe(1);
+  }, 15_000);
+
+  it("survives a real uncaught exception (keep-alive policy) -> clean exit 0", async () => {
+    const code = await runGuardsChild({
+      PG_POLICY: "keep-alive",
+      PG_FAULT: "uncaught",
+    });
+    expect(code).toBe(0);
+  }, 15_000);
+
+  it("treats a real unhandled promise rejection as non-fatal -> stays alive, exit 0", async () => {
+    const code = await runGuardsChild({ PG_POLICY: "restart", PG_FAULT: "rejection" });
+    expect(code).toBe(0);
+  }, 15_000);
 });

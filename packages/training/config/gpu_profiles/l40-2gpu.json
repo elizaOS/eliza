@@ -18,4 +18,3 @@
   "use_flash_attention": true,
   "notes": "vLLM on GPU 0 for Gemma 4 E4B, training on GPU 1. No OOM conflicts."
 }
-

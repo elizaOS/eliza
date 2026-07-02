@@ -12,6 +12,13 @@
  * unifies them onto a single persistence record.
  */
 
+import type { SensitiveRequestTunnelRouting } from "../sensitive-request-policy.ts";
+import type { IAgentRuntime } from "../types/runtime.ts";
+import { Service } from "../types/service.ts";
+
+export const SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE =
+	"SensitiveRequestDispatchRegistry";
+
 export type DeliveryTarget =
 	| "dm"
 	| "owner_app_inline"
@@ -30,24 +37,6 @@ export interface DeliveryResult {
 	/** epoch ms or ISO string — adapters may pass through whichever the source request used. */
 	expiresAt?: number | string;
 	error?: string;
-}
-
-/**
- * Sub-agent credential-bridge routing carried on a secret request's delivery.
- *
- * Present only on sensitive-requests that collect a credential for a blocked
- * coding sub-agent. It names the one-shot scope and the child session the
- * value should be tunneled to, so the in-chat / DM submit surface knows to
- * route the value through `CredentialTunnelService.tunnelCredential` instead
- * of writing it to the long-term agent secret store.
- *
- * SECURITY: this carries identifiers only. The scoped bearer token and the
- * credential value are NEVER serialized into chat text or into this routing
- * object (locked "secrets never transit chat text" invariant).
- */
-export interface SensitiveRequestTunnelRouting {
-	credentialScopeId: string;
-	childSessionId: string;
 }
 
 /**
@@ -73,12 +62,12 @@ export interface DispatchSensitiveRequest {
 	kind: string;
 	/** epoch ms (preferred) or ISO string for legacy / policy-resolved requests. */
 	expiresAt?: number | string;
-	/**
-	 * Optional sub-agent credential-bridge routing (identifiers only — never the
-	 * scoped token or value). When present, the collected value is tunneled to a
-	 * blocked child session rather than written to the agent secret store.
-	 */
+	/** Back-compat for callers that projected tunnel routing at the request root. */
 	tunnel?: SensitiveRequestTunnelRouting;
+	delivery?: {
+		tunnel?: SensitiveRequestTunnelRouting;
+		[k: string]: unknown;
+	};
 	[k: string]: unknown;
 }
 
@@ -169,4 +158,51 @@ export function createSensitiveRequestDispatchRegistry(): SensitiveRequestDispat
 			return Array.from(adapters.values()).flat();
 		},
 	};
+}
+
+export class SensitiveRequestDispatchRegistryService
+	extends Service
+	implements SensitiveRequestDispatchRegistry
+{
+	static override serviceType = SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE;
+	override capabilityDescription =
+		"Sensitive-request delivery adapter registry";
+
+	private readonly registry = createSensitiveRequestDispatchRegistry();
+
+	static override async start(
+		_runtime: IAgentRuntime,
+	): Promise<SensitiveRequestDispatchRegistryService> {
+		return new SensitiveRequestDispatchRegistryService();
+	}
+
+	override async stop(): Promise<void> {
+		for (const adapter of this.registry.list()) {
+			this.registry.unregister(adapter.target);
+		}
+	}
+
+	register(adapter: SensitiveRequestDeliveryAdapter): void {
+		this.registry.register(adapter);
+	}
+
+	unregister(target: DeliveryTarget): void {
+		this.registry.unregister(target);
+	}
+
+	get(target: DeliveryTarget): SensitiveRequestDeliveryAdapter | undefined {
+		return this.registry.get(target);
+	}
+
+	resolve(
+		target: DeliveryTarget,
+		channelId: string | undefined,
+		runtime: unknown,
+	): SensitiveRequestDeliveryAdapter | undefined {
+		return this.registry.resolve?.(target, channelId, runtime);
+	}
+
+	list(): SensitiveRequestDeliveryAdapter[] {
+		return this.registry.list();
+	}
 }

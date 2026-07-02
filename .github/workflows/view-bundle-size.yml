@@ -1,0 +1,85 @@
+name: view-bundle-size
+
+# Plugin view-bundle size regression gate (issue #10724).
+#
+# Builds every plugin's view bundle (the existing `bun run build:views` build the
+# view-bundle import guard already relies on), measures the gzipped size of each
+# emitted dist/views/*.js|css, and compares it to the committed ceilings in
+# packages/benchmarks/view-bundle-size/budgets.json. The gate exits:
+#   0  every measured bundle (and the total) is at or under budget
+#   1  a bundle (or the total) EXCEEDED budget, or a budgeted bundle failed to
+#      build while the build otherwise works  → fails CI (the guardrail)
+#   2  nothing measurable on this runner (no view bundle built)  → skip
+# so a bundle-size regression turns CI red, while a build that produced nothing
+# skips instead of fabricating a pass. Deterministic, device-independent, no
+# models / hardware / live model needed.
+
+on:
+  pull_request:
+    paths:
+      # Plugin source (where view components live) + the view-bundle build/config
+      # + the gate itself. Scheduled runs below are the catch-all for drift.
+      - "plugins/**/src/**"
+      - "plugins/**/vite.config.views.ts"
+      - "packages/scripts/build-views.mjs"
+      - "packages/scripts/view-bundle-vite.config.ts"
+      - "packages/scripts/view-bundle-import-guard.mjs"
+      - "packages/benchmarks/view-bundle-size/**"
+      - ".github/workflows/view-bundle-size.yml"
+  schedule:
+    # 05:50 UTC — alongside the other nightly benchmark lanes (memperf is 05:40).
+    - cron: "50 5 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: view-bundle-size-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  size-gate:
+    name: build view bundles + budget regression gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # The repo packageManager pins the exact canary used by local dev, but
+          # historical canary tags can disappear from GitHub releases; ask
+          # setup-bun for the moving canary channel so scheduled runs do not fail
+          # before the gate gets to execute.
+          bun-version: canary
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install workspace
+        run: bun install
+      - name: Generate shared i18n assets
+        # A fresh checkout expects generated keyword data to exist before any
+        # frontend bundle that reaches @elizaos/shared source is built.
+        run: bun run --cwd packages/shared build:i18n
+      - name: Metric-schema + comparator contract (null-not-zero)
+        run: bun test packages/benchmarks/view-bundle-size/metric-schema.test.ts
+      - name: Build plugin view bundles
+        run: bun run build:views
+      - name: view-bundle-size budget regression gate
+        run: |
+          set +e
+          node packages/benchmarks/view-bundle-size/run-all.mjs --no-build
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "view-bundle-size: all budgets pass" ;;
+            2) echo "view-bundle-size: skipped (no view bundle built on this runner)" ;;
+            1) echo "::error::view-bundle-size budget regression (exit 1)"; exit 1 ;;
+            *) echo "::error::view-bundle-size gate errored (exit $code)"; exit "$code" ;;
+          esac
+      - name: Upload view-bundle-size report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: view-bundle-size-report
+          path: packages/benchmarks/view-bundle-size/results/summary/
+          if-no-files-found: ignore

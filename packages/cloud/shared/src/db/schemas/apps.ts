@@ -42,6 +42,34 @@ export const userDatabaseStatusEnum = pgEnum("user_database_status", [
 export type UserDatabaseStatus = "none" | "provisioning" | "ready" | "error";
 
 /**
+ * Automated compliance-review status enum (#10732).
+ *
+ * The authoritative gate for monetization and paid charges. Distinct from
+ * `is_approved` (the serve/visibility + admin-suspend flag): an app can be
+ * served publicly while its `review_status` is still `draft`, but it cannot
+ * enable monetization or create a charge/payment-request until the automated
+ * classifier moves it to `approved`.
+ *
+ * Lifecycle: draft → submitted → under_review → {approved | rejected}. Binary
+ * (allow/ban) — there is no human queue. A material change to review-relevant
+ * fields resets it to `draft` (see `apps.review_content_hash`).
+ */
+export const appReviewStatusEnum = pgEnum("app_review_status", [
+  "draft",
+  "submitted",
+  "under_review",
+  "approved",
+  "rejected",
+]);
+
+export type AppReviewStatus =
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "approved"
+  | "rejected";
+
+/**
  * Apps table schema (core).
  *
  * Contains essential app identification, ownership, and status.
@@ -211,6 +239,16 @@ export const apps = pgTable(
     // Status
     is_active: boolean("is_active").default(true).notNull(),
     is_approved: boolean("is_approved").default(true).notNull(),
+
+    // Automated compliance review gate (#10732). Independent of `is_approved`.
+    // `review_status` = the authoritative gate for enabling monetization and for
+    // creating paid charges / payment-requests. New apps start in `draft`;
+    // existing apps are grandfathered to `approved` by the backfill migration.
+    // `review_content_hash` snapshots the review-relevant fields at approval time
+    // so a later material change can trigger an automatic re-review.
+    review_status: appReviewStatusEnum("review_status").notNull().default("draft"),
+    review_content_hash: text("review_content_hash"),
+    reviewed_at: timestamp("reviewed_at"),
 
     // Timestamps
     created_at: timestamp("created_at").notNull().defaultNow(),

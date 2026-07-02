@@ -224,7 +224,7 @@ export async function broadcastAgentActivity(
   // Cast to Record<string, JsonValue> for type compatibility with broadcastToChannel
   await broadcastToChannel(`agent:${agentId}`, {
     type: `agent_${activityType}`,
-    activity: activity as JsonValue,
+    activity: activity as unknown as JsonValue,
   });
 }
 

@@ -9,12 +9,10 @@ import {
 } from "./helpers";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
-// in-chat first-run surface (#9952: the auto-opened ContinuousChatOverlay seeded
-// by the headless conductor — greeting + runtime/provider ChoiceWidgets) never
-// gets render-telemetry coverage. That surface is exactly where the agent-start
-// render loop once froze onboarding, so this spec lands on it with the guard
-// armed and drives the runtime selection that preceded the freeze. There is NO
-// separate full-screen onboarding surface anymore — onboarding IS the chat.
+// first-run chat transcript rarely gets render-telemetry coverage. That surface
+// is exactly where the agent-start render loop once froze onboarding, so this
+// spec lands on it with the guard armed and drives the runtime selection that
+// preceded the freeze.
 
 async function fulfillJson(
   route: Route,
@@ -99,15 +97,10 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  // The in-chat first-run flow renders inside the REAL floating chat overlay:
-  // the agent greets first, then asks the runtime question as ChoiceWidgets.
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(
-    chatOverlay.getByText("Let's get you set up", { exact: false }),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(
-    chatOverlay.getByText("where should your agent run", { exact: false }),
+    page.getByText("First, where should your agent run?", { exact: false }),
   ).toBeVisible({ timeout: 15_000 });
 
   // The removed full-screen onboarding gate must NOT render — proof the surface
@@ -120,7 +113,7 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
     await expect(page.getByTestId(removed)).toHaveCount(0);
   }
 
-  // The runtime question offers three in-chat ChoiceWidget options.
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
   const local = page.getByTestId("choice-__first_run__:runtime:local");
   const other = page.getByTestId("choice-__first_run__:runtime:other");
@@ -128,8 +121,8 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
   await expect(local).toBeVisible();
   await expect(other).toBeVisible();
 
-  // Local advances to the provider sub-choice (on-device vs Eliza Cloud vs
-  // other) — the re-render churn on the newer step that previously froze.
+  // Local advances to the provider step (on-device vs Eliza Cloud vs other) —
+  // the re-render churn on the newer step that previously froze.
   await local.click();
   await expect(
     page.getByTestId("choice-__first_run__:provider:on-device"),
@@ -203,12 +196,8 @@ test("fresh first-run offers to restore an existing local backup before onboardi
     page.getByTestId("choice-__first_run__:backup-restore:start-fresh"),
   ).toBeVisible();
 
-  await page
-    .getByTestId("choice-__first_run__:backup-restore:latest")
-    .click();
-  await expect
-    .poll(() => restoreRequests.length, { timeout: 15_000 })
-    .toBe(1);
+  await page.getByTestId("choice-__first_run__:backup-restore:latest").click();
+  await expect.poll(() => restoreRequests.length, { timeout: 15_000 }).toBe(1);
   expect(restoreRequests[0]).toContain("agent-2026-06-30.eliza-backup");
   await expect(
     chatOverlay.getByText("Backup restored", { exact: false }),

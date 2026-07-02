@@ -106,4 +106,84 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
       expect(ids).toEqual(phase === "responding" ? ["u1", "a1"] : ["u1"]);
     }
   });
+
+  it("keeps an image-only USER turn (no caption) in every phase", () => {
+    const imageOnly: ShellMessage = {
+      ...msg("u1", "user", ""),
+      attachments: [
+        { id: "att1", url: "/api/media/abc.png", contentType: "image" },
+      ],
+    };
+    const phases: ShellPhase[] = [
+      "booting",
+      "idle",
+      "summoned",
+      "listening",
+      "responding",
+    ];
+    for (const phase of phases) {
+      const ids = selectVisibleShellMessages(
+        [imageOnly, msg("a1", "assistant", "nice photo")],
+        phase,
+      ).map((m) => m.id);
+      expect(ids).toEqual(["u1", "a1"]);
+    }
+  });
+
+  it("keeps an attachment-only ASSISTANT turn after the phase leaves responding", () => {
+    const generated: ShellMessage = {
+      ...msg("a1", "assistant", ""),
+      attachments: [
+        { id: "att1", url: "/api/media/gen.png", contentType: "image" },
+      ],
+    };
+    const thread = [msg("u1", "user", "draw me a cat"), generated];
+    // Visible while streaming AND once settled — it must not vanish.
+    expect(
+      selectVisibleShellMessages(thread, "responding").map((m) => m.id),
+    ).toEqual(["u1", "a1"]);
+    expect(selectVisibleShellMessages(thread, "idle").map((m) => m.id)).toEqual(
+      ["u1", "a1"],
+    );
+  });
+
+  it("keeps a secret-request-only turn (actionable block, no text)", () => {
+    const secret: ShellMessage = {
+      ...msg("a1", "assistant", ""),
+      secretRequest: { key: "DISCORD_TOKEN", status: "pending" },
+    };
+    expect(
+      selectVisibleShellMessages(
+        [msg("u1", "user", "connect discord"), secret],
+        "idle",
+      ).map((m) => m.id),
+    ).toEqual(["u1", "a1"]);
+  });
+
+  it("keeps a content-less FAILED assistant turn (its retry / gate UI must render)", () => {
+    const failed: ShellMessage = {
+      ...msg("a1", "assistant", ""),
+      failureKind: "rate_limited",
+    };
+    // Kept in every phase — a rate-limit/provider stall fails before any token
+    // streams, so a content check alone would hide the failure + its retry.
+    expect(
+      selectVisibleShellMessages([msg("u1", "user", "hi"), failed], "idle").map(
+        (m) => m.id,
+      ),
+    ).toEqual(["u1", "a1"]);
+  });
+
+  it("still drops turns with an EMPTY attachments array", () => {
+    const emptyAtt: ShellMessage = {
+      ...msg("a1", "assistant", ""),
+      attachments: [],
+    };
+    expect(
+      selectVisibleShellMessages(
+        [msg("u1", "user", "hi"), emptyAtt],
+        "idle",
+      ).map((m) => m.id),
+    ).toEqual(["u1"]);
+  });
 });

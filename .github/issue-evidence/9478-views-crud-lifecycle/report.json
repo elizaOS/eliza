@@ -8,14 +8,7 @@
       "id": "views-crud-lifecycle",
       "title": "VIEWS create, edit, delete lifecycle updates the view catalog",
       "domain": "app-control",
-      "tags": [
-        "app-control",
-        "views",
-        "create",
-        "edit",
-        "delete",
-        "catalog"
-      ],
+      "tags": ["app-control", "views", "create", "edit", "delete", "catalog"],
       "status": "passed",
       "durationMs": 683,
       "turns": [

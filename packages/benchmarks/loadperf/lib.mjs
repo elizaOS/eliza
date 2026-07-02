@@ -6,11 +6,22 @@
  * that need them and degrade to a clearly-marked `skipped` result when unavailable.
  */
 
-import { gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
-import { readFileSync, readdirSync, statSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
-import { join, relative, dirname, extname, basename } from "node:path";
-import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, extname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  brotliCompressSync,
+  gzipSync,
+  constants as zlibConstants,
+} from "node:zlib";
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 /** eliza repo root (…/packages/benchmarks/loadperf -> …) */
@@ -107,7 +118,10 @@ export async function fetchText(url, { timeoutMs = 4000 } = {}) {
  * keeps the boot KPI from recording a false PASS against a server that never
  * actually booted, so there is intentionally no loose opt-in.
  */
-export async function waitForReady(baseUrl, { timeoutMs = 300_000, intervalMs = 250, startMs } = {}) {
+export async function waitForReady(
+  baseUrl,
+  { timeoutMs = 300_000, intervalMs = 250, startMs } = {},
+) {
   const begin = startMs ?? Date.now();
   const deadline = begin + timeoutMs;
   const healthUrl = `${baseUrl.replace(/\/$/, "")}/api/health`;
@@ -153,7 +167,10 @@ export function sleep(msv) {
 export function gitInfo() {
   const run = (args) => {
     try {
-      return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+      return execFileSync("git", args, {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+      }).trim();
     } catch {
       return null;
     }
@@ -196,4 +213,13 @@ export function loadBudgets() {
   return JSON.parse(readFileSync(f, "utf8"));
 }
 
-export { join, relative, extname, basename, existsSync, readFileSync, writeFileSync, mkdirSync };
+export {
+  basename,
+  existsSync,
+  extname,
+  join,
+  mkdirSync,
+  readFileSync,
+  relative,
+  writeFileSync,
+};

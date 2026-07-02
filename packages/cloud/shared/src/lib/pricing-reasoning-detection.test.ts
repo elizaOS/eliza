@@ -34,10 +34,12 @@ describe("modelUsesReasoningTokens", () => {
     "z-ai/glm-4.6-thinking",
     "moonshotai/kimi-k2.6-think",
     "x-ai/grok-4-reasoning",
-    // Cloud launch defaults — gpt-oss spends output tokens on hidden reasoning,
-    // and the Cerebras zai-glm-4.x series is catalog-tagged reasoning. Both must
+    // Cloud launch defaults — Gemma/gpt-oss spend output tokens on hidden
+    // reasoning, and the Cerebras zai-glm-4.x series is catalog-tagged reasoning. They must
     // get the response-token floor or low/default max_tokens returns empty
-    // (billed) output. (gpt-oss-120b = default TEXT_SMALL, zai-glm-4.7 = TEXT_LARGE.)
+    // (billed) output.
+    "gemma-4-31b",
+    "cerebras:gemma-4-31b",
     "gpt-oss-120b",
     "openai/gpt-oss-120b",
     "cerebras:gpt-oss-120b",

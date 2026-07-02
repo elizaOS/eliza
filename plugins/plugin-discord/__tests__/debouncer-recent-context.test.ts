@@ -327,3 +327,46 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 		}
 	});
 });
+
+describe("Discord channel debouncer — human multi-message cadence (#11118)", () => {
+	function setup(options: Record<string, unknown>) {
+		const flushed: string[][] = [];
+		const debouncer = createChannelDebouncer(
+			(messages) => flushed.push(messages.map((m) => (m as { id: string }).id)),
+			{ botUserId: "123", debounceMs: 3000, coalesceEnabled: false, ...options },
+		);
+		return { flushed, debouncer };
+	}
+
+	// #11118: the user split a question across messages and sent the bare
+	// @mention pointer ~40s later. A 10s TTL had pruned the question, so the
+	// pointer reached the model with no "[Recent channel context]" and the bot
+	// replied "Yeah, I'm here. What's up?" instead of answering.
+	it("folds a question sent ~40s before the bare-mention pointer (default TTL)", () => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({ shouldRespondOnlyToMentions: true });
+			debouncer.enqueue(mockMessage("1", "what was that API error about?"));
+			vi.advanceTimersByTime(3000);
+			debouncer.enqueue(mockMessage("2", "? anyone"));
+			vi.advanceTimersByTime(37_000); // ~40s total — real human cadence
+			debouncer.enqueue(mockMessage("3", "<@123>"));
+			expect(flushed[flushed.length - 1]).toEqual(["1", "2", "3"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("still prunes questions older than the 90s default window", () => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({ shouldRespondOnlyToMentions: true });
+			debouncer.enqueue(mockMessage("1", "stale question"));
+			vi.advanceTimersByTime(95_000);
+			debouncer.enqueue(mockMessage("2", "<@123>"));
+			expect(flushed[flushed.length - 1]).toEqual(["2"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});

@@ -230,9 +230,14 @@ export async function billUsage(
   let baseTotalCost = totalCost / PLATFORM_MARKUP_MULTIPLIER;
   let platformMarkup = totalCost - baseTotalCost;
 
-  // Apply affiliate markup if present
+  // Apply affiliate markup if present — but NOT for anonymous (free-tier)
+  // requests. An "anonymous" org pays $0 (its reservation is a no-op), so there
+  // is no collected affiliate revenue to share; minting affiliate earnings here
+  // would create cashable redeemable_earnings out of nothing — an org owner
+  // could farm their own affiliate code via free anon requests (#10853). Only
+  // credit the affiliate when the request is billed to a real paying org.
   let _appliedAffiliateMarkup = false;
-  if (context.affiliateCode) {
+  if (context.affiliateCode && context.organizationId !== "anonymous") {
     const affiliate = await affiliatesRepository.getAffiliateCodeByCode(context.affiliateCode);
     if (affiliate && affiliate.is_active) {
       const markupPercent = Number(affiliate.markup_percent) / 100;

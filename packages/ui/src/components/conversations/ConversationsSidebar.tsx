@@ -480,6 +480,15 @@ export function ConversationsSidebar({
     (result: ConversationMessageSearchResult) => {
       const anchorId = getChatMessageAnchorId(result.messageId);
       void (async () => {
+        // Clear any active terminal/inbox surface and land on the chat tab
+        // BEFORE selecting — ChatView renders the terminal branch first and the
+        // inbox branch second, so without this a search-result jump switched
+        // the conversation invisibly underneath a terminal/connector chat, the
+        // anchor never mounted, and the user saw nothing (mirrors
+        // handleRowSelect / handleNewChat).
+        setState("activeInboxChat", null);
+        setState("activeTerminalSessionId", null);
+        setTab("chat");
         // Select the conversation and let its recent window load first, so the
         // in-window case (the common one) scrolls without a second fetch.
         await handleSelectConversation(result.conversationId);
@@ -506,6 +515,8 @@ export function ConversationsSidebar({
       loadConversationMessagesAround,
       waitForAnchor,
       scrollAndFlashAnchor,
+      setState,
+      setTab,
       mobile,
       onClose,
     ],
@@ -547,6 +558,10 @@ export function ConversationsSidebar({
 
   const handleNewChat = () => {
     setState("activeInboxChat", null);
+    // Mirror handleRowSelect's conversation branch: an active terminal session
+    // otherwise keeps rendering over the fresh conversation (ChatView prefers
+    // the terminal branch), making "New chat" look dead.
+    setState("activeTerminalSessionId", null);
     setTab("chat");
     void handleNewConversation();
     onClose?.();
@@ -804,16 +819,10 @@ export function ConversationsSidebar({
         collapseButtonAriaLabel={t("aria.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         collapsedRailAction={
-          showNewTerminalAction ? (
-            <SidebarCollapsedActionButton
-              aria-label={t("conversations.newTerminal", {
-                defaultValue: "New terminal",
-              })}
-              onClick={() => void spawnShell()}
-            >
-              <Plus className="h-4 w-4" />
-            </SidebarCollapsedActionButton>
-          ) : showNewChatAction ? (
+          // Chat-first: the single collapsed-rail "+" always starts a new
+          // CHAT. New terminal stays reachable from the expanded terminal
+          // section header — a shell session is never the primary affordance.
+          showNewChatAction ? (
             <SidebarCollapsedActionButton
               aria-label={t("conversations.newChat")}
               onClick={handleNewChat}

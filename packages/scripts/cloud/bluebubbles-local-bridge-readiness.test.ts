@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
+  type BlueBubblesServerInfoForReadiness,
   outboundReadiness,
   recipientFromChatGuid,
   senderOptions,
   shortcutValidationMatches,
-  type BlueBubblesServerInfoForReadiness,
 } from "./bluebubbles-local-bridge-readiness";
 
 const readyServerInfo: BlueBubblesServerInfoForReadiness = {
@@ -60,7 +60,10 @@ describe("BlueBubbles local bridge readiness", () => {
     const options = senderOptions({
       ...base,
       pendingReplies: [
-        { lastError: "BlueBubbles send timed out after 45000ms using apple-script" },
+        {
+          lastError:
+            "BlueBubbles send timed out after 45000ms using apple-script",
+        },
       ],
       appleEvents: [
         ...readyAppleEvents.slice(0, 2),
@@ -72,13 +75,19 @@ describe("BlueBubbles local bridge readiness", () => {
       ],
     });
 
-    expect(options.find((option) => option.method === "apple-script")).toMatchObject({
+    expect(
+      options.find((option) => option.method === "apple-script"),
+    ).toMatchObject({
       ready: false,
     });
-    expect(options.find((option) => option.method === "private-api")).toMatchObject({
+    expect(
+      options.find((option) => option.method === "private-api"),
+    ).toMatchObject({
       ready: true,
     });
-    expect(options.find((option) => option.method === "shortcuts")).toMatchObject({
+    expect(
+      options.find((option) => option.method === "shortcuts"),
+    ).toMatchObject({
       ready: true,
     });
   });
@@ -97,7 +106,9 @@ describe("BlueBubbles local bridge readiness", () => {
       ],
     });
 
-    expect(options.find((option) => option.method === "apple-script")).toMatchObject({
+    expect(
+      options.find((option) => option.method === "apple-script"),
+    ).toMatchObject({
       ready: false,
       reasons: [
         "Messages AppleEvents unavailable: Messages AppleEvents probe timed out after 3000ms; Command failed: osascript Messages; signal=SIGTERM",
@@ -111,7 +122,10 @@ describe("BlueBubbles local bridge readiness", () => {
         ...base,
         method: "shortcuts",
         pendingReplies: [
-          { lastError: "BlueBubbles send timed out after 45000ms using apple-script" },
+          {
+            lastError:
+              "BlueBubbles send timed out after 45000ms using apple-script",
+          },
         ],
       }),
     ).toEqual({ method: "shortcuts", ready: true, reasons: [] });

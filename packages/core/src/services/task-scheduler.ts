@@ -42,10 +42,22 @@ async function tick(): Promise<void> {
 	if (!adp) return;
 
 	const agentIds = snapshot as UUID[];
-	const allTasks = await adp.getTasks({
-		tags: ["queue"],
-		agentIds,
-	});
+	let allTasks: Task[];
+	try {
+		allTasks = await adp.getTasks({
+			tags: ["queue"],
+			agentIds,
+		});
+	} catch (error) {
+		// A transient getTasks rejection must NOT permanently silence the cleared
+		// agents: we already drained dirtyAgents above, so re-arm the ones still
+		// registered before rethrowing. Otherwise one DB hiccup drops every repeat
+		// task (incl. the LifeOps heartbeat) until each agent is marked dirty again.
+		for (const aid of snapshot) {
+			if (registry.has(aid)) dirtyAgents.add(aid);
+		}
+		throw error;
+	}
 
 	// Group by task.agentId so each runtime only receives its own tasks. WHY: runTick expects one agent's tasks.
 	const byAgent = new Map<string, Task[]>();
@@ -64,6 +76,12 @@ async function tick(): Promise<void> {
 			await entry.taskService.runTick(tasks);
 		} catch (_) {
 			// WHY: one agent's runTick failure must not break other agents' ticks; errors are logged inside runTick/executeTask.
+		}
+		// Non-empty queue: keep the agent dirty so the next tick re-queries. WHY: repeat tasks and
+		// not-yet-due one-shots become due purely by time passing, with no markTaskSchedulerDirty
+		// call; only agents whose queue came back empty go quiet until marked dirty again.
+		if (registry.has(agentIdKey)) {
+			dirtyAgents.add(agentIdKey);
 		}
 	}
 }

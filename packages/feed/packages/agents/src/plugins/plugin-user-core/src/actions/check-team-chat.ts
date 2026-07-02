@@ -17,6 +17,7 @@ import type {
 import { db, desc, eq, messages, users } from "@feed/db";
 import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 /** Options for check team chat action */
 interface CheckTeamChatOptions extends HandlerOptions {
@@ -27,13 +28,13 @@ export const checkTeamChatAction: Action = {
   name: "CHECK_TEAM_CHAT",
   description:
     "View recent messages from the team chat. Use this to see the full conversation history including what agents have said.",
-  parameters: {
+  parameters: defineActionParameters({
     limit: {
       type: "number",
       description: "Number of recent messages to fetch (default: 20, max: 50)",
       optional: true,
     },
-  },
+  }),
   examples: [
     [
       {

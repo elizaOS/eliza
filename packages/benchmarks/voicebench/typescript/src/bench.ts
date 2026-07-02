@@ -471,7 +471,8 @@ function resolveEliza1AsrPaths(): {
   return {
     binary: process.env.ELIZA1_ASR_CLI || `${binDir}/llama-mtmd-cli`,
     model: process.env.ELIZA1_ASR_MODEL || `${asrDir}/eliza-1-asr.gguf`,
-    mmproj: process.env.ELIZA1_ASR_MMPROJ || `${asrDir}/eliza-1-asr-mmproj.gguf`,
+    mmproj:
+      process.env.ELIZA1_ASR_MMPROJ || `${asrDir}/eliza-1-asr-mmproj.gguf`,
   };
 }
 
@@ -541,7 +542,7 @@ async function generateWithCerebras(
   if (!apiKey) {
     throw new Error("CEREBRAS_API_KEY is required for local-cerebras profile");
   }
-  const model = process.env.CEREBRAS_MODEL || "gpt-oss-120b";
+  const model = process.env.CEREBRAS_MODEL || "gemma-4-31b";
   const prompt = `${transcript}\n\n${responsePrompt}`;
   const startedAt = nowMs();
   const response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
@@ -587,7 +588,10 @@ async function generateWithCerebras(
   };
 }
 
-function synthesizeWithSay(text: string): { bytes: Uint8Array; latencyMs: number } {
+function synthesizeWithSay(text: string): {
+  bytes: Uint8Array;
+  latencyMs: number;
+} {
   const sayBin = process.env.VOICEBENCH_SAY_BIN || "/usr/bin/say";
   if (!existsSync(sayBin)) {
     throw new Error(`macOS say binary not found at ${sayBin}`);
@@ -967,7 +971,9 @@ async function main(): Promise<void> {
             cachedFirstSentenceMs = cachedFirstSentence.latencyMs;
           }
           const speechToVoiceStartCachedMs =
-            transcription.latencyMs + generated.latencyMs + cachedFirstSentenceMs;
+            transcription.latencyMs +
+            generated.latencyMs +
+            cachedFirstSentenceMs;
 
           let ttsRemainderMs = 0;
           let ttsRemainderBytes = 0;
@@ -1083,321 +1089,325 @@ async function main(): Promise<void> {
   } else {
     const runtime = await createRuntime(profile, character);
     try {
-    const messageService = runtime.messageService;
-    if (!messageService) {
-      throw new Error("VoiceBench runtime did not initialize messageService");
-    }
-    const trajectoryService =
-      (runtime.getService(
-        "trajectory_logger",
-      ) as TrajectoryLoggerServiceLike | null) ??
-      (runtime.getService(
-        "trajectories",
-      ) as TrajectoryLoggerServiceLike | null);
-    for (const mode of config.modes) {
-      for (const sample of samples) {
-        const sampleAudioBytes = readFileSync(sample.audioPath);
-        for (let iteration = 1; iteration <= iterations; iteration++) {
-          messageSequence += 1;
-          const messageIdSuffix = String(messageSequence).padStart(12, "0");
-          const stepId = `voicebench-ts-${timestamp}-${mode.id}-${sample.id}-${iteration}`;
+      const messageService = runtime.messageService;
+      if (!messageService) {
+        throw new Error("VoiceBench runtime did not initialize messageService");
+      }
+      const trajectoryService =
+        (runtime.getService(
+          "trajectory_logger",
+        ) as TrajectoryLoggerServiceLike | null) ??
+        (runtime.getService(
+          "trajectories",
+        ) as TrajectoryLoggerServiceLike | null);
+      for (const mode of config.modes) {
+        for (const sample of samples) {
+          const sampleAudioBytes = readFileSync(sample.audioPath);
+          for (let iteration = 1; iteration <= iterations; iteration++) {
+            messageSequence += 1;
+            const messageIdSuffix = String(messageSequence).padStart(12, "0");
+            const stepId = `voicebench-ts-${timestamp}-${mode.id}-${sample.id}-${iteration}`;
 
-          const startedAt = nowMs();
+            const startedAt = nowMs();
 
-          const transcriptionStart = nowMs();
-          const transcription = await runtime.useModel(
-            ModelType.TRANSCRIPTION,
-            sampleAudioBytes,
-            sttProvider,
-          );
-          const transcriptionMs = nowMs() - transcriptionStart;
-
-          const transcriptText = String(transcription || "").trim();
-          const expectedTranscript = sample.expectedText;
-          const transcriptionExactMatch =
-            typeof expectedTranscript === "string"
-              ? transcriptText === expectedTranscript
-              : null;
-          const transcriptionNormalizedMatch =
-            typeof expectedTranscript === "string"
-              ? normalizeText(transcriptText) ===
-                normalizeText(expectedTranscript)
-              : null;
-          const transcriptionWer =
-            typeof expectedTranscript === "string"
-              ? wordErrorRate(expectedTranscript, transcriptText)
-              : null;
-          const transcriptionCer =
-            typeof expectedTranscript === "string"
-              ? characterErrorRate(expectedTranscript, transcriptText)
-              : null;
-
-          const userPrompt = `${transcriptText}\n\n${config.responsePrompt}`;
-          const message: Memory = {
-            id: `00000000-0000-0000-2100-${messageIdSuffix}` as UUID,
-            agentId: AGENT_ID,
-            entityId: USER_ENTITY_ID,
-            roomId: ROOM_ID,
-            createdAt: Date.now(),
-            content: {
-              text: userPrompt,
-              source: "voicebench",
-              channelType: ChannelType.VOICE_DM,
-            },
-            metadata: {
-              trajectoryStepId: stepId,
-              benchmarkContext: mode.benchmarkContext,
-              entityName: "VoicebenchUser",
-            },
-          };
-
-          let firstResponseAt: number | null = null;
-          let callbackText = "";
-
-          const callback: HandlerCallback = async (content: Content) => {
-            if (firstResponseAt === null) {
-              firstResponseAt = nowMs();
-            }
-            if (content.text) {
-              callbackText = content.text;
-            }
-            return [];
-          };
-
-          const responseStart = nowMs();
-          const responseResult = await messageService.handleMessage(
-            runtime,
-            message,
-            callback,
-          );
-          const responseEnd = nowMs();
-
-          const responseTotalMs = responseEnd - responseStart;
-          const responseTtftMs =
-            (firstResponseAt ?? responseEnd) - responseStart;
-          const speechToResponseStartMs = transcriptionMs + responseTtftMs;
-          const rawResponseText = (
-            callbackText ||
-            responseResult.responseContent?.text ||
-            ""
-          ).trim();
-          if (!rawResponseText) {
-            throw new Error(
-              `VoiceBench sample ${sample.id} produced no agent response text`,
+            const transcriptionStart = nowMs();
+            const transcription = await runtime.useModel(
+              ModelType.TRANSCRIPTION,
+              sampleAudioBytes,
+              sttProvider,
             );
-          }
-          const boundedResponse = enforceResponseBudget(
-            rawResponseText,
-            responseMaxChars,
-          );
-          const responseText = boundedResponse.text.trim();
-          if (!responseText) {
-            throw new Error(
-              `VoiceBench sample ${sample.id} response became empty after budget enforcement`,
+            const transcriptionMs = nowMs() - transcriptionStart;
+
+            const transcriptText = String(transcription || "").trim();
+            const expectedTranscript = sample.expectedText;
+            const transcriptionExactMatch =
+              typeof expectedTranscript === "string"
+                ? transcriptText === expectedTranscript
+                : null;
+            const transcriptionNormalizedMatch =
+              typeof expectedTranscript === "string"
+                ? normalizeText(transcriptText) ===
+                  normalizeText(expectedTranscript)
+                : null;
+            const transcriptionWer =
+              typeof expectedTranscript === "string"
+                ? wordErrorRate(expectedTranscript, transcriptText)
+                : null;
+            const transcriptionCer =
+              typeof expectedTranscript === "string"
+                ? characterErrorRate(expectedTranscript, transcriptText)
+                : null;
+
+            const userPrompt = `${transcriptText}\n\n${config.responsePrompt}`;
+            const message: Memory = {
+              id: `00000000-0000-0000-2100-${messageIdSuffix}` as UUID,
+              agentId: AGENT_ID,
+              entityId: USER_ENTITY_ID,
+              roomId: ROOM_ID,
+              createdAt: Date.now(),
+              content: {
+                text: userPrompt,
+                source: "voicebench",
+                channelType: ChannelType.VOICE_DM,
+              },
+              metadata: {
+                trajectoryStepId: stepId,
+                benchmarkContext: mode.benchmarkContext,
+                entityName: "VoicebenchUser",
+              },
+            };
+
+            let firstResponseAt: number | null = null;
+            let callbackText = "";
+
+            const callback: HandlerCallback = async (content: Content) => {
+              if (firstResponseAt === null) {
+                firstResponseAt = nowMs();
+              }
+              if (content.text) {
+                callbackText = content.text;
+              }
+              return [];
+            };
+
+            const responseStart = nowMs();
+            const responseResult = await messageService.handleMessage(
+              runtime,
+              message,
+              callback,
             );
-          }
+            const responseEnd = nowMs();
 
-          const segmented = splitFirstSentence(responseText);
-          const firstSentence = segmented.firstSentence || responseText;
-          const remainder = segmented.remainder;
-          const firstSentenceEstimatedTokens =
-            estimateTokenCount(firstSentence);
-          const ttsFirstSentenceCacheEligible =
-            firstSentenceEstimatedTokens > 0 &&
-            firstSentenceEstimatedTokens < 10;
-          const firstSentenceKey = `${profile}|${ttsProvider}|${normalizeCacheKeyText(firstSentence)}`;
+            const responseTotalMs = responseEnd - responseStart;
+            const responseTtftMs =
+              (firstResponseAt ?? responseEnd) - responseStart;
+            const speechToResponseStartMs = transcriptionMs + responseTtftMs;
+            const rawResponseText = (
+              callbackText ||
+              responseResult.responseContent?.text ||
+              ""
+            ).trim();
+            if (!rawResponseText) {
+              throw new Error(
+                `VoiceBench sample ${sample.id} produced no agent response text`,
+              );
+            }
+            const boundedResponse = enforceResponseBudget(
+              rawResponseText,
+              responseMaxChars,
+            );
+            const responseText = boundedResponse.text.trim();
+            if (!responseText) {
+              throw new Error(
+                `VoiceBench sample ${sample.id} response became empty after budget enforcement`,
+              );
+            }
 
-          const uncachedFirstSentenceStart = nowMs();
-          const uncachedFirstSentenceOutput = await runtime.useModel(
-            ModelType.TEXT_TO_SPEECH,
-            { text: firstSentence },
-            ttsProvider,
-          );
-          const uncachedFirstSentenceMs = nowMs() - uncachedFirstSentenceStart;
-          const speechToVoiceStartUncachedMs =
-            transcriptionMs + responseTotalMs + uncachedFirstSentenceMs;
-          const uncachedFirstSentenceBytes = resolveAudioBytesLength(
-            uncachedFirstSentenceOutput,
-          );
+            const segmented = splitFirstSentence(responseText);
+            const firstSentence = segmented.firstSentence || responseText;
+            const remainder = segmented.remainder;
+            const firstSentenceEstimatedTokens =
+              estimateTokenCount(firstSentence);
+            const ttsFirstSentenceCacheEligible =
+              firstSentenceEstimatedTokens > 0 &&
+              firstSentenceEstimatedTokens < 10;
+            const firstSentenceKey = `${profile}|${ttsProvider}|${normalizeCacheKeyText(firstSentence)}`;
 
-          const cachedPipelineStart = nowMs();
-          const cachedHit = firstSentenceCache.has(firstSentenceKey);
-          const remainderStartedAt = remainder ? nowMs() : 0;
-          const remainderPromise = remainder
-            ? runtime.useModel(
-                ModelType.TEXT_TO_SPEECH,
-                { text: remainder },
-                ttsProvider,
-              )
-            : null;
-
-          let cachedFirstSentenceBytes = 0;
-          let cachedFirstSentenceMs = 0;
-          if (cachedHit) {
-            cachedFirstSentenceBytes =
-              firstSentenceCache.get(firstSentenceKey)?.byteLength ?? 0;
-            cachedFirstSentenceMs = nowMs() - cachedPipelineStart;
-          } else {
-            const cachedFirstSentenceStart = nowMs();
-            const cachedFirstSentenceOutput = await runtime.useModel(
+            const uncachedFirstSentenceStart = nowMs();
+            const uncachedFirstSentenceOutput = await runtime.useModel(
               ModelType.TEXT_TO_SPEECH,
               { text: firstSentence },
               ttsProvider,
             );
-            const bytes = coerceAudioBytes(cachedFirstSentenceOutput);
-            firstSentenceCache.set(firstSentenceKey, bytes);
-            cachedFirstSentenceBytes = bytes.byteLength;
-            cachedFirstSentenceMs = nowMs() - cachedFirstSentenceStart;
-          }
-          const speechToVoiceStartCachedMs =
-            transcriptionMs + responseTotalMs + cachedFirstSentenceMs;
+            const uncachedFirstSentenceMs =
+              nowMs() - uncachedFirstSentenceStart;
+            const speechToVoiceStartUncachedMs =
+              transcriptionMs + responseTotalMs + uncachedFirstSentenceMs;
+            const uncachedFirstSentenceBytes = resolveAudioBytesLength(
+              uncachedFirstSentenceOutput,
+            );
 
-          let ttsRemainderMs = 0;
-          let ttsRemainderBytes = 0;
-          if (remainderPromise) {
-            const remainderOutput = await remainderPromise;
-            ttsRemainderMs = nowMs() - remainderStartedAt;
-            ttsRemainderBytes = resolveAudioBytesLength(remainderOutput);
-          }
-          const ttsCachedPipelineMs = nowMs() - cachedPipelineStart;
-          const ttsCachedPipelineBytes =
-            cachedFirstSentenceBytes + ttsRemainderBytes;
+            const cachedPipelineStart = nowMs();
+            const cachedHit = firstSentenceCache.has(firstSentenceKey);
+            const remainderStartedAt = remainder ? nowMs() : 0;
+            const remainderPromise = remainder
+              ? runtime.useModel(
+                  ModelType.TEXT_TO_SPEECH,
+                  { text: remainder },
+                  ttsProvider,
+                )
+              : null;
 
-          const ttsStart = nowMs();
-          const ttsOutput = await runtime.useModel(
-            ModelType.TEXT_TO_SPEECH,
-            { text: responseText },
-            ttsProvider,
-          );
-          const voiceGenerationMs = nowMs() - ttsStart;
-
-          const endToEndMs = nowMs() - startedAt;
-
-          const allLlmLogs = trajectoryService?.getLlmCallLogs?.() ?? [];
-          const allProviderLogs =
-            trajectoryService?.getProviderAccessLogs?.() ?? [];
-          const llmLogs = allLlmLogs.filter((entry) => entry.stepId === stepId);
-          const providerLogs = allProviderLogs.filter(
-            (entry) => entry.stepId === stepId,
-          );
-
-          let trajectory: TrajectoryStepLogs = {
-            llmCalls: llmLogs.map((entry) => ({
-              model: entry.model,
-              purpose: entry.purpose,
-              latencyMs: entry.latencyMs,
-            })),
-            providerAccesses: providerLogs.map((entry) => ({
-              providerName: entry.providerName,
-              purpose: entry.purpose,
-            })),
-          };
-          if (
-            trajectory.llmCalls.length === 0 &&
-            trajectory.providerAccesses.length === 0
-          ) {
-            const getStep = trajectoryService?.getStep;
-            if (typeof getStep === "function") {
-              trajectory = getStep.call(trajectoryService, stepId);
+            let cachedFirstSentenceBytes = 0;
+            let cachedFirstSentenceMs = 0;
+            if (cachedHit) {
+              cachedFirstSentenceBytes =
+                firstSentenceCache.get(firstSentenceKey)?.byteLength ?? 0;
+              cachedFirstSentenceMs = nowMs() - cachedPipelineStart;
+            } else {
+              const cachedFirstSentenceStart = nowMs();
+              const cachedFirstSentenceOutput = await runtime.useModel(
+                ModelType.TEXT_TO_SPEECH,
+                { text: firstSentence },
+                ttsProvider,
+              );
+              const bytes = coerceAudioBytes(cachedFirstSentenceOutput);
+              firstSentenceCache.set(firstSentenceKey, bytes);
+              cachedFirstSentenceBytes = bytes.byteLength;
+              cachedFirstSentenceMs = nowMs() - cachedFirstSentenceStart;
             }
+            const speechToVoiceStartCachedMs =
+              transcriptionMs + responseTotalMs + cachedFirstSentenceMs;
+
+            let ttsRemainderMs = 0;
+            let ttsRemainderBytes = 0;
+            if (remainderPromise) {
+              const remainderOutput = await remainderPromise;
+              ttsRemainderMs = nowMs() - remainderStartedAt;
+              ttsRemainderBytes = resolveAudioBytesLength(remainderOutput);
+            }
+            const ttsCachedPipelineMs = nowMs() - cachedPipelineStart;
+            const ttsCachedPipelineBytes =
+              cachedFirstSentenceBytes + ttsRemainderBytes;
+
+            const ttsStart = nowMs();
+            const ttsOutput = await runtime.useModel(
+              ModelType.TEXT_TO_SPEECH,
+              { text: responseText },
+              ttsProvider,
+            );
+            const voiceGenerationMs = nowMs() - ttsStart;
+
+            const endToEndMs = nowMs() - startedAt;
+
+            const allLlmLogs = trajectoryService?.getLlmCallLogs?.() ?? [];
+            const allProviderLogs =
+              trajectoryService?.getProviderAccessLogs?.() ?? [];
+            const llmLogs = allLlmLogs.filter(
+              (entry) => entry.stepId === stepId,
+            );
+            const providerLogs = allProviderLogs.filter(
+              (entry) => entry.stepId === stepId,
+            );
+
+            let trajectory: TrajectoryStepLogs = {
+              llmCalls: llmLogs.map((entry) => ({
+                model: entry.model,
+                purpose: entry.purpose,
+                latencyMs: entry.latencyMs,
+              })),
+              providerAccesses: providerLogs.map((entry) => ({
+                providerName: entry.providerName,
+                purpose: entry.purpose,
+              })),
+            };
+            if (
+              trajectory.llmCalls.length === 0 &&
+              trajectory.providerAccesses.length === 0
+            ) {
+              const getStep = trajectoryService?.getStep;
+              if (typeof getStep === "function") {
+                trajectory = getStep.call(trajectoryService, stepId);
+              }
+            }
+
+            const primaryLlmLog = llmLogs[0];
+            const modelInputRaw = primaryLlmLog?.userPrompt ?? "";
+            const modelOutputRaw = primaryLlmLog?.response ?? rawResponseText;
+            const modelOutputInspection = inspectModelOutput(modelOutputRaw);
+
+            const record: IterationResult = {
+              mode: mode.id,
+              sampleId: sample.id,
+              sampleAudioPath: sample.audioPath,
+              iteration,
+              profile,
+              expectedTranscript,
+              transcriptionExactMatch,
+              transcriptionNormalizedMatch,
+              transcriptionWer:
+                transcriptionWer === null ? null : round(transcriptionWer),
+              transcriptionCer:
+                transcriptionCer === null ? null : round(transcriptionCer),
+              speechEndToTextMs: round(transcriptionMs),
+              transcriptionMs: round(transcriptionMs),
+              responseHandlerDecisionMs: round(responseTtftMs),
+              responseTtftMs: round(responseTtftMs),
+              responseTotalMs: round(responseTotalMs),
+              speechEndToResponseDecisionMs: round(speechToResponseStartMs),
+              speechToResponseStartMs: round(speechToResponseStartMs),
+              speechEndToFirstAudioUncachedMs: round(
+                speechToVoiceStartUncachedMs,
+              ),
+              speechEndToFirstAudioCachedMs: round(speechToVoiceStartCachedMs),
+              speechToVoiceStartUncachedMs: round(speechToVoiceStartUncachedMs),
+              speechToVoiceStartCachedMs: round(speechToVoiceStartCachedMs),
+              voiceGenerationMs: round(voiceGenerationMs),
+              voiceFirstTokenUncachedMs: round(uncachedFirstSentenceMs),
+              voiceFirstTokenCachedMs: round(cachedFirstSentenceMs),
+              ttsFirstSentenceCacheHit: cachedHit,
+              ttsFirstSentenceCacheEligible,
+              ttsRemainderMs: round(ttsRemainderMs),
+              ttsCachedPipelineMs: round(ttsCachedPipelineMs),
+              endToEndMs: round(endToEndMs),
+              inContext: {
+                transcript: truncate(transcriptText),
+                benchmarkContext: truncate(mode.benchmarkContext || ""),
+                prompt: truncate(userPrompt),
+              },
+              outContext: {
+                response: truncate(responseText),
+                stateExcerpt: truncate(responseResult.state?.text || ""),
+                actions: responseResult.responseContent?.actions ?? [],
+                providers: responseResult.responseContent?.providers ?? [],
+                modelInput: truncate(modelInputRaw, 900),
+                modelOutputRaw: truncate(modelOutputRaw, 900),
+                modelOutputClean: truncate(modelOutputInspection.cleaned, 900),
+                modelOutputHasThinkingTag: modelOutputInspection.hasThinkingTag,
+                modelOutputHasXml: modelOutputInspection.hasXmlTag,
+                modelOutputThoughtTagCount:
+                  modelOutputInspection.thoughtTagCount,
+                modelOutputXmlTagCount: modelOutputInspection.xmlTagCount,
+              },
+              trajectory: {
+                llmCallCount: trajectory.llmCalls.length,
+                providerAccessCount: trajectory.providerAccesses.length,
+                llmCalls: trajectory.llmCalls,
+                providerAccesses: trajectory.providerAccesses,
+              },
+              ttsOutputBytes: resolveAudioBytesLength(ttsOutput),
+              ttsFirstSentenceUncachedBytes: uncachedFirstSentenceBytes,
+              ttsFirstSentenceCachedBytes: cachedFirstSentenceBytes,
+              ttsRemainderBytes,
+              ttsCachedPipelineBytes,
+              responseCharCount: responseText.length,
+              responseWasCapped: boundedResponse.wasCapped,
+              responseSegmentation: {
+                firstSentence: truncate(firstSentence),
+                remainder: truncate(remainder),
+                firstSentenceEstimatedTokens,
+              },
+            };
+
+            results.push(record);
+
+            console.log(
+              `[voicebench][typescript] mode=${mode.id} sample=${sample.id} iter=${iteration}/${iterations} ` +
+                `transcription=${record.transcriptionMs}ms ttft=${record.responseTtftMs}ms ` +
+                `response=${record.responseTotalMs}ms tts=${record.voiceGenerationMs}ms ` +
+                `voice-ttft-uncached=${record.voiceFirstTokenUncachedMs}ms ` +
+                `voice-ttft-cached=${record.voiceFirstTokenCachedMs}ms cache-hit=${record.ttsFirstSentenceCacheHit} ` +
+                `e2e=${record.endToEndMs}ms`,
+            );
+            console.log(
+              `[voicebench][typescript] in-context: ${record.inContext.prompt}`,
+            );
+            console.log(
+              `[voicebench][typescript] out-context: ${record.outContext.response}`,
+            );
           }
-
-          const primaryLlmLog = llmLogs[0];
-          const modelInputRaw = primaryLlmLog?.userPrompt ?? "";
-          const modelOutputRaw = primaryLlmLog?.response ?? rawResponseText;
-          const modelOutputInspection = inspectModelOutput(modelOutputRaw);
-
-          const record: IterationResult = {
-            mode: mode.id,
-            sampleId: sample.id,
-            sampleAudioPath: sample.audioPath,
-            iteration,
-            profile,
-            expectedTranscript,
-            transcriptionExactMatch,
-            transcriptionNormalizedMatch,
-            transcriptionWer:
-              transcriptionWer === null ? null : round(transcriptionWer),
-            transcriptionCer:
-              transcriptionCer === null ? null : round(transcriptionCer),
-            speechEndToTextMs: round(transcriptionMs),
-            transcriptionMs: round(transcriptionMs),
-            responseHandlerDecisionMs: round(responseTtftMs),
-            responseTtftMs: round(responseTtftMs),
-            responseTotalMs: round(responseTotalMs),
-            speechEndToResponseDecisionMs: round(speechToResponseStartMs),
-            speechToResponseStartMs: round(speechToResponseStartMs),
-            speechEndToFirstAudioUncachedMs: round(
-              speechToVoiceStartUncachedMs,
-            ),
-            speechEndToFirstAudioCachedMs: round(speechToVoiceStartCachedMs),
-            speechToVoiceStartUncachedMs: round(speechToVoiceStartUncachedMs),
-            speechToVoiceStartCachedMs: round(speechToVoiceStartCachedMs),
-            voiceGenerationMs: round(voiceGenerationMs),
-            voiceFirstTokenUncachedMs: round(uncachedFirstSentenceMs),
-            voiceFirstTokenCachedMs: round(cachedFirstSentenceMs),
-            ttsFirstSentenceCacheHit: cachedHit,
-            ttsFirstSentenceCacheEligible,
-            ttsRemainderMs: round(ttsRemainderMs),
-            ttsCachedPipelineMs: round(ttsCachedPipelineMs),
-            endToEndMs: round(endToEndMs),
-            inContext: {
-              transcript: truncate(transcriptText),
-              benchmarkContext: truncate(mode.benchmarkContext || ""),
-              prompt: truncate(userPrompt),
-            },
-            outContext: {
-              response: truncate(responseText),
-              stateExcerpt: truncate(responseResult.state?.text || ""),
-              actions: responseResult.responseContent?.actions ?? [],
-              providers: responseResult.responseContent?.providers ?? [],
-              modelInput: truncate(modelInputRaw, 900),
-              modelOutputRaw: truncate(modelOutputRaw, 900),
-              modelOutputClean: truncate(modelOutputInspection.cleaned, 900),
-              modelOutputHasThinkingTag: modelOutputInspection.hasThinkingTag,
-              modelOutputHasXml: modelOutputInspection.hasXmlTag,
-              modelOutputThoughtTagCount: modelOutputInspection.thoughtTagCount,
-              modelOutputXmlTagCount: modelOutputInspection.xmlTagCount,
-            },
-            trajectory: {
-              llmCallCount: trajectory.llmCalls.length,
-              providerAccessCount: trajectory.providerAccesses.length,
-              llmCalls: trajectory.llmCalls,
-              providerAccesses: trajectory.providerAccesses,
-            },
-            ttsOutputBytes: resolveAudioBytesLength(ttsOutput),
-            ttsFirstSentenceUncachedBytes: uncachedFirstSentenceBytes,
-            ttsFirstSentenceCachedBytes: cachedFirstSentenceBytes,
-            ttsRemainderBytes,
-            ttsCachedPipelineBytes,
-            responseCharCount: responseText.length,
-            responseWasCapped: boundedResponse.wasCapped,
-            responseSegmentation: {
-              firstSentence: truncate(firstSentence),
-              remainder: truncate(remainder),
-              firstSentenceEstimatedTokens,
-            },
-          };
-
-          results.push(record);
-
-          console.log(
-            `[voicebench][typescript] mode=${mode.id} sample=${sample.id} iter=${iteration}/${iterations} ` +
-              `transcription=${record.transcriptionMs}ms ttft=${record.responseTtftMs}ms ` +
-              `response=${record.responseTotalMs}ms tts=${record.voiceGenerationMs}ms ` +
-              `voice-ttft-uncached=${record.voiceFirstTokenUncachedMs}ms ` +
-              `voice-ttft-cached=${record.voiceFirstTokenCachedMs}ms cache-hit=${record.ttsFirstSentenceCacheHit} ` +
-              `e2e=${record.endToEndMs}ms`,
-          );
-          console.log(
-            `[voicebench][typescript] in-context: ${record.inContext.prompt}`,
-          );
-          console.log(
-            `[voicebench][typescript] out-context: ${record.outContext.response}`,
-          );
         }
       }
-    }
     } finally {
       await runtime.stop();
     }

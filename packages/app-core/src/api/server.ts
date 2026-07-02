@@ -745,6 +745,7 @@ async function handleCompatRouteInner(
   // ensureCallerAuthorized (trusted-local, API token, or session), matching the
   // sibling compat handlers, so mounting it does not widen the unauth surface.
   if (await handleSensitiveRequestRoutes(req, res, state)) return true;
+  if (await handleCredentialTunnelRoute(req, res, state)) return true;
   if (await handleBackgroundTasksRoute(req, res, state)) return true;
   // Internal wake route called by Capacitor BackgroundRunner JSContexts on
   // iOS/Android. Bearer-authed via the device secret; not part of the
@@ -793,14 +794,6 @@ async function handleCompatRouteInner(
     if (await handleSecretsManagerRoute(req, res, url.pathname, method)) {
       return true;
     }
-  }
-
-  // Owner-only credential-tunnel submit: redeems a tunnel-routed secret request
-  // into the parent runtime's one-shot CredentialTunnelService (never the agent
-  // secret store). OWNER role enforces the `owner_only` actor policy.
-  if (method === "POST" && url.pathname === "/api/credential-tunnel/submit") {
-    if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
-    return handleCredentialTunnelRoute(req, res, state, method, url.pathname);
   }
 
   // `/api/cloud/compat/*` and `/api/cloud/billing/*` dispatch above this

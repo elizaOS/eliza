@@ -128,14 +128,14 @@ function installationsToComponents(value: JsonValue): VoiceComponentSnapshot[] {
 function roleForVoiceModel(id: string): VoiceComponentSnapshot["role"] {
   if (id === "vad") return "vad";
   if (id === "asr") return "asr";
-  if (id === "kokoro" || id === "omnivoice") return "tts";
+  if (id === "kokoro") return "tts";
   if (id.includes("turn")) return "turn-detection";
   if (id.includes("emotion")) return "emotion";
   return "voice";
 }
 
 function providerForVoiceModel(id: string): string {
-  if (id === "kokoro" || id === "omnivoice") return id;
+  if (id === "kokoro") return "kokoro";
   if (id === "asr" || id === "vad") return "eliza-1";
   return "local-inference";
 }

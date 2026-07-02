@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   type Action,
   type ActionResult,
+  getActiveRoutingContextsForTurn,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -35,32 +36,9 @@ const NOT_SUPPORTED: ActionResult = {
   error: "macos-only",
 };
 const ALARM_CONTEXTS = ["tasks", "calendar", "automation"] as const;
-const ALARM_TERMS = [
-  "alarm",
-  "alarms",
-  "wake",
-  "despertador",
-  "alarma",
-  "alarmas",
-  "reveil",
-  "réveil",
-  "alarme",
-  "wecker",
-  "alarm anzeigen",
-  "闹钟",
-  "提醒",
-  "アラーム",
-  "알람",
-  "báo thức",
-  "bao thuc",
-];
 
 function isDarwin(): boolean {
   return process.platform === "darwin";
-}
-
-function getText(message: Memory): string {
-  return (message.content.text ?? "").toLowerCase();
 }
 
 function normalizeContextList(value: unknown): string[] {
@@ -70,25 +48,31 @@ function normalizeContextList(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function hasAlarmContext(message: Memory, state?: State): boolean {
-  const values = state?.values ?? {};
-  const content = message.content as Record<string, unknown>;
-  const contexts = [
-    ...normalizeContextList(values.activeContexts),
-    ...normalizeContextList(values.selectedContexts),
-    ...normalizeContextList(content.activeContexts),
-    ...normalizeContextList(content.selectedContexts),
-    ...normalizeContextList(content.contexts),
-  ];
-  return contexts.some((context) =>
-    ALARM_CONTEXTS.includes(context as (typeof ALARM_CONTEXTS)[number]),
+/**
+ * True when the turn is routed to an alarm context. Reads the planner's
+ * canonical routing decision (`state.values.__contextRouting`, via
+ * `getActiveRoutingContextsForTurn`) — never an English/keyword match on raw
+ * message text (#10471) — plus the legacy `activeContexts`/`selectedContexts`
+ * signals for back-compat.
+ */
+export function hasAlarmContext(message: Memory, state?: State): boolean {
+  const active = new Set<string>(
+    getActiveRoutingContextsForTurn(state, message).map((context) =>
+      `${context}`.toLowerCase(),
+    ),
   );
-}
-
-function hasAlarmSignal(message: Memory, state?: State): boolean {
-  if (hasAlarmContext(message, state)) return true;
-  const text = getText(message);
-  return ALARM_TERMS.some((term) => text.includes(term.toLowerCase()));
+  const values = (state?.values ?? {}) as Record<string, unknown>;
+  const content = message.content as Record<string, unknown>;
+  for (const list of [
+    normalizeContextList(values.activeContexts),
+    normalizeContextList(values.selectedContexts),
+    normalizeContextList(content.activeContexts),
+    normalizeContextList(content.selectedContexts),
+    normalizeContextList(content.contexts),
+  ]) {
+    for (const context of list) active.add(context);
+  }
+  return ALARM_CONTEXTS.some((context) => active.has(context));
 }
 
 function readParameters(
@@ -121,32 +105,28 @@ function normalizeSubactionValue(value: unknown): AlarmSubaction | null {
     : null;
 }
 
-function inferSubactionFromText(text: string): AlarmSubaction | null {
-  const lower = text.toLowerCase();
-  if (
-    /\b(list|show|pending|view|see|what)\b.*\balarm/.test(lower) ||
-    /\balarms?\s*(?:list|pending)\b/.test(lower)
-  ) {
-    return "list";
-  }
-  if (
-    /\b(cancel|stop|remove|delete|kill|clear)\b.*\balarm/.test(lower) ||
-    /\balarm\b.*\b(cancel|stop|remove|delete|kill|clear)\b/.test(lower)
-  ) {
-    return "cancel";
-  }
-  if (
-    /\b(set|schedule|create|add|new|wake)\b.*\balarm/.test(lower) ||
-    /\balarm\b.*\b(set|schedule|create|add|for)\b/.test(lower) ||
-    /\bwake me\b/.test(lower)
-  ) {
+/**
+ * Resolve the subaction from structured params only (#10471): the explicit
+ * `action`/`subaction`/`op` discriminator, otherwise inferred from the SHAPE of
+ * the structured params (a schedule payload → `set`, an id → `cancel`),
+ * defaulting to the read-only, non-destructive `list`. Never parses English (or
+ * any language) from the raw message text — the planner supplies the operation.
+ */
+export function resolveSubaction(
+  params: Record<string, unknown>,
+): AlarmSubaction {
+  const explicit =
+    normalizeSubactionValue(params.action) ??
+    normalizeSubactionValue(params.subaction) ??
+    normalizeSubactionValue(params.op);
+  if (explicit) return explicit;
+  if (typeof params.timeIso === "string" && typeof params.title === "string") {
     return "set";
   }
-  if (lower.includes("alarm")) {
-    // Default to list when alarm mentioned without a clear verb.
-    return "list";
+  if (typeof params.id === "string" || typeof params.alarmId === "string") {
+    return "cancel";
   }
-  return null;
+  return "list";
 }
 
 function parseSchedule(
@@ -390,7 +370,7 @@ export function createAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
   return {
     name: "ALARM",
     description:
-      "Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",
+      "Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Pass the operation as the structured `action` parameter; when omitted it is inferred from the other structured params (a schedule payload → set, an id → cancel, otherwise list).",
     descriptionCompressed:
       "macOS alarm: set / cancel / list (UNUserNotificationCenter).",
     contexts: [...ALARM_CONTEXTS],
@@ -420,7 +400,7 @@ export function createAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
       {
         name: "subaction",
         description:
-          "Operation to perform: set, cancel, or list. Inferred from message text when omitted.",
+          "Operation to perform: set, cancel, or list. Inferred from the other structured parameters when omitted.",
         required: false,
         schema: { type: "string", enum: [...ALARM_SUBACTIONS] },
       },
@@ -465,7 +445,7 @@ export function createAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
       state?: State,
     ): Promise<boolean> => {
       if (!isDarwin()) return false;
-      return hasAlarmSignal(message, state);
+      return hasAlarmContext(message, state);
     },
     handler: async (
       _runtime: IAgentRuntime,
@@ -488,27 +468,7 @@ export function createAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
       }
 
       const params = readParameters(options);
-      const explicit =
-        normalizeSubactionValue(params.action) ??
-        normalizeSubactionValue(params.subaction) ??
-        normalizeSubactionValue(params.op);
-      const subaction = explicit ?? inferSubactionFromText(getText(message));
-
-      if (!subaction) {
-        const text = `ALARM could not determine the subaction. Specify one of: ${ALARM_SUBACTIONS.join(", ")}.`;
-        if (callback) {
-          await callback({ text, source: message.content.source });
-        }
-        return {
-          success: false,
-          text,
-          values: { error: "MISSING_SUBACTION" },
-          data: {
-            actionName: "ALARM",
-            availableSubactions: [...ALARM_SUBACTIONS],
-          },
-        };
-      }
+      const subaction = resolveSubaction(params);
 
       switch (subaction) {
         case "set":

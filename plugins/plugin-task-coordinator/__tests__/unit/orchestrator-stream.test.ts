@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MarkdownText } from "../../src/orchestrator-markdown";
 import { sanitizeMarkdownUrl } from "../../src/orchestrator-markdown.helpers";
-import type { ConversationBlock } from "../../src/orchestrator-stream";
+import {
+  type ConversationBlock,
+  ConversationBlockView,
+} from "../../src/orchestrator-stream";
 import { buildConversation } from "../../src/orchestrator-stream.helpers";
 
 type MessageRecord = Parameters<typeof buildConversation>[0][number];
@@ -331,6 +334,62 @@ describe("buildConversation", () => {
         }),
       }),
     );
+  });
+
+  it("renders shell tools as slim action cards with tail-preserving output", () => {
+    const longOutput = `head-ok\n${"middle\n".repeat(900)}tail-error: failed assertion`;
+    const blocks = buildConversation(
+      [],
+      [
+        baseEvent({
+          id: "tool-start",
+          timestamp: 20,
+          data: {
+            toolCall: {
+              id: "tool-test",
+              title: "bash",
+              kind: "execute",
+              status: "in_progress",
+              rawInput: { command: "bun test --verbose" },
+            },
+          },
+        }),
+        baseEvent({
+          id: "tool-done",
+          timestamp: 2400,
+          data: {
+            toolCall: {
+              id: "tool-test",
+              title: "bash",
+              kind: "execute",
+              status: "completed",
+              output: longOutput,
+            },
+          },
+        }),
+      ],
+      (message) => message.senderKind,
+      new Set(["session-codex"]),
+    );
+    const toolBlock = blocks.find(
+      (block): block is Extract<ConversationBlock, { kind: "tool" }> =>
+        block.kind === "tool",
+    );
+
+    expect(toolBlock).toBeTruthy();
+    if (!toolBlock) throw new Error("expected shell tool block");
+    const html = renderToStaticMarkup(
+      createElement(ConversationBlockView, { block: toolBlock }),
+    );
+
+    expect(html).toContain("Ran");
+    expect(html).toContain("bun test --verbose");
+    expect(html).toContain("2.4s");
+    expect(html).toContain("head-ok");
+    expect(html).toContain("characters elided");
+    expect(html).toContain("tail-error: failed assertion");
+    expect(html).not.toContain("$ bun test --verbose");
+    expect(html).not.toContain(">bash<");
   });
 
   it("keeps stderr turns distinct and marks them as error output", () => {

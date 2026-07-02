@@ -25,11 +25,7 @@
   "metric": {
     "primary": "dmips_per_mhz",
     "formula_from_cycles": "DMIPS/MHz = (1e6 / cycles_per_dhrystone) / 1757",
-    "secondary": [
-      "cpi",
-      "total_cycles",
-      "retired_instructions"
-    ]
+    "secondary": ["cpi", "total_cycles", "retired_instructions"]
   },
   "expected_results": {
     "cva6_rv64gc": {

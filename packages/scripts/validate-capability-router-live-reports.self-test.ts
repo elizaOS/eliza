@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,10 +19,7 @@ async function main(): Promise<void> {
       workspace,
       "complete-extra-exercises",
     );
-    const completePartialModuleDir = join(
-      workspace,
-      "complete-partial-module",
-    );
+    const completePartialModuleDir = join(workspace, "complete-partial-module");
     const cloudOnlyDir = join(workspace, "cloud-only");
     const ciDir = join(workspace, "ci");
     const providerCiDir = join(workspace, "provider-ci");
@@ -53,10 +50,7 @@ async function main(): Promise<void> {
       workspace,
       "missing-app-bridge-result",
     );
-    const emptyEvaluatorProcessDir = join(
-      workspace,
-      "empty-evaluator-process",
-    );
+    const emptyEvaluatorProcessDir = join(workspace, "empty-evaluator-process");
     const emptyResponseHandlerEvaluateDir = join(
       workspace,
       "empty-response-handler-evaluate",
@@ -1323,7 +1317,11 @@ async function main(): Promise<void> {
     if (malformedObservedAt.exitCode === 0) {
       throw new Error("malformed observedAt report unexpectedly passed.");
     }
-    if (!malformedObservedAt.output.includes("observedAt must be an ISO timestamp")) {
+    if (
+      !malformedObservedAt.output.includes(
+        "observedAt must be an ISO timestamp",
+      )
+    ) {
       throw new Error(
         `malformed observedAt failed for the wrong reason: ${malformedObservedAt.output}`,
       );
@@ -1617,7 +1615,9 @@ async function main(): Promise<void> {
       emptyFieldEvaluatorParseDir,
     );
     if (emptyFieldEvaluatorParse.exitCode === 0) {
-      throw new Error("empty field evaluator parse report unexpectedly passed.");
+      throw new Error(
+        "empty field evaluator parse report unexpectedly passed.",
+      );
     }
     if (
       !emptyFieldEvaluatorParse.output.includes(
@@ -2143,7 +2143,9 @@ async function main(): Promise<void> {
       missingRequiredRpcMethodDir,
     );
     if (missingRequiredRpcMethod.exitCode === 0) {
-      throw new Error("missing required rpc method report unexpectedly passed.");
+      throw new Error(
+        "missing required rpc method report unexpectedly passed.",
+      );
     }
     if (
       !missingRequiredRpcMethod.output.includes(
@@ -2294,7 +2296,9 @@ async function main(): Promise<void> {
     }
     const missingApp = await runValidator(missingAppDir);
     if (missingApp.exitCode === 0) {
-      throw new Error("missing app materialization report unexpectedly passed.");
+      throw new Error(
+        "missing app materialization report unexpectedly passed.",
+      );
     }
     if (!missingApp.output.includes("runtime.appCount")) {
       throw new Error(
@@ -3156,7 +3160,11 @@ function makeMismatchedProviderIdReport() {
 
 function makeMissingProviderEvidenceReport() {
   const report = {
-    ...makeCompleteReport("provider", "missing-provider-evidence-endpoint", "e2b"),
+    ...makeCompleteReport(
+      "provider",
+      "missing-provider-evidence-endpoint",
+      "e2b",
+    ),
   } as Record<string, unknown>;
   delete report.providerEvidence;
   return report;

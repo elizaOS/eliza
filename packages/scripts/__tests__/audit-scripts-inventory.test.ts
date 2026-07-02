@@ -27,6 +27,15 @@ const APP_CATEGORIES = [
   "orphan",
 ];
 
+const FILE_CATEGORIES = [
+  "reachable-from-verify",
+  "reachable-from-test",
+  "reachable-from-build",
+  "reachable-from-ci-workflow",
+  "reachable-from-package-script",
+  "orphan",
+];
+
 function appScriptNames() {
   const pkg = JSON.parse(
     readFileSync(
@@ -83,5 +92,24 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(Array.isArray(inv.roots)).toBe(true);
     expect(Array.isArray(inv.files)).toBe(true);
     expect(inv.summary.totalRootScripts).toBe(inv.roots.length);
+  });
+
+  test("package-local script callers keep helper files out of the orphan bucket", () => {
+    for (const f of inv.files) {
+      expect(FILE_CATEGORIES).toContain(f.category);
+    }
+
+    const darwinWrapper = inv.files.find(
+      (f) => f.file === "run-bash-darwin-only.mjs",
+    );
+    expect(darwinWrapper?.category).toBe("reachable-from-package-script");
+    expect(darwinWrapper?.packageScriptCallers).toContainEqual({
+      packageJson: "packages/native/ios-deps/package.json",
+      script: "build:llama-cpp",
+    });
+    expect(
+      inv.summary.filesByCategory["reachable-from-package-script"],
+    ).toBeGreaterThan(0);
+    expect(inv.summary.packageScriptFileReferences).toBeGreaterThan(0);
   });
 });

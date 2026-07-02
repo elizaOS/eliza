@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
-// Cerebras-native default ids (gpt-oss-120b, zai-glm-4.7) serve directly via
+// Cerebras-native bare ids serve directly via
 // the Cerebras key — cerebras-only by design. There is NO OpenRouter fallback:
 // a free-tier 429 must surface so the chat path can return the graceful
 // "model provider rate-limited" reply rather than failing over to a different
@@ -71,11 +71,11 @@ describe("getLanguageModel cerebras-direct (cerebras-only, no OpenRouter fallbac
   test("a bare Cerebras id serves directly via cerebras.ai on the happy path", async () => {
     globalThis.fetch = (async (url: RequestInfo | URL) => {
       hosts.push(hostOf(url));
-      return completion("gpt-oss-120b", "from-cerebras");
+      return completion("gemma-4-31b", "from-cerebras");
     }) as typeof fetch;
 
     const result = await generateText({
-      model: getLanguageModel("gpt-oss-120b"),
+      model: getLanguageModel("gemma-4-31b"),
       prompt: "hi",
       maxRetries: 0,
     });
@@ -136,7 +136,7 @@ describe("getLanguageModel cerebras-direct (cerebras-only, no OpenRouter fallbac
 
     await expect(
       generateText({
-        model: getLanguageModel("gpt-oss-120b"),
+        model: getLanguageModel("gemma-4-31b"),
         prompt: "hi",
         maxRetries: 0,
       }),
@@ -146,7 +146,9 @@ describe("getLanguageModel cerebras-direct (cerebras-only, no OpenRouter fallbac
   });
 
   test("happy-path billing attributes to cerebras", () => {
+    expect(resolveAiProviderSource("gemma-4-31b")).toBe("cerebras");
     expect(resolveAiProviderSource("gpt-oss-120b")).toBe("cerebras");
+    expect(resolveAiProviderSource("zai-glm-4.7")).toBe("cerebras");
     expect(resolveAiProviderSource("openai/gpt-oss-120b:nitro")).toBe("cerebras");
   });
 });

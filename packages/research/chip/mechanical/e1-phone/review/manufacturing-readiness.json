@@ -9,11 +9,7 @@
     "No GD&T-controlled release drawing package or toolmaker DFM signoff."
   ],
   "parameters": {
-    "device_envelope_mm": [
-      78.0,
-      153.6,
-      11.8
-    ],
+    "device_envelope_mm": [78.0, 153.6, 11.8],
     "corner_radius_mm": 7.5,
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",

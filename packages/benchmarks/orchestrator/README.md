@@ -92,8 +92,8 @@ in one `--all` run:
 /Users/shawwalters/eliza-workspace/.venv/bin/python -m benchmarks.orchestrator run \
   --all \
   --agent eliza \
-  --provider groq \
-  --model openai/gpt-oss-120b \
+  --provider cerebras \
+  --model gemma-4-31b \
   --extra "$(cat benchmarks/orchestrator/profiles/sample10.json)"
 ```
 
@@ -106,7 +106,8 @@ Profile included in repo:
 
 Model profiles included in repo:
 
-- `benchmarks/orchestrator/profiles/cerebras-gpt-oss-120b.json`
+- `benchmarks/orchestrator/profiles/cerebras-gemma-4-31b.json` (default eval model)
+- `benchmarks/orchestrator/profiles/cerebras-gpt-oss-120b.json` (legacy eval model)
 - `benchmarks/orchestrator/profiles/gpt-5.5.json`
 - `benchmarks/orchestrator/profiles/claude-sonnet.json`
 - `benchmarks/orchestrator/profiles/claude-opus.json`
@@ -118,11 +119,13 @@ and overrides any profile `extra` keys:
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
   --benchmarks bfcl \
   --agent eliza \
-  --model-profile cerebras-gpt-oss-120b \
+  --model-profile cerebras-gemma-4-31b \
   --extra '{"per_benchmark":{"bfcl":{"sample":10}}}'
 ```
 
-For `cerebras-gpt-oss-120b`, the profile pins `reasoning_effort=low`.
+For `cerebras-gemma-4-31b`, the profile pins `reasoning_effort=none`
+(gemma keeps reasoning off for deterministic, fast eval turns); the legacy
+`cerebras-gpt-oss-120b` profile pins `reasoning_effort=low`.
 The orchestrator exports that value as both `OPENAI_REASONING_EFFORT` and
 `CEREBRAS_REASONING_EFFORT` for subprocesses, so OpenAI-compatible Eliza
 runtime paths and direct Cerebras benchmark clients use the same setting.
@@ -600,6 +603,24 @@ publishability/comparability/readiness validators when checking a narrowed
 latest artifact set.
 `validate-runtime-gates` probes the current host for the external services and
 credentials that unlock benchmarks where sample/demo fallbacks are forbidden.
+
+After the latest matrix is generated and manually spot-reviewed, package the
+reviewed result set into the committed evidence location:
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator review-package \
+  --latest-dir packages/benchmarks/benchmark_results/latest \
+  --out-dir .github/issue-evidence/10199-benchmark-review \
+  --reviewed-by <handle> \
+  --reviewer-note "Opened the selected trajectories/replays and spot-reviewed model inputs, outputs, scores, and failure diagnostics."
+```
+
+`review-package` writes `manifest.json` plus `scorecard.md` and exits nonzero
+unless the static inventory has no gaps, `validate-latest-readiness` passes,
+the generated-artifact guard finds no committed run output, latest rows exist,
+and the manual review note is present. Use `--include-benchmarks`,
+`--exclude-benchmarks`, and `--skip-runtime-gates` only when packaging a clearly
+scoped partial matrix; the manifest records those filters.
 
 Expected real-runtime gates:
 

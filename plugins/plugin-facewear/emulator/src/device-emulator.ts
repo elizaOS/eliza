@@ -63,9 +63,17 @@ export class DeviceEmulator {
     });
   }
 
-  sendAudioChunk(chunk: Uint8Array, encoding: "webm-opus" | "pcm-f32" = "webm-opus"): void {
+  sendAudioChunk(
+    chunk: Uint8Array,
+    encoding: "webm-opus" | "pcm-f32" = "webm-opus",
+  ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const header = JSON.stringify({ type: "audio", ts: Date.now(), sampleRate: 16000, encoding });
+    const header = JSON.stringify({
+      type: "audio",
+      ts: Date.now(),
+      sampleRate: 16000,
+      encoding,
+    });
     const headerBytes = Buffer.from(header, "utf8");
     const lenBuf = Buffer.alloc(4);
     lenBuf.writeUInt32BE(headerBytes.length, 0);
@@ -74,7 +82,13 @@ export class DeviceEmulator {
 
   sendCameraFrame(jpeg: Uint8Array, width = 640, height = 480): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const header = JSON.stringify({ type: "frame", ts: Date.now(), width, height, format: "jpeg" });
+    const header = JSON.stringify({
+      type: "frame",
+      ts: Date.now(),
+      width,
+      height,
+      format: "jpeg",
+    });
     const headerBytes = Buffer.from(header, "utf8");
     const lenBuf = Buffer.alloc(4);
     lenBuf.writeUInt32BE(headerBytes.length, 0);
@@ -87,7 +101,11 @@ export class DeviceEmulator {
   }
 
   disconnect(): void {
-    try { this.ws?.terminate(); } catch { /* ignore */ }
+    try {
+      this.ws?.terminate();
+    } catch {
+      /* ignore */
+    }
     this.ws = null;
     this.sessionId = null;
     this.connected = false;

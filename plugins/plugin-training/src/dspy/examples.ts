@@ -13,6 +13,10 @@ import {
   type FilterableTrajectory,
   type PrivacyFilterOptions,
 } from "../core/privacy-filter.js";
+import {
+  qualitySignalForRowMetadata,
+  rewardForQualitySignal,
+} from "../core/trajectory-task-datasets.js";
 
 export interface Example {
   inputs: Record<string, unknown>;
@@ -151,9 +155,16 @@ function rowsToExamples(
     ) {
       inputs.system = call.systemPrompt;
     }
+    // Quality-weight the example when the row carries a scenario judge score
+    // or pass status (#8795). Failed/skipped rows are excluded upstream by the
+    // dataset exporter and the native-backend loader.
+    const reward = rewardForQualitySignal(
+      qualitySignalForRowMetadata(trajectory.metadata),
+    );
     examples.push({
       inputs,
       outputs: { [outputField]: expected },
+      ...(reward !== undefined ? { reward } : {}),
       source: trajectory.trajectoryId,
       metadata: trajectory.metadata,
     });

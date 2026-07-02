@@ -23,8 +23,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Memory, UUID } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { remoteDesktopAction } from "../src/actions/remote-desktop.ts";
 // The remote-desktop domain (engine + session service) was extracted into
 // @elizaos/plugin-remote-desktop; PA's action is now a re-export shim. Pull the
 // session-service test seams from the package so the test exercises the same
@@ -33,6 +31,8 @@ import {
   __resetRemoteSessionServiceForTests,
   getRemoteSessionService,
 } from "@elizaos/plugin-remote-desktop";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { remoteDesktopAction } from "../src/actions/remote-desktop.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 let priorStateDir: string | undefined;

@@ -426,26 +426,31 @@ const APP_LAUNCH_LABEL = "Open Eliza App";
 function resolveEmbedLaunchUrl(runtime: IAgentRuntime): string | undefined {
 	const direct = runtime.getSetting("ELIZA_EMBED_URL");
 	if (typeof direct === "string" && direct.trim().length > 0) {
-		return toHttpsUrl(direct.trim());
+		return toHttpsUrl(direct.trim(), "discord");
 	}
 	const base =
 		runtime.getSetting("ELIZA_APP_URL") ||
 		runtime.getSetting("ELIZA_CLOUD_URL");
 	if (typeof base === "string" && base.trim().length > 0) {
-		return toHttpsUrl(`${base.trim().replace(/\/+$/, "")}/embed`);
+		return toHttpsUrl(`${base.trim().replace(/\/+$/, "")}/embed`, "discord");
 	}
 	return undefined;
 }
 
 /** Return the URL only when it parses as absolute `https`, else `undefined`. */
-function toHttpsUrl(url: string): string | undefined {
+function toHttpsUrl(url: string, platform: "discord"): string | undefined {
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
 	} catch {
 		return undefined;
 	}
-	return parsed.protocol === "https:" ? parsed.toString() : undefined;
+	if (parsed.protocol !== "https:") return undefined;
+	if (parsed.pathname === "/" || parsed.pathname === "") {
+		parsed.pathname = "/embed";
+	}
+	parsed.searchParams.set("platform", platform);
+	return parsed.toString();
 }
 
 /**

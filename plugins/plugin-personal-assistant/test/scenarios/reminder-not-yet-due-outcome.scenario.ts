@@ -21,10 +21,11 @@ function assertApiBody(options: {
  * so a clock skew or an over-eager tick can't deliver a reminder ahead of its
  * window — only outcome assertions on the produced attempts catch that.
  *
- * Fully deterministic (api turns only) — runs keyless on `pr-deterministic`.
+ * API-only, but kept live-only until the keyless runner timeout is resolved in
+ * #10757 and this scenario is promoted with passing PR-gated evidence.
  */
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "reminder-not-yet-due-outcome",
   title: "A reminder is not delivered before its scheduled time",
   domain: "reminders",

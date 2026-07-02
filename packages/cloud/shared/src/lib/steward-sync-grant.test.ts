@@ -201,7 +201,9 @@ describe("syncUserFromSteward — initial-credits grant fallback", () => {
       c.message.includes("addCredits failed for new org"),
     );
     expect(grantError).toBeDefined();
-    expect((grantError!.context as { organizationId: string }).organizationId).toBe("org-new-1");
-    expect((grantError!.context as { error: string }).error).toBe("ledger write failed");
+    // The failure detail is inlined in the message string — Workers Logs drops
+    // logger context objects, which is how this failure stayed invisible.
+    expect(grantError!.message).toContain("org-new-1");
+    expect(grantError!.message).toContain("ledger write failed");
   });
 });

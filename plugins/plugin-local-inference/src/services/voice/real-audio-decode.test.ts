@@ -13,9 +13,9 @@ import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./engine-bridge";
  *   1. `native/verify/asr_bench_fixtures/non_publish_structure_5utt/` — five
  *      committed mono 16 kHz PCM16 WAVs (deterministic tones, NOT speech — see
  *      the corpus manifest; valid for decode/codec validation, NOT for WER).
- *   2. `native/omnivoice.cpp/examples/freeman.wav` — a real 22.05 kHz speech
- *      recording. Lives in a git submodule, so the block is skipped when the
- *      submodule isn't checked out.
+ *   2. `native/audio-fixtures/freeman.wav` — a real 22.05 kHz speech
+ *      recording committed to the repo, so the block is skipped only when the
+ *      fixture is absent.
  */
 
 const FIXTURE_DIR = fileURLToPath(
@@ -112,7 +112,7 @@ describe("decodeMonoPcm16Wav — committed fixture corpus (real WAV files)", () 
 
 const FREEMAN_WAV = fileURLToPath(
 	new URL(
-		"../../../native/omnivoice.cpp/examples/freeman.wav",
+		"../../../native/audio-fixtures/freeman.wav",
 		import.meta.url,
 	),
 );

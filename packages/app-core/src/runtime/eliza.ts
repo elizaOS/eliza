@@ -49,6 +49,7 @@ import {
   syncResolvedApiPort,
 } from "@elizaos/shared";
 import { getApps, loadRegistry } from "../registry";
+import { registerSubAgentCredentialBridgeAdapter } from "../services/credential-tunnel-service";
 import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
 import {
   type AppRoutePluginRegistryEntry,
@@ -741,6 +742,7 @@ export interface PostReadyBootSteps {
   registerTrainingRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
   registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
   registerSubAgentCredentialBridge: (runtime: AgentRuntime) => Promise<void>;
+  registerSubAgentCredentialBridgeAdapter: (runtime: AgentRuntime) => boolean;
   shouldStartTelegramStandaloneBot: () => boolean;
   ensureTelegramBotPolling: (runtime: AgentRuntime) => Promise<void>;
   stopTelegramBotPolling: (reason: string) => void;
@@ -755,6 +757,7 @@ const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
   registerTrainingRuntimeHooks,
   registerCoreSensitiveRequestAdapters,
   registerSubAgentCredentialBridge,
+  registerSubAgentCredentialBridgeAdapter,
   shouldStartTelegramStandaloneBot,
   ensureTelegramBotPolling,
   stopTelegramBotPolling,
@@ -801,6 +804,7 @@ export async function runPostReadyBootTail(
   // Register first-party sensitive-request delivery adapters with the
   // dispatch registry (no-op when the registry service isn't present).
   steps.registerCoreSensitiveRequestAdapters(runtime);
+  steps.registerSubAgentCredentialBridgeAdapter(runtime);
 
   // Wire the sub-agent credential bridge (#10317) onto parent runtimes that can
   // host coding sub-agents. No-op on child/sandboxed runtimes.
@@ -1064,7 +1068,7 @@ async function warmupEmbeddingModelImpl(
   }
 
   const config = loadElizaConfig();
-  upstreamConfigureLocalEmbeddingPlugin({} as Plugin, config);
+  await upstreamConfigureLocalEmbeddingPlugin({} as Plugin, config);
 
   const preset = li.detectEmbeddingPreset();
   const modelsDir = process.env.MODELS_DIR ?? li.DEFAULT_MODELS_DIR;
