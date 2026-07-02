@@ -457,7 +457,17 @@ jobs:
               echo "::notice::$name is not configured; skipping"
               return 0
             fi
-            printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}
+            for attempt in 1 2 3; do
+              if printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}; then
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::wrangler secret put $name failed on attempt $attempt; retrying in 10s"
+                sleep 10
+              fi
+            done
+            echo "::error::wrangler secret put $name failed after 3 attempts"
+            return 1
           }
 
           for name in \
