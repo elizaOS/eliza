@@ -56,6 +56,21 @@ describe("App standalone chat-overlay wiring", () => {
     expect(APP_TSX).toContain("<ContinuousChatOverlayMount />");
   });
 
+  it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {
+    // shouldStartBottomBar defaults ON, so createMainWindow boots the MAIN
+    // window with ?shellMode=chat-overlay — that branch must mount the
+    // headless first-run conductor, or a fresh desktop install boots into the
+    // bottom bar with no runtime configured and onboarding never shown
+    // (regression guard for the #10720 closure gap: the conductor's only other
+    // mount is the full-shell return the bottom bar never reaches).
+    const branch = APP_TSX.slice(
+      APP_TSX.indexOf('if (shellMode === "chat-overlay") {'),
+      APP_TSX.indexOf('if (shellMode === "tray-popover") {'),
+    );
+    expect(branch).toContain("<ChatOverlayShell />");
+    expect(branch).toContain("<FirstRunConductorMount />");
+  });
+
   it("renders a header-less app shell", () => {
     // The app shell mounts no Header anywhere — navigation is conversational
     // (the always-present chat overlay). The Header component has been removed

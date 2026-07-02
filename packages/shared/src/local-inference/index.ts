@@ -13,7 +13,6 @@ export {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
   DEFAULT_ELIGIBLE_MODEL_IDS,
-  defaultVoiceQuantForTier,
   ELIZA_1_HF_REPO,
   ELIZA_1_HOSTED_MTP_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
@@ -30,8 +29,6 @@ export {
   isDefaultEligibleId,
   isOnDeviceTier,
   MODEL_CATALOG,
-  type OmniVoiceQuantLevel,
-  voiceQuantLadderForTier,
 } from "./catalog.js";
 export {
   ELIZA_1_CONTEXT_TARGET,

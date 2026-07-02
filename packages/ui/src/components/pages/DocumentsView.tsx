@@ -1035,8 +1035,12 @@ export function DocumentsView({
   const handleRootDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       const files = event.dataTransfer?.files;
-      if (!files || files.length === 0 || uploading) return;
+      if (!files || files.length === 0) return;
+      // preventDefault BEFORE the uploading gate: dragover advertised
+      // droppability, so bailing without it hands the drop to the browser
+      // default — navigating the SPA to the local file.
       event.preventDefault();
+      if (uploading) return;
       void handleFilesUpload(Array.from(files) as DocumentUploadFile[], {
         includeImageDescriptions: true,
         scope: DEFAULT_DOCUMENT_UPLOAD_SCOPE,

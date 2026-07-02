@@ -429,7 +429,7 @@ export interface CatalogModel {
    */
   tokenizerFamily?: TokenizerFamily;
   /** Voice backends whose artifacts ship in this Eliza-1 bundle. */
-  voiceBackends?: ReadonlyArray<"kokoro" | "omnivoice">;
+  voiceBackends?: ReadonlyArray<"kokoro">;
   /**
    * Provenance for the Eliza-1 v1 release shape (`releaseState=base-v1`):
    * Eliza-1 v1 is the upstream BASE models — GGUF-converted via the

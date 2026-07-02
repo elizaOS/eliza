@@ -62,7 +62,7 @@ jobs:
           # `bun install --ignore-scripts` (see snapcraft.yaml) and
           # `SKIP_NATIVE_PLUGINS=1`, so it never reads from any of the
           # repo's git submodules (plugin-local-inference/native/llama.cpp,
-          # plugin-local-inference/native/omnivoice.cpp, vendor/opencode).
+          # vendor/opencode).
           # Fetching them only risks "not our ref" failures when upstream
           # branches are force-pushed and the pinned SHA is no longer
           # reachable on the remote. The runtime closure under plugins/*/src

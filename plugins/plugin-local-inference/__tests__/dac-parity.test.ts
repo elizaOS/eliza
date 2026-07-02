@@ -113,15 +113,6 @@ function findCurrentCodec(): string | null {
       `${process.platform}-${process.arch}-metal-fused`,
       "omnivoice-codec",
     ),
-    // omnivoice.cpp submodule's own build.
-    path.join(
-      PLUGIN_ROOT,
-      "native",
-      "omnivoice.cpp",
-      "build",
-      "bin",
-      "omnivoice-codec",
-    ),
   ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
@@ -299,9 +290,10 @@ function resolveHarness(): { ok: ResolvedHarness } | { skip: string } {
   if (codecBin === null) {
     return {
       skip:
-        "current omnivoice-codec binary not found. Build it via " +
-        "`node plugins/plugin-local-inference/native/build-omnivoice.mjs` " +
-        "or set OMNIVOICE_CODEC to override.",
+        "current omnivoice-codec binary not found. Build the fused " +
+        "llama.cpp (see plugins/plugin-local-inference/native/verify/" +
+        "fixtures/dac_conv_t1d_parity.README.md) or set OMNIVOICE_CODEC " +
+        "to override.",
     };
   }
   const codecGguf = findCodecGguf(fixture);

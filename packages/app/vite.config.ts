@@ -3223,7 +3223,7 @@ export const INVALID_TRACER_PROVIDER = {};
         "**/packages/benchmarks/**",
         "**/packages/os/**",
         "**/packages/training/data/raw/**",
-        "**/plugin-local-inference/native/omnivoice.cpp/**",
+        "**/plugin-local-inference/native/audio-fixtures/**",
         "**/plugin-local-inference/src/services/__tests__/**",
       ],
     },

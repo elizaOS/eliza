@@ -7,6 +7,16 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// authenticated so the pre-gate behavior tests exercise the live poll path.
+const { authMock } = vi.hoisted(() => ({
+  authMock: { authenticated: true },
+}));
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 import type {
   RelationshipsMergeCandidate,
   RelationshipsPersonSummary,
@@ -100,6 +110,7 @@ const fetchProps: Partial<WidgetProps> = { slot: "home" };
 
 describe("RelationshipsAttentionWidget (#9143)", () => {
   beforeEach(() => {
+    authMock.authenticated = true;
     getBaseUrlMock.mockReturnValue("http://localhost");
     getRelationshipsPeopleMock.mockReset();
     getRelationshipsCandidatesMock.mockReset();

@@ -26,6 +26,13 @@ import {
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared/character-presets";
+import {
+  CHAT_UPLOAD_MIME_TYPES,
+  MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
+  MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
+  MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
+  MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
+} from "@elizaos/shared/chat-upload-limits";
 import type { ConversationMetadata } from "@elizaos/shared/contracts/conversation-routes";
 import {
   normalizeFirstRunProviderId,
@@ -445,39 +452,13 @@ export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
 // Chat image validation
 // ---------------------------------------------------------------------------
 
-const MAX_CHAT_IMAGES = 4;
-const MAX_IMAGE_DATA_BYTES = 5 * 1_048_576; // 5 MB for images
-const MAX_MEDIA_DATA_BYTES = 15 * 1_048_576; // 15 MB for audio/video/pdf
-const MAX_IMAGE_NAME_LENGTH = 255;
+// Caps + allowlist live in @elizaos/shared/chat-upload-limits (imported above,
+// aliased to the historical local names) so the UI composer enforces the exact
+// same numbers pre-send and the two sides cannot drift.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
-const CHAT_IMAGE_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-] as const;
 
-export const CHAT_UPLOAD_MIME_TYPES = [
-  ...CHAT_IMAGE_MIME_TYPES,
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/wave",
-  "audio/ogg",
-  "audio/webm",
-  "audio/mp4",
-  "audio/aac",
-  "audio/flac",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/ogg",
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "text/markdown",
-] as const;
+// Re-exported for chat-routes and for parity tests against the client side.
+export { CHAT_UPLOAD_MIME_TYPES };
 
 const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set<string>(CHAT_UPLOAD_MIME_TYPES);
 

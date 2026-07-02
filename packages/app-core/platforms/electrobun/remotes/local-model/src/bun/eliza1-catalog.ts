@@ -167,18 +167,6 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
 
 const VOICE_COMPONENTS: Eliza1VoiceComponent[] = [
   {
-    id: "omnivoice",
-    path: "voice/omnivoice",
-    displayName: "OmniVoice",
-    roles: ["tts", "voice"],
-    capabilities: ["text-to-speech"],
-    files: [
-      "omnivoice-base-q4_k_m.gguf",
-      "omnivoice-base-q8_0.gguf",
-      "omnivoice-tokenizer-q4_k_m.gguf",
-    ],
-  },
-  {
     id: "emotion",
     path: "voice/voice-emotion",
     displayName: "Emotion classifier",

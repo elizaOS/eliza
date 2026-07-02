@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -178,9 +179,12 @@ export function HealthSleepWidget(_props: Partial<WidgetProps>) {
   // there's data, and a transient fetch error never clobbers a populated card.
   const [data, setData] = useState<SleepWidgetData | null>(null);
   const nav = useWidgetNavigation();
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the 20s sleep poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
 
   const load = useCallback(async () => {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+    if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setData({ latest: null, classification: null });
       return;
     }
@@ -192,7 +196,7 @@ export function HealthSleepWidget(_props: Partial<WidgetProps>) {
     } catch {
       // Silent fallback to the last good render (matches todo.tsx); never log.
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void load();

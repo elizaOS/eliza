@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useNow } from "../../../hooks/useNow";
 import { withTimeout } from "../../../utils/with-timeout";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
@@ -129,6 +130,12 @@ export function CalendarUpcomingWidget({
   const [feedLoaded, setFeedLoaded] = useState(false);
   const [connection, setConnection] = useState<ConnectionState>("unknown");
   const nav = useWidgetNavigation();
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the connector probe + feed poll must stay dormant until the session is
+  // authenticated. While unauthenticated the connection stays "unknown"
+  // (the loading tile behind the sign-in overlay); the probe re-fires when the
+  // phase flips because it participates in the callback deps below.
+  const authenticated = useIsAuthenticated();
 
   const probeConnection = useCallback(async () => {
     if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
@@ -137,6 +144,7 @@ export function CalendarUpcomingWidget({
       setEvents([]);
       return false;
     }
+    if (!authenticated) return false;
 
     try {
       const res = await withTimeout(
@@ -159,7 +167,7 @@ export function CalendarUpcomingWidget({
       setConnection("disconnected");
       return false;
     }
-  }, []);
+  }, [authenticated]);
 
   const loadEvents = useCallback(async () => {
     const now = new Date();
@@ -205,7 +213,7 @@ export function CalendarUpcomingWidget({
   }, [probeConnection, loadEvents]);
 
   useIntervalWhenDocumentVisible(() => {
-    if (connection === "connected") void loadEvents();
+    if (authenticated && connection === "connected") void loadEvents();
   }, CALENDAR_REFRESH_INTERVAL_MS);
 
   // `useNow` is 0 on first render (deterministic render path — no Date.now in

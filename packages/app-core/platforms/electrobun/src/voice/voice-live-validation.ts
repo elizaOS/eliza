@@ -184,10 +184,7 @@ function componentReady(
 function selectTtsComponent(
   components: VoiceComponentSnapshot[],
 ): VoiceComponentSnapshot | null {
-  return (
-    componentReady(components, "kokoro") ??
-    componentReady(components, "omnivoice")
-  );
+  return componentReady(components, "kokoro");
 }
 
 function toCheck(params: VoiceLiveValidationCheck): VoiceLiveValidationCheck {

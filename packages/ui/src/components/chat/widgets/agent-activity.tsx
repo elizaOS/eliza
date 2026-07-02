@@ -6,6 +6,7 @@ import { client } from "../../../api";
 //   - FeedActivityItem: { id, type, timestamp, summary?, contentPreview?, ticker?, … }
 //   - FeedActivityFeed: { items: FeedActivityItem[]; total: number }
 import type { FeedActivityItem } from "../../../api/client-types-feed";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
@@ -77,6 +78,10 @@ export function AgentActivityWidget({
 }: Partial<WidgetProps>) {
   const [state, setState] = useState<AgentActivityState>(INITIAL_STATE);
   const nav = useWidgetNavigation();
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the one-shot activity fetch must stay dormant until the session is
+  // authenticated (it fires once the phase flips).
+  const authenticated = useIsAuthenticated();
 
   const load = useCallback(async (signal: { cancelled: boolean }) => {
     try {
@@ -100,12 +105,13 @@ export function AgentActivityWidget({
   }, []);
 
   useEffect(() => {
+    if (!authenticated) return;
     const signal = { cancelled: false };
     void load(signal);
     return () => {
       signal.cancelled = true;
     };
-  }, [load]);
+  }, [authenticated, load]);
 
   const latest = state.items[0] ?? null;
   // "+N" counts the activity not shown as the single datum.

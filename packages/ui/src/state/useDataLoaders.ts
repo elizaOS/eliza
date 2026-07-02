@@ -292,6 +292,15 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const activeMessageLoadAbortRef = useRef<AbortController | null>(null);
   // Per-id prefetch aborts so a neighbor is never double-fetched.
   const prefetchAbortRef = useRef<Map<string, AbortController>>(new Map());
+  // Which conversation's messages `conversationMessagesRef` currently holds.
+  // The ref only becomes that conversation's thread AFTER a load commits, so
+  // any caller judging a conversation by `conversationMessagesRef` (the
+  // empty-draft cleanup deletes in useChatCallbacks) MUST first check this id:
+  // during a rapid switch the ref still holds the PREVIOUS thread while the
+  // new fetch is in flight, and judging the new conversation by those stale
+  // messages silently deleted real conversations. `null` = holder unknown.
+  // Every `conversationMessagesRef.current` write below updates it in lockstep.
+  const loadedConversationIdRef = useRef<string | null>(null);
 
   const cacheConversationMessages = useCallback(
     (id: string, messages: ConversationMessage[]) => {
@@ -336,6 +345,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       if (cached) {
         greetingFiredRef.current = hasConversationBootstrapMessage(cached);
         conversationMessagesRef.current = cached;
+        loadedConversationIdRef.current = convId;
         setConversationMessages(cached);
       }
 
@@ -351,6 +361,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
+        loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
         return { ok: true };
       } catch (err) {
@@ -384,6 +395,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           conversationMessageCacheRef.current.delete(convId);
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
+          loadedConversationIdRef.current = null;
           setConversationMessages([]);
         }
         // For TRANSIENT errors (network drop mid-stream, timeout, 5xx) do NOT
@@ -433,6 +445,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
+        loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
         return true;
       } catch (error) {
@@ -787,6 +800,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    loadedConversationIdRef,
     // BSC / Steward / Trading
     getBscTradePreflight,
     getBscTradeQuote,
