@@ -57,6 +57,7 @@ describe("handleSwarmSynthesis", () => {
             label: "app",
             agentType: "codex",
             originalTask: "build a small app",
+            status: "completed",
             // finalText carrying the orchestrator's own envelope block; this is
             // the round-3 raw-transcript leak in issue elizaOS/eliza#11578.
             completionSummary:
