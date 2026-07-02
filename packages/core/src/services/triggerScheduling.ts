@@ -7,6 +7,9 @@ export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
 const CRON_FIELDS = 5;
 const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
+const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
+/** Max timestamp a JS Date can represent (±8.64e15 ms); beyond this a Date is Invalid. */
+const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 
 interface CronRange {
 	min: number;
@@ -134,13 +137,9 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 	);
 }
 
-function getTimezoneOffsetMs(
-	timezone: string | undefined,
-	atMs: number,
-): number {
-	if (!timezone || timezone === "UTC") return 0;
+function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
 	try {
-		const formatter = new Intl.DateTimeFormat("en-US", {
+		return new Intl.DateTimeFormat("en-US", {
 			timeZone: timezone,
 			year: "numeric",
 			month: "2-digit",
@@ -150,35 +149,59 @@ function getTimezoneOffsetMs(
 			second: "2-digit",
 			hour12: false,
 		});
-		const parts = formatter.formatToParts(new Date(atMs));
-		const get = (type: string): number => {
-			const part = parts.find((p) => p.type === type);
-			return part ? Number(part.value) : 0;
-		};
-		const tzDate = Date.UTC(
-			get("year"),
-			get("month") - 1,
-			get("day"),
-			get("hour"),
-			get("minute"),
-			get("second"),
-		);
-		return tzDate - atMs;
 	} catch {
-		return 0;
+		return null;
 	}
+}
+
+function offsetMsFromFormatter(
+	formatter: Intl.DateTimeFormat,
+	atMs: number,
+): number {
+	const parts = formatter.formatToParts(new Date(atMs));
+	const get = (type: string): number => {
+		const part = parts.find((p) => p.type === type);
+		return part ? Number(part.value) : 0;
+	};
+	const tzDate = Date.UTC(
+		get("year"),
+		get("month") - 1,
+		get("day"),
+		get("hour"),
+		get("minute"),
+		get("second"),
+	);
+	return tzDate - atMs;
+}
+
+function getTimezoneOffsetMs(
+	timezone: string | undefined,
+	atMs: number,
+): number {
+	if (!timezone || timezone === "UTC") return 0;
+	const formatter = buildTzFormatter(timezone);
+	return formatter ? offsetMsFromFormatter(formatter, atMs) : 0;
 }
 
 function cronMatches(
 	schedule: CronSchedule,
 	candidateMs: number,
-	timezone?: string,
+	timezone: string | undefined,
+	formatter: Intl.DateTimeFormat | null,
 ): boolean {
-	if (!timezone || timezone === "UTC") {
+	if (!timezone || timezone === "UTC" || !formatter) {
 		return cronMatchesUTC(schedule, candidateMs);
 	}
-	const offsetMs = getTimezoneOffsetMs(timezone, candidateMs);
-	return cronMatchesUTC(schedule, candidateMs + offsetMs);
+	const wallMs = candidateMs + offsetMsFromFormatter(formatter, candidateMs);
+	if (!cronMatchesUTC(schedule, wallMs)) return false;
+	// DST fall-back: the ambiguous local hour repeats (e.g. NY 01:00–01:59 occurs
+	// twice on the transition day). Fire only the FIRST instant, matching common
+	// cron implementations — reject a candidate whose wall-clock equals the
+	// wall-clock one hour earlier. That earlier instant already matched and fired,
+	// so counting this one too double-fires the cron on the transition day.
+	const prevMs = candidateMs - CRON_HOUR_MS;
+	const prevWallMs = prevMs + offsetMsFromFormatter(formatter, prevMs);
+	return wallMs !== prevWallMs;
 }
 
 export function computeNextCronRunAtMs(
@@ -188,16 +211,27 @@ export function computeNextCronRunAtMs(
 ): number | null {
 	const schedule = parseCronExpression(expression);
 	if (!schedule) return null;
+	// Bail on a non-representable base: scanning forward from a timestamp at/over
+	// the max Date value would build ~366 days of Invalid Dates before returning
+	// null (a ~26s pathological scan).
+	if (!Number.isFinite(fromMs) || fromMs >= MAX_REPRESENTABLE_MS) return null;
 
 	const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
-	const cutoff = start + CRON_SCAN_WINDOW_MS;
+	// Cap the window at the max representable Date so a base near the ceiling
+	// scans only the representable remainder, not ~527k Invalid-Date candidates.
+	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
+	// Hoist ONE formatter for the entire scan. Previously getTimezoneOffsetMs
+	// allocated a fresh Intl.DateTimeFormat per candidate minute — up to ~527k
+	// allocations across the 366-day window.
+	const formatter =
+		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
 
 	for (
 		let candidate = start + CRON_MINUTE_MS;
 		candidate <= cutoff;
 		candidate += CRON_MINUTE_MS
 	) {
-		if (cronMatches(schedule, candidate, timezone)) {
+		if (cronMatches(schedule, candidate, timezone, formatter)) {
 			return candidate;
 		}
 	}
