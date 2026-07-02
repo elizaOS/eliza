@@ -227,7 +227,14 @@ jobs:
         # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
-          install_cache="$PWD/.bun-install-cache"
+          # Cache on LOCAL disk ($HOME), not under $PWD — the checkout dir lives
+          # on the box's /tmp, whose contended/slow filesystem stalls bun's link
+          # phase past the 900s cap and wedges deploys (bun itself logs "Slow
+          # filesystem detected ... consider setting $BUN_INSTALL_CACHE_DIR to a
+          # local folder"). This is the real fix; the earlier canary→latest pin
+          # (#11235) did not address it — the hang recurs on a released bun too
+          # (run 28572046433). Persistent across runs so the cache stays warm.
+          install_cache="${HOME}/.bun-install-cache-deploy"
           install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
@@ -535,7 +542,14 @@ jobs:
         # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
-          install_cache="$PWD/.bun-install-cache"
+          # Cache on LOCAL disk ($HOME), not under $PWD — the checkout dir lives
+          # on the box's /tmp, whose contended/slow filesystem stalls bun's link
+          # phase past the 900s cap and wedges deploys (bun itself logs "Slow
+          # filesystem detected ... consider setting $BUN_INSTALL_CACHE_DIR to a
+          # local folder"). This is the real fix; the earlier canary→latest pin
+          # (#11235) did not address it — the hang recurs on a released bun too
+          # (run 28572046433). Persistent across runs so the cache stays warm.
+          install_cache="${HOME}/.bun-install-cache-deploy"
           install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
@@ -874,7 +888,14 @@ jobs:
         # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
-          install_cache="$PWD/.bun-install-cache"
+          # Cache on LOCAL disk ($HOME), not under $PWD — the checkout dir lives
+          # on the box's /tmp, whose contended/slow filesystem stalls bun's link
+          # phase past the 900s cap and wedges deploys (bun itself logs "Slow
+          # filesystem detected ... consider setting $BUN_INSTALL_CACHE_DIR to a
+          # local folder"). This is the real fix; the earlier canary→latest pin
+          # (#11235) did not address it — the hang recurs on a released bun too
+          # (run 28572046433). Persistent across runs so the cache stays warm.
+          install_cache="${HOME}/.bun-install-cache-deploy"
           install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
