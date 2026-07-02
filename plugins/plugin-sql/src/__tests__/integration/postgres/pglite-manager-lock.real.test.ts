@@ -163,4 +163,33 @@ describe("PGliteClientManager file lock", () => {
     await manager.close();
     expect(existsSync(lockPathFor(dataDir))).toBe(false);
   });
+
+  it("mobile embedded mode reclaims ANY leftover lock — even one recording a confirmed-live PID (#11030)", async () => {
+    // iOS/Android local backend is single-tenant: Bun runs as a thread inside
+    // the one app process and ElizaBunRuntime serializes engine starts, so a
+    // leftover lock is stale by definition. The liveness probe is unusable
+    // there: a prior LAUNCH's PID probes EPERM in the iOS sandbox (honored
+    // for 7 days -> every relaunch bricked with "PGlite data dir is already
+    // in use"), and a prior Bun THREAD's recorded PID equals the CURRENT app
+    // PID (probes alive forever). This is the exact on-device #11030
+    // post-engine-fix failure shape: lock pid == process.pid, recent
+    // createdAt, and the app must still boot.
+    const dataDir = mkdtempSync(path.join(tmpdir(), "eliza-pglite-lock-"));
+    tempDirs.push(dataDir);
+
+    writeFileSync(
+      lockPathFor(dataDir),
+      `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString(), dataDir })}\n`
+    );
+
+    process.env.ELIZA_IOS_LOCAL_BACKEND = "1";
+    try {
+      const manager = new PGliteClientManager({ dataDir });
+      await manager.close();
+    } finally {
+      delete process.env.ELIZA_IOS_LOCAL_BACKEND;
+    }
+    // Reclaimed, re-acquired, and released on close.
+    expect(existsSync(lockPathFor(dataDir))).toBe(false);
+  });
 });

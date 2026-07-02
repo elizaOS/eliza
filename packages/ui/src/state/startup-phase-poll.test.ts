@@ -1296,6 +1296,40 @@ describe("runPollingBackend bounded native boot (#11030)", () => {
     delete (globalThis as Record<string, unknown>).Capacitor;
   });
 
+  it("still reaches BACKEND_TIMEOUT when a probe NEVER settles (hung transport, #11030 raw-proxy deadlock)", async () => {
+    // The on-device failure shape: the iOS transport awaited Capacitor's raw
+    // plugin proxy — a thenable whose `then` never invokes its callbacks — so
+    // client.getAuthStatus() neither resolved nor rejected. Without the
+    // deadline race the loop freezes BEFORE its own deadline check and the
+    // phone sits on "Booting up…" forever with no timeout card.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(
+      () => new Promise<never>(() => {}),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, backendTimeoutMs: 1_200 },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-timeout",
+        detail: expect.stringContaining("did not settle"),
+      }),
+    );
+  }, 15_000);
+
   it("fails fast to AGENT_ERROR with the REAL message on the iOS cloud-mode IPC policy rejection", async () => {
     // The exact #11030 renderer failure: a stale persisted "cloud" runtime
     // mode policy-locks the local-agent transport, so every startup probe

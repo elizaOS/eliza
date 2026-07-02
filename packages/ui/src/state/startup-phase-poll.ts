@@ -80,6 +80,20 @@ function isCapacitorNative(): boolean {
 const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS = 90_000;
 
 /**
+ * A startup probe outlived the whole remaining phase budget without settling
+ * (issue #11030: the iOS transport awaited Capacitor's raw plugin proxy — a
+ * thenable whose `then` never calls back — freezing the poll loop forever).
+ * Raised by the poll's own deadline race so the ordinary timeout/error paths
+ * still run when a transport hangs.
+ */
+class ApiHangTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ApiHangTimeoutError";
+  }
+}
+
+/**
  * Terminal 503 body from the Eliza Cloud dedicated-agent proxy
  * (packages/cloud/api/src/dedicated-agent-proxy.ts) when the agent sandbox
  * status is `error`: "Agent is in an error state. Resolve the failure before
@@ -542,6 +556,64 @@ export async function runPollingBackend(
     nativeFailureBudgetMs,
   });
 
+  // Stall detector (issue #11030 root-cause instrumentation): a startup probe
+  // that neither resolves nor rejects is invisible to every failure path —
+  // the loop just stops, no poll-failure entries, no timeout card. Arm a
+  // one-shot tracer on the first few probes so a hung await is recorded in
+  // the boot trace instead of silently wedging the phase.
+  let stallTracersArmed = 0;
+  const traceIfStalled = <T>(
+    promise: Promise<T>,
+    label: string,
+  ): Promise<T> => {
+    if (stallTracersArmed >= 3) return promise;
+    stallTracersArmed += 1;
+    const armedAt = Date.now();
+    const stallTid = setTimeout(() => {
+      appendIosBootTrace("probe-stalled", {
+        label,
+        baseUrl: client.getBaseUrl(),
+        stalledForMs: Date.now() - armedAt,
+        agentBootInProgress: isIosNativeAgentBootInProgress(),
+      });
+    }, 20_000);
+    return promise.finally(() => clearTimeout(stallTid));
+  };
+
+  /**
+   * Bound every probe await by the remaining phase budget (issue #11030).
+   * The on-device iOS boot hang proved a probe can NEVER settle (the
+   * transport awaited Capacitor's raw plugin proxy — a thenable whose `then`
+   * never calls back). A hung await freezes this loop BEFORE the deadline
+   * check at the top, so neither the timeout card nor the failure budget can
+   * ever fire and the phone sits on "Booting up…" forever. Racing the probe
+   * against the remaining deadline guarantees the loop always regains
+   * control; the rejection flows through the ordinary failure paths (streak
+   * budget, then BACKEND_TIMEOUT at the deadline).
+   */
+  const boundedByDeadline = <T>(promise: Promise<T>): Promise<T> => {
+    const remainingMs = Math.max(1_000, deadline - Date.now());
+    return new Promise<T>((resolve, reject) => {
+      const hangTid = setTimeout(() => {
+        reject(
+          new ApiHangTimeoutError(
+            `Startup probe did not settle within ${Math.round(remainingMs / 1000)}s — the request transport is hung (see the on-device boot trace, stage "probe-stalled")`,
+          ),
+        );
+      }, remainingMs);
+      promise.then(
+        (value) => {
+          clearTimeout(hangTid);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clearTimeout(hangTid);
+          reject(error);
+        },
+      );
+    });
+  };
+
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
       appendIosBootTrace("backend-deadline-exceeded", {
@@ -554,7 +626,10 @@ export async function runPollingBackend(
       return;
     }
     try {
-      const auth = await client.getAuthStatus();
+      const auth = await traceIfStalled(
+        boundedByDeadline(client.getAuthStatus()),
+        "auth-status",
+      );
       latestAuth = auth;
       if (!tracedFirstSuccess) {
         tracedFirstSuccess = true;

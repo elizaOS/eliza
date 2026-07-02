@@ -8,6 +8,11 @@
  *      (--duration, default 120 s), then detaches. This is the capture that
  *      produced device-boot-console.log in the #11030 evidence. NOTE: it
  *      relaunches the app — pass --no-console if you only want the trace file.
+ *      WARNING: `devicectl launch --console` ties the APP LIFETIME to the
+ *      console process — detaching (our bounded SIGTERM, or Ctrl-C) KILLS the
+ *      app with signal 15. Never treat the post-capture app state as "still
+ *      running", and never rely on console mode for boot-trace collection —
+ *      the trace pull below works from a plain unattached launch.
  *   2. Boot-trace file: pulls the boot-trace JSON from the app's data
  *      container via `devicectl device copy from` (--pull-boot-trace).
  *      Path defaults to DEFAULT_BOOT_TRACE_CONTAINER_PATH (see the D1
@@ -73,10 +78,14 @@ function captureConsole({ device, bundleId, durationSeconds, outputFile }) {
   );
   return new Promise((resolve, reject) => {
     let settled = false;
+    let detachRequested = false;
     const timer = setTimeout(() => {
       // Bounded capture: detach by killing the attached console process.
       // The trailing "terminated due to signal 15" in the log is this kill,
       // not an app crash (same pattern as the #11030 evidence capture).
+      // NOTE: devicectl also kills the APP itself on detach (console mode
+      // ties app lifetime to the console process).
+      detachRequested = true;
       child.kill("SIGTERM");
     }, durationSeconds * 1000);
     child.on("exit", (code, signal) => {
@@ -88,7 +97,19 @@ function captureConsole({ device, bundleId, durationSeconds, outputFile }) {
       log(
         `console capture finished (exit=${code ?? `signal ${signal}`}, ${lines} lines)`,
       );
-      if (signal !== "SIGTERM" && code !== 0 && code !== null) {
+      log(
+        "note: console mode ties the app lifetime to this process — the app was terminated (signal 15) on detach",
+      );
+      // Our own bounded detach can surface as signal=SIGTERM OR as a nonzero
+      // exit code (devicectl exits 1 after relaying the kill) — both are the
+      // EXPECTED end of a bounded capture, not a failure, and must never
+      // block the boot-trace pull that follows (#11030 leg D1 tool fix).
+      if (
+        !detachRequested &&
+        signal !== "SIGTERM" &&
+        code !== 0 &&
+        code !== null
+      ) {
         reject(
           new Error(
             `devicectl console exited early with ${code}. Is the phone unlocked and paired? See ${outputFile}`,
@@ -185,6 +206,10 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const defaultDir = path.join(appRoot, "ios", "build", "device-logs");
 
+  // The boot-trace pull must run even when the console capture fails —
+  // console mode is best-effort observability; the trace file is the primary
+  // artifact and never depends on console mode (#11030 leg D1 tool fix).
+  let consoleCaptureError = null;
   if (!args["no-console"]) {
     const durationSeconds = Number.parseInt(args.duration ?? "120", 10);
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
@@ -194,7 +219,17 @@ async function main() {
     }
     const outputFile =
       args.output || path.join(defaultDir, `console-${stamp}.log`);
-    await captureConsole({ device, bundleId, durationSeconds, outputFile });
+    log(
+      "warning: --console ties the app lifetime to the console process; the app is killed (signal 15) when the bounded capture detaches",
+    );
+    try {
+      await captureConsole({ device, bundleId, durationSeconds, outputFile });
+    } catch (error) {
+      consoleCaptureError = error;
+      log(
+        `console capture failed (${error?.message ?? error}); continuing to the boot-trace pull`,
+      );
+    }
   }
 
   if (args["pull-boot-trace"]) {
@@ -233,6 +268,11 @@ async function main() {
 
   if (args["no-console"] && !args["pull-boot-trace"]) {
     fail("--no-console without --pull-boot-trace leaves nothing to do.");
+  }
+  if (consoleCaptureError) {
+    fail(
+      `console capture failed (boot-trace pull ${args["pull-boot-trace"] ? "completed first" : "was not requested"}): ${consoleCaptureError?.message ?? consoleCaptureError}`,
+    );
   }
 }
 

@@ -62,7 +62,12 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func start(_ call: CAPPluginCall) {
         if isLocalAgentMode(call: call) {
             Self.localStartedAt = Self.localStartedAt ?? Date()
-            postBootTrace(stage: "start", detail: ["mode": "local", "state": "running"])
+            // "running" here means "local mode is active; the in-process agent
+            // lifecycle is renderer-owned" — it does NOT prove the ElizaBunRuntime
+            // engine is up. Mark the trace entry optimistic so on-device boot
+            // triage never mistakes this for engine readiness (#11030: the engine
+            // was never started while this kept reporting running).
+            postBootTrace(stage: "start", detail: ["mode": "local", "state": "running", "optimistic": true])
             call.resolve(localAgentStatus(state: "running", error: nil))
             return
         }
@@ -124,7 +129,10 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func getStatus(_ call: CAPPluginCall) {
         if isLocalAgentMode(call: call) {
             Self.localStartedAt = Self.localStartedAt ?? Date()
-            postBootTrace(stage: "get-status", detail: ["mode": "local", "state": "running"])
+            // Optimistic: local mode is active, but engine readiness is owned by
+            // ElizaBunRuntime (see its engine-* boot-trace stages). Marked so the
+            // boot trace never reads as "agent running" while the engine is down.
+            postBootTrace(stage: "get-status", detail: ["mode": "local", "state": "running", "optimistic": true])
             call.resolve(localAgentStatus(state: "running", error: nil))
             return
         }

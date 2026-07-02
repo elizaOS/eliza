@@ -97,8 +97,13 @@ interface AgentBootTracePluginLike {
 
 let agentPluginForBootTrace: AgentBootTracePluginLike | null | undefined;
 let bootTraceDisabled = false;
+let bootTraceConsecutiveFailures = 0;
 let bootTraceEntryCount = 0;
 const bootTraceLaunchedAtMs = Date.now();
+/** Bridge rejections tolerated before the trace sink turns itself off. A
+ * single transient rejection must NOT silence startup telemetry forever —
+ * that blindness is exactly what made the #11030 device hang unreadable. */
+const BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES = 3;
 
 function resolveBootTraceBridge(): AgentBootTracePluginLike | null {
   if (agentPluginForBootTrace !== undefined) {
@@ -147,10 +152,26 @@ export function appendIosBootTrace(
   } catch {
     return;
   }
-  bridge.appendBootTrace({ stage, detail: safeDetail }).catch(() => {
-    // Older native shells without the method: disable quietly.
-    bootTraceDisabled = true;
-  });
+  bridge
+    .appendBootTrace({ stage, detail: safeDetail })
+    .then(() => {
+      bootTraceConsecutiveFailures = 0;
+    })
+    .catch((error: unknown) => {
+      // Older native shells without the method reject with "not implemented";
+      // disable immediately for those. Otherwise tolerate a bounded number of
+      // transient bridge failures before going quiet.
+      const message =
+        error instanceof Error ? error.message : String(error ?? "");
+      bootTraceConsecutiveFailures += 1;
+      if (
+        /not implemented|is not available|method not found/i.test(message) ||
+        bootTraceConsecutiveFailures >=
+          BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES
+      ) {
+        bootTraceDisabled = true;
+      }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -680,11 +701,24 @@ function normalizeNativeResult(
   };
 }
 
+let tracedEngineAcquire = false;
+
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   const strict = shouldRequireFullBunRuntime();
+  const pluginAvailable = isFullBunRuntimePluginAvailable();
+  if (!tracedEngineAcquire && isNativeIos()) {
+    tracedEngineAcquire = true;
+    appendIosBootTrace("engine-acquire", {
+      copy: "ui",
+      strict,
+      builtIn: isFullBunRuntimeBuiltIn(),
+      pluginAvailable,
+      runtimeMode: readRuntimeMode(),
+    });
+  }
   if (!isNativeIos() && !strict) return null;
   if (!strict && !isFullBunRuntimeBuiltIn()) return null;
-  if (!isFullBunRuntimePluginAvailable()) {
+  if (!pluginAvailable) {
     if (strict) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
     }
@@ -705,7 +739,10 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       // letting the import error escape to the strict handler and fail iOS local
       // startup with "Backend Timeout" (the reported first-run hang). A genuine
       // failure still surfaces below: runtime.start() throwing is NOT caught here.
-      const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
+      // importFullBunRuntimePlugin resolves to a plain wrapped object (never
+      // the raw Capacitor proxy — awaiting the proxy deadlocks; see the
+      // comment inside it).
+      const runtime = await importFullBunRuntimePlugin();
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         recordIosNativeAgentBootPhase("ready");
@@ -715,6 +752,7 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
         return runtime;
       }
       recordIosNativeAgentBootPhase("starting");
+      appendIosBootTrace("engine-start-requested", { copy: "ui" });
       const startRequestedAt = Date.now();
       const started = await runtime.start({
         engine: "bun",
@@ -769,6 +807,7 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
 }
 
 async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  appendIosBootTrace("engine-import-start", { copy: "ui" });
   let mod: Partial<FullBunRuntimeModule> | null = null;
   try {
     mod = (await import(
@@ -777,9 +816,22 @@ async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
   } catch {
     mod = null;
   }
-  return (
+  appendIosBootTrace("engine-import-done", {
+    copy: "ui",
+    viaModule: Boolean(mod?.ElizaBunRuntime),
+  });
+  // CRITICAL (#11030 device boot hang): never return the raw Capacitor plugin
+  // proxy across an `await` boundary. registerPlugin's Proxy fabricates a
+  // native-method wrapper for ANY property — including `then` — so promise
+  // resolution treats the proxy as a thenable whose `then(resolve, reject)`
+  // is a Capacitor method wrapper that NEVER invokes its callbacks. Every
+  // caller of this async function then awaits forever, the engine never
+  // starts, and the phone dead-ends on the startup-timeout card. Wrapping
+  // into a plain bound-method object BEFORE returning makes the resolved
+  // value thenable-free and safe to await.
+  return wrapFullBunRuntime(
     mod?.ElizaBunRuntime ??
-    registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime")
+      registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime"),
   );
 }
 
@@ -868,9 +920,19 @@ async function dispatchIosLocalAgentRequest(
   );
 }
 
+let tracedNativeRequests = 0;
+
 export async function handleIosLocalAgentNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
 ): Promise<IosLocalAgentNativeRequestResult> {
+  if (tracedNativeRequests < 3) {
+    tracedNativeRequests += 1;
+    appendIosBootTrace("native-request", {
+      copy: "ui",
+      n: tracedNativeRequests,
+      path: options.path?.slice(0, 120) ?? null,
+    });
+  }
   const path = options.path?.trim();
   if (!path || !isSafeLocalPath(path)) {
     throw new Error(
