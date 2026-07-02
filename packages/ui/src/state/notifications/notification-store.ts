@@ -248,3 +248,8 @@ export function __ingestNotificationForTests(
 ): void {
   ingest(notification, unreadCount);
 }
+
+/** Test-only: drive the hydration flag to exercise the not-loaded vs empty UI. */
+export function __setHydratedForTests(value: boolean): void {
+  setState({ hydrated: value });
+}
