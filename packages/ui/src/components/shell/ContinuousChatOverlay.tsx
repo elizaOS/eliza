@@ -3765,6 +3765,27 @@ export function ContinuousChatOverlay({
               pointerEvents: pilled ? "none" : "auto",
               borderRadius: fullBleed ? 0 : panelRadius,
             }}
+            // Drag-and-drop attachment intake (#10722). The old ChatView chat
+            // surface accepted file drops; the overlay replaced it with only
+            // paste + the attach button. Dropped files run the SAME intake
+            // pipeline as both of those (addImageFiles → intakeAttachmentFiles),
+            // so size caps, type support, and the pending-attachment strip all
+            // behave identically. dragover must preventDefault for the browser
+            // to allow the drop at all; only file drags are claimed so
+            // text-selection drags keep their native behavior.
+            onDragOver={(event) => {
+              if (event.dataTransfer?.types?.includes("Files")) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }
+            }}
+            onDrop={(event) => {
+              const files = event.dataTransfer?.files;
+              if (files && files.length > 0) {
+                event.preventDefault();
+                addImageFiles(files);
+              }
+            }}
           >
             {/* Conversation-swipe edge hints (#8929): glow the edge the next /
                 previous conversation will slide in from as the user drags. */}
