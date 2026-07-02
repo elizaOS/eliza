@@ -8,7 +8,10 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { resolveStylePresetByAvatarIndex } from "@elizaos/shared";
+import {
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetByName,
+} from "@elizaos/shared";
 import {
   type RefObject,
   useCallback,
@@ -647,19 +650,22 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       return;
     }
 
-    const preset = resolveStylePresetByAvatarIndex(
-      selectedVrmIndex,
-      uiLanguage,
-    );
+    // Resolve the persona by its name first: the VRM index is a shared
+    // art-asset index (several personas can use one avatar), so relocalizing
+    // from the index alone could rewrite the character with a sibling
+    // persona's payload. The index is only a fallback for unnamed characters.
+    const currentName =
+      characterData?.name?.trim() ||
+      characterDraft?.name?.trim() ||
+      agentStatus?.agentName?.trim();
+    const preset =
+      resolveStylePresetByName(currentName, uiLanguage) ??
+      resolveStylePresetByAvatarIndex(selectedVrmIndex, uiLanguage);
     if (!preset) {
       return;
     }
 
-    const resolvedName =
-      characterData?.name?.trim() ||
-      characterDraft?.name?.trim() ||
-      agentStatus?.agentName?.trim() ||
-      preset.name;
+    const resolvedName = currentName || preset.name;
 
     void (async () => {
       try {

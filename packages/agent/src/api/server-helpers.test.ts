@@ -1,9 +1,13 @@
+import type { AgentRuntime } from "@elizaos/core";
+import { resolveStylePresetById } from "@elizaos/shared/character-presets";
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   cloneWithoutBlockedObjectKeys,
   hasBlockedObjectKeyDeep,
+  resolveConversationGreetingText,
+  resolveMirroredAvatarPresetId,
 } from "./server-helpers";
 
 describe("blocked object key sanitization", () => {
@@ -64,5 +68,67 @@ describe("blocked object key sanitization", () => {
       ),
       { numRuns: 200 },
     );
+  });
+});
+
+describe("resolveConversationGreetingText persona resolution", () => {
+  it("greets as Eliza for a consistent default-Eliza config (presetId eliza + shared avatarIndex 1)", () => {
+    const eliza = resolveStylePresetById("eliza");
+    const chen = resolveStylePresetById("chen");
+    if (!eliza || !chen) {
+      throw new Error("expected eliza and chen presets to exist");
+    }
+    // The scenario only exists because both personas share avatarIndex 1 —
+    // the id must win over the ambiguous art-asset index.
+    expect(eliza.avatarIndex).toBe(chen.avatarIndex);
+
+    const runtime = {
+      character: { name: "Eliza", postExamples: [] },
+    } as unknown as AgentRuntime;
+
+    // Sweep the greeting RNG across every pick slot so the full greeting set
+    // is observed deterministically.
+    const randomSpy = vi.spyOn(Math, "random");
+    const produced = new Set<string>();
+    try {
+      const steps = 64;
+      for (let i = 0; i < steps; i++) {
+        randomSpy.mockReturnValue(i / steps);
+        produced.add(
+          resolveConversationGreetingText(runtime, "en", {
+            presetId: "eliza",
+            avatarIndex: 1,
+          }),
+        );
+      }
+    } finally {
+      randomSpy.mockRestore();
+    }
+
+    const elizaGreetings = new Set(
+      eliza.postExamples.map((value) => value.trim()),
+    );
+    expect([...produced].sort()).toEqual([...elizaGreetings].sort());
+  });
+});
+
+describe("resolveMirroredAvatarPresetId", () => {
+  it("keeps an already-consistent persisted presetId for a shared avatar index", () => {
+    // chen and eliza intentionally share avatarIndex 1 — mirroring the shared
+    // index must not rewrite either persona to its sibling.
+    expect(resolveMirroredAvatarPresetId(1, "chen")).toBe("chen");
+    expect(resolveMirroredAvatarPresetId(1, "eliza")).toBe("eliza");
+  });
+
+  it("derives first-wins from the index when no presetId is persisted", () => {
+    expect(resolveMirroredAvatarPresetId(1, undefined)).toBe("eliza");
+  });
+
+  it("re-derives from the index when the persisted presetId points at another avatar", () => {
+    const jin = resolveStylePresetById("jin");
+    if (!jin) {
+      throw new Error("expected jin preset to exist");
+    }
+    expect(resolveMirroredAvatarPresetId(jin.avatarIndex, "eliza")).toBe("jin");
   });
 });

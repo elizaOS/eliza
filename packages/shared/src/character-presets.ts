@@ -80,12 +80,24 @@ const CHARACTER_DEFINITION_BY_NAME = new Map(
   ]),
 );
 
-const CHARACTER_DEFINITION_BY_AVATAR_INDEX = new Map(
-  CHARACTER_DEFINITIONS.map((definition) => [
-    definition.avatarIndex,
-    definition,
-  ]),
-);
+// `avatarIndex` is a VRM art-asset index, not a persona key — several personas
+// can intentionally share one art asset (e.g. default Eliza and Chen both use
+// index 1). Build the lookup first-wins so an ambiguous index deterministically
+// resolves to the earliest-declared persona (the default preset is
+// CHARACTER_DEFINITIONS[0]); the plain Map constructor would be last-wins and
+// let a later sibling clobber it.
+const CHARACTER_DEFINITION_BY_AVATAR_INDEX = new Map<
+  number,
+  CharacterDefinition
+>();
+for (const definition of CHARACTER_DEFINITIONS) {
+  if (!CHARACTER_DEFINITION_BY_AVATAR_INDEX.has(definition.avatarIndex)) {
+    CHARACTER_DEFINITION_BY_AVATAR_INDEX.set(
+      definition.avatarIndex,
+      definition,
+    );
+  }
+}
 
 // The first/default character ("eliza") is the app's default agent. A
 // white-label app rebrands that default to its own app name (e.g. "Milady")
@@ -243,9 +255,21 @@ export function buildElizaCharacterCatalog(): {
   // Use getStylePresets() (not the STYLE_PRESETS const) so the default-agent
   // rename from setDefaultAgentName() is reflected in the white-label catalog.
   const presets = getStylePresets(DEFAULT_LANGUAGE);
+  // Assets are keyed by avatarIndex, and several personas may share one art
+  // asset — dedupe so ids/slugs stay unique. The stable sort keeps declaration
+  // order within a shared index, so the surviving asset is titled after the
+  // earliest-declared persona (the default preset for index 1).
+  const seenAvatarIndexes = new Set<number>();
   const assets = presets
     .slice()
     .sort((left, right) => left.avatarIndex - right.avatarIndex)
+    .filter((preset) => {
+      if (seenAvatarIndexes.has(preset.avatarIndex)) {
+        return false;
+      }
+      seenAvatarIndexes.add(preset.avatarIndex);
+      return true;
+    })
     .map((preset) => ({
       id: preset.avatarIndex,
       slug: `eliza-${preset.avatarIndex}`,

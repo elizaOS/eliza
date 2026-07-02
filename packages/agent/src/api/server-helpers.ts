@@ -322,13 +322,16 @@ export function resolveConversationGreetingText(
 
   // Prefer explicit UI selections over the loaded character card: users pick a
   // style in first-run/roster (avatar + preset) while `runtime.character.name`
-  // can still reflect the bundled preset name until save/restart.
+  // can still reflect the bundled preset name until save/restart. The preset id
+  // names exactly one persona, while `avatarIndex` is a shared art-asset index
+  // that cannot disambiguate siblings using the same VRM — so the id must win
+  // (matching the build-character paths).
   const preset =
+    resolveStylePresetById(uiConfig?.presetId, normalizedLanguage) ??
     resolveStylePresetByAvatarIndex(
       uiConfig?.avatarIndex,
       normalizedLanguage,
     ) ??
-    resolveStylePresetById(uiConfig?.presetId, normalizedLanguage) ??
     resolveStylePresetByName(assistantName, normalizedLanguage) ??
     resolveStylePresetByName(characterName, normalizedLanguage);
 
@@ -349,6 +352,27 @@ export function resolveConversationGreetingText(
   return name
     ? `Hey, I'm ${name}. What can I help you with?`
     : "Hey — what can I help you with?";
+}
+
+/**
+ * Resolve the preset id to persist when the stream tab mirrors an avatar
+ * selection into eliza.json. `avatarIndex` is a shared art-asset index —
+ * several personas can use the same VRM — so an already-consistent persisted
+ * presetId must be kept rather than re-derived from the ambiguous index (which
+ * would clobber the persona with its earliest-declared sibling). Only when the
+ * existing presetId is absent or points at a different avatar do we derive the
+ * persona from the index.
+ */
+export function resolveMirroredAvatarPresetId(
+  avatarIndex: number,
+  existingPresetId: string | null | undefined,
+  language?: unknown,
+): string | undefined {
+  const existing = resolveStylePresetById(existingPresetId, language);
+  if (existing && existing.avatarIndex === avatarIndex) {
+    return existing.id;
+  }
+  return resolveStylePresetByAvatarIndex(avatarIndex, language)?.id;
 }
 
 // ---------------------------------------------------------------------------
