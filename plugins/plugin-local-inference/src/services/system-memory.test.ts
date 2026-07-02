@@ -66,8 +66,7 @@ describe("readSystemMemory", () => {
 			() => SAMPLE_VM_STAT,
 		);
 		const pageSize = 16384;
-		const expected =
-			(462_821 + 3_305_280 + 57_490 + 2_266) * pageSize; // free+inactive+spec+purgeable
+		const expected = (462_821 + 3_305_280 + 57_490 + 2_266) * pageSize; // free+inactive+spec+purgeable
 		// totalmem() on the test host caps the reading; below the cap the exact
 		// page math must hold.
 		expect(mem.freeBytes).toBe(Math.min(expected, mem.totalBytes));
