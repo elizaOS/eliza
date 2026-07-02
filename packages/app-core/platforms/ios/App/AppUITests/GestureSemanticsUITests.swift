@@ -81,7 +81,7 @@ final class GestureSemanticsUITests: XCTestCase {
 
         // Sub-threshold: a SLOW ~25%-width left drag (velocity killed by the
         // hold-before-release) must snap back — the page may not change.
-        slowHorizontalDrag(in: app, fromX: 0.80, toX: 0.55, y: 0.35)
+        slowHorizontalDrag(in: app, fromX: 0.80, toX: 0.55, y: 0.55)
         Thread.sleep(forTimeInterval: 1.5)
         let afterSubThreshold = markerValue(Self.pagePrefix, in: app)
         attachScreenshot(named: "pager-10-after-sub-threshold-drag")
@@ -93,7 +93,7 @@ final class GestureSemanticsUITests: XCTestCase {
 
         // Past-threshold: a SLOW ~65%-width left drag (again velocity-killed,
         // so the DISTANCE rule alone decides) must commit home → launcher.
-        slowHorizontalDrag(in: app, fromX: 0.85, toX: 0.20, y: 0.35)
+        slowHorizontalDrag(in: app, fromX: 0.85, toX: 0.20, y: 0.55)
         let committed = waitForMarker(
             Self.pagePrefix, toEqual: "launcher", timeout: 5, in: app)
         attachScreenshot(named: "pager-20-after-past-threshold-drag")
@@ -105,7 +105,7 @@ final class GestureSemanticsUITests: XCTestCase {
 
         // Edge-swipe back: on the launcher a right drag commits home on the
         // shorter edge-swipe threshold.
-        slowHorizontalDrag(in: app, fromX: 0.20, toX: 0.65, y: 0.35)
+        slowHorizontalDrag(in: app, fromX: 0.20, toX: 0.65, y: 0.55)
         let backHome = waitForMarker(
             Self.pagePrefix, toEqual: "home", timeout: 5, in: app)
         attachScreenshot(named: "pager-30-after-edge-swipe-right")
@@ -196,7 +196,7 @@ final class GestureSemanticsUITests: XCTestCase {
         // SUPPRESSION — the home/launcher rail is a select-none gesture surface
         // under the app-wide `-webkit-touch-callout: none` iOS body rule: a
         // long-press there must NOT raise the system callout.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
             .press(forDuration: 1.5)
         let suppressionEvidence = waitForSystemCallout(in: app, timeout: 2.5)
         attachScreenshot(named: "callout-20-suppressed-on-home-surface")
@@ -402,7 +402,7 @@ final class GestureSemanticsUITests: XCTestCase {
             throw XCTSkip("no home-launcher-page probe in the AX tree")
         }
         if page == "home" { return }
-        slowHorizontalDrag(in: app, fromX: 0.20, toX: 0.70, y: 0.35)
+        slowHorizontalDrag(in: app, fromX: 0.20, toX: 0.70, y: 0.55)
         guard
             waitForMarker(Self.pagePrefix, toEqual: "home", timeout: 5, in: app)
                 == "home"
