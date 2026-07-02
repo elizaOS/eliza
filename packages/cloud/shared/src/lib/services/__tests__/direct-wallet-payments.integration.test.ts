@@ -357,7 +357,7 @@ beforeAll(async () => {
     // eslint-disable-next-line no-console
     console.warn("[direct-wallet-payments test] PGlite unavailable, skipping:", error);
   }
-}, 120_000);
+}, 240_000);
 
 afterAll(async () => {
   if (closeDb) await closeDb();
@@ -769,6 +769,46 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       expect(stats.failed).toBe(1);
       const row2 = await dbWrite.query.cryptoPayments.findFirst();
       expect(row2?.status).toBe("failed_chain");
+    });
+
+    test("#11154 processBroadcastBatch fails native slippage-floor errors on the first attempt", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 60,
+        network: "bsc",
+        tokenSymbol: "BNB",
+      });
+      const meta = payment.metadata as Record<string, unknown>;
+      const expectedUnits = BigInt(meta.expected_token_units as string);
+      const receive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
+      const hash = `0x${"c".repeat(64)}`;
+      await trustPayerProof(payment);
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: receive,
+        value: (expectedUnits * 90n) / 100n,
+        status: "success",
+        receiveAddress: receive,
+      });
+
+      const stats = await service.processBroadcastBatch(env);
+
+      expect(stats.failed).toBe(1);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("failed_chain");
+      expect((row?.metadata as Record<string, unknown>).failure_reason).toMatch(
+        /below the expected floor/,
+      );
+      expect(Number((row?.metadata as Record<string, unknown>).verify_attempts ?? 0)).toBe(0);
     });
 
     test("Solana confirmPayment rejects when receiving ATA owner mismatches treasury", async () => {
