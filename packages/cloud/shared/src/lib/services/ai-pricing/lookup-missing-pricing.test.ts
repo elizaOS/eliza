@@ -10,14 +10,19 @@
  * model whose input row simply isn't catalogued yet.
  *
  * Both seams (persisted repo + live gateway) are mocked empty so EVERY lookup
- * misses — the worst case. The fix bills the missing side at $0 (mirroring the
- * existing output handling) instead of failing the request.
+ * misses — the worst case. With no provider catalog entries and no
+ * AI_PRICING_FALLBACK_{INPUT,OUTPUT}_USD_PER_M env defaults, the last-resort
+ * behavior bills the missing side at $0 instead of failing the request.
+ * (When the provider HAS catalogued entries, or the env defaults are set, the
+ * miss bills at a conservative fallback rate instead — covered in
+ * lookup-fallback-pricing.test.ts.)
  */
 import { expect, mock, test } from "bun:test";
 
 mock.module("../../../db/repositories/ai-pricing", () => ({
   aiPricingRepository: {
     listActiveEntriesForProviderModelPairs: async () => [],
+    listActiveEntries: async () => [],
   },
 }));
 mock.module("./providers/gateway", () => ({

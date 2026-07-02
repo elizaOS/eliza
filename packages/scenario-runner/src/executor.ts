@@ -43,12 +43,12 @@ import {
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
+import { judgeTextWithLlm } from "./judge.ts";
 import {
   deterministicJudgeFixturesActive,
   isJudgeIndependent,
   judgeIndependenceRequired,
 } from "./judge-independence.ts";
-import { judgeTextWithLlm } from "./judge.ts";
 import { redactForScenarioReport } from "./redaction.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
@@ -2049,6 +2049,10 @@ export async function runScenario(
   const startedAt = Date.now();
   let logicalNow = new Date();
   const ctx: RunnerContext = {
+    scenarioId: scenario.id,
+    ...(process.env.ELIZA_LIFEOPS_RUN_ID
+      ? { runId: process.env.ELIZA_LIFEOPS_RUN_ID }
+      : {}),
     now: logicalNow.toISOString(),
     actionsCalled: [],
     turns: [],
@@ -2358,7 +2362,10 @@ export async function runScenario(
           detail: result.detail,
         });
       } else if (result.status === "skipped") {
-        const failure = skippedFinalCheckFailure(scenarioLane(scenario), result);
+        const failure = skippedFinalCheckFailure(
+          scenarioLane(scenario),
+          result,
+        );
         if (failure) {
           report.status = "failed";
           report.failedAssertions.push({

@@ -160,6 +160,15 @@ const TERMINAL_DOWNLOADS_FILENAME = "download-status.json";
 const TERMINAL_DOWNLOAD_LIMIT = 32;
 /** Headroom kept free above the download size for the disk-space preflight. */
 const DISK_HEADROOM_GB = 0.5;
+/**
+ * Attempts per sha256-verified bundle file. The hub re-publishes files under
+ * stable names (a tier's weights can move to a new base model), so a mismatch
+ * after a completed transfer can be a transient race (stale CDN edge, content
+ * changed mid-download) — one clean re-fetch from byte 0 resolves those; a
+ * second mismatch means the manifest and the published bytes genuinely
+ * disagree and the job fails.
+ */
+const SHA_MISMATCH_MAX_ATTEMPTS = 2;
 
 interface TerminalDownloadsFile {
 	version: 1;
@@ -310,6 +319,53 @@ async function partialSize(stagingPath: string): Promise<number> {
 	} catch {
 		return 0;
 	}
+}
+
+/** Sidecar recording which expected sha256 a `.part` file was started against. */
+function stagingMetaPath(stagingPath: string): string {
+	return `${stagingPath}.expected`;
+}
+
+/**
+ * A `.part` file is resumable only when it was started against the SAME
+ * content hash the current manifest declares for the file. HuggingFace
+ * re-publishes bundle files under stable names (e.g. `eliza-1-2b-128k.gguf`
+ * moving from qwen35 to gemma4 weights), so a partial from a previous
+ * manifest version must be discarded — a Range resume would append
+ * new-version bytes onto old-version bytes and produce a corrupt blob that
+ * only fails at the final sha256 gate, gigabytes later. A partial with no
+ * sidecar has unknown provenance and is discarded too.
+ */
+async function resumableStartByte(
+	stagingPath: string,
+	expectedSha256: string,
+): Promise<number> {
+	const size = await partialSize(stagingPath);
+	if (size <= 0) {
+		await fsp
+			.rm(stagingMetaPath(stagingPath), { force: true })
+			.catch(() => undefined);
+		return 0;
+	}
+	let recorded: string | undefined;
+	try {
+		recorded = (
+			await fsp.readFile(stagingMetaPath(stagingPath), "utf8")
+		).trim();
+	} catch {
+		recorded = undefined;
+	}
+	if (recorded === expectedSha256) return size;
+	logger.warn(
+		`[Downloader] discarding stale partial ${path.basename(stagingPath)} ` +
+			`(started against ${recorded ? `sha256 ${recorded.slice(0, 12)}…` : "unknown content"}, ` +
+			`manifest now expects ${expectedSha256.slice(0, 12)}…)`,
+	);
+	await fsp.rm(stagingPath, { force: true }).catch(() => undefined);
+	await fsp
+		.rm(stagingMetaPath(stagingPath), { force: true })
+		.catch(() => undefined);
+	return 0;
 }
 
 export class Downloader {
@@ -910,6 +966,12 @@ export class Downloader {
 							sha256: currentSha256,
 						};
 					}
+					// Same filename, different content: the hub re-published this
+					// path. The stale blob must never be kept — discard and re-fetch.
+					logger.warn(
+						`[Downloader] stale ${remotePath} on disk ` +
+							`(sha256 ${currentSha256.slice(0, 12)}… != manifest ${expectedSha256.slice(0, 12)}…); re-downloading`,
+					);
 					await fsp.rm(finalPath, { force: true });
 				}
 			} catch {
@@ -923,83 +985,110 @@ export class Downloader {
 		await fsp.mkdir(path.dirname(finalPath), { recursive: true });
 		await fsp.mkdir(path.dirname(stagingPath), { recursive: true });
 
-		let startByte = expectedSha256 ? await partialSize(stagingPath) : 0;
-		record.job.received = baseBytes + startByte;
+		const maxAttempts = expectedSha256 ? SHA_MISMATCH_MAX_ATTEMPTS : 1;
+		for (let attempt = 1; ; attempt++) {
+			let startByte = 0;
+			if (expectedSha256) {
+				startByte = await resumableStartByte(stagingPath, expectedSha256);
+				// Stamp the partial with the content hash it is being fetched
+				// against so a later resume can tell whether the .part still
+				// belongs to THIS content version.
+				await fsp.writeFile(
+					stagingMetaPath(stagingPath),
+					expectedSha256,
+					"utf8",
+				);
+			}
+			record.job.received = baseBytes + startByte;
 
-		const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
-		const headers: Record<string, string> = {
-			"user-agent": "Eliza-LocalInference/1.0",
-			...resolveHfDownloadBase().authHeader,
-		};
-		if (startByte > 0) {
-			headers.range = `bytes=${startByte}-`;
-		}
-
-		const httpClient = await this.loadHttpClient();
-		const response = await httpClient.request(url, {
-			method: "GET",
-			headers,
-			signal: record.abortController.signal,
-		});
-
-		if (response.statusCode >= 400) {
-			throw new Error(
-				`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
-			);
-		}
-		if (startByte > 0 && response.statusCode !== 206) {
-			startByte = 0;
-			record.job.received = baseBytes;
-		}
-
-		const contentLengthHeader = response.headers["content-length"];
-		const contentLength = Array.isArray(contentLengthHeader)
-			? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
-			: Number.parseInt(contentLengthHeader ?? "0", 10);
-		if (Number.isFinite(contentLength) && contentLength > 0) {
-			record.job.total = Math.max(
-				record.job.total,
-				baseBytes + startByte + contentLength,
-			);
-		}
-
-		const writeStream: Writable = fs.createWriteStream(stagingPath, {
-			flags: startByte > 0 ? "a" : "w",
-		});
-
-		let lastSampleBytes = record.job.received;
-		let lastSampleAt = Date.now();
-		const bodyStream = Readable.from(response.body);
-		bodyStream.on("data", (chunk: Buffer) => {
-			record.job.received += chunk.length;
-
-			const now = Date.now();
-			const elapsed = now - lastSampleAt;
-			if (elapsed >= 1000) {
-				record.job.bytesPerSec =
-					((record.job.received - lastSampleBytes) * 1000) / elapsed;
-				record.job.etaMs =
-					record.job.bytesPerSec > 0
-						? ((record.job.total - record.job.received) * 1000) /
-							record.job.bytesPerSec
-						: null;
-				lastSampleAt = now;
-				lastSampleBytes = record.job.received;
+			const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
+			const headers: Record<string, string> = {
+				"user-agent": "Eliza-LocalInference/1.0",
+				...resolveHfDownloadBase().authHeader,
+			};
+			if (startByte > 0) {
+				headers.range = `bytes=${startByte}-`;
 			}
 
-			this.throttleEmit(record);
-		});
+			const httpClient = await this.loadHttpClient();
+			const response = await httpClient.request(url, {
+				method: "GET",
+				headers,
+				signal: record.abortController.signal,
+			});
 
-		await pipeline(bodyStream, writeStream);
-		await fsp.rename(stagingPath, finalPath);
+			if (response.statusCode >= 400) {
+				throw new Error(
+					`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
+				);
+			}
+			if (startByte > 0 && response.statusCode !== 206) {
+				startByte = 0;
+				record.job.received = baseBytes;
+			}
 
-		const stat = await fsp.stat(finalPath);
-		const sha256 = await hashFile(finalPath);
-		if (expectedSha256 && sha256 !== expectedSha256) {
-			await fsp.rm(finalPath, { force: true });
-			throw new Error(`SHA256 mismatch for bundle file ${remotePath}`);
+			const contentLengthHeader = response.headers["content-length"];
+			const contentLength = Array.isArray(contentLengthHeader)
+				? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
+				: Number.parseInt(contentLengthHeader ?? "0", 10);
+			if (Number.isFinite(contentLength) && contentLength > 0) {
+				record.job.total = Math.max(
+					record.job.total,
+					baseBytes + startByte + contentLength,
+				);
+			}
+
+			const writeStream: Writable = fs.createWriteStream(stagingPath, {
+				flags: startByte > 0 ? "a" : "w",
+			});
+
+			let lastSampleBytes = record.job.received;
+			let lastSampleAt = Date.now();
+			const bodyStream = Readable.from(response.body);
+			bodyStream.on("data", (chunk: Buffer) => {
+				record.job.received += chunk.length;
+
+				const now = Date.now();
+				const elapsed = now - lastSampleAt;
+				if (elapsed >= 1000) {
+					record.job.bytesPerSec =
+						((record.job.received - lastSampleBytes) * 1000) / elapsed;
+					record.job.etaMs =
+						record.job.bytesPerSec > 0
+							? ((record.job.total - record.job.received) * 1000) /
+								record.job.bytesPerSec
+							: null;
+					lastSampleAt = now;
+					lastSampleBytes = record.job.received;
+				}
+
+				this.throttleEmit(record);
+			});
+
+			await pipeline(bodyStream, writeStream);
+			await fsp.rename(stagingPath, finalPath);
+
+			const stat = await fsp.stat(finalPath);
+			const sha256 = await hashFile(finalPath);
+			await fsp
+				.rm(stagingMetaPath(stagingPath), { force: true })
+				.catch(() => undefined);
+			if (expectedSha256 && sha256 !== expectedSha256) {
+				// Wrong bytes must never stay on disk under the final name.
+				await fsp.rm(finalPath, { force: true });
+				if (attempt < maxAttempts) {
+					logger.warn(
+						`[Downloader] SHA256 mismatch for bundle file ${remotePath} ` +
+							`(attempt ${attempt}/${maxAttempts}); re-fetching from scratch`,
+					);
+					continue;
+				}
+				throw new Error(
+					`SHA256 mismatch for bundle file ${remotePath} after ${maxAttempts} attempts`,
+				);
+			}
+			return { path: finalPath, sizeBytes: stat.size, sha256 };
 		}
-		return { path: finalPath, sizeBytes: stat.size, sha256 };
 	}
 
 	private async loadHttpClient(): Promise<{

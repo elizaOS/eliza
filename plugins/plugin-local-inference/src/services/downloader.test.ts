@@ -217,6 +217,99 @@ function installFetchFixture(files: Map<string, string>): void {
 	}) as unknown as typeof fetch;
 }
 
+/**
+ * A fetch fixture that honors `Range: bytes=N-` the way the HuggingFace CDN
+ * does (HTTP 206 + the current file's bytes from offset N). This is what makes
+ * the stale-partial corruption reproducible: a Range resume against a
+ * re-published file appends NEW-version bytes onto OLD-version bytes.
+ * Returns the ranges each remote path was requested with, so tests can assert
+ * resume-vs-fresh behavior.
+ */
+function installRangeAwareFetchFixture(files: Map<string, string>): {
+	rangeRequests: Map<string, string[]>;
+} {
+	const rangeRequests = new Map<string, string[]>();
+	globalThis.fetch = vi.fn(
+		async (url: string | URL | Request, init?: RequestInit) => {
+			const remotePath = remotePathOf(url);
+			const body = files.get(remotePath);
+			if (body === undefined) {
+				return new Response(`missing ${remotePath}`, { status: 404 });
+			}
+			const headers = (init?.headers ?? {}) as Record<string, string>;
+			const range = headers.range;
+			if (range) {
+				const seen = rangeRequests.get(remotePath) ?? [];
+				seen.push(range);
+				rangeRequests.set(remotePath, seen);
+				const match = /^bytes=(\d+)-$/.exec(range);
+				const start = match?.[1] ? Number.parseInt(match[1], 10) : 0;
+				const buf = Buffer.from(body);
+				const tail = buf.subarray(start);
+				return new Response(tail, {
+					status: 206,
+					headers: {
+						"content-length": String(tail.length),
+						"content-range": `bytes ${start}-${buf.length - 1}/${buf.length}`,
+					},
+				});
+			}
+			return new Response(body, {
+				status: 200,
+				headers: { "content-length": String(Buffer.byteLength(body)) },
+			});
+		},
+	) as unknown as typeof fetch;
+	return { rangeRequests };
+}
+
+/** Standard 2b bundle content set for stale-content robustness tests. */
+const freshBundleBytes = {
+	text: "GGUF gemma4 text model (4737MB in prod, tiny here)",
+	voice: "GGUF voice model",
+	asr: "GGUF asr model",
+	vad: "VAD onnx",
+	cache: "voice preset",
+	vision: "vision projector",
+} as const;
+
+function freshBundleFixtureFiles(): Map<string, string> {
+	const manifest = eliza1Manifest({
+		shaFor: (k) => sha256(freshBundleBytes[k as keyof typeof freshBundleBytes]),
+	});
+	return new Map([
+		[eliza1BundleManifestPath(), manifest],
+		[
+			eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"),
+			freshBundleBytes.text,
+		],
+		[eliza1BundleRemotePath("tts/voice.gguf"), freshBundleBytes.voice],
+		[eliza1BundleRemotePath("asr/asr.gguf"), freshBundleBytes.asr],
+		[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), freshBundleBytes.vad],
+		[
+			eliza1BundleRemotePath("cache/voice-preset-default.bin"),
+			freshBundleBytes.cache,
+		],
+		[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), freshBundleBytes.vision],
+	]);
+}
+
+/** Staging `.part` path the downloader derives for a 2b bundle file. */
+function eliza1StagingPartPath(root: string, filePath: string): string {
+	const safe = `eliza-1-2b__${filePath}`.replace(/[^a-zA-Z0-9._-]/g, "_");
+	return path.join(root, "local-inference", "downloads", `${safe}.part`);
+}
+
+function eliza1BundleFinalPath(root: string, filePath: string): string {
+	return path.join(
+		root,
+		"local-inference",
+		"models",
+		"eliza-1-2b.bundle",
+		filePath,
+	);
+}
+
 function waitForTerminal(
 	downloader: Downloader,
 	modelId: string,
@@ -457,7 +550,15 @@ describe("local inference downloader status", () => {
 		expect(job.error).toContain(
 			`SHA256 mismatch for bundle file ${model.bundleManifestFile}`,
 		);
-		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		// The sha gate re-fetches once (bounded) to rule out a transient/stale
+		// CDN edge before failing. Both calls are manifest fetches — no weight
+		// byte is ever requested.
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		for (const [u] of fetchSpy.mock.calls) {
+			expect(remotePathOf(u as string | URL | Request)).toBe(
+				eliza1BundleManifestPath(),
+			);
+		}
 	});
 
 	it("rejects custom CatalogModel specs before starting a download", async () => {
@@ -904,5 +1005,236 @@ describe("local inference downloader status", () => {
 
 		expect(job.error).toContain("Not enough disk space");
 		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * Hub re-publish robustness: HuggingFace re-uploads bundle files under STABLE
+ * filenames (the real incident: `bundles/2b/text/eliza-1-2b-128k.gguf` went
+ * from qwen35 1211MB to gemma4 4737MB). A device holding the old bytes — as a
+ * completed install or an interrupted `.part` — must detect the mismatch
+ * against the freshly fetched manifest and re-pull cleanly, never resume the
+ * stale bytes into corruption or silently keep them.
+ *
+ * These tests drive the REAL Downloader end to end (staging, Range resume,
+ * rename, hashFile, registry); only the network edge is a fixture, and it
+ * honors Range requests exactly like the HF CDN so the corruption path is
+ * actually reachable.
+ */
+describe("local inference downloader stale-content robustness", () => {
+	it("re-downloads a completed bundle file whose hub content changed under the same filename", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		installFetchFixture(freshBundleFixtureFiles());
+
+		// The incident: a previous install left the OLD model at the SAME final
+		// path inside the bundle root, and the registry considers it installed.
+		const textFinal = eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf");
+		fs.mkdirSync(path.dirname(textFinal), { recursive: true });
+		fs.writeFileSync(
+			textFinal,
+			"GGUF qwen35 stale text model (1211MB in prod)",
+		);
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		// The stale blob was replaced by the current content, byte for byte.
+		expect(fs.readFileSync(textFinal, "utf8")).toBe(freshBundleBytes.text);
+		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
+		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
+	});
+
+	it("discards a stale .part instead of range-resuming it into a corrupt blob", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		const { rangeRequests } = installRangeAwareFetchFixture(
+			freshBundleFixtureFiles(),
+		);
+
+		// Two stale-partial provenances, both from the OLD content version:
+		// - text: `.part` stamped with the OLD content's sha (a download of the
+		//   qwen35 file was interrupted, then the hub re-published gemma4);
+		// - voice: `.part` with no sidecar at all (pre-fix partial, unknown
+		//   provenance).
+		// Resuming either would append new-version bytes onto old-version bytes.
+		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
+		fs.mkdirSync(path.dirname(textPart), { recursive: true });
+		fs.writeFileSync(textPart, "GGUF qwen35 partial");
+		fs.writeFileSync(
+			`${textPart}.expected`,
+			sha256("GGUF qwen35 stale text model (1211MB in prod)"),
+		);
+		const voicePart = eliza1StagingPartPath(root, "tts/voice.gguf");
+		fs.writeFileSync(voicePart, "GGUF old voice par");
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		// Neither stale partial was resumed: no Range request went out for them.
+		expect(
+			rangeRequests.get(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf")),
+		).toBeUndefined();
+		expect(
+			rangeRequests.get(eliza1BundleRemotePath("tts/voice.gguf")),
+		).toBeUndefined();
+		// The installed files are the current content, byte for byte.
+		expect(
+			fs.readFileSync(
+				eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf"),
+				"utf8",
+			),
+		).toBe(freshBundleBytes.text);
+		expect(
+			fs.readFileSync(eliza1BundleFinalPath(root, "tts/voice.gguf"), "utf8"),
+		).toBe(freshBundleBytes.voice);
+		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
+		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
+		// No staging residue (part or sidecar) left behind.
+		expect(fs.existsSync(textPart)).toBe(false);
+		expect(fs.existsSync(`${textPart}.expected`)).toBe(false);
+	});
+
+	it("still range-resumes a valid .part recorded against the current manifest sha", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		const { rangeRequests } = installRangeAwareFetchFixture(
+			freshBundleFixtureFiles(),
+		);
+
+		// A genuine interrupted download of the CURRENT content: the partial is
+		// a strict prefix and the sidecar records the current manifest sha.
+		const prefixLen = 17;
+		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
+		fs.mkdirSync(path.dirname(textPart), { recursive: true });
+		fs.writeFileSync(textPart, freshBundleBytes.text.slice(0, prefixLen));
+		fs.writeFileSync(`${textPart}.expected`, sha256(freshBundleBytes.text));
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		// The resume path fired: one Range request from the partial's offset...
+		expect(
+			rangeRequests.get(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf")),
+		).toEqual([`bytes=${prefixLen}-`]);
+		// ...and prefix + tail joined into the exact current content.
+		expect(
+			fs.readFileSync(
+				eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf"),
+				"utf8",
+			),
+		).toBe(freshBundleBytes.text);
+		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
+		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
+	});
+
+	it("re-fetches from scratch when a completed transfer fails the sha gate (stale edge)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// First fetch of the text file serves stale bytes (e.g. a CDN edge that
+		// has not seen the re-publish yet); the second serves the current bytes.
+		const files = freshBundleFixtureFiles();
+		const textRemote = eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf");
+		let textServes = 0;
+		globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+			const remotePath = remotePathOf(url);
+			let body = files.get(remotePath);
+			if (body === undefined) {
+				return new Response(`missing ${remotePath}`, { status: 404 });
+			}
+			if (remotePath === textRemote) {
+				textServes += 1;
+				if (textServes === 1) body = "GGUF qwen35 stale text model";
+			}
+			return new Response(body, {
+				status: 200,
+				headers: { "content-length": String(Buffer.byteLength(body)) },
+			});
+		}) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		expect(textServes).toBe(2);
+		expect(
+			fs.readFileSync(
+				eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf"),
+				"utf8",
+			),
+		).toBe(freshBundleBytes.text);
+		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
+		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
+	});
+
+	it("fails after bounded re-fetches and leaves no wrong-content file on disk", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// The hub persistently serves bytes that do not match the manifest sha
+		// (manifest and weights out of sync). Every attempt must be discarded.
+		const files = freshBundleFixtureFiles();
+		const textRemote = eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf");
+		files.set(textRemote, "GGUF qwen35 stale text model");
+
+		installFetchFixture(files);
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const failed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === model.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+		await downloader.start(model.id);
+		const job = await failed;
+
+		expect(job.error).toMatch(
+			/SHA256 mismatch for bundle file text\/eliza-1-2b-128k\.gguf after 2 attempts/,
+		);
+		// The wrong bytes never survive under the final name, nothing is
+		// registered, and no staging residue remains.
+		const textFinal = eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf");
+		expect(fs.existsSync(textFinal)).toBe(false);
+		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
+			false,
+		);
+		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
+		expect(fs.existsSync(textPart)).toBe(false);
+		expect(fs.existsSync(`${textPart}.expected`)).toBe(false);
 	});
 });

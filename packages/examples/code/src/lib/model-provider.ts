@@ -30,6 +30,32 @@ export function applyOpencodeProviderEnv(
     env.OPENAI_MEDIUM_MODEL = env.ELIZA_OPENCODE_MODEL_FAST;
 }
 
+/**
+ * A short human label for the active coding model, for the status bar — the
+ * model name if one is configured (what the user cares about: "which model am I
+ * talking to"), else the bare provider. Returns null when no provider is
+ * resolvable (unconfigured) so the caller can omit it rather than crash — the
+ * status bar renders on every frame and must never throw.
+ */
+export function describeActiveModel(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  let provider: ModelProvider;
+  try {
+    provider = resolveModelProvider(env);
+  } catch {
+    return null;
+  }
+  // Only the env vars the provider plugins actually honor — showing a model
+  // from a var the agent ignores (OPENAI_MODEL / ANTHROPIC_MODEL) would lie.
+  const model =
+    provider === "openai"
+      ? (env.OPENAI_LARGE_MODEL ?? env.OPENAI_SMALL_MODEL)
+      : (env.ANTHROPIC_LARGE_MODEL ?? env.ANTHROPIC_SMALL_MODEL);
+  const trimmed = model?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : provider;
+}
+
 export function resolveModelProvider(
   env: Record<string, string | undefined>,
 ): ModelProvider {

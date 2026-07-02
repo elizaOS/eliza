@@ -296,3 +296,59 @@ describe("TASKS control pause/resume symmetry (#11216 follow-up)", () => {
     expect(detail?.status).toBe("active");
   });
 });
+
+describe("TASKS control is structural — no regex over message text (#11028)", () => {
+  // The planner emits `controlAction` when the user asks to pause/stop/resume;
+  // the orchestrator no longer scans the message text for control phrasings.
+  // "let's stop using axios" or "make it so" in ordinary prose must not
+  // stop/resume a running session.
+  it("does not infer stop from message text without a structured controlAction", async () => {
+    const { acp, runtime } = await harness();
+    acp.live = [liveSession("live-3")];
+
+    const result = await tasksAction.handler(
+      runtime,
+      memory({ text: "let's stop using axios and switch to fetch" }),
+      state,
+      opts({ action: "control" }),
+      callback(),
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("No task-control action was specified");
+    expect(acp.stopped).toEqual([]);
+  });
+
+  it("does not infer resume from slang in message text", async () => {
+    const { acp, runtime } = await harness();
+    acp.live = [liveSession("live-4")];
+    const sentBefore = acp.sent.length;
+
+    const result = await tasksAction.handler(
+      runtime,
+      memory({ text: "make it so — do it, yeah i'm down" }),
+      state,
+      opts({ action: "control" }),
+      callback(),
+    );
+
+    expect(result?.success).toBe(false);
+    expect(acp.sent.length).toBe(sentBefore);
+  });
+
+  it("still honors the structured controlAction param", async () => {
+    const { acp, runtime } = await harness();
+    acp.live = [liveSession("live-5")];
+
+    const result = await tasksAction.handler(
+      runtime,
+      memory({ text: "nothing control-like in this text" }),
+      state,
+      opts({ action: "control", controlAction: "stop", sessionId: "live-5" }),
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    expect(acp.stopped).toEqual(["live-5"]);
+  });
+});

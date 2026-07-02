@@ -16,6 +16,8 @@
  * table is auditable. Update both the entry and the corresponding source
  * comment if a provider changes their rate card.
  */
+import { logger } from "../../logger";
+import { readEnv } from "../../utils/read-env";
 import type {
 	TokenUsageForCost,
 	TrajectoryRuntimeLogger,
@@ -31,7 +33,7 @@ export type { TokenUsageForCost } from "./pricing-types";
  * so consumers can disambiguate cost numbers computed against different
  * snapshots.
  */
-export const PRICE_TABLE_ID = "eliza-v1-2026-07-01" as const;
+export const PRICE_TABLE_ID = "eliza-v1-2026-07-02" as const;
 export type PriceTableId = typeof PRICE_TABLE_ID;
 
 /**
@@ -84,13 +86,32 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 	ModelPriceUsdPerMTokens
 > = {
 	// ---- Anthropic ----------------------------------------------------------
-	// Source: https://www.anthropic.com/pricing (captured 2026-05-11)
+	// Source: https://platform.claude.com/docs/en/about-claude/models/overview
+	// + https://platform.claude.com/docs/en/pricing (captured 2026-07-02).
+	// Opus-tier is $5/$25 per MTok; cacheRead is 0.1x input, cacheWrite is
+	// 1.25x input (5-minute TTL) per the published prompt-caching multipliers.
+	"claude-opus-4-8": {
+		provider: "anthropic",
+		input: 5.0,
+		output: 25.0,
+		cacheRead: 0.5,
+		cacheWrite: 6.25,
+	},
 	"claude-opus-4-7": {
 		provider: "anthropic",
-		input: 15.0,
-		output: 75.0,
-		cacheRead: 1.5,
-		cacheWrite: 18.75,
+		input: 5.0,
+		output: 25.0,
+		cacheRead: 0.5,
+		cacheWrite: 6.25,
+	},
+	// Sonnet 5 sticker rate is $3/$15 per MTok (an introductory $2/$10 runs
+	// through 2026-08-31; we bill the standard tier — see the pricing page).
+	"claude-sonnet-5": {
+		provider: "anthropic",
+		input: 3.0,
+		output: 15.0,
+		cacheRead: 0.3,
+		cacheWrite: 3.75,
 	},
 	"claude-sonnet-4-6": {
 		provider: "anthropic",
@@ -101,10 +122,10 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 	},
 	"claude-haiku-4-5": {
 		provider: "anthropic",
-		input: 0.8,
-		output: 4.0,
-		cacheRead: 0.08,
-		cacheWrite: 1.0,
+		input: 1.0,
+		output: 5.0,
+		cacheRead: 0.1,
+		cacheWrite: 1.25,
 	},
 
 	// ---- OpenAI -------------------------------------------------------------
@@ -269,9 +290,13 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
  */
 export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 	// ---- Anthropic ----------------------------------------------------------
-	// Source: https://docs.anthropic.com/en/docs/about-claude/models (captured 2026-05-11)
-	"claude-opus-4-7": 200_000,
-	"claude-sonnet-4-6": 200_000,
+	// Source: https://platform.claude.com/docs/en/about-claude/models/overview
+	// (captured 2026-07-02). Opus 4.7+, Sonnet 4.6, and Sonnet 5 ship a 1M
+	// input context window at standard pricing; Haiku 4.5 remains 200k.
+	"claude-opus-4-8": 1_000_000,
+	"claude-opus-4-7": 1_000_000,
+	"claude-sonnet-5": 1_000_000,
+	"claude-sonnet-4-6": 1_000_000,
 	"claude-haiku-4-5": 200_000,
 
 	// ---- OpenAI -------------------------------------------------------------
@@ -308,6 +333,145 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 };
 
 /**
+ * Operator-supplied table overrides, read from the environment.
+ *
+ * New model ids ship faster than this file. Rather than forcing a code change
+ * (and a release) to price or size a model we have not enumerated yet,
+ * operators can supply per-id entries via two env vars:
+ *
+ *   - `MODEL_PRICES_JSON` — JSON object mapping model id → price entry:
+ *     `{"my-model": {"input": 5, "output": 25, "cacheRead": 0.5,
+ *     "cacheWrite": 6.25, "provider": "anthropic"}}`. `input` and `output`
+ *     (USD per 1M tokens) are required; `cacheRead` / `cacheWrite` default
+ *     to 0 (= bill at the input rate, matching the static-table convention)
+ *     and `provider` defaults to `"unknown"`.
+ *   - `MODEL_CONTEXT_WINDOWS_JSON` — JSON object mapping model id → context
+ *     window in tokens: `{"my-model": 1000000}`.
+ *
+ * Overrides are merged BEFORE the static tables in both lookups, so an env
+ * entry wins over a static entry with the same key and env keys participate
+ * in the same longest-substring fallback as static keys. Malformed JSON or
+ * invalid entries are skipped with a warning — a bad override must never
+ * crash the runtime, and unknown ids keep the safe degraded behavior
+ * (cost 0 + warn, default context window).
+ *
+ * Parses are memoized per raw env string so hot-path lookups stay cheap while
+ * tests (and long-lived processes with mutated env) still observe changes.
+ */
+interface EnvOverrideCache<T> {
+	raw: string | undefined;
+	value: Record<string, T>;
+}
+
+function parseJsonObject(
+	raw: string | undefined,
+	envName: string,
+): Record<string, unknown> | null {
+	if (!raw) return null;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed as Record<string, unknown>;
+		}
+		logger.warn(
+			`[pricing] ${envName} must be a JSON object of model-id keys — override ignored`,
+		);
+	} catch (error) {
+		logger.warn(
+			{ error: error instanceof Error ? error.message : String(error) },
+			`[pricing] ${envName} is not valid JSON — override ignored`,
+		);
+	}
+	return null;
+}
+
+function isNonNegativeFinite(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+let priceOverridesCache: EnvOverrideCache<ModelPriceUsdPerMTokens> | null =
+	null;
+
+function getPriceOverrides(): Record<string, ModelPriceUsdPerMTokens> {
+	const raw = readEnv("MODEL_PRICES_JSON");
+	if (priceOverridesCache && priceOverridesCache.raw === raw) {
+		return priceOverridesCache.value;
+	}
+	const value: Record<string, ModelPriceUsdPerMTokens> = {};
+	const parsed = parseJsonObject(raw, "MODEL_PRICES_JSON");
+	if (parsed) {
+		for (const [modelId, entry] of Object.entries(parsed)) {
+			const record =
+				entry && typeof entry === "object" && !Array.isArray(entry)
+					? (entry as Record<string, unknown>)
+					: null;
+			if (
+				!record ||
+				!isNonNegativeFinite(record.input) ||
+				!isNonNegativeFinite(record.output)
+			) {
+				logger.warn(
+					{ modelId },
+					"[pricing] MODEL_PRICES_JSON entry needs numeric input/output — entry skipped",
+				);
+				continue;
+			}
+			value[modelId] = {
+				provider:
+					typeof record.provider === "string"
+						? (record.provider as ProviderName)
+						: "unknown",
+				input: record.input,
+				output: record.output,
+				cacheRead: isNonNegativeFinite(record.cacheRead)
+					? record.cacheRead
+					: 0,
+				cacheWrite: isNonNegativeFinite(record.cacheWrite)
+					? record.cacheWrite
+					: 0,
+			};
+		}
+	}
+	priceOverridesCache = { raw, value };
+	return value;
+}
+
+let contextWindowOverridesCache: EnvOverrideCache<number> | null = null;
+
+function getContextWindowOverrides(): Record<string, number> {
+	const raw = readEnv("MODEL_CONTEXT_WINDOWS_JSON");
+	if (contextWindowOverridesCache && contextWindowOverridesCache.raw === raw) {
+		return contextWindowOverridesCache.value;
+	}
+	const value: Record<string, number> = {};
+	const parsed = parseJsonObject(raw, "MODEL_CONTEXT_WINDOWS_JSON");
+	if (parsed) {
+		for (const [modelId, tokens] of Object.entries(parsed)) {
+			if (!isNonNegativeFinite(tokens) || tokens < 1) {
+				logger.warn(
+					{ modelId },
+					"[pricing] MODEL_CONTEXT_WINDOWS_JSON entry needs a positive token count — entry skipped",
+				);
+				continue;
+			}
+			value[modelId] = Math.floor(tokens);
+		}
+	}
+	contextWindowOverridesCache = { raw, value };
+	return value;
+}
+
+/** Merge env overrides over a static table (env wins on key conflicts). */
+function withOverrides<T>(
+	table: Record<string, T>,
+	overrides: Record<string, T>,
+): Record<string, T> {
+	return Object.keys(overrides).length === 0
+		? table
+		: { ...table, ...overrides };
+}
+
+/**
  * Result of a context-window lookup. Carries the matched table key so callers
  * can surface "matched as family X" diagnostics if needed — mirrors
  * `PriceLookupResult`.
@@ -341,18 +505,22 @@ export function lookupModelContextWindow(
 	modelName: string | undefined,
 ): ContextWindowLookupResult | null {
 	if (!modelName) return null;
-	const exact = MODEL_CONTEXT_WINDOW_TOKENS[modelName];
+	const table = withOverrides(
+		MODEL_CONTEXT_WINDOW_TOKENS,
+		getContextWindowOverrides(),
+	);
+	const exact = table[modelName];
 	if (typeof exact === "number") {
 		return { matchedKey: modelName, contextWindowTokens: exact };
 	}
 
 	const normalized = modelName.toLowerCase();
-	const candidates = Object.keys(MODEL_CONTEXT_WINDOW_TOKENS)
+	const candidates = Object.keys(table)
 		.filter((k) => normalized.includes(k.toLowerCase()))
 		.sort((a, b) => b.length - a.length);
 	const match = candidates[0];
 	if (!match) return null;
-	const tokens = MODEL_CONTEXT_WINDOW_TOKENS[match];
+	const tokens = table[match];
 	if (typeof tokens !== "number") return null;
 	return { matchedKey: match, contextWindowTokens: tokens };
 }
@@ -392,16 +560,20 @@ export function lookupModelPrice(
 	modelName: string | undefined,
 ): PriceLookupResult | null {
 	if (!modelName) return null;
-	const exact = MODEL_PRICES_USD_PER_M_TOKENS[modelName];
+	const table = withOverrides(
+		MODEL_PRICES_USD_PER_M_TOKENS,
+		getPriceOverrides(),
+	);
+	const exact = table[modelName];
 	if (exact) return { matchedKey: modelName, price: exact };
 
 	const normalized = modelName.toLowerCase();
-	const candidates = Object.keys(MODEL_PRICES_USD_PER_M_TOKENS)
+	const candidates = Object.keys(table)
 		.filter((k) => normalized.includes(k.toLowerCase()))
 		.sort((a, b) => b.length - a.length);
 	const match = candidates[0];
 	if (!match) return null;
-	const price = MODEL_PRICES_USD_PER_M_TOKENS[match];
+	const price = table[match];
 	if (!price) return null;
 	return { matchedKey: match, price };
 }

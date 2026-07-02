@@ -6,10 +6,6 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import {
-  REMINDER_ESCALATION_INDEX_METADATA_KEY,
-  REMINDER_LIFECYCLE_METADATA_KEY,
-} from "@elizaos/plugin-personal-assistant/lifeops/service-constants";
-import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
@@ -17,8 +13,16 @@ import {
 import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
 import { isLoopbackUrl, toRecord } from "../utils.js";
 
+export type FinalCheckRuntime = {
+  getService?: (name: string) => unknown;
+  getServicesByType?: (name: string) => unknown;
+};
+
+const REMINDER_LIFECYCLE_METADATA_KEY = "lifecycle";
+const REMINDER_ESCALATION_INDEX_METADATA_KEY = "escalationIndex";
+
 export interface FinalCheckHandlerContext {
-  runtime: IAgentRuntime;
+  runtime: FinalCheckRuntime;
   ctx: ScenarioContext;
 }
 
@@ -57,6 +61,136 @@ function matchesPattern(value: string, pattern: string | RegExp): boolean {
   }
   pattern.lastIndex = 0;
   return pattern.test(value);
+}
+
+type TrajectoryLlmCallLike = {
+  purpose?: string;
+  userPrompt?: string;
+  systemPrompt?: string;
+  prompt?: string;
+  response?: string;
+  model?: string;
+  modelName?: string;
+  modelType?: string;
+  provider?: string;
+  [key: string]: unknown;
+};
+
+type TrajectoryDetailLike = {
+  trajectoryId?: string;
+  scenarioId?: string;
+  steps?: Array<{
+    llmCalls?: TrajectoryLlmCallLike[];
+  }>;
+};
+
+type TrajectoryServiceLike = {
+  listTrajectories(options?: {
+    limit?: number;
+    offset?: number;
+    scenarioId?: string;
+  }): Promise<{
+    trajectories?: Array<{
+      id?: string;
+      trajectoryId?: string;
+      scenarioId?: string;
+      startTime?: number;
+    }>;
+  }>;
+  getTrajectoryDetail(id: string): Promise<TrajectoryDetailLike | null>;
+  flushWriteQueue?: (trajectoryId: string) => Promise<void> | void;
+  writeQueues?: Map<string, unknown>;
+};
+
+function resolveTrajectoryService(
+  runtime: FinalCheckRuntime,
+): TrajectoryServiceLike | null {
+  const candidates: unknown[] = [];
+  if (typeof runtime.getServicesByType === "function") {
+    const value = runtime.getServicesByType("trajectories");
+    if (Array.isArray(value)) {
+      candidates.push(...value);
+    } else if (value) {
+      candidates.push(value);
+    }
+  }
+  if (typeof runtime.getService === "function") {
+    candidates.push(runtime.getService("trajectories"));
+  }
+
+  for (const candidate of candidates) {
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      "listTrajectories" in candidate &&
+      typeof candidate.listTrajectories === "function" &&
+      "getTrajectoryDetail" in candidate &&
+      typeof candidate.getTrajectoryDetail === "function"
+    ) {
+      return candidate as TrajectoryServiceLike;
+    }
+  }
+  return null;
+}
+
+function collectTrajectoryLlmCalls(
+  detail: TrajectoryDetailLike | null,
+): TrajectoryLlmCallLike[] {
+  if (!detail?.steps?.length) {
+    return [];
+  }
+  return detail.steps.flatMap((step) =>
+    Array.isArray(step.llmCalls) ? step.llmCalls : [],
+  );
+}
+
+function modelCallBlob(call: TrajectoryLlmCallLike): string {
+  return [
+    call.purpose,
+    call.userPrompt,
+    call.systemPrompt,
+    call.prompt,
+    call.response,
+    call.model,
+    call.modelName,
+    call.modelType,
+    call.provider,
+  ]
+    .filter((part): part is string => typeof part === "string")
+    .join("\n");
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "then" in value &&
+    typeof value.then === "function"
+  );
+}
+
+async function settleTrajectoryWrites(
+  service: TrajectoryServiceLike,
+): Promise<void> {
+  if (service.writeQueues instanceof Map && service.writeQueues.size > 0) {
+    await Promise.allSettled(
+      [...service.writeQueues.values()]
+        .filter(isPromiseLike)
+        .map((pending) => Promise.resolve(pending)),
+    );
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 25));
+}
+
+async function flushListedTrajectoryWrites(
+  service: TrajectoryServiceLike,
+  ids: string[],
+): Promise<void> {
+  if (typeof service.flushWriteQueue !== "function" || ids.length === 0) {
+    return;
+  }
+  await Promise.allSettled(ids.map((id) => service.flushWriteQueue?.(id)));
 }
 
 function matchesActionName(
@@ -253,13 +387,15 @@ function isDefinitionListingService(
   return typeof value.listDefinitions === "function";
 }
 
-async function createLifeOpsService(runtime: IAgentRuntime): Promise<unknown> {
-  const { LifeOpsService } = (await import(
+async function createLifeOpsService(
+  runtime: FinalCheckRuntime,
+): Promise<unknown> {
+  const { LifeOpsService } = await import(
     "@elizaos/plugin-personal-assistant/lifeops/service"
-  )) as {
-    LifeOpsService: new (runtime: IAgentRuntime) => unknown;
-  };
-  return new LifeOpsService(runtime);
+  );
+  // Scenario final checks receive the live agent runtime; FinalCheckRuntime is
+  // the structural subset they need, but LifeOpsService requires the full one.
+  return new LifeOpsService(runtime as IAgentRuntime);
 }
 
 function definitionRecordFromValue(
@@ -791,6 +927,108 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
   }
   return { status: "passed", detail: "action arguments match" };
 });
+
+registerFinalCheckHandler(
+  "modelCallOccurred",
+  async (check, { runtime, ctx }) => {
+    const {
+      purpose,
+      includesAny,
+      includesAll,
+      minCount,
+      scenarioId: explicitScenarioId,
+    } = check as {
+      purpose?: string | string[];
+      includesAny?: Array<string | RegExp>;
+      includesAll?: Array<string | RegExp>;
+      minCount?: number;
+      scenarioId?: string;
+    };
+    const acceptedPurposes = toArray(purpose);
+    const requiredCount =
+      typeof minCount === "number" && minCount > 0 ? Math.floor(minCount) : 1;
+    const scenarioId = explicitScenarioId ?? ctx.scenarioId;
+    const service = resolveTrajectoryService(runtime);
+    if (!service) {
+      return {
+        status: "failed",
+        detail:
+          "modelCallOccurred: trajectory service unavailable; cannot prove any model call fired",
+      };
+    }
+
+    await settleTrajectoryWrites(service);
+
+    const list = await service.listTrajectories({
+      limit: Math.max(25, requiredCount * 5),
+      ...(scenarioId ? { scenarioId } : {}),
+    });
+    const ids = (list.trajectories ?? [])
+      .map((entry) => entry.id ?? entry.trajectoryId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    await flushListedTrajectoryWrites(service, ids);
+
+    const matchingCalls: TrajectoryLlmCallLike[] = [];
+    const observedPurposes = new Set<string>();
+    for (const id of ids) {
+      const detail = await service.getTrajectoryDetail(id);
+      if (
+        scenarioId &&
+        detail?.scenarioId &&
+        detail.scenarioId !== scenarioId
+      ) {
+        continue;
+      }
+      for (const call of collectTrajectoryLlmCalls(detail)) {
+        if (call.purpose) {
+          observedPurposes.add(call.purpose);
+        }
+        if (
+          acceptedPurposes.length > 0 &&
+          !acceptedPurposes.includes(String(call.purpose ?? ""))
+        ) {
+          continue;
+        }
+        const blob = modelCallBlob(call);
+        if (
+          includesAll?.length &&
+          includesAll.some((pattern) => !matchesPattern(blob, pattern))
+        ) {
+          continue;
+        }
+        if (
+          includesAny?.length &&
+          !includesAny.some((pattern) => matchesPattern(blob, pattern))
+        ) {
+          continue;
+        }
+        matchingCalls.push(call);
+      }
+    }
+
+    if (matchingCalls.length < requiredCount) {
+      const observed =
+        [...observedPurposes].sort().join(",") || "(no model-call purposes)";
+      return {
+        status: "failed",
+        detail: `modelCallOccurred: expected ${requiredCount} matching model call(s)${
+          acceptedPurposes.length > 0
+            ? ` with purpose [${acceptedPurposes.join(",")}]`
+            : ""
+        }, saw ${matchingCalls.length}. Observed purposes: ${observed}`,
+      };
+    }
+
+    return {
+      status: "passed",
+      detail: `modelCallOccurred: matched ${matchingCalls.length} model call(s)${
+        acceptedPurposes.length > 0
+          ? ` with purpose [${acceptedPurposes.join(",")}]`
+          : ""
+      }`,
+    };
+  },
+);
 
 registerFinalCheckHandler("memoryWriteOccurred", (check, { ctx }) => {
   const { table, minCount } = check as {
@@ -1870,7 +2108,7 @@ function isDeliveredEscalationAttempt(
 }
 
 async function checkStoredReminderIntensity(
-  runtime: IAgentRuntime,
+  runtime: FinalCheckRuntime,
   titleCandidates: string[],
   expected: string,
 ): Promise<FinalCheckOutcome> {

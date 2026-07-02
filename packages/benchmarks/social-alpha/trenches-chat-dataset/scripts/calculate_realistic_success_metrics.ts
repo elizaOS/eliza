@@ -270,5 +270,8 @@ async function calculateRealisticMetrics() {
 
 // Run if executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  calculateRealisticMetrics().catch(console.error);
+  calculateRealisticMetrics().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
