@@ -112,6 +112,14 @@ function toRenderLines(messages: Message[], maxWidth: number): RenderLine[] {
   for (const msg of messages) {
     const timeStr = formatTime(msg.timestamp);
 
+    if (msg.kind === "tool") {
+      const wrapped = wrapText(msg.content, maxWidth);
+      for (const line of wrapped) {
+        lines.push({ text: line, dim: true });
+      }
+      continue;
+    }
+
     if (msg.role === "system") {
       const wrapped = wrapText(msg.content, maxWidth);
       for (const line of wrapped) {

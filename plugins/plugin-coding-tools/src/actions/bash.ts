@@ -1406,7 +1406,7 @@ export const shellAction: Action = {
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { cwd, output: text },
+        { command, cwd, output: text },
       );
     }
     if (result.exitCode !== 0) {
@@ -1415,10 +1415,11 @@ export const shellAction: Action = {
           reason: "command_failed",
           message: `command exited with code ${result.exitCode}`,
         },
-        { exit_code: result.exitCode, cwd, output: text },
+        { command, exit_code: result.exitCode, cwd, output: text },
       );
     }
     const actionResult = successActionResult(text, {
+      command,
       exit_code: result.exitCode,
       cwd,
       execution_route: result.sandbox === "host" ? "host" : "sandbox",

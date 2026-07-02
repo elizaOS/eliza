@@ -93,6 +93,7 @@ interface ElizaCodeState {
     role: Message["role"],
     content: string,
     taskId?: string,
+    kind?: Message["kind"],
   ) => Message;
   /** Append text to an existing message (used for streaming). No-op if not found. */
   appendToMessage: (roomId: string, messageId: string, delta: string) => void;
@@ -245,10 +246,12 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
     role: Message["role"],
     content: string,
     taskId?: string,
+    kind?: Message["kind"],
   ) => {
     const message: Message = {
       id: uuidv4(),
       role,
+      ...(kind ? { kind } : {}),
       content,
       timestamp: new Date(),
       roomId,
