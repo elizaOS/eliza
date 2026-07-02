@@ -21,8 +21,8 @@ import { AcpService } from "../../src/services/acp-service.ts";
 import {
   SWARM_COORDINATOR_SERVICE_TYPE,
   SwarmCoordinatorService,
-  sessionHasRouterOrigin,
   type SwarmEvent,
+  sessionHasRouterOrigin,
 } from "../../src/services/swarm-coordinator-service.ts";
 
 /** Minimal AcpService stub: captures the onSessionEvent handler so the test
@@ -1184,7 +1184,10 @@ describe("sessionHasRouterOrigin", () => {
 
   it("is false when the roomId is not a valid UUID", () => {
     expect(
-      sessionHasRouterOrigin({ originRoomId: "origin-room-11", source: "discord" }),
+      sessionHasRouterOrigin({
+        originRoomId: "origin-room-11",
+        source: "discord",
+      }),
     ).toBe(false);
   });
 

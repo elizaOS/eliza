@@ -241,9 +241,7 @@ function firstUuidOf(
  */
 function isCustomValidatorResult(record: Record<string, unknown>): boolean {
   const verification = record.verification;
-  return (
-    isRecord(verification) && verification.source === "custom-validator"
-  );
+  return isRecord(verification) && verification.source === "custom-validator";
 }
 
 export function sessionHasRouterOrigin(meta: Record<string, unknown>): boolean {
@@ -282,10 +280,7 @@ export class SwarmCoordinatorService extends Service {
   // the `synthesizedCompletionSessions` dedupe/ownership decision. Chaining each
   // session's terminal handling onto the previous one guarantees the second
   // event observes the first's completed decision (issue #11634).
-  private readonly terminalCompletionChains = new Map<
-    string,
-    Promise<void>
-  >();
+  private readonly terminalCompletionChains = new Map<string, Promise<void>>();
   private readonly enrichmentMetadataCache = new Map<
     string,
     EnrichmentMetadata
@@ -507,9 +502,9 @@ export class SwarmCoordinatorService extends Service {
    * silent.
    */
   private isRouterActive(): boolean {
-    const router = this.runtime.getService(SUB_AGENT_ROUTER_SERVICE_TYPE) as
-      | { isActive?: () => boolean }
-      | null;
+    const router = this.runtime.getService(SUB_AGENT_ROUTER_SERVICE_TYPE) as {
+      isActive?: () => boolean;
+    } | null;
     return typeof router?.isActive === "function" && router.isActive() === true;
   }
 
@@ -813,7 +808,8 @@ export class SwarmCoordinatorService extends Service {
     event: string,
     data: unknown,
   ): Promise<void> {
-    const prior = this.terminalCompletionChains.get(sessionId) ?? Promise.resolve();
+    const prior =
+      this.terminalCompletionChains.get(sessionId) ?? Promise.resolve();
     const next = prior
       .catch(() => {})
       .then(() => this.runSwarmComplete(sessionId, event, data));
