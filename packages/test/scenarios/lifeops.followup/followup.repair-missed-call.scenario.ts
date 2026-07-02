@@ -49,7 +49,11 @@ export default scenario({
         description: "specific repair message + reschedule",
         includesAny: ["Maria", "missed", "1:1", "reschedule", "apologize"],
       }),
-      responseIncludesAny: ["Maria", "missed", "1:1", "reschedule"],
+      // Seeded-token grounding: the missed-event memory records the actual
+      // reason ("was double-booked") — the token appears in no user turn,
+      // so a repair note that "acknowledges what happened" must have read
+      // the seeded context; a generic apology cannot pass.
+      responseIncludesAny: ["double-booked", "double booked"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
