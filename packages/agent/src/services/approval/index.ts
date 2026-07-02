@@ -15,6 +15,7 @@ export {
   type ApprovalChannel,
   type ApprovalEnqueueInput,
   type ApprovalListFilter,
+  ApprovalExpiredError,
   ApprovalNotFoundError,
   type ApprovalPayload,
   type ApprovalQueue,

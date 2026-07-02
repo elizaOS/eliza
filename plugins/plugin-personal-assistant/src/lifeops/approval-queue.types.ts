@@ -186,6 +186,20 @@ export interface ApprovalResolution {
 }
 
 /** Thrown when a state transition is invalid. */
+export class ApprovalExpiredError extends Error {
+  public readonly requestId: string;
+  public readonly expiresAt: Date;
+
+  constructor(requestId: string, expiresAt: Date) {
+    super(
+      `[ApprovalQueue] request ${requestId} expired at ${expiresAt.toISOString()} and can no longer be approved`,
+    );
+    this.name = "ApprovalExpiredError";
+    this.requestId = requestId;
+    this.expiresAt = expiresAt;
+  }
+}
+
 export class ApprovalStateTransitionError extends Error {
   public readonly requestId: string;
   public readonly from: ApprovalRequestState;
@@ -240,6 +254,7 @@ export class ApprovalNotFoundError extends Error {
 
 /**
  * Queue interface. Implementations must:
+ *  - Reject expired approvals at consumption by throwing `ApprovalExpiredError`.
  *  - Reject invalid state transitions by throwing `ApprovalStateTransitionError`.
  *  - Reject unknown ids by throwing `ApprovalNotFoundError`.
  *  - Use the structured logger only (no `console.*`).

@@ -17,6 +17,7 @@ import {
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
+  ApprovalExpiredError,
   ApprovalNotFoundError,
   type ApprovalQueue,
   type ApprovalRequest,
@@ -152,6 +153,18 @@ function denied(reason: string): ActionResult {
     success: false,
     data: { error: reason },
   };
+}
+
+function isApprovalExpiredError(
+  error: unknown,
+): error is { requestId: string; expiresAt: Date } {
+  if (!(error instanceof Error) || error.name !== "ApprovalExpiredError") {
+    return false;
+  }
+  const record = error as Error & Record<string, unknown>;
+  return (
+    typeof record.requestId === "string" && record.expiresAt instanceof Date
+  );
 }
 
 function approvalChannelToCrossChannelSend(
@@ -398,6 +411,22 @@ async function resolveApprovalRequest(
   } catch (error) {
     if (error instanceof ApprovalNotFoundError) {
       return denied("REQUEST_NOT_FOUND");
+    }
+    if (
+      isApprovalExpiredError(error) ||
+      error instanceof ApprovalExpiredError
+    ) {
+      const text = `Request ${error.requestId} expired at ${error.expiresAt.toISOString()}; nothing was executed.`;
+      if (callback) await callback({ text });
+      return {
+        text,
+        success: false,
+        data: {
+          error: "APPROVAL_EXPIRED",
+          requestId: error.requestId,
+          expiresAt: error.expiresAt.toISOString(),
+        },
+      };
     }
     // Lost compare-and-swap race (e.g. the request expired while the owner's
     // approval was in flight). Must be matched before the parent

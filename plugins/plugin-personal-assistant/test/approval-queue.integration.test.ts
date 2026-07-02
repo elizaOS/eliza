@@ -20,6 +20,7 @@ import { createRealTestRuntime } from "../../../packages/test/helpers/real-runti
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import {
   type ApprovalEnqueueInput,
+  ApprovalExpiredError,
   ApprovalNotFoundError,
   type ApprovalQueue,
   ApprovalStateTransitionError,
@@ -168,6 +169,67 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     expect(purgedIds).toContain(enqueued.id);
     const after = await queue.byId(enqueued.id);
     expect(after?.state).toBe("expired");
+  }, 60_000);
+
+  it("list sweeps expired pending rows on access", async () => {
+    const expired = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-sweep",
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      }),
+    );
+    const active = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-sweep",
+        expiresAt: new Date(Date.now() + 60 * 1000),
+      }),
+    );
+
+    const pending = await queue.list({
+      subjectUserId: "owner-sweep",
+      state: "pending",
+      action: null,
+      limit: 10,
+    });
+
+    expect(pending.map((request) => request.id)).toContain(active.id);
+    expect(pending.map((request) => request.id)).not.toContain(expired.id);
+    expect((await queue.byId(expired.id))?.state).toBe("expired");
+  }, 60_000);
+
+  it("rejects expired approvals at consumption and marks them expired", async () => {
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-expired-consume",
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      }),
+    );
+
+    await expect(
+      queue.approve(enqueued.id, {
+        resolvedBy: "owner-expired-consume",
+        resolutionReason: "too late",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalExpiredError);
+    expect((await queue.byId(enqueued.id))?.state).toBe("expired");
+  }, 60_000);
+
+  it("rejects approval exactly at expiry boundary", async () => {
+    const boundary = new Date();
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-boundary",
+        expiresAt: boundary,
+      }),
+    );
+
+    await expect(
+      queue.approve(enqueued.id, {
+        resolvedBy: "owner-boundary",
+        resolutionReason: "boundary",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalExpiredError);
+    expect((await queue.byId(enqueued.id))?.state).toBe("expired");
   }, 60_000);
 
   it("rejects invalid state transitions hard", async () => {

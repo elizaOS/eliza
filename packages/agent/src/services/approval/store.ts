@@ -31,6 +31,7 @@ import {
   type ApprovalAction,
   type ApprovalChannel,
   type ApprovalEnqueueInput,
+  ApprovalExpiredError,
   type ApprovalListFilter,
   ApprovalNotFoundError,
   type ApprovalPayload,
@@ -631,6 +632,7 @@ export class PgApprovalQueue implements ApprovalQueue {
   async list(
     filter: ApprovalListFilter,
   ): Promise<ReadonlyArray<ApprovalRequest>> {
+    await this.purgeExpired(new Date());
     const where: string[] = [`agent_id = ${sqlText(this.agentId)}`];
     if (filter.subjectUserId !== null) {
       where.push(`subject_user_id = ${sqlText(filter.subjectUserId)}`);
@@ -650,6 +652,7 @@ export class PgApprovalQueue implements ApprovalQueue {
   }
 
   async byId(id: string): Promise<ApprovalRequest | null> {
+    await this.purgeExpired(new Date());
     const rows = await this.fetchById(id);
     return rows ?? null;
   }
@@ -704,6 +707,28 @@ export class PgApprovalQueue implements ApprovalQueue {
     return rowToRequest(rows[0]);
   }
 
+  private async expireAtUseTime(
+    current: ApprovalRequest,
+    now: Date,
+  ): Promise<never> {
+    const sql = `UPDATE approval_requests
+      SET state = ${sqlText("expired")},
+          updated_at = ${timestampLiteral(now)}
+      WHERE id = ${sqlText(current.id)} AND agent_id = ${sqlText(this.agentId)}
+        AND state = ${sqlText(current.state)}
+        AND expires_at <= ${timestampLiteral(now)}
+      RETURNING ${SELECT_COLUMNS}`;
+    const rows = await executeRawSql(this.runtime, sql);
+    if (rows.length === 0) {
+      return this.throwLostRace(current.id, "approved");
+    }
+    logger.info(
+      `[ApprovalQueue] expired request ${current.id} at approval boundary`,
+    );
+    const expired = rowToRequest(rows[0]);
+    throw new ApprovalExpiredError(expired.id, expired.expiresAt);
+  }
+
   private async transitionWithResolution(
     id: string,
     target: ApprovalRequestState,
@@ -713,6 +738,13 @@ export class PgApprovalQueue implements ApprovalQueue {
     if (!current) throw new ApprovalNotFoundError(id);
     assertTransition(id, current.state, target);
     const now = new Date();
+    if (
+      target === "approved" &&
+      current.state === "pending" &&
+      current.expiresAt.getTime() <= now.getTime()
+    ) {
+      return this.expireAtUseTime(current, now);
+    }
     // Compare-and-swap on the observed state: without the `AND state =`
     // guard an in-flight concurrent transition (e.g. the atomic
     // purgeExpired flipping pending → expired) was silently overwritten,

@@ -19,6 +19,7 @@ import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   APPROVAL_SERVICE,
+  ApprovalExpiredError,
   type ApprovalEnqueueInput,
   ApprovalNotFoundError,
   ApprovalService,
@@ -326,6 +327,78 @@ describe("ApprovalService", () => {
     expect(after?.state).toBe("expired");
   });
 
+  it("list sweeps expired pending rows on access", async () => {
+    const runtime = createApprovalTableRuntime("agent-1");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const expired = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-sweep",
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      }),
+    );
+    const active = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-sweep",
+        expiresAt: new Date(Date.now() + 60 * 1000),
+      }),
+    );
+
+    const pending = await queue.list({
+      subjectUserId: "owner-sweep",
+      state: "pending",
+      action: null,
+      limit: 10,
+    });
+
+    expect(pending.map((request) => request.id)).toEqual([active.id]);
+    expect((await queue.byId(expired.id))?.state).toBe("expired");
+  });
+
+  it("rejects expired approvals at consumption and marks them expired", async () => {
+    const runtime = createApprovalTableRuntime("agent-1");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(
+      messageInput({
+        subjectUserId: "owner-expired-consume",
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      }),
+    );
+
+    await expect(
+      queue.approve(enqueued.id, {
+        resolvedBy: "owner-expired-consume",
+        resolutionReason: "too late",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalExpiredError);
+    expect((await queue.byId(enqueued.id))?.state).toBe("expired");
+  });
+
+  it("rejects approval exactly at expiry boundary", async () => {
+    const boundary = new Date("2030-01-01T00:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(boundary);
+    try {
+      const runtime = createApprovalTableRuntime("agent-1");
+      const queue = (await ApprovalService.start(runtime)).getQueue();
+      const enqueued = await queue.enqueue(
+        messageInput({
+          subjectUserId: "owner-boundary",
+          expiresAt: boundary,
+        }),
+      );
+
+      await expect(
+        queue.approve(enqueued.id, {
+          resolvedBy: "owner-boundary",
+          resolutionReason: "boundary",
+        }),
+      ).rejects.toBeInstanceOf(ApprovalExpiredError);
+      expect((await queue.byId(enqueued.id))?.state).toBe("expired");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects invalid state transitions hard", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
@@ -378,7 +451,7 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
     const enqueued = await queue.enqueue(
       messageInput({
         subjectUserId: "owner-race",
-        expiresAt: new Date(Date.now() - 60 * 1000),
+        expiresAt: new Date(Date.now() + 60 * 1000),
       }),
     );
 
