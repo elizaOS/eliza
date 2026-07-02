@@ -1532,6 +1532,37 @@ export class DirectWalletPaymentsService {
         })
         .where(eq(cryptoPayments.id, payment.id));
 
+      // Grant the credit INSIDE the confirmation transaction (db: tx) so it
+      // commits atomically with the status="confirmed" flip. Pre-fix the grant
+      // ran on the global connection AFTER the transaction committed: an
+      // addCredits failure left the row durably `confirmed` with zero credits,
+      // and the recovery cron (processBroadcastBatch) only re-selects
+      // `broadcast` rows — the paid on-chain deposit stayed uncredited forever.
+      // The `wallet_native:<id>` key keeps a replay a no-op via the SQL-level
+      // dedupe in addCredits (ON CONFLICT on stripe_payment_intent_id).
+      await creditsService.addCredits({
+        organizationId: payment.organization_id,
+        amount: Number(creditsToAdd.toFixed(2)),
+        description:
+          direct.bonusCredits > 0
+            ? `Direct crypto payment (${direct.tokenSymbol} on ${cfg.displayName}) + BSC promotion`
+            : `Direct crypto payment (${direct.tokenSymbol} on ${cfg.displayName})`,
+        stripePaymentIntentId: `wallet_native:${payment.id}`,
+        db: tx,
+        metadata: {
+          crypto_payment_id: payment.id,
+          payment_method: "crypto",
+          provider: "wallet_native",
+          transaction_hash: params.txHash,
+          network: direct.network,
+          token: direct.tokenSymbol,
+          paid_amount_usd: amountPaid.toFixed(2),
+          bonus_credits: direct.bonusCredits,
+          credits_added: creditsToAdd.toFixed(2),
+          payer_wallet_address: direct.payerAddress,
+        },
+      });
+
       const [confirmed] = await tx
         .select()
         .from(cryptoPayments)
@@ -1547,29 +1578,7 @@ export class DirectWalletPaymentsService {
       };
     });
 
-    const { direct, cfg, amountPaid, creditsToAdd, sweep } = result;
-
-    await creditsService.addCredits({
-      organizationId: result.payment.organization_id,
-      amount: Number(creditsToAdd),
-      description:
-        direct.bonusCredits > 0
-          ? `Direct crypto payment (${direct.tokenSymbol} on ${cfg.displayName}) + BSC promotion`
-          : `Direct crypto payment (${direct.tokenSymbol} on ${cfg.displayName})`,
-      stripePaymentIntentId: `wallet_native:${result.payment.id}`,
-      metadata: {
-        crypto_payment_id: result.payment.id,
-        payment_method: "crypto",
-        provider: "wallet_native",
-        transaction_hash: params.txHash,
-        network: direct.network,
-        token: direct.tokenSymbol,
-        paid_amount_usd: amountPaid,
-        bonus_credits: direct.bonusCredits,
-        credits_added: creditsToAdd,
-        payer_wallet_address: direct.payerAddress,
-      },
-    });
+    const { direct, amountPaid, creditsToAdd, sweep } = result;
 
     const invoiceId = createCryptoInvoiceId(result.payment.id);
     const existingInvoice = await invoicesService.getByStripeInvoiceId(invoiceId);
