@@ -1,0 +1,5 @@
+# sha256 — Kokoro republish verification 2026-07-02
+# published HF file: elizaos/eliza-1 bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf
+165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c  kokoro-82m-v1_0.gguf (published, downloaded 2026-07-02)
+165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c  kokoro-82m-v1_0.gguf (independently regenerated from hexgrad/Kokoro-82M @ fork ba598f562)
+f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b  af_bella.bin
