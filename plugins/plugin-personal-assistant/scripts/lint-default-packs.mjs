@@ -253,6 +253,10 @@ function packKeyFromFilename(filename) {
     "escalation-ladders",
     "lint",
     "task-definitions",
+    // Registry bridge, not a pack: reconciles already-compiled packs against
+    // the first-run seed and registers them on the scheduling spine, so it
+    // legitimately references the ScheduledTaskSeed shape.
+    "spine-registration",
   ]);
   return skip.has(stem) ? null : stem;
 }
