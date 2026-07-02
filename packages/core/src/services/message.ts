@@ -3067,10 +3067,50 @@ direct/private rules:
 Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
 `;
 
+/**
+ * Answer-free refusal stubs, matched against the WHOLE normalized reply after
+ * an optional leading apology ("I'm sorry, but …") is stripped. A refusal that
+ * continues into content ("I'm not sure, but my best guess is …") never
+ * matches, and a bare social apology ("Sorry.") is a legitimate reply, not a
+ * refusal.
+ */
+const STAGE1_BARE_REFUSAL_STUBS: ReadonlySet<string> = new Set([
+	"i am not sure",
+	"i'm not sure",
+	"i am not sure how to answer that",
+	"i'm not sure how to answer that",
+	"i don't know",
+	"i do not know",
+	"i can't help with that",
+	"i cannot help with that",
+	"i can't answer that",
+	"i cannot answer that",
+	"i am unable to help with that",
+	"i am unable to answer that",
+]);
+
+function isBareRefusalStage1Reply(trimmed: string): boolean {
+	const normalized = trimmed
+		.toLowerCase()
+		.replace(/[’‘]/gu, "'")
+		.replace(/\s+/gu, " ")
+		.replace(/[.!?]+$/u, "")
+		.trim();
+	const withoutApology = normalized.replace(
+		/^(?:i am sorry|i'm sorry|sorry|my apologies|i apologize)[,.!]?\s*(?:but\s+)?/u,
+		"",
+	);
+	return STAGE1_BARE_REFUSAL_STUBS.has(withoutApology);
+}
+
 function isUnusableStage1Reply(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
 	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
+	// A bare refusal stub carries no answer — defer instead of shipping it
+	// (#11504 asked to tighten the unusable signal to actual refusals/empties).
+	// Refusal-plus-content and bare social apologies never match.
+	if (isBareRefusalStage1Reply(trimmed)) return true;
 	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
 	// Degenerate single-character spam: the WHOLE reply is one code point
@@ -3081,6 +3121,12 @@ function isUnusableStage1Reply(reply: string | undefined): boolean {
 	// valid replies to "I'm not sure how to answer that." (#11504).
 	const nonWhitespace = [...trimmed.replace(/\s+/gu, "")];
 	if (nonWhitespace.length >= 5 && new Set(nonWhitespace).size === 1) {
+		return true;
+	}
+	// Multi-token degenerate spam: EVERY whitespace-separated token is a single
+	// character repeated 5+ times ("aaaaa bbbbb"). Checked per token — an
+	// alternation regex over the whole reply backtracks catastrophically.
+	if (trimmed.split(/\s+/u).every((token) => /^(\S)\1{4,}$/u.test(token))) {
 		return true;
 	}
 	if (/^[A-Z]{2,8}$/.test(trimmed)) {
