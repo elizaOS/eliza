@@ -24,6 +24,7 @@
  *     --caddy-admin http://167.233.112.155:2019 \
  *     --tenant-admin-dsn 'postgresql://postgres:***@10.30.1.10:5432/postgres?sslmode=require' \
  *     --node-ssh-key-path /home/deploy/.ssh/apps-node \   # key the APP NODE's deploy user accepts
+ *     # or --node-ssh-key-base64 <base64-private-key>     # writes CONTAINERS_SSH_KEY
  *     [--node-ssh-user deploy] [--egress-proxy http://127.0.0.1:3128] [--dry-run]
  *     [--target cp-daemon|apps-worker]      # which unit to restart (default cp-daemon)
  *
@@ -90,6 +91,7 @@ const desired = {
   APPS_CONTAINERS_ENABLED: "1",
   CONTAINERS_DOCKER_NODES: args["app-node"],
   CONTAINERS_SSH_USER: args["node-ssh-user"] || "deploy",
+  CONTAINERS_SSH_KEY: args["node-ssh-key-base64"],
   CONTAINERS_SSH_KEY_PATH: args["node-ssh-key-path"],
   APPS_CADDY_ADMIN_URL: args["caddy-admin"],
   CONTAINERS_PUBLIC_BASE_DOMAIN: args["base-domain"],
@@ -137,7 +139,7 @@ F=${ENV_PATH}
 cp -n "$F" "$F.bak.arm-apps" 2>/dev/null || true
 ${upserts}
 echo "--- apps env now on the box ---"
-grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|SSH_KEY_PATH|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" | sed -E 's/(DSN|KEY)=.*/\\1=<redacted>/'
+grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|SSH_KEY|SSH_KEY_PATH|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" | sed -E 's/(DSN|KEY)=.*/\\1=<redacted>/'
 sudo systemctl restart ${SYSTEMD_UNIT}
 sleep 2
 echo "--- daemon status ---"
