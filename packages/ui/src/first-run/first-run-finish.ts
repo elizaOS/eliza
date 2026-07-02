@@ -613,11 +613,17 @@ export async function listOrAutoProvisionCloudAgent(
   let list: { success: boolean; data: CloudCompatAgent[]; error?: string };
   try {
     list = await client.getCloudCompatAgents();
-  } catch (err) {
+  } catch {
+    // A thrown error here is a TRANSPORT failure (offline / DNS / timeout),
+    // not an API message — the client returns { success:false } for real API
+    // errors. Surface a friendly, actionable line instead of leaking the raw
+    // `Unable to resolve host "api.elizacloud.ai"` UnknownHostException to the
+    // onboarding chat.
     list = {
       success: false,
       data: [],
-      error: err instanceof Error ? err.message : "Could not load your agents.",
+      error:
+        "Couldn't reach Eliza Cloud — check your internet connection and try again.",
     };
   }
   if (!list.success) {

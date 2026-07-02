@@ -121,6 +121,44 @@ export function addAgentProfile(
   return full;
 }
 
+/** Trailing-slash-insensitive apiBase compare (both sides may be normalized differently). */
+function sameApiBase(a: string | undefined, b: string | undefined): boolean {
+  const norm = (v: string | undefined) => (v ?? "").replace(/\/+$/, "");
+  return norm(a) === norm(b);
+}
+
+/**
+ * Idempotently record + activate a connection in the profile registry so every
+ * runtime-switch surface ("My Runtimes", Settings) stays truthful. If a profile
+ * for the same (kind, apiBase) already exists it is re-activated and its
+ * token/label refreshed — reconnecting to the same host never creates a
+ * duplicate. Otherwise a new profile is added (and activated). This is the
+ * single seam the shared launch path (remote connect, cloud launch-session,
+ * cloud-agent bind) routes through so a connection made anywhere shows up
+ * everywhere with the correct Active badge.
+ */
+export function upsertAndActivateAgentProfile(
+  profile: Omit<AgentProfile, "id" | "createdAt">,
+): AgentProfile {
+  const registry = loadAgentProfileRegistry();
+  const existingIdx = registry.profiles.findIndex(
+    (p) => p.kind === profile.kind && sameApiBase(p.apiBase, profile.apiBase),
+  );
+  if (existingIdx === -1) return addAgentProfile(profile);
+  const merged: AgentProfile = {
+    ...registry.profiles[existingIdx],
+    label: profile.label || registry.profiles[existingIdx].label,
+    ...(profile.apiBase !== undefined ? { apiBase: profile.apiBase } : {}),
+    // A fresh token supersedes a stale one; an absent token leaves the prior in
+    // place (a re-activate that carries no new token must not blank it out).
+    ...(profile.accessToken ? { accessToken: profile.accessToken } : {}),
+  };
+  registry.profiles[existingIdx] = merged;
+  registry.activeProfileId = merged.id;
+  saveAgentProfileRegistry(registry);
+  return merged;
+}
+
 export function removeAgentProfile(id: string): void {
   const registry = loadAgentProfileRegistry();
   registry.profiles = registry.profiles.filter((p) => p.id !== id);
