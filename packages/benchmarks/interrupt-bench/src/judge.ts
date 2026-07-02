@@ -3,8 +3,8 @@
  * the agent's final reply set to award up to +5 bonus points (aggregate).
  *
  * Uses the same Cerebras path as the live runner. If Cerebras isn't
- * configured we return a neutral pass=true (the bonus is opt-in via the
- * `--judge` flag).
+ * configured the judge returns pass=false with an explanatory reason — no
+ * bonus is awarded without a real judge call.
  */
 
 import type { JSONSchema } from "./core-lite.ts";

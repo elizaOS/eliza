@@ -20,11 +20,15 @@ test.describe("Chroma + MetaMask Proof", () => {
   test("browser launches with MetaMask extension loaded", async ({ page }) => {
     const pages = page.context().pages();
     console.log(`Browser context has ${pages.length} page(s)`);
-    expect(page).toBeTruthy();
+    expect(pages.length).toBeGreaterThan(0);
 
     await page.goto("about:blank");
-    const title = await page.title();
-    expect(typeof title).toBe("string");
+    // The MetaMask MV3 extension registers a service worker in the context;
+    // its absence means the extension did not load.
+    const extensionAlive =
+      page.context().serviceWorkers().length > 0 ||
+      page.context().backgroundPages().length > 0;
+    expect(extensionAlive).toBe(true);
     console.log("✅ Browser with MetaMask extension is functional");
   });
 
@@ -40,12 +44,12 @@ test.describe("Chroma + MetaMask Proof", () => {
   }) => {
     await wallets.metamask.importSeedPhrase({ seedPhrase: SEED_PHRASE });
 
-    expect(typeof wallets.metamask.authorize).toBe("function");
-    expect(typeof wallets.metamask.confirm).toBe("function");
+    expect(typeof wallets.metamask.unlock).toBe("function");
+    expect(typeof wallets.metamask.approve).toBe("function");
     expect(typeof wallets.metamask.reject).toBe("function");
     expect(typeof wallets.metamask.importSeedPhrase).toBe("function");
 
     console.log("✅ All Chroma MetaMask methods available:");
-    console.log("  authorize(), confirm(), reject(), importSeedPhrase()");
+    console.log("  unlock(), approve(), reject(), importSeedPhrase()");
   });
 });

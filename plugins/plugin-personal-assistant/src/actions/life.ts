@@ -26,6 +26,12 @@ import type {
   UpdateLifeOpsGoalRequest,
 } from "../contracts/index.js";
 import {
+  calendarReadUnavailableMessage,
+  getGoogleCapabilityStatus,
+  gmailReadUnavailableMessage,
+  INTERNAL_URL,
+} from "../lifeops/access.js";
+import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
 } from "../lifeops/apple-reminders.js";
@@ -34,10 +40,13 @@ import {
   resolveDefaultWindowPolicy,
 } from "../lifeops/defaults.js";
 import {
+  dayRange,
   detailBoolean,
   detailNumber,
   detailObject,
   detailString,
+  formatCalendarEventDateTime,
+  formatEmailTriage,
   formatOverviewForQuery,
   messageText,
   toActionData,
@@ -935,6 +944,9 @@ type LifeReplyScenario =
   | "skipped_occurrence"
   | "snoozed_occurrence"
   | "overview"
+  | "calendar_today"
+  | "calendar_next"
+  | "email_triage"
   | "weekly_goal_review"
   | "service_error";
 
@@ -1082,6 +1094,157 @@ function buildLifeServiceErrorFallback(
     return "LifeOps is rate-limited right now. Try again in a bit.";
   }
   return "I couldn't finish that LifeOps change yet. Tell me the task and timing again, and I'll try it a different way.";
+}
+
+type LifeConnectedQueryOperation =
+  | "query_calendar_today"
+  | "query_calendar_next"
+  | "query_email";
+
+/**
+ * Serves the read-only connected-account queries (today's calendar, next
+ * event, email triage). Availability is decided by the real Google capability
+ * snapshot from `lifeops/access.ts` — plus `listCalendars` for Apple-native
+ * calendars — so connected owners get their data and only genuinely
+ * unconnected owners get a refusal. Exported for direct unit testing with a
+ * stubbed service.
+ */
+export async function runLifeConnectedQuery(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  service: LifeOpsService;
+  queryOperation: LifeConnectedQueryOperation;
+  actionName: string;
+}): Promise<ActionResult> {
+  const {
+    runtime,
+    message,
+    state,
+    intent,
+    service,
+    queryOperation,
+    actionName,
+  } = args;
+  try {
+    const google = await getGoogleCapabilityStatus(service);
+    if (queryOperation === "query_email") {
+      if (!google.hasGmailTriage) {
+        return {
+          success: false,
+          text: gmailReadUnavailableMessage(google),
+          data: { actionName, operation: queryOperation },
+        };
+      }
+      const feed = await service.getGmailTriage(INTERNAL_URL);
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "email_triage",
+          fallback: formatEmailTriage(feed),
+          context: {
+            unreadCount: feed.summary.unreadCount,
+            importantNewCount: feed.summary.importantNewCount,
+            likelyReplyNeededCount: feed.summary.likelyReplyNeededCount,
+            subjects: feed.messages.slice(0, 8).map((entry) => entry.subject),
+          },
+        }),
+        data: toActionData(feed),
+      };
+    }
+    const hasCalendarAccess =
+      google.hasCalendarRead ||
+      (await service.listCalendars(INTERNAL_URL)).length > 0;
+    if (!hasCalendarAccess) {
+      return {
+        success: false,
+        text: calendarReadUnavailableMessage(google),
+        data: { actionName, operation: queryOperation },
+      };
+    }
+    if (queryOperation === "query_calendar_next") {
+      const next = await service.getNextCalendarEventContext(INTERNAL_URL);
+      const fallback = next.event
+        ? `Next up: "${next.event.title}" — ${formatCalendarEventDateTime(
+            next.event,
+            { includeTimeZoneName: true },
+          )}${next.location ? ` at ${next.location}` : ""}.`
+        : "No upcoming events on your calendar.";
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "calendar_next",
+          fallback,
+          context: {
+            title: next.event?.title ?? null,
+            startsAt: next.startsAt,
+            startsInMinutes: next.startsInMinutes,
+            location: next.location,
+            attendeeNames: next.attendeeNames.slice(0, 5),
+          },
+        }),
+        data: toActionData(next),
+      };
+    }
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      ...dayRange(0),
+      timeZone: resolveDefaultTimeZone(),
+    });
+    const fallback =
+      feed.events.length === 0
+        ? "Your calendar is clear today."
+        : [
+            `You have ${feed.events.length} event${
+              feed.events.length === 1 ? "" : "s"
+            } today:`,
+            ...feed.events.map(
+              (event) =>
+                `- ${event.title} (${formatCalendarEventDateTime(event)})`,
+            ),
+          ].join("\n");
+    return {
+      success: true,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "calendar_today",
+        fallback,
+        context: {
+          eventCount: feed.events.length,
+          eventTitles: feed.events.slice(0, 10).map((event) => event.title),
+        },
+      }),
+      data: toActionData(feed),
+    };
+  } catch (err) {
+    if (err instanceof LifeOpsServiceError) {
+      return {
+        success: false,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "service_error",
+          fallback: buildLifeServiceErrorFallback(err, intent),
+          context: { status: err.status, operation: queryOperation },
+        }),
+        data: { actionName, operation: queryOperation },
+      };
+    }
+    throw err;
+  }
 }
 
 // ── Calendar/email formatters ─────────────────────────
@@ -2490,35 +2653,23 @@ export async function runLifeOperationHandler(
       ? operationPlan.operation
       : null;
   const service = new LifeOpsService(runtime);
-  if (queryOperation === "query_calendar_today") {
-    return {
-      success: false,
-      text: "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
-      data: {
-        actionName: ownerSurfaceActionName,
-        operation: queryOperation,
-      },
-    };
-  }
-  if (queryOperation === "query_calendar_next") {
-    return {
-      success: false,
-      text: "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
-      data: {
-        actionName: ownerSurfaceActionName,
-        operation: queryOperation,
-      },
-    };
-  }
-  if (queryOperation === "query_email") {
-    return {
-      success: false,
-      text: "Gmail is not connected. Connect Google in LifeOps settings to use Gmail actions.",
-      data: {
-        actionName: ownerSurfaceActionName,
-        operation: queryOperation,
-      },
-    };
+  if (
+    queryOperation === "query_calendar_today" ||
+    queryOperation === "query_calendar_next" ||
+    queryOperation === "query_email"
+  ) {
+    // Read-only connected-account queries: gate on the real Google capability
+    // snapshot (lifeops/access.ts) and serve them; refuse only when calendar
+    // or Gmail access is actually missing.
+    return runLifeConnectedQuery({
+      runtime,
+      message,
+      state,
+      intent,
+      service,
+      queryOperation,
+      actionName: ownerSurfaceActionName,
+    });
   }
   if (queryOperation === "query_overview") {
     const overview = await service.getOverview();

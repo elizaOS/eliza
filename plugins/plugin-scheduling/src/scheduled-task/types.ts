@@ -119,6 +119,17 @@ export interface ScheduledTaskContextRequest {
   includeEventPayload?: boolean;
 }
 
+/**
+ * Push-fired kinds (never wall-clock due; `isScheduledTaskDue` reports them
+ * not-due and `next_fire_at` stays NULL):
+ *  - `event` — fired by the runtime event bridge when
+ *    `runtime.emitEvent(eventKind, payload)` matches the trigger (see
+ *    `event-bridge.ts`; `filter` subset-matches the payload).
+ *  - `after_task` — fired by the runner when the referenced parent task
+ *    reaches the recorded terminal `outcome` (all five terminal states,
+ *    unlike `pipeline.on*`; the global-pause skip does not chain).
+ *  - `manual` — fired only by an explicit `fire()` call.
+ */
 export type ScheduledTaskTrigger =
   | { kind: "once"; atIso: string }
   | { kind: "cron"; expression: string; tz: string }

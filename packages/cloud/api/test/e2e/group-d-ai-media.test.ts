@@ -21,13 +21,15 @@
  *     inputs that validate auth and fail deterministically before upstream I/O.
  *   - Validation assertion for malformed bodies or unsupported methods.
  *
- * Skip behavior:
- *   - If TEST_API_BASE_URL / TEST_BASE_URL is unreachable, every test skips.
- *   - For routes that need an API key, tests skip if TEST_API_KEY isn't
- *     populated by the preload (e.g. SKIP_DB_DEPENDENT=1).
+ * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
+ * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
+ * named `skip` — never a silent pass. The /api/v1/responses happy path is
+ * split into a keyless-deterministic variant (503, never 501) and a
+ * live-inference variant (200 + full response shape) keyed on provider-key
+ * availability.
  */
 
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import {
   api,
@@ -37,46 +39,46 @@ import {
   url,
 } from "./_helpers/api";
 
-let serverReachable = false;
-let hasTestApiKey = false;
-
-function shouldRunAuthed(): boolean {
-  return serverReachable && hasTestApiKey;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-d-ai-media] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
 }
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-d-ai-media] TEST_API_KEY is not set; the preload could not " +
+      "bootstrap a test API key. Tests will SKIP.",
+  );
+}
+
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+
+// Live-inference split: the local lane shares this process env with wrangler
+// dev, so a provider key here means the Worker can really forward. A remote
+// target (staging) opts in via E2E_LIVE_INFERENCE=1.
+const liveInferenceAvailable = Boolean(
+  process.env.OPENAI_API_KEY?.trim() ||
+    process.env.AI_GATEWAY_API_KEY?.trim() ||
+    process.env.E2E_LIVE_INFERENCE === "1",
+);
 
 function bearerOnlyHeaders(): Record<string, string> {
   const { Authorization } = bearerHeaders();
   return { Authorization };
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-d-ai-media] ${getBaseUrl()} did not respond to /api/health. ` +
-        "Tests will skip. Start the Worker (bun run dev:api → wrangler dev) " +
-        "or set TEST_API_BASE_URL to a reachable host.",
-    );
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-d-ai-media] TEST_API_KEY is not set; auth-gated happy-path " +
-        "tests will skip. Run without SKIP_DB_DEPENDENT and ensure local " +
-        "Postgres is reachable to bootstrap a key.",
-    );
-  }
-});
-
-describe("Group D — /api/elevenlabs/stt", () => {
+describeE2E("Group D — /api/elevenlabs/stt", () => {
   test("auth gate: missing credentials → 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/elevenlabs/stt", { audio: "test-audio" });
     expect(res.status).toBe(401);
   });
 
   test("happy path: with Bearer, handler is reachable without upstream STT", async () => {
-    if (!shouldRunAuthed()) return;
     const form = new FormData();
     form.set(
       "audio",
@@ -88,11 +90,12 @@ describe("Group D — /api/elevenlabs/stt", () => {
       body: form,
       signal: AbortSignal.timeout(30_000),
     });
-    expect([400, 500]).toContain(res.status);
+    // fileTypeFromBuffer cannot identify the bogus bytes → the route's own
+    // signature validation rejects with 400 before any upstream STT I/O.
+    expect(res.status).toBe(400);
   });
 
   test("validation: non-multipart body with auth returns 400", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post("/api/elevenlabs/stt", "not-json", {
       headers: { ...bearerHeaders(), "Content-Type": "application/json" },
     });
@@ -100,15 +103,13 @@ describe("Group D — /api/elevenlabs/stt", () => {
   });
 });
 
-describe("Group D — /api/elevenlabs/tts", () => {
+describeE2E("Group D — /api/elevenlabs/tts", () => {
   test("auth gate: missing credentials → 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/elevenlabs/tts", { text: "hello" });
     expect(res.status).toBe(401);
   });
 
   test("happy path: with Bearer, handler is reachable without upstream TTS", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/elevenlabs/tts",
       { text: "x".repeat(5001) },
@@ -118,7 +119,6 @@ describe("Group D — /api/elevenlabs/tts", () => {
   });
 
   test("validation: empty body with auth returns 400", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/elevenlabs/tts",
       {},
@@ -128,9 +128,8 @@ describe("Group D — /api/elevenlabs/tts", () => {
   });
 });
 
-describe("Group D — /api/v1/responses", () => {
+describeE2E("Group D — /api/v1/responses", () => {
   test("auth gate: missing credentials → 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/responses", {
       model: "google/gemini-2.5-flash",
       input: "hello",
@@ -139,7 +138,6 @@ describe("Group D — /api/v1/responses", () => {
   });
 
   test("validation: malformed body with auth returns 400", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/responses",
       {},
@@ -151,7 +149,6 @@ describe("Group D — /api/v1/responses", () => {
   });
 
   test("validation: streaming requests return a clear 400", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/responses",
       {
@@ -166,22 +163,38 @@ describe("Group D — /api/v1/responses", () => {
     expect(body.error?.message).toContain("/api/v1/chat/completions");
   });
 
-  test("happy path: with Bearer, non-streaming route is live and never returns 501", async () => {
-    if (!shouldRunAuthed()) return;
-    const res = await api.post(
-      "/api/v1/responses",
-      {
-        model: "google/gemini-2.5-flash",
-        instructions: "Reply briefly.",
-        input: [{ role: "user", content: "Say hello" }],
-      },
-      { headers: bearerHeaders() },
-    );
+  // Keyless-deterministic variant: without a provider key the route must
+  // answer 503 (provider unavailable) — never 501 (unimplemented).
+  test.skipIf(liveInferenceAvailable)(
+    "keyless: non-streaming route answers 503 provider-unavailable, not 501",
+    async () => {
+      const res = await api.post(
+        "/api/v1/responses",
+        {
+          model: "google/gemini-2.5-flash",
+          instructions: "Reply briefly.",
+          input: [{ role: "user", content: "Say hello" }],
+        },
+        { headers: bearerHeaders() },
+      );
+      expect(res.status).toBe(503);
+    },
+  );
 
-    expect(res.status).not.toBe(501);
-    expect([200, 402, 429, 503]).toContain(res.status);
-
-    if (res.status === 200) {
+  // Live variant: with a provider key the forward must fully succeed.
+  test.skipIf(!liveInferenceAvailable)(
+    "live: non-streaming route returns a complete response object",
+    async () => {
+      const res = await api.post(
+        "/api/v1/responses",
+        {
+          model: "google/gemini-2.5-flash",
+          instructions: "Reply briefly.",
+          input: [{ role: "user", content: "Say hello" }],
+        },
+        { headers: bearerHeaders() },
+      );
+      expect(res.status).toBe(200);
       const body = (await res.json()) as {
         object?: string;
         output_text?: string;
@@ -196,13 +209,12 @@ describe("Group D — /api/v1/responses", () => {
       expect(typeof body.output_text).toBe("string");
       expect(Array.isArray(body.output)).toBe(true);
       expect(typeof body.usage?.total_tokens).toBe("number");
-    }
-  });
+    },
+  );
 });
 
-describe("Group D — /api/v1/generate-image", () => {
+describeE2E("Group D — /api/v1/generate-image", () => {
   test("auth gate: missing credentials → 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/generate-image", {
       prompt: "A simple red circle",
     });
@@ -210,7 +222,6 @@ describe("Group D — /api/v1/generate-image", () => {
   });
 
   test("validation: malformed body with auth returns 400", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/generate-image",
       {},
@@ -221,7 +232,6 @@ describe("Group D — /api/v1/generate-image", () => {
   });
 
   test("validation: unsupported model is rejected before provider I/O", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/generate-image",
       { prompt: "A simple red circle", model: "unsupported/image-model" },
@@ -237,9 +247,8 @@ describe("Group D — /api/v1/generate-image", () => {
   });
 });
 
-describe("Group D — /api/v1/generate-video", () => {
+describeE2E("Group D — /api/v1/generate-video", () => {
   test("auth gate: missing credentials → 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/generate-video", {
       prompt: "A cinematic drone shot",
       model: "fal-ai/veo3",
@@ -248,7 +257,6 @@ describe("Group D — /api/v1/generate-video", () => {
   });
 
   test("validation: malformed body with auth returns 400", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/generate-video",
       {},
@@ -259,7 +267,6 @@ describe("Group D — /api/v1/generate-video", () => {
   });
 
   test("validation: unsupported model is rejected before fal.ai I/O", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/generate-video",
       { prompt: "A cinematic drone shot", model: "unsupported/video-model" },
@@ -275,24 +282,23 @@ describe("Group D — /api/v1/generate-video", () => {
   });
 });
 
-describe("Group D — /api/fal/proxy", () => {
+describeE2E("Group D — /api/fal/proxy", () => {
   test("auth gate: missing credentials → 401/403", async () => {
-    if (!serverReachable) return;
     // /api/fal/proxy is on the middleware public list, but the handler itself
     // calls requireUserOrApiKeyWithOrg, so an unauthenticated request should
     // be rejected with an auth error response.
     const res = await api.get("/api/fal/proxy");
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("happy path: with Bearer, proxy handler is reachable without upstream fal.ai", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.get("/api/fal/proxy", { headers: bearerHeaders() });
-    expect([200, 400, 401, 500, 503]).toContain(res.status);
+    // Authed but without the x-fal-target-url header the proxy rejects with
+    // its own 400 ("Invalid request") before any upstream fal.ai I/O.
+    expect(res.status).toBe(400);
   });
 
   test("validation: PATCH (unsupported method) → not 200", async () => {
-    if (!shouldRunAuthed()) return;
     // The handler only registers GET/POST/PUT. PATCH should not produce a
     // success — Hono returns 404 for unmatched methods on a sub-app.
     const res = await api.patch(
@@ -300,21 +306,18 @@ describe("Group D — /api/fal/proxy", () => {
       {},
       { headers: bearerHeaders() },
     );
-    expect(res.status).not.toBe(200);
-    expect([400, 401, 403, 404, 405]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
-describe("Group D — /api/og", () => {
+describeE2E("Group D — /api/og", () => {
   test("public route: no auth required (no 401/403)", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/og?title=hello");
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
   });
 
   test("happy path: returns a non-empty body with content-type set", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/og?title=hello");
     expect(res.status).toBe(200);
     const contentType = res.headers.get("content-type") ?? "";
@@ -326,7 +329,6 @@ describe("Group D — /api/og", () => {
   });
 
   test("validation: missing title uses default image text", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/og");
     expect(res.status).toBe(200);
     const body = await res.text();
@@ -334,16 +336,14 @@ describe("Group D — /api/og", () => {
   });
 });
 
-describe("Group D — /api/openapi.json", () => {
+describeE2E("Group D — /api/openapi.json", () => {
   test("public route: no auth required (no 401/403)", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/openapi.json");
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
   });
 
   test("happy path: returns OpenAPI 3.1 JSON spec with required top-level fields", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/openapi.json");
     expect(res.status).toBe(200);
     const contentType = res.headers.get("content-type") ?? "";
@@ -363,11 +363,9 @@ describe("Group D — /api/openapi.json", () => {
   });
 
   test("validation: only GET is supported; POST/PUT/DELETE return non-200", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/openapi.json", {});
-    // Hono returns 404 for unmatched methods on a sub-app that only registers
-    // GET. Anything other than a successful 200 is acceptable.
-    expect(res.status).not.toBe(200);
-    expect([400, 404, 405]).toContain(res.status);
+    // Hono returns 404 for unmatched methods on a sub-app that only
+    // registers GET.
+    expect(res.status).toBe(404);
   });
 });

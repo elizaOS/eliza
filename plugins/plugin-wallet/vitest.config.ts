@@ -21,13 +21,18 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["src/**/*.test.ts"],
-    // Live integration tests require dotenv + a real RPC and are opt-in only
-    // (run them via a dedicated script, not the default `vitest run`).
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
       "src/**/tasks/**",
-      "src/**/*.live.test.ts",
+      // #9310 §E: the guarded live suites (rpc-providers opt-in gate,
+      // birdeye keyless self-skip) are invocable only in the post-merge
+      // lane, where run-all-tests.mjs prints a named skip accounting. The
+      // unguarded transfer.live file (needs a funded wallet) stays excluded
+      // in every lane.
+      ...(process.env.VITEST_LANE === "post-merge"
+        ? ["src/chains/evm/__tests__/integration/transfer.live.test.ts"]
+        : ["src/**/*.live.test.ts"]),
       "src/chains/evm/tests/**",
     ],
   },

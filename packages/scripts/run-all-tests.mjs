@@ -77,6 +77,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  computeRealLiveAccounting,
+  diffRealLiveManifest,
+  discoverGuardedRealLiveFiles,
+  formatRealLiveSummaryLines,
+} from "./lib/real-live-suites.mjs";
+import {
   isParallelSafeTask,
   normalizeConcurrency,
   parseShardSpec,
@@ -272,6 +278,30 @@ if (TEST_LANE === "pr") {
     console.warn(
       `${YELLOW}[eliza-test] WARN TEST_LANE=post-merge — missing env vars:\n  ${missing.join("\n  ")}${RESET}`,
     );
+  }
+
+  // #9310 §E: loud, named accounting of every guarded *.real/*.live suite.
+  // A missing credential is a counted named skip printed on EVERY post-merge
+  // run — never a silent green nothing. The manifest is enforced against the
+  // on-disk guarded set here so it can't drift quietly.
+  const guardedOnDisk = discoverGuardedRealLiveFiles(repoRoot);
+  const drift = diffRealLiveManifest(guardedOnDisk);
+  if (drift.unlisted.length > 0 || drift.stale.length > 0) {
+    console.error(
+      `[eliza-test] FAIL real/live suite manifest drift (packages/scripts/lib/real-live-suites.mjs):` +
+        (drift.unlisted.length > 0
+          ? `\n  guarded on disk but not in manifest:\n    ${drift.unlisted.join("\n    ")}`
+          : "") +
+        (drift.stale.length > 0
+          ? `\n  in manifest but no longer guarded on disk:\n    ${drift.stale.join("\n    ")}`
+          : ""),
+    );
+    process.exit(1);
+  }
+  for (const line of formatRealLiveSummaryLines(
+    computeRealLiveAccounting(process.env),
+  )) {
+    console.log(line);
   }
 }
 

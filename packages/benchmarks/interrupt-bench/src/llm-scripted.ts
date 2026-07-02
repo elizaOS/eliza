@@ -136,10 +136,10 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
             replyText:
               "Got it — scheduling Carol for Friday at 10am (ignoring the earlier tomorrow-3pm draft).",
             facts: ["meeting:carol:friday:10am"],
-            // Tell the harness to schedule a follow-up via threadOps create + side effect.
+            // Scheduling must be explicit: emit the schedule_followup op.
             threadOps: [
               {
-                type: "create",
+                type: "schedule_followup",
                 workThreadId: null,
                 sourceWorkThreadIds: [],
                 sourceRef: null,

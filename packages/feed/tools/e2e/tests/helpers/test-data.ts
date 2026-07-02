@@ -13,7 +13,6 @@ export const ROUTES = {
   MARKETS_PERPS_BY_TICKER: (ticker: string) => `/markets/perps/${ticker}`,
   MARKETS_PREDICTIONS: "/markets?tab=predictions",
   MARKETS_PREDICTIONS_BY_ID: (id: string) => `/markets/predictions/${id}`,
-  BETTING: "/betting",
   GAME: "/game",
   LEADERBOARD: "/leaderboard",
   NOTIFICATIONS: "/notifications",

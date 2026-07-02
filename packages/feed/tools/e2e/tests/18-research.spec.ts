@@ -33,114 +33,49 @@ test.describe("Research - Form", () => {
     expect(body?.length).toBeGreaterThan(0);
   });
 
-  test("organization field visible", async ({ page }) => {
-    const orgInput = page
-      .locator(
-        'input[name="organization"], input[placeholder*="organization" i], input[placeholder*="company" i]',
-      )
-      .first();
-    const isVisible = await orgInput
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
-  });
+  // The research page renders the ModelPilotInquiryForm. The old
+  // "organization field", "description field", "use case field", and
+  // "file upload area" specs were deleted: those fields have never existed
+  // on this form (it has provider/model/endpoint inputs + email + terms),
+  // so the specs could only ever pass vacuously.
 
-  test("description field visible", async ({ page }) => {
-    const descInput = page
-      .locator(
-        'textarea[name="description"], textarea[placeholder*="description" i], textarea[placeholder*="describe" i]',
-      )
-      .first();
-    const isVisible = await descInput
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
-  });
-
-  test("use case field visible", async ({ page }) => {
-    const useCaseInput = page
-      .locator(
-        'textarea[name="useCase"], input[placeholder*="use case" i], textarea[placeholder*="use case" i]',
-      )
-      .first();
-    const isVisible = await useCaseInput
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
-  });
-
-  test("file upload area visible", async ({ page }) => {
-    const fileInput = page
-      .locator(
-        'input[type="file"], [data-testid*="upload"], button:has-text("Upload")',
-      )
-      .first();
-    const isVisible = await fileInput
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
-  });
-
-  test("form validation prevents empty submission", async ({ page }) => {
-    const submitBtn = page
-      .locator(
-        'button:has-text("Submit"), button:has-text("Send"), button:has-text("Apply")',
-      )
-      .first();
-    const isVisible = await submitBtn
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    if (isVisible) {
-      const isDisabled = await submitBtn.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
-  });
-
-  test("valid input accepted in fields", async ({ page }) => {
-    const orgResult = await fillAndVerify(
+  test("model provider field accepts input", async ({ page }) => {
+    const result = await fillAndVerify(
       page,
-      'input[name="organization"], input[placeholder*="organization" i]',
-      "Test Corp",
+      "#model-pilot-provider",
+      "Anthropic",
     );
-    const descResult = await fillAndVerify(
+    test.skip(result === null, "no provider input rendered on the pilot form");
+    expect(result).toBe("Anthropic");
+  });
+
+  test("email field accepts input", async ({ page }) => {
+    const result = await fillAndVerify(
       page,
-      'textarea[name="description"], textarea[placeholder*="description" i]',
-      "Research description",
+      '#model-pilot-email, input[type="email"]',
+      "e2e@example.com",
     );
-    expect(orgResult === null || orgResult === "Test Corp").toBe(true);
-    expect(descResult === null || descResult === "Research description").toBe(
-      true,
-    );
+    test.skip(result === null, "no email input rendered on the pilot form");
+    expect(result).toBe("e2e@example.com");
   });
 
   test("submit button visible", async ({ page }) => {
+    // The pilot form always renders its "Request pilot" submit button.
     const submitBtn = page
-      .locator(
-        'button:has-text("Submit"), button:has-text("Send"), button:has-text("Apply")',
-      )
+      .locator('button[type="submit"], button:has-text("Request pilot")')
       .first();
-    const isVisible = await submitBtn
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    await expect(submitBtn).toBeVisible({ timeout: 5000 });
   });
 
   test("submit disabled when fields empty", async ({ page }) => {
     const submitBtn = page
-      .locator(
-        'button:has-text("Submit"), button:has-text("Send"), button:has-text("Apply")',
-      )
+      .locator('button[type="submit"], button:has-text("Request pilot")')
       .first();
     const isVisible = await submitBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      const isDisabled = await submitBtn.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe("boolean");
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no submit button rendered on the pilot form");
+    // Submit is disabled until an email is entered and terms are agreed.
+    await expect(submitBtn).toBeDisabled();
   });
 });

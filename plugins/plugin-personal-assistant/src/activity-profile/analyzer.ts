@@ -800,11 +800,15 @@ export function enrichWithCalendar(
     const end = new Date(event.endAt);
     const startParts = getZonedDateParts(start, timezone);
     const endParts = getZonedDateParts(end, timezone);
-    const date = new Date(start);
     eventHours.push({
       startHour: startParts.hour,
       endHour: endParts.hour,
-      dayOfWeek: date.getDay(), // 0=Sun, 1=Mon, ...
+      // Weekday in the OWNER's zone (0=Sun, 1=Mon, ...): hours already come
+      // from the zoned parts; `getDay()` would classify by the SERVER zone
+      // and mislabel events near local midnight (weekday vs weekend).
+      dayOfWeek: new Date(
+        Date.UTC(startParts.year, startParts.month - 1, startParts.day),
+      ).getUTCDay(),
     });
   }
 

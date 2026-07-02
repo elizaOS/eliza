@@ -285,17 +285,25 @@ describe("Synthetic fallback integration (no API key required)", () => {
         expect(existsSync(join(outputDir, "turns", "001-bob.wav"))).toBe(true);
         expect(existsSync(join(outputDir, "turns", "002-cleo.wav"))).toBe(true);
 
-        // Verification must pass
+        // Structural smoke passes, but the synthetic run is explicitly
+        // demoted: it is never a scored benchmark result.
+        expect(result.mode).toBe("synthetic-smoke");
+        expect(result.scored).toBe(false);
         expect(result.pass).toBe(true);
+        expect(result.syntheticTurns).toBeGreaterThan(0);
         expect(result.distinctSpeakersDetected).toBeGreaterThanOrEqual(3);
-        expect(result.emotionDetectedFraction).toBeGreaterThanOrEqual(0.8);
+        // No real ASR ran, so no transcript/emotion credit is granted.
+        expect(result.emotionDetectedFraction).toBe(0);
+        expect(result.transcriptNotNull).toBe(false);
+        expect(result.skippedChecks.length).toBeGreaterThan(0);
         expect(result.audioNotBlank).toBe(true);
-        expect(result.transcriptNotNull).toBe(true);
         expect(result.durationSec).toBeGreaterThan(1.0);
         expect(result.turnsTaken).toBeGreaterThanOrEqual(4);
 
         // Double-check with verifyRun
         const report = verifyRun(outputDir);
+        expect(report.mode).toBe("synthetic-smoke");
+        expect(report.scored).toBe(false);
         expect(report.pass).toBe(true);
         expect(report.mixWavNonBlank).toBe(true);
         expect(report.mixWavDurationSec).toBeGreaterThan(1.0);
@@ -306,6 +314,47 @@ describe("Synthetic fallback integration (no API key required)", () => {
       }
     },
     SYNTHETIC_TIMEOUT_MS,
+  );
+
+  it(
+    "a FULL run on the synthetic path FAILS (scoring requires real TTS+ASR)",
+    async () => {
+      const { runDialogue } = await import("../runner/run-dialogue.ts");
+
+      const runId = `synthetic-full-ci-${Date.now()}`;
+      const outputDir = join(
+        REPO_ROOT,
+        "artifacts",
+        "three-agent-dialogue",
+        runId,
+      );
+
+      const originalKey = process.env.GROQ_API_KEY;
+      delete process.env.GROQ_API_KEY;
+
+      try {
+        const result = await runDialogue({
+          scenarioId: "canonical",
+          outputDir,
+          smoke: false,
+        });
+
+        // A full (non-smoke) run that fell back to synthetic TTS/ASR must
+        // never report a scored pass — this is the synthetic-path rigging
+        // guard from #9310 §3.11.
+        expect(result.mode).toBe("synthetic-smoke");
+        expect(result.scored).toBe(false);
+        expect(result.pass).toBe(false);
+        expect(
+          result.failures.some((f) => f.includes("synthetic TTS/ASR path")),
+        ).toBe(true);
+      } finally {
+        if (originalKey !== undefined) {
+          process.env.GROQ_API_KEY = originalKey;
+        }
+      }
+    },
+    SYNTHETIC_TIMEOUT_MS * 2,
   );
 });
 
@@ -368,7 +417,9 @@ describe.skipIf(!GROQ_KEY_SET)(
         ).toBeGreaterThanOrEqual(0.8);
         expect(report.verification.turnsTaken).toBeGreaterThanOrEqual(4);
 
-        // Check the run result directly
+        // Check the run result directly: a keyed run must be real + scored.
+        expect(result.mode).toBe("real");
+        expect(result.scored).toBe(true);
         expect(result.pass).toBe(true);
       },
       INTEGRATION_TIMEOUT_MS,

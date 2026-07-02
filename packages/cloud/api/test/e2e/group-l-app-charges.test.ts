@@ -1,4 +1,16 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+/**
+ * Group L — App charges + app update + the #10423 monetization attribution
+ * money chain.
+ *
+ * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
+ * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
+ * named `skip` — never a silent pass. The #10423 live-inference test
+ * additionally skips loudly unless the Worker can actually forward an
+ * inference (provider key in this env, or E2E_LIVE_INFERENCE=1 when the
+ * target Worker is known to hold one — e.g. staging).
+ */
+
+import { afterAll, describe, expect, test } from "bun:test";
 import {
   api,
   bearerHeaders,
@@ -11,13 +23,43 @@ import {
 } from "./_helpers/ledger";
 import { approveAppInDb } from "./_helpers/review";
 
-let serverReachable = false;
-let hasTestApiKey = false;
-const createdAppIds: string[] = [];
-
-function shouldRunAuthed(): boolean {
-  return serverReachable && hasTestApiKey;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-l-app-charges] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
 }
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-l-app-charges] TEST_API_KEY is not set; the preload could not " +
+      "bootstrap a test API key. Tests will SKIP.",
+  );
+}
+
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+
+// The #10423 attribution test drives a REAL /api/v1/chat/completions forward,
+// which needs a provider key on the Worker. The local lane shares this
+// process env with wrangler dev; a remote target (staging) opts in via
+// E2E_LIVE_INFERENCE=1.
+const liveInferenceAvailable = Boolean(
+  process.env.OPENAI_API_KEY?.trim() ||
+    process.env.AI_GATEWAY_API_KEY?.trim() ||
+    process.env.E2E_LIVE_INFERENCE === "1",
+);
+if (!liveInferenceAvailable) {
+  console.warn(
+    "[group-l-app-charges] no provider key (OPENAI_API_KEY / " +
+      "AI_GATEWAY_API_KEY) and E2E_LIVE_INFERENCE!=1 — the #10423 live " +
+      "attribution test will SKIP.",
+  );
+}
+
+const createdAppIds: string[] = [];
 
 async function createTestApp(
   overrides: Record<string, unknown> = {},
@@ -48,24 +90,8 @@ async function createTestApp(
   return appId;
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-l-app-charges] ${getBaseUrl()} did not respond to /api/health. Tests will skip.`,
-    );
-    return;
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-l-app-charges] TEST_API_KEY is not set; auth-required tests will skip.",
-    );
-  }
-});
-
 afterAll(async () => {
-  if (!shouldRunAuthed()) return;
+  if (!serverReachable || !hasTestApiKey) return;
   for (const appId of createdAppIds) {
     await api.delete(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
       headers: bearerHeaders(),
@@ -73,9 +99,8 @@ afterAll(async () => {
   }
 });
 
-describe("App charge requests", () => {
+describeE2E("App charge requests", () => {
   test("auth gate: rejects one dollar charge creation without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.post(
       "/api/v1/apps/00000000-0000-4000-8000-000000000000/charges",
       {
@@ -86,7 +111,6 @@ describe("App charge requests", () => {
   });
 
   test("happy path: creates a five dollar card/crypto charge with callback metadata", async () => {
-    if (!shouldRunAuthed()) return;
     const appId = await createTestApp();
 
     const res = await api.post(
@@ -159,7 +183,6 @@ describe("App charge requests", () => {
   });
 
   test("validation: rejects charges below one dollar", async () => {
-    if (!shouldRunAuthed()) return;
     const appId = await createTestApp();
     const res = await api.post(
       `/api/v1/apps/${appId}/charges`,
@@ -173,15 +196,13 @@ describe("App charge requests", () => {
 
 // -------- POST /api/v1/apps/check-name -------------------------------------
 
-describe("POST /api/v1/apps/check-name", () => {
+describeE2E("POST /api/v1/apps/check-name", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/v1/apps/check-name", { name: "anything" });
     expect(res.status).toBe(401);
   });
 
   test("happy path: a fresh name is available; a taken name is not", async () => {
-    if (!shouldRunAuthed()) return;
     const fresh = `check-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const freshRes = await api.post(
       "/api/v1/apps/check-name",
@@ -216,9 +237,8 @@ describe("POST /api/v1/apps/check-name", () => {
 
 // -------- PUT /api/v1/apps/:id (update) ------------------------------------
 
-describe("PUT /api/v1/apps/:id", () => {
+describeE2E("PUT /api/v1/apps/:id", () => {
   test("auth gate: 401 without credentials", async () => {
-    if (!serverReachable) return;
     const res = await api.put(
       "/api/v1/apps/00000000-0000-4000-8000-000000000000",
       { description: "x" },
@@ -227,7 +247,6 @@ describe("PUT /api/v1/apps/:id", () => {
   });
 
   test("happy path: updates a freshly created app", async () => {
-    if (!shouldRunAuthed()) return;
     const appId = await createTestApp();
     const res = await api.put(
       `/api/v1/apps/${appId}`,
@@ -245,13 +264,14 @@ describe("PUT /api/v1/apps/:id", () => {
   });
 
   test("validation: 404 for an unknown id", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.put(
       "/api/v1/apps/00000000-0000-4000-8000-000000000000",
       { description: "x" },
       { headers: bearerHeaders() },
     );
-    expect([400, 404]).toContain(res.status);
+    // A syntactically valid UUID that isn't in the DB → 404 (400 is reserved
+    // for malformed ids, covered by group-i).
+    expect(res.status).toBe(404);
   });
 
   // #10423 item 3 — per-app monetization attribution end-to-end. Proves the
@@ -261,9 +281,7 @@ describe("PUT /api/v1/apps/:id", () => {
   // (items 1-2) is unit/integration-tested in #10433; this asserts the live
   // billing attribution via the X-App-Id inference header. Skip-gated like every
   // group-* e2e — runs in the staging lane with TEST_API_KEY + a provider key.
-  test("monetized app: an inference charge attributes to the app's credits + creator earnings (#10423)", async () => {
-    if (!shouldRunAuthed()) return;
-
+  test.skipIf(!liveInferenceAvailable)("monetized app: an inference charge attributes to the app's credits + creator earnings (#10423)", async () => {
     // 1) create the app monetized from the start. Enabling monetization via a
     //    follow-up PUT races the app service's Redis SWR cache (~5 min TTL by
     //    design, apps.ts:108): getAuthorizedMonetizedAppForUser can read the

@@ -35,6 +35,7 @@ import {
   type EnforcementWindow,
   getCurrentEnforcementWindow,
 } from "../lifeops/enforcement-windows.js";
+import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.js";
 import type { BlockRule } from "./chat-integration/block-rule-schema.js";
 import { BlockRuleReader } from "./chat-integration/block-rule-service.js";
 
@@ -69,7 +70,10 @@ export interface ProactiveBlockBridgeDeps {
   loadActiveRules?: (runtime: IAgentRuntime) => Promise<readonly BlockRule[]>;
   /** Override "now" — used by the enforcement-window check. */
   now?: () => Date;
-  /** Override the IANA timezone. Defaults to `resolveDefaultTimeZone()`. */
+  /**
+   * Override the IANA timezone. Defaults to the OWNER's timezone fact,
+   * falling back to the server zone only when no fact is on file.
+   */
   timezone?: string;
   /** Override the enforcement windows. Defaults to morning + night. */
   enforcementWindows?: readonly EnforcementWindow[];
@@ -85,6 +89,16 @@ export interface ProactiveBlockBridgeAlert {
 function normalizeDomain(domain: string): string | null {
   const trimmed = domain.trim().toLowerCase().replace(/\.+$/, "");
   return trimmed.length === 0 ? null : trimmed;
+}
+
+/**
+ * Enforcement windows are OWNER-local ("don't let me use X this evening"),
+ * so the deciding zone is the owner's timezone fact — the server zone is
+ * only the last resort when no fact is on file.
+ */
+async function resolveOwnerTimezone(runtime: IAgentRuntime): Promise<string> {
+  const facts = await resolveOwnerFactStore(runtime).read();
+  return facts.timezone?.value ?? resolveDefaultTimeZone();
 }
 
 function ruleMatchesDomain(rule: BlockRule, focusedDomain: string): boolean {
@@ -180,7 +194,7 @@ export async function evaluateProactiveBlockOnBrowserFocus(
   }
 
   const now = deps.now ? deps.now() : new Date();
-  const timezone = deps.timezone ?? resolveDefaultTimeZone();
+  const timezone = deps.timezone ?? (await resolveOwnerTimezone(runtime));
   const windows = deps.enforcementWindows
     ? [...deps.enforcementWindows]
     : undefined;

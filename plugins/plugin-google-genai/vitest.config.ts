@@ -9,7 +9,12 @@ export default defineConfig({
     exclude: [
       "dist/**",
       "node_modules/**",
-      "**/*.live.test.ts",
+      // #9310 §E: the guarded *.live.test.ts suite (self-skips keyless) is
+      // invocable only in the post-merge lane, where run-all-tests.mjs
+      // prints a named skip accounting.
+      ...(process.env.VITEST_LANE === "post-merge"
+        ? []
+        : ["**/*.live.test.ts"]),
       "**/*.harness.test.ts",
     ],
   },

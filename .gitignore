@@ -1029,9 +1029,6 @@ waifu.fun/
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_index_1_link.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_middle_1_link.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_thumb_2_link.STL
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/login-desktop-chromium-linux.png
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/connected-desktop-chromium-linux.png
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/get-started-desktop-chromium-linux.png
 /plugins/plugin-companion/assets/hero.png
 /packages/research/robot/examples/robot-mujoco-demo/evidence/live/live_camera_aruco.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Happy.fbx
@@ -1295,7 +1292,6 @@ waifu.fun/
 /packages/os/homepage/tests/visual.spec.ts-snapshots/checkout-desktop-mobile-darwin.png
 /packages/research/robot/cad/erobot/visual/parts_grid.png
 /packages/benchmarks/swe-bench-pro/run_scripts/instance_NodeBB__NodeBB-76c6e30282906ac664f2c9278fc90999b27b1f48-vd59a5728dfc977f44533186ace531248c2917516/instance_info.txt
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/get-started-mobile-chromium-linux.png
 /packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-case-desktop-desktop-darwin.png
 /packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-case-desktop-mobile-darwin.png
 /packages/cloud-frontend/public/avatars/eliza.png
@@ -1316,10 +1312,6 @@ waifu.fun/
 /packages/os/homepage/tests/visual.spec.ts-snapshots/landing-desktop-mobile-linux.png
 /plugins/plugin-companion/public_src/animations/Standing Greeting.fbx
 /packages/app/public/app-heroes/plugin-viewer.png
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/connected-mobile-chromium-linux.png
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/login-mobile-chromium-linux.png
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/get-started-mobile-chromium-darwin.png
-/packages/homepage/tests/e2e/visual.spec.ts-snapshots/connected-mobile-chromium-darwin.png
 /packages/ui/src/components/shell/__e2e__/output/32-state-no-provider-gate.png
 /packages/benchmarks/terminal-bench/tasks/gcode-to-text/text.gcode.gz
 /packages/benchmarks/claw-eval/tasks/T085_officeqa_army_expenditures/fixtures/ocr/treasury_bulletin_1952_12.txt

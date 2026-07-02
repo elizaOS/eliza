@@ -1,4 +1,13 @@
-// Render smoke checks for the marketing homepage.
+// Visual regression for the marketing homepage (#9310 §3.16).
+//
+// Every route × viewport is compared against a committed baseline in
+// visual.spec.ts-snapshots/ via toHaveScreenshot (threshold in
+// playwright.config.ts), mirroring packages/os/homepage/tests/visual.spec.ts.
+// The quality-retry capture stays as a pre-check so a blank/half-painted page
+// fails with a clear "screenshot is one color" message instead of a noisy
+// pixel diff. Regenerate baselines per platform with
+// scripts/regenerate-baselines.sh; quality.yml / deploy-homepage.yml
+// auto-regenerate + commit the 10 linux baselines when missing.
 
 import { expect, type Page, test } from "playwright/test";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
@@ -18,11 +27,18 @@ const VIEWPORTS = [
 
 async function prepare(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The /leaderboard route runs a ~1800ms intro animation before the real UI
-  // (header, tab bar, BlobButton) settles. Match the contact-sheet timing.
+  // The /leaderboard intro (SVG letter swap → spring-revealed tab bar) is
+  // react-spring/JS-driven, so `animations: "disabled"` cannot freeze it and
+  // a fixed wait races slow app-JS loads. Wait for the last spring-revealed
+  // control ("Try Now") instead, then give the springs time to reach rest.
   if (routePath === "/leaderboard") {
     await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
-    await page.waitForTimeout(3000);
+    await page
+      .getByText("Try Now")
+      .first()
+      .waitFor({ timeout: 15_000 })
+      .catch(() => {});
+    await page.waitForTimeout(2500);
     return;
   }
   await page.waitForTimeout(600);
@@ -58,7 +74,14 @@ for (const viewport of VIEWPORTS) {
             animations: "disabled",
           },
         );
-        await expect(page.locator("body")).toBeVisible();
+        await expect(page).toHaveScreenshot(
+          `${route.name}-${viewport.name}.png`,
+          {
+            fullPage: true,
+            mask: dynamicMask(page),
+            animations: "disabled",
+          },
+        );
       });
     }
   });

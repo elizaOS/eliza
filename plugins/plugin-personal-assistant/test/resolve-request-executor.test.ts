@@ -1,20 +1,120 @@
 /**
- * Approved-request execution (issue #10723 Bug 2).
+ * Approved-request execution (issues #10723 Bug 2 and #10721).
  *
  * The old `executeApprovedRequest` flipped execute_workflow approvals through
  * markExecuting -> markDone WITHOUT invoking the workflow runner, and returned
- * `success: true, "Approved."` for executor-less actions (sign_document, ...)
- * while executing nothing. These tests pin the fix: an approved
- * execute_workflow actually calls `LifeOpsService.runWorkflow`, and actions
- * with no executor return an explicit NO_EXECUTOR failure.
+ * `success: true, "Approved."` for executor-less actions while executing
+ * nothing. These tests pin the fixes: approved execute_workflow /
+ * schedule_event / make_call / sign_document requests drive their real rails
+ * (`LifeOpsService.runWorkflow`, `LifeOpsService.createCalendarEvent`, Twilio
+ * voice dispatch, the DocumentRequest lifecycle), rail failures surface as
+ * typed failures instead of fake success, and actions with no rail at all
+ * (spend_money) return an explicit NO_EXECUTOR failure.
  *
  * Run: bunx vitest run test/resolve-request-executor.test.ts
  */
 
 import { randomUUID } from "node:crypto";
-import type { HandlerCallback, IAgentRuntime, UUID } from "@elizaos/core";
+import type {
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { executeApprovedRequest } from "../src/actions/resolve-request.js";
+
+const twilioMocks = vi.hoisted(() => ({
+  readTwilioCredentialsFromEnv: vi.fn<
+    () => {
+      accountSid: string;
+      authToken: string;
+      fromPhoneNumber: string;
+    } | null
+  >(() => null),
+  sendTwilioVoiceCall: vi.fn(
+    async (): Promise<{
+      ok: boolean;
+      status: number | null;
+      sid?: string;
+      error?: string;
+    }> => ({ ok: true, status: 201, sid: "CA-approved-1" }),
+  ),
+}));
+
+vi.mock("@elizaos/plugin-phone/twilio", () => twilioMocks);
+
+// The sign_document tests seed a real DocumentRequest through the real
+// OWNER_DOCUMENTS action; only its collaborators (owner gate, approval-queue
+// persistence, scheduled-task runner) are mocked, mirroring
+// test/document-action.test.ts.
+const docMocks = vi.hoisted(() => ({
+  hasOwnerAccess: vi.fn(async () => true),
+  enqueue: vi.fn(async (input: { payload?: unknown }) => ({
+    id: `approval-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    state: "pending" as const,
+    requestedBy: "OWNER_DOCUMENTS",
+    subjectUserId: "owner-1",
+    action: "sign_document",
+    payload: input.payload ?? {},
+    channel: "internal",
+    reason: "",
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    resolvedAt: null,
+    resolvedBy: null,
+    resolutionReason: null,
+  })),
+  list: vi.fn(async (): Promise<unknown[]> => []),
+  approve: vi.fn(),
+  reject: vi.fn(),
+  markExecuting: vi.fn(),
+  markDone: vi.fn(),
+  schedule: vi.fn(async (task: { kind: string; trigger: unknown }) => ({
+    taskId: `task-${Math.random().toString(36).slice(2, 8)}`,
+    kind: task.kind,
+    trigger: task.trigger,
+    state: { status: "scheduled", followupCount: 0 },
+  })),
+}));
+
+vi.mock("@elizaos/agent", () => ({
+  hasOwnerAccess: docMocks.hasOwnerAccess,
+}));
+
+vi.mock("../src/lifeops/approval-queue.js", () => ({
+  createApprovalQueue: () => ({
+    enqueue: docMocks.enqueue,
+    list: docMocks.list,
+    approve: docMocks.approve,
+    reject: docMocks.reject,
+    markExecuting: docMocks.markExecuting,
+    markDone: docMocks.markDone,
+  }),
+}));
+
+vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
+  getScheduledTaskRunner: () => ({
+    schedule: docMocks.schedule,
+    apply: vi.fn(),
+    list: vi.fn(),
+    pipeline: vi.fn(),
+    evaluateCompletion: vi.fn(),
+    fire: vi.fn(),
+    fireWithResult: vi.fn(),
+  }),
+}));
+
+import {
+  __resetDocumentStoreForTests,
+  ownerDocumentsAction,
+} from "../src/actions/document.js";
+import {
+  executeApprovedRequest,
+  resolveRequestAction,
+} from "../src/actions/resolve-request.js";
 import type {
   ApprovalEnqueueInput,
   ApprovalListFilter,
@@ -99,9 +199,64 @@ function approvedRequest(
   };
 }
 
+function fakeCalendarEvent(
+  overrides: Partial<LifeOpsCalendarEvent> = {},
+): LifeOpsCalendarEvent {
+  return {
+    id: "cal-evt-1",
+    externalId: "ext-cal-evt-1",
+    agentId: "agent-1",
+    provider: "google",
+    side: "owner",
+    calendarId: "primary",
+    title: "Board sync",
+    description: "",
+    location: "",
+    status: "confirmed",
+    startAt: "2026-07-02T17:00:00.000Z",
+    endAt: "2026-07-02T18:00:00.000Z",
+    isAllDay: false,
+    timezone: null,
+    htmlLink: null,
+    conferenceLink: null,
+    organizer: null,
+    attendees: [],
+    metadata: {},
+    syncedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
+  __resetDocumentStoreForTests();
+  twilioMocks.readTwilioCredentialsFromEnv.mockReset();
+  twilioMocks.readTwilioCredentialsFromEnv.mockReturnValue(null);
+  twilioMocks.sendTwilioVoiceCall.mockReset();
+  twilioMocks.sendTwilioVoiceCall.mockResolvedValue({
+    ok: true,
+    status: 201,
+    sid: "CA-approved-1",
+  });
+  docMocks.enqueue.mockClear();
+  docMocks.schedule.mockClear();
+  docMocks.list.mockReset();
+  docMocks.list.mockResolvedValue([]);
+  docMocks.approve.mockReset();
+  docMocks.reject.mockReset();
+  docMocks.markExecuting.mockReset();
+  docMocks.markDone.mockReset();
 });
+
+function collectTexts(): { texts: string[]; callback: HandlerCallback } {
+  const texts: string[] = [];
+  const callback: HandlerCallback = async (content) => {
+    if (typeof content.text === "string") texts.push(content.text);
+    return [];
+  };
+  return { texts, callback };
+}
 
 describe("executeApprovedRequest", () => {
   it("execute_workflow approval actually runs the workflow", async () => {
@@ -127,11 +282,7 @@ describe("executeApprovedRequest", () => {
         result: {},
         auditRef: null,
       });
-    const texts: string[] = [];
-    const callback: HandlerCallback = async (content) => {
-      if (typeof content.text === "string") texts.push(content.text);
-      return [];
-    };
+    const { texts, callback } = collectTexts();
 
     const result = await executeApprovedRequest({
       runtime,
@@ -176,25 +327,301 @@ describe("executeApprovedRequest", () => {
     expect(queue.transitions).toEqual(["executing"]);
   });
 
-  it("executor-less action (sign_document) fails loudly with NO_EXECUTOR", async () => {
+  it("schedule_event approval creates the calendar event through LifeOpsService", async () => {
+    const runtime = makeRuntime();
+    const request = approvedRequest({
+      action: "schedule_event",
+      payload: {
+        action: "schedule_event",
+        calendarId: "primary",
+        title: "Board sync",
+        startsAtMs: Date.parse("2026-07-02T17:00:00.000Z"),
+        endsAtMs: Date.parse("2026-07-02T18:00:00.000Z"),
+        attendees: ["ada@example.com", "grace@example.com"],
+        location: "Zoom",
+        description: "Q3 planning",
+      },
+    });
+    const queue = new RecordingQueue(request);
+    const createSpy = vi
+      .spyOn(LifeOpsService.prototype, "createCalendarEvent")
+      .mockResolvedValue(fakeCalendarEvent());
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(createSpy.mock.calls[0]?.[1]).toEqual({
+      calendarId: "primary",
+      title: "Board sync",
+      startAt: "2026-07-02T17:00:00.000Z",
+      endAt: "2026-07-02T18:00:00.000Z",
+      location: "Zoom",
+      description: "Q3 planning",
+      attendees: [{ email: "ada@example.com" }, { email: "grace@example.com" }],
+    });
+    expect(queue.transitions).toEqual(["executing", "done"]);
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      calendarEventId: "cal-evt-1",
+      calendarId: "primary",
+      state: "done",
+    });
+    expect(texts.join(" ")).toContain("Board sync");
+  });
+
+  it("a failing calendar rail (e.g. calendar not connected) propagates and never reaches done", async () => {
+    const runtime = makeRuntime();
+    const request = approvedRequest({
+      action: "schedule_event",
+      payload: {
+        action: "schedule_event",
+        calendarId: "",
+        title: "Board sync",
+        startsAtMs: Date.parse("2026-07-02T17:00:00.000Z"),
+        endsAtMs: Date.parse("2026-07-02T18:00:00.000Z"),
+        attendees: [],
+        location: null,
+        description: null,
+      },
+    });
+    const queue = new RecordingQueue(request);
+    vi.spyOn(LifeOpsService.prototype, "createCalendarEvent").mockRejectedValue(
+      new Error("Google Calendar is not connected"),
+    );
+
+    await expect(
+      executeApprovedRequest({ runtime, queue, request }),
+    ).rejects.toThrow("Google Calendar is not connected");
+    expect(queue.transitions).toEqual(["executing"]);
+  });
+
+  it("make_call approval without Twilio credentials fails honestly and stays retriable", async () => {
+    const runtime = makeRuntime();
+    const request = approvedRequest({
+      action: "make_call",
+      payload: {
+        action: "make_call",
+        to: "+15550100",
+        script: "Confirming tomorrow's appointment.",
+        maxDurationSeconds: 120,
+      },
+    });
+    const queue = new RecordingQueue(request);
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "TWILIO_NOT_CONFIGURED",
+      action: "make_call",
+      requestId: request.id,
+    });
+    expect(twilioMocks.sendTwilioVoiceCall).not.toHaveBeenCalled();
+    // The request never left `approved`: the owner can retry after
+    // configuring Twilio.
+    expect(queue.transitions).toEqual([]);
+    expect(texts.join(" ")).toContain("not placed");
+  });
+
+  it("a failed Twilio dispatch surfaces a typed failure and never reaches done", async () => {
+    const runtime = makeRuntime();
+    twilioMocks.readTwilioCredentialsFromEnv.mockReturnValue({
+      accountSid: "AC-test",
+      authToken: "token",
+      fromPhoneNumber: "+15550999",
+    });
+    twilioMocks.sendTwilioVoiceCall.mockResolvedValue({
+      ok: false,
+      status: 401,
+      error: "Authenticate",
+    });
+    const request = approvedRequest({
+      action: "make_call",
+      payload: {
+        action: "make_call",
+        to: "+15550100",
+        script: "Confirming tomorrow's appointment.",
+        maxDurationSeconds: 120,
+      },
+    });
+    const queue = new RecordingQueue(request);
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "TWILIO_DELIVERY_FAILED",
+      detail: "Authenticate",
+      status: 401,
+    });
+    expect(queue.transitions).toEqual(["executing"]);
+    expect(texts.join(" ")).toContain("not placed");
+  });
+
+  it("make_call approval places the call through the Twilio rail", async () => {
+    const runtime = makeRuntime();
+    const credentials = {
+      accountSid: "AC-test",
+      authToken: "token",
+      fromPhoneNumber: "+15550999",
+    };
+    twilioMocks.readTwilioCredentialsFromEnv.mockReturnValue(credentials);
+    const request = approvedRequest({
+      action: "make_call",
+      payload: {
+        action: "make_call",
+        to: "+15550100",
+        script: "Confirming tomorrow's appointment.",
+        maxDurationSeconds: 120,
+      },
+    });
+    const queue = new RecordingQueue(request);
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(twilioMocks.sendTwilioVoiceCall).toHaveBeenCalledTimes(1);
+    expect(twilioMocks.sendTwilioVoiceCall).toHaveBeenCalledWith({
+      credentials,
+      to: "+15550100",
+      message: "Confirming tomorrow's appointment.",
+    });
+    expect(queue.transitions).toEqual(["executing", "done"]);
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      callSid: "CA-approved-1",
+      state: "done",
+    });
+    expect(texts.join(" ")).toContain("+15550100");
+  });
+
+  it("sign_document approval dispatches the real DocumentRequest seeded through OWNER_DOCUMENTS", async () => {
+    const runtime = makeRuntime();
+    const deadline = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const seeded = await ownerDocumentsAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: "get the NDA signed" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "request_signature",
+          requesteeEntityId: "entity-alice-001",
+          documentTitle: "Partnership NDA",
+          deadline,
+          signatureUrl: "https://sign.example.com/nda",
+        },
+      } as unknown as HandlerOptions,
+      async () => [],
+    );
+    expect(seeded).toMatchObject({ success: true });
+    // The payload the document action actually enqueued for owner approval.
+    const enqueued = docMocks.enqueue.mock.calls[0]?.[0];
+    if (!enqueued) throw new Error("request_signature enqueued no approval");
+    const payload = enqueued.payload as ApprovalRequest["payload"];
+    expect(payload).toMatchObject({
+      action: "sign_document",
+      documentName: "Partnership NDA",
+    });
+
+    const request = approvedRequest({ action: "sign_document", payload });
+    const queue = new RecordingQueue(request);
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(result.success).toBe(true);
+    expect(queue.transitions).toEqual(["executing", "done"]);
+    expect(result.data).toMatchObject({
+      documentStatus: "in_progress",
+      state: "done",
+    });
+    expect(texts.join(" ")).toContain("Partnership NDA");
+  });
+
+  it("sign_document approval for a vanished DocumentRequest fails honestly and dispatches nothing", async () => {
     const runtime = makeRuntime();
     const request = approvedRequest({
       action: "sign_document",
       payload: {
         action: "sign_document",
-        documentId: "doc-9",
+        documentId: "doc-gone",
         documentName: "NDA.pdf",
-        signatureUrl: "https://sign.example.com/doc-9",
+        signatureUrl: "https://sign.example.com/doc-gone",
         deadline: new Date(Date.now() + 86_400_000).toISOString(),
       },
     });
     const queue = new RecordingQueue(request);
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "DOCUMENT_REQUEST_NOT_FOUND",
+      action: "sign_document",
+      documentId: "doc-gone",
+    });
+    expect(queue.transitions).toEqual(["executing"]);
+    expect(texts.join(" ")).toContain("re-issue");
+  });
+
+  it("executor-less action (spend_money) fails loudly with NO_EXECUTOR", async () => {
+    const runtime = makeRuntime();
+    const request = approvedRequest({
+      action: "spend_money",
+      payload: {
+        action: "spend_money",
+        vendor: "AWS",
+        amountCents: 12_000,
+        currency: "USD",
+        memo: "renew reserved instances",
+      },
+    });
+    const queue = new RecordingQueue(request);
     const runSpy = vi.spyOn(LifeOpsService.prototype, "runWorkflow");
-    const texts: string[] = [];
-    const callback: HandlerCallback = async (content) => {
-      if (typeof content.text === "string") texts.push(content.text);
-      return [];
-    };
+    const calendarSpy = vi.spyOn(
+      LifeOpsService.prototype,
+      "createCalendarEvent",
+    );
+    const { texts, callback } = collectTexts();
 
     const result = await executeApprovedRequest({
       runtime,
@@ -206,12 +633,72 @@ describe("executeApprovedRequest", () => {
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({
       error: "NO_EXECUTOR",
-      action: "sign_document",
+      action: "spend_money",
       requestId: request.id,
     });
     // Nothing executed and nothing marked done: the queue rows stay honest.
     expect(runSpy).not.toHaveBeenCalled();
+    expect(calendarSpy).not.toHaveBeenCalled();
+    expect(twilioMocks.sendTwilioVoiceCall).not.toHaveBeenCalled();
     expect(queue.transitions).toEqual([]);
     expect(texts.join(" ")).toContain("nothing was executed");
+  });
+});
+
+describe("RESOLVE_REQUEST reject path", () => {
+  it("rejecting a make_call request executes no rail and flips the row to rejected", async () => {
+    const runtime = makeRuntime();
+    const pending = approvedRequest({
+      action: "make_call",
+      state: "pending",
+      resolvedAt: null,
+      resolvedBy: null,
+      resolutionReason: null,
+      payload: {
+        action: "make_call",
+        to: "+15550100",
+        script: "Confirming tomorrow's appointment.",
+        maxDurationSeconds: 120,
+      },
+    });
+    twilioMocks.readTwilioCredentialsFromEnv.mockReturnValue({
+      accountSid: "AC-test",
+      authToken: "token",
+      fromPhoneNumber: "+15550999",
+    });
+    docMocks.list.mockResolvedValue([pending]);
+    docMocks.reject.mockResolvedValue({ ...pending, state: "rejected" });
+    const { texts, callback } = collectTexts();
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: "no, don't place that call" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "reject",
+          requestId: pending.id,
+          reason: "not now",
+        },
+      } as unknown as HandlerOptions,
+      callback,
+    );
+
+    expect(docMocks.reject).toHaveBeenCalledTimes(1);
+    expect(docMocks.reject).toHaveBeenCalledWith(pending.id, {
+      resolvedBy: "owner-1",
+      resolutionReason: "not now",
+    });
+    // Rejection touches no rail and no executing/done transition.
+    expect(twilioMocks.sendTwilioVoiceCall).not.toHaveBeenCalled();
+    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.markDone).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ success: true });
+    expect(texts.join(" ")).toContain("Rejected");
   });
 });

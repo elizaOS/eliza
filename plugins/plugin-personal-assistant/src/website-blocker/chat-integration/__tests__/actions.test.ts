@@ -1,28 +1,11 @@
 import type { ActionResult, HandlerOptions, Memory, UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { defaultSelfControlStatus } = vi.hoisted(() => ({
-  defaultSelfControlStatus: {
-    available: true,
-    active: false,
-    hostsFilePath: "/tmp/test-hosts",
-    startedAt: null,
-    endsAt: null,
-    websites: [],
-    managedBy: null,
-    metadata: null,
-    scheduledByAgentId: null,
-    canUnblockEarly: true,
-    requiresElevation: false,
-    engine: "hosts-file" as const,
-    platform: process.platform,
-    supportsElevationPrompt: false,
-    elevationPromptMethod: null,
-  },
-}));
-
-// Override `getSelfControlStatus` (engine) and bypass the OWNER access gate so
-// the test exercises the subaction handlers without seeding world/role tables.
+// Bypass the OWNER access gate so the test exercises the subaction handlers
+// without seeding world/role tables. `getSelfControlStatus` stays a spyable
+// vi.fn but delegates to the real engine (backed by the harness temp hosts
+// file) so the writer's OS-state sync sees the truth; the live-status
+// formatting test pins its own status via `vi.spyOn(...).mockResolvedValue`.
 vi.mock(
   "@elizaos/plugin-blocker/services/website-blocker/index",
   async (importOriginal) => {
@@ -32,7 +15,7 @@ vi.mock(
       >();
     return {
       ...actual,
-      getSelfControlStatus: vi.fn(async () => defaultSelfControlStatus),
+      getSelfControlStatus: vi.fn(async () => actual.getSelfControlStatus()),
       SELFCONTROL_ACCESS_ERROR:
         "Website blocking is restricted to OWNER users.",
       getSelfControlAccess: vi.fn(async () => ({
@@ -141,7 +124,15 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
   });
 
   it("list_active includes live blocker status when no managed rules exist", async () => {
-    vi.spyOn(websiteBlockerEngine, "getSelfControlStatus").mockResolvedValue({
+    // `getSelfControlStatus` in the factory mock is a shared vi.fn;
+    // `vi.restoreAllMocks()` does not restore a factory-created mock, so a
+    // persistent mockResolvedValue here would leak this pinned "foreign
+    // /etc/hosts block" into later tests and make the writer's OS sync refuse
+    // to engage. Pin exactly the one status read this subaction performs.
+    vi.spyOn(
+      websiteBlockerEngine,
+      "getSelfControlStatus",
+    ).mockResolvedValueOnce({
       available: true,
       active: true,
       hostsFilePath: "/etc/hosts",

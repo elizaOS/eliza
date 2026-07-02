@@ -233,6 +233,30 @@ function patchDocument(
   return next;
 }
 
+/**
+ * Execute an owner-approved `sign_document` request: flip the underlying
+ * DocumentRequest from `pending` to `in_progress` so the deadline watcher
+ * and escalators treat the signature request as live. Invoked by
+ * RESOLVE_REQUEST after the approval-queue row transitions to `approved`.
+ *
+ * Returns `null` when the DocumentRequest no longer exists (the Wave-1
+ * document store is in-memory and does not survive restarts) — callers must
+ * surface that as a failure, never as a completed dispatch.
+ */
+export function dispatchApprovedSignatureRequest(
+  runtime: IAgentRuntime,
+  documentRequestId: string,
+): DocumentRequest | null {
+  const next = patchDocument(runtime, documentRequestId, {
+    status: "in_progress",
+  });
+  if (!next) return null;
+  logger.info(
+    `[OWNER_DOCUMENTS] signature request ${documentRequestId} dispatched (status=${next.status})`,
+  );
+  return next;
+}
+
 interface RunnerScope {
   readonly runtime: IAgentRuntime;
   readonly runner: ScheduledTaskRunnerHandle;

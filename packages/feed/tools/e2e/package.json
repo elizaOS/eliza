@@ -2,7 +2,8 @@
   "name": "@feed/e2e",
   "private": true,
   "scripts": {
-    "test": "sh -c 'if [ \"$RUN_FEED_E2E\" != \"1\" ]; then echo \"[skip] @feed/e2e browser E2E requires the MetaMask extension + app on :3000. Run download-extensions, start the stack, then set RUN_FEED_E2E=1.\" >&2; exit 0; fi; npx playwright test --config playwright.config.mjs'",
+    "test": "node ../e2e-gate.mjs --suite @feed/e2e --requires 'MetaMask extension (bun run download-extensions) + app on :3000 (auto-started via the keyless localnet harness when nothing is listening)' -- npx playwright test --config playwright.config.mjs",
+    "test:unit": "bun test tests/helpers/page-helpers.health.test.ts",
     "test:headed": "npx playwright test --config playwright.config.mjs --headed",
     "download-extensions": "npx chroma download-extensions --wallets metamask"
   },

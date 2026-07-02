@@ -5,7 +5,14 @@
     "target": "es2022",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
-  "include": ["playwright.config.ts", "synpress/**/*.ts", "synpress.d.ts"]
+  "include": [
+    "playwright.config.ts",
+    "global-setup.ts",
+    "dev-server.ts",
+    "specs/**/*.ts",
+    "synpress/**/*.ts",
+    "synpress.d.ts"
+  ]
 }

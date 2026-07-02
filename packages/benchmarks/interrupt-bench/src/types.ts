@@ -198,6 +198,13 @@ export interface AxisScore {
   weight: number;
   weighted: number;
   notes: string[];
+  /**
+   * True when the axis could not be measured for this run (e.g. latency in
+   * non-scripted modes, or a scenario that defines no expected intent). An
+   * excluded axis contributes nothing to the score and its weight is removed
+   * from the normalization — it is never a free 1.0.
+   */
+  excluded?: boolean;
 }
 
 export interface ScenarioResult {

@@ -10,7 +10,13 @@
 export const GOALS_CONTEXTS = ["goals", "self_care", "owner"] as const;
 export type GoalsContext = (typeof GOALS_CONTEXTS)[number];
 
-export const GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
+export const GOAL_ACTIONS = [
+  "create",
+  "update",
+  "delete",
+  "review",
+  "checkin",
+] as const;
 export type GoalActionName = (typeof GOAL_ACTIONS)[number];
 
 export const ROUTINE_ACTIONS = [

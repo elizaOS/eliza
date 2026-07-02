@@ -13,9 +13,35 @@ let consecutiveFailures = 0;
 const MAX_CONSECUTIVE_FAILURES = 5;
 
 /**
- * Waits for the server to be responsive before proceeding.
+ * Probes the app's readiness endpoint.
  *
- * Checks the root URL and accepts any response (except network errors or 5xx).
+ * Healthy means `/api/health` answered 2xx with `{ status: "ok" }` — the same
+ * signal CI and the integration harness use. A 404/401/redirect from a
+ * half-booted or wrong server is NOT healthy.
+ */
+async function probeHealthEndpoint(timeoutMs: number): Promise<boolean> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/health`, {
+      method: "GET",
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return false;
+    const body: unknown = await response.json();
+    return (
+      typeof body === "object" &&
+      body !== null &&
+      (body as { status?: unknown }).status === "ok"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Waits for the server to be ready before proceeding.
+ *
+ * Ready means the `/api/health` readiness endpoint reports healthy.
  * This prevents flakiness when the server is slow to start.
  *
  * @param maxRetries - Maximum number of retry attempts (default: 15)
@@ -26,18 +52,9 @@ export async function waitForServerHealthy(
   retryDelay = 2000,
 ): Promise<boolean> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch(`${BASE_URL}/`, {
-        method: "GET",
-        signal: AbortSignal.timeout(15000),
-      });
-      // Accept any non-5xx response as "server is up"
-      if (response.status < 500) {
-        consecutiveFailures = 0;
-        return true;
-      }
-    } catch {
-      // Silent retry - don't spam logs
+    if (await probeHealthEndpoint(15000)) {
+      consecutiveFailures = 0;
+      return true;
     }
 
     if (attempt < maxRetries) {
@@ -170,18 +187,12 @@ export async function cooldownBetweenTests(page: Page): Promise<void> {
 }
 
 /**
- * Check if server is currently healthy
+ * Check if the server is currently healthy.
+ *
+ * Healthy means `/api/health` answered 2xx with `{ status: "ok" }`.
  */
 export async function isServerHealthy(): Promise<boolean> {
-  try {
-    const response = await fetch(`${BASE_URL}/`, {
-      method: "GET",
-      signal: AbortSignal.timeout(5000),
-    });
-    return response.status < 500;
-  } catch {
-    return false;
-  }
+  return probeHealthEndpoint(5000);
 }
 
 /**

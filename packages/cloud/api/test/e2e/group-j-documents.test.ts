@@ -1,4 +1,17 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+/**
+ * Group J — /api/v1/documents (live e2e).
+ *
+ * Every status assertion pins the single status the Worker contract promises
+ * for the CI lane (wrangler dev + PGlite bridge — run-e2e-batches.mjs), which
+ * always binds object storage (`BLOB` in wrangler.toml). A target without the
+ * binding is a broken deployment and must FAIL, not pass through tolerance.
+ *
+ * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
+ * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
+ * named `skip` — never a silent pass.
+ */
+
+import { describe, expect, test } from "bun:test";
 
 import {
   api,
@@ -8,37 +21,32 @@ import {
   url,
 } from "./_helpers/api";
 
-let serverReachable = false;
-let hasTestApiKey = false;
-
-function shouldRunAuthed(): boolean {
-  return serverReachable && hasTestApiKey;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-j-documents] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
+}
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-j-documents] TEST_API_KEY is not set; the preload could not " +
+      "bootstrap a test API key. Tests will SKIP.",
+  );
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-j-documents] ${getBaseUrl()} did not respond to /api/health. Tests will skip.`,
-    );
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-j-documents] TEST_API_KEY is not set; auth-gated tests will skip.",
-    );
-  }
-});
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
 
-describe("Group J - /api/v1/documents", () => {
+describeE2E("Group J - /api/v1/documents", () => {
   test("auth gate: missing credentials returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/documents");
     expect(res.status).toBe(401);
   });
 
   test("validation: missing text content returns 400", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/documents",
       { filename: "empty.txt" },
@@ -48,7 +56,6 @@ describe("Group J - /api/v1/documents", () => {
   });
 
   test("text document lifecycle: create, list, query, delete", async () => {
-    if (!shouldRunAuthed()) return;
     const marker = `documents-e2e-${crypto.randomUUID()}`;
     const create = await api.post(
       "/api/v1/documents",
@@ -91,7 +98,6 @@ describe("Group J - /api/v1/documents", () => {
   });
 
   test("file upload stores documents without the Node runtime", async () => {
-    if (!shouldRunAuthed()) return;
     const marker = `documents-file-${crypto.randomUUID()}`;
     const form = new FormData();
     form.append(
@@ -122,8 +128,7 @@ describe("Group J - /api/v1/documents", () => {
     }
   });
 
-  test("pre-upload route is live and supports cleanup when object storage is configured", async () => {
-    if (!shouldRunAuthed()) return;
+  test("pre-upload stores a pending blob and cleans it up", async () => {
     const form = new FormData();
     form.append(
       "files",
@@ -136,25 +141,23 @@ describe("Group J - /api/v1/documents", () => {
       body: form,
       signal: AbortSignal.timeout(30_000),
     });
-    expect(res.status).not.toBe(501);
-    expect([200, 503]).toContain(res.status);
-
-    if (res.status === 200) {
-      const body = (await res.json()) as {
-        files?: Array<{ blobUrl?: string }>;
-      };
-      const blobUrl = body.files?.[0]?.blobUrl;
-      expect(blobUrl).toBeTruthy();
-      const deleted = await api.delete("/api/v1/documents/pre-upload", {
-        headers: bearerHeaders(),
-        body: { blobUrl },
-      });
-      expect(deleted.status).toBe(200);
-    }
+    // The `BLOB` R2 binding is declared in wrangler.toml, so every
+    // wrangler-served target has object storage: the contract is 200. (The
+    // route's 503 exists only for a misconfigured deploy — that must fail.)
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      files?: Array<{ blobUrl?: string }>;
+    };
+    const blobUrl = body.files?.[0]?.blobUrl;
+    expect(blobUrl).toBeTruthy();
+    const deleted = await api.delete("/api/v1/documents/pre-upload", {
+      headers: bearerHeaders(),
+      body: { blobUrl },
+    });
+    expect(deleted.status).toBe(200);
   });
 
   test("submit route validates required character and file payload", async () => {
-    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/documents/submit",
       {},

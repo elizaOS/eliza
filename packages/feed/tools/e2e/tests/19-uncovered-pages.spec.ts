@@ -166,7 +166,7 @@ test.describe("Uncovered Pages - Game", () => {
       "rank",
       "status",
     );
-    expect(typeof hasStats).toBe("boolean");
+    expect(hasStats).toBe(true);
   });
 
   test("game refresh functionality", async ({ page }) => {
@@ -176,14 +176,11 @@ test.describe("Uncovered Pages - Game", () => {
     const isVisible = await refreshBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (isVisible) {
-      await refreshBtn.click({ force: true });
-      await page.waitForTimeout(1000);
-      const body = await page.locator("body").textContent();
-      expect(body).toBeTruthy();
-    } else {
-      expect(true).toBe(true);
-    }
+    test.skip(!isVisible, "no refresh button rendered on the game page");
+    await refreshBtn.click({ force: true });
+    await page.waitForTimeout(1000);
+    const body = await page.locator("body").textContent();
+    expect(body).toBeTruthy();
   });
 });
 
@@ -214,6 +211,9 @@ test.describe("Uncovered Pages - NFT", () => {
     const isVisible = await searchInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no search input rendered on the NFT gallery");
+    await searchInput.fill("monkey");
+    await page.waitForTimeout(300);
+    expect(await searchInput.inputValue()).toBe("monkey");
   });
 });
