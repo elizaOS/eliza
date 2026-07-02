@@ -200,10 +200,7 @@ export function getMaxOutputTokensOverride(
       continue;
     }
     const separator = trimmed.lastIndexOf(":");
-    const parsed = Number.parseInt(
-      separator === -1 ? trimmed : trimmed.slice(separator + 1),
-      10
-    );
+    const parsed = Number.parseInt(separator === -1 ? trimmed : trimmed.slice(separator + 1), 10);
     if (Number.isNaN(parsed) || parsed <= 0) {
       continue;
     }

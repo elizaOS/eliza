@@ -14,7 +14,11 @@ const capacitorLlama = (overrides = {}) => ({
 describe("evaluateLocalInferenceReadiness (#11498)", () => {
   it("is NOT ready when every snapshot is missing (endpoints 404 on device)", () => {
     expect(
-      evaluateLocalInferenceReadiness({ hub: null, device: null, providers: null }),
+      evaluateLocalInferenceReadiness({
+        hub: null,
+        device: null,
+        providers: null,
+      }),
     ).toEqual({ ready: false, via: null, error: null });
   });
 

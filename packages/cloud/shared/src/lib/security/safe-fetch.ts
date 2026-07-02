@@ -1,7 +1,6 @@
 import type { LookupAddress } from "node:dns";
-import type { ClientRequest } from "node:http";
+import type { ClientRequest, IncomingMessage } from "node:http";
 import type { RequestOptions } from "node:https";
-import type { Readable as NodeReadable } from "node:stream";
 
 import { isForbiddenIpAddress, normalizeHostname, resolveSafeOutboundTarget } from "./outbound-url";
 
@@ -74,7 +73,6 @@ async function nodePinnedFetch(
 ): Promise<Response> {
   const isHttps = url.protocol === "https:";
   const httpModule = isHttps ? await import("node:https") : await import("node:http");
-  const { Readable } = await import("node:stream");
   const request = httpModule.request as typeof import("node:https").request;
 
   const method = (init.method ?? "GET").toUpperCase();
@@ -107,21 +105,59 @@ async function nodePinnedFetch(
       }
 
       const bodyless = method === "HEAD" || status === 204 || status === 205 || status === 304;
-      const body = bodyless ? null : (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>);
+      const body = bodyless ? null : nodeResponseBodyStream(res);
       resolve(new Response(body, { status, statusText: res.statusMessage, headers }));
     });
 
     req.on("error", reject);
-    writeRequestBody(req, Readable, method, init.body);
+    writeRequestBody(req, method, init.body);
   });
 }
 
-function writeRequestBody(
-  req: ClientRequest,
-  Readable: typeof NodeReadable,
-  method: string,
-  body: RequestInit["body"],
-): void {
+function toUint8ArrayChunk(chunk: unknown): Uint8Array {
+  if (chunk instanceof Uint8Array) {
+    return chunk;
+  }
+  if (typeof chunk === "string") {
+    return new TextEncoder().encode(chunk);
+  }
+  if (chunk instanceof ArrayBuffer) {
+    return new Uint8Array(chunk);
+  }
+  if (ArrayBuffer.isView(chunk)) {
+    return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+  return new TextEncoder().encode(String(chunk));
+}
+
+function nodeResponseBodyStream(res: IncomingMessage): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      const cleanup = () => {
+        res.off("data", onData);
+        res.off("end", onEnd);
+        res.off("error", onError);
+      };
+      const onData = (chunk: unknown) => controller.enqueue(toUint8ArrayChunk(chunk));
+      const onEnd = () => {
+        cleanup();
+        controller.close();
+      };
+      const onError = (error: Error) => {
+        cleanup();
+        controller.error(error);
+      };
+      res.on("data", onData);
+      res.on("end", onEnd);
+      res.on("error", onError);
+    },
+    cancel() {
+      res.destroy();
+    },
+  });
+}
+
+function writeRequestBody(req: ClientRequest, method: string, body: RequestInit["body"]): void {
   if (body == null || method === "GET" || method === "HEAD") {
     req.end();
   } else if (typeof body === "string") {
@@ -129,12 +165,32 @@ function writeRequestBody(
   } else if (body instanceof Uint8Array) {
     req.end(Buffer.from(body));
   } else if (body instanceof ReadableStream) {
-    // `body` is the DOM ReadableStream; Readable.fromWeb wants node:stream/web's.
-    // They are structurally identical at runtime — cast through `unknown` to the
-    // expected param type (the BodyInit union doesn't overlap the node type).
-    Readable.fromWeb(body as unknown as Parameters<typeof Readable.fromWeb>[0]).pipe(req);
+    writeReadableStreamBody(req, body);
   } else {
     req.end(String(body));
+  }
+}
+
+async function writeReadableStreamBody(
+  req: ClientRequest,
+  body: ReadableStream<unknown>,
+): Promise<void> {
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        req.end();
+        return;
+      }
+      if (!req.write(Buffer.from(toUint8ArrayChunk(value)))) {
+        await new Promise<void>((resolve) => req.once("drain", resolve));
+      }
+    }
+  } catch (error) {
+    req.destroy(error instanceof Error ? error : new Error(String(error)));
+  } finally {
+    reader.releaseLock();
   }
 }
 

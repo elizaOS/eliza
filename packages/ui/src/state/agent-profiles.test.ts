@@ -100,7 +100,9 @@ describe("upsertAndActivateAgentProfile — cross-surface registry sync", () => 
 
     const registry = loadAgentProfileRegistry();
     expect(second.id).toBe(first.id); // same profile, not a duplicate
-    expect(registry.profiles.filter((p) => p.kind === "remote")).toHaveLength(1);
+    expect(registry.profiles.filter((p) => p.kind === "remote")).toHaveLength(
+      1,
+    );
     expect(registry.activeProfileId).toBe(first.id); // re-activated
     const remote = registry.profiles.find((p) => p.id === first.id);
     expect(remote?.accessToken).toBe("jwt-new"); // token refreshed

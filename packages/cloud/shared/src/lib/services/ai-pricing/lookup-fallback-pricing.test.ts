@@ -21,11 +21,7 @@ import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 
 const USD_PER_M = 1_000_000;
 
-function catalogRow(
-  model: string,
-  chargeType: "input" | "output",
-  usdPerMillion: number,
-) {
+function catalogRow(model: string, chargeType: "input" | "output", usdPerMillion: number) {
   return {
     billing_source: "bitrouter",
     provider: "anthropic",
@@ -68,9 +64,7 @@ mock.module("../../../db/repositories/ai-pricing", () => ({
           row.billing_source === filters.billingSource &&
           row.product_family === filters.productFamily &&
           row.charge_type === filters.chargeType &&
-          filters.pairs.some(
-            (p) => p.provider === row.provider && p.model === row.model,
-          ),
+          filters.pairs.some((p) => p.provider === row.provider && p.model === row.model),
       ),
     listActiveEntries: async (filters?: {
       billingSource?: string;
@@ -80,11 +74,9 @@ mock.module("../../../db/repositories/ai-pricing", () => ({
     }) =>
       seedCatalog.filter(
         (row) =>
-          (!filters?.billingSource ||
-            row.billing_source === filters.billingSource) &&
+          (!filters?.billingSource || row.billing_source === filters.billingSource) &&
           (!filters?.provider || row.provider === filters.provider) &&
-          (!filters?.productFamily ||
-            row.product_family === filters.productFamily) &&
+          (!filters?.productFamily || row.product_family === filters.productFamily) &&
           (!filters?.chargeType || row.charge_type === filters.chargeType),
       ),
   },
@@ -117,13 +109,7 @@ test("catalogued current-generation models bill at their exact catalog rate", as
     ["claude-haiku-4-5", 1.2, 6, 7.2, 6],
   ] as const;
 
-  for (const [
-    model,
-    inputCost,
-    outputCost,
-    totalCost,
-    baseTotalCost,
-  ] of cases) {
+  for (const [model, inputCost, outputCost, totalCost, baseTotalCost] of cases) {
     const result = await calculateTextCostFromCatalog({
       model,
       provider: "anthropic",

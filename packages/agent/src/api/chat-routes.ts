@@ -1107,11 +1107,11 @@ export function markSyntheticChatFailureContent<T extends Content>(
       : classifySyntheticChatFailureText(text);
   if (!failureKind) return content;
 
-  const metadata = asRecord(content.metadata) ?? {};
+  const metadata = asRecord(content.metadata);
   return {
     ...content,
     metadata: {
-      ...metadata,
+      ...(metadata ? metadata : {}),
       elizaSyntheticFailure: true,
       chatFailureKind: failureKind,
     },
@@ -1448,9 +1448,12 @@ function normalizeIntentText(text: string): string {
 function hasLocalInferenceMetadata(
   message: ReturnType<typeof createMessageMemory>,
 ): boolean {
-  const contentMetadata = asRecord(message.content.metadata) ?? {};
-  const messageMetadata = asRecord(message.metadata) ?? {};
-  const metadata = { ...contentMetadata, ...messageMetadata };
+  const contentMetadata = asRecord(message.content.metadata);
+  const messageMetadata = asRecord(message.metadata);
+  const metadata = {
+    ...(contentMetadata ? contentMetadata : {}),
+    ...(messageMetadata ? messageMetadata : {}),
+  };
   const localValue =
     metadata.localInference ??
     metadata.localInferenceContext ??
