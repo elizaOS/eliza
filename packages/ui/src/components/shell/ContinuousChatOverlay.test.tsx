@@ -1699,6 +1699,62 @@ describe("ContinuousChatOverlay", () => {
     expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 
+  it("a mic tap ends transcription even while a reply is in flight (#9880 inline reply)", () => {
+    // A wake-word inline reply during transcription flips `responding` true
+    // while `handsFree` is false (the transcript layer paused it). The mic —
+    // labeled "stop transcription" — must still turn the session off; gating
+    // the OFF path on `responding` left a lit, dead mic button until the reply
+    // finished.
+    const stopTranscriptionAndMic = vi.fn();
+    const toggleHandsFree = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          recording: true,
+          responding: true,
+          handsFree: false,
+          stopTranscriptionAndMic,
+          toggleHandsFree,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("chat-composer-mic"));
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
+    expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("the audio-unlock chip works while the sheet is open (not swallowed as an outside tap)", () => {
+    // The unlock chip renders at the overlay root ABOVE the glass panel. The
+    // document-level outside-tap detectors treated everything outside the panel
+    // as "outside", so the chip's tap was swallowed (click suppressed) and the
+    // sheet collapsed — enabling voice output was impossible while the chat was
+    // open. The whole overlay now counts as inside.
+    const unlockAudio = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          needsAudioUnlock: true,
+          unlockAudio,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    const chip = screen.getByTestId("overlay-voice-audio-unlock");
+    // Real pointer sequence: the document-level detectors see pointerdown/up in
+    // the capture phase before the click reaches the button.
+    fireEvent.pointerDown(chip, { clientX: 200, clientY: 200, pointerId: 7 });
+    fireEvent.pointerUp(chip, { clientX: 200, clientY: 200, pointerId: 7 });
+    fireEvent.click(chip, { clientX: 200, clientY: 200 });
+
+    expect(unlockAudio).toHaveBeenCalledTimes(1);
+    // The sheet must stay open — the chip tap is not an outside collapse.
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
   it("does not enter push-to-talk on a long press while transcribing", () => {
     vi.useFakeTimers();
     try {

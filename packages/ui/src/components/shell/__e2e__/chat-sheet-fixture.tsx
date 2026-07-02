@@ -87,6 +87,11 @@ const initialTranscript =
 const initialSpeaking = params.has("speaking");
 const initialMuted = params.has("muted");
 const initialCanSend = !params.has("nosend");
+// `?unlock` seeds needsAudioUnlock=true so the audio-unlock chip renders; a tap
+// clears it (mirrors the real controller's unlockAudio resuming the context).
+const initialNeedsUnlock = params.has("unlock");
+// `?transcribing` seeds long-form transcription mode (record-only layer).
+const initialTranscribing = params.has("transcribing");
 // `?failure=no_provider` ends the thread with a failed assistant turn so the
 // recovery gate (Connect a provider → Open Settings) can be screenshot.
 const failureKind = params.get("failure");
@@ -122,6 +127,10 @@ function Harness(): React.JSX.Element {
   const [handsFree, setHandsFree] = React.useState(false);
   const [transcript, setTranscript] = React.useState(initialTranscript);
   const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(initialMuted);
+  const [needsAudioUnlock, setNeedsAudioUnlock] =
+    React.useState(initialNeedsUnlock);
+  const [transcriptionMode, setTranscriptionMode] =
+    React.useState(initialTranscribing);
 
   // Log lifecycle so the e2e harness can assert the interaction flow from the
   // console (the user asked for logs to be checked alongside the visuals).
@@ -264,7 +273,22 @@ function Harness(): React.JSX.Element {
     transcript,
     speaking: initialSpeaking,
     agentVoiceMuted,
-    needsAudioUnlock: false,
+    needsAudioUnlock,
+    transcriptionMode,
+    toggleTranscriptionMode: () => {
+      setTranscriptionMode((t) => {
+        console.log(`[fixture] toggleTranscriptionMode -> ${!t}`);
+        return !t;
+      });
+    },
+    // Mic tap while transcribing: master voice control — everything off.
+    stopTranscriptionAndMic: () => {
+      console.log("[fixture] stopTranscriptionAndMic");
+      setTranscriptionMode(false);
+      setRecording(false);
+      setTranscript("");
+      setPhase("summoned");
+    },
     // The overlay reads `modelStatus.kind` unconditionally; "ready" keeps the
     // local-model status strip dormant in the fixture.
     modelStatus: { kind: "ready" },
@@ -278,7 +302,10 @@ function Harness(): React.JSX.Element {
     startRecording,
     stopRecording,
     toggleAgentVoiceMute,
-    unlockAudio: () => console.log("[fixture] unlockAudio"),
+    unlockAudio: () => {
+      console.log("[fixture] unlockAudio");
+      setNeedsAudioUnlock(false);
+    },
     openSettings: () => console.log("[fixture] openSettings"),
     // `?tab=chat` disables the Home button (already home); `?tab=views` disables
     // Views; `?tab=settings` disables Settings. Unset → all three are enabled.

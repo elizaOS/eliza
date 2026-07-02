@@ -38,6 +38,7 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { TUTORIAL_CHAT_CONTROL_EVENT } from "../../events";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
 
@@ -293,6 +294,38 @@ describe("ContinuousChatOverlay — reachable states", () => {
     slowDrag(grabber() as Element, 300, 150); // pull up ~150px into the gap
     assertInvariants("free-rest");
     expect(detentOf()).toBe("half"); // free-rest below full still labels half
+  });
+
+  it("leaving FULL via the tutorial pill action drops full-bleed for good (no surprise re-maximize)", () => {
+    const tutorial = (action: string) =>
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent(TUTORIAL_CHAT_CONTROL_EVENT, { detail: { action } }),
+        );
+      });
+    // Thread-less controller: the later pill→open lands on the bare input bar
+    // (setMode("input")), the one pill exit that does NOT route through
+    // goToDetent — the seam where a stale `maximized` used to survive.
+    render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    tutorial("expand");
+    fireEvent.click(screen.getByTestId("chat-full-maximize"));
+    expect(sheet().getAttribute("data-maximized")).toBe("true");
+    assertInvariants("tutorial-maximized");
+
+    // Tutorial drops the chat to the pill — a leave-full transition, so
+    // full-bleed must reset with it.
+    tutorial("pill");
+    assertInvariants("tutorial-pill-from-maximized");
+
+    // Pill → bare input (no thread), then back up to FULL: the sheet must
+    // arrive at the normal inset FULL, not jump straight to edge-to-edge.
+    tap(pill());
+    assertInvariants("pill-open-to-input");
+    tutorial("expand");
+    assertInvariants("re-expanded");
+    expect(sheet().getAttribute("data-maximized")).not.toBe("true");
   });
 });
 

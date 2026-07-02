@@ -2277,18 +2277,22 @@ export function ContinuousChatOverlay({
       suppressNextClickRef.current = false;
       return;
     }
-    // Voice can't be turned ON while a reply is in flight (it's gated until the
-    // turn finishes), but an active hands-free session can always be turned OFF.
-    if (responding && !handsFree) return;
     // While transcribing, the mic is the master voice control: a tap turns the
     // mic OFF, which also ends transcription (mic = parent — turning off the mic
     // turns off transcript). This is distinct from the transcript button, which
     // turns transcript off but LEAVES THE MIC ON. The finished transcript still
-    // drops into the composer as an attachment.
+    // drops into the composer as an attachment. This OFF path is checked FIRST
+    // — never gated on `responding`: a wake-word inline reply (#9880) flips
+    // `responding` true while `handsFree` stays false mid-transcription, and
+    // gating it left a lit, dead "stop transcription" mic until the reply
+    // finished.
     if (transcriptionMode) {
       stopTranscriptionAndMic();
       return;
     }
+    // Voice can't be turned ON while a reply is in flight (it's gated until the
+    // turn finishes), but an active hands-free session can always be turned OFF.
+    if (responding && !handsFree) return;
     // Quick tap = hands-free conversation: the agent speaks its replies back and
     // the mic re-opens after each one. Tap again to end.
     toggleHandsFree();
@@ -2966,6 +2970,10 @@ export function ContinuousChatOverlay({
       switch (detail.action) {
         case "pill":
           setMode("pill");
+          // Leaving FULL without goToDetent: drop full-bleed with it, or the
+          // stale `maximized` re-applies on the NEXT return to full (surprise
+          // edge-to-edge). Only the FULL detent may be maximized.
+          setMaximized(false);
           inputRef.current?.blur();
           break;
         case "rest":
@@ -3274,10 +3282,36 @@ export function ContinuousChatOverlay({
     [slashMenu, runExecution],
   );
 
-  // Tapping ANYWHERE outside the chat panel drops the keyboard: if the composer
-  // holds focus and the pointer lands outside the panel, blur it. This is the
-  // iOS-standard "tap the background to dismiss the keyboard" behaviour and works
-  // whether the chat is open (over the scrim) or collapsed (over the live view).
+  // Whether a document-level pointer landed on one of the overlay's OWN
+  // surfaces. CONTRACT: EVERY child of the overlay root counts as INSIDE the
+  // chat for the outside-tap detectors below — the glass panel, the grabber,
+  // AND the controls that render at the overlay root ABOVE the panel (the
+  // audio-unlock chip, the live-transcript strip, the model-status pill). A
+  // tap on any of them must never be swallowed as an outside tap nor collapse
+  // the sheet; checking only `panelRef` made the audio-unlock chip unreachable
+  // while the sheet was open. The single exception is the dimming backdrop:
+  // it is pointer-transparent (`pointerEvents: "none"`), so a real tap "on"
+  // it always lands on the view behind — an event that names it as target
+  // (synthetic/test dispatch) stands in for tapping the dimmed background and
+  // stays OUTSIDE.
+  const isOverlayControlTarget = React.useCallback(
+    (target: EventTarget | null): boolean => {
+      if (!(target instanceof Node) || !overlayRef.current?.contains(target)) {
+        return false;
+      }
+      return !(
+        target instanceof Element &&
+        target.closest('[data-testid="chat-sheet-backdrop"]')
+      );
+    },
+    [],
+  );
+
+  // Tapping ANYWHERE outside the chat overlay drops the keyboard: if the
+  // composer holds focus and the pointer lands outside the overlay, blur it.
+  // This is the iOS-standard "tap the background to dismiss the keyboard"
+  // behaviour and works whether the chat is open (over the scrim) or collapsed
+  // (over the live view).
   React.useEffect(() => {
     if (typeof document === "undefined") return undefined;
     const onPointerDown = (event: PointerEvent) => {
@@ -3290,17 +3324,12 @@ export function ContinuousChatOverlay({
       // Keyboard already down -> outside taps do nothing here; the grabber,
       // scrim, Escape key, and pull-down gesture own disclosure/collapse.
       if (!focused) return;
-      const target = event.target as Node | null;
-      if (target && panelRef.current?.contains(target)) return;
-      // Leave a tap on the GRABBER to the gesture onTap; blurring here would
-      // preempt the disclosure toggle and make press-time focus impossible to
+      // A tap on any overlay control (panel, grabber, audio-unlock chip, …)
+      // is INSIDE — it must not dismiss the keyboard. The grabber in
+      // particular is left to the gesture onTap; blurring here would preempt
+      // the disclosure toggle and make press-time focus impossible to
       // distinguish from click-time focus.
-      if (
-        target instanceof Element &&
-        target.closest('[data-testid="chat-sheet-grabber"]')
-      ) {
-        return;
-      }
+      if (isOverlayControlTarget(event.target)) return;
       // Any other outside tap (incl. the dimming scrim) drops the keyboard and
       // returns to the pre-focus resting state — never a surprise full close.
       dismissKeyboardToPriorState();
@@ -3308,7 +3337,7 @@ export function ContinuousChatOverlay({
     document.addEventListener("pointerdown", onPointerDown, true);
     return () =>
       document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [dismissKeyboardToPriorState]);
+  }, [dismissKeyboardToPriorState, isOverlayControlTarget]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -3334,11 +3363,6 @@ export function ContinuousChatOverlay({
       return undefined;
     }
 
-    const isInsidePanel = (target: EventTarget | null): boolean =>
-      target instanceof Node && !!panelRef.current?.contains(target);
-    const isGrabber = (target: EventTarget | null): boolean =>
-      target instanceof Element &&
-      !!target.closest('[data-testid="chat-sheet-grabber"]');
     // Surfaces painted ABOVE the chat glass (notification sheet at z-9501,
     // tutorial at Z_TUTORIAL, any open Radix dialog) must win the tap — the
     // swallower otherwise eats their first tap AND collapses the chat under
@@ -3349,9 +3373,10 @@ export function ContinuousChatOverlay({
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 && event.pointerType === "mouse") return;
+      // The whole overlay (panel, grabber, root-level controls like the
+      // audio-unlock chip) is INSIDE — see isOverlayControlTarget's contract.
       if (
-        isInsidePanel(event.target) ||
-        isGrabber(event.target) ||
+        isOverlayControlTarget(event.target) ||
         isAboveShellOverlay(event.target)
       ) {
         outsideSheetPointerRef.current = null;
@@ -3413,7 +3438,7 @@ export function ContinuousChatOverlay({
       document.removeEventListener("pointerup", onPointerEnd, true);
       document.removeEventListener("pointercancel", onPointerCancel, true);
     };
-  }, [sheetOpen, collapse]);
+  }, [sheetOpen, collapse, isOverlayControlTarget]);
 
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire
@@ -3760,9 +3785,13 @@ export function ContinuousChatOverlay({
         goToDetent("half");
       } else {
         // In a gap between detents → rest exactly where released. `half` is the
-        // open base; `freeH` overrides the actual height to where the finger left.
+        // open base; `freeH` overrides the actual height to where the finger
+        // left. This leaves FULL without goToDetent, so drop full-bleed here
+        // too — only the FULL detent may stay maximized (a stale flag would
+        // re-maximize the next return to full).
         setFreeH(h);
         setMode("half");
+        setMaximized(false);
       }
     },
   });
