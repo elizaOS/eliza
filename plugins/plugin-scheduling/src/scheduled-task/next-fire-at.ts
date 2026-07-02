@@ -18,6 +18,7 @@
 import { computeNextCronRunAtMs } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
+import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
   ScheduledTask,
@@ -290,7 +291,7 @@ export async function computeNextFireAt(
       const nextMs = computeNextCronRunAtMs(
         trigger.expression,
         baseMs,
-        trigger.tz,
+        resolveTriggerTz(trigger.tz, context.ownerFacts),
       );
       return nextMs === null ? null : new Date(nextMs).toISOString();
     }

@@ -178,3 +178,17 @@ describe("computeNextFireAt trigger baselines (no override)", () => {
     expect(next).toBeNull();
   });
 });
+
+describe("computeNextFireAt owner_local cron tz resolution", () => {
+  it("indexes the next fire at the owner's local hour, not the UTC hour", async () => {
+    // NOW = 2026-05-11T12:00Z. Denver (UTC-6, daylight time): 06:00 local.
+    // Daily 9am owner_local => next fire today at 15:00Z, not 2026-05-12T09:00Z.
+    const next = await computeNextFireAt(
+      taskWith({
+        trigger: { kind: "cron", expression: "0 9 * * *", tz: "owner_local" },
+      }),
+      { now: NOW, ownerFacts: { timezone: "America/Denver" }, anchors: null },
+    );
+    expect(next).toBe("2026-05-11T15:00:00.000Z");
+  });
+});

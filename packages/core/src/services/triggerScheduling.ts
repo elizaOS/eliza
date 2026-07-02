@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import type { TriggerConfig, TriggerType } from "../types/trigger";
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000;
@@ -134,39 +135,68 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 	);
 }
 
+/** Maximum |ms| a JS Date can represent (±100,000,000 days from epoch). */
+const MAX_DATE_MS = 8_640_000_000_000_000;
+
+/**
+ * Timezone validity cache: `Intl.DateTimeFormat` construction is the only
+ * reliable IANA check, and cron scans call the offset helper once per
+ * candidate minute — validate each zone string once, warn once on failure,
+ * and fall back to UTC explicitly instead of swallowing the RangeError.
+ */
+const timezoneValidity = new Map<string, boolean>();
+
+function isValidTimezone(timezone: string): boolean {
+	const cached = timezoneValidity.get(timezone);
+	if (cached !== undefined) return cached;
+	let valid = true;
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+	} catch {
+		valid = false;
+	}
+	timezoneValidity.set(timezone, valid);
+	if (!valid) {
+		logger.warn(
+			`[TriggerScheduling] Invalid timezone "${timezone}" — evaluating cron schedule in UTC. Sentinel zones (e.g. "owner_local") must be resolved to an IANA zone before scheduling.`,
+		);
+	}
+	return valid;
+}
+
 function getTimezoneOffsetMs(
 	timezone: string | undefined,
 	atMs: number,
 ): number {
 	if (!timezone || timezone === "UTC") return 0;
-	try {
-		const formatter = new Intl.DateTimeFormat("en-US", {
-			timeZone: timezone,
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-			hour12: false,
-		});
-		const parts = formatter.formatToParts(new Date(atMs));
-		const get = (type: string): number => {
-			const part = parts.find((p) => p.type === type);
-			return part ? Number(part.value) : 0;
-		};
-		const tzDate = Date.UTC(
-			get("year"),
-			get("month") - 1,
-			get("day"),
-			get("hour"),
-			get("minute"),
-			get("second"),
-		);
-		return tzDate - atMs;
-	} catch {
-		return 0;
-	}
+	if (!isValidTimezone(timezone)) return 0;
+	// Invalid-Date instants cannot be formatted; mirror the UTC path (which
+	// simply never matches an Invalid Date) by treating them as offset 0.
+	if (!Number.isFinite(atMs) || Math.abs(atMs) > MAX_DATE_MS) return 0;
+	const formatter = new Intl.DateTimeFormat("en-US", {
+		timeZone: timezone,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		hour12: false,
+	});
+	const parts = formatter.formatToParts(new Date(atMs));
+	const get = (type: string): number => {
+		const part = parts.find((p) => p.type === type);
+		return part ? Number(part.value) : 0;
+	};
+	const tzDate = Date.UTC(
+		get("year"),
+		get("month") - 1,
+		get("day"),
+		get("hour"),
+		get("minute"),
+		get("second"),
+	);
+	return tzDate - atMs;
 }
 
 function cronMatches(
