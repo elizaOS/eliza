@@ -244,7 +244,9 @@ describe("ContinuousChatOverlay slash commands", () => {
     const slash = makeSlash();
     const { input } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "/orchestrator" } });
-    fireEvent.pointerDown(screen.getByTestId("slash-option-0"));
+    // The pick fires on click (pointer-down only guards composer focus) so a
+    // touch drag-to-scroll can never execute a command — see SlashCommandMenu.
+    fireEvent.click(screen.getByTestId("slash-option-0"));
     expect(slash.navigateView).toHaveBeenCalledWith({
       viewId: "orchestrator",
       viewPath: "/orchestrator",
