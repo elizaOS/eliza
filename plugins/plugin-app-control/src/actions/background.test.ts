@@ -78,6 +78,48 @@ describe("inferBackgroundPlan", () => {
 		).toEqual({ op: "reset" });
 	});
 
+	it("detects undo from surface-named 'put … back' phrasings (#11360)", () => {
+		expect(inferBackgroundPlan("put the background back", undefined)).toEqual({
+			op: "undo",
+		});
+		expect(inferBackgroundPlan("put the wallpaper back", undefined)).toEqual({
+			op: "undo",
+		});
+		expect(
+			inferBackgroundPlan("switch back the background", undefined),
+		).toEqual({ op: "undo" });
+	});
+
+	it("detects undo from 'revert the wallpaper' (#11360)", () => {
+		expect(inferBackgroundPlan("revert the wallpaper", undefined)).toEqual({
+			op: "undo",
+		});
+	});
+
+	it("detects reset from 'restore/back to the original' (#11360)", () => {
+		expect(
+			inferBackgroundPlan("restore the original background", undefined),
+		).toEqual({ op: "reset" });
+		expect(
+			inferBackgroundPlan("put the background back to the original", undefined),
+		).toEqual({ op: "reset" });
+	});
+
+	it("'go back to the default look' is reset, not undo", () => {
+		expect(
+			inferBackgroundPlan("go back to the default background look", undefined),
+		).toEqual({ op: "reset" });
+	});
+
+	it("scenario phrasing 'reset the background to the default look' is reset", () => {
+		expect(
+			inferBackgroundPlan(
+				"reset the background to the default look",
+				undefined,
+			),
+		).toEqual({ op: "reset" });
+	});
+
 	it("uses an image attachment as the background", () => {
 		const plan = inferBackgroundPlan("set this as my background", [
 			{ id: "a", url: "/api/media/abc.png", contentType: "image" } as Media,

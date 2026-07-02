@@ -77,9 +77,15 @@ export default scenario({
 			minCount: 1,
 		},
 		{
+			// The model's own arguments must reference the requested color — as
+			// the name ("teal") or an explicit hex. The exact curated #0891b2
+			// resolution is pinned below by the broadcast-ledger check (that is
+			// the handler's contract); requiring the internal hex in the MODEL's
+			// tool-call arguments made this check pass only when the model
+			// happened to emit the resolved hex itself (#11360).
 			type: "selectedActionArguments",
 			actionName: "BACKGROUND",
-			includesAll: [/#0891b2/],
+			includesAll: [/teal|#0891b2/i],
 		},
 		{
 			type: "custom",

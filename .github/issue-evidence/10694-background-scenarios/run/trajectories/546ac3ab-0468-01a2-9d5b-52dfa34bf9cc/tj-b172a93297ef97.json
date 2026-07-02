@@ -1,0 +1,1279 @@
+{
+  "trajectoryId": "tj-b172a93297ef97",
+  "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+  "roomId": "948fd938-cf30-0f94-affb-a2d20264aaa1",
+  "runId": "d75473c8-1498-479d-a188-51126c958f58",
+  "scenarioId": "background-shader-undo-redo",
+  "rootMessage": {
+    "id": "03173f44-7305-46d2-ace4-0d145b251797",
+    "text": "reset the background to the default look",
+    "sender": "1b51022c-367d-057d-8c7a-bad8ac0f64d3"
+  },
+  "startedAt": 1783027036841,
+  "status": "finished",
+  "stages": [
+    {
+      "stageId": "stage-msghandler-1783027036841",
+      "kind": "messageHandler",
+      "startedAt": 1783027036841,
+      "endedAt": 1783027037160,
+      "latencyMs": 319,
+      "model": {
+        "modelType": "RESPONSE_HANDLER",
+        "provider": "default",
+        "messages": [
+          {
+            "role": "system",
+            "content": "user_role: OWNER\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.\n\nmessage_handler_stage:\ntask: Plan this direct message.\n\navailable_contexts:\n- simple [label=Simple; aliases=direct,shortcut; sensitivity=public; cache=global]\n- general [label=General; aliases=chat,conversation; sensitivity=public; cache=global]\n- memory [label=Memory; role>=USER; sensitivity=personal; cache=agent]\n- documents [label=Documents; role>=USER; sensitivity=personal; cache=agent]\n- knowledge [label=Knowledge; parent=documents; role>=USER; sensitivity=personal; cache=agent]\n- research [label=Research; parent=documents; role>=USER; sensitivity=personal; cache=conversation]\n- web [label=Web; role>=USER; sensitivity=public; cache=turn]\n- browser [label=Browser; parent=web; role>=ADMIN; sensitivity=personal; cache=turn]\n- code [label=Code; role>=ADMIN; sensitivity=personal; cache=conversation]\n- files [label=Files; parent=code; role>=ADMIN; sensitivity=private; cache=turn]\n- terminal [label=Terminal; parent=code; role>=OWNER; sensitivity=private; cache=turn]\n- email [label=Email; role>=ADMIN; sensitivity=private; cache=turn]\n- calendar [label=Calendar; role>=ADMIN; sensitivity=private; cache=turn]\n- contacts [label=Contacts; role>=ADMIN; sensitivity=private; cache=agent]\n- tasks [label=Tasks; role>=ADMIN; sensitivity=personal; cache=agent]\n- todos [label=Todos; parent=tasks; role>=ADMIN; sensitivity=personal; cache=agent]\n- productivity [label=Productivity; parent=tasks; role>=ADMIN; sensitivity=personal; cache=conversation]\n- health [label=Health; role>=OWNER; sensitivity=private; cache=turn]\n- screen_time [label=Screen Time; aliases=screen_time,screentime; role>=OWNER; sensitivity=private; cache=turn]\n- subscriptions [label=Subscriptions; role>=OWNER; sensitivity=private; cache=turn]\n- finance [label=Finance; aliases=money,balance,balances,portfolio; role>=OWNER; sensitivity=private; cache=turn]\n- payments [label=Payments; parent=finance; role>=OWNER; sensitivity=private; cache=turn]\n- wallet [label=Wallet; aliases=account_balance,wallet_balance; parents=finance; role>=OWNER; sensitivity=private; cache=turn]\n- crypto [label=Crypto; aliases=web3,defi,token,tokens,onchain,on_chain; parents=finance,wallet; role>=OWNER; sensitivity=private; cache=turn]\n- messaging [label=Messaging; role>=ADMIN; sensitivity=private; cache=turn]\n- phone [label=Phone; aliases=sms,voice; parent=messaging; role>=ADMIN; sensitivity=private; cache=turn]\n- social_posting [label=Social Posting; aliases=social_posting,posting; role>=ADMIN; sensitivity=private; cache=turn]\n- social [label=Social; aliases=social_media,social_media; parents=messaging,social_posting; role>=ADMIN; sensitivity=private; cache=turn]\n- media [label=Media; role>=USER; sensitivity=personal; cache=turn]\n- automation [label=Automation; role>=ADMIN; sensitivity=personal; cache=agent]\n- connectors [label=Connectors; role>=ADMIN; sensitivity=private; cache=agent]\n- settings [label=Settings; role>=ADMIN; sensitivity=private; cache=agent]\n- character [label=Character; parent=settings; role>=ADMIN; sensitivity=private; cache=agent]\n- secrets [label=Secrets; role>=OWNER; sensitivity=system; cache=none]\n- admin [label=Admin; role>=OWNER; sensitivity=system; cache=none]\n- system [label=System; parent=admin; role>=OWNER; sensitivity=system; cache=none]\n- state [label=State; parent=system; role>=ADMIN; sensitivity=system; cache=turn]\n- world [label=World; parent=system; role>=ADMIN; sensitivity=private; cache=turn]\n- game [label=Game; parent=world; role>=USER; sensitivity=personal; cache=turn]\n- agent_internal [label=Agent Internal; aliases=internal,self; role>=OWNER; sensitivity=system; cache=none]\n\ndirect/private rules:\n- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations: use contexts=[\"simple\"] and put the final answer in replyText.\n- For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.\n- Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.\n- Only use \"simple\" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.\n- Never claim searched/scanned/recalled unless tool returned it; includes \"I scanned the chat\" or \"Spawning a sub-agent\".\n- Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.\n- A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.\n- Crisis/legal/medical/self-harm/police/CPS: contexts=[\"simple\"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.\n- For tool/planning paths, replyText is only a brief ack (\"On it.\"). Never refuse because tools may run after this stage.\n- If schema omits shouldRespond, do not invent it.\n- contexts must be ids from available_contexts. If a needed tool context is unclear, use [\"general\"].\n\nReturn exactly one JSON object for HANDLE_RESPONSE. No prose, markdown, or thinking.\n\n- For code snippets, prefer valid runnable syntax over impossible formatting constraints.\n\n## Response Handler Fields\nPopulate every registered field. Use empty value when not applicable.\n### contexts\nRouting tags. Pick from available_contexts. Use [\"simple\"] only for trivial direct replies needing no action/tool/provider/sub-agent; replyText is answer. Otherwise choose relevant context ids; planner engages providers/actions. Empty invalid when shouldRespond=RESPOND.\n\n### intents\nShort verb phrases for this turn: [\"schedule meeting\", \"draft email\", \"research X\"]. Use 1-4. Helps action retrieval/routing. Empty for no actionable intent.\n\n### replyText\nUser-facing reply. Populate when shouldRespond=RESPOND. contexts includes \"simple\" => whole answer. Planning/tool path => brief ack only (\"On it.\", \"Spawning the sub-agent now.\", \"Looking into it.\"); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != \"simple\", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: \"I cannot...\", \"I am unable to...\", \"I don't have the ability to...\", \"Sorry, I can't...\". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: [\"simple\"]`, explain.\n\n### threadOps\nThread operations for user's durable work threads.\n\nUse for:\n- long task start -> { \"type\": \"create\", \"instruction\": \"<what to do>\" }\n- correct/refocus thread -> { \"type\": \"steer\", \"workThreadId\": \"<id>\", \"instruction\": \"<correction>\" }\n- cancel/stop/abort current work -> { \"type\": \"abort\", \"workThreadId\": \"<id if known>\", \"reason\": \"<short why>\" }\n- pause waiting input -> { \"type\": \"mark_waiting\", \"workThreadId\": \"<id>\" }\n- mark complete -> { \"type\": \"mark_completed\", \"workThreadId\": \"<id>\" }\n- merge threads -> { \"type\": \"merge\", \"workThreadId\": \"<TARGET id>\", \"sourceWorkThreadIds\": [\"<id1>\", \"<id2>\"] }\n- attach this room/source -> { \"type\": \"attach_source\", \"workThreadId\": \"<id>\", \"sourceRef\": { \"connector\": \"...\", \"roomId\": \"...\", \"canMutate\": true } }\n- schedule follow-up -> { \"type\": \"schedule_followup\", \"workThreadId\": \"<id>\", \"instruction\": \"<what to do later>\" }\n\nabort preempts turn: stop in-flight work, emit short ack. Use when user clearly retracts current request (\"nvm\", \"stop\", \"actually don't\", \"wait don't do that\").\n\nEmpty array when no thread intent. Do not invent threads; only use active workThreadId values listed elsewhere in prompt.\n\n### candidateActionNames\nLikely action names for this turn. Prefer available_actions; confident unlisted names ok (planner resolves similes). Use UPPER_SNAKE_CASE canonical names. Empty when no action likely."
+          },
+          {
+            "role": "user",
+            "content": "provider:FACTS:\nThings ScenarioAgent knows about the speaker:\n[durable.preference conf=0.70] prefers slow lava-lamp style animated backgrounds\n\nprior_message:user:\ngive me a slow lava-lamp style animated background\n\nprior_message:user:\nundo that background change\n\nprior_message:user:\nredo the background change\n\ncurrent_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message (\"my favorite color is teal, what is my favorite color?\"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly (\"I don't see X in the recent messages I can see\") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.\n\nmessage:user:\nreset the background to the default look"
+          }
+        ],
+        "tools": [
+          {
+            "name": "HANDLE_RESPONSE",
+            "description": "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
+            "type": "function",
+            "strict": true,
+            "parameters": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "contexts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Context ids from available_contexts. 'simple'=direct reply, no planner."
+                },
+                "intents": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Verb-led intents. Lowercase. No punctuation. ~6 words max."
+                },
+                "replyText": {
+                  "type": "string",
+                  "description": "User-facing reply. Simple=whole answer. Planning=brief ack (\"On it.\", \"Working on it.\", \"Spawning a sub-agent now.\"). Never refuse on planning path. Plain text unless channel supports markdown."
+                },
+                "threadOps": {
+                  "type": "array",
+                  "description": "Thread operations this turn. Empty array when no thread action.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "create",
+                          "steer",
+                          "stop",
+                          "merge",
+                          "attach_source",
+                          "schedule_followup",
+                          "mark_waiting",
+                          "mark_completed",
+                          "abort"
+                        ],
+                        "description": "Operation type. 'abort' preempts turn; others stage mutations for lifeops_thread_control."
+                      },
+                      "workThreadId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Target thread id. Required for steer/stop/merge/attach_source/schedule_followup/mark_*; optional for abort (current turn) and create."
+                      },
+                      "sourceWorkThreadIds": {
+                        "type": "array",
+                        "description": "merge: source thread ids absorbed into workThreadId. Empty otherwise.",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "sourceRef": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "connector": {
+                            "type": "string"
+                          },
+                          "channelName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "channelKind": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "roomId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "externalThreadId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "accountId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "grantId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "canRead": {
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
+                          },
+                          "canMutate": {
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "connector",
+                          "channelName",
+                          "channelKind",
+                          "roomId",
+                          "externalThreadId",
+                          "accountId",
+                          "grantId",
+                          "canRead",
+                          "canMutate"
+                        ],
+                        "description": "For attach_source: the source ref to attach."
+                      },
+                      "instruction": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "What to do for create/steer/schedule_followup. Brief, action-oriented."
+                      },
+                      "reason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Why this op (especially useful for abort and stop)."
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "workThreadId",
+                      "sourceWorkThreadIds",
+                      "sourceRef",
+                      "instruction",
+                      "reason"
+                    ]
+                  }
+                },
+                "candidateActionNames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Action names. UPPER_SNAKE_CASE. Retrieval hints; high-precision hits expose planner actions."
+                }
+              },
+              "required": [
+                "contexts",
+                "intents",
+                "replyText",
+                "threadOps",
+                "candidateActionNames"
+              ]
+            }
+          }
+        ],
+        "toolChoice": "required",
+        "providerOptions": {
+          "eliza": {
+            "promptCacheKey": "v5:b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b",
+            "prefixHash": "b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b",
+            "segmentHashes": [
+              "ab8cf1343ace051ce69c596cc87708fd3426291ebcbcd4039f0994601b7d3612",
+              "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+              "607652dcec85a357165d1746c3c36fa62e5e6ad1f89b13331082d5f39d9b660d",
+              "a363a9241754667b607d4a9af8f5209b04494298423ea887b5810ca2e84f149a",
+              "bfe4da1fa8fd5c366daa77c5a2961790dd7ac6c04771314a4e772b7e933ac5e2",
+              "68945472e5b227b472378fb505fa06c87d6602944e3dace4de1eb32276f3e188",
+              "fdbb37a53ca0c9bd23cf371db4f15b71e84e5ca1d2874674b20f0a8077700b37",
+              "cd32700428001eaefd419bb21332eccba9ae7fdb7a4728bce8c7363f676c1d70",
+              "4f7156116a964e4963f12d9194805dbe136479b5c2578d7fe607311721ea6122"
+            ],
+            "cachePlan": {
+              "version": 1,
+              "anthropicBreakpoints": [
+                {
+                  "segmentIndex": 2,
+                  "segmentHash": "607652dcec85a357165d1746c3c36fa62e5e6ad1f89b13331082d5f39d9b660d",
+                  "ttl": "short",
+                  "cacheControl": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            },
+            "conversationId": "948fd938-cf30-0f94-affb-a2d20264aaa1",
+            "promptSegments": [
+              {
+                "content": "user_role: OWNER",
+                "stable": true
+              },
+              {
+                "content": "\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
+                "stable": true
+              },
+              {
+                "content": "\n\nmessage_handler_stage:\ntask: Plan this direct message.\n\navailable_contexts:\n- simple [label=Simple; aliases=direct,shortcut; sensitivity=public; cache=global]\n- general [label=General; aliases=chat,conversation; sensitivity=public; cache=global]\n- memory [label=Memory; role>=USER; sensitivity=personal; cache=agent]\n- documents [label=Documents; role>=USER; sensitivity=personal; cache=agent]\n- knowledge [label=Knowledge; parent=documents; role>=USER; sensitivity=personal; cache=agent]\n- research [label=Research; parent=documents; role>=USER; sensitivity=personal; cache=conversation]\n- web [label=Web; role>=USER; sensitivity=public; cache=turn]\n- browser [label=Browser; parent=web; role>=ADMIN; sensitivity=personal; cache=turn]\n- code [label=Code; role>=ADMIN; sensitivity=personal; cache=conversation]\n- files [label=Files; parent=code; role>=ADMIN; sensitivity=private; cache=turn]\n- terminal [label=Terminal; parent=code; role>=OWNER; sensitivity=private; cache=turn]\n- email [label=Email; role>=ADMIN; sensitivity=private; cache=turn]\n- calendar [label=Calendar; role>=ADMIN; sensitivity=private; cache=turn]\n- contacts [label=Contacts; role>=ADMIN; sensitivity=private; cache=agent]\n- tasks [label=Tasks; role>=ADMIN; sensitivity=personal; cache=agent]\n- todos [label=Todos; parent=tasks; role>=ADMIN; sensitivity=personal; cache=agent]\n- productivity [label=Productivity; parent=tasks; role>=ADMIN; sensitivity=personal; cache=conversation]\n- health [label=Health; role>=OWNER; sensitivity=private; cache=turn]\n- screen_time [label=Screen Time; aliases=screen_time,screentime; role>=OWNER; sensitivity=private; cache=turn]\n- subscriptions [label=Subscriptions; role>=OWNER; sensitivity=private; cache=turn]\n- finance [label=Finance; aliases=money,balance,balances,portfolio; role>=OWNER; sensitivity=private; cache=turn]\n- payments [label=Payments; parent=finance; role>=OWNER; sensitivity=private; cache=turn]\n- wallet [label=Wallet; aliases=account_balance,wallet_balance; parents=finance; role>=OWNER; sensitivity=private; cache=turn]\n- crypto [label=Crypto; aliases=web3,defi,token,tokens,onchain,on_chain; parents=finance,wallet; role>=OWNER; sensitivity=private; cache=turn]\n- messaging [label=Messaging; role>=ADMIN; sensitivity=private; cache=turn]\n- phone [label=Phone; aliases=sms,voice; parent=messaging; role>=ADMIN; sensitivity=private; cache=turn]\n- social_posting [label=Social Posting; aliases=social_posting,posting; role>=ADMIN; sensitivity=private; cache=turn]\n- social [label=Social; aliases=social_media,social_media; parents=messaging,social_posting; role>=ADMIN; sensitivity=private; cache=turn]\n- media [label=Media; role>=USER; sensitivity=personal; cache=turn]\n- automation [label=Automation; role>=ADMIN; sensitivity=personal; cache=agent]\n- connectors [label=Connectors; role>=ADMIN; sensitivity=private; cache=agent]\n- settings [label=Settings; role>=ADMIN; sensitivity=private; cache=agent]\n- character [label=Character; parent=settings; role>=ADMIN; sensitivity=private; cache=agent]\n- secrets [label=Secrets; role>=OWNER; sensitivity=system; cache=none]\n- admin [label=Admin; role>=OWNER; sensitivity=system; cache=none]\n- system [label=System; parent=admin; role>=OWNER; sensitivity=system; cache=none]\n- state [label=State; parent=system; role>=ADMIN; sensitivity=system; cache=turn]\n- world [label=World; parent=system; role>=ADMIN; sensitivity=private; cache=turn]\n- game [label=Game; parent=world; role>=USER; sensitivity=personal; cache=turn]\n- agent_internal [label=Agent Internal; aliases=internal,self; role>=OWNER; sensitivity=system; cache=none]\n\ndirect/private rules:\n- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations: use contexts=[\"simple\"] and put the final answer in replyText.\n- For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.\n- Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.\n- Only use \"simple\" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.\n- Never claim searched/scanned/recalled unless tool returned it; includes \"I scanned the chat\" or \"Spawning a sub-agent\".\n- Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.\n- A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.\n- Crisis/legal/medical/self-harm/police/CPS: contexts=[\"simple\"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.\n- For tool/planning paths, replyText is only a brief ack (\"On it.\"). Never refuse because tools may run after this stage.\n- If schema omits shouldRespond, do not invent it.\n- contexts must be ids from available_contexts. If a needed tool context is unclear, use [\"general\"].\n\nReturn exactly one JSON object for HANDLE_RESPONSE. No prose, markdown, or thinking.\n\n- For code snippets, prefer valid runnable syntax over impossible formatting constraints.\n\n## Response Handler Fields\nPopulate every registered field. Use empty value when not applicable.\n### contexts\nRouting tags. Pick from available_contexts. Use [\"simple\"] only for trivial direct replies needing no action/tool/provider/sub-agent; replyText is answer. Otherwise choose relevant context ids; planner engages providers/actions. Empty invalid when shouldRespond=RESPOND.\n\n### intents\nShort verb phrases for this turn: [\"schedule meeting\", \"draft email\", \"research X\"]. Use 1-4. Helps action retrieval/routing. Empty for no actionable intent.\n\n### replyText\nUser-facing reply. Populate when shouldRespond=RESPOND. contexts includes \"simple\" => whole answer. Planning/tool path => brief ack only (\"On it.\", \"Spawning the sub-agent now.\", \"Looking into it.\"); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != \"simple\", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: \"I cannot...\", \"I am unable to...\", \"I don't have the ability to...\", \"Sorry, I can't...\". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: [\"simple\"]`, explain.\n\n### threadOps\nThread operations for user's durable work threads.\n\nUse for:\n- long task start -> { \"type\": \"create\", \"instruction\": \"<what to do>\" }\n- correct/refocus thread -> { \"type\": \"steer\", \"workThreadId\": \"<id>\", \"instruction\": \"<correction>\" }\n- cancel/stop/abort current work -> { \"type\": \"abort\", \"workThreadId\": \"<id if known>\", \"reason\": \"<short why>\" }\n- pause waiting input -> { \"type\": \"mark_waiting\", \"workThreadId\": \"<id>\" }\n- mark complete -> { \"type\": \"mark_completed\", \"workThreadId\": \"<id>\" }\n- merge threads -> { \"type\": \"merge\", \"workThreadId\": \"<TARGET id>\", \"sourceWorkThreadIds\": [\"<id1>\", \"<id2>\"] }\n- attach this room/source -> { \"type\": \"attach_source\", \"workThreadId\": \"<id>\", \"sourceRef\": { \"connector\": \"...\", \"roomId\": \"...\", \"canMutate\": true } }\n- schedule follow-up -> { \"type\": \"schedule_followup\", \"workThreadId\": \"<id>\", \"instruction\": \"<what to do later>\" }\n\nabort preempts turn: stop in-flight work, emit short ack. Use when user clearly retracts current request (\"nvm\", \"stop\", \"actually don't\", \"wait don't do that\").\n\nEmpty array when no thread intent. Do not invent threads; only use active workThreadId values listed elsewhere in prompt.\n\n### candidateActionNames\nLikely action names for this turn. Prefer available_actions; confident unlisted names ok (planner resolves similes). Use UPPER_SNAKE_CASE canonical names. Empty when no action likely.",
+                "stable": true
+              },
+              {
+                "content": "\n\nThings ScenarioAgent knows about the speaker:\n[durable.preference conf=0.70] prefers slow lava-lamp style animated backgrounds",
+                "stable": false
+              },
+              {
+                "content": "\n\ngive me a slow lava-lamp style animated background",
+                "stable": false
+              },
+              {
+                "content": "\n\nundo that background change",
+                "stable": false
+              },
+              {
+                "content": "\n\nredo the background change",
+                "stable": false
+              },
+              {
+                "content": "\n\ncurrent_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message (\"my favorite color is teal, what is my favorite color?\"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly (\"I don't see X in the recent messages I can see\") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.",
+                "stable": false
+              },
+              {
+                "content": "\n\nreset the background to the default look",
+                "stable": false
+              }
+            ],
+            "modelInputBudget": {
+              "estimatedInputTokens": 3662,
+              "contextWindowTokens": 128000,
+              "reserveTokens": 10000,
+              "compactionThresholdTokens": 118000,
+              "shouldCompact": false,
+              "resolvedModelKey": null
+            },
+            "guidedDecode": true,
+            "thinking": "off"
+          },
+          "cerebras": {
+            "promptCacheKey": "v5:b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b",
+            "prompt_cache_key": "v5:b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b"
+          },
+          "openai": {
+            "promptCacheKey": "v5:b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b"
+          },
+          "openrouter": {
+            "promptCacheKey": "v5:b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b",
+            "prompt_cache_key": "v5:b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b"
+          },
+          "gateway": {
+            "caching": "auto"
+          },
+          "anthropic": {
+            "cacheControl": {
+              "type": "ephemeral"
+            },
+            "cacheSystem": true,
+            "maxBreakpoints": 4,
+            "cacheBreakpoints": [
+              {
+                "segmentIndex": 2,
+                "segmentHash": "607652dcec85a357165d1746c3c36fa62e5e6ad1f89b13331082d5f39d9b660d",
+                "ttl": "short",
+                "cacheControl": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        },
+        "response": "{\"processMessage\":\"RESPOND\",\"thought\":\"\",\"plan\":{\"contexts\":[\"settings\"],\"reply\":\"On it.\",\"simple\":false,\"requiresTool\":true,\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"]}}",
+        "toolCalls": [
+          {
+            "id": "baf5a0545",
+            "name": "HANDLE_RESPONSE",
+            "args": {
+              "candidateActionNames": [
+                "SET_BACKGROUND",
+                "RESET_BACKGROUND"
+              ],
+              "contexts": [
+                "settings"
+              ],
+              "intents": [
+                "reset background to default"
+              ],
+              "replyText": "On it.",
+              "threadOps": []
+            }
+          }
+        ],
+        "usage": {
+          "promptTokens": 3321,
+          "completionTokens": 54,
+          "totalTokens": 3375,
+          "cacheReadInputTokens": 2944
+        },
+        "finishReason": "tool-calls",
+        "costUsd": 0,
+        "priceTableId": "eliza-v1-2026-07-01"
+      },
+      "cache": {
+        "segmentHashes": [
+          "ab8cf1343ace051ce69c596cc87708fd3426291ebcbcd4039f0994601b7d3612",
+          "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+          "607652dcec85a357165d1746c3c36fa62e5e6ad1f89b13331082d5f39d9b660d",
+          "a363a9241754667b607d4a9af8f5209b04494298423ea887b5810ca2e84f149a",
+          "bfe4da1fa8fd5c366daa77c5a2961790dd7ac6c04771314a4e772b7e933ac5e2",
+          "68945472e5b227b472378fb505fa06c87d6602944e3dace4de1eb32276f3e188",
+          "fdbb37a53ca0c9bd23cf371db4f15b71e84e5ca1d2874674b20f0a8077700b37",
+          "cd32700428001eaefd419bb21332eccba9ae7fdb7a4728bce8c7363f676c1d70",
+          "4f7156116a964e4963f12d9194805dbe136479b5c2578d7fe607311721ea6122"
+        ],
+        "prefixHash": "b6146cf3e9edde3cef9148c00e788ea487464adbd25a632b4f6fc03193c0b77b"
+      }
+    },
+    {
+      "stageId": "stage-toolsearch-1783027037213",
+      "kind": "toolSearch",
+      "startedAt": 1783027037213,
+      "endedAt": 1783027037254,
+      "latencyMs": 41,
+      "toolSearch": {
+        "query": {
+          "text": "reset the background to the default look",
+          "tokens": [
+            "reset",
+            "the",
+            "background",
+            "to",
+            "the",
+            "default",
+            "look",
+            "set",
+            "background",
+            "reset",
+            "background"
+          ],
+          "candidateActions": [
+            "SET_BACKGROUND",
+            "RESET_BACKGROUND"
+          ],
+          "parentActionHints": []
+        },
+        "results": [
+          {
+            "name": "BACKGROUND",
+            "score": 1,
+            "rank": 0,
+            "rrfScore": 0.032787,
+            "matchedBy": [
+              "keyword",
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "keyword": 1,
+              "bm25": 1,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "APP",
+            "score": 0.745968,
+            "rank": 1,
+            "rrfScore": 0.016129,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.304083,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "VIEWS",
+            "score": 0.742063,
+            "rank": 2,
+            "rrfScore": 0.015873,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.295714,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "BLOCK",
+            "score": 0.738281,
+            "rank": 3,
+            "rrfScore": 0.015625,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.092263,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "CREDENTIALS",
+            "score": 0.734615,
+            "rank": 4,
+            "rrfScore": 0.015385,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.092246,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "CONNECTOR",
+            "score": 0.731061,
+            "rank": 5,
+            "rrfScore": 0.015152,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.091285,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "ROOM",
+            "score": 0.727612,
+            "rank": 6,
+            "rrfScore": 0.014925,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.088298,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "PERSONALITY",
+            "score": 0.724265,
+            "rank": 7,
+            "rrfScore": 0.014706,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.036608,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "CHARACTER",
+            "score": 0.721014,
+            "rank": 8,
+            "rrfScore": 0.014493,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.035667,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "SKILL",
+            "score": 0.717857,
+            "rank": 9,
+            "rrfScore": 0.014286,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.034089,
+              "contextMatch": 0.3
+            }
+          },
+          {
+            "name": "REMOTE_DESKTOP",
+            "score": 0.714789,
+            "rank": 10,
+            "rrfScore": 0.014085,
+            "matchedBy": [
+              "bm25",
+              "contextMatch"
+            ],
+            "stageScores": {
+              "bm25": 0.008223,
+              "contextMatch": 0.3
+            }
+          }
+        ],
+        "tier": {
+          "tierA": [
+            "BACKGROUND"
+          ],
+          "tierB": [],
+          "omitted": 10
+        },
+        "durationMs": 41
+      }
+    },
+    {
+      "stageId": "stage-planner-iter-1-1783027037256",
+      "kind": "planner",
+      "iteration": 1,
+      "startedAt": 1783027037256,
+      "endedAt": 1783027037577,
+      "latencyMs": 321,
+      "model": {
+        "modelType": "ACTION_PLANNER",
+        "provider": "default",
+        "messages": [
+          {
+            "role": "system",
+            "content": "user_role: OWNER\n\nselected_contexts: settings\n\ncontexts:\n- settings: Agent/user preferences, capability toggles, identity, profile, model/provider config, app settings, saved-login lookup, and non-secret configuration.\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.\n\nplanner_stage:\ntask: Plan next native tool calls.\n\nrules:\n- use only tools array; smallest grounded queue\n- routed action: set parameters.action only if schema has it\n- args grounded in user request or prior tool results\n- obey schema; arrays as JSON arrays, not comma strings\n- no empty strings/placeholders/invented required args; gather via grounded tool or no tool\n- matching tool exists => call it, even missing details; handler owns questions/drafts/confirm/refusal\n- no messageToUser follow-up when matching tool exists\n- messageToUser is user-visible only; no thoughts, analysis, tool names, function syntax, JSON/tool attempts, \"call MESSAGE\"\n- more tool work => native toolCalls only; never narrate/simulate calls\n- partial after tool result => next grounded tool, not messageToUser\n- tool-required router decision => run at least one exposed non-terminal tool before terminal answer\n- incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try\n- attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now; call tool\n- exposed tool can try => call it; do not say \"I cannot browse/search/run/inspect/build/deploy/verify\"\n- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.\n- candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user's intent (call it), or no tool fits (set messageToUser). Never emit echo-placeholder SHELL commands such as: echo \"<intent-name>\" / echo \"placeholder for <ACTION>\" / echo \"search <X>\" as a way to \"trigger\" a missing capability — placeholder echoes burn cost and produce no progress.\n- TASKS_SPAWN_AGENT is for delegating coding/build/repo work to a coding sub-agent (file edits, shell tooling, building/deploying apps, running tests, opening PRs). It is not a fallback for chat-message recall, memory queries, or agent-history lookups. Spawning a coding sub-agent to \"search the Discord channel for messages mentioning X\" routinely ends in sub-agent error/timeout and a generic \"Sorry, something went wrong\" reply to the user. When the user wants chat-message recall and no dedicated search action is exposed, set messageToUser explaining the capability is not available — do not spawn a sub-agent for it.\n- A one-shot live/current/public-data lookup — current price, weather, score, news headline, a status, or a value at a known URL — is NOT coding work: call WEB_FETCH (construct the single URL yourself) or WEB_SEARCH directly and answer from the result. Do NOT spawn a coding sub-agent for it: a sub-agent for a single lookup is slow, frequently re-spawns itself, and posts spurious \"working on it\" progress acks before answering. Spawn only when the task is genuinely build/code/repo/multi-step work.\n- no tool fits or task complete => no toolCalls, set messageToUser\n- set completed=false when this turn's tool calls do not yet achieve the goal (read-then-act, multi-step deploy/build, verification pending); completed=true only when the goal is achieved this turn. omit when unknown.\n- messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening, has happened, or is about to happen — \"I'm fetching X, please hold\", \"Let me look that up\", \"Pulling up the info\", \"Searching for the answer\", \"I'm checking now\", \"I'll get back to you\", \"Spawning a sub-agent\", \"I'm working on it\", \"I'm fixing that now\", \"Let me get that done\", \"Wrapping it up\", \"Almost done\", \"Building it now\", \"I'll start on that\" — when no tool call this turn is in flight to produce that content. A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call (e.g. TASKS_SPAWN_AGENT) is actually in flight THIS turn; if you did not spawn a sub-agent or take an action this turn, do not say the task is underway. The planner does not run in the background after returning; once this turn ends, no further tool work happens unless a NEW user message arrives. If your tool iterations exhausted without a usable result (search returned nothing, fetch was blocked, scrape gave no usable HTML, RSS was empty), set messageToUser saying so plainly: \"I tried web search via the available tools and couldn't find current info on X — try checking a news site directly\" or \"The searches returned no usable results\". Never promise ongoing fetch when this turn is the planner's final iteration. This rule covers every grammatical form for both investigative and task-execution verbs (fetch/search/look up/check AND work on/start/fix/build/wrap up/finish): past-perfect (\"I have fetched\", \"I have started fixing it\"), bare past-tense (\"I fetched\", \"I started on it\"), present-continuous with subject (\"I'm fetching now\", \"I'm checking\", \"I'm working on it\", \"I'm fixing it\"), bare present-participle without subject (\"Fetching latest info\", \"Looking it up\", \"Working on it\", \"Wrapping it up\"), and \"please hold\" / \"give me a sec\" / \"be right back\" / \"almost done\" style stalling phrases.\n- messageToUser and REPLY text must NEVER fabricate a failure, error, or interruption that did not actually occur this turn. Do not claim something \"glitched\", \"hiccuped\", \"broke\", \"went wrong\", \"snagged\", \"errored out\", \"got cut off\", \"didn't go through\", \"failed on my end\", or invite the user to \"give it another go / try that again / ask again\" UNLESS a real tool call THIS turn actually returned an error or empty result. If you are choosing NOT to take an action this turn (no tool call in flight), do not invent a malfunction to excuse it: instead either (a) take the correct action (e.g. spawn the coding sub-agent for a build request), or (b) say plainly and truthfully what you can do and ask the user to confirm scope, e.g. \"I can build that as a single-file site in its own folder, want me to start?\". A fabricated \"something glitched, give it another go\" is a hallucinated failure and is forbidden when nothing failed. This covers every phrasing of a non-existent error or stall-and-retry invitation.\n- When a tool call produced actual output (stdout, fetched content, search results, file listings, command output), the subsequent messageToUser must include that output directly — do not replace it with a meta-summary of what the tool did. Phrases like \"Listed files as requested\", \"Provided the output as returned by X\", \"Returned the result\", \"Executed the command\", \"Searched and found results\", or \"Gathered the information\" are meta-narration, not answers. If the tool already returned user-friendly text (verifiedUserFacing is true), include that text in messageToUser rather than describing the action.\n\nIf context has \"# Routing hints\", follow them. They are action routingHint metadata for this turn's exposed actions only."
+          },
+          {
+            "role": "user",
+            "content": "provider:agent_skills:\n**Skills:** None installed. Use SKILL op=search to browse the catalog and SKILL op=install to install one.\n\nprovider:CURRENT_TIME:\n# Current Time\n- Date: 2026-07-02\n- Time: 21:17:17 UTC\n- Day: Thursday\n- Full: Thursday, July 2, 2026 at 9:17:17 PM UTC\n- ISO: 2026-07-02T21:17:17.170Z\n\nprovider:ENTITIES:\n# People in the Room\n\"Background Shader Undo Redo\" aka \"Test User\"\nID: 1b51022c-367d-057d-8c7a-bad8ac0f64d3\n\n\"ScenarioAgent\" aka \"Test User\"\nID: 546ac3ab-0468-01a2-9d5b-52dfa34bf9cc\n\nprovider:FACTS:\nThings ScenarioAgent knows about the speaker:\n[durable.preference conf=0.70] prefers slow lava-lamp style animated backgrounds\n\nprovider:ROLES:\nNo access to role information in DMs, the role provider is only available in group scenarios.\n\nprovider:SETTINGS:\nNo setup world found for the user -- settings provider will be skipped\n\nprovider:lifeops_browser:\n## Agent Browser Bridge\nThis is the user's real browser profile connected through Agent Browser Bridge, not Eliza Desktop Browser.\nAgent Browser Bridge: current_tab, control off.\nCompanions: 0. Active sessions: 0.\n\nprior_message:user:\ngive me a slow lava-lamp style animated background\n\nprior_message:user:\nundo that background change\n\nprior_message:user:\nredo the background change\n\ncurrent_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message (\"my favorite color is teal, what is my favorite color?\"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly (\"I don't see X in the recent messages I can see\") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.\n\nmessage:user:\nreset the background to the default look\n\nevent:message_handler:\nmessage_handler:\nprocessMessage: RESPOND\nplan: {\"contexts\":[\"settings\"],\"requiresTool\":true,\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[],\"reply\":\"On it.\",\"actionSurface\":{\"mode\":\"tiered\",\"candidateActionCount\":54,\"catalogParentCount\":11,\"exposedActionCount\":1,\"tierAParents\":[\"BACKGROUND\"],\"tierBParents\":[],\"omittedParentCount\":10,\"omittedParentNamesPreview\":[\"APP\",\"BLOCK\",\"CHARACTER\",\"CONNECTOR\",\"CREDENTIALS\",\"PERSONALITY\",\"REMOTE_DESKTOP\",\"ROOM\",\"SKILL\",\"VIEWS\"],\"actionSurfaceHash\":\"1ip0zdm\",\"warnings\":0,\"queryTokens\":[\"reset\",\"the\",\"background\",\"to\",\"the\",\"default\",\"look\",\"set\",\"background\",\"reset\",\"background\"],\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[]}}\n\nThe Stage 1 router marked this current turn as requiring a tool. prior_dialogue_policy: Do not answer directly from memory, chat history, prior attachments, or prior tool output. Call at least one exposed non-terminal tool that can attempt the current request.\n\n# Routing hints\n- Any request about the app background, wallpaper, or backdrop -> BACKGROUND: setting a color/image/animated shader AND the follow-ups 'undo that background change', 'revert the wallpaper', 'redo the background change', 'put the background back', 'reset the background to the default'. Background undo/redo/reset sounds like a settings tweak but is NOT settings/views navigation — do not route it to VIEWS or a settings page; BACKGROUND applies the change directly. Only opening a settings/background page to look at it is VIEWS."
+          }
+        ],
+        "tools": [
+          {
+            "name": "BACKGROUND",
+            "description": "Any request about the app background, wallpaper, or backdrop -> BACKGROUND: setting a color/image/animated shader AND the follow-ups 'undo that background change', 'revert the wallpaper', 'redo the background change', 'put the background back', 'reset the background to the default'. Background undo/redo/reset sounds like a settings tweak but is NOT settings/views navigation — do not route it to VIEWS or a settings page; BACKGROUND applies the change directly. Only opening a settings/background page to look at it is VIEWS.\nbackground set color|shader|image|generate|undo|redo|reset — recolor the app background/wallpaper, run an animated shader preset (aurora/lava/plasma/waves/nebula) + tweak (slower/brighter/bigger), set an uploaded/generated wallpaper, undo/revert the background change, redo it, or reset/restore the default background",
+            "type": "function",
+            "strict": true,
+            "parameters": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "description": "Operation: set | undo | redo | reset.",
+                  "enum": [
+                    "set",
+                    "undo",
+                    "redo",
+                    "reset"
+                  ]
+                },
+                "color": {
+                  "type": "string",
+                  "description": "A color name or hex (e. g. 'teal' or '#0891b2') for set."
+                },
+                "preset": {
+                  "type": "string",
+                  "description": "Animated shader preset for set: aurora | lava | plasma | waves | nebula.",
+                  "enum": [
+                    "aurora",
+                    "lava",
+                    "plasma",
+                    "waves",
+                    "nebula"
+                  ]
+                },
+                "prompt": {
+                  "type": "string",
+                  "description": "Describe a background to generate (e. g. 'a calm beach')."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "REPLY",
+            "description": "reply to the user with text; terminates the turn",
+            "type": "function",
+            "strict": true,
+            "parameters": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "The user-facing reply text."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "IGNORE",
+            "description": "terminate the turn silently; emit no reply",
+            "type": "function",
+            "strict": true,
+            "parameters": {
+              "type": "object",
+              "required": [],
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "STOP",
+            "description": "stop the turn with a terminal stop signal",
+            "type": "function",
+            "strict": true,
+            "parameters": {
+              "type": "object",
+              "required": [],
+              "properties": {},
+              "additionalProperties": false
+            }
+          }
+        ],
+        "toolChoice": "required",
+        "providerOptions": {
+          "eliza": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "prefixHash": "82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "segmentHashes": [
+              "ab8cf1343ace051ce69c596cc87708fd3426291ebcbcd4039f0994601b7d3612",
+              "afccd2690e9667061b3d33dab83a1ac415640a63c028b70620bcf878ef87b630",
+              "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+              "706c14bf74089c35701265f3dad20b093201a6c8b6c18722ee03a206c499b3a3",
+              "b022155f8228d803a7847fd09af6bc68f6b77e58bc18b2d45d4eba4b8d299f7d",
+              "33fc77af4b34e78063590a1148e79d02e4aef7e40058c1ace525e93cd17dc9a6",
+              "a363a9241754667b607d4a9af8f5209b04494298423ea887b5810ca2e84f149a",
+              "677781bf18dc990c95f5cedfb85aeaaa0e567600a0077f27878998a2e60ff5cc",
+              "8a9c0ad7dba69f1ddb1c2b813479faaaa61a88af7213f1457f0854b336a9b11b",
+              "1fca726dfc306e8492f0fa56706600aa2e4326312693e36ad3d25b941ab6e4a2",
+              "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+              "bfe4da1fa8fd5c366daa77c5a2961790dd7ac6c04771314a4e772b7e933ac5e2",
+              "68945472e5b227b472378fb505fa06c87d6602944e3dace4de1eb32276f3e188",
+              "fdbb37a53ca0c9bd23cf371db4f15b71e84e5ca1d2874674b20f0a8077700b37",
+              "cd32700428001eaefd419bb21332eccba9ae7fdb7a4728bce8c7363f676c1d70",
+              "4f7156116a964e4963f12d9194805dbe136479b5c2578d7fe607311721ea6122",
+              "04be5f8f1c3e0eb4bfaf2c357dfbaa81cebc765bca1efcb851456dc590cc4751",
+              "17f1746c9d51ed47858dd85dfca122c206989482c85eee0ad517f64cc5e36704",
+              "92876291b2ed885a18a055f71042ac28218a816396422f5b7fceb6a03b540554",
+              "49402a30104ff0942ad95a2ec4a827f970fceed11193f78510d66cffd07a9af4"
+            ],
+            "cachePlan": {
+              "version": 1,
+              "anthropicBreakpoints": [
+                {
+                  "segmentIndex": 2,
+                  "segmentHash": "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+                  "ttl": "short",
+                  "cacheControl": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "segmentIndex": 10,
+                  "segmentHash": "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+                  "ttl": "short",
+                  "cacheControl": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "segmentIndex": 19,
+                  "segmentHash": "49402a30104ff0942ad95a2ec4a827f970fceed11193f78510d66cffd07a9af4",
+                  "ttl": "short",
+                  "cacheControl": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            },
+            "conversationId": "tj-b172a93297ef97",
+            "promptSegments": [
+              {
+                "content": "user_role: OWNER",
+                "stable": true
+              },
+              {
+                "content": "\n\nselected_contexts: settings",
+                "stable": true
+              },
+              {
+                "content": "\n\ncontexts:\n- settings: Agent/user preferences, capability toggles, identity, profile, model/provider config, app settings, saved-login lookup, and non-secret configuration.",
+                "stable": true
+              },
+              {
+                "content": "\n\n**Skills:** None installed. Use SKILL op=search to browse the catalog and SKILL op=install to install one.",
+                "stable": false
+              },
+              {
+                "content": "\n\n# Current Time\n- Date: 2026-07-02\n- Time: 21:17:17 UTC\n- Day: Thursday\n- Full: Thursday, July 2, 2026 at 9:17:17 PM UTC\n- ISO: 2026-07-02T21:17:17.170Z",
+                "stable": false
+              },
+              {
+                "content": "\n\n# People in the Room\n\"Background Shader Undo Redo\" aka \"Test User\"\nID: 1b51022c-367d-057d-8c7a-bad8ac0f64d3\n\n\"ScenarioAgent\" aka \"Test User\"\nID: 546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                "stable": false
+              },
+              {
+                "content": "\n\nThings ScenarioAgent knows about the speaker:\n[durable.preference conf=0.70] prefers slow lava-lamp style animated backgrounds",
+                "stable": false
+              },
+              {
+                "content": "\n\nNo access to role information in DMs, the role provider is only available in group scenarios.",
+                "stable": false
+              },
+              {
+                "content": "\n\nNo setup world found for the user -- settings provider will be skipped",
+                "stable": false
+              },
+              {
+                "content": "\n\n## Agent Browser Bridge\nThis is the user's real browser profile connected through Agent Browser Bridge, not Eliza Desktop Browser.\nAgent Browser Bridge: current_tab, control off.\nCompanions: 0. Active sessions: 0.",
+                "stable": false
+              },
+              {
+                "content": "\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
+                "stable": true
+              },
+              {
+                "content": "\n\ngive me a slow lava-lamp style animated background",
+                "stable": false
+              },
+              {
+                "content": "\n\nundo that background change",
+                "stable": false
+              },
+              {
+                "content": "\n\nredo the background change",
+                "stable": false
+              },
+              {
+                "content": "\n\ncurrent_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message (\"my favorite color is teal, what is my favorite color?\"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly (\"I don't see X in the recent messages I can see\") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.",
+                "stable": false
+              },
+              {
+                "content": "\n\nreset the background to the default look",
+                "stable": false
+              },
+              {
+                "content": "\n\nmessage_handler:\nprocessMessage: RESPOND\nplan: {\"contexts\":[\"settings\"],\"requiresTool\":true,\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[],\"reply\":\"On it.\",\"actionSurface\":{\"mode\":\"tiered\",\"candidateActionCount\":54,\"catalogParentCount\":11,\"exposedActionCount\":1,\"tierAParents\":[\"BACKGROUND\"],\"tierBParents\":[],\"omittedParentCount\":10,\"omittedParentNamesPreview\":[\"APP\",\"BLOCK\",\"CHARACTER\",\"CONNECTOR\",\"CREDENTIALS\",\"PERSONALITY\",\"REMOTE_DESKTOP\",\"ROOM\",\"SKILL\",\"VIEWS\"],\"actionSurfaceHash\":\"1ip0zdm\",\"warnings\":0,\"queryTokens\":[\"reset\",\"the\",\"background\",\"to\",\"the\",\"default\",\"look\",\"set\",\"background\",\"reset\",\"background\"],\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[]}}",
+                "stable": false
+              },
+              {
+                "content": "\n\nThe Stage 1 router marked this current turn as requiring a tool. prior_dialogue_policy: Do not answer directly from memory, chat history, prior attachments, or prior tool output. Call at least one exposed non-terminal tool that can attempt the current request.",
+                "stable": false
+              },
+              {
+                "content": "\n\n# Routing hints\n- Any request about the app background, wallpaper, or backdrop -> BACKGROUND: setting a color/image/animated shader AND the follow-ups 'undo that background change', 'revert the wallpaper', 'redo the background change', 'put the background back', 'reset the background to the default'. Background undo/redo/reset sounds like a settings tweak but is NOT settings/views navigation — do not route it to VIEWS or a settings page; BACKGROUND applies the change directly. Only opening a settings/background page to look at it is VIEWS.",
+                "stable": false
+              },
+              {
+                "content": "\n\nplanner_stage:\ntask: Plan next native tool calls.\n\nrules:\n- use only tools array; smallest grounded queue\n- routed action: set parameters.action only if schema has it\n- args grounded in user request or prior tool results\n- obey schema; arrays as JSON arrays, not comma strings\n- no empty strings/placeholders/invented required args; gather via grounded tool or no tool\n- matching tool exists => call it, even missing details; handler owns questions/drafts/confirm/refusal\n- no messageToUser follow-up when matching tool exists\n- messageToUser is user-visible only; no thoughts, analysis, tool names, function syntax, JSON/tool attempts, \"call MESSAGE\"\n- more tool work => native toolCalls only; never narrate/simulate calls\n- partial after tool result => next grounded tool, not messageToUser\n- tool-required router decision => run at least one exposed non-terminal tool before terminal answer\n- incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try\n- attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now; call tool\n- exposed tool can try => call it; do not say \"I cannot browse/search/run/inspect/build/deploy/verify\"\n- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.\n- candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user's intent (call it), or no tool fits (set messageToUser). Never emit echo-placeholder SHELL commands such as: echo \"<intent-name>\" / echo \"placeholder for <ACTION>\" / echo \"search <X>\" as a way to \"trigger\" a missing capability — placeholder echoes burn cost and produce no progress.\n- TASKS_SPAWN_AGENT is for delegating coding/build/repo work to a coding sub-agent (file edits, shell tooling, building/deploying apps, running tests, opening PRs). It is not a fallback for chat-message recall, memory queries, or agent-history lookups. Spawning a coding sub-agent to \"search the Discord channel for messages mentioning X\" routinely ends in sub-agent error/timeout and a generic \"Sorry, something went wrong\" reply to the user. When the user wants chat-message recall and no dedicated search action is exposed, set messageToUser explaining the capability is not available — do not spawn a sub-agent for it.\n- A one-shot live/current/public-data lookup — current price, weather, score, news headline, a status, or a value at a known URL — is NOT coding work: call WEB_FETCH (construct the single URL yourself) or WEB_SEARCH directly and answer from the result. Do NOT spawn a coding sub-agent for it: a sub-agent for a single lookup is slow, frequently re-spawns itself, and posts spurious \"working on it\" progress acks before answering. Spawn only when the task is genuinely build/code/repo/multi-step work.\n- no tool fits or task complete => no toolCalls, set messageToUser\n- set completed=false when this turn's tool calls do not yet achieve the goal (read-then-act, multi-step deploy/build, verification pending); completed=true only when the goal is achieved this turn. omit when unknown.\n- messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening, has happened, or is about to happen — \"I'm fetching X, please hold\", \"Let me look that up\", \"Pulling up the info\", \"Searching for the answer\", \"I'm checking now\", \"I'll get back to you\", \"Spawning a sub-agent\", \"I'm working on it\", \"I'm fixing that now\", \"Let me get that done\", \"Wrapping it up\", \"Almost done\", \"Building it now\", \"I'll start on that\" — when no tool call this turn is in flight to produce that content. A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call (e.g. TASKS_SPAWN_AGENT) is actually in flight THIS turn; if you did not spawn a sub-agent or take an action this turn, do not say the task is underway. The planner does not run in the background after returning; once this turn ends, no further tool work happens unless a NEW user message arrives. If your tool iterations exhausted without a usable result (search returned nothing, fetch was blocked, scrape gave no usable HTML, RSS was empty), set messageToUser saying so plainly: \"I tried web search via the available tools and couldn't find current info on X — try checking a news site directly\" or \"The searches returned no usable results\". Never promise ongoing fetch when this turn is the planner's final iteration. This rule covers every grammatical form for both investigative and task-execution verbs (fetch/search/look up/check AND work on/start/fix/build/wrap up/finish): past-perfect (\"I have fetched\", \"I have started fixing it\"), bare past-tense (\"I fetched\", \"I started on it\"), present-continuous with subject (\"I'm fetching now\", \"I'm checking\", \"I'm working on it\", \"I'm fixing it\"), bare present-participle without subject (\"Fetching latest info\", \"Looking it up\", \"Working on it\", \"Wrapping it up\"), and \"please hold\" / \"give me a sec\" / \"be right back\" / \"almost done\" style stalling phrases.\n- messageToUser and REPLY text must NEVER fabricate a failure, error, or interruption that did not actually occur this turn. Do not claim something \"glitched\", \"hiccuped\", \"broke\", \"went wrong\", \"snagged\", \"errored out\", \"got cut off\", \"didn't go through\", \"failed on my end\", or invite the user to \"give it another go / try that again / ask again\" UNLESS a real tool call THIS turn actually returned an error or empty result. If you are choosing NOT to take an action this turn (no tool call in flight), do not invent a malfunction to excuse it: instead either (a) take the correct action (e.g. spawn the coding sub-agent for a build request), or (b) say plainly and truthfully what you can do and ask the user to confirm scope, e.g. \"I can build that as a single-file site in its own folder, want me to start?\". A fabricated \"something glitched, give it another go\" is a hallucinated failure and is forbidden when nothing failed. This covers every phrasing of a non-existent error or stall-and-retry invitation.\n- When a tool call produced actual output (stdout, fetched content, search results, file listings, command output), the subsequent messageToUser must include that output directly — do not replace it with a meta-summary of what the tool did. Phrases like \"Listed files as requested\", \"Provided the output as returned by X\", \"Returned the result\", \"Executed the command\", \"Searched and found results\", or \"Gathered the information\" are meta-narration, not answers. If the tool already returned user-friendly text (verifiedUserFacing is true), include that text in messageToUser rather than describing the action.\n\nIf context has \"# Routing hints\", follow them. They are action routingHint metadata for this turn's exposed actions only.",
+                "stable": true
+              }
+            ],
+            "modelInputBudget": {
+              "estimatedInputTokens": 4067,
+              "contextWindowTokens": 128000,
+              "reserveTokens": 10000,
+              "compactionThresholdTokens": 118000,
+              "shouldCompact": false,
+              "resolvedModelKey": null
+            },
+            "thinking": "off",
+            "plannerActionSchemas": {
+              "BACKGROUND": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "op": {
+                    "type": "string",
+                    "description": "Operation: set | undo | redo | reset.",
+                    "enum": [
+                      "set",
+                      "undo",
+                      "redo",
+                      "reset"
+                    ]
+                  },
+                  "color": {
+                    "type": "string",
+                    "description": "A color name or hex (e. g. 'teal' or '#0891b2') for set."
+                  },
+                  "preset": {
+                    "type": "string",
+                    "description": "Animated shader preset for set: aurora | lava | plasma | waves | nebula.",
+                    "enum": [
+                      "aurora",
+                      "lava",
+                      "plasma",
+                      "waves",
+                      "nebula"
+                    ]
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "Describe a background to generate (e. g. 'a calm beach')."
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "guidedDecode": true
+          },
+          "cerebras": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "prompt_cache_key": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+          },
+          "openai": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+          },
+          "openrouter": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "prompt_cache_key": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+          },
+          "gateway": {
+            "caching": "auto"
+          },
+          "anthropic": {
+            "cacheControl": {
+              "type": "ephemeral"
+            },
+            "cacheSystem": true,
+            "maxBreakpoints": 4,
+            "cacheBreakpoints": [
+              {
+                "segmentIndex": 2,
+                "segmentHash": "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+                "ttl": "short",
+                "cacheControl": {
+                  "type": "ephemeral"
+                }
+              },
+              {
+                "segmentIndex": 10,
+                "segmentHash": "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+                "ttl": "short",
+                "cacheControl": {
+                  "type": "ephemeral"
+                }
+              },
+              {
+                "segmentIndex": 19,
+                "segmentHash": "49402a30104ff0942ad95a2ec4a827f970fceed11193f78510d66cffd07a9af4",
+                "ttl": "short",
+                "cacheControl": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        },
+        "response": "",
+        "toolCalls": [
+          {
+            "name": "BACKGROUND",
+            "args": {
+              "color": "",
+              "op": "reset",
+              "preset": "",
+              "prompt": ""
+            }
+          }
+        ],
+        "usage": {
+          "promptTokens": 3467,
+          "completionTokens": 28,
+          "totalTokens": 3495,
+          "cacheReadInputTokens": 2432
+        },
+        "finishReason": "tool-calls",
+        "costUsd": 0,
+        "priceTableId": "eliza-v1-2026-07-01"
+      },
+      "cache": {
+        "segmentHashes": [
+          "ab8cf1343ace051ce69c596cc87708fd3426291ebcbcd4039f0994601b7d3612",
+          "afccd2690e9667061b3d33dab83a1ac415640a63c028b70620bcf878ef87b630",
+          "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+          "706c14bf74089c35701265f3dad20b093201a6c8b6c18722ee03a206c499b3a3",
+          "b022155f8228d803a7847fd09af6bc68f6b77e58bc18b2d45d4eba4b8d299f7d",
+          "33fc77af4b34e78063590a1148e79d02e4aef7e40058c1ace525e93cd17dc9a6",
+          "a363a9241754667b607d4a9af8f5209b04494298423ea887b5810ca2e84f149a",
+          "677781bf18dc990c95f5cedfb85aeaaa0e567600a0077f27878998a2e60ff5cc",
+          "8a9c0ad7dba69f1ddb1c2b813479faaaa61a88af7213f1457f0854b336a9b11b",
+          "1fca726dfc306e8492f0fa56706600aa2e4326312693e36ad3d25b941ab6e4a2",
+          "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+          "bfe4da1fa8fd5c366daa77c5a2961790dd7ac6c04771314a4e772b7e933ac5e2",
+          "68945472e5b227b472378fb505fa06c87d6602944e3dace4de1eb32276f3e188",
+          "fdbb37a53ca0c9bd23cf371db4f15b71e84e5ca1d2874674b20f0a8077700b37",
+          "cd32700428001eaefd419bb21332eccba9ae7fdb7a4728bce8c7363f676c1d70",
+          "4f7156116a964e4963f12d9194805dbe136479b5c2578d7fe607311721ea6122",
+          "04be5f8f1c3e0eb4bfaf2c357dfbaa81cebc765bca1efcb851456dc590cc4751",
+          "17f1746c9d51ed47858dd85dfca122c206989482c85eee0ad517f64cc5e36704",
+          "92876291b2ed885a18a055f71042ac28218a816396422f5b7fceb6a03b540554",
+          "49402a30104ff0942ad95a2ec4a827f970fceed11193f78510d66cffd07a9af4"
+        ],
+        "prefixHash": "82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+      }
+    },
+    {
+      "stageId": "stage-tool-BACKGROUND-1783027037585",
+      "kind": "tool",
+      "startedAt": 1783027037585,
+      "endedAt": 1783027037586,
+      "latencyMs": 1,
+      "tool": {
+        "name": "BACKGROUND",
+        "args": {
+          "color": "",
+          "op": "reset",
+          "preset": "",
+          "prompt": ""
+        },
+        "result": {
+          "success": true,
+          "text": "Reset the background to the default.",
+          "data": {
+            "actionName": "BACKGROUND",
+            "values": {
+              "op": "reset"
+            }
+          }
+        },
+        "success": true,
+        "durationMs": 1,
+        "input": "{\"color\":\"\",\"op\":\"reset\",\"preset\":\"\",\"prompt\":\"\"}",
+        "output": "{\"success\":true,\"text\":\"Reset the background to the default.\",\"data\":{\"actionName\":\"BACKGROUND\",\"values\":{\"op\":\"reset\"}}}"
+      }
+    },
+    {
+      "stageId": "stage-eval-iter-1-1783027037588",
+      "kind": "evaluation",
+      "iteration": 1,
+      "startedAt": 1783027037588,
+      "endedAt": 1783027037782,
+      "latencyMs": 194,
+      "model": {
+        "modelType": "RESPONSE_HANDLER",
+        "provider": "default",
+        "messages": [
+          {
+            "role": "system",
+            "content": "user_role: OWNER\n\nselected_contexts: settings\n\ncontexts:\n- settings: Agent/user preferences, capability toggles, identity, profile, model/provider config, app settings, saved-login lookup, and non-secret configuration.\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.\n\nevaluator_stage:\ntask: Evaluate latest action; route planner-loop next step.\n\nroutes:\n- FINISH: the task is complete or should stop\n- NEXT_RECOMMENDED: one queued tool should run next before replanning\n- CONTINUE: call the planner again because the queued plan is missing or stale\n\nrules:\n- judge latest action result against user goal\n- success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer\n- confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool\n- terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser\n- NEXT_RECOMMENDED only when exactly one queued grounded tool remains; else CONTINUE\n- you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result\n- if answer needs unexecuted tool/action side effect to be true => CONTINUE; do not imagine result\n- messageToUser optional progress/diagnosis/question/final\n- messageToUser user-visible; no internal thoughts, tool names, function syntax, JSON/tool attempts, analysis\n- messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work\n- FINISH after tool use => include concise grounded messageToUser\n- no raw transcripts/banners/logs unless user asked raw output\n- copyToClipboard optional; requires title + content\n- thought internal, not shown\n\nreturn:\nOne JSON object only. No markdown/prose/XML/legacy/extra objects.\nFields: success boolean; decision \"FINISH\"|\"NEXT_RECOMMENDED\"|\"CONTINUE\"; thought string. Use decision, not route."
+          },
+          {
+            "role": "user",
+            "content": "provider:agent_skills:\n**Skills:** None installed. Use SKILL op=search to browse the catalog and SKILL op=install to install one.\n\nprovider:CURRENT_TIME:\n# Current Time\n- Date: 2026-07-02\n- Time: 21:17:17 UTC\n- Day: Thursday\n- Full: Thursday, July 2, 2026 at 9:17:17 PM UTC\n- ISO: 2026-07-02T21:17:17.170Z\n\nprovider:ENTITIES:\n# People in the Room\n\"Background Shader Undo Redo\" aka \"Test User\"\nID: 1b51022c-367d-057d-8c7a-bad8ac0f64d3\n\n\"ScenarioAgent\" aka \"Test User\"\nID: 546ac3ab-0468-01a2-9d5b-52dfa34bf9cc\n\nprovider:FACTS:\nThings ScenarioAgent knows about the speaker:\n[durable.preference conf=0.70] prefers slow lava-lamp style animated backgrounds\n\nprovider:ROLES:\nNo access to role information in DMs, the role provider is only available in group scenarios.\n\nprovider:SETTINGS:\nNo setup world found for the user -- settings provider will be skipped\n\nprovider:lifeops_browser:\n## Agent Browser Bridge\nThis is the user's real browser profile connected through Agent Browser Bridge, not Eliza Desktop Browser.\nAgent Browser Bridge: current_tab, control off.\nCompanions: 0. Active sessions: 0.\n\nprior_message:user:\ngive me a slow lava-lamp style animated background\n\nprior_message:user:\nundo that background change\n\nprior_message:user:\nredo the background change\n\ncurrent_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message (\"my favorite color is teal, what is my favorite color?\"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly (\"I don't see X in the recent messages I can see\") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.\n\nmessage:user:\nreset the background to the default look\n\nevent:message_handler:\nmessage_handler:\nprocessMessage: RESPOND\nplan: {\"contexts\":[\"settings\"],\"requiresTool\":true,\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[],\"reply\":\"On it.\",\"actionSurface\":{\"mode\":\"tiered\",\"candidateActionCount\":54,\"catalogParentCount\":11,\"exposedActionCount\":1,\"tierAParents\":[\"BACKGROUND\"],\"tierBParents\":[],\"omittedParentCount\":10,\"omittedParentNamesPreview\":[\"APP\",\"BLOCK\",\"CHARACTER\",\"CONNECTOR\",\"CREDENTIALS\",\"PERSONALITY\",\"REMOTE_DESKTOP\",\"ROOM\",\"SKILL\",\"VIEWS\"],\"actionSurfaceHash\":\"1ip0zdm\",\"warnings\":0,\"queryTokens\":[\"reset\",\"the\",\"background\",\"to\",\"the\",\"default\",\"look\",\"set\",\"background\",\"reset\",\"background\"],\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[]}}\n\nThe Stage 1 router marked this current turn as requiring a tool. prior_dialogue_policy: Do not answer directly from memory, chat history, prior attachments, or prior tool output. Call at least one exposed non-terminal tool that can attempt the current request."
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool-call",
+                "toolCallId": "tool-1-0",
+                "toolName": "BACKGROUND",
+                "input": {
+                  "color": "",
+                  "op": "reset",
+                  "preset": "",
+                  "prompt": ""
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "tool-1-0",
+                "toolName": "BACKGROUND",
+                "output": {
+                  "type": "text",
+                  "value": "text: Reset the background to the default.\ndata: {\n  \"actionName\": \"BACKGROUND\",\n  \"values\": {\n    \"op\": \"reset\"\n  }\n}"
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [],
+        "toolCalls": [],
+        "providerOptions": {
+          "eliza": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "prefixHash": "82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "segmentHashes": [
+              "ab8cf1343ace051ce69c596cc87708fd3426291ebcbcd4039f0994601b7d3612",
+              "afccd2690e9667061b3d33dab83a1ac415640a63c028b70620bcf878ef87b630",
+              "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+              "706c14bf74089c35701265f3dad20b093201a6c8b6c18722ee03a206c499b3a3",
+              "b022155f8228d803a7847fd09af6bc68f6b77e58bc18b2d45d4eba4b8d299f7d",
+              "33fc77af4b34e78063590a1148e79d02e4aef7e40058c1ace525e93cd17dc9a6",
+              "a363a9241754667b607d4a9af8f5209b04494298423ea887b5810ca2e84f149a",
+              "677781bf18dc990c95f5cedfb85aeaaa0e567600a0077f27878998a2e60ff5cc",
+              "8a9c0ad7dba69f1ddb1c2b813479faaaa61a88af7213f1457f0854b336a9b11b",
+              "1fca726dfc306e8492f0fa56706600aa2e4326312693e36ad3d25b941ab6e4a2",
+              "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+              "bfe4da1fa8fd5c366daa77c5a2961790dd7ac6c04771314a4e772b7e933ac5e2",
+              "68945472e5b227b472378fb505fa06c87d6602944e3dace4de1eb32276f3e188",
+              "fdbb37a53ca0c9bd23cf371db4f15b71e84e5ca1d2874674b20f0a8077700b37",
+              "cd32700428001eaefd419bb21332eccba9ae7fdb7a4728bce8c7363f676c1d70",
+              "4f7156116a964e4963f12d9194805dbe136479b5c2578d7fe607311721ea6122",
+              "04be5f8f1c3e0eb4bfaf2c357dfbaa81cebc765bca1efcb851456dc590cc4751",
+              "17f1746c9d51ed47858dd85dfca122c206989482c85eee0ad517f64cc5e36704",
+              "a875b78f47c463b3efa7b4926c0cf07494880e212442a485b62cf7915a2e6508"
+            ],
+            "cachePlan": {
+              "version": 1,
+              "anthropicBreakpoints": [
+                {
+                  "segmentIndex": 2,
+                  "segmentHash": "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+                  "ttl": "short",
+                  "cacheControl": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "segmentIndex": 10,
+                  "segmentHash": "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+                  "ttl": "short",
+                  "cacheControl": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "segmentIndex": 18,
+                  "segmentHash": "a875b78f47c463b3efa7b4926c0cf07494880e212442a485b62cf7915a2e6508",
+                  "ttl": "short",
+                  "cacheControl": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            },
+            "conversationId": "tj-b172a93297ef97",
+            "promptSegments": [
+              {
+                "content": "user_role: OWNER",
+                "stable": true
+              },
+              {
+                "content": "\n\nselected_contexts: settings",
+                "stable": true
+              },
+              {
+                "content": "\n\ncontexts:\n- settings: Agent/user preferences, capability toggles, identity, profile, model/provider config, app settings, saved-login lookup, and non-secret configuration.",
+                "stable": true
+              },
+              {
+                "content": "\n\n**Skills:** None installed. Use SKILL op=search to browse the catalog and SKILL op=install to install one.",
+                "stable": false
+              },
+              {
+                "content": "\n\n# Current Time\n- Date: 2026-07-02\n- Time: 21:17:17 UTC\n- Day: Thursday\n- Full: Thursday, July 2, 2026 at 9:17:17 PM UTC\n- ISO: 2026-07-02T21:17:17.170Z",
+                "stable": false
+              },
+              {
+                "content": "\n\n# People in the Room\n\"Background Shader Undo Redo\" aka \"Test User\"\nID: 1b51022c-367d-057d-8c7a-bad8ac0f64d3\n\n\"ScenarioAgent\" aka \"Test User\"\nID: 546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                "stable": false
+              },
+              {
+                "content": "\n\nThings ScenarioAgent knows about the speaker:\n[durable.preference conf=0.70] prefers slow lava-lamp style animated backgrounds",
+                "stable": false
+              },
+              {
+                "content": "\n\nNo access to role information in DMs, the role provider is only available in group scenarios.",
+                "stable": false
+              },
+              {
+                "content": "\n\nNo setup world found for the user -- settings provider will be skipped",
+                "stable": false
+              },
+              {
+                "content": "\n\n## Agent Browser Bridge\nThis is the user's real browser profile connected through Agent Browser Bridge, not Eliza Desktop Browser.\nAgent Browser Bridge: current_tab, control off.\nCompanions: 0. Active sessions: 0.",
+                "stable": false
+              },
+              {
+                "content": "\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
+                "stable": true
+              },
+              {
+                "content": "\n\ngive me a slow lava-lamp style animated background",
+                "stable": false
+              },
+              {
+                "content": "\n\nundo that background change",
+                "stable": false
+              },
+              {
+                "content": "\n\nredo the background change",
+                "stable": false
+              },
+              {
+                "content": "\n\ncurrent_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message (\"my favorite color is teal, what is my favorite color?\"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly (\"I don't see X in the recent messages I can see\") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.",
+                "stable": false
+              },
+              {
+                "content": "\n\nreset the background to the default look",
+                "stable": false
+              },
+              {
+                "content": "\n\nmessage_handler:\nprocessMessage: RESPOND\nplan: {\"contexts\":[\"settings\"],\"requiresTool\":true,\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[],\"reply\":\"On it.\",\"actionSurface\":{\"mode\":\"tiered\",\"candidateActionCount\":54,\"catalogParentCount\":11,\"exposedActionCount\":1,\"tierAParents\":[\"BACKGROUND\"],\"tierBParents\":[],\"omittedParentCount\":10,\"omittedParentNamesPreview\":[\"APP\",\"BLOCK\",\"CHARACTER\",\"CONNECTOR\",\"CREDENTIALS\",\"PERSONALITY\",\"REMOTE_DESKTOP\",\"ROOM\",\"SKILL\",\"VIEWS\"],\"actionSurfaceHash\":\"1ip0zdm\",\"warnings\":0,\"queryTokens\":[\"reset\",\"the\",\"background\",\"to\",\"the\",\"default\",\"look\",\"set\",\"background\",\"reset\",\"background\"],\"candidateActions\":[\"SET_BACKGROUND\",\"RESET_BACKGROUND\"],\"parentActionHints\":[]}}",
+                "stable": false
+              },
+              {
+                "content": "\n\nThe Stage 1 router marked this current turn as requiring a tool. prior_dialogue_policy: Do not answer directly from memory, chat history, prior attachments, or prior tool output. Call at least one exposed non-terminal tool that can attempt the current request.",
+                "stable": false
+              },
+              {
+                "content": "\n\nevaluator_stage:\ntask: Evaluate latest action; route planner-loop next step.\n\nroutes:\n- FINISH: the task is complete or should stop\n- NEXT_RECOMMENDED: one queued tool should run next before replanning\n- CONTINUE: call the planner again because the queued plan is missing or stale\n\nrules:\n- judge latest action result against user goal\n- success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer\n- confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool\n- terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser\n- NEXT_RECOMMENDED only when exactly one queued grounded tool remains; else CONTINUE\n- you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result\n- if answer needs unexecuted tool/action side effect to be true => CONTINUE; do not imagine result\n- messageToUser optional progress/diagnosis/question/final\n- messageToUser user-visible; no internal thoughts, tool names, function syntax, JSON/tool attempts, analysis\n- messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work\n- FINISH after tool use => include concise grounded messageToUser\n- no raw transcripts/banners/logs unless user asked raw output\n- copyToClipboard optional; requires title + content\n- thought internal, not shown\n\nreturn:\nOne JSON object only. No markdown/prose/XML/legacy/extra objects.\nFields: success boolean; decision \"FINISH\"|\"NEXT_RECOMMENDED\"|\"CONTINUE\"; thought string. Use decision, not route.",
+                "stable": true
+              }
+            ],
+            "modelInputBudget": {
+              "estimatedInputTokens": 1793,
+              "contextWindowTokens": 128000,
+              "reserveTokens": 10000,
+              "compactionThresholdTokens": 118000,
+              "shouldCompact": false,
+              "resolvedModelKey": null
+            },
+            "thinking": "off"
+          },
+          "cerebras": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "prompt_cache_key": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+          },
+          "openai": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+          },
+          "openrouter": {
+            "promptCacheKey": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a",
+            "prompt_cache_key": "v5:82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+          },
+          "gateway": {
+            "caching": "auto"
+          },
+          "anthropic": {
+            "cacheControl": {
+              "type": "ephemeral"
+            },
+            "cacheSystem": true,
+            "maxBreakpoints": 4,
+            "cacheBreakpoints": [
+              {
+                "segmentIndex": 2,
+                "segmentHash": "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+                "ttl": "short",
+                "cacheControl": {
+                  "type": "ephemeral"
+                }
+              },
+              {
+                "segmentIndex": 10,
+                "segmentHash": "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+                "ttl": "short",
+                "cacheControl": {
+                  "type": "ephemeral"
+                }
+              },
+              {
+                "segmentIndex": 18,
+                "segmentHash": "a875b78f47c463b3efa7b4926c0cf07494880e212442a485b62cf7915a2e6508",
+                "ttl": "short",
+                "cacheControl": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        },
+        "response": "{\n  \"success\": true,\n  \"decision\": \"FINISH\",\n  \"thought\": \"The user wanted to reset the background to the default look. I called the BACKGROUND tool with op='reset', which successfully executed. The task is complete.\",\n  \"messageToUser\": \"Done. I've reset the background to the default look.\"\n}",
+        "costUsd": 0,
+        "priceTableId": "eliza-v1-2026-07-01"
+      },
+      "evaluation": {
+        "success": true,
+        "decision": "FINISH",
+        "thought": "The user wanted to reset the background to the default look. I called the BACKGROUND tool with op='reset', which successfully executed. The task is complete.",
+        "messageToUser": "Done. I've reset the background to the default look."
+      },
+      "cache": {
+        "segmentHashes": [
+          "ab8cf1343ace051ce69c596cc87708fd3426291ebcbcd4039f0994601b7d3612",
+          "afccd2690e9667061b3d33dab83a1ac415640a63c028b70620bcf878ef87b630",
+          "181663e54f6a876e84445fab42c65e3a96120c6da6188233666e9dc1a372ca6d",
+          "706c14bf74089c35701265f3dad20b093201a6c8b6c18722ee03a206c499b3a3",
+          "b022155f8228d803a7847fd09af6bc68f6b77e58bc18b2d45d4eba4b8d299f7d",
+          "33fc77af4b34e78063590a1148e79d02e4aef7e40058c1ace525e93cd17dc9a6",
+          "a363a9241754667b607d4a9af8f5209b04494298423ea887b5810ca2e84f149a",
+          "677781bf18dc990c95f5cedfb85aeaaa0e567600a0077f27878998a2e60ff5cc",
+          "8a9c0ad7dba69f1ddb1c2b813479faaaa61a88af7213f1457f0854b336a9b11b",
+          "1fca726dfc306e8492f0fa56706600aa2e4326312693e36ad3d25b941ab6e4a2",
+          "77fafa9d8490011762b2efa49f96d0958bbfbc41849d9ffdfa7f69c78a838892",
+          "bfe4da1fa8fd5c366daa77c5a2961790dd7ac6c04771314a4e772b7e933ac5e2",
+          "68945472e5b227b472378fb505fa06c87d6602944e3dace4de1eb32276f3e188",
+          "fdbb37a53ca0c9bd23cf371db4f15b71e84e5ca1d2874674b20f0a8077700b37",
+          "cd32700428001eaefd419bb21332eccba9ae7fdb7a4728bce8c7363f676c1d70",
+          "4f7156116a964e4963f12d9194805dbe136479b5c2578d7fe607311721ea6122",
+          "04be5f8f1c3e0eb4bfaf2c357dfbaa81cebc765bca1efcb851456dc590cc4751",
+          "17f1746c9d51ed47858dd85dfca122c206989482c85eee0ad517f64cc5e36704",
+          "a875b78f47c463b3efa7b4926c0cf07494880e212442a485b62cf7915a2e6508"
+        ],
+        "prefixHash": "82232d589cfe02a6837f4bb7abcbaf7a5f27cd3a8e8245638101679cef202b0a"
+      }
+    }
+  ],
+  "metrics": {
+    "totalLatencyMs": 876,
+    "totalPromptTokens": 6788,
+    "totalCompletionTokens": 82,
+    "totalCacheReadTokens": 5376,
+    "totalCacheCreationTokens": 0,
+    "totalCostUsd": 0,
+    "plannerIterations": 1,
+    "toolCallsExecuted": 1,
+    "toolCallFailures": 0,
+    "toolSearchCount": 1,
+    "evaluatorFailures": 0,
+    "finalDecision": "FINISH"
+  },
+  "endedAt": 1783027037800
+}
