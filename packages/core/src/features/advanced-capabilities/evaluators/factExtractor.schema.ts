@@ -11,6 +11,7 @@
  */
 
 import z from "zod";
+import { logger } from "../../../logger.ts";
 
 /**
  * Categories that durable facts can belong to. Closed set — the extractor
@@ -168,24 +169,40 @@ export type ExtractorOutput = z.infer<typeof ExtractorOutputSchema>;
  * real, launch-critical memory loss.
  *
  * This validates the envelope leniently (`{ ops: [...] }`), then validates each
- * op independently, keeping only the ones that pass and reporting how many were
- * dropped so the caller can log it. Returns null only when the envelope itself
- * is not `{ ops: array }` (a genuinely malformed section).
+ * op independently, keeping only the ones that pass. Drops are logged HERE
+ * (one aggregate warn with per-op issues) — the only production caller is an
+ * evaluator `parse` hook (`parse?(output): TOutput | null`,
+ * `types/evaluator.ts`) which has no runtime/logger in scope, so a returned
+ * drop count could never be reported and per-op loss stayed silent in prod.
+ * Returns null only when the envelope itself is not `{ ops: array }` (a
+ * genuinely malformed section).
  */
 export function parseExtractorOutputTolerant(
 	output: unknown,
-): { value: ExtractorOutput; dropped: number } | null {
+): ExtractorOutput | null {
 	const envelope = z.object({ ops: z.array(z.unknown()) }).safeParse(output);
 	if (!envelope.success) return null;
 	const ops: ExtractorOp[] = [];
-	let dropped = 0;
+	const issues: string[] = [];
 	for (const raw of envelope.data.ops) {
 		const parsed = OpSchema.safeParse(raw);
 		if (parsed.success) {
 			ops.push(parsed.data);
 		} else {
-			dropped += 1;
+			issues.push(
+				parsed.error.issues
+					.map(
+						(issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`,
+					)
+					.join("; "),
+			);
 		}
 	}
-	return { value: { ops }, dropped };
+	if (issues.length > 0) {
+		logger.warn(
+			{ src: "factMemory", count: issues.length, issues },
+			"dropped malformed extractor op(s)",
+		);
+	}
+	return { ops };
 }
