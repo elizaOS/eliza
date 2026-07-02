@@ -37,11 +37,9 @@ Branch: `fix/11586-credential-pool-followups`
 - `bun install`
   - Passed after rebasing onto `origin/develop`; no lockfile change remained.
 - `bun run verify`
-  - Failed before package typecheck/lint on the repo-wide type-safety ratchet:
-    - `as unknown as`: 77 current > 76 baseline.
-    - `?? {}` in core/agent/app-core: 380 current > 377 baseline.
-    - `?? 0` in core/agent/app-core: 376 current > 375 baseline.
-  - The reported files are outside this change set.
+  - Passed after rebasing onto `origin/develop` at `390c89e6fe4`.
+  - Workspace phase: 483 successful tasks.
+  - Final dist-path check: 28 consumer configs checked.
 
 ## Evidence Matrix
 
