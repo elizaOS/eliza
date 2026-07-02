@@ -470,9 +470,11 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 
 		const maxSamples = args.maxSamples ?? MAX_OUTPUT_SAMPLES;
 		// The Kokoro engine produces the full waveform in one synchronous
-		// forward. The text it phonemizes internally is the same phoneme string
-		// the llama-server `/v1/audio/speech` path sends as `input`.
-		const pcm = this.kokoroSynthesize(args.phonemes.phonemes, maxSamples);
+		// forward and phonemizes internally (espeak-ng when linked, ASCII
+		// grapheme fallback otherwise) — so it must receive the RAW phrase
+		// text. Passing the JS-side IPA string here double-phonemizes and
+		// yields speech-shaped but unintelligible audio (#10726).
+		const pcm = this.kokoroSynthesize(args.text, maxSamples);
 
 		let cancelled = false;
 		if (args.cancelSignal.cancelled) {

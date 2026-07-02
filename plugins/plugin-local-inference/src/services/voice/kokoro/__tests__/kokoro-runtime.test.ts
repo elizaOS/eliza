@@ -29,6 +29,7 @@ describe("KokoroMockRuntime", () => {
 		});
 		const chunks: Array<{ isFinal: boolean; len: number }> = [];
 		await runtime.synthesize({
+			text: "abc",
 			phonemes: { ids: Int32Array.from([1, 2, 3]), phonemes: "abc" },
 			voice: makeVoice(),
 			cancelSignal: { cancelled: false },
@@ -48,6 +49,7 @@ describe("KokoroMockRuntime", () => {
 		const runtime = new KokoroMockRuntime({ sampleRate: 24_000 });
 		expect(runtime.calls).toBe(0);
 		await runtime.synthesize({
+			text: "a",
 			phonemes: { ids: Int32Array.from([1]), phonemes: "a" },
 			voice: makeVoice(),
 			cancelSignal: { cancelled: false },
@@ -65,6 +67,7 @@ describe("KokoroMockRuntime", () => {
 		const signal = { cancelled: false };
 		let bodyCount = 0;
 		const result = await runtime.synthesize({
+			text: "ab",
 			phonemes: { ids: Int32Array.from([1, 2]), phonemes: "ab" },
 			voice: makeVoice(),
 			cancelSignal: signal,
@@ -85,6 +88,7 @@ describe("KokoroMockRuntime", () => {
 	it("returns cancelled=true when onChunk returns true", async () => {
 		const runtime = new KokoroMockRuntime({ sampleRate: 24_000 });
 		const result = await runtime.synthesize({
+			text: "a",
 			phonemes: { ids: Int32Array.from([1]), phonemes: "a" },
 			voice: makeVoice(),
 			cancelSignal: { cancelled: false },
