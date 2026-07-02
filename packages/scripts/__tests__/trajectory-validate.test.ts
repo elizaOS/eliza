@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { computeCallCostUsd } from "../lib/cost-table";
 import {
   compareTrajectories,
@@ -10,20 +8,6 @@ import {
   validateTrajectoryJsonReport,
   validateTrajectoryMarkdownReport,
 } from "../lib/trajectory-validate";
-
-async function readScenario(name: string): Promise<{
-  expect: { stages?: string[]; contexts?: string[]; tools?: string[] };
-}> {
-  const raw = await fs.readFile(
-    path.join(
-      process.cwd(),
-      "research/native-tool-calling/scenarios",
-      `${name}.json`,
-    ),
-    "utf8",
-  );
-  return JSON.parse(raw);
-}
 
 function modelStage(args: {
   stageId: string;
@@ -190,10 +174,9 @@ function completeTrajectory(
 }
 
 describe("trajectory structural validation", () => {
-  test("accepts a complete trajectory and scenario stage expectations", async () => {
-    const scenario = await readScenario("single-tool");
+  test("accepts a complete trajectory and scenario stage expectations", () => {
     const result = validateTrajectory(completeTrajectory(), {
-      expectedStages: scenario.expect.stages,
+      expectedStages: ["messageHandler", "planner", "tool", "evaluation"],
       expectedContexts: ["web"],
       requireMessageArrays: true,
     });
@@ -292,5 +275,75 @@ describe("trajectory structural validation", () => {
     expect(comparison.delta.totalCacheReadTokens).toBe(-1000);
     expect(comparison.estimatedBatchingDelta.stages).toBe(-1);
     expect(comparison.cacheHitRateA).toBeGreaterThan(comparison.cacheHitRateB);
+  });
+});
+
+describe("cost table matches canonical @elizaos/core pricing", () => {
+  const oneMInput = {
+    promptTokens: 1_000_000,
+    completionTokens: 0,
+    totalTokens: 1_000_000,
+  };
+  const oneMOutput = {
+    promptTokens: 0,
+    completionTokens: 1_000_000,
+    totalTokens: 1_000_000,
+  };
+
+  const anthropicRates: Array<[model: string, input: number, output: number]> =
+    [
+      ["claude-opus-4-8", 5, 25],
+      ["claude-opus-4-7", 5, 25],
+      ["claude-sonnet-5", 3, 15],
+      ["claude-sonnet-4-6", 3, 15],
+      ["claude-haiku-4-5", 1, 5],
+    ];
+  for (const [model, input, output] of anthropicRates) {
+    test(`${model} bills $${input}/M input, $${output}/M output`, () => {
+      expect(computeCallCostUsd(model, oneMInput)).toBeCloseTo(input, 6);
+      expect(computeCallCostUsd(model, oneMOutput)).toBeCloseTo(output, 6);
+    });
+  }
+
+  test("versioned claude ids resolve to their family entry", () => {
+    expect(
+      computeCallCostUsd("claude-haiku-4-5-20251001", oneMInput),
+    ).toBeCloseTo(1, 6);
+    expect(computeCallCostUsd("claude-opus-4-7-1", oneMInput)).toBeCloseTo(
+      5,
+      6,
+    );
+  });
+
+  test("anthropic cache reads bill 0.1x input; cache writes 1.25x input", () => {
+    const allCacheRead = {
+      promptTokens: 1_000_000,
+      completionTokens: 0,
+      cacheReadInputTokens: 1_000_000,
+      totalTokens: 1_000_000,
+    };
+    expect(computeCallCostUsd("claude-opus-4-7", allCacheRead)).toBeCloseTo(
+      0.5,
+      6,
+    );
+    expect(computeCallCostUsd("claude-haiku-4-5", allCacheRead)).toBeCloseTo(
+      0.1,
+      6,
+    );
+
+    const allCacheWrite = {
+      promptTokens: 1_000_000,
+      completionTokens: 0,
+      cacheCreationInputTokens: 1_000_000,
+      totalTokens: 1_000_000,
+    };
+    expect(computeCallCostUsd("claude-opus-4-7", allCacheWrite)).toBeCloseTo(
+      6.25,
+      6,
+    );
+    expect(computeCallCostUsd("claude-haiku-4-5", allCacheWrite)).toBeCloseTo(
+      1.25,
+      6,
+    );
   });
 });
