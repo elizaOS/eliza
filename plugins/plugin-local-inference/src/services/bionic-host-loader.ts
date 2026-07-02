@@ -21,6 +21,14 @@
  * discriminator for that.
  */
 
+import {
+	existsSync,
+	linkSync,
+	mkdirSync,
+	statSync,
+	symlinkSync,
+	unlinkSync,
+} from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { logger } from "@elizaos/core";
@@ -37,6 +45,8 @@ import {
 const REQUEST_TIMEOUT_MS = 120_000;
 /** Defensive ceiling on a single response frame (a full completion). */
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
+const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
+const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
 
 interface BionicGenerateResponse {
 	ok: boolean;
@@ -58,12 +68,48 @@ interface BionicTextResponse {
  * Derive the fused-bundle root from a model GGUF path. The host's
  * `eliza_inference_create(bundleDir)` expects the directory that contains
  * `text/<model>.gguf`; when the installed model is laid out that way we forward
- * it, otherwise we send empty and let the host fall back to its default bundle.
+ * it. Android smoke and first-run paths can stage the curated Eliza-1 text GGUF
+ * flat under `local-inference/models/`, so for those files we create a hidden
+ * hardlink/symlink bundle view without copying the multi-GB model bytes.
  */
-function deriveBundleDir(modelPath: string): string {
+export function deriveBundleDir(modelPath: string): string {
 	if (!modelPath) return "";
 	const dir = path.dirname(modelPath);
 	if (path.basename(dir) === "text") return path.dirname(dir);
+	if (!FLAT_ELIZA_1_GGUF_RE.test(path.basename(modelPath))) return "";
+	if (!existsSync(modelPath)) return "";
+
+	const modelName = path.basename(modelPath);
+	const bundleRoot = path.join(
+		dir,
+		BIONIC_FLAT_BUNDLE_DIR,
+		path.basename(modelName, path.extname(modelName)),
+	);
+	const textDir = path.join(bundleRoot, "text");
+	const stagedPath = path.join(textDir, modelName);
+	try {
+		mkdirSync(textDir, { recursive: true });
+		if (existsSync(stagedPath)) {
+			try {
+				const source = statSync(modelPath);
+				const staged = statSync(stagedPath);
+				if (source.size === staged.size) return bundleRoot;
+			} catch {
+				// Recreate stale or broken aliases below.
+			}
+			unlinkSync(stagedPath);
+		}
+		try {
+			linkSync(modelPath, stagedPath);
+		} catch {
+			symlinkSync(modelPath, stagedPath);
+		}
+		return bundleRoot;
+	} catch (err) {
+		logger.warn(
+			`[BionicHostLoader] could not stage bionic bundle view for flat model "${modelPath}": ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 	return "";
 }
 
