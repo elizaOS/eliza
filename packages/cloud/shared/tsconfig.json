@@ -37,6 +37,8 @@
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/logger": ["../../logger/src/index.ts"],
       "@elizaos/logger/*": ["../../logger/src/*"],
+      "@elizaos/security": ["../../security/src/index.ts"],
+      "@elizaos/security/*": ["../../security/src/*"],
       "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../../packages/shared/src/*"],
       "@elizaos/plugin-cloud-apps": ["../../../plugins/plugin-cloud-apps/src/index.ts"],

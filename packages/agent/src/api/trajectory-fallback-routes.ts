@@ -256,20 +256,14 @@ async function resolveRoomContext(
   const room = await runtime?.getRoom?.(
     roomId as `${string}-${string}-${string}-${string}-${string}`,
   );
-  const record =
-    room && typeof room === "object"
-      ? (room as unknown as Record<string, unknown>)
-      : null;
-  const context = record
+  const context = room
     ? {
-        id: String(record.id ?? roomId),
-        ...(typeof record.name === "string" ? { name: record.name } : {}),
-        ...(typeof record.type === "string" ? { type: record.type } : {}),
-        ...(typeof record.worldId === "string"
-          ? { worldId: record.worldId }
-          : {}),
-        ...(typeof record.serverId === "string"
-          ? { serverId: record.serverId }
+        id: String(room.id || roomId),
+        ...(typeof room.name === "string" ? { name: room.name } : {}),
+        ...(typeof room.type === "string" ? { type: room.type } : {}),
+        ...(typeof room.worldId === "string" ? { worldId: room.worldId } : {}),
+        ...(typeof room.serverId === "string"
+          ? { serverId: room.serverId }
           : {}),
       }
     : null;

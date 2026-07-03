@@ -25,6 +25,10 @@ interface ElementMetrics {
   height: number;
 }
 
+interface MouseCaptureWindow extends Window {
+  __elizaLastMouse?: { clientX: number; clientY: number } | null;
+}
+
 async function metricsOf(page: Page, handle: ElementHandle<Element>): Promise<ElementMetrics> {
   return page.evaluate((el) => {
     const r = (el as Element).getBoundingClientRect();
@@ -132,12 +136,12 @@ export class XtestInputDriver implements InputDriver {
     this.dpr = await page.evaluate(() => window.devicePixelRatio || 1);
 
     await page.evaluate(() => {
-      (window as unknown as { __elizaLastMouse: unknown }).__elizaLastMouse = null;
+      const mouseWindow = window as MouseCaptureWindow;
+      mouseWindow.__elizaLastMouse = null;
       window.addEventListener(
         "mousemove",
         (e) => {
-          (window as unknown as { __elizaLastMouse: { clientX: number; clientY: number } }).__elizaLastMouse =
-            { clientX: e.clientX, clientY: e.clientY };
+          mouseWindow.__elizaLastMouse = { clientX: e.clientX, clientY: e.clientY };
         },
         { capture: true },
       );
@@ -160,7 +164,7 @@ export class XtestInputDriver implements InputDriver {
       await this.x11.moveAbs(p.x, p.y);
       await sleep(120);
       const ev = await page.evaluate(
-        () => (window as unknown as { __elizaLastMouse: { clientX: number; clientY: number } | null }).__elizaLastMouse,
+        () => (window as MouseCaptureWindow).__elizaLastMouse,
       );
       if (ev) {
         sample = { sx: p.x, sy: p.y, cx: ev.clientX, cy: ev.clientY };

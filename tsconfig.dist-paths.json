@@ -339,6 +339,9 @@
       "@elizaos/plugin-mcp": [
         "./plugins/plugin-mcp/dist/index.d.ts"
       ],
+      "@elizaos/plugin-meetings": [
+        "./plugins/plugin-meetings/dist/index.d.ts"
+      ],
       "@elizaos/plugin-messages": [
         "./plugins/plugin-messages/dist/index.d.ts"
       ],

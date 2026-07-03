@@ -4,6 +4,7 @@ import {
   buildAtlasVideoInput,
   firstAtlasVideoOutput,
   generateAtlasCloudVideo,
+  getAtlasCloudVideoJobStatus,
 } from "./atlascloud-video-generation";
 
 const originalFetch = globalThis.fetch;
@@ -127,5 +128,103 @@ describe("Atlas Cloud video provider", () => {
     ).rejects.toThrow("AI services are not configured on this deployment");
     expect(atlasCloudVideoProvider.isConfigured?.({})).toBe(false);
     expect(called).toBe(false);
+  });
+
+  test("reports Atlas job status success with normalized output", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Response(
+        JSON.stringify({
+          data: {
+            id: "atlas-prediction",
+            status: "succeeded",
+            outputs: [{ url: "https://cdn.atlas/video.mp4", width: 640, height: 360 }],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await expect(
+      getAtlasCloudVideoJobStatus({
+        model: "vidu/q3-turbo/text-to-video",
+        requestId: "atlas-prediction",
+        apiKeys: {
+          ATLASCLOUD_API_KEY: "atlas-key",
+          ATLASCLOUD_BASE_URL: "https://atlas.test/",
+        },
+      }),
+    ).resolves.toEqual({
+      state: "succeeded",
+      result: {
+        requestId: "atlas-prediction",
+        video: {
+          url: "https://cdn.atlas/video.mp4",
+          width: 640,
+          height: 360,
+          content_type: "video/mp4",
+        },
+        timings: null,
+      },
+    });
+    expect(calls).toEqual(["https://atlas.test/api/v1/model/prediction/atlas-prediction"]);
+  });
+
+  test("reports Atlas in-flight jobs as pending", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ data: { id: "atlas-prediction", status: "processing" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+
+    await expect(
+      getAtlasCloudVideoJobStatus({
+        model: "vidu/q3-turbo/text-to-video",
+        requestId: "atlas-prediction",
+        apiKeys: { ATLASCLOUD_API_KEY: "atlas-key" },
+      }),
+    ).resolves.toEqual({ state: "pending" });
+  });
+
+  test("reports terminal Atlas failures without throwing", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "atlas-prediction",
+            status: "failed",
+            error: "content policy",
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+
+    await expect(
+      getAtlasCloudVideoJobStatus({
+        model: "vidu/q3-turbo/text-to-video",
+        requestId: "atlas-prediction",
+        apiKeys: { ATLASCLOUD_API_KEY: "atlas-key" },
+      }),
+    ).resolves.toEqual({ state: "failed", error: "content policy" });
+  });
+
+  test("treats unknown Atlas request ids as terminal failures", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+
+    await expect(
+      getAtlasCloudVideoJobStatus({
+        model: "vidu/q3-turbo/text-to-video",
+        requestId: "missing",
+        apiKeys: { ATLASCLOUD_API_KEY: "atlas-key" },
+      }),
+    ).resolves.toEqual({
+      state: "failed",
+      error: "Atlas Cloud does not know request missing",
+    });
   });
 });

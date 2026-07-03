@@ -1,8 +1,9 @@
 # PR 11962 Chat First-Turn Pool-First Review
 
 Date: 2026-07-03
-Branch: `fix/chat-sub-pool-first-warm-auth`
-PR: https://github.com/elizaOS/eliza/pull/11962
+Branch: `fix/11962-cli-inference-sdk-dep`
+Original PR: https://github.com/elizaOS/eliza/pull/11962
+Follow-up PR: https://github.com/elizaOS/eliza/pull/11986
 Issue context: https://github.com/elizaOS/eliza/issues/11180
 
 ## Scope Reviewed
@@ -10,6 +11,8 @@ Issue context: https://github.com/elizaOS/eliza/issues/11180
 - `plugins/plugin-cli-inference`: first warm-session auth, account-pool selection, subprocess-only env, rotation-on-limit, SDK dependency metadata.
 - `packages/ui`: in-chat onboarding conductor, single action/send funnel, continuous chat first-run lock, tutorial handoff, local model auto-download trigger, model-download home widget.
 - `plugins/plugin-local-inference`: resumable model download job, installed-model registration, chat-readable local inference status.
+- `packages/cloud/shared`: post-rebase video-provider contract compatibility required by the latest `develop`.
+- Repo verification blockers discovered after rebasing onto `origin/develop`: type-safety ratchet, local package typecheck/lint failures, dist-path declaration config, and post-rebase provider/typecheck drift.
 
 ## Current UX
 
@@ -31,22 +34,36 @@ Issue context: https://github.com/elizaOS/eliza/issues/11180
 
 ## Delta Closed In This Pass
 
-- Rebased PR 11962 onto `origin/develop`.
-- Kept the PR's pool-first behavior and tests intact.
-- Fixed the remaining `plugin-cli-inference` package-suite failure by adding the lazily imported `@anthropic-ai/claude-agent-sdk` to `optionalDependencies` and updating `bun.lock`.
-- Removed unrelated `bun install` artifact churn before final validation.
+- Confirmed original PR #11962 was merged into `develop`.
+- Opened follow-up PR #11986 for the remaining package/verification work.
+- Added the lazily imported `@anthropic-ai/claude-agent-sdk` as an optional dependency of `@elizaos/plugin-cli-inference` so isolated package tests resolve the SDK import.
+- Removed remaining repo-wide verification blockers on this branch:
+  - reduced type-safety ratchet counts back within baseline by removing double casts and numeric fallback expressions in touched runtime-adjacent code,
+  - fixed `cloud-shared` access to `@elizaos/security` declarations and nullable affiliate billing markup,
+  - implemented AtlasCloud video `getJobStatus` support required by the current `VideoProvider` contract and covered success/pending/terminal-failure/404 states,
+  - fixed shared/plugin-local-inference formatting/lint failures,
+  - regenerated `tsconfig.dist-paths.json` so dist-path consumers include `@elizaos/plugin-meetings`.
+- Kept unrelated generated registry and emitted `.js/.map` build artifacts out of the final diff.
 
 ## Remaining Delta / Risks
 
 - The account-pool session key is the warm SDK session key (`model`, mode, system prompt hash for Claude; `model`, mode for Codex), not an explicit conversation id. That is acceptable for PR 11962's first-turn auth fix, but the ideal affinity model would use a true conversation/thread key once this plugin receives one reliably.
-- Root `bun run verify` is blocked before package checks by the repo-wide type-safety ratchet on current `origin/develop`: `as unknown as` is `81` current vs `75` baseline, and `?? 0` in core/agent/app-core is `377` current vs `375` baseline. This branch does not touch those production source files.
-- UI screenshots/video were not recaptured for this backend/package-metadata branch. No UI pixels changed. The first-run/download/tutorial journey was validated with targeted UI tests listed below. If a UI PR changes these surfaces, capture with `bun run --cwd packages/app audit:app` and `bun run test:e2e:record`.
-- Live Claude/Codex model trajectory was not captured in this pass because no live app account-pool subscription credentials were available in the workspace. The unit suite validates the credential-selection contract and verifies pooled tokens never enter `process.env`.
+- No live Claude/Codex trajectory was captured in this pass because no live app account-pool subscription credentials were available in the workspace. The package suite validates the credential-selection contract and verifies pooled tokens never enter `process.env`.
+- The recorded `assistant-home-flow` UI lane produced usable first-run/chat screenshots, but the full lane exits non-zero on existing launcher/voice smoke drift unrelated to this PR: missing `launcher-tile-settings` after `/views`, missing `home-launcher-surface` in the iOS-style home assertion, and missing the `release to send` push-to-talk affordance. I did not change those UI tests in this backend/package follow-up.
+
+## Visual Evidence
+
+Captured with `E2E_RECORD=1 bun run --cwd packages/app test:e2e -- test/ui-smoke/assistant-home-flow.spec.ts` on 2026-07-03 and manually reviewed from `packages/app/aesthetic-audit-output/assistant-home-flow/` before copying into this evidence directory:
+
+- `.github/issue-evidence/11962-chat-journey-01-first-run-clouds.png`: fresh first-run starts inside the continuous chat overlay; free-text composer is disabled; only runtime choices are active.
+- `.github/issue-evidence/11962-chat-journey-02-assistant-chat-root.png`: after setup completion, the same bottom chat overlay returns on the ready app surface.
+- `.github/issue-evidence/11962-chat-journey-03-assistant-chat-typing.png`: normal chat input resumes after first-run completion.
+- `.github/issue-evidence/11962-chat-journey-04-chat-pill-suppressed.png`: `/chat` keeps the assistant chat surface active without rendering the extra shell home pill.
 
 ## Validation Run
 
-- `bun install` after rebase completed, including dev artifact sync.
-- `ELIZA_SKIP_ARTIFACT_SYNC=1 bun install` after manifest edit updated only dependency state.
+- `bun install` after rebase completed.
+- `ELIZA_SKIP_ARTIFACT_SYNC=1 bun install` after manifest edit updated workspace dependency links.
 - `bun run --cwd packages/core build` passed.
 - `bun run --cwd plugins/plugin-cli-inference test -- __tests__/account-rotation.test.ts` passed: 1 file, 21 tests.
 - `bun run --cwd plugins/plugin-cli-inference test` passed: 7 files, 94 tests.
@@ -62,5 +79,21 @@ Issue context: https://github.com/elizaOS/eliza/issues/11180
   - `src/components/chat/widgets/model-download.test.tsx`
   - `src/components/shell/ContinuousChatOverlay.firstrun.test.tsx`
   - `src/components/pages/tutorial/tutorial-steps.test.ts`
+- `bun run --cwd packages/agent test -- src/api/trajectory-fallback-routes.test.ts` passed: 8 tests.
+- `bun run --cwd plugins/plugin-meetings typecheck` passed.
+- `bun run --cwd plugins/plugin-meetings build` passed.
+- `bun run --cwd packages/cloud/shared typecheck` passed.
+- `bun run --cwd packages/cloud/shared test -- src/lib/providers/video/atlascloud-video-generation.test.ts` passed: 8 tests.
+- `bun run --cwd packages/cloud/shared lint` passed.
+- `bun run --cwd packages/cloud/api typecheck` passed.
+- `bun run --cwd packages/agent lint` passed.
+- `bun run --cwd packages/security typecheck` passed.
+- `bun run --cwd packages/shared lint` passed.
+- `bun run --cwd packages/shared typecheck` passed.
+- `bun run --cwd plugins/plugin-local-inference lint:check` passed.
+- `bun run --cwd plugins/plugin-local-inference test -- src/services/bionic-host-loader.test.ts` passed: 4 passed, 16 skipped.
+- Focused app-core account-pool suite passed for 5 files / 51 tests; the standalone `credential-resolver.multi-account.test.ts` lane still needs the broader build graph because it imports `@elizaos/plugin-birdclaw`.
 - `git diff --check` passed.
-- `bun run verify` failed at `audit:type-safety-ratchet` before reaching this package: unrelated `as unknown as` and `?? 0` baselines exceeded in current `origin/develop`.
+- `bun run typecheck:dist` passed: 28 dist-path consumer configs.
+- `bun run verify` passed: type-safety ratchet, 488 turbo build/typecheck/lint tasks, build model audit, turbo build dependency audit, TEE secret leak audit, script audit, test-realness audit, and dist-path consumer typecheck.
+- `E2E_RECORD=1 bun run --cwd packages/app test:e2e -- test/ui-smoke/assistant-home-flow.spec.ts` produced the visual evidence above, but exited 1 on the unrelated launcher/voice assertions listed in Remaining Delta / Risks.

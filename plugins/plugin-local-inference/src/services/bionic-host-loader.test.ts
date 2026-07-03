@@ -318,10 +318,13 @@ function startStreamingHost(
 				for (const [i, json] of frames.entries()) {
 					const full = frame(json);
 					if (i === frames.length - 1 && full.length > 8) {
-						setTimeout(() => sock.write(full.subarray(0, 6)), (delay += 5));
-						setTimeout(() => sock.write(full.subarray(6)), (delay += 5));
+						delay += 5;
+						setTimeout(() => sock.write(full.subarray(0, 6)), delay);
+						delay += 5;
+						setTimeout(() => sock.write(full.subarray(6)), delay);
 					} else {
-						setTimeout(() => sock.write(full), (delay += 5));
+						delay += 5;
+						setTimeout(() => sock.write(full), delay);
 					}
 				}
 			}

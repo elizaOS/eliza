@@ -33,6 +33,14 @@ const BROWSER_PEAK_GATE = 0.005;
  */
 const NODE_RMS_GATE = 0.004;
 
+type SpeakerAudioEmit = (streamIndex: number, payload: number[]) => void;
+type CaptureIntervalId = ReturnType<typeof setInterval>;
+
+interface CaptureWindow extends Window {
+  __elizaMeetSpeakerAudio?: SpeakerAudioEmit;
+  __elizaMeetCaptureIntervals?: CaptureIntervalId[];
+}
+
 export interface SpeakerAudioCaptureOptions {
   /** Teams-style single mixed element: use one fixed stream key. */
   mixedSingleElement?: boolean;
@@ -81,13 +89,10 @@ export async function startSpeakerAudioCapture(
   }
 
   await page.evaluate(
-    async ({ binding, bufferSize, targetRate, peakGate, rescanMs, mixed }) => {
-      interface CaptureWindow {
-        [key: string]: unknown;
-        __elizaMeetCaptureIntervals?: ReturnType<typeof setInterval>[];
-      }
-      const w = window as unknown as CaptureWindow;
-      const emit = w[binding] as (streamIndex: number, payload: number[]) => void;
+    async ({ bufferSize, targetRate, peakGate, rescanMs, mixed }) => {
+      const w = window as CaptureWindow;
+      const emit = w.__elizaMeetSpeakerAudio;
+      if (!emit) throw new Error("speaker audio binding is not registered");
 
       const liveAudioElements = (): HTMLMediaElement[] =>
         (Array.from(document.querySelectorAll("audio, video")) as HTMLMediaElement[]).filter((el) => {
@@ -169,7 +174,6 @@ export async function startSpeakerAudioCapture(
       w.__elizaMeetCaptureIntervals = [...(w.__elizaMeetCaptureIntervals ?? []), rescan];
     },
     {
-      binding: AUDIO_BINDING,
       bufferSize: BUFFER_SIZE,
       targetRate: MEETING_AUDIO_SAMPLE_RATE,
       peakGate: BROWSER_PEAK_GATE,
@@ -185,9 +189,7 @@ export async function startSpeakerAudioCapture(
       if (page.isClosed()) return;
       try {
         await page.evaluate(() => {
-          const w = window as unknown as {
-            __elizaMeetCaptureIntervals?: ReturnType<typeof setInterval>[];
-          };
+          const w = window as CaptureWindow;
           for (const id of w.__elizaMeetCaptureIntervals ?? []) clearInterval(id);
           w.__elizaMeetCaptureIntervals = [];
         });

@@ -8,11 +8,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import { resolveModelsCacheDir } from "../config/paths.ts";
 
 type ModelOption = {

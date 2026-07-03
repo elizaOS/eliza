@@ -128,6 +128,16 @@ const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
 
+function accountSessionPct(account: LinkedAccountConfig): number {
+  return typeof account.usage?.sessionPct === "number"
+    ? account.usage.sessionPct
+    : 0;
+}
+
+function accountLastUsedAt(account: LinkedAccountConfig): number {
+  return typeof account.lastUsedAt === "number" ? account.lastUsedAt : 0;
+}
+
 // affinity is keyed by sessionKey, which is per-conversation/per-request, so the
 // map grows one entry per distinct session over the process lifetime. Cap it
 // (FIFO by Map insertion order) — an evicted session simply re-selects on its
@@ -242,7 +252,7 @@ export class AccountPool {
       }
       case "quota-aware": {
         const underQuota = eligible.filter(
-          (a) => (a.usage?.sessionPct ?? 0) < QUOTA_AWARE_SKIP_PCT,
+          (a) => accountSessionPct(a) < QUOTA_AWARE_SKIP_PCT,
         );
         const pool = underQuota.length > 0 ? underQuota : eligible;
         return [...pool].sort(byPriorityThenAge)[0] ?? null;
@@ -267,9 +277,10 @@ export class AccountPool {
   /** Most recent of the persisted `lastUsedAt` and the in-memory selection
    * stamp — so a just-picked account sorts as "more recently used". */
   private effectiveLastUsed(account: LinkedAccountConfig): number {
+    const recentSelection = this.recentlySelectedAt.get(account.id);
     return Math.max(
-      account.lastUsedAt ?? 0,
-      this.recentlySelectedAt.get(account.id) ?? 0,
+      accountLastUsedAt(account),
+      recentSelection === undefined ? 0 : recentSelection,
     );
   }
 
@@ -283,8 +294,8 @@ export class AccountPool {
     a: LinkedAccountConfig,
     b: LinkedAccountConfig,
   ): number {
-    const aPct = a.usage?.sessionPct ?? 0;
-    const bPct = b.usage?.sessionPct ?? 0;
+    const aPct = accountSessionPct(a);
+    const bPct = accountSessionPct(b);
     if (aPct !== bPct) return aPct - bPct;
     const aUsed = this.effectiveLastUsed(a);
     const bUsed = this.effectiveLastUsed(b);
@@ -538,8 +549,8 @@ function byPriorityThenAge(
   b: LinkedAccountConfig,
 ): number {
   if (a.priority !== b.priority) return a.priority - b.priority;
-  const aLast = a.lastUsedAt ?? 0;
-  const bLast = b.lastUsedAt ?? 0;
+  const aLast = accountLastUsedAt(a);
+  const bLast = accountLastUsedAt(b);
   return aLast - bLast; // older first
 }
 
@@ -547,8 +558,8 @@ function _byLeastUsedThenPriority(
   a: LinkedAccountConfig,
   b: LinkedAccountConfig,
 ): number {
-  const aPct = a.usage?.sessionPct ?? 0;
-  const bPct = b.usage?.sessionPct ?? 0;
+  const aPct = accountSessionPct(a);
+  const bPct = accountSessionPct(b);
   if (aPct !== bPct) return aPct - bPct;
   return byPriorityThenAge(a, b);
 }

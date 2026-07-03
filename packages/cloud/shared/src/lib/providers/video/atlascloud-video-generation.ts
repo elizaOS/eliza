@@ -3,6 +3,8 @@ import type {
   GeneratedVideo,
   GeneratedVideoObject,
   VideoGenerationRequest,
+  VideoJobStatus,
+  VideoJobStatusRequest,
   VideoProvider,
 } from "./types";
 
@@ -160,6 +162,58 @@ export async function generateAtlasCloudVideo(
   throw new Error("Atlas video generation timed out");
 }
 
+export async function getAtlasCloudVideoJobStatus(
+  req: VideoJobStatusRequest,
+): Promise<VideoJobStatus> {
+  const apiKey = req.apiKeys.ATLASCLOUD_API_KEY;
+  if (!apiKey) {
+    throw new Error(getAiProviderConfigurationError());
+  }
+
+  const baseUrl = (req.apiKeys.ATLASCLOUD_BASE_URL || "https://api.atlascloud.ai").replace(
+    /\/+$/,
+    "",
+  );
+  const response = await fetch(`${baseUrl}/api/v1/model/prediction/${req.requestId}`, {
+    headers: { authorization: `Bearer ${apiKey}` },
+  });
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (response.status === 404) {
+    return {
+      state: "failed",
+      error: `Atlas Cloud does not know request ${req.requestId}`,
+    };
+  }
+  if (!response.ok) {
+    throw new Error(`Atlas prediction status failed: ${response.status}`);
+  }
+
+  const prediction = parsePrediction(payload);
+  const status = (prediction.status ?? "").toLowerCase();
+  if (TERMINAL_FAIL.has(status)) {
+    return {
+      state: "failed",
+      error: prediction.error ?? "Atlas Cloud reported a terminal video generation failure",
+    };
+  }
+  if (!TERMINAL_OK.has(status)) {
+    return { state: "pending" };
+  }
+
+  const video = firstAtlasVideoOutput(prediction.outputs);
+  if (!video) {
+    return {
+      state: "failed",
+      error: "Atlas Cloud completed without an output video",
+    };
+  }
+  return {
+    state: "succeeded",
+    result: { requestId: prediction.id ?? req.requestId, video, timings: null },
+  };
+}
+
 export const atlasCloudVideoProvider: VideoProvider = {
   billingSource: "atlascloud",
   isConfigured(apiKeys) {
@@ -168,6 +222,7 @@ export const atlasCloudVideoProvider: VideoProvider = {
     );
   },
   generate: generateAtlasCloudVideo,
+  getJobStatus: getAtlasCloudVideoJobStatus,
   async healthCheck() {
     return true;
   },
