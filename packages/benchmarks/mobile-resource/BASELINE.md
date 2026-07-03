@@ -15,8 +15,16 @@ fabricated number (AGENTS.md §3/§7).
    ```
 2. Repeat ≥3× on a quiet, thermally-cool device; take the conservative side
    (p50 floor for throughput, p90/peak for ceilings).
-3. Write the measured number + device + commit into the table below.
-4. Set the matching key in `budgets.json` with ~10–15% headroom, then ratchet it
+3. For physical-lab evidence (power meter, physical iOS), normalize the raw
+   files before promoting anything:
+   ```bash
+   node packages/benchmarks/mobile-resource/lab-artifacts.mjs \
+     --input=.github/issue-evidence/12072-lab \
+     --out=packages/benchmarks/mobile-resource/results/lab \
+     --fail-on-gaps
+   ```
+4. Write the measured number + device + commit into the table below.
+5. Set the matching key in `budgets.json` with ~10–15% headroom, then ratchet it
    down as optimisations land (monotonic-improvement discipline, same as
    `loadperf`).
 

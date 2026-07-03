@@ -42,6 +42,12 @@ node packages/benchmarks/mobile-resource/run-workbench.mjs \
 
 # Consolidated report (markdown + HTML) from the latest results:
 node packages/benchmarks/mobile-resource/report.mjs
+
+# Normalize physical lab artifacts (power meter + physical iOS captures):
+node packages/benchmarks/mobile-resource/lab-artifacts.mjs \
+  --input=.github/issue-evidence/12072-lab \
+  --out=packages/benchmarks/mobile-resource/results/lab \
+  --fail-on-gaps
 ```
 
 Exit codes: `0` pass, `1` budget/gate failure, `2` skipped/unavailable (no
@@ -68,6 +74,7 @@ reachable the runner records `{ skipped }` and exits `2` rather than failing.
 | `android-probe.mjs` | Host-side adb probes (thermal/battery/memory) |
 | `ios-probe.mjs` | simctl device detect + MetricKit payload pull |
 | `report.mjs` | Consolidated markdown/HTML report from `results/` |
+| `lab-artifacts.mjs` | Physical-lab artifact normalizer for power-meter logs, physical iOS captures, and multi-run stability gaps |
 | `lib.mjs` | Shared utilities (result recording, git context, formatting, exec) |
 | `budgets.json` | Per device-class × tier budgets |
 | `BASELINE.md` | Measured baselines + how a baseline becomes a budget |
@@ -82,6 +89,26 @@ node --test packages/benchmarks/mobile-resource/metrics.test.mjs
 The pure aggregation + budget logic is unit-tested here; the device-driving
 runner and probes degrade to `skipped` off-device, so they are exercised in the
 `mobile-resource-workbench` CI lane on the self-hosted arm64 runner + iOS sim.
+
+## Physical lab artifacts
+
+Issue #12072 needs evidence the live runner cannot honestly create on a hosted
+machine: bench power-meter logs for idle/chat/voice/background scheduled work,
+physical iOS metrics for both tiers, and at least three cool-device runs before
+anything becomes a budget. `lab-artifacts.mjs` consumes those files and emits
+`lab-artifacts.json` plus `lab-artifacts.md`.
+
+Accepted inputs are CSV or JSON files. CSV columns are intentionally simple:
+`runId`, `platform`, `deviceClass`, `tier`, `workload`, `elapsedSeconds` or
+`atMs`, `powerW` or `voltageV` + `currentA`, optional `temperatureC`,
+`residentMemoryMb`, `batteryLevelPct`, and `isCharging`. JSON can be either a
+workbench `latest.json`, an array of the same sample rows, or an object with a
+`samples` array. One file may contain multiple `runId`s; the tool splits them
+into separate runs.
+
+`--fail-on-gaps` exits non-zero until the required workload/tier coverage is
+present. Missing measurements stay missing; they are reported as gaps instead
+of being replaced with zero.
 
 ## Notes
 
