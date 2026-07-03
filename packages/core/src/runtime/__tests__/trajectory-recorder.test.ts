@@ -1117,4 +1117,48 @@ describe("integration: action stage records input/output/error (M12)", () => {
 		expect(tool?.errorText).toContain("Connection refused");
 		expect(tool?.input).toBe('{"q":"missing-config"}');
 	});
+
+	it("captures the executed action's model-facing description (incl. routing hint) on the tool stage and renders it in the markdown review", async () => {
+		process.env.ELIZA_TRAJECTORY_REVIEW_MODE = "1";
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-docs",
+			rootMessage: { id: "m-docs", text: "remind me at 9pm" },
+		});
+
+		// The exposed ToolDefinition description = routingHint + "\n" + compressed
+		// description (what the planner actually saw for this action).
+		const modelFacingDescription =
+			"manage EXISTING scheduled items -> SCHEDULED_TASKS; coding work -> TASKS\nmanage owner scheduled items";
+		const toolStage: RecordedStage = {
+			stageId: "stage-tool-SCHEDULED_TASKS",
+			kind: "tool",
+			startedAt: 100,
+			endedAt: 210,
+			latencyMs: 110,
+			tool: {
+				name: "SCHEDULED_TASKS",
+				args: { action: "create" },
+				result: { ok: true },
+				success: true,
+				durationMs: 110,
+				description: modelFacingDescription,
+			},
+		};
+		await recorder.recordStage(id, toolStage);
+		await recorder.endTrajectory(id, "finished");
+
+		// JSON round-trip: the execution record is self-contained.
+		const loaded = await recorder.load(id);
+		const tool = loaded?.stages[0]?.tool;
+		expect(tool?.description).toBe(modelFacingDescription);
+
+		// Markdown review surfaces the when-to-use guidance on the executed action
+		// without cross-referencing the planner stage's model.tools.
+		const markdownPath = path.join(tmpDir, "agent-docs", `${id}.md`);
+		const markdown = await fs.readFile(markdownPath, "utf8");
+		expect(markdown).toContain(
+			"- description: manage EXISTING scheduled items -> SCHEDULED_TASKS",
+		);
+	});
 });

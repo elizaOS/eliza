@@ -2119,6 +2119,9 @@ async function executeQueuedToolCall(params: {
 		},
 	});
 
+	const exposedTool = params.params.tools?.find(
+		(tool) => tool.name === params.toolCall.name,
+	);
 	await recordToolStage({
 		recorder: params.params.recorder,
 		trajectoryId: params.params.trajectoryId,
@@ -2128,6 +2131,7 @@ async function executeQueuedToolCall(params: {
 		startedAt,
 		endedAt,
 		logger: params.params.runtime.logger,
+		description: exposedTool?.description,
 	});
 }
 
@@ -2140,6 +2144,7 @@ async function recordToolStage(args: {
 	startedAt: number;
 	endedAt: number;
 	logger?: PlannerRuntime["logger"];
+	description?: string;
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
 	try {
@@ -2162,6 +2167,7 @@ async function recordToolStage(args: {
 				result: args.result,
 				success: args.result.success,
 				durationMs: args.endedAt - args.startedAt,
+				description: args.description,
 				input: io.input,
 				output: io.output,
 				errorText: io.errorText,
