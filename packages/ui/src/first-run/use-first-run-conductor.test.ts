@@ -275,7 +275,47 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("On this device → provider:other ('configure in Settings') opens the Settings tab and exits first-run without running a finish flow", async () => {
+  it("seeds a skippable accent step at wrap-up: picking a swatch applies + persists the accent live, garbage picks no-op, and it never gates completion", async () => {
+    const setUiAccent = vi.fn();
+    const spies = seedAppStore({ setUiAccent });
+    const { turn, unmount } = renderConductor();
+
+    await waitForTurn(turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+
+    // Wrap-up seeds BOTH the accent step and the tutorial prompt, so accent is
+    // optional — the tutorial CHOICE is already present to finish.
+    const appearance = await waitForTurn(turn, "first-run:appearance");
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(appearance.text).toContain("make it yours");
+    expect(appearance.text).toContain("__first_run__:accent:default=");
+    expect(appearance.text).toContain("__first_run__:accent:green=");
+    expect(appearance.source).toBe("first_run");
+
+    // Picking a swatch applies + persists via the shared store setter; it does
+    // NOT complete first-run (that stays deferred to the tutorial pick).
+    expect(tryHandleFirstRunAction("__first_run__:accent:green")).toBe(true);
+    expect(setUiAccent).toHaveBeenCalledTimes(1);
+    expect(setUiAccent).toHaveBeenCalledWith("green");
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    // A garbage accent id under the reserved prefix is consumed as a no-op.
+    expect(tryHandleFirstRunAction("__first_run__:accent:bogus")).toBe(true);
+    expect(setUiAccent).toHaveBeenCalledTimes(1);
+
+    // The tutorial pick is still the single real completion — accent skippable.
+    expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+
+    unmount();
+  });
+
+  it("keeps BYOK reachable after the runtime chooser was trimmed to Cloud + On this device: On this device → provider:other routes to the Settings handoff banner without a model download", async () => {
     const spies = seedAppStore();
     const { turn, transcript, unmount } = renderConductor();
     const greeting = await waitForTurn(turn, "first-run:greeting");

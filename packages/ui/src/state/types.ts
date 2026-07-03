@@ -338,6 +338,8 @@ export interface AppState {
   canRedoBackground: boolean;
   /** When true, the home time/date tile is hidden (user pref, #10706). */
   homeTimeWidgetHidden: boolean;
+  /** User-chosen accent preset id; `default` keeps the brand accent. */
+  uiAccentId: string;
   ownerName: string | null;
   connected: boolean;
   agentStatus: AgentStatus | null;
@@ -779,6 +781,8 @@ export interface AppActions {
   redoBackgroundConfig: () => void;
   /** Show/hide the home time/date tile (#10706). */
   setHomeTimeWidgetHidden: (hidden: boolean) => void;
+  /** Choose the app accent color by preset id (applies live + persists). */
+  setUiAccent: (id: string) => void;
 
   // Lifecycle
   handleStart: () => Promise<void>;
