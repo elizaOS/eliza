@@ -473,7 +473,15 @@ fetch() {
   local target; target="$(ssh_target)"
   echo "[train_nebius][fetch] pulling checkpoints + benchmarks + reports + run log"
   mkdir -p "$ROOT/checkpoints/$RUN_NAME" "$ROOT/benchmarks/$RUN_NAME" "$ROOT/reports" "$ROOT/reports/logs"
-  rsync -avhz "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
+  # Exclude training-resume-only state from the checkpoint fetch: optimizer.pt
+  # (APOLLO state — for a 2b this is ~21 GB, larger than the model itself),
+  # scheduler/rng/trainer_state. Pulling them keeps the (expensive) GPU box
+  # alive for an extra hour of rsync for bytes only a resume would use — the
+  # deployable model is model.safetensors + config. Set FETCH_OPTIMIZER=1 to
+  # keep them when you actually intend to resume this run.
+  local opt_excludes=""
+  [ "${FETCH_OPTIMIZER:-0}" = "1" ] || opt_excludes="--exclude optimizer.pt --exclude scheduler.pt --exclude rng_state*.pth --exclude trainer_state.json"
+  rsync -avhz $opt_excludes "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
   rsync -avhz "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
   rsync -avhz "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
   # Always pull the remote run log — it holds the finetune traceback, which is
