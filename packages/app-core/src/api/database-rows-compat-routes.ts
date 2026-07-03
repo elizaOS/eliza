@@ -5,7 +5,7 @@ import {
   sanitizeIdentifier,
   sqlLiteral,
 } from "@elizaos/shared";
-import { ensureRouteAuthorized } from "./auth.ts";
+import { ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -20,6 +20,10 @@ interface TableIntrospection {
   resolvedSchema: string;
   columns: string[];
   expiresAt: number;
+}
+
+interface DatabaseRowsCompatRouteDeps {
+  ensureOwner?: typeof ensureRouteMinRole;
 }
 
 // Resolved schema + column list for a (schema, table) — stable unless a
@@ -53,6 +57,7 @@ export async function handleDatabaseRowsCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: CompatRuntimeState,
+  deps: DatabaseRowsCompatRouteDeps = {},
 ): Promise<boolean> {
   const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
   const match = /^\/api\/database\/tables\/([^/]+)\/rows$/.exec(pathname);
@@ -60,7 +65,8 @@ export async function handleDatabaseRowsCompatRoute(
     return false;
   }
 
-  if (!(await ensureRouteAuthorized(req, res, state))) {
+  const ensureOwner = deps.ensureOwner ?? ensureRouteMinRole;
+  if (!(await ensureOwner(req, res, state, "OWNER"))) {
     return true;
   }
 
