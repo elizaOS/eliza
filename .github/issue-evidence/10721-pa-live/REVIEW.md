@@ -36,4 +36,6 @@ assertions, not a green board.
 
 **Files:** `0NN-<scenario>.json` (per-scenario report incl. `failedAssertions`
 + `responseText`), `matrix.json`, `pa-native.jsonl.gz`
-(`eliza_native_v1` rows), `pa-native.manifest.json`, `run/viewer/index.html`.
+(`eliza_native_v1` rows for the four exported native trajectories), and
+`pa-native.manifest.json`. `reminder-dispatch-capability` is represented in the
+per-scenario JSON and matrix, but was not present in the native JSONL export.

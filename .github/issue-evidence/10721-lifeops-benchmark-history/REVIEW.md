@@ -27,8 +27,7 @@ meeting_prep 1/1, morning_brief 1/1, schedule_plan 1/1, screentime_recap 1/1,
 **reminder_dispatch 0/3** (the sole failing task at this model tier).
 
 **Files:** `baseline-selfcare-direct-cerebras.json` (machine-readable report),
-`.md` (formatted score card), `.jsonl` (Ax optimization rows),
-`benchmark-live-cerebras-run.log` (vitest live-gate run log),
+`.md` (formatted score card), `.jsonl` (Ax optimization rows), and
 `cerebras-endpoint-proof.txt` (independent endpoint liveness check).
 
 ## Open human decision (blocks final #11789 closure)

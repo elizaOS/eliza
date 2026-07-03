@@ -32,5 +32,8 @@ spine holds; the free-form goal/recap/follow-up flows expose real capability
 gaps at this model tier plus mock-connector limits (mock Google token).
 Captured as-is.
 
-**Files:** `0NN-<scenario>.json`, `matrix.json`, `lifeops-native.jsonl.gz`,
-`lifeops-native.manifest.json`, `run/viewer/index.html`.
+**Files:** `0NN-<scenario>.json`, `matrix.json`, `lifeops-native.jsonl.gz`
+(rows for the four exported native trajectories), and
+`lifeops-native.manifest.json`. `reminder-daily-recurrence-outcome` is
+represented in the per-scenario JSON and matrix, but was not present in the
+native JSONL export.
