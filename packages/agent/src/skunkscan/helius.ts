@@ -99,3 +99,69 @@ export async function getSolanaRecentSignatures(
 
   return data.result ?? [];
 }
+
+export type SolanaTokenHolding = {
+  mint: string;
+  amount: number;
+  decimals: number;
+  rawAmount: string;
+};
+
+export async function getSolanaTokenHoldings(
+  address: string,
+): Promise<SolanaTokenHolding[]> {
+  if (!address || address.trim().length === 0) {
+    throw new Error("Wallet address is required");
+  }
+
+  const response = await fetch(getHeliusRpcUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "skunkscan-token-accounts",
+      method: "getTokenAccountsByOwner",
+      params: [
+        address.trim(),
+        {
+          programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        },
+        {
+          encoding: "jsonParsed",
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Helius request failed with status ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (data.error) {
+    throw new Error(data.error.message ?? "Helius returned an error");
+  }
+
+  const accounts = data.result?.value;
+
+  if (!Array.isArray(accounts)) {
+    return [];
+  }
+
+  return accounts
+    .map((account) => {
+      const info = account?.account?.data?.parsed?.info;
+      const tokenAmount = info?.tokenAmount;
+
+      return {
+        mint: String(info?.mint ?? ""),
+        amount: Number(tokenAmount?.uiAmount ?? 0),
+        decimals: Number(tokenAmount?.decimals ?? 0),
+        rawAmount: String(tokenAmount?.amount ?? "0"),
+      };
+    })
+    .filter((token) => token.mint && token.amount > 0);
+}
