@@ -563,14 +563,29 @@ final class BootCaptureUITests: XCTestCase {
     private func tapWebChoice(
         _ app: XCUIApplication, label: String, timeout: TimeInterval
     ) -> Bool {
-        let predicate = NSPredicate(format: "label ==[c] %@", label)
+        let exact = NSPredicate(format: "label ==[c] %@", label)
+        let contains = NSPredicate(format: "label CONTAINS[c] %@", label)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            // Prefer a button; fall back to any descendant carrying the label.
-            let button = app.buttons.matching(predicate).firstMatch
-            if button.exists, button.isHittable { button.tap(); return true }
-            let any = app.descendants(matching: .any).matching(predicate).firstMatch
-            if any.exists, any.isHittable { any.tap(); return true }
+            // Prefer a button; fall back to any descendant carrying the label;
+            // then, since a WKWebView control frequently surfaces only as a
+            // non-hittable staticText (no button role exposed to XCUITest),
+            // coordinate-tap its center. Try an exact label first, then a
+            // substring (the placement rows render "On this device ›" etc.).
+            for predicate in [exact, contains] {
+                let button = app.buttons.matching(predicate).firstMatch
+                if button.exists, button.isHittable { button.tap(); return true }
+                let any = app.descendants(matching: .any).matching(predicate)
+                    .firstMatch
+                if any.exists, any.isHittable { any.tap(); return true }
+                let text = app.staticTexts.matching(predicate).firstMatch
+                if text.exists {
+                    text.coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                    ).tap()
+                    return true
+                }
+            }
             Thread.sleep(forTimeInterval: 1.0)
         }
         return false
