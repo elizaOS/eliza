@@ -1,4 +1,5 @@
 import { VERSION } from "../runtime/version.ts";
+import { isSensitiveConfigKey } from "./sensitive-keys.ts";
 
 /** Known connector IDs for config schema generation. Keep in sync with runtime/plugin maps. */
 export const CONNECTOR_IDS = [
@@ -973,10 +974,8 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   "agents.list[].identity.avatar": "avatars/eliza.png",
 };
 
-const SENSITIVE_PATTERNS = [/token/i, /password/i, /secret/i, /api.?key/i];
-
 function isSensitivePath(path: string): boolean {
-  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(path));
+  return isSensitiveConfigKey(path);
 }
 
 type JsonSchemaObject = JsonSchemaNode & {
