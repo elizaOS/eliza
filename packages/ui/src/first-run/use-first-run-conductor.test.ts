@@ -13,7 +13,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   client: {
-    listLocalAgentBackups: vi.fn(async () => []),
+    listLocalAgentBackups: vi.fn(
+      async (): Promise<LocalAgentBackupMetadata[]> => [],
+    ),
     restoreLocalAgentBackup: vi.fn(async () => undefined),
     getAuthStatus: vi.fn(async () => ({ required: false })),
     getCloudStatus: vi.fn(async () => ({ connected: true })),
@@ -52,7 +54,10 @@ vi.mock("./auto-download-recommended", () => ({
     mocks.autoDownloadRecommendedLocalModelInBackground,
 }));
 
-import type { ConversationMessage } from "../api";
+import type {
+  ConversationMessage,
+  LocalAgentBackupMetadata,
+} from "../api";
 import { __setAppValueForTests } from "../state/app-store";
 import {
   ConversationMessagesCtx,
@@ -309,6 +314,71 @@ describe("useFirstRunConductor", () => {
       false,
     );
     unmount();
+  });
+
+  it("seeds the greeting IMMEDIATELY even when the local-backup probe never settles (cold-start unblock)", async () => {
+    // The regression: a fresh/booting device whose agent API hangs left the
+    // greeting unseeded (it used to be gated inside the backups probe's
+    // continuations), stranding the user at a locked composer. The greeting
+    // must now appear regardless of the probe.
+    mocks.client.listLocalAgentBackups.mockReturnValue(
+      new Promise<never>(() => {}), // never resolves and never rejects
+    );
+    seedAppStore();
+    const { turn, transcript, unmount } = renderConductor();
+
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+    expect(greeting.text).toContain("where should your agent run?");
+    // And the runtime pick still works while the probe is stuck.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    // No backup-restore turn was seeded (the probe never returned any).
+    expect(
+      transcript.current.some((m) => m.id === "first-run:backup-restore"),
+    ).toBe(false);
+    unmount();
+  });
+
+  it("appends the backup-restore choice below the greeting when backups exist — but not once the user advanced past it", async () => {
+    // Backups resolve AFTER the greeting is already up: restore is offered as
+    // an additional turn, never replacing the greeting.
+    const backup = {
+      fileName: "backup-1.tar",
+      path: "/backups/backup-1.tar",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      agentId: "agent-1",
+      stateSha256: "sha-1",
+      sizeBytes: 10,
+    };
+    mocks.client.listLocalAgentBackups.mockResolvedValue([backup]);
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    const restore = await waitForTurn(turn, "first-run:backup-restore");
+    expect(restore.text).toContain("__first_run__:backup-restore:");
+    unmount();
+
+    // Now the racing case: if the user picks a runtime BEFORE the (slow) backup
+    // probe resolves, the restore turn must NOT be appended after the fact.
+    vi.clearAllMocks();
+    let resolveBackups: (b: LocalAgentBackupMetadata[]) => void = () => {};
+    mocks.client.listLocalAgentBackups.mockReturnValue(
+      new Promise<LocalAgentBackupMetadata[]>((resolve) => {
+        resolveBackups = resolve;
+      }),
+    );
+    seedAppStore();
+    const second = renderConductor();
+    await waitForTurn(second.turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(second.turn, "first-run:provider");
+    // Backups arrive late — the user already advanced, so no restore turn.
+    resolveBackups([backup]);
+    await Promise.resolve();
+    expect(
+      second.transcript.current.some((m) => m.id === "first-run:backup-restore"),
+    ).toBe(false);
+    second.unmount();
   });
 
   it("REMOTE pick seeds the inline URL+token connect form (no provider step, no immediate finish)", async () => {
