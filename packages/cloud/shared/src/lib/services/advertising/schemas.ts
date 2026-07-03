@@ -47,6 +47,15 @@ const LocalTimeSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:mm in 24-hour local time");
 
+// End times additionally allow "24:00" (exclusive end of day) so a window can
+// cover a full local day — matches Meta's adset_schedule end_minute of 1440.
+const LocalEndTimeSchema = z
+  .string()
+  .regex(
+    /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/,
+    "Use HH:mm in 24-hour local time (24:00 = end of day)",
+  );
+
 function localTimeToMinute(value: string): number {
   const [hour, minute] = value.split(":").map(Number);
   return hour * 60 + minute;
@@ -65,7 +74,7 @@ export const DaypartingWindowSchema = z
   .object({
     daysOfWeek: z.array(z.number().int().min(0).max(6)).min(1).max(7),
     startTime: LocalTimeSchema,
-    endTime: LocalTimeSchema,
+    endTime: LocalEndTimeSchema,
   })
   .superRefine((window, ctx) => {
     if (new Set(window.daysOfWeek).size !== window.daysOfWeek.length) {

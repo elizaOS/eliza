@@ -83,7 +83,15 @@ async function seedPublisher() {
 }
 
 async function seedAdvertiserCampaign(
-  opts: { status?: string; allocated?: string; spent?: string } = {},
+  opts: {
+    status?: string;
+    allocated?: string;
+    spent?: string;
+    dayparting?: {
+      timezone: string;
+      windows: Array<{ daysOfWeek: number[]; startTime: string; endTime: string }>;
+    };
+  } = {},
 ) {
   const [org] = await dbWrite
     .insert(organizations)
@@ -115,6 +123,7 @@ async function seedAdvertiserCampaign(
       budget_type: "daily",
       credits_allocated: opts.allocated ?? "100.00",
       credits_spent: opts.spent ?? "0.00",
+      ...(opts.dayparting ? { metadata: { dayparting: opts.dayparting } } : {}),
     })
     .returning();
   const [creative] = await dbWrite
@@ -306,6 +315,72 @@ describe("Ad Inventory / SSP (#10687)", () => {
       floorCpm: 20,
     });
     expect(await service.serveAd(slot)).toBeNull();
+  });
+
+  test("dayparting gates the serve path: outside its window a campaign is neither served nor billed (#11599)", async () => {
+    if (!pgliteReady) return;
+    const pub = await seedPublisher();
+    // A window that can never contain "now": keyed to a UTC weekday 3 days away.
+    const offWindowDay = (new Date().getUTCDay() + 3) % 7;
+    const adv = await seedAdvertiserCampaign({
+      dayparting: {
+        timezone: "UTC",
+        windows: [{ daysOfWeek: [offWindowDay], startTime: "00:00", endTime: "24:00" }],
+      },
+    });
+    const slot = await service.createSlot({
+      appId: pub.appId,
+      organizationId: pub.orgId,
+      name: "S",
+      format: "banner",
+      floorCpm: 20,
+    });
+
+    expect(await service.serveAd(slot)).toBeNull();
+
+    const campaign = await dbWrite.query.adCampaigns.findFirst({
+      where: eq(adCampaigns.id, adv.campaignId),
+    });
+    expect(Number(campaign?.credits_spent)).toBe(0);
+    expect(campaign?.total_impressions).toBe(0);
+    expect(await creatorBalance(pub.userId)).toBe(0);
+  });
+
+  test("dayparting: an in-window campaign serves while a richer out-of-window competitor is skipped", async () => {
+    if (!pgliteReady) return;
+    const pub = await seedPublisher();
+    const offWindowDay = (new Date().getUTCDay() + 3) % 7;
+    // Bigger budget — would win the budget-ranked selection without the gate.
+    const blocked = await seedAdvertiserCampaign({
+      allocated: "500.00",
+      dayparting: {
+        timezone: "UTC",
+        windows: [{ daysOfWeek: [offWindowDay], startTime: "00:00", endTime: "24:00" }],
+      },
+    });
+    const allowed = await seedAdvertiserCampaign({
+      dayparting: {
+        timezone: "UTC",
+        windows: [{ daysOfWeek: [0, 1, 2, 3, 4, 5, 6], startTime: "00:00", endTime: "24:00" }],
+      },
+    });
+    const slot = await service.createSlot({
+      appId: pub.appId,
+      organizationId: pub.orgId,
+      name: "S",
+      format: "banner",
+      floorCpm: 20,
+    });
+
+    const served = await service.serveAd(slot);
+    expect(served).not.toBeNull();
+    expect(served?.campaignId).toBe(allowed.campaignId);
+
+    const blockedRow = await dbWrite.query.adCampaigns.findFirst({
+      where: eq(adCampaigns.id, blocked.campaignId),
+    });
+    expect(Number(blockedRow?.credits_spent)).toBe(0);
+    expect(blockedRow?.total_impressions).toBe(0);
   });
 
   test("clicks are recorded once (dedup on impression id)", async () => {

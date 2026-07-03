@@ -737,8 +737,22 @@ class AdvertisingService {
     }
 
     if (!campaign.external_campaign_id) {
+      // Only the locally-stored dayparting schedule can change before the
+      // campaign is synced. Reject mixed payloads instead of silently applying
+      // the schedule and dropping the rest.
       if (input.dayparting === undefined) {
         throw new Error("Campaign not synced with platform");
+      }
+      if (
+        input.name !== undefined ||
+        input.budgetAmount !== undefined ||
+        input.startDate !== undefined ||
+        input.endDate !== undefined ||
+        input.targeting !== undefined
+      ) {
+        throw new Error(
+          "Campaign not synced with platform; only dayparting can be updated before sync",
+        );
       }
     }
     const dayparting =
@@ -754,11 +768,9 @@ class AdvertisingService {
       const metadata = {
         ...campaign.metadata,
         ...(dayparting ? { dayparting } : {}),
-        dayparting_provider_synced_at: undefined,
       };
       if (input.dayparting === null) {
         delete metadata.dayparting;
-        delete metadata.dayparting_provider_synced_at;
       }
       const updated = await adCampaignsRepository.update(campaignId, { metadata });
       if (!updated) {
@@ -807,10 +819,9 @@ class AdvertisingService {
       }
     }
 
-    const result = await provider.updateCampaign(credentials, campaign.external_campaign_id, {
-      ...input,
-      dayparting,
-    });
+    // Post-sync dayparting changes are rejected above, so `input` never carries
+    // a schedule here — providers cannot update adset schedules in place.
+    const result = await provider.updateCampaign(credentials, campaign.external_campaign_id, input);
 
     if (!result.success) {
       // Platform rejected the change — undo any increase charge we just made.
@@ -834,23 +845,7 @@ class AdvertisingService {
       start_date: input.startDate,
       end_date: input.endDate,
       targeting: input.targeting,
-      ...(input.dayparting !== undefined
-        ? {
-            metadata: {
-              ...campaign.metadata,
-              ...(dayparting ? { dayparting } : {}),
-              ...(dayparting && campaign.external_campaign_id
-                ? { dayparting_provider_synced_at: new Date().toISOString() }
-                : {}),
-              ...(dayparting ? {} : { dayparting_provider_synced_at: undefined }),
-            },
-          }
-        : {}),
     };
-    if (input.dayparting === null) {
-      delete updateData.metadata?.dayparting;
-      delete updateData.metadata?.dayparting_provider_synced_at;
-    }
 
     let updated: AdCampaign | undefined;
     if (budgetCreditDelta < 0 && newCreditsAllocated !== undefined) {
@@ -1057,7 +1052,7 @@ class AdvertisingService {
    *     under-count spend and over-refund.
    * SUMS the two measures and clamps to the allocation (restoring merged
    * #11255 semantics): the streams are additive, not alternative —
-   * findEligibleAd serves EXTERNAL campaigns through the internal SSP too, so
+   * findEligibleAds serves EXTERNAL campaigns through the internal SSP too, so
    * credits_spent and total_spend accrue independently on one campaign, and
    * MAX would under-count dual-stream spend and over-refund. Shared by
    * deleteCampaign and the updateCampaign budget-decrease refund (#11292).

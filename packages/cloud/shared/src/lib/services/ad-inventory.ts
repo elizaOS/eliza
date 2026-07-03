@@ -11,10 +11,15 @@
  * `ad_campaigns` credits, publisher payout is `redeemable_earnings`.
  */
 
-import { adSlotsRepository } from "../../db/repositories/ad-slots";
+import { adSlotsRepository, type EligibleAd } from "../../db/repositories/ad-slots";
 import type { AdSlot, AdSlotFormat, AdSlotStatus } from "../../db/schemas/ad-slots";
 import { logger } from "../utils/logger";
+import { isWithinDayparting } from "./advertising/dayparting";
+import { DaypartingScheduleSchema } from "./advertising/schemas";
 import { redeemableEarningsService } from "./redeemable-earnings";
+
+/** How many budget-ranked candidates to consider per serve before giving up. */
+const ELIGIBLE_AD_CANDIDATES = 25;
 
 /** Publisher share of the served price (rest is platform margin). */
 function publisherShare(): number {
@@ -71,19 +76,41 @@ export class AdInventoryService {
   }
 
   /**
+   * True when the campaign may deliver right now: no dayparting means always;
+   * otherwise the current instant must fall inside a window in the schedule's
+   * own timezone. A schedule that fails validation (corrupt row — the write
+   * path validates) fails CLOSED: the campaign is skipped, never billed.
+   */
+  private canDeliverNow(ad: EligibleAd, now: Date): boolean {
+    if (!ad.dayparting) return true;
+    const parsed = DaypartingScheduleSchema.safeParse(ad.dayparting);
+    if (!parsed.success) {
+      logger.warn("[AdInventory] campaign has an invalid dayparting schedule; skipping serve", {
+        campaignId: ad.campaignId,
+      });
+      return false;
+    }
+    return isWithinDayparting(parsed.data, now);
+  }
+
+  /**
    * Fill a slot with an eligible ad. Returns null when the slot is paused, no
-   * eligible campaign exists, or the slot's per-impression price is below the
-   * minimum billable unit. On success the advertiser is debited (exactly once,
-   * gated by the impression event, atomically bounded by the campaign's
-   * remaining budget) and the publisher's payout is settled from the pending
-   * impression row (idempotent on the impression id).
+   * eligible campaign exists (or none may deliver in its dayparting window
+   * right now), or the slot's per-impression price is below the minimum
+   * billable unit. On success the advertiser is debited (exactly once, gated
+   * by the impression event, atomically bounded by the campaign's remaining
+   * budget) and the publisher's payout is settled from the pending impression
+   * row (idempotent on the impression id).
    */
   async serveAd(slot: AdSlot): Promise<ServedAd | null> {
     if (slot.status !== "active") return null;
 
-    const eligible = await adSlotsRepository.findEligibleAd({
+    const candidates = await adSlotsRepository.findEligibleAds({
       publisherOrgId: slot.organization_id,
+      limit: ELIGIBLE_AD_CANDIDATES,
     });
+    const now = new Date();
+    const eligible = candidates.find((ad) => this.canDeliverNow(ad, now));
     if (!eligible) return null;
 
     // CPM → per-impression price, debited at the credits ledger's scale-2

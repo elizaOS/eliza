@@ -3,6 +3,7 @@ import { adAccountsRepository } from "../../../db/repositories/ad-accounts";
 import { adCampaignsRepository } from "../../../db/repositories/ad-campaigns";
 import { adCreativesRepository } from "../../../db/repositories/ad-creatives";
 import { advertisingService } from "../advertising";
+import { isWithinDayparting } from "../advertising/dayparting";
 import { mapDaypartingToMetaAdSetSchedule } from "../advertising/providers/meta";
 import type { CampaignDaypartingSchedule } from "../advertising/types";
 import { creditsService } from "../credits";
@@ -49,7 +50,6 @@ function makeCampaign(overrides: Record<string, unknown> = {}) {
       dayparting: schedule,
       external_ad_set_ids: ["adset-1"],
       external_ad_ids: ["ad-1"],
-      dayparting_provider_synced_at: "2026-07-01T00:00:00.000Z",
       last_sync_at: "2026-07-01T00:00:00.000Z",
     },
     created_at: new Date("2026-07-01T00:00:00.000Z"),
@@ -287,5 +287,103 @@ describe("advertising campaign duplication", () => {
         issues: [],
       },
     });
+  });
+});
+
+describe("updateCampaign on an unsynced campaign", () => {
+  test("rejects mixed non-dayparting fields instead of silently dropping them", async () => {
+    track(spyOn(adCampaignsRepository, "findById").mockResolvedValue(makeCampaign() as never));
+    const update = track(spyOn(adCampaignsRepository, "update"));
+
+    await expect(
+      advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, {
+        name: "Renamed",
+        dayparting: schedule,
+      }),
+    ).rejects.toThrow("only dayparting can be updated before sync");
+
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("isWithinDayparting — explicit-timezone window evaluation", () => {
+  // 2026-07-01T02:30:00Z is Wednesday 02:30 UTC == Tuesday June 30 19:30 in
+  // America/Los_Angeles (PDT, UTC-7). daysOfWeek: 0=Sunday..6=Saturday.
+  const AT = new Date("2026-07-01T02:30:00.000Z");
+
+  test("matches in the schedule's own timezone, not UTC", () => {
+    expect(
+      isWithinDayparting(
+        {
+          timezone: "America/Los_Angeles",
+          windows: [{ daysOfWeek: [2], startTime: "19:00", endTime: "20:00" }],
+        },
+        AT,
+      ),
+    ).toBe(true);
+    // Same local window keyed to Wednesday (the UTC weekday) does NOT match —
+    // proves evaluation uses the schedule timezone, not server/UTC time.
+    expect(
+      isWithinDayparting(
+        {
+          timezone: "America/Los_Angeles",
+          windows: [{ daysOfWeek: [3], startTime: "19:00", endTime: "20:00" }],
+        },
+        AT,
+      ),
+    ).toBe(false);
+    expect(
+      isWithinDayparting(
+        {
+          timezone: "UTC",
+          windows: [{ daysOfWeek: [3], startTime: "02:00", endTime: "03:00" }],
+        },
+        AT,
+      ),
+    ).toBe(true);
+  });
+
+  test("window bounds are half-open: [startTime, endTime)", () => {
+    expect(
+      isWithinDayparting(
+        {
+          timezone: "UTC",
+          windows: [{ daysOfWeek: [3], startTime: "02:00", endTime: "02:30" }],
+        },
+        AT,
+      ),
+    ).toBe(false);
+    expect(
+      isWithinDayparting(
+        {
+          timezone: "UTC",
+          windows: [{ daysOfWeek: [3], startTime: "02:30", endTime: "03:00" }],
+        },
+        AT,
+      ),
+    ).toBe(true);
+  });
+
+  test('"24:00" endTime covers through the last minute of the local day', () => {
+    // 23:59:30 UTC on Wednesday July 1 — excluded by a 23:59 end, included by 24:00.
+    const LATE = new Date("2026-07-01T23:59:30.000Z");
+    expect(
+      isWithinDayparting(
+        {
+          timezone: "UTC",
+          windows: [{ daysOfWeek: [3], startTime: "00:00", endTime: "23:59" }],
+        },
+        LATE,
+      ),
+    ).toBe(false);
+    expect(
+      isWithinDayparting(
+        {
+          timezone: "UTC",
+          windows: [{ daysOfWeek: [3], startTime: "00:00", endTime: "24:00" }],
+        },
+        LATE,
+      ),
+    ).toBe(true);
   });
 });

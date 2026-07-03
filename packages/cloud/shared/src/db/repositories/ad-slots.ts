@@ -12,7 +12,7 @@
 
 import { and, asc, desc, eq, gt, gte, isNull, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
-import { adCampaigns } from "../schemas/ad-campaigns";
+import { type AdCampaign, adCampaigns } from "../schemas/ad-campaigns";
 import { adCreatives } from "../schemas/ad-creatives";
 import {
   type AdSlot,
@@ -32,6 +32,8 @@ export interface EligibleAd {
   callToAction: string | null;
   destinationUrl: string | null;
   media: unknown;
+  /** Campaign delivery windows (#11599); null = deliver at any time. */
+  dayparting: NonNullable<AdCampaign["metadata"]["dayparting"]> | null;
 }
 
 /** An impression whose publisher earnings credit has not yet settled. */
@@ -102,13 +104,15 @@ export class AdSlotsRepository {
   }
 
   /**
-   * Pick an eligible active creative for a slot format: an active campaign with
-   * remaining budget (credits_allocated > credits_spent) that is NOT owned by
-   * the publisher's own org (no self-serve), joined to one of its active
-   * creatives. Highest remaining budget wins (a simple first-price proxy).
+   * Pick eligible active creatives for a slot: active campaigns with remaining
+   * budget (credits_allocated > credits_spent) that are NOT owned by the
+   * publisher's own org (no self-serve), joined to their active creatives.
+   * Highest remaining budget first (a simple first-price proxy). Returns a
+   * bounded candidate list so the service can apply time-of-day (dayparting)
+   * gating (#11599) before committing to one.
    */
-  async findEligibleAd(input: { publisherOrgId: string }): Promise<EligibleAd | undefined> {
-    const [row] = await dbRead
+  async findEligibleAds(input: { publisherOrgId: string; limit: number }): Promise<EligibleAd[]> {
+    const rows = await dbRead
       .select({
         campaignId: adCampaigns.id,
         creativeId: adCreatives.id,
@@ -117,6 +121,7 @@ export class AdSlotsRepository {
         callToAction: adCreatives.call_to_action,
         destinationUrl: adCreatives.destination_url,
         media: adCreatives.media,
+        metadata: adCampaigns.metadata,
       })
       .from(adCampaigns)
       .innerJoin(adCreatives, eq(adCreatives.campaign_id, adCampaigns.id))
@@ -129,8 +134,11 @@ export class AdSlotsRepository {
         ),
       )
       .orderBy(desc(sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`))
-      .limit(1);
-    return row;
+      .limit(input.limit);
+    return rows.map(({ metadata, ...row }) => ({
+      ...row,
+      dayparting: metadata.dayparting ?? null,
+    }));
   }
 
   /**

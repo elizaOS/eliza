@@ -1353,12 +1353,16 @@ export interface ListAdSlotsResponse {
 // ---- Advertising campaign management (#11599) ----
 
 export interface CampaignDaypartingWindow {
+  /** 0=Sunday .. 6=Saturday (JS `Date#getDay` / Meta adset_schedule convention). */
   daysOfWeek: number[];
+  /** `HH:mm`, 24-hour, in the schedule's timezone. */
   startTime: string;
+  /** `HH:mm` exclusive end; `"24:00"` = end of day. Must be after startTime. */
   endTime: string;
 }
 
 export interface CampaignDaypartingSchedule {
+  /** IANA timezone the windows are evaluated in (never server-local time). */
   timezone: string;
   windows: CampaignDaypartingWindow[];
 }

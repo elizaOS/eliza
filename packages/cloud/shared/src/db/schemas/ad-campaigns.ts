@@ -126,6 +126,7 @@ export const adCampaigns = pgTable(
             endTime: string;
           }>;
         };
+        /** Set at CREATE when the schedule went into the provider payload (Meta only). */
         dayparting_provider_synced_at?: string;
         last_sync_at?: string;
         error_message?: string;
