@@ -4,10 +4,21 @@
  * as few controls as possible. Presentational (prop-driven) so it unit-tests
  * without the data layer; a thin container wires `client.listTranscripts` /
  * `client.getTranscript`.
+ *
+ * Meetings (#11856): the header carries the {@link MeetingJoinBar} (paste a
+ * meeting URL → the bot joins), list rows for `source: "meeting"` records show
+ * a platform badge + participant count + a LIVE dot while recording, and the
+ * detail pane renders the {@link LiveMeetingPane} for an in-progress meeting.
  */
 
+import {
+  MEETING_PLATFORM_LABELS,
+  type MeetingJoinRequest,
+  type MeetingSession,
+} from "@elizaos/shared";
 import type {
   Transcript,
+  TranscriptSource,
   TranscriptStatus,
   TranscriptSummary,
 } from "@elizaos/shared/transcripts";
@@ -18,15 +29,33 @@ import { cn } from "../../lib/utils";
 import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { LiveMeetingPane } from "./LiveMeetingPane";
+import { MeetingJoinBar } from "./MeetingJoinBar";
+import { meetingTranscriptMeta } from "./meeting-live";
 import { TranscriptPlayer } from "./TranscriptPlayer";
 
+/**
+ * List-row projection with the meeting-aware fields the meetings pipeline
+ * writes on its summaries (absent on plain recordings).
+ */
+export type MeetingAwareTranscriptSummary = TranscriptSummary & {
+  source?: TranscriptSource;
+  metadata?: Record<string, unknown>;
+};
+
 export interface TranscriptsViewProps {
-  transcripts: TranscriptSummary[];
+  transcripts: MeetingAwareTranscriptSummary[];
   selectedId: string | null;
   selected: Transcript | null;
   onSelect(id: string): void;
   loading?: boolean;
   error?: string | null;
+  /** Sessions not yet ended/failed (GET /api/meetings?active=1). */
+  activeMeetings?: MeetingSession[];
+  onJoinMeeting?(input: MeetingJoinRequest): void;
+  onStopMeeting?(sessionId: string): void;
+  joiningMeeting?: boolean;
+  meetingError?: string | null;
 }
 
 function formatDuration(ms: number): string {
@@ -60,15 +89,31 @@ const STATUS_LABEL: Record<TranscriptStatus, string> = {
   failed: "Failed",
 };
 
+/** Small accent dot + label shown on live meeting rows/headers. */
+function LiveIndicator({ testId }: { testId: string }): React.JSX.Element {
+  return (
+    <span
+      data-testid={testId}
+      className="inline-flex items-center gap-1 text-xs font-medium text-accent"
+    >
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+      LIVE
+    </span>
+  );
+}
+
 function TranscriptRow({
   summary,
   active,
   onSelect,
 }: {
-  summary: TranscriptSummary;
+  summary: MeetingAwareTranscriptSummary;
   active: boolean;
   onSelect(id: string): void;
 }): React.JSX.Element {
+  const isMeeting = summary.source === "meeting";
+  const isLive = isMeeting && summary.status === "recording";
+  const meta = isMeeting ? meetingTranscriptMeta(summary) : null;
   const status = STATUS_LABEL[summary.status];
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `transcript-${agentSafeId(summary.id)}`,
@@ -93,18 +138,39 @@ function TranscriptRow({
         active ? "bg-bg-muted/30" : "hover:bg-bg-muted/20",
       )}
     >
-      <div className="truncate font-medium">{summary.title}</div>
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 truncate font-medium">{summary.title}</span>
+        {isLive ? (
+          <LiveIndicator testId={`transcript-live-${summary.id}`} />
+        ) : null}
+      </div>
       <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+        {meta?.platform ? (
+          <>
+            <span data-testid={`transcript-platform-${summary.id}`}>
+              {MEETING_PLATFORM_LABELS[meta.platform]}
+            </span>
+            <span aria-hidden>·</span>
+          </>
+        ) : null}
         <span>{formatDate(summary.createdAt)}</span>
         <span aria-hidden>·</span>
         <span>{formatDuration(summary.durationMs)}</span>
-        {summary.speakerCount > 1 ? (
+        {meta && meta.participants.length > 0 ? (
+          <>
+            <span aria-hidden>·</span>
+            <span data-testid={`transcript-participants-${summary.id}`}>
+              {meta.participants.length}{" "}
+              {meta.participants.length === 1 ? "participant" : "participants"}
+            </span>
+          </>
+        ) : !isMeeting && summary.speakerCount > 1 ? (
           <>
             <span aria-hidden>·</span>
             <span>{summary.speakerCount} speakers</span>
           </>
         ) : null}
-        {status ? (
+        {status && !isLive ? (
           <>
             <span aria-hidden>·</span>
             <span>{status}</span>
@@ -120,6 +186,36 @@ function TranscriptRow({
   );
 }
 
+/** Detail-pane header for a meeting record: platform badge + roster. */
+function MeetingDetailHeader({
+  transcript,
+}: {
+  transcript: Transcript;
+}): React.JSX.Element | null {
+  const meta = meetingTranscriptMeta(transcript);
+  if (!meta.platform && meta.participants.length === 0) return null;
+  return (
+    <div
+      data-testid="meeting-detail-meta"
+      className="flex flex-wrap items-center gap-2 text-xs text-muted"
+    >
+      {meta.platform ? (
+        <span
+          data-testid="meeting-detail-platform"
+          className="rounded-sm border border-border px-1.5 py-0.5 font-medium text-txt"
+        >
+          {MEETING_PLATFORM_LABELS[meta.platform]}
+        </span>
+      ) : null}
+      {meta.participants.length > 0 ? (
+        <span data-testid="meeting-detail-participants" className="truncate">
+          {meta.participants.map((p) => p.displayName).join(", ")}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function TranscriptsView({
   transcripts,
   selectedId,
@@ -127,14 +223,31 @@ export function TranscriptsView({
   onSelect,
   loading,
   error,
+  activeMeetings = [],
+  onJoinMeeting,
+  onStopMeeting,
+  joiningMeeting,
+  meetingError,
 }: TranscriptsViewProps): React.JSX.Element {
+  const joinBar =
+    onJoinMeeting && onStopMeeting ? (
+      <MeetingJoinBar
+        activeMeetings={activeMeetings}
+        onJoin={onJoinMeeting}
+        onStop={onStopMeeting}
+        joining={joiningMeeting}
+        error={meetingError}
+      />
+    ) : null;
+
   if (!error && !loading && transcripts.length === 0) {
     return (
       <ShellViewAgentSurface viewId="transcripts">
         <div
           data-testid="transcripts-view"
-          className="flex h-full min-h-0 w-full"
+          className="flex h-full min-h-0 w-full flex-col gap-4"
         >
+          {joinBar}
           <div data-testid="transcripts-empty" className="flex flex-1">
             <ChatEmptyStateWithRecommendations
               icon={AudioLines}
@@ -151,53 +264,81 @@ export function TranscriptsView({
     );
   }
 
+  const selectedIsLiveMeeting =
+    selected?.source === "meeting" && selected.status === "recording";
+
   return (
     <ShellViewAgentSurface viewId="transcripts">
       <div
         data-testid="transcripts-view"
-        className="flex h-full min-h-0 w-full flex-col gap-4 md:flex-row"
+        className="flex h-full min-h-0 w-full flex-col gap-4"
       >
-        <aside className="flex w-full shrink-0 flex-col gap-1.5 md:w-72">
-          {error ? (
-            <p className="px-3 text-sm text-muted" role="alert">
-              {error}
-            </p>
-          ) : loading && transcripts.length === 0 ? (
-            <p className="px-3 text-sm text-muted">Loading…</p>
-          ) : (
-            <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
-              {transcripts.map((t) => (
-                <TranscriptRow
-                  key={t.id}
-                  summary={t}
-                  active={t.id === selectedId}
-                  onSelect={onSelect}
-                />
-              ))}
-            </div>
-          )}
-        </aside>
+        {joinBar}
+        <div className="flex min-h-0 w-full flex-1 flex-col gap-4 md:flex-row">
+          <aside className="flex w-full shrink-0 flex-col gap-1.5 md:w-72">
+            {error ? (
+              <p className="px-3 text-sm text-muted" role="alert">
+                {error}
+              </p>
+            ) : loading && transcripts.length === 0 ? (
+              <p className="px-3 text-sm text-muted">Loading…</p>
+            ) : (
+              <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
+                {transcripts.map((t) => (
+                  <TranscriptRow
+                    key={t.id}
+                    summary={t}
+                    active={t.id === selectedId}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </div>
+            )}
+          </aside>
 
-        <section className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          {selected ? (
-            <div className="flex flex-col gap-3">
-              <h2 className="text-base font-semibold text-txt">
-                {selected.title}
-              </h2>
-              <TranscriptPlayer
-                transcript={selected}
-                audioUrl={selected.audioUrl}
-              />
-            </div>
-          ) : (
-            <div
-              data-testid="transcripts-detail-empty"
-              className="grid h-full place-items-center text-sm text-muted/70"
-            >
-              Select a recording.
-            </div>
-          )}
-        </section>
+          <section
+            className={cn(
+              "min-h-0 min-w-0 flex-1",
+              selectedIsLiveMeeting ? "flex flex-col" : "overflow-y-auto",
+            )}
+          >
+            {selected ? (
+              <div
+                className={cn(
+                  "flex flex-col gap-3",
+                  selectedIsLiveMeeting && "min-h-0 flex-1",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold text-txt">
+                    {selected.title}
+                  </h2>
+                  {selectedIsLiveMeeting ? (
+                    <LiveIndicator testId="meeting-detail-live" />
+                  ) : null}
+                </div>
+                {selected.source === "meeting" ? (
+                  <MeetingDetailHeader transcript={selected} />
+                ) : null}
+                {selectedIsLiveMeeting ? (
+                  <LiveMeetingPane transcript={selected} />
+                ) : (
+                  <TranscriptPlayer
+                    transcript={selected}
+                    audioUrl={selected.audioUrl}
+                  />
+                )}
+              </div>
+            ) : (
+              <div
+                data-testid="transcripts-detail-empty"
+                className="grid h-full place-items-center text-sm text-muted/70"
+              >
+                Select a recording.
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </ShellViewAgentSurface>
   );

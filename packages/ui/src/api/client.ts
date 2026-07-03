@@ -132,6 +132,11 @@ export type {
   InstalledModel,
   ModelHubSnapshot,
 } from "./client-local-inference";
+export type { ListMeetingsOptions } from "./client-meetings";
+export {
+  parseMeetingStatusEvent,
+  parseMeetingTranscriptEvent,
+} from "./client-meetings";
 export * from "./client-types";
 export type { XRDeviceConnection, XRPairState } from "./client-xr";
 export type { AgentRequestTransport } from "./transport";
@@ -240,6 +245,7 @@ import "./client-computeruse";
 import "./client-files";
 import "./client-imessage";
 import "./client-local-inference";
+import "./client-meetings";
 import "./client-notifications";
 import "./client-scheduled-tasks";
 import "./client-voice-models";

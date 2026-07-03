@@ -6,7 +6,10 @@ import type {
 } from "@elizaos/shared/transcripts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TranscriptsView } from "./TranscriptsView";
+import {
+  type MeetingAwareTranscriptSummary,
+  TranscriptsView,
+} from "./TranscriptsView";
 
 afterEach(cleanup);
 
@@ -109,5 +112,113 @@ describe("TranscriptsView", () => {
       />,
     );
     expect(screen.getByTestId("transcripts-empty")).toBeTruthy();
+  });
+
+  const meetingSummary: MeetingAwareTranscriptSummary = {
+    id: "m1",
+    title: "Weekly sync",
+    createdAt: 1_700_200_000_000,
+    durationMs: 120_000,
+    speakerCount: 3,
+    status: "recording",
+    preview: "",
+    hasAudio: false,
+    source: "meeting",
+    metadata: {
+      platform: "google_meet",
+      participants: [
+        { id: "1", displayName: "Alice" },
+        { id: "2", displayName: "Bob" },
+      ],
+    },
+  };
+
+  it("renders platform badge, participant count, and LIVE on a live meeting row", () => {
+    render(
+      <TranscriptsView
+        transcripts={[meetingSummary]}
+        selectedId={null}
+        selected={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("transcript-platform-m1").textContent).toBe(
+      "Google Meet",
+    );
+    expect(screen.getByTestId("transcript-participants-m1").textContent).toBe(
+      "2 participants",
+    );
+    expect(screen.getByTestId("transcript-live-m1").textContent).toContain(
+      "LIVE",
+    );
+    // no "Recording" status label when the LIVE dot already says so
+    expect(screen.getByTestId("transcript-row-m1").textContent).not.toContain(
+      "Recording",
+    );
+  });
+
+  it("omits meeting affordances on an archived meeting row", () => {
+    render(
+      <TranscriptsView
+        transcripts={[{ ...meetingSummary, status: "ready" }]}
+        selectedId={null}
+        selected={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("transcript-live-m1")).toBeNull();
+    expect(screen.getByTestId("transcript-platform-m1")).toBeTruthy();
+  });
+
+  it("shows meeting metadata + the player on an archived meeting detail", () => {
+    const archivedMeeting: Transcript = {
+      ...selected,
+      id: "m1",
+      title: "Weekly sync",
+      source: "meeting",
+      status: "ready",
+      metadata: meetingSummary.metadata,
+    };
+    render(
+      <TranscriptsView
+        transcripts={[{ ...meetingSummary, status: "ready" }]}
+        selectedId="m1"
+        selected={archivedMeeting}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("meeting-detail-platform").textContent).toBe(
+      "Google Meet",
+    );
+    expect(screen.getByTestId("meeting-detail-participants").textContent).toBe(
+      "Alice, Bob",
+    );
+    // archived meeting with audio still uses the standard player
+    expect(screen.getByTestId("transcript-play")).toBeTruthy();
+    expect(screen.queryByTestId("live-meeting-pane")).toBeNull();
+  });
+
+  it("renders the join bar and forwards a join request", () => {
+    const onJoinMeeting = vi.fn();
+    render(
+      <TranscriptsView
+        transcripts={[]}
+        selectedId={null}
+        selected={null}
+        onSelect={vi.fn()}
+        activeMeetings={[]}
+        onJoinMeeting={onJoinMeeting}
+        onStopMeeting={vi.fn()}
+      />,
+    );
+    // join bar is present even on the empty state
+    fireEvent.change(screen.getByTestId("meeting-url-input"), {
+      target: { value: "https://meet.google.com/abc-defg-hij" },
+    });
+    fireEvent.submit(screen.getByTestId("meeting-join-form"));
+    expect(onJoinMeeting).toHaveBeenCalledWith({
+      platform: "google_meet",
+      meetingUrl: "https://meet.google.com/abc-defg-hij",
+    });
   });
 });
