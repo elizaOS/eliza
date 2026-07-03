@@ -14,34 +14,17 @@ import { logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
 
-// Cache for the lazily-created process-wide SecretsManager facade.
-//
-// TDZ-hardening: this module sits in a circular-import chain that runs through
-// vault-bootstrap.ts → loadRegistry (../registry) → … → back into app-core,
-// which on Bun's strict ESM evaluator can re-enter `sharedSecretsManager()`
-// before the top-level initializer of `vault-mirror.ts` finishes running. A
-// bare `let cachedManager = null` would be in the temporal dead zone at that
-// moment and throw `Cannot access 'cachedManager' before initialization`,
-// which surfaced at boot as `[vault-bootstrap]` failing and the agent never
-// binding to port 31337 (live-USB symptom). A module-level `let` of a
-// container object dodges TDZ because the container is hoisted with its
-// `undefined` initializer in the var-environment phase, and the only access
-// path goes through `state.manager` which is just an object property read.
-var state: { manager: SecretsManager | null } = { manager: null };
+// The process-wide SecretsManager facade, constructed once on first use. The
+// former circular-import chain (vault-bootstrap.ts → loadRegistry → … → back
+// into app-core) that could re-enter this module before its initializer ran
+// has been broken (agent no longer imports app-core — see vault-bootstrap.ts /
+// runtime/host-bridge.ts), so a plain lazy `let` is safe: there is no
+// re-entrant ESM evaluation and thus no temporal-dead-zone hazard to guard.
+let cachedManager: SecretsManager | null = null;
 
 export function sharedSecretsManager(): SecretsManager {
-  // Self-heal: if a circular import re-entered us before the module-top
-  // `var state = {…}` initializer line ran, hoisted `state` is still
-  // `undefined`. Lazily initialize the container so we never throw and
-  // downstream callers see a stable `{ manager: null }` after first access.
-  // Defensive: the primary fix is breaking the cycle (see
-  // `vault-bootstrap.ts` agent-bridge lazy import), but this guard keeps
-  // cycle regressions from silently bricking boot.
-  if (!state) {
-    state = { manager: null };
-  }
-  if (!state.manager) state.manager = createManager();
-  return state.manager;
+  if (!cachedManager) cachedManager = createManager();
+  return cachedManager;
 }
 
 export function sharedVault(): Vault {
@@ -54,7 +37,7 @@ export function sharedVault(): Vault {
  * Also lets tests inject a test vault built via `createTestVault`.
  */
 export function _resetSharedVaultForTesting(next: Vault | null = null): void {
-  state.manager = next ? createManager({ vault: next }) : null;
+  cachedManager = next ? createManager({ vault: next }) : null;
 }
 
 /**
