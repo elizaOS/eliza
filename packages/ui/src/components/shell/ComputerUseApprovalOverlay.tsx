@@ -21,13 +21,23 @@ const POLL_MS = 1500;
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-function approvalStreamUrl(): string {
+function approvalStreamUrl(): string | null {
   const baseUrl = client.getBaseUrl();
   const restToken = client.getRestAuthToken();
-  const url = new URL(
-    "/api/computer-use/approvals/stream",
-    baseUrl || window.location.origin,
-  );
+  let url: URL;
+  try {
+    url = new URL(
+      "/api/computer-use/approvals/stream",
+      baseUrl || window.location.origin,
+    );
+  } catch {
+    // Non-http native IPC bases (eliza-local-agent://ipc) are not valid URL
+    // bases on Android WebView / WebKit — resolving a path against a
+    // non-special scheme throws, which crashed the whole shell at boot on
+    // on-device builds. EventSource cannot reach those bases anyway, so
+    // degrade to the polling path.
+    return null;
+  }
   if (restToken) {
     url.searchParams.set("token", restToken);
   }
@@ -94,9 +104,10 @@ export function ComputerUseApprovalOverlay() {
     };
 
     // On-device runtimes use the native IPC base, which EventSource cannot
-    // open; openEventSource returns null there so we fall straight through to
-    // polling instead of throwing a synchronous SecurityError.
-    eventSource = openEventSource(approvalStreamUrl());
+    // open; approvalStreamUrl/openEventSource return null there so we fall
+    // straight through to polling instead of throwing.
+    const streamUrl = approvalStreamUrl();
+    eventSource = streamUrl ? openEventSource(streamUrl) : null;
     if (eventSource) {
       eventSource.onmessage = (event) => {
         if (cancelled) {
