@@ -54,7 +54,18 @@ export type ValidationStrategy =
 	| "url:reachable"
 	| "custom";
 
-export type StorageBackend = "memory" | "character" | "world" | "component";
+export type StorageBackend =
+	| "memory"
+	| "character"
+	| "world"
+	| "component"
+	/**
+	 * External non-decrypting broker backend (issue #11536, phase E4). Unlike
+	 * the local AES-GCM backends above, a `"broker"` store NEVER holds or returns
+	 * plaintext secret values: its read path yields a {@link SecretHandle} that is
+	 * resolved at use-time through the credential-proxy / model-gateway seam.
+	 */
+	| "broker";
 
 // ============================================================================
 // Core Secret Types
@@ -189,6 +200,121 @@ export interface EncryptedSecret {
 	algorithm: "aes-256-gcm";
 	/** Key identifier for key rotation */
 	keyId: string;
+}
+
+// ============================================================================
+// Broker Federation Types (issue #11536, phase E4)
+// ============================================================================
+
+/**
+ * Discriminator marking a value returned by a non-decrypting broker backend as
+ * a HANDLE (a reference to a secret), never the plaintext. Serialized into the
+ * handle's `value` field so a consumer that mistakes a handle for a raw secret
+ * gets an obviously-non-credential sentinel rather than something it might send
+ * on the wire.
+ */
+export const SECRET_HANDLE_MARKER = "eliza:secret-handle:v1" as const;
+
+/**
+ * A non-decrypting reference to a secret held by an third-party broker.
+ *
+ * This is the core E4 primitive: the broker backend issues a `SecretHandle`
+ * instead of a plaintext value. The handle is resolvable at USE-TIME through
+ * the already-shipped seams — the model gateway (E1/E2) for provider keys and
+ * the credential proxy (E3) for arbitrary API credentials — where the broker
+ * injects the real credential outbound (header-only) and the runtime never
+ * sees it. The runtime therefore CANNOT exfiltrate the credential because it
+ * never holds the plaintext.
+ */
+export interface SecretHandle {
+	/** Constant discriminator. Always {@link SECRET_HANDLE_MARKER}. */
+	readonly marker: typeof SECRET_HANDLE_MARKER;
+	/**
+	 * Opaque broker-scoped reference for this secret (e.g. a lease id or vault
+	 * path). NOT the credential; safe to log/persist. Resolved by the broker at
+	 * use-time via the proxy/gateway seam.
+	 */
+	readonly ref: string;
+	/** The secret key this handle stands in for. */
+	readonly key: string;
+	/**
+	 * Which use-time seam resolves this handle:
+	 *   - `"model-gateway"` — an OpenAI-compatible provider key (E1/E2).
+	 *   - `"credential-proxy"` — an arbitrary API credential injected by the
+	 *     credential proxy (E3).
+	 */
+	readonly resolveVia: "model-gateway" | "credential-proxy";
+	/** Optional broker base URL the handle resolves against (informational). */
+	readonly brokerUrl?: string;
+	/** Optional expiry (epoch ms) if the broker issued a time-bound handle. */
+	readonly expiresAt?: number;
+}
+
+/**
+ * Serialize a {@link SecretHandle} into the opaque string the `ISecretStorage`
+ * `get` contract returns. The result is deliberately NOT a credential: it is a
+ * prefixed JSON blob a consumer can detect via {@link isSerializedSecretHandle}
+ * and hand to the resolve seam instead of sending it as a bearer token.
+ */
+export function serializeSecretHandle(handle: SecretHandle): string {
+	return `${SECRET_HANDLE_MARKER}:${JSON.stringify(handle)}`;
+}
+
+/** Type guard: is a stored string a serialized {@link SecretHandle}? */
+export function isSerializedSecretHandle(value: string | null): boolean {
+	return (
+		typeof value === "string" && value.startsWith(`${SECRET_HANDLE_MARKER}:`)
+	);
+}
+
+/**
+ * Parse a serialized handle back into a {@link SecretHandle}, or `null` if the
+ * string is not a serialized handle / is malformed.
+ */
+export function parseSecretHandle(value: string | null): SecretHandle | null {
+	if (!isSerializedSecretHandle(value)) return null;
+	const json = (value as string).slice(`${SECRET_HANDLE_MARKER}:`.length);
+	try {
+		const parsed = JSON.parse(json) as SecretHandle;
+		if (parsed?.marker !== SECRET_HANDLE_MARKER) return null;
+		return parsed;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The minimal contract a `"broker"` backend calls out to. Deliberately
+ * vendor-neutral: any broker that can (a) confirm a secret exists, (b) issue a
+ * non-decrypting handle for it, and optionally (c) store a secret write-only
+ * satisfies it. Steward is the REFERENCE implementation, not a hard dependency
+ * — this interface is defined in core with no branded import.
+ */
+export interface ISecretBrokerClient {
+	/** Does the broker hold a secret for this key? Never returns the value. */
+	hasSecret(key: string, context: SecretContext): Promise<boolean>;
+	/**
+	 * Issue a non-decrypting handle for a secret. MUST NOT return plaintext.
+	 * Returns `null` when the broker has no such secret.
+	 */
+	issueHandle(
+		key: string,
+		context: SecretContext,
+	): Promise<SecretHandle | null>;
+	/**
+	 * Optionally store a secret INTO the broker (write path). Brokers that are
+	 * read-only (the runtime is not permitted to write tenant credentials)
+	 * should omit this or return `false`; the store then refuses writes.
+	 */
+	storeSecret?(
+		key: string,
+		value: string,
+		context: SecretContext,
+	): Promise<boolean>;
+	/** Optionally remove a secret handle mapping from the broker. */
+	deleteSecret?(key: string, context: SecretContext): Promise<boolean>;
+	/** Optional metadata listing (never values). */
+	listSecrets?(context: SecretContext): Promise<SecretMetadata>;
 }
 
 /**
@@ -399,6 +525,16 @@ export interface SecretsServiceConfig {
 	enableAccessLogging: boolean;
 	/** Maximum access log entries to keep */
 	maxAccessLogEntries: number;
+	/**
+	 * Optional non-decrypting broker client (issue #11536, phase E4). Vendor-
+	 * neutral: core defines the {@link ISecretBrokerClient} contract but ships no
+	 * concrete broker. A deployment that wants the "eliza enterprise"
+	 * never-holds-plaintext guarantee supplies its client here AND sets the
+	 * `ELIZA_SECRETS_BROKER_URL`/`_TOKEN` env; both are required to activate the
+	 * broker backend. When unset, the service uses the local composite default
+	 * unchanged.
+	 */
+	brokerClient?: ISecretBrokerClient;
 }
 
 /**

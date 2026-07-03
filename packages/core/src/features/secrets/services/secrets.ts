@@ -14,12 +14,15 @@ import {
 } from "../../../types/index.ts";
 import { KeyManager } from "../crypto/encryption.ts";
 import {
+	BrokerSecretStorage,
 	CharacterSettingsStorage,
 	ComponentSecretStorage,
 	CompositeSecretStorage,
+	resolveSecretsBrokerConfig,
 	WorldMetadataStorage,
 } from "../storage/index.ts";
 import type {
+	ISecretBrokerClient,
 	PluginSecretRequirement,
 	SecretAccessLog,
 	SecretChangeCallback,
@@ -67,6 +70,13 @@ export class SecretsService extends Service {
 	private globalStorage!: CharacterSettingsStorage;
 	private worldStorage!: WorldMetadataStorage;
 	private userStorage!: ComponentSecretStorage;
+	/**
+	 * Non-decrypting broker backend (issue #11536, phase E4). `undefined` unless
+	 * BOTH the broker env is configured (`ELIZA_SECRETS_BROKER_URL`/`_TOKEN`) AND
+	 * a concrete {@link ISecretBrokerClient} was supplied via config. When unset,
+	 * behaviour is byte-for-byte the existing local composite default.
+	 */
+	private broker?: BrokerSecretStorage;
 
 	private accessLogs: SecretAccessLog[] = [];
 	private changeCallbacks: Map<string, SecretChangeCallback[]> = new Map();
@@ -98,12 +108,26 @@ export class SecretsService extends Service {
 			this.worldStorage = new WorldMetadataStorage(runtime, this.keyManager);
 			this.userStorage = new ComponentSecretStorage(runtime, this.keyManager);
 
-			// Create composite storage
+			// Create composite storage (the local default; unchanged)
 			this.storage = new CompositeSecretStorage({
 				globalStorage: this.globalStorage,
 				worldStorage: this.worldStorage,
 				userStorage: this.userStorage,
 			});
+
+			// E4: opt-in non-decrypting broker backend. Activated ONLY when both the
+			// broker env is configured AND a concrete client was supplied. A
+			// half-configured broker (env set, no client, or vice versa) leaves the
+			// service on the local default unchanged, so the common path is untouched.
+			const brokerClient = this.secretsConfig.brokerClient;
+			if (brokerClient) {
+				const brokerConfig = resolveSecretsBrokerConfig(
+					(key) => runtime.getSetting(key) as string | undefined,
+				);
+				if (brokerConfig) {
+					this.broker = new BrokerSecretStorage(brokerClient, brokerConfig);
+				}
+			}
 		}
 	}
 
@@ -126,6 +150,12 @@ export class SecretsService extends Service {
 		logger.info("[SecretsService] Initializing");
 
 		await this.storage.initialize();
+
+		// E4: initialize the broker backend when active. Logged distinctly so an
+		// operator can confirm the non-decrypting backend is in effect.
+		if (this.broker) {
+			await this.broker.initialize();
+		}
 
 		logger.info(
 			"[SecretsService] Secrets must be read explicitly from the service",
@@ -159,6 +189,18 @@ export class SecretsService extends Service {
 	 */
 	async get(key: string, context: SecretContext): Promise<string | null> {
 		this.logAccess(key, "read", context, true);
+
+		// E4 precedence: when the broker backend is active it is consulted FIRST.
+		// A hit returns a serialized non-decrypting handle (never plaintext); a
+		// miss falls through to the local composite default. Under strict mode a
+		// broker error throws (SecretsBrokerUnavailableError) rather than silently
+		// degrading to the plaintext-capable local store — the store enforces this.
+		if (this.broker) {
+			const handle = await this.broker.get(key, context);
+			if (handle !== null) {
+				return handle;
+			}
+		}
 
 		const value = await this.storage.get(key, context);
 
@@ -251,6 +293,14 @@ export class SecretsService extends Service {
 	 * Check if a secret exists.
 	 */
 	async exists(key: string, context: SecretContext): Promise<boolean> {
+		// E4 precedence: consult the broker first. A broker hit short-circuits;
+		// otherwise fall through to the local default. Strict-mode broker errors
+		// propagate from the store (fail-closed) instead of degrading to local.
+		if (this.broker) {
+			if (await this.broker.exists(key, context)) {
+				return true;
+			}
+		}
 		return this.storage.exists(key, context);
 	}
 
