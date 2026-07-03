@@ -1,0 +1,53 @@
+{
+  "report": {
+    "campaign": {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "name": "Summer Launch",
+      "platform": "meta",
+      "providerCampaignId": "meta-123",
+      "adAccountId": "00000000-0000-4000-8000-000000000012",
+      "appId": null,
+      "objective": "traffic",
+      "status": "active"
+    },
+    "dateRange": {
+      "start": "2026-07-01T00:00:00.000Z",
+      "end": "2026-07-02T00:00:00.000Z"
+    },
+    "spend": {
+      "amount": 12.34,
+      "currency": "USD",
+      "credits": 13.57,
+      "source": "transactions"
+    },
+    "metrics": {
+      "spend": 12.34,
+      "impressions": 1000,
+      "clicks": 50,
+      "conversions": 5,
+      "providerConversions": 4,
+      "firstPartyConversions": 1,
+      "ctr": 0.05,
+      "cpc": 0.2468,
+      "cpm": 12.34,
+      "roas": 0,
+      "conversionRate": 0.1,
+      "conversionValue": 25
+    },
+    "budget": {
+      "type": "daily",
+      "amount": 100,
+      "currency": "USD",
+      "creditsAllocated": 110,
+      "creditsSpent": 13.57
+    },
+    "attribution": {
+      "conversions": 5,
+      "providerConversions": 4,
+      "firstPartyConversions": 1,
+      "conversionValue": 25,
+      "source": "first_party_attribution"
+    },
+    "generatedAt": "2026-07-03T00:00:00.000Z"
+  }
+}

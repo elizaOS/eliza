@@ -142,6 +142,7 @@ export const adCampaigns = pgTable(
         last_sync_at?: string;
         error_message?: string;
         source_campaign_id?: string;
+        campaign_report_revoked_token_ids?: string[];
       }>()
       .notNull()
       .default({}),

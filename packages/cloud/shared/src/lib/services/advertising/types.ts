@@ -217,6 +217,61 @@ export interface RecordConversionResult {
   inserted: boolean;
 }
 
+export interface CampaignReportDateRange {
+  start: string | null;
+  end: string | null;
+}
+
+export interface CampaignPerformanceReport {
+  campaign: {
+    id: string;
+    name: string;
+    platform: AdPlatform;
+    providerCampaignId: string | null;
+    adAccountId: string;
+    appId: string | null;
+    objective: CampaignObjective;
+    status: CampaignStatus;
+  };
+  dateRange: CampaignReportDateRange;
+  spend: {
+    amount: number;
+    currency: string;
+    credits: number;
+    source: "transactions" | "campaign_metrics";
+  };
+  metrics: Required<Pick<CampaignMetrics, "spend" | "impressions" | "clicks" | "conversions">> &
+    Pick<
+      CampaignMetrics,
+      "ctr" | "cpc" | "cpm" | "roas" | "providerConversions" | "firstPartyConversions"
+    > & {
+      conversionRate: number;
+      conversionValue: number;
+    };
+  budget: {
+    type: BudgetType;
+    amount: number;
+    currency: string;
+    creditsAllocated: number;
+    creditsSpent: number;
+  };
+  attribution: {
+    conversions: number;
+    providerConversions: number;
+    firstPartyConversions: number;
+    conversionValue: number;
+    source: "campaign_totals" | "first_party_attribution";
+  };
+  generatedAt: string;
+}
+
+export interface CampaignReportTokenClaims {
+  campaignId: string;
+  organizationId: string;
+  tokenId: string;
+  expiresAt: string;
+}
+
 // ============================================
 // Creative Types
 // ============================================

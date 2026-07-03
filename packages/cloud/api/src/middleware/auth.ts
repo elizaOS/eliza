@@ -173,6 +173,13 @@ export function isPublicPath(pathname: string): boolean {
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/charges\/[^/]+\/?$/.test(pathname)) return true;
+  if (
+    /^\/api\/v1\/advertising\/campaigns\/[^/]+\/public-report\/?$/.test(
+      pathname,
+    )
+  ) {
+    return true;
+  }
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (isPublicOutOfBandTokenPath(pathname)) return true;
   return publicPathPrefixes.some(

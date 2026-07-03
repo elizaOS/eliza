@@ -27,6 +27,8 @@ import type {
   AdProviderMediaUploadResult,
   CampaignDaypartingSchedule,
   CampaignMetrics,
+  CampaignPerformanceReport,
+  CampaignReportTokenClaims,
   CampaignTargeting,
   ConnectAccountInput,
   CreateAttributionLinkInput,
@@ -53,6 +55,64 @@ const providers: Record<AdPlatform, AdProvider | null> = {
   google: googleAdsProvider,
   tiktok: tiktokAdsProvider,
 };
+
+const CAMPAIGN_REPORT_TOKEN_PREFIX = "eliza-campaign-report-v1";
+const DEFAULT_REPORT_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function reportSigningSecret(): string | null {
+  const secret = process.env.ELIZA_AD_REPORT_TOKEN_SECRET ?? process.env.ELIZA_AD_TAG_SECRET;
+  return typeof secret === "string" && secret.trim().length > 0 ? secret : null;
+}
+
+async function hmacHex(secret: string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+function campaignReportTokenMessage(input: {
+  campaignId: string;
+  organizationId: string;
+  tokenId: string;
+  expiresAt: number;
+}): string {
+  return [
+    CAMPAIGN_REPORT_TOKEN_PREFIX,
+    input.campaignId,
+    input.organizationId,
+    input.tokenId,
+    input.expiresAt,
+  ].join("\n");
+}
+
+function roundMetric(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function csvEscape(value: string | number | null): string {
+  const raw = value === null ? "" : String(value);
+  if (!/[",\n\r]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '""')}"`;
+}
 
 class AdvertisingService {
   private textEncoder = new TextEncoder();
@@ -1651,6 +1711,231 @@ class AdvertisingService {
       firstPartyConversions: firstParty.conversions,
       conversionValue: firstParty.value,
     };
+  }
+
+  async generateCampaignReport(
+    campaignId: string,
+    organizationId: string,
+    dateRange?: { start?: Date; end?: Date },
+  ): Promise<CampaignPerformanceReport> {
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Campaign not found");
+    }
+
+    const providerDateRange =
+      dateRange?.start && dateRange.end
+        ? { start: dateRange.start, end: dateRange.end }
+        : undefined;
+    const metrics = await this.getCampaignMetrics(campaignId, organizationId, providerDateRange);
+    const spendSummary = await adTransactionsRepository.summarizeSpendByCampaign(campaignId, {
+      startDate: dateRange?.start,
+      endDate: dateRange?.end,
+    });
+
+    const spendSource =
+      spendSummary.transactionCount > 0 ? ("transactions" as const) : ("campaign_metrics" as const);
+    const spendAmount =
+      spendSource === "transactions" ? spendSummary.totalAmount : Number(metrics.spend ?? 0);
+    const spendCredits =
+      spendSource === "transactions"
+        ? spendSummary.totalCredits
+        : Number(campaign.credits_spent ?? 0);
+    const impressions = Number(metrics.impressions ?? 0);
+    const clicks = Number(metrics.clicks ?? 0);
+    const conversions = Number(metrics.conversions ?? 0);
+    const providerConversions = Number(metrics.providerConversions ?? campaign.total_conversions);
+    const firstPartyConversions = Number(metrics.firstPartyConversions ?? 0);
+    const conversionValue = Number(metrics.conversionValue ?? 0);
+
+    return {
+      campaign: {
+        id: campaign.id,
+        name: campaign.name,
+        platform: campaign.platform,
+        providerCampaignId: campaign.external_campaign_id,
+        adAccountId: campaign.ad_account_id,
+        appId: campaign.app_id,
+        objective: campaign.objective,
+        status: campaign.status,
+      },
+      dateRange: {
+        start: dateRange?.start?.toISOString() ?? null,
+        end: dateRange?.end?.toISOString() ?? null,
+      },
+      spend: {
+        amount: roundMetric(spendAmount),
+        currency: spendSummary.currency ?? campaign.budget_currency,
+        credits: roundMetric(spendCredits),
+        source: spendSource,
+      },
+      metrics: {
+        spend: roundMetric(spendAmount),
+        impressions,
+        clicks,
+        conversions,
+        ctr: roundMetric(impressions > 0 ? clicks / impressions : 0),
+        cpc: roundMetric(clicks > 0 ? spendAmount / clicks : 0),
+        cpm: roundMetric(impressions > 0 ? (spendAmount / impressions) * 1000 : 0),
+        roas: metrics.roas ? roundMetric(metrics.roas) : 0,
+        conversionRate: roundMetric(clicks > 0 ? conversions / clicks : 0),
+        providerConversions,
+        firstPartyConversions,
+        conversionValue: roundMetric(conversionValue),
+      },
+      budget: {
+        type: campaign.budget_type,
+        amount: Number(campaign.budget_amount),
+        currency: campaign.budget_currency,
+        creditsAllocated: Number(campaign.credits_allocated),
+        creditsSpent: Number(campaign.credits_spent),
+      },
+      attribution: {
+        conversions,
+        providerConversions,
+        firstPartyConversions,
+        conversionValue: roundMetric(conversionValue),
+        source: firstPartyConversions > 0 ? "first_party_attribution" : "campaign_totals",
+      },
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  formatCampaignReportCsv(report: CampaignPerformanceReport): string {
+    const rows: Array<[string, string | number | null]> = [
+      ["campaign_id", report.campaign.id],
+      ["campaign_name", report.campaign.name],
+      ["platform", report.campaign.platform],
+      ["provider_campaign_id", report.campaign.providerCampaignId],
+      ["ad_account_id", report.campaign.adAccountId],
+      ["app_id", report.campaign.appId],
+      ["objective", report.campaign.objective],
+      ["status", report.campaign.status],
+      ["date_start", report.dateRange.start],
+      ["date_end", report.dateRange.end],
+      ["spend_amount", report.spend.amount],
+      ["spend_currency", report.spend.currency],
+      ["spend_credits", report.spend.credits],
+      ["spend_source", report.spend.source],
+      ["impressions", report.metrics.impressions],
+      ["clicks", report.metrics.clicks],
+      ["conversions", report.metrics.conversions],
+      ["provider_conversions", report.metrics.providerConversions ?? 0],
+      ["first_party_conversions", report.metrics.firstPartyConversions ?? 0],
+      ["ctr", report.metrics.ctr ?? 0],
+      ["cpc", report.metrics.cpc ?? 0],
+      ["cpm", report.metrics.cpm ?? 0],
+      ["conversion_rate", report.metrics.conversionRate],
+      ["conversion_value", report.metrics.conversionValue],
+      ["roas", report.metrics.roas ?? 0],
+      ["budget_type", report.budget.type],
+      ["budget_amount", report.budget.amount],
+      ["budget_currency", report.budget.currency],
+      ["credits_allocated", report.budget.creditsAllocated],
+      ["credits_spent", report.budget.creditsSpent],
+      ["attribution_conversions", report.attribution.conversions],
+      ["attribution_provider_conversions", report.attribution.providerConversions],
+      ["attribution_first_party_conversions", report.attribution.firstPartyConversions],
+      ["attribution_conversion_value", report.attribution.conversionValue],
+      ["attribution_source", report.attribution.source],
+      ["generated_at", report.generatedAt],
+    ];
+    return `field,value\n${rows.map((row) => row.map(csvEscape).join(",")).join("\n")}\n`;
+  }
+
+  async mintCampaignReportToken(
+    campaignId: string,
+    organizationId: string,
+    options: { ttlSeconds?: number } = {},
+  ): Promise<{ token: string; tokenId: string; expiresAt: string }> {
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Campaign not found");
+    }
+    const secret = reportSigningSecret();
+    if (!secret) {
+      throw new Error("Campaign report token signing is not configured");
+    }
+    const ttl = options.ttlSeconds ?? DEFAULT_REPORT_TOKEN_TTL_SECONDS;
+    if (!Number.isSafeInteger(ttl) || ttl <= 0 || ttl > 90 * 24 * 60 * 60) {
+      throw ValidationError("expiresInSeconds must be between 1 second and 90 days");
+    }
+    const expiresAt = Math.floor(Date.now() / 1000) + ttl;
+    const tokenId = crypto.randomUUID();
+    const signature = await hmacHex(
+      secret,
+      campaignReportTokenMessage({ campaignId, organizationId, tokenId, expiresAt }),
+    );
+    return {
+      token: `v1.${campaignId}.${organizationId}.${tokenId}.${expiresAt}.${signature}`,
+      tokenId,
+      expiresAt: new Date(expiresAt * 1000).toISOString(),
+    };
+  }
+
+  async verifyCampaignReportToken(token: string): Promise<CampaignReportTokenClaims> {
+    const secret = reportSigningSecret();
+    if (!secret) {
+      throw new Error("Campaign report token signing is not configured");
+    }
+    const parts = token.split(".");
+    if (parts.length !== 6 || parts[0] !== "v1") {
+      throw ValidationError("Invalid campaign report token");
+    }
+    const [, campaignId, organizationId, tokenId, expiresAtRaw, signature] = parts;
+    const expiresAt = Number(expiresAtRaw);
+    if (!campaignId || !organizationId || !tokenId || !Number.isSafeInteger(expiresAt)) {
+      throw ValidationError("Invalid campaign report token");
+    }
+    if (expiresAt * 1000 < Date.now()) {
+      throw ValidationError("Campaign report token has expired");
+    }
+
+    const expected = await hmacHex(
+      secret,
+      campaignReportTokenMessage({ campaignId, organizationId, tokenId, expiresAt }),
+    );
+    if (!timingSafeEqualHex(signature, expected)) {
+      throw ValidationError("Invalid campaign report token");
+    }
+
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw ValidationError("Invalid campaign report token");
+    }
+    const revokedIds = campaign.metadata.campaign_report_revoked_token_ids ?? [];
+    if (revokedIds.includes(tokenId)) {
+      throw ValidationError("Campaign report token has been revoked");
+    }
+
+    return {
+      campaignId,
+      organizationId,
+      tokenId,
+      expiresAt: new Date(expiresAt * 1000).toISOString(),
+    };
+  }
+
+  async revokeCampaignReportToken(
+    campaignId: string,
+    organizationId: string,
+    tokenId: string,
+  ): Promise<void> {
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Campaign not found");
+    }
+    if (!tokenId) {
+      throw ValidationError("tokenId is required");
+    }
+    const revoked = new Set(campaign.metadata.campaign_report_revoked_token_ids ?? []);
+    revoked.add(tokenId);
+    await adCampaignsRepository.update(campaignId, {
+      metadata: {
+        ...campaign.metadata,
+        campaign_report_revoked_token_ids: [...revoked],
+      },
+    });
   }
 
   // ============================================

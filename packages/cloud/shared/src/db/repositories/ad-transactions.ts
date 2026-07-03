@@ -116,6 +116,46 @@ export class AdTransactionsRepository {
       totalCredits: Number(result?.totalCredits ?? 0),
     };
   }
+
+  async summarizeSpendByCampaign(
+    campaignId: string,
+    options?: { startDate?: Date; endDate?: Date },
+  ): Promise<{
+    totalAmount: number;
+    totalCredits: number;
+    transactionCount: number;
+    currency: string | null;
+  }> {
+    const conditions = [
+      eq(adTransactions.campaign_id, campaignId),
+      eq(adTransactions.type, "spend"),
+    ];
+
+    if (options?.startDate) {
+      conditions.push(sql`${adTransactions.created_at} >= ${options.startDate}`);
+    }
+
+    if (options?.endDate) {
+      conditions.push(sql`${adTransactions.created_at} <= ${options.endDate}`);
+    }
+
+    const [result] = await db
+      .select({
+        totalAmount: sum(adTransactions.amount),
+        totalCredits: sum(adTransactions.credits_amount),
+        transactionCount: sql<number>`count(*)::int`,
+        currency: sql<string | null>`min(${adTransactions.currency})`,
+      })
+      .from(adTransactions)
+      .where(and(...conditions));
+
+    return {
+      totalAmount: Number(result?.totalAmount ?? 0),
+      totalCredits: Number(result?.totalCredits ?? 0),
+      transactionCount: Number(result?.transactionCount ?? 0),
+      currency: result?.currency ?? null,
+    };
+  }
 }
 
 export const adTransactionsRepository = new AdTransactionsRepository();

@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   adAccountsRepository,
   adCampaignsRepository,
+  adConversionsRepository,
   adTransactionsRepository,
 } from "../../../db/repositories";
 import { advertisingService } from "../advertising";
@@ -58,6 +59,31 @@ function makeCampaign(over: Record<string, unknown> = {}) {
     total_conversions: 0,
     ...over,
   };
+}
+
+function makeReportCampaign(over: Record<string, unknown> = {}) {
+  return makeCampaign({
+    name: "Summer Launch",
+    platform: "meta",
+    objective: "traffic",
+    status: "active",
+    budget_type: "daily",
+    budget_amount: "100.00",
+    budget_currency: "USD",
+    credits_allocated: "110.00",
+    credits_spent: "4.50",
+    total_spend: "12.34",
+    total_impressions: 1000,
+    total_clicks: 50,
+    total_conversions: 4,
+    external_campaign_id: null,
+    app_id: "app-1",
+    metadata: {},
+    created_at: new Date("2026-07-01T00:00:00.000Z"),
+    updated_at: new Date("2026-07-02T00:00:00.000Z"),
+    targeting: {},
+    ...over,
+  });
 }
 
 function stubProvider(over: Partial<AdProvider> = {}): AdProvider {
@@ -185,6 +211,166 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
     // The winner already refunded the 66 unused; the loser must NOT double-refund.
     expect(refund).not.toHaveBeenCalled();
     expect(tx).not.toHaveBeenCalled();
+  });
+});
+
+describe("campaign performance reports", () => {
+  test("computes report metrics from stored campaign metrics and filtered spend transactions", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(makeReportCampaign() as never),
+    );
+    track(
+      spyOn(adTransactionsRepository, "summarizeSpendByCampaign").mockResolvedValue({
+        totalAmount: 12.34,
+        totalCredits: 13.57,
+        transactionCount: 2,
+        currency: "USD",
+      } as never),
+    );
+    track(
+      spyOn(adConversionsRepository, "getCampaignRollup").mockResolvedValue({
+        conversions: 1,
+        value: 25,
+      } as never),
+    );
+
+    const report = await advertisingService.generateCampaignReport(CAMPAIGN_ID, ORG_ID, {
+      start: new Date("2026-07-01T00:00:00.000Z"),
+      end: new Date("2026-07-02T00:00:00.000Z"),
+    });
+
+    expect(report.spend).toMatchObject({
+      amount: 12.34,
+      currency: "USD",
+      credits: 13.57,
+      source: "transactions",
+    });
+    expect(report.metrics).toMatchObject({
+      impressions: 1000,
+      clicks: 50,
+      conversions: 5,
+      providerConversions: 4,
+      firstPartyConversions: 1,
+      ctr: 0.05,
+      cpc: 0.2468,
+      cpm: 12.34,
+      conversionRate: 0.1,
+      conversionValue: 25,
+    });
+    expect(report.campaign.providerCampaignId).toBeNull();
+    expect(report.attribution).toMatchObject({
+      conversions: 5,
+      providerConversions: 4,
+      firstPartyConversions: 1,
+      conversionValue: 25,
+      source: "first_party_attribution",
+    });
+  });
+
+  test("formats CSV with server-computed DTO fields", async () => {
+    const csv = advertisingService.formatCampaignReportCsv({
+      campaign: {
+        id: CAMPAIGN_ID,
+        name: "Summer, Launch",
+        platform: "meta",
+        providerCampaignId: "meta-1",
+        adAccountId: "acct-1",
+        appId: null,
+        objective: "traffic",
+        status: "active",
+      },
+      dateRange: {
+        start: "2026-07-01T00:00:00.000Z",
+        end: "2026-07-02T00:00:00.000Z",
+      },
+      spend: { amount: 12.34, currency: "USD", credits: 13.57, source: "transactions" },
+      metrics: {
+        spend: 12.34,
+        impressions: 1000,
+        clicks: 50,
+        conversions: 5,
+        providerConversions: 4,
+        firstPartyConversions: 1,
+        ctr: 0.05,
+        cpc: 0.2468,
+        cpm: 12.34,
+        roas: 0,
+        conversionRate: 0.1,
+        conversionValue: 25,
+      },
+      budget: {
+        type: "daily",
+        amount: 100,
+        currency: "USD",
+        creditsAllocated: 110,
+        creditsSpent: 13.57,
+      },
+      attribution: {
+        conversions: 5,
+        providerConversions: 4,
+        firstPartyConversions: 1,
+        conversionValue: 25,
+        source: "first_party_attribution",
+      },
+      generatedAt: "2026-07-03T00:00:00.000Z",
+    });
+
+    expect(csv).toContain('campaign_name,"Summer, Launch"');
+    expect(csv).toContain("ctr,0.05");
+    expect(csv).toContain("spend_source,transactions");
+  });
+
+  test("signed public report tokens expire and revoke through campaign metadata", async () => {
+    const originalSecret = process.env.ELIZA_AD_REPORT_TOKEN_SECRET;
+    process.env.ELIZA_AD_REPORT_TOKEN_SECRET = "campaign-report-test-secret";
+    let revokedTokenIds: string[] = [];
+    const campaign = makeReportCampaign();
+
+    track(
+      spyOn(adCampaignsRepository, "findById").mockImplementation(
+        async () =>
+          ({
+            ...campaign,
+            metadata: {
+              campaign_report_revoked_token_ids: revokedTokenIds,
+            },
+          }) as never,
+      ),
+    );
+    track(
+      spyOn(adCampaignsRepository, "update").mockImplementation(async (_id, data) => {
+        revokedTokenIds = data.metadata?.campaign_report_revoked_token_ids ?? [];
+        return {
+          ...campaign,
+          ...data,
+        } as never;
+      }),
+    );
+
+    try {
+      const minted = await advertisingService.mintCampaignReportToken(CAMPAIGN_ID, ORG_ID, {
+        ttlSeconds: 60,
+      });
+      const claims = await advertisingService.verifyCampaignReportToken(minted.token);
+
+      expect(claims).toMatchObject({
+        campaignId: CAMPAIGN_ID,
+        organizationId: ORG_ID,
+        tokenId: minted.tokenId,
+      });
+
+      await advertisingService.revokeCampaignReportToken(CAMPAIGN_ID, ORG_ID, minted.tokenId);
+
+      await expect(advertisingService.verifyCampaignReportToken(minted.token)).rejects.toThrow(
+        "revoked",
+      );
+    } finally {
+      if (originalSecret === undefined) {
+        delete process.env.ELIZA_AD_REPORT_TOKEN_SECRET;
+      } else {
+        process.env.ELIZA_AD_REPORT_TOKEN_SECRET = originalSecret;
+      }
+    }
   });
 });
 
