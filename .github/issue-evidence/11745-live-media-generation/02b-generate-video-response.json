@@ -1,0 +1,51 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://api.elizacloud.ai/api/v1/generate-video",
+    "body": {
+      "prompt": "Issue 11745 verification video: a blue ball rolls smoothly from left to right across a white floor, minimal clean animation.",
+      "model": "fal-ai/pixverse/v5/text-to-video",
+      "durationSeconds": 5,
+      "resolution": "720p",
+      "audio": false
+    }
+  },
+  "response": {
+    "status": 500,
+    "ok": false,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "alt-svc": "h3=\":443\"; ma=86400",
+      "cache-control": "no-store",
+      "cf-ray": "a15869d36f2cbdee-EWR",
+      "connection": "keep-alive",
+      "content-length": "80",
+      "content-type": "application/json",
+      "cross-origin-resource-policy": "cross-origin",
+      "date": "Fri, 03 Jul 2026 19:49:32 GMT",
+      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=gghzgfo7GGZf%2BFs1ACmcTe%2BtHjm%2BMoCID8DhJGwnUFfeyg0QV0fawkmxv5%2B6waRJEfSa7OotPOrfrebXK3uxe%2BfqyQzAft%2FYDFamDnsDvSYpILi36tEFoaCOjI8hIzbV2uacJQ%3D%3D\"}]}",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "DENY",
+      "x-permitted-cross-domain-policies": "none",
+      "x-ratelimit-limit": "600",
+      "x-ratelimit-policy": "redis-unavailable",
+      "x-ratelimit-remaining": "600",
+      "x-ratelimit-reset": "2026-07-03T19:50:27.284Z",
+      "x-request-id": "e9e1209d-0974-4c13-85a2-3d49e766e273",
+      "x-xss-protection": "0"
+    },
+    "body": {
+      "success": false,
+      "error": "An unexpected error occurred",
+      "code": "internal_error"
+    }
+  },
+  "durationMs": 7042
+}

@@ -1,0 +1,71 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://api.elizacloud.ai/api/v1/generate-video",
+    "body": {
+      "prompt": "Issue 11745 verification video: a blue ball rolls smoothly from left to right across a white floor, minimal clean animation.",
+      "model": "vidu/q3-turbo/text-to-video",
+      "durationSeconds": 5,
+      "resolution": "720p",
+      "audio": false
+    }
+  },
+  "response": {
+    "status": 400,
+    "ok": false,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "alt-svc": "h3=\":443\"; ma=86400",
+      "cache-control": "no-store",
+      "cf-ray": "a15865646e829630-EWR",
+      "connection": "keep-alive",
+      "content-length": "676",
+      "content-type": "application/json",
+      "cross-origin-resource-policy": "cross-origin",
+      "date": "Fri, 03 Jul 2026 19:46:25 GMT",
+      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=ueLwvlgLBMiCJkKoGlZ5xYRVkNNJqZOBLh906qeWWNvlyt%2FEHftBJ3%2Bxtxy9mvIxTcY5dS3NJAoByxUTb1%2FLQB6lfudFjKUtYhpoYedWrs5y0Cw2TWwMF5jHM%2F431p9CQ3EFFg%3D%3D\"}]}",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "DENY",
+      "x-permitted-cross-domain-policies": "none",
+      "x-ratelimit-limit": "600",
+      "x-ratelimit-policy": "redis",
+      "x-ratelimit-remaining": "598",
+      "x-ratelimit-reset": "2026-07-03T19:47:09.837Z",
+      "x-request-id": "5791fb56-1460-4da3-b69f-56f89e971f0c",
+      "x-xss-protection": "0"
+    },
+    "body": {
+      "success": false,
+      "error": "Unsupported video model: vidu/q3-turbo/text-to-video",
+      "code": "validation_error",
+      "details": {
+        "supportedModels": [
+          "fal-ai/veo3",
+          "fal-ai/veo3/fast",
+          "fal-ai/veo3.1",
+          "fal-ai/veo3.1/fast",
+          "fal-ai/veo3.1/lite",
+          "fal-ai/kling-video/v3/standard/text-to-video",
+          "fal-ai/kling-video/v3/pro/text-to-video",
+          "fal-ai/kling-video/v2.6/pro/text-to-video",
+          "fal-ai/minimax/hailuo-2.3/standard/text-to-video",
+          "fal-ai/minimax/hailuo-2.3/pro/text-to-video",
+          "wan/v2.6/text-to-video",
+          "fal-ai/pixverse/v5/text-to-video",
+          "fal-ai/pixverse/v5.5/text-to-video",
+          "fal-ai/pixverse/v5.6/text-to-video",
+          "bytedance/seedance-2.0/text-to-video",
+          "bytedance/seedance-2.0/fast/text-to-video"
+        ]
+      }
+    }
+  },
+  "durationMs": 2002
+}

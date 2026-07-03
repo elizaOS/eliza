@@ -1,0 +1,63 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://api.elizacloud.ai/api/v1/files",
+    "body": {}
+  },
+  "response": {
+    "status": 201,
+    "ok": true,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "alt-svc": "h3=\":443\"; ma=86400",
+      "cache-control": "no-store",
+      "cf-ray": "a15868ad4f6b9630-EWR",
+      "connection": "keep-alive",
+      "content-length": "608",
+      "content-type": "application/json",
+      "cross-origin-resource-policy": "cross-origin",
+      "date": "Fri, 03 Jul 2026 19:48:41 GMT",
+      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=tsd6w8A3Lp%2FzjbWYjThrY2o3%2BZdhUTO6Nua1vRYQ8V4fq2Ny0DgZePRQPb%2FnN%2B9dvBnipyK4C0uFdb5yaSaWeUd7TjzP2dqgiqyOkeiq01VoV%2BY2LmA8eCEri3FBnDjVgb4EHg%3D%3D\"}]}",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "DENY",
+      "x-permitted-cross-domain-policies": "none",
+      "x-ratelimit-limit": "600",
+      "x-ratelimit-policy": "redis",
+      "x-ratelimit-remaining": "597",
+      "x-ratelimit-reset": "2026-07-03T19:49:36.130Z",
+      "x-request-id": "270a0bbf-f5b2-46d0-810a-30717997a158",
+      "x-xss-protection": "0"
+    },
+    "body": {
+      "success": true,
+      "files": [
+        {
+          "id": "5f2989fe-9d52-47d2-8ed7-25f22d4db26a",
+          "source": "upload",
+          "kind": "document",
+          "filename": "11745-1783107968816.txt",
+          "mimeType": "text/plain",
+          "sizeBytes": 79,
+          "sha256": "12d671a9b2fa7543b4aa01d64a80e60e2d025587b4baf400f6d46895602346b9",
+          "url": "https://blob.elizacloud.ai/cloud-files/4392b9f7-e526-40f7-99ce-fc98746fca05/2026-07-03/5f2989fe-9d52-47d2-8ed7-25f22d4db26a-12d671a9b2fa7543.txt",
+          "generationId": null,
+          "metadata": {
+            "issue": 11745,
+            "purpose": "live-files-crud",
+            "runStartedAt": "2026-07-03T19:46:08.816Z"
+          },
+          "createdAt": "2026-07-03T19:48:41.699Z",
+          "updatedAt": "2026-07-03T19:48:41.699Z"
+        }
+      ]
+    }
+  },
+  "durationMs": 3329
+}

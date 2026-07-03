@@ -1,0 +1,24 @@
+{
+  "model": "google/nano-banana-2/text-to-image",
+  "cost": {
+    "totalCost": 0.036,
+    "baseTotalCost": 0.03,
+    "platformMarkup": 0.006,
+    "matchedEntry": {
+      "billingSource": "atlascloud",
+      "provider": "google",
+      "model": "google/nano-banana-2/text-to-image",
+      "productFamily": "image",
+      "chargeType": "generation",
+      "unit": "image",
+      "unitPrice": 0.03,
+      "dimensions": {
+        "size": "default"
+      },
+      "sourceKind": "atlascloud_catalog",
+      "sourceUrl": "https://www.atlascloud.ai/models/list"
+    }
+  },
+  "url": "https://blob.elizacloud.ai/generations/images/4392b9f7-e526-40f7-99ce-fc98746fca05/79248b41-7532-4f6b-a0d1-687fa39650df/072834c6-735d-4f67-9762-1c4f85214da7.jpg",
+  "text": ""
+}

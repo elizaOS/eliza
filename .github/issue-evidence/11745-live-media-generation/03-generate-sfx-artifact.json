@@ -1,0 +1,26 @@
+{
+  "id": "f42f8886-ce42-431b-8e43-0e8bfe73aaa0",
+  "requestId": "019f2984-b8ba-7863-904d-dc7c124825a2",
+  "cost": {
+    "totalCost": 0.24,
+    "baseTotalCost": 0.2,
+    "platformMarkup": 0.04,
+    "matchedEntry": {
+      "billingSource": "fal",
+      "provider": "fal",
+      "model": "fal-ai/stable-audio-25/text-to-audio",
+      "productFamily": "sfx",
+      "chargeType": "generation",
+      "unit": "request",
+      "unitPrice": 0.2,
+      "dimensions": {},
+      "sourceKind": "fal_model_page",
+      "sourceUrl": "https://fal.ai/models/fal-ai/stable-audio-25/text-to-audio"
+    }
+  },
+  "audio": {
+    "url": "https://v3b.fal.media/files/b/0aa0ce8f/PhoSDDGEsK7e4hbGAt5mS_SGElmsFL.wav",
+    "file_name": "PhoSDDGEsK7e4hbGAt5mS_SGElmsFL.wav",
+    "content_type": "audio/wav"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "status": 500,
+  "ok": false,
+  "durationMs": 139745,
+  "xRequestId": "0cfb31aa-a9f5-4e73-8665-fb123499b081",
+  "body": {
+    "success": false,
+    "error": "An unexpected error occurred",
+    "code": "internal_error"
+  },
+  "download": null
+}

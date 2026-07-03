@@ -1,0 +1,47 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.elizacloud.ai/api/v1/gallery?type=video&limit=10"
+  },
+  "response": {
+    "status": 200,
+    "ok": true,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "alt-svc": "h3=\":443\"; ma=86400",
+      "cache-control": "no-store",
+      "cf-ray": "a15868a45d0f9630-EWR",
+      "connection": "keep-alive",
+      "content-encoding": "br",
+      "content-type": "application/json",
+      "cross-origin-resource-policy": "cross-origin",
+      "date": "Fri, 03 Jul 2026 19:48:38 GMT",
+      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=VLOCsvRNTWCR%2F4DU4FGLq222MfnK0WsncoG%2FA8OZ7rP06h3KlORj6eyuae9M81A2f6JlxkUSSCCfDNm9MCroYSFYDI3vhj3g8m0piQKaMtrMgQ%2FCUYcq1mS0v%2Fo5PRstgazgjQ%3D%3D\"}]}",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+      "transfer-encoding": "chunked",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "DENY",
+      "x-permitted-cross-domain-policies": "none",
+      "x-ratelimit-limit": "600",
+      "x-ratelimit-policy": "redis",
+      "x-ratelimit-remaining": "598",
+      "x-ratelimit-reset": "2026-07-03T19:49:36.128Z",
+      "x-request-id": "7a51a8c4-280b-41bb-8c83-b563c8ea4ba5",
+      "x-xss-protection": "0"
+    },
+    "body": {
+      "items": [],
+      "count": 0,
+      "offset": 0,
+      "limit": 10,
+      "hasMore": false
+    }
+  },
+  "durationMs": 1404
+}
