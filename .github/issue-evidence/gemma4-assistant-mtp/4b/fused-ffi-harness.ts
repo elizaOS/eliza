@@ -12,7 +12,7 @@
 import { loadElizaInferenceFfi } from "/private/tmp/eliza-11390/plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 
 const LIB =
-	"/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib";
+	"<workspace>/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib";
 const BUNDLE_ROOT = "/tmp/vision/gemma4/bundles/4b";
 const DRAFTER = "/tmp/mtp/bundles/4b/mtp/drafter-4b.gguf";
 const MAX_TOKENS = 96;

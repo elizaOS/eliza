@@ -920,13 +920,6 @@
       "breakpoints": true
     },
     {
-      "idx": 131,
-      "version": "7",
-      "when": 1779408000000,
-      "tag": "0132_legacy_milady_cores_disable",
-      "breakpoints": true
-    },
-    {
       "idx": 132,
       "version": "7",
       "when": 1779408100000,

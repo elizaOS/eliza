@@ -90,6 +90,6 @@ INFO:gguf.vocab:Setting special token type unk to 3
 INFO:gguf.vocab:Setting special token type pad to 0
 INFO:gguf.vocab:Setting special token type mask to 4
 INFO:gguf.gguf_writer:Writing the following files:
-INFO:gguf.gguf_writer:/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf: n_tensors = 49, total_size = 156.0M
+INFO:gguf.gguf_writer:/private/tmp/claude-501/workspace-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf: n_tensors = 49, total_size = 156.0M
 Writing:   0%|          | 0.00/156M [00:00<?, ?byte/s]Writing:  86%|████████▌ | 134M/156M [00:00<00:00, 273Mbyte/s]Writing: 100%|██████████| 156M/156M [00:00<00:00, 172Mbyte/s]
-INFO:hf-to-gguf:Model successfully exported to /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf
+INFO:hf-to-gguf:Model successfully exported to /private/tmp/claude-501/workspace-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf

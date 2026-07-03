@@ -1,4 +1,4 @@
-# /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf: v3 tensors=49 kv=42
+# /private/tmp/claude-501/workspace-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf: v3 tensors=49 kv=42
 general.architecture = gemma4-assistant
 general.type = model
 general.sampling.top_k = 64
@@ -87,10 +87,10 @@ T output_norm.weight [256] type=0
 T nextn.post_projection.weight [256, 2560] type=1
 T nextn.pre_projection.weight [5120, 256] type=1
 Traceback (most recent call last):
-  File "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/1922753a-a0a5-43ed-9312-34c30cea32cf/scratchpad/ggufkv.py", line 30, in <module>
+  File "/private/tmp/claude-501/workspace-eliza/1922753a-a0a5-43ed-9312-34c30cea32cf/scratchpad/ggufkv.py", line 30, in <module>
     read_gguf(p, show_tensors='--tensors' in sys.argv and not p.startswith('--'))
     ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/1922753a-a0a5-43ed-9312-34c30cea32cf/scratchpad/ggufkv.py", line 3, in read_gguf
+  File "/private/tmp/claude-501/workspace-eliza/1922753a-a0a5-43ed-9312-34c30cea32cf/scratchpad/ggufkv.py", line 3, in read_gguf
     with open(path,'rb') as f:
          ~~~~^^^^^^^^^^^
 FileNotFoundError: [Errno 2] No such file or directory: '--tensors'
