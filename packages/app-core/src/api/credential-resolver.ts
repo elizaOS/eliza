@@ -15,13 +15,13 @@
 import {
   getAccessToken,
   listProviderAccounts,
-} from "@elizaos/agent/auth/credentials";
+} from "@elizaos/auth/credentials";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
   isDirectAccountProvider,
   isSubscriptionProvider,
-} from "@elizaos/agent/auth/types";
+} from "@elizaos/auth/types";
 import {
   logger,
   MODEL_PROVIDER_SECRETS,
