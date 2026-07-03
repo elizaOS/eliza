@@ -1,29 +1,8 @@
+import { CONNECTOR_IDS } from "@elizaos/shared/config/schema";
 import { VERSION } from "../runtime/version.ts";
 import { isSensitiveConfigKey } from "./sensitive-keys.ts";
 
-/** Known connector IDs for config schema generation. Keep in sync with runtime/plugin maps. */
-export const CONNECTOR_IDS = [
-  "bluebubbles",
-  "telegram",
-  "telegramAccount",
-  "discord",
-  "discordLocal",
-  "slack",
-  "twitter",
-  "whatsapp",
-  "signal",
-  "imessage",
-  "farcaster",
-  "lens",
-  "msteams",
-  "feishu",
-  "matrix",
-  "nostr",
-  "blooio",
-  "twitch",
-  "mattermost",
-  "googlechat",
-] as const;
+export { CONNECTOR_IDS };
 
 import { ElizaSchema } from "./zod-schema.ts";
 
