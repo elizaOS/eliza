@@ -474,7 +474,12 @@ function readPositiveIntEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-type AospKvCacheTypeName = "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
+type AospKvCacheTypeName =
+  | "f16"
+  | "tbq3_0"
+  | "tbq4_0"
+  | "qjl1_256"
+  | "q4_polar";
 
 const AOSP_KV_CACHE_TYPE_NAMES: readonly AospKvCacheTypeName[] = [
   "f16",
