@@ -105,6 +105,7 @@ const deferredEntry = path.join(
   "runtime",
   "deferred-core-static-plugins.ts",
 );
+const writeBuildMetafile = process.env.ELIZA_MOBILE_ANALYZE === "1";
 
 console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
@@ -1455,6 +1456,7 @@ const buildResult = await Bun.build({
   naming: "[dir]/[name].[ext]",
   target: bunBuildTarget,
   format: "esm",
+  metafile: writeBuildMetafile,
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
   // Keep Android debuggable, but compact the real iOS Bun payload. Static
@@ -1541,6 +1543,28 @@ if (!buildResult.success) {
   process.exit(1);
 }
 
+async function writeMetafileReport(label, result) {
+  if (!writeBuildMetafile || !result.metafile) return;
+  const metafilePath = path.join(outDir, `${label}-metafile.json`);
+  await writeFile(metafilePath, JSON.stringify(result.metafile, null, 2));
+  const inputs = Object.entries(result.metafile.inputs ?? {})
+    .map(([inputPath, meta]) => ({
+      inputPath,
+      bytes: typeof meta.bytes === "number" ? meta.bytes : 0,
+    }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 25);
+  console.log(`[build-mobile] ${label} top metafile inputs:`);
+  for (const input of inputs) {
+    console.log(
+      `  ${(input.bytes / 1024).toFixed(1).padStart(8)} KB  ${input.inputPath}`,
+    );
+  }
+  console.log(`[build-mobile] wrote ${path.basename(metafilePath)}`);
+}
+
+await writeMetafileReport("agent-bundle", buildResult);
+
 console.log("[build-mobile] starting deferred Bun.build...");
 const deferredBuildResult = await Bun.build({
   entrypoints: [deferredEntry],
@@ -1548,6 +1572,7 @@ const deferredBuildResult = await Bun.build({
   naming: "[dir]/[name].[ext]",
   target: bunBuildTarget,
   format: "esm",
+  metafile: writeBuildMetafile,
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
   minify:
@@ -1611,6 +1636,8 @@ if (!deferredBuildResult.success) {
   }
   process.exit(1);
 }
+
+await writeMetafileReport("agent-deferred", deferredBuildResult);
 
 // ios-jsc ships the bundle as `agent-bundle-ios.js` (matches the iOS
 // app's loader expectation); android + ios-bun stay on `agent-bundle.js`.
@@ -2144,6 +2171,16 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
   const smokeStateDir = await mkdtemp(
     path.join(tmpdir(), "eliza-bundle-smoke-"),
   );
+  const smokeRootAssets = ["vector.tar.gz", "fuzzystrmatch.tar.gz"].map(
+    (asset) => ({
+      asset,
+      source: path.join(outDir, asset),
+      target: path.join(agentRoot, asset),
+    }),
+  );
+  for (const { source, target } of smokeRootAssets) {
+    await copyFile(source, target);
+  }
   const smokeEval =
     `await import(${JSON.stringify(bundlePath)}); ` +
     `await import(${JSON.stringify(deferredBundlePath)}); ` +
@@ -2160,6 +2197,9 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
     },
   });
   rmRecursive(smokeStateDir);
+  for (const { target } of smokeRootAssets) {
+    rmRecursive(target);
+  }
   const smokeOutput = `${smoke.stdout ?? ""}\n${smoke.stderr ?? ""}`;
   if (smoke.status !== 0 || !smokeOutput.includes("BUNDLE_LOAD_SMOKE_OK")) {
     console.error(smokeOutput.slice(-6000));
