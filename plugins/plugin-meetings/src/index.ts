@@ -11,10 +11,12 @@
  *   - ACTIVE_MEETINGS provider
  *   - /api/meetings* rawPath routes
  *
- * Env:
- *   - ELIZA_MEETINGS_ENABLED       opt-in auto-enable flag
+ * Enable: turn the "meetings" feature on in config (see auto-enable.ts) — no
+ * bespoke on/off env flag; only auto-enables on a non-mobile host.
+ *
+ * Env (all optional):
  *   - ELIZA_MEETINGS_BOT_NAME      bot display name (default "<agent> Notetaker")
- *   - ELIZA_MEETINGS_CHROMIUM_PATH Chromium executable for the platform bots
+ *   - ELIZA_MEETINGS_CHROMIUM_PATH Chromium executable override for the bots
  *   - ELIZA_MEETINGS_HEADLESS      force headless (true) / headed (false); else
  *                                  auto-detected from the available display
  *
@@ -83,10 +85,10 @@ export const meetingsPlugin: Plugin = {
   actions: [joinMeetingAction, leaveMeetingAction, getMeetingTranscriptAction],
   providers: [activeMeetingsProvider],
   routes: meetingsRoutes,
-  // Opt-in auto-enable lives in the package manifest, not here: the runtime only
+  // Auto-enable lives in the package manifest, not here: the runtime only
   // consumes `elizaos.plugin.autoEnableModule` (./auto-enable.ts) — a bare
   // `Plugin.autoEnable` field has no runtime consumer. See ./auto-enable.ts for
-  // the predicate (env-gated with a native-platform veto).
+  // the predicate (config `features.meetings` toggle + a native-platform veto).
 };
 
 export default meetingsPlugin;

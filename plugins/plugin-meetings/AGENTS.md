@@ -80,20 +80,20 @@ Signal/WhatsApp pairing events use. No changes in `packages/agent` were needed.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `ELIZA_MEETINGS_ENABLED` | No | Opt-in auto-enable flag for the plugin |
 | `ELIZA_MEETINGS_BOT_NAME` | No | Bot display name (default `"<character name> Notetaker"`) |
-| `ELIZA_MEETINGS_CHROMIUM_PATH` | No | Chromium executable the platform bots launch; also auto-enables the plugin |
+| `ELIZA_MEETINGS_CHROMIUM_PATH` | No | Chromium executable override the platform bots launch |
 | `ELIZA_MEETINGS_HEADLESS` | No | Force headless (`true`) / headed (`false`). When unset, auto-detected from the available display (macOS/Windows always headed; Linux headed only when `DISPLAY`/`WAYLAND_DISPLAY` is set) |
 
-The plugin is opt-in because the bots need a Chromium binary on the host —
-matching the env-gated connector plugin pattern. Auto-enable is wired through the
-runtime's manifest mechanism: `package.json`'s `elizaos.plugin.autoEnableModule`
-points at the light root module [`auto-enable.ts`](./auto-enable.ts), whose
-`shouldEnable(ctx)` the resolver runs at boot (this manifest module — not the
-`Plugin.autoEnable` field — is what the loader reads). The predicate ORs the env
-keys but **vetoes auto-enable on mobile** (`ctx.isNativePlatform`, i.e.
-`ELIZA_PLATFORM=android|ios`): browser automation cannot run in an Android/iOS
-sandbox, so a set env key must not enable the plugin there.
+Enablement follows the standard feature-toggle convention (cf. plugin-shell /
+plugin-browser) — there is **no bespoke on/off env flag**. Auto-enable is wired
+through the runtime's manifest mechanism: `package.json`'s
+`elizaos.plugin.autoEnableModule` points at the light root module
+[`auto-enable.ts`](./auto-enable.ts), whose `shouldEnable(ctx)` the resolver runs
+at boot (this manifest module — not the `Plugin.autoEnable` field — is what the
+loader reads). It enables when the **`meetings` feature is on in config**
+(`config.features.meetings`) and the host is **not mobile** (`ctx.isNativePlatform`,
+i.e. `ELIZA_PLATFORM=android|ios`): browser automation cannot run in an Android/iOS
+sandbox, so mobile users get meeting transcripts via a cloud-hosted agent instead.
 
 ## Platform support & deployment
 

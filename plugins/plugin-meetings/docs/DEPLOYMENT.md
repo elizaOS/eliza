@@ -41,13 +41,13 @@ on XTEST-grade input. Pick pure headless only for a Teams/Zoom-only deployment.
 
 ## (a) Local desktop — headed, system Chrome
 
-macOS / Windows / a Linux desktop with a session. Nothing extra needed: a
-display is always present, so the plugin auto-selects **headed**, and the system
-Chrome/Edge channel is used if no bundled browser is installed.
+macOS / Windows / a Linux desktop with a session. Turn on the `meetings` feature
+in your agent config (`features.meetings`) — no env flag needed. A display is
+always present, so the plugin auto-selects **headed**, and the system Chrome/Edge
+channel is used if no bundled browser is installed.
 
 ```bash
-export ELIZA_MEETINGS_ENABLED=1
-# optional: pin a specific browser binary
+# optional: pin a specific browser binary instead of the system channel
 # export ELIZA_MEETINGS_CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ```
 
@@ -74,9 +74,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ### env
 
+Enable the `meetings` feature in the agent config baked into (or mounted onto)
+the image; the vars below are runtime tuning, not an enable switch.
+
 ```dockerfile
-ENV ELIZA_MEETINGS_ENABLED=1 \
-    ELIZA_MEETINGS_HEADLESS=false \
+ENV ELIZA_MEETINGS_HEADLESS=false \
     DISPLAY=:99
 # Point at a Chromium binary if you don't ship playwright's bundled download:
 # ENV ELIZA_MEETINGS_CHROMIUM_PATH=/usr/bin/chromium

@@ -1,23 +1,22 @@
 import { readFileSync } from "node:fs";
 import type { PluginAutoEnableContext } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { shouldEnable } from "../auto-enable.ts";
-import { meetingsPlugin } from "./index.js";
 
 // The auto-enable engine loads a plugin ONLY when its package.json declares
 // `elizaos.plugin.autoEnableModule` and that module exports `shouldEnable(ctx)`
 // (packages/agent/src/runtime/plugin-resolver.ts — "sourced exclusively from
-// per-plugin manifests"). The runtime `Plugin.autoEnable` field is NOT read by
-// the loader. These tests guard the manifest wiring so the plugin can never
-// regress back to being undiscoverable.
+// per-plugin manifests"). These tests guard the manifest wiring and the
+// config-driven enable predicate (no bespoke ELIZA_MEETINGS_* on/off flag).
 
 function ctx(
-  env: Record<string, string | undefined>,
+  config: Record<string, unknown>,
   isNativePlatform = false,
 ): PluginAutoEnableContext {
-  return { env, config: {}, isNativePlatform };
+  return { env: {}, config, isNativePlatform };
 }
+
+const withMeetings = (value: unknown) => ({ features: { meetings: value } });
 
 describe("plugin-meetings auto-enable manifest wiring", () => {
   it("declares autoEnableModule pointing at the shipped root module", () => {
@@ -33,48 +32,30 @@ describe("plugin-meetings auto-enable manifest wiring", () => {
 });
 
 describe("plugin-meetings shouldEnable", () => {
-  it("does NOT enable when no opt-in env is set", () => {
+  it("does NOT enable when the meetings feature is absent or turned off", () => {
     expect(shouldEnable(ctx({}))).toBe(false);
-    expect(shouldEnable(ctx({ ELIZA_MEETINGS_ENABLED: "   " }))).toBe(false);
+    expect(shouldEnable(ctx({ features: {} }))).toBe(false);
+    expect(shouldEnable(ctx(withMeetings(false)))).toBe(false);
+    expect(shouldEnable(ctx(withMeetings({ enabled: false })))).toBe(false);
   });
 
-  it("enables on the explicit opt-in flag", () => {
-    expect(shouldEnable(ctx({ ELIZA_MEETINGS_ENABLED: "1" }))).toBe(true);
-    expect(shouldEnable(ctx({ ELIZA_MEETINGS_ENABLED: "true" }))).toBe(true);
+  it("enables when the meetings feature is on in config", () => {
+    expect(shouldEnable(ctx(withMeetings(true)))).toBe(true);
+    expect(shouldEnable(ctx(withMeetings({ enabled: true })))).toBe(true);
+    // A feature object without an explicit `enabled: false` is treated as on.
+    expect(shouldEnable(ctx(withMeetings({ botName: "Notetaker" })))).toBe(true);
   });
 
-  it("enables when a Chromium binary is provided", () => {
-    expect(
-      shouldEnable(ctx({ ELIZA_MEETINGS_CHROMIUM_PATH: "/usr/bin/chromium" })),
-    ).toBe(true);
+  it("does NOT key off any ELIZA_MEETINGS_* env flag (no bespoke switch)", () => {
+    const withEnvOnly: PluginAutoEnableContext = {
+      env: { ELIZA_MEETINGS_ENABLED: "1", ELIZA_MEETINGS_CHROMIUM_PATH: "/x" },
+      config: {},
+      isNativePlatform: false,
+    };
+    expect(shouldEnable(withEnvOnly)).toBe(false);
   });
 
-  it("vetoes mobile even when the opt-in flag is set (no browser sandbox)", () => {
-    expect(
-      shouldEnable(
-        ctx(
-          {
-            ELIZA_MEETINGS_ENABLED: "1",
-            ELIZA_MEETINGS_CHROMIUM_PATH: "/usr/bin/chromium",
-          },
-          true,
-        ),
-      ),
-    ).toBe(false);
-  });
-
-  it("stays in lockstep with the declarative Plugin.autoEnable predicate", () => {
-    const envs: Record<string, string | undefined>[] = [
-      {},
-      { ELIZA_MEETINGS_ENABLED: "1" },
-      { ELIZA_MEETINGS_CHROMIUM_PATH: "/usr/bin/chromium" },
-      { ELIZA_PLATFORM: "ios", ELIZA_MEETINGS_ENABLED: "1" },
-      { ELIZA_PLATFORM: "android", ELIZA_MEETINGS_CHROMIUM_PATH: "/x" },
-    ];
-    for (const env of envs) {
-      const viaModule = shouldEnable(ctx(env, isMobilePlatform(env)));
-      const viaField = meetingsPlugin.autoEnable?.shouldEnable?.(env, {});
-      expect(viaModule).toBe(viaField);
-    }
+  it("vetoes mobile even when the feature is on (no browser sandbox)", () => {
+    expect(shouldEnable(ctx(withMeetings(true), true))).toBe(false);
   });
 });
