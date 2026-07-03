@@ -307,7 +307,7 @@ sync_tree() {
     # don't exist on a fresh VM — rsync won't create 2-deep targets. mkdir first.
     ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/data/final $REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b"
     rsync_rc=0
-    rsync -avhz --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/" || rsync_rc=$?
+    rsync -avhz --partial "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/" || rsync_rc=$?
     if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
       echo "[train_nebius][sync] data/final rsync failed rc=$rsync_rc"; return "$rsync_rc"
     fi
@@ -323,7 +323,7 @@ sync_tree() {
       ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
       echo "[train_nebius][sync] sending $f"
       rsync_rc=0
-      # NOTE: no --info=progress2 — macOS ships openrsync (protocol 29) which
+      # NOTE: no — macOS ships openrsync (protocol 29) which
       # rejects that flag (rc=1, prints usage) and aborts the launch. This
       # script is launched from macOS dev machines, so keep to flags the system
       # rsync supports; progress output is noise in a non-interactive run anyway.
@@ -473,9 +473,9 @@ fetch() {
   local target; target="$(ssh_target)"
   echo "[train_nebius][fetch] pulling checkpoints + benchmarks + reports"
   mkdir -p "$ROOT/checkpoints/$RUN_NAME" "$ROOT/benchmarks/$RUN_NAME" "$ROOT/reports"
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
 }
 
 # --- MTP drafter distillation (REMOVED) -------------------------------
@@ -506,7 +506,7 @@ fetch_distill() {
   local out_dir="${MTP_OUT_DIR:-out/mtp-drafter-${tier}}"
   echo "[train_nebius][fetch-distill] pulling $out_dir + the run log"
   mkdir -p "$ROOT/$out_dir"
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/$out_dir/" "$ROOT/$out_dir/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/$out_dir/" "$ROOT/$out_dir/" || true
   rsync -avhz "$target:$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log" "$ROOT/$out_dir/distill.log" 2>/dev/null || true
 }
 
