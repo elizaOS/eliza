@@ -465,6 +465,7 @@ export class TaskService extends Service {
 						: undefined;
 				if (nextInterval != null) {
 					newMeta.updateInterval = nextInterval;
+					delete newMeta.baseInterval;
 				} else if (baseInterval != null && typeof baseInterval === "number") {
 					newMeta.updateInterval = baseInterval;
 				}

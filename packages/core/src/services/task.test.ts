@@ -177,6 +177,32 @@ describe("TaskService tick re-arm", () => {
 		expect(execute.mock.calls.length).toBeGreaterThanOrEqual(8);
 	});
 
+	it("clears stale baseInterval after a worker returns a fresh nextInterval", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => ({ nextInterval: 72 * 60 * 60_000 }));
+		workers.set("VARIABLE_CRON", { name: "VARIABLE_CRON", execute });
+		tasks.set("t-cron", {
+			id: "t-cron" as UUID,
+			name: "VARIABLE_CRON",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: {
+				updateInterval: 60_000,
+				baseInterval: 24 * 60 * 60_000,
+				updatedAt: T0 - 61_000,
+			},
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+
+		service = (await TaskService.start(runtime)) as TaskService;
+		await service.runDueTasks();
+
+		expect(execute).toHaveBeenCalledTimes(1);
+		const meta = tasks.get("t-cron")?.metadata;
+		expect(meta?.updateInterval).toBe(72 * 60 * 60_000);
+		expect(meta?.baseInterval).toBeUndefined();
+	});
+
 	it("never auto-pauses a repeat task with maxFailures <= 0", async () => {
 		const { runtime, tasks, workers } = makeTaskRuntime();
 		const execute = vi.fn(async () => {
