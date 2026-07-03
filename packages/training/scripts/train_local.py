@@ -896,7 +896,8 @@ def main() -> int:
         trainer.training_step = _fp8_training_step  # type: ignore[assignment]
 
     from training.instrumentation import (
-        InstrumentationConfig, log_environment, make_hf_callback,
+        InstrumentationConfig, log_environment, make_finite_weights_callback,
+        make_hf_callback,
     )
     log_environment(
         out_dir,
@@ -906,6 +907,13 @@ def main() -> int:
             "max_seq_len": args.max_seq_len, "lr": args.lr,
             "registry_key": args.registry_key,
         },
+    )
+    # Post-step finite-weights guard — registered unconditionally. A divergent
+    # run (e.g. a fused kernel that doesn't model an arch's layer layout) must
+    # die within one logging interval instead of completing and persisting an
+    # all-NaN checkpoint. Not gated on --memory-budget-gb.
+    trainer.add_callback(
+        make_finite_weights_callback(sft_cfg.logging_steps)
     )
     if args.memory_budget_gb:
         trainer.add_callback(make_hf_callback(InstrumentationConfig(

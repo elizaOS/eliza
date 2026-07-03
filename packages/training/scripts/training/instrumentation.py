@@ -253,10 +253,17 @@ class InstrumentationCallback:
 
 def make_hf_callback(cfg: InstrumentationConfig):
     """Factory returning a TrainerCallback subclass at call time so this
-    module stays importable when transformers is missing."""
+    module stays importable when transformers is missing.
+
+    ``InstrumentationCallback`` comes FIRST in the base list so its
+    ``on_step_end`` / ``on_train_begin`` / ``on_train_end`` win the MRO.
+    ``TrainerCallback`` defines those as real (no-op) methods, so listing the
+    base first shadowed the instrumentation hooks entirely — the memory-budget
+    breach guard and the tokens/sec trace never fired.
+    """
     from transformers import TrainerCallback
 
-    class _Cb(TrainerCallback, InstrumentationCallback):  # type: ignore[misc]
+    class _Cb(InstrumentationCallback, TrainerCallback):  # type: ignore[misc]
         def __init__(self, cfg: InstrumentationConfig):
             TrainerCallback.__init__(self)
             InstrumentationCallback.__init__(self, cfg)
@@ -264,13 +271,100 @@ def make_hf_callback(cfg: InstrumentationConfig):
     return _Cb(cfg)
 
 
+def assert_finite_step(model: Any, *, step: int, max_reported: int = 5) -> None:
+    """Raise ``RuntimeError`` if any trainable parameter holds a non-finite value.
+
+    Walks ``model.named_parameters()``, checks ``torch.isfinite(p).all()`` on
+    every parameter with ``requires_grad``, and raises naming the first
+    ``max_reported`` offending tensors. This is architecture-agnostic: it fires
+    on the *first* NaN/Inf regardless of root cause (a fused kernel that doesn't
+    model an arch's layer layout, a bad LR, an overflowing fp16 activation),
+    which is exactly the failure mode that let the gemma4_unified 12B run report
+    "complete" while saving an all-NaN checkpoint.
+
+    Cheap by design: one ``isfinite().all()`` reduction per parameter, no host
+    sync of the full tensor. Callers gate the frequency (every ``logging_steps``)
+    so a divergent run dies within one save interval instead of writing a dead
+    checkpoint.
+    """
+    import torch
+
+    offenders: list[str] = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if not torch.isfinite(param).all():
+            offenders.append(name)
+            if len(offenders) >= max_reported:
+                break
+    if offenders:
+        raise RuntimeError(
+            f"non-finite (NaN/Inf) trainable weights at step {step}: "
+            f"{', '.join(offenders)}"
+            + (" …" if len(offenders) >= max_reported else "")
+            + ". Training diverged — aborting before a dead checkpoint is saved."
+        )
+
+
+class FiniteWeightsCallback:
+    """HF Trainer callback that hard-fails a divergent run.
+
+    Runs :func:`assert_finite_step` across trainable parameters every
+    ``check_every_steps`` (default: aligned with ``logging_steps``). A run whose
+    weights NaN out dies within one logging interval with an explicit error
+    naming the offending tensors, rather than completing and silently persisting
+    an all-NaN checkpoint. Registered unconditionally — this guard is not gated
+    on the optional memory-budget instrumentation.
+
+    Base-class-free like :class:`InstrumentationCallback`; the concrete
+    ``TrainerCallback`` subclass is built by :func:`make_finite_weights_callback`
+    so this module stays importable without transformers.
+    """
+
+    def __init__(self, check_every_steps: int = 10):
+        self.check_every_steps = max(1, int(check_every_steps))
+        self._last_step = -1
+
+    def on_step_end(self, args, state, control, model=None, **kwargs):
+        step = int(state.global_step)
+        if step == self._last_step:
+            return
+        if step % self.check_every_steps != 0:
+            return
+        self._last_step = step
+        if model is None:
+            return
+        assert_finite_step(model, step=step)
+
+
+def make_finite_weights_callback(check_every_steps: int = 10):
+    """Factory returning a TrainerCallback subclass at call time so this module
+    stays importable when transformers is missing.
+
+    ``FiniteWeightsCallback`` comes FIRST in the base list so its ``on_step_end``
+    wins the MRO — ``TrainerCallback.on_step_end`` is a real (no-op) override, so
+    listing the base first would shadow the guard and it would never fire.
+    """
+    from transformers import TrainerCallback
+
+    class _Cb(FiniteWeightsCallback, TrainerCallback):  # type: ignore[misc]
+        def __init__(self, check_every_steps: int):
+            TrainerCallback.__init__(self)
+            FiniteWeightsCallback.__init__(self, check_every_steps)
+
+    return _Cb(check_every_steps)
+
+
 __all__ = [
+    "FiniteWeightsCallback",
     "GpuMemoryTracker",
     "InstrumentationCallback",
     "InstrumentationConfig",
     "MemorySnapshot",
+    "assert_finite_step",
     "gpu_memory",
     "log_environment",
+    "make_finite_weights_callback",
     "make_hf_callback",
     "reset_peak_memory",
 ]
