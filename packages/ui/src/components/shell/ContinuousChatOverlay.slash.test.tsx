@@ -110,6 +110,8 @@ function makeSlash(
     commands: COMMANDS,
     loading: false,
     naturalShortcutsEnabled: false,
+    isAuthorized: true,
+    isElevated: true,
     resolveChoices: () => [],
     resolveSection: (t: string) =>
       ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],

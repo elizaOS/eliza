@@ -113,6 +113,8 @@ const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
   commands: [],
   loading: false,
   naturalShortcutsEnabled: false,
+  isAuthorized: false,
+  isElevated: false,
   resolveChoices: () => [],
   resolveSection: () => undefined,
   navigateTab: () => {},
@@ -3618,6 +3620,10 @@ export function ContinuousChatOverlay({
             {
               allowNatural: slash.naturalShortcutsEnabled,
               resolveChoices: slash.resolveChoices,
+              // #12087 Item 20: re-apply the sender's real authority to the
+              // natural-language path so it matches the visible menu.
+              isAuthorized: slash.isAuthorized,
+              isElevated: slash.isElevated,
             },
           )
         : null;

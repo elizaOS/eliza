@@ -6,8 +6,9 @@
  * The slash menu only mounts when the controller's merged `commands` are
  * non-empty, so this pins the engine-agnostic contract behind it: whenever the
  * catalog fetch resolves with commands, `commands` resolve — with the default
- * (trusted dashboard) auth context keeping requiresAuth / requiresElevated
- * commands visible — and a FAILED fetch degrades to an empty catalog while
+ * auth context now FAIL-CLOSED (#12087 Item 20), so requiresAuth /
+ * requiresElevated commands are hidden unless the caller passes the sender's
+ * real authority — and a FAILED fetch degrades to an empty catalog while
  * surfacing the error instead of silently swallowing it (a swallowed error is
  * indistinguishable from a genuinely empty catalog).
  */
@@ -80,7 +81,7 @@ beforeEach(() => {
 });
 
 describe("useSlashCommandController — catalog load (#11112)", () => {
-  it("resolves commands whenever the catalog fetch resolves, keeping auth-gated commands under the trusted-dashboard defaults", async () => {
+  it("resolves commands whenever the catalog fetch resolves, hiding auth-gated commands under the fail-closed defaults (#12087 Item 20)", async () => {
     listCommands.mockResolvedValue([
       cmd({
         key: "settings",
@@ -90,10 +91,31 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
       cmd({ key: "admin", requiresElevated: true }),
     ]);
 
+    // No options → fail-closed: only the unconstrained command is visible.
     const { result } = renderHook(() => useSlashCommandController());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(listCommands).toHaveBeenCalledWith(GUI);
+    expect(result.current.commands.map((c) => c.key)).toEqual(["settings"]);
+    expect(result.current.isAuthorized).toBe(false);
+    expect(result.current.isElevated).toBe(false);
+  });
+
+  it("shows auth- and elevation-gated commands once the caller passes the sender's authority (#12087 Item 20)", async () => {
+    listCommands.mockResolvedValue([
+      cmd({
+        key: "settings",
+        target: { kind: "navigate", tab: "settings", path: "/settings" },
+      }),
+      cmd({ key: "clear", requiresAuth: true }),
+      cmd({ key: "admin", requiresElevated: true }),
+    ]);
+
+    const { result } = renderHook(() =>
+      useSlashCommandController({ isAuthorized: true, isElevated: true }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands.map((c) => c.key)).toEqual([
       "settings",
       "clear",

@@ -83,6 +83,7 @@ import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runt
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
+import { useRole } from "./hooks/useRole";
 import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
@@ -1633,7 +1634,15 @@ function ContinuousChatOverlayMount(): ReactNode {
       agentStatus: s.agentStatus,
       firstRunComplete: s.firstRunComplete,
     }));
-  const slash = useSlashCommandController();
+  // #12087 Item 20: derive the slash-command authority from the authoritative
+  // role instead of the fail-open defaults. Elevated (owner-only) commands
+  // require OWNER; authenticated commands require rank ≥ USER. A remote
+  // USER/GUEST no longer sees elevated commands.
+  const { isOwner, atLeast } = useRole();
+  const slash = useSlashCommandController({
+    isElevated: isOwner,
+    isAuthorized: atLeast("USER"),
+  });
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's

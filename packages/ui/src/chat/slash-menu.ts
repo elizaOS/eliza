@@ -501,8 +501,12 @@ export function resolveClientShortcutExecution(
   const { definitions, commandById } = naturalShortcutDefinitions(commands);
   const match = matchShortcut(definitions, raw, {
     allowNatural: true,
-    isAuthorized: options.isAuthorized ?? true,
-    isElevated: options.isElevated ?? true,
+    // Fail-closed (#12087 Item 20): a caller that omits the sender's authority
+    // must not resolve `requiresAuth`/`requiresElevated` natural-language
+    // shortcuts. The controller threads the real tier via `slash.isAuthorized`
+    // / `slash.isElevated`.
+    isAuthorized: options.isAuthorized ?? false,
+    isElevated: options.isElevated ?? false,
   });
   if (!match) return null;
 
