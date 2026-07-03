@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
+import { COMPACT_CONVERSATION_ACTION_NAME } from "@elizaos/agent";
 import { CORE_PLUGINS } from "@elizaos/agent/runtime/core-plugins";
 import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 import { resolveElizaPluginImportSpecifier } from "@elizaos/agent/runtime/plugin-types";
@@ -1394,25 +1395,6 @@ function checkBenchAuth(
   return true;
 }
 
-function disableManualCompactionAction(runtime: AgentRuntime): void {
-  const runtimeWithActions = runtime as AgentRuntime & {
-    actions?: Array<{ name?: string }>;
-  };
-  if (!Array.isArray(runtimeWithActions.actions)) {
-    return;
-  }
-  const compactSessionIndex = runtimeWithActions.actions.findIndex(
-    (action) => action.name.toUpperCase() === "COMPACT_SESSION",
-  );
-  if (compactSessionIndex === -1) {
-    return;
-  }
-  runtimeWithActions.actions.splice(compactSessionIndex, 1);
-  elizaLogger.info(
-    "[bench] Disabled manual COMPACT_SESSION action; auto-compaction remains enabled",
-  );
-}
-
 async function collectSessionDiagnostics(
   runtime: AgentRuntime,
   session: BenchmarkSession,
@@ -1506,7 +1488,9 @@ async function collectSessionDiagnostics(
       has_relationship_evaluator: evaluatorNames.some((name) =>
         name.toUpperCase().includes("RELATIONSHIP"),
       ),
-      has_manual_compaction_action: actionNames.includes("COMPACT_SESSION"),
+      has_manual_compaction_action: actionNames.includes(
+        COMPACT_CONVERSATION_ACTION_NAME,
+      ),
     },
     providers: providerNames,
     evaluators: evaluatorNames,
@@ -2053,7 +2037,6 @@ export async function startBenchmarkServer() {
       "[bench] Skipping @elizaos/plugin-local-inference runtime wiring because benchmark embedding skip is enabled",
     );
   }
-  disableManualCompactionAction(runtime);
   const modelHandlers = (runtime as { models?: Map<string, unknown[]> }).models;
   const modelHandlerSummary = Object.fromEntries(
     [...(modelHandlers?.entries() ?? [])].map(([modelType, handlers]) => [

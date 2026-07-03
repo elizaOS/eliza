@@ -3119,6 +3119,7 @@ export const tasksAction: Action & {
     "CREATE_AGENT_TASK",
     "CREATE_TASK",
     "START_CODING_TASK",
+    "CODE_TASK",
     "LAUNCH_CODING_TASK",
     "RUN_CODING_TASK",
     "START_AGENT_TASK",
