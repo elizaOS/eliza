@@ -28,6 +28,15 @@ interface CronSchedule {
 	dayOfMonth: Set<number>;
 	month: Set<number>;
 	dayOfWeek: Set<number>;
+	/**
+	 * Standard (POSIX/Vixie) cron day semantics: when BOTH day-of-month and
+	 * day-of-week are restricted (the field does not start with `*`), a
+	 * candidate matches when EITHER field matches; otherwise both must match.
+	 * `0 0 13 * 5` therefore fires on every 13th AND every Friday — not only
+	 * on Friday-the-13th.
+	 */
+	dayOfMonthRestricted: boolean;
+	dayOfWeekRestricted: boolean;
 }
 
 const CRON_RANGES: readonly CronRange[] = [
@@ -129,17 +138,30 @@ export function parseCronExpression(expression: string): CronSchedule | null {
 		dayOfMonth,
 		month,
 		dayOfWeek,
+		// Vixie-cron rule: a day field counts as "restricted" for the dom/dow
+		// OR-semantics only when it does not start with `*` (`*` and `*/n` are
+		// unrestricted).
+		dayOfMonthRestricted: !parts[2].trim().startsWith("*"),
+		dayOfWeekRestricted: !parts[4].trim().startsWith("*"),
 	};
 }
 
 function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 	const candidate = new Date(candidateMs);
+	const dayOfMonthMatches = schedule.dayOfMonth.has(candidate.getUTCDate());
+	const dayOfWeekMatches = schedule.dayOfWeek.has(candidate.getUTCDay());
+	// POSIX/Vixie cron: when BOTH day fields are restricted, a day matching
+	// EITHER one fires; otherwise both must match (an unrestricted `*` field
+	// always matches anyway).
+	const dayMatches =
+		schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted
+			? dayOfMonthMatches || dayOfWeekMatches
+			: dayOfMonthMatches && dayOfWeekMatches;
 	return (
 		schedule.minute.has(candidate.getUTCMinutes()) &&
 		schedule.hour.has(candidate.getUTCHours()) &&
-		schedule.dayOfMonth.has(candidate.getUTCDate()) &&
-		schedule.month.has(candidate.getUTCMonth() + 1) &&
-		schedule.dayOfWeek.has(candidate.getUTCDay())
+		dayMatches &&
+		schedule.month.has(candidate.getUTCMonth() + 1)
 	);
 }
 

@@ -160,10 +160,18 @@ export function applyPluginFilter(
 		const safeLower = lower.length > 256 ? lower.slice(0, 256) : lower;
 		// Extract short name from full package name
 		const match = safeLower.match(/@[^/]+\/plugin-(.+)$/);
-		return match ? match[1] : safeLower;
+		if (match) return match[1];
+		// Scopeless "plugin-<name>" also normalizes to its short name.
+		return safeLower.startsWith("plugin-")
+			? safeLower.slice("plugin-".length)
+			: safeLower;
 	};
 
-	// Check if a plugin matches any name in a list
+	// Check if a plugin matches any name in a list. Matching is EXACT on the
+	// full name or the normalized short name — never substring. This filter is
+	// a policy boundary: a substring match makes an allow/deny entry silently
+	// hit unrelated plugins (e.g. deny "x" for the X connector must not also
+	// remove "@elizaos/plugin-xai").
 	const matchesAny = (plugin: Plugin, names: string[]): boolean => {
 		const pluginName = plugin.name.toLowerCase();
 		const pluginShortName = normalizePluginName(plugin.name);
@@ -171,9 +179,7 @@ export function applyPluginFilter(
 		return names.some((name) => {
 			const normalizedName = normalizePluginName(name);
 			return (
-				pluginName === name.toLowerCase() ||
-				pluginShortName === normalizedName ||
-				pluginName.includes(normalizedName)
+				pluginName === name.toLowerCase() || pluginShortName === normalizedName
 			);
 		});
 	};
