@@ -712,6 +712,12 @@ describe("App screen-background fuzz — color invariant across view switching",
   }, 120_000);
 
   it("preserves a GLSL preset wallpaper across view switching and background:apply churn", async () => {
+    // Pre-resolve the lazy programmable-shader chunk. AppBackground
+    // deliberately paints the plain ShaderBackground as the Suspense fallback
+    // while the chunk loads (same color — the seamless-swap design), so a
+    // strict `kind === "glsl"` assertion is only deterministic once the module
+    // is warm; a cold first import can outlast the act() microtask flushes.
+    await import("./backgrounds/ProgrammableShaderBackground");
     bgState.config = makeAuroraConfig("#059669");
     assertAuroraConfigClamped(bgState.config);
     await runFuzzWalk("glsl#13", 13, { churnGlsl: true });
