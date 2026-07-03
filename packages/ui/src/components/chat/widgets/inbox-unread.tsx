@@ -81,7 +81,9 @@ function unreadEqual(a: UnreadThread[], b: UnreadThread[]): boolean {
   });
 }
 
-export function InboxUnreadWidget(_props: Partial<WidgetProps>) {
+export function InboxUnreadWidget({
+  spanClassName = "col-span-2 row-span-1",
+}: Partial<WidgetProps>) {
   const [unread, setUnread] = useState<UnreadThread[]>([]);
   const [loaded, setLoaded] = useState(false);
   const nav = useWidgetNavigation();
@@ -148,16 +150,18 @@ export function InboxUnreadWidget(_props: Partial<WidgetProps>) {
     top.sender !== "Someone" ? top.sender : top.subject || top.sender;
   const tone = hasImportant ? "warn" : "default";
   return (
-    <HomeWidgetCard
-      icon={<Inbox />}
-      label="Inbox"
-      value={datum}
-      badge={unread.length}
-      tone={tone}
-      testId="chat-widget-inbox-unread"
-      ariaLabel={`Inbox: ${unread.length} unread thread${unread.length === 1 ? "" : "s"} need a reply, top from ${datum}. Open Inbox.`}
-      onActivate={() => nav.openView("/inbox", "inbox")}
-    />
+    <div className={`min-w-0 ${spanClassName}`}>
+      <HomeWidgetCard
+        icon={<Inbox />}
+        label="Inbox"
+        value={datum}
+        badge={unread.length}
+        tone={tone}
+        testId="chat-widget-inbox-unread"
+        ariaLabel={`Inbox: ${unread.length} unread thread${unread.length === 1 ? "" : "s"} need a reply, top from ${datum}. Open Inbox.`}
+        onActivate={() => nav.openView("/inbox", "inbox")}
+      />
+    </div>
   );
 }
 

@@ -143,7 +143,10 @@ function TodoItemsContent({
   );
 }
 
-function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
+function TodoSidebarWidget({
+  slot,
+  spanClassName = "col-span-2 row-span-1",
+}: ChatSidebarWidgetProps) {
   const { workbench, t: appT } = useAppSelectorShallow((s) => ({
     workbench: s.workbench,
     t: s.t,
@@ -228,7 +231,7 @@ function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
   // keeps its empty state.
   if (onHome && openTodos.length === 0) return null;
 
-  return (
+  const section = (
     <WidgetSection
       title={t("taskseventspanel.Todos", { defaultValue: "Todos" })}
       icon={<ListTodo className="h-4 w-4" />}
@@ -237,6 +240,13 @@ function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
       <TodoItemsContent todos={todos} loading={todosLoading} />
     </WidgetSection>
   );
+  // On the home 4-col grid the widget's root element must carry its grid-span
+  // classes or it collapses to a one-column cell and its content paints over
+  // the neighboring card (#11752). The sidebar stack renders the bare section.
+  if (onHome) {
+    return <div className={`min-w-0 ${spanClassName}`}>{section}</div>;
+  }
+  return section;
 }
 
 export const TODO_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] = [

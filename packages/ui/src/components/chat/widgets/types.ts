@@ -8,6 +8,12 @@ export interface ChatSidebarWidgetProps {
   clearEvents: () => void;
   /** The slot this instance renders in — `home` widgets hide their empty state. */
   slot?: WidgetSlot;
+  /**
+   * Static Tailwind grid-span classes for the home 4-col grid (mirrors
+   * WidgetProps.spanClassName). The widget applies this to its single root
+   * grid-item element when rendering on `home`. Absent off the home slot.
+   */
+  spanClassName?: string;
 }
 
 export interface ChatSidebarWidgetDefinition {
