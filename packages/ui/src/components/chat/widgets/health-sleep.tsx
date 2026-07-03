@@ -173,7 +173,9 @@ function sleepEqual(a: SleepWidgetData | null, b: SleepWidgetData): boolean {
  * home-attention store. Fetches the same `/api/lifeops/sleep/*` endpoints
  * HealthView reads, polling quietly while the document is visible.
  */
-export function HealthSleepWidget(_props: Partial<WidgetProps>) {
+export function HealthSleepWidget({
+  spanClassName = "col-span-2 row-span-1",
+}: Partial<WidgetProps>) {
   // `null` = first load still pending; a value (with `latest: null`) = loaded
   // but no episode. This keeps the home surface blank until we actually know
   // there's data, and a transient fetch error never clobbers a populated card.
@@ -229,16 +231,18 @@ export function HealthSleepWidget(_props: Partial<WidgetProps>) {
     : `Sleep: last ${duration}. Open Health.`;
 
   return (
-    <HomeWidgetCard
-      icon={<Moon />}
-      label="Sleep"
-      value={duration}
-      badge={badge}
-      tone={badge ? "warn" : "default"}
-      testId="widget-health-sleep"
-      ariaLabel={ariaLabel}
-      onActivate={() => nav.openView("/health", "health")}
-    />
+    <div className={`min-w-0 ${spanClassName}`}>
+      <HomeWidgetCard
+        icon={<Moon />}
+        label="Sleep"
+        value={duration}
+        badge={badge}
+        tone={badge ? "warn" : "default"}
+        testId="widget-health-sleep"
+        ariaLabel={ariaLabel}
+        onActivate={() => nav.openView("/health", "health")}
+      />
+    </div>
   );
 }
 

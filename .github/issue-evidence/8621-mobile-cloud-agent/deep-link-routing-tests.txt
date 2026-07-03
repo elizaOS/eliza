@@ -1,5 +1,5 @@
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/app
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/packages/app
 
  ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > routes ask links through chat with trusted assistant source metadata 1ms
  ✓ src/deep-link-routing.test.ts > assistant launch deep-link routing > defaults chat links to the trusted assistant source so text is consumable 0ms

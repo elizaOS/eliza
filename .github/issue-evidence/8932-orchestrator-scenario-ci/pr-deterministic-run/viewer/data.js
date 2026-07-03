@@ -2,13 +2,13 @@ window.SCENARIO_RUN_DATA = {
   schema: "eliza_scenario_run_viewer_v1",
   generatedAt: "2026-06-23T14:18:09.702Z",
   runDir:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run",
   matrixPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/matrix.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/matrix.json",
   nativeJsonlPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.jsonl",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.jsonl",
   nativeManifestPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.manifest.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.manifest.json",
   report: {
     runId: "46a8578d-2a81-44f2-b225-eb1795fa2de3",
     startedAtIso: "2026-06-23T14:18:03.861Z",
@@ -564,21 +564,21 @@ window.SCENARIO_RUN_DATA = {
     totalCostUsd: 0,
     artifactPaths: {
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run",
       matrixJson:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/matrix.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/matrix.json",
       viewerIndex:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/viewer/index.html",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/viewer/index.html",
       viewerData:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/viewer/data.js",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/viewer/data.js",
       nativeJsonl:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.jsonl",
       nativeManifest:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.manifest.json",
     },
   },
   trajectories: {
-    root: "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/trajectories",
+    root: "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/trajectories",
     files: [],
     summaries: [],
   },
@@ -588,13 +588,13 @@ window.SCENARIO_RUN_DATA = {
       schemaVersion: 1,
       generatedAt: "2026-06-23T14:18:09.702Z",
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run",
       trajectoriesDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/trajectories",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-run/trajectories",
       jsonlPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.jsonl",
       manifestPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8892/.github/issue-evidence/8932-orchestrator-scenario-ci/pr-deterministic-native.manifest.json",
       counts: {
         trajectoryFiles: 0,
         parsedTrajectories: 0,

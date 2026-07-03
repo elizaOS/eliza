@@ -19,6 +19,6 @@ $ bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-springboard-e
 ✓ no page errors (saw 0)
   🎬 springboard-walkthrough.webm
 
-Screenshots (4) → /home/shaw/milady/eliza/packages/ui/src/components/pages/__e2e__/output-springboard
+Screenshots (4) → /home/shaw/eliza/eliza/packages/ui/src/components/pages/__e2e__/output-springboard
 
 SPRINGBOARD E2E PASSED

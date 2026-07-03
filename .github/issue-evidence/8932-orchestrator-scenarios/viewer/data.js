@@ -2,13 +2,13 @@ window.SCENARIO_RUN_DATA = {
   schema: "eliza_scenario_run_viewer_v1",
   generatedAt: "2026-06-23T08:34:16.257Z",
   runDir:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator",
   matrixPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/matrix.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/matrix.json",
   nativeJsonlPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
   nativeManifestPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
   report: {
     runId: "471802ef-d3e8-4d34-8420-a5b27e75c32f",
     startedAtIso: "2026-06-23T08:31:20.146Z",
@@ -819,21 +819,21 @@ window.SCENARIO_RUN_DATA = {
     totalCostUsd: 0,
     artifactPaths: {
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator",
       matrixJson:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/matrix.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/matrix.json",
       viewerIndex:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/index.html",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/index.html",
       viewerData:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/data.js",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/data.js",
       nativeJsonl:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
       nativeManifest:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
     },
   },
   trajectories: {
-    root: "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/trajectories",
+    root: "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/trajectories",
     files: [
       {
         path: "trajectories/546ac3ab-0468-01a2-9d5b-52dfa34bf9cc/tj-9d852ddc906803.json",
@@ -1121,13 +1121,13 @@ window.SCENARIO_RUN_DATA = {
       schemaVersion: 1,
       generatedAt: "2026-06-23T08:34:16.229Z",
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator",
       trajectoriesDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/trajectories",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/trajectories",
       jsonlPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
       manifestPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
       counts: {
         trajectoryFiles: 3,
         parsedTrajectories: 3,

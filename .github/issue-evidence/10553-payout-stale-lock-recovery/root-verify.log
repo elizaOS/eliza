@@ -122,7 +122,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-capacitor-bridge:build: CLI Building entry: {"index":"src/index.ts","android/bridge":"src/android/bridge.ts","ios/bridge":"src/ios/bridge.ts","mobile-device-bridge-bootstrap":"src/mobile-device-bridge-bootstrap.ts","shared/fs-shim":"src/shared/fs-shim.ts"}
 @elizaos/plugin-capacitor-bridge:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-capacitor-bridge:build: CLI tsup v8.5.1
-@elizaos/plugin-capacitor-bridge:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-capacitor-bridge/tsup.config.ts
+@elizaos/plugin-capacitor-bridge:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-capacitor-bridge/tsup.config.ts
 @elizaos/plugin-capacitor-bridge:build: CLI Target: es2022
 @elizaos/plugin-capacitor-bridge:build: CLI Cleaning output folder
 @elizaos/plugin-capacitor-bridge:build: ESM Build start
@@ -165,7 +165,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-ollama:build: 🎉 @elizaos/plugin-ollama build finished in 2.89s
 @elizaos/registry:build: cache miss, executing dc959a920318cbe9
 @elizaos/registry:build: $ bun run src/generate.ts && bun run src/first-party/generate.ts
-@elizaos/registry:build: Generated /home/shaw/milady/eliza-wt-10553-pr10571/packages/registry/generated-registry.json (20 third-party entries)
+@elizaos/registry:build: Generated /home/shaw/eliza/eliza-wt-10553-pr10571/packages/registry/generated-registry.json (20 third-party entries)
 @elizaos/plugin-capacitor-bridge:build: [rewrite-dist-relative-imports] rewrote 2 file(s)
 @elizaos/capacitor-location:build: cache miss, executing 67b5ec8153bcd979
 @elizaos/capacitor-location:build: $ node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-location -- bun run build:unlocked
@@ -195,7 +195,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-wechat:build: CLI Building entry: src/index.ts
 @elizaos/plugin-wechat:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-wechat:build: CLI tsup v8.5.1
-@elizaos/plugin-wechat:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-wechat/tsup.config.ts
+@elizaos/plugin-wechat:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-wechat/tsup.config.ts
 @elizaos/plugin-wechat:build: CLI Target: es2022
 @elizaos/plugin-wechat:build: CLI Cleaning output folder
 @elizaos/plugin-wechat:build: ESM Build start
@@ -294,7 +294,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-x:build: CLI Building entry: src/index.ts, src/lifeops-message-adapter.ts
 @elizaos/plugin-x:build: CLI Using tsconfig: tsconfig.build.json
 @elizaos/plugin-x:build: CLI tsup v8.5.1
-@elizaos/plugin-x:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-x/tsup.config.ts
+@elizaos/plugin-x:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-x/tsup.config.ts
 @elizaos/plugin-x:build: CLI Target: es2020
 @elizaos/plugin-x:build: CLI Cleaning output folder
 @elizaos/plugin-x:build: ESM Build start
@@ -478,14 +478,14 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-localdb:build: CLI Building entry: {"index":"index.ts","index.browser":"index.browser.ts"}
 @elizaos/plugin-localdb:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-localdb:build: CLI tsup v8.5.1
-@elizaos/plugin-localdb:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-localdb/tsup.config.ts
+@elizaos/plugin-localdb:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-localdb/tsup.config.ts
 @elizaos/plugin-localdb:build: CLI Target: es2022
 @elizaos/plugin-telegram:build: CLI Building entry: src/account-auth-service.ts, src/index.ts
 @elizaos/plugin-localdb:build: CLI Cleaning output folder
 @elizaos/plugin-telegram:build: CLI Using tsconfig: tsconfig.build.json
 @elizaos/plugin-telegram:build: CLI tsup v8.5.1
 @elizaos/plugin-localdb:build: ESM Build start
-@elizaos/plugin-telegram:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-telegram/tsup.config.ts
+@elizaos/plugin-telegram:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-telegram/tsup.config.ts
 @elizaos/plugin-telegram:build: CLI Target: esnext
 @elizaos/plugin-telegram:build: CLI Cleaning output folder
 @elizaos/plugin-telegram:build: ESM Build start
@@ -514,9 +514,9 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/shared:build:
 @elizaos/shared:build: Total: 239 entries, 6 locales
 @elizaos/shared:build:
-@elizaos/shared:build:   TypeScript (shared): /home/shaw/milady/eliza-wt-10553-pr10571/packages/shared/src/i18n/generated/validation-keyword-data.ts
-@elizaos/shared:build:   JavaScript (shared): /home/shaw/milady/eliza-wt-10553-pr10571/packages/shared/src/i18n/generated/validation-keyword-data.js
-@elizaos/shared:build:   TypeScript (core):   /home/shaw/milady/eliza-wt-10553-pr10571/packages/core/src/i18n/generated/validation-keyword-data.ts
+@elizaos/shared:build:   TypeScript (shared): /home/shaw/eliza/eliza-wt-10553-pr10571/packages/shared/src/i18n/generated/validation-keyword-data.ts
+@elizaos/shared:build:   JavaScript (shared): /home/shaw/eliza/eliza-wt-10553-pr10571/packages/shared/src/i18n/generated/validation-keyword-data.js
+@elizaos/shared:build:   TypeScript (core):   /home/shaw/eliza/eliza-wt-10553-pr10571/packages/core/src/i18n/generated/validation-keyword-data.ts
 @elizaos/shared:build:
 @elizaos/shared:build: Done!
 @elizaos/shared:build: $ node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css
@@ -546,7 +546,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-browser:build: CLI Building entry: src/bridge-policy.ts, src/bridge-readiness.ts, src/bridge-records.ts, src/browser-capture-hooks.ts, src/browser-service.ts, src/browser-workspace-hooks.ts, src/companion-auth.ts, src/contracts.ts, src/index.ts, src/lifeops-session-contracts.ts, src/message-adapter.ts, src/packaging.ts, src/password-manager-bridge.ts, src/plugin.ts, src/schema.ts, src/service.ts, src/workspace.ts, src/actions/browser-autofill-login.ts, src/actions/browser.ts, src/actions/manage-browser-bridge.ts, src/actions/wait-for-url-predicate.ts, src/actions/wait-for-url.ts, src/benchmark/adapter.ts, src/benchmark/chromium-executor.ts, src/benchmark/external-dataset.ts, src/benchmark/index.ts, src/benchmark/policy.ts, src/benchmark/runner.ts, src/benchmark/tasks.ts, src/benchmark/types.ts, src/benchmark/web-grounding.ts, src/parity/browser-matrix.ts, src/parity/index.ts, src/providers/workspace.ts, src/routes/bridge.ts, src/routes/workspace-account-gate.ts, src/routes/workspace-setup.ts, src/routes/workspace.ts, src/targets/bridge-target.ts, src/targets/stagehand-target.ts, src/workspace/browser-capture.ts, src/workspace/browser-workspace-desktop.ts, src/workspace/browser-workspace-elements.ts, src/workspace/browser-workspace-errors.ts, src/workspace/browser-workspace-forms.ts, src/workspace/browser-workspace-helpers.ts, src/workspace/browser-workspace-jsdom.ts, src/workspace/browser-workspace-network.ts, src/workspace/browser-workspace-snapshots.ts, src/workspace/browser-workspace-state.ts, src/workspace/browser-workspace-types.ts, src/workspace/browser-workspace-web.ts, src/workspace/browser-workspace.ts, src/workspace/index.ts
 @elizaos/plugin-browser:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-browser:build: CLI tsup v8.5.1
-@elizaos/plugin-browser:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/tsup.plugin-packages.shared.ts
+@elizaos/plugin-browser:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/tsup.plugin-packages.shared.ts
 @elizaos/plugin-browser:build: CLI Target: es2022
 @elizaos/plugin-browser:build: ESM Build start
 @elizaos/capacitor-talkmode:build: $ bun run clean && tsc && bunx rollup -c rollup.config.mjs
@@ -678,7 +678,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-mcp:build: 📝 Generating TypeScript declarations…
 @elizaos/capacitor-talkmode:build: created dist/plugin.js, dist/plugin.cjs.js in 113ms
 @elizaos/capacitor-swabble:build:
-@elizaos/capacitor-swabble:build: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-native-swabble/dist/esm/index.js → dist/plugin.js, dist/plugin.cjs.js...
+@elizaos/capacitor-swabble:build: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-native-swabble/dist/esm/index.js → dist/plugin.js, dist/plugin.cjs.js...
 @elizaos/example-xai-x:typecheck: cache miss, executing a44cd56add1ad1b8
 @elizaos/example-xai-x:typecheck: $ tsgo --noEmit
 @elizaos/capacitor-swabble:build: created dist/plugin.js, dist/plugin.cjs.js in 174ms
@@ -709,7 +709,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-streaming:build: CLI Building entry: src/core.ts, src/index.ts, src/api/stream-persistence.ts, src/api/stream-route-state.ts, src/api/stream-routes.ts, src/api/streaming-text.ts, src/api/streaming-types.ts, src/api/tts-routes.ts, src/services/stream-manager.ts, src/services/tts-stream-bridge.ts
 @elizaos/plugin-streaming:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-streaming:build: CLI tsup v8.5.1
-@elizaos/plugin-streaming:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-streaming/tsup.config.ts
+@elizaos/plugin-streaming:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-streaming/tsup.config.ts
 @elizaos/plugin-streaming:build: CLI Target: esnext
 @elizaos/plugin-streaming:build: ESM Build start
 @elizaos/plugin-streaming:build: ESM dist/core.js                           16.43 KB
@@ -774,14 +774,14 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-agent-skills:build: CLI Building entry: src/index.ts
 @elizaos/plugin-agent-skills:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-agent-skills:build: CLI tsup v8.5.1
-@elizaos/plugin-agent-skills:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/plugin-agent-skills/tsup.config.ts
+@elizaos/plugin-agent-skills:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/plugin-agent-skills/tsup.config.ts
 @elizaos/plugin-agent-skills:build: CLI Target: es2022
 @elizaos/plugin-agent-skills:build: CLI Cleaning output folder
 @elizaos/plugin-agent-skills:build: ESM Build start
 @elizaos/plugin-registry:build: CLI Building entry: src/index.ts, src/api/app-plugins-routes.ts, src/api/plugin-routes.ts, src/services/plugin-installer.ts
 @elizaos/plugin-registry:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-registry:build: CLI tsup v8.5.1
-@elizaos/plugin-registry:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/tsup.plugin-packages.shared.ts
+@elizaos/plugin-registry:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/tsup.plugin-packages.shared.ts
 @elizaos/plugin-registry:build: CLI Target: es2022
 @elizaos/plugin-registry:build: ESM Build start
 @elizaos/plugin-registry:build: ESM dist/index.js                         542.00 B
@@ -841,7 +841,7 @@ $ node packages/scripts/type-safety-ratchet.mjs
 @elizaos/plugin-scheduling:build: CLI Building entry: src/dispatch-types.ts, src/index.ts, src/plugin.ts, src/anchors/anchor-registry.ts, src/routes/plugin-routes.ts, src/routes/scheduled-tasks.ts, src/scheduled-task/completion-check-registry.ts, src/scheduled-task/consolidation-policy.ts, src/scheduled-task/default-pack.ts, src/scheduled-task/due.ts, src/scheduled-task/escalation.ts, src/scheduled-task/gate-registry.ts, src/scheduled-task/index.ts, src/scheduled-task/next-fire-at.ts, src/scheduled-task/runner-service.ts, src/scheduled-task/runner.ts, src/scheduled-task/schema.ts, src/scheduled-task/seed-registry.ts, src/scheduled-task/state-log.ts, src/scheduled-task/types.ts
 @elizaos/plugin-scheduling:build: CLI Using tsconfig: tsconfig.json
 @elizaos/plugin-scheduling:build: CLI tsup v8.5.1
-@elizaos/plugin-scheduling:build: CLI Using tsup config: /home/shaw/milady/eliza-wt-10553-pr10571/plugins/tsup.plugin-packages.shared.ts
+@elizaos/plugin-scheduling:build: CLI Using tsup config: /home/shaw/eliza/eliza-wt-10553-pr10571/plugins/tsup.plugin-packages.shared.ts
 @elizaos/plugin-scheduling:build: CLI Target: es2022
 @elizaos/plugin-scheduling:build: ESM Build start
 @elizaos/plugin-scheduling:build: ESM dist/dispatch-types.js                               42.00 B

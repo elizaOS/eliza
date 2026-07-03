@@ -8,7 +8,7 @@
 03-11 04:28:40.161 I/clo     (22041): Attempting to classify package: ai.elizaos.plugins.bunruntime.test using model: bll_1
 03-11 04:28:40.210 I/Finsky  ( 7317): [2] Received an install/uninstall event for package ai.elizaos.plugins.bunruntime.test
 03-11 04:28:40.286 I/ActivityManager( 1676): Force stopping ai.elizaos.plugins.bunruntime.test appid=10354 user=0: start instr
-03-11 04:28:40.298 I/AppsFilter( 1676): interaction: PackageSetting{4a1cf9f ai.milady.milady/10323} -> PackageSetting{4d3dd8d ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
+03-11 04:28:40.298 I/AppsFilter( 1676): interaction: PackageSetting{4a1cf9f ai.elizaos.app/10323} -> PackageSetting{4d3dd8d ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
 03-11 04:28:40.298 I/AppsFilter( 1676): interaction: PackageSetting{1bde4b5 app.eliza/10324} -> PackageSetting{4d3dd8d ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
 03-11 04:28:40.298 I/AppsFilter( 1676): interaction: PackageSetting{287b74a com.google.android.microdroid.empty_payload/10404} -> PackageSetting{4d3dd8d ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
 03-11 04:28:40.317 I/ActivityManager( 1676): Start proc 17882:ai.elizaos.plugins.bunruntime.test/u0a354 for added application ai.elizaos.plugins.bunruntime.test
@@ -35,7 +35,7 @@
 03-11 04:28:41.733 I/ActivityManager( 1676): Killing 17882:ai.elizaos.plugins.bunruntime.test/u0a354 (adj 0): stop ai.elizaos.plugins.bunruntime.test due to finished inst
 03-11 04:28:41.751 V/ActivityManager( 1676): Got obituary of 17882:ai.elizaos.plugins.bunruntime.test
 03-11 04:28:42.294 I/ActivityManager( 1676): Force stopping ai.elizaos.plugins.bunruntime.test appid=10354 user=-1: deletePackageX
-03-11 04:28:42.294 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{7b411a8 ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
+03-11 04:28:42.294 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{7b411a8 ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
 03-11 04:28:42.294 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{7b411a8 ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
 03-11 04:28:42.294 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{7b411a8 ai.elizaos.plugins.bunruntime.test/10354} BLOCKED
 03-11 04:28:42.364 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.elizaos.plugins.bunruntime.test from 0

@@ -257,11 +257,11 @@
   "flakyPassedCount": 0,
   "totalCostUsd": 0,
   "artifactPaths": {
-    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run",
-    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/matrix.json",
-    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/index.html",
-    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/data.js",
-    "nativeJsonl": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.jsonl",
-    "nativeManifest": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.manifest.json"
+    "runDir": "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/data.js",
+    "nativeJsonl": "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.jsonl",
+    "nativeManifest": "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.manifest.json"
   }
 }

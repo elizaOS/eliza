@@ -365,14 +365,16 @@ describe("model-chooser contract: buildOpencodeAcpEnv stamps resolved model into
     expect(result.env.OPENCODE_DISABLE_TERMINAL_TITLE).toBe("1");
   });
 
-  it("does NOT regenerate config when OPENCODE_CONFIG_CONTENT is pre-supplied", () => {
+  it("ignores pre-supplied OPENCODE_CONFIG_CONTENT and regenerates from resolved auth", () => {
     const result = buildOpencodeAcpEnv(settingsRuntime(), {
       OPENCODE_CONFIG_CONTENT: '{"model":"preset/model"}',
       CEREBRAS_API_KEY: "csk-pooled",
     });
-    // Pre-supplied content is respected: the resolver does not override it.
-    expect(result.config).toBeUndefined();
-    expect(result.env.OPENCODE_MODEL).toBeUndefined();
+    expect(result.config?.providerId).toBe("cerebras");
+    expect(result.env.OPENCODE_MODEL).toBe("cerebras/gemma-4-31b");
+    expect(result.env.OPENCODE_CONFIG_CONTENT).toBe(
+      result.config?.configContent,
+    );
   });
 });
 

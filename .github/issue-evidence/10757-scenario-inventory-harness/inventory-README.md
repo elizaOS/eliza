@@ -72,7 +72,7 @@ Missing default package scenarios from current workflow coverage: 0
 
 - none
 
-HTML catalog viewer: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/eliza-10757/.github/issue-evidence/10757-scenario-inventory-harness/catalog-inventory/viewer/index.html
+HTML catalog viewer: /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/eliza-10757/.github/issue-evidence/10757-scenario-inventory-harness/catalog-inventory/viewer/index.html
 
 ## Scenario Run Artifacts
 

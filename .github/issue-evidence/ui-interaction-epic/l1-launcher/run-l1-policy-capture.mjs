@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const WORKTREE =
-  "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-interaction-epic";
+  "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-interaction-epic";
 // Run this script with bun from packages/ui so these resolve.
 const { build } = await import("esbuild");
 const { chromium } = await import("playwright");

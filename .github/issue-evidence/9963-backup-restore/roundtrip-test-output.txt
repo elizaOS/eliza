@@ -12,7 +12,7 @@ $ bunx vitest run --config vitest.config.ts src/services/agent-export.roundtrip.
           ╵       ~~~~~~~~~
 
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/zealous-edison-3a2389/packages/agent
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/zealous-edison-3a2389/packages/agent
 
 
  Test Files  1 passed (1)

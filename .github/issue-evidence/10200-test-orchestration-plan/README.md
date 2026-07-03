@@ -25,7 +25,7 @@
 
 ## Validation
 
-Commands run from `/home/shaw/milady/eliza-wt-10200-test-orchestration`:
+Commands run from `/home/shaw/eliza/eliza-wt-10200-test-orchestration`:
 
 ```bash
 bun test packages/scripts/__tests__/test-task-pool.test.ts

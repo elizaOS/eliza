@@ -7,7 +7,7 @@ import { users } from "./users";
 /**
  * Ad platform type.
  */
-export type AdPlatform = "meta" | "google" | "tiktok" | "reddit";
+export type AdPlatform = "meta" | "google" | "tiktok" | "reddit" | "linkedin";
 
 /**
  * Ad account status.
@@ -50,7 +50,7 @@ export const adAccounts = pgTable(
     // Token expiration tracking
     token_expires_at: timestamp("token_expires_at"),
 
-    status: text("status").$type<AdAccountStatus>().notNull().default("active"),
+    status: text("status").$type<AdAccountStatus>().notNull().default("pending"),
 
     // Platform-specific metadata
     metadata: jsonb("metadata")
@@ -68,6 +68,8 @@ export const adAccounts = pgTable(
         // Reddit-specific
         business_ids?: string[];
         profile_ids?: string[];
+        // LinkedIn-specific
+        organization_urn?: string;
         // Common
         permissions?: string[];
         last_sync_at?: string;

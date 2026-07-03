@@ -75,29 +75,35 @@ export function NotificationsWidget(props: WidgetProps) {
     const top = recent[0];
     const urgent = top.priority === "urgent";
     return (
-      <HomeWidgetCard
-        // The tile leads with the top notification's own category icon (#10697)
-        // so the home surface reads its kind at a glance, not a generic bell.
-        icon={categoryIcon(top.category)}
-        label="Notifications"
-        value={top.title}
-        badge={unreadCount > 0 ? unreadCount : undefined}
-        tone={urgent ? "danger" : top.priority === "high" ? "warn" : "default"}
-        testId="widget-notifications"
-        ariaLabel={`Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`}
-        onActivate={() => {
-          // Mirror NotificationCenter's row behavior exactly: mark read, then
-          // navigate through the scheme-checked deep-link helper (deepLink is
-          // producer/LLM-influenceable — raw pushState both broke https links
-          // and skipped the safety allowlist). Unsafe/missing → inbox.
-          if (!top.readAt) void markNotificationRead(top.id);
-          if (top.deepLink && isSafeDeepLink(top.deepLink)) {
-            navigateDeepLink(top.deepLink);
-          } else {
-            nav.openView("/inbox", "inbox");
+      <div
+        className={`min-w-0 ${props.spanClassName ?? "col-span-2 row-span-1"}`}
+      >
+        <HomeWidgetCard
+          // The tile leads with the top notification's own category icon (#10697)
+          // so the home surface reads its kind at a glance, not a generic bell.
+          icon={categoryIcon(top.category)}
+          label="Notifications"
+          value={top.title}
+          badge={unreadCount > 0 ? unreadCount : undefined}
+          tone={
+            urgent ? "danger" : top.priority === "high" ? "warn" : "default"
           }
-        }}
-      />
+          testId="widget-notifications"
+          ariaLabel={`Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`}
+          onActivate={() => {
+            // Mirror NotificationCenter's row behavior exactly: mark read, then
+            // navigate through the scheme-checked deep-link helper (deepLink is
+            // producer/LLM-influenceable — raw pushState both broke https links
+            // and skipped the safety allowlist). Unsafe/missing → inbox.
+            if (!top.readAt) void markNotificationRead(top.id);
+            if (top.deepLink && isSafeDeepLink(top.deepLink)) {
+              navigateDeepLink(top.deepLink);
+            } else {
+              nav.openView("/inbox", "inbox");
+            }
+          }}
+        />
+      </div>
     );
   }
 

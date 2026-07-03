@@ -29,7 +29,7 @@ const MODEL =
   process.env.WHISPER_MODEL ??
   join(
     process.env.SCRATCH ??
-      "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/3ef0625f-bea4-482b-83e1-946acc991905/scratchpad",
+      "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/3ef0625f-bea4-482b-83e1-946acc991905/scratchpad",
     "ggml-base.en.bin",
   );
 

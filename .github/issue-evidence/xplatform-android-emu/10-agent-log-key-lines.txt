@@ -1,0 +1,3 @@
+ Info       [aosp-local-inference] Registered eliza-aosp-llama handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION at priority 0 (text backend fused-libelizainference)
+ Info       [boot] @elizaos/plugin-vision loaded in 28ms
+ Info       [eliza] deferred: ✓ vision registered (15034ms)

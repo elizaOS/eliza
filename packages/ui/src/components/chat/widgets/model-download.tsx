@@ -2,6 +2,7 @@ import { Download, Loader2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { cn } from "../../../lib/utils";
 import {
   deriveHomeModelStatus,
   type HomeModelStatus,
@@ -12,9 +13,9 @@ import { getElizaApiToken } from "../../../utils/eliza-globals";
 import { openEventSource } from "../../../utils/event-source";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
-import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
+import { useWidgetNavigation } from "./home-widget-card";
 
-const DEFAULT_SPAN = "col-span-2 row-span-1";
+const DEFAULT_SPAN = "col-span-4 row-span-2";
 // Bound the hub fetch so a hung native bridge settles the tile (to not-required
 // → null) instead of spinning forever — the same stuck-loading bug other home
 // widgets guard against. The native IPC base can hang indefinitely early in boot.
@@ -180,10 +181,12 @@ function formatEta(etaMs: number | null): string | null {
 }
 
 /**
- * MODEL DOWNLOAD home widget (id `local-inference.model-download`). A naked 2x1
- * tile that surfaces the recommended local text model's download as the user
- * lands on home — queued / downloading-% / loading / failed-with-retry — so a
- * fresh on-device agent shows progress instead of a dead chat.
+ * MODEL DOWNLOAD home widget (id `local-inference.model-download`). A
+ * full-width, double-height row with a real progress track that surfaces the
+ * recommended local text model's download as the user lands on home — queued /
+ * downloading-% / loading / failed-with-retry — so a fresh on-device agent
+ * shows progress instead of a dead chat. This is the ONLY model-loading status
+ * surface; the chat overlay renders no floating pill.
  *
  * Self-hides (renders null) when no local text slot is assigned (cloud/remote
  * runtime → `not-required`) or every assigned slot is ready (`ready`): a
@@ -245,14 +248,13 @@ export function ModelDownloadWidget({
     const detail = status.errors.find((message) => message.trim().length > 0);
     return (
       <div className={spanClassName}>
-        <HomeWidgetCard
+        <ModelProgressCard
           icon={<TriangleAlert />}
-          label="Local model"
           value={`${modelName} download failed`}
           meta={detail ? truncateDetail(detail) : undefined}
           badge="Retry"
           tone="danger"
-          testId="chat-widget-model-download"
+          percent={null}
           ariaLabel={`${modelName} download failed${detail ? `: ${detail}` : ""}. Tap to retry the download.`}
           onActivate={() => void retry()}
         />
@@ -263,18 +265,15 @@ export function ModelDownloadWidget({
   if (status.kind === "downloading" || retrying) {
     const percent = roundedPercent(status.percent);
     const eta = formatEta(status.etaMs);
-    const value =
-      percent != null
-        ? `${modelName} — ${percent}%`
-        : `Downloading ${modelName}`;
     return (
       <div className={spanClassName}>
-        <HomeWidgetCard
+        <ModelProgressCard
           icon={<Download />}
-          label="Local model"
-          value={value}
-          meta={eta ?? undefined}
-          testId="chat-widget-model-download"
+          value={`Downloading ${modelName}`}
+          meta={
+            percent != null ? `${percent}%${eta ? ` · ${eta}` : ""}` : undefined
+          }
+          percent={status.percent}
           ariaLabel={`Downloading ${modelName}${percent != null ? `, ${percent} percent` : ""}${eta ? `, ${eta}` : ""}. Tap to manage local models.`}
           onActivate={openSettings}
         />
@@ -285,11 +284,11 @@ export function ModelDownloadWidget({
   if (status.kind === "loading") {
     return (
       <div className={spanClassName}>
-        <HomeWidgetCard
+        <ModelProgressCard
           icon={<Loader2 className="animate-spin" />}
-          label="Local model"
           value={`Loading ${modelName}…`}
-          testId="chat-widget-model-download"
+          percent={null}
+          indeterminate
           ariaLabel={`Loading ${modelName} into the local runtime. Tap to manage local models.`}
           onActivate={openSettings}
         />
@@ -300,15 +299,109 @@ export function ModelDownloadWidget({
   // `missing` — assigned but not yet downloading (queued / awaiting enqueue).
   return (
     <div className={spanClassName}>
-      <HomeWidgetCard
+      <ModelProgressCard
         icon={<Download />}
-        label="Local model"
         value={`Queued ${modelName}`}
-        testId="chat-widget-model-download"
+        percent={0}
         ariaLabel={`${modelName} is queued for download. Tap to manage local models.`}
         onActivate={openSettings}
       />
     </div>
+  );
+}
+
+/**
+ * Full-row model-status card: icon + one-line status + a real progress track.
+ * Mirrors HomeWidgetCard's chromeless whole-card-button idiom, with the track
+ * as the second row of the widget's double-height cell. `indeterminate`
+ * (runtime activation has no sub-progress) renders a full pulsing bar instead
+ * of a percent fill.
+ */
+function ModelProgressCard({
+  icon,
+  value,
+  meta,
+  badge,
+  tone = "default",
+  percent,
+  indeterminate = false,
+  ariaLabel,
+  onActivate,
+}: {
+  icon: React.ReactNode;
+  value: string;
+  meta?: string;
+  badge?: string;
+  tone?: "default" | "danger";
+  /** 0–100 fill, or null for no fill (error) / indeterminate. */
+  percent: number | null;
+  indeterminate?: boolean;
+  ariaLabel: string;
+  onActivate: () => void;
+}): React.JSX.Element {
+  const fill =
+    percent == null ? null : Math.max(0, Math.min(100, Math.round(percent)));
+  return (
+    <button
+      type="button"
+      data-testid="chat-widget-model-download"
+      aria-label={ariaLabel}
+      onClick={onActivate}
+      className="group flex h-full w-full flex-col justify-center gap-2.5 px-3 py-2.5 text-left transition-opacity hover:opacity-80"
+    >
+      <span className="flex w-full items-center gap-3">
+        <span
+          className={cn(
+            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
+            tone === "danger" && "text-danger",
+          )}
+        >
+          {icon}
+        </span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-sm font-semibold leading-tight",
+            tone === "danger" ? "text-danger" : "text-white",
+          )}
+        >
+          {value}
+        </span>
+        {meta != null ? (
+          <span className="shrink-0 text-2xs tabular-nums text-white/60">
+            {meta}
+          </span>
+        ) : null}
+        {badge != null ? (
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-semibold",
+              tone === "danger"
+                ? "bg-danger/15 text-danger"
+                : "bg-accent-subtle text-accent",
+            )}
+          >
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      <span
+        aria-hidden="true"
+        data-testid="chat-widget-model-download-track"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-white/10"
+      >
+        {indeterminate ? (
+          <span className="block h-full w-full animate-pulse rounded-full bg-accent/70 motion-reduce:animate-none" />
+        ) : fill != null ? (
+          <span
+            className={cn(
+              "block h-full rounded-full transition-[width] duration-500",
+              tone === "danger" ? "bg-danger/70" : "bg-accent",
+            )}
+            style={{ width: `${fill}%` }}
+          />
+        ) : null}
+      </span>
+    </button>
   );
 }
 
@@ -320,8 +413,8 @@ function truncateDetail(detail: string): string {
 
 /**
  * Home-widget registration metadata for `local-inference.model-download`
- * (consumed by the widget registry). A naked 2x1 tile surfacing the local model
- * download as the user lands on home.
+ * (consumed by the widget registry). A full-width double-height row surfacing
+ * the local model download progress as the user lands on home.
  */
 export const MODEL_DOWNLOAD_HOME_WIDGET = {
   pluginId: "local-inference",
@@ -329,7 +422,7 @@ export const MODEL_DOWNLOAD_HOME_WIDGET = {
   // High order so the tile surfaces near the top of the home grid while a model
   // is downloading (it self-hides once ready, so it never permanently crowds).
   order: 55,
-  size: "2x1",
+  size: "4x2",
   signalKinds: ["activity", "notification"],
   Component: ModelDownloadWidget,
 } as const;

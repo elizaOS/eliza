@@ -1,5 +1,5 @@
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/ui
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/packages/ui
 
  ✓ src/api/client-cloud-select-or-provision.test.ts > selectOrProvisionCloudAgent — never duplicate on a failed lookup > reuses the existing agent and never provisions when the list succeeds 1ms
  ✓ src/api/client-cloud-select-or-provision.test.ts > selectOrProvisionCloudAgent — never duplicate on a failed lookup > does NOT provision when the list fetch throws (transient/network error) 1ms

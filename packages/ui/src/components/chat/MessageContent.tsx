@@ -12,6 +12,8 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import type { UiSpec } from "../../config/ui-spec";
+import { CONNECT_EVENT, dispatchAppEvent } from "../../events";
+import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { isDesktopPlatform, isNative } from "../../platform";
 import {
@@ -573,9 +575,10 @@ export function SensitiveRequestBlock({
   }, [request]);
 
   const fields = request.form?.fields ?? [];
+  const isRemoteConnect = request.form?.kind === "remote_connect";
   const canCollectSecret =
     status === "pending" &&
-    request.form?.kind === "secret" &&
+    (request.form?.kind === "secret" || isRemoteConnect) &&
     request.delivery?.canCollectValueInCurrentChannel === true &&
     fields.length > 0;
   const canStartOAuth =
@@ -598,6 +601,35 @@ export function SensitiveRequestBlock({
       setSaving(true);
       setError(null);
       try {
+        if (isRemoteConnect) {
+          // Remote-connect path (first-run): validate the URL and dispatch the
+          // hardened CONNECT_EVENT — the App handler connects to the remote
+          // agent, adopts it as the active runtime, and finishes onboarding. The
+          // values are NEVER written to the secret store. skipConfirm: the user
+          // explicitly typed this URL in the trusted onboarding flow.
+          let normalized: string;
+          try {
+            normalized = normalizeRemoteAgentUrl(values.url ?? "");
+          } catch (caught) {
+            // A typo'd URL must not flip the block to "failed" (which unmounts
+            // the form) — surface the message and keep the form editable.
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : "Enter a valid remote agent URL.",
+            );
+            return;
+          }
+          dispatchAppEvent(CONNECT_EVENT, {
+            gatewayUrl: normalized,
+            token: values.token?.trim() || undefined,
+            completeFirstRun: true,
+            skipConfirm: true,
+          });
+          setValues({});
+          setStatus("saved");
+          return;
+        }
         if (tunnel) {
           // Tunnel path (#10317): route each submitted value to the waiting
           // child via the one-shot CredentialTunnelService. MUTUALLY EXCLUSIVE
@@ -639,7 +671,7 @@ export function SensitiveRequestBlock({
         setSaving(false);
       }
     },
-    [canCollectSecret, canSubmit, fields, tunnel, values],
+    [canCollectSecret, canSubmit, fields, isRemoteConnect, tunnel, values],
   );
 
   return (

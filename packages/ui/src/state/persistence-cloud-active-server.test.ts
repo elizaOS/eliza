@@ -109,6 +109,55 @@ describe("Cloud active server persistence", () => {
     ).toBe(false);
   });
 
+  it("restores the persisted mobile on-device agent IPC record (issue: iOS local cold launch re-onboarded every boot)", () => {
+    // `eliza-local-agent://ipc` is a native Capacitor IPC identity, not a
+    // network host. The remote-host trust gate (http/https only) must not
+    // drop it — dropping it clears the saved server + first-run flag and
+    // bounces every iOS/Android local-mode launch back into onboarding.
+    expect(
+      canRestoreActiveServer({
+        server: {
+          id: "local:mobile",
+          kind: "remote",
+          label: "On-device agent",
+          apiBase: "eliza-local-agent://ipc",
+        },
+        clientApiAvailable: false,
+        forceLocal: false,
+        isDesktop: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("applies the mobile on-device agent IPC record without dropping it as an untrusted remote", async () => {
+    const setBaseUrl = vi.fn();
+    const setToken = vi.fn();
+    savePersistedActiveServer(
+      createPersistedActiveServer({
+        id: "local:mobile",
+        kind: "remote",
+        label: "On-device agent",
+        apiBase: "eliza-local-agent://ipc",
+      }),
+    );
+
+    await applyRestoredConnection({
+      restoredActiveServer: {
+        id: "local:mobile",
+        kind: "remote",
+        label: "On-device agent",
+        apiBase: "eliza-local-agent://ipc",
+      },
+      clientRef: { setBaseUrl, setToken },
+    });
+
+    expect(setBaseUrl).toHaveBeenCalledWith("eliza-local-agent://ipc");
+    // The SECURITY backstop for untrusted remotes must NOT clear the record.
+    expect(loadPersistedActiveServer()).toEqual(
+      expect.objectContaining({ apiBase: "eliza-local-agent://ipc" }),
+    );
+  });
+
   it("restores a Cloud session with a recoverable agent id even when the apiBase is missing", () => {
     // backfillCloudApiBase recovers the runtime base from `cloud:<agentId>`, so
     // a returning user is not forced back through onboarding just because the

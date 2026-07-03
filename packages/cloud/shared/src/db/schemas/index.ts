@@ -38,6 +38,7 @@ export * from "./app-reviews";
 export * from "./apps";
 export * from "./auth-events";
 export * from "./cli-auth-sessions";
+export * from "./cloud-files";
 export * from "./containers";
 export * from "./conversations";
 export * from "./credit-packs";

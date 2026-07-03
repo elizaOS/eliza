@@ -65,10 +65,13 @@ mock.module("@/lib/services/ai-pricing", () => ({
 
 mock.module("@/lib/services/ai-pricing-definitions", () => ({
   ...aiPricingDefsActual,
-  getSupportedVideoModelDefinition: () => ({
-    provider: "fal",
-    billingSource: "fal",
-  }),
+  getSupportedVideoModelDefinition: (model: string) =>
+    model === MODEL
+      ? {
+          provider: "fal",
+          billingSource: "fal",
+        }
+      : undefined,
   SUPPORTED_VIDEO_MODEL_IDS: [MODEL],
 }));
 
@@ -147,7 +150,17 @@ const validResult = {
   video: { url: "https://fal.media/out.mp4", content_type: "video/mp4" },
 };
 
-function post() {
+interface ErrorResponseBody {
+  error?: string;
+  details?: {
+    supportedModels?: string[];
+  };
+}
+
+function post(
+  body: Record<string, unknown> = { model: MODEL, prompt: "a cat" },
+  env: Record<string, unknown> = { FAL_KEY: "fal-test-key" },
+) {
   return videoRoute.request(
     "/",
     {
@@ -156,9 +169,9 @@ function post() {
         Authorization: "Bearer eliza_test_key",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: MODEL, prompt: "a cat" }),
+      body: JSON.stringify(body),
     },
-    { FAL_KEY: "fal-test-key" } as unknown as Record<string, unknown>,
+    env,
   );
 }
 
@@ -176,6 +189,29 @@ beforeEach(() => {
       organization: { id: ORG, name: "Org", is_active: true },
       is_active: true,
     };
+  });
+});
+
+describe("generate-video — model/provider validation", () => {
+  test("unsupported models are rejected before provider or credit work", async () => {
+    const res = await post({ model: "not-a-video-model", prompt: "a cat" });
+
+    expect(res.status).toBe(400);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+    const body = (await res.json()) as ErrorResponseBody;
+    expect(body.error).toBe("Unsupported video model: not-a-video-model");
+    expect(body.details?.supportedModels).toEqual([MODEL]);
+  });
+
+  test("missing FAL credentials are rejected before credit reservation", async () => {
+    const res = await post({ model: MODEL, prompt: "a cat" }, {});
+
+    expect(res.status).toBe(503);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+    const body = (await res.json()) as ErrorResponseBody;
+    expect(body.error).toBe("Fal video generation is not configured");
   });
 });
 

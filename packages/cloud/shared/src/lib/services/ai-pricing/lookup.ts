@@ -4,6 +4,7 @@ import { expandPersistedPricingProviderKeys } from "../../providers/model-id-tra
 import { logger } from "../../utils/logger";
 import {
   getSupportedMusicModelDefinition,
+  getSupportedSfxModelDefinition,
   getSupportedVideoModelDefinition,
   type PricingBillingSource,
   type PricingChargeUnit,
@@ -497,6 +498,34 @@ export async function calculateMusicGenerationCostFromCatalog(params: {
     provider,
     model: params.model,
     productFamily: "music",
+    chargeType: "generation",
+    dimensions: params.dimensions,
+  });
+
+  return computeCostFromEntry(
+    entry,
+    quantityForEntryUnit(entry.unit, {
+      durationSeconds: params.durationSeconds ?? definition?.defaultParameters.durationSeconds,
+      requests: 1,
+    }),
+  );
+}
+
+export async function calculateSfxGenerationCostFromCatalog(params: {
+  model: string;
+  provider?: "fal" | "elevenlabs";
+  billingSource?: "fal" | "elevenlabs";
+  durationSeconds?: number;
+  dimensions?: Record<string, unknown>;
+}): Promise<FlatOperationCost> {
+  const definition = getSupportedSfxModelDefinition(params.model);
+  const provider =
+    params.provider ?? definition?.provider ?? inferProviderFromCanonicalModel(params.model);
+  const entry = await resolvePreparedPricingEntry({
+    billingSource: params.billingSource,
+    provider,
+    model: params.model,
+    productFamily: "sfx",
     chargeType: "generation",
     dimensions: params.dimensions,
   });

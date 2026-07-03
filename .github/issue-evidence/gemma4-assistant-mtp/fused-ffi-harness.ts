@@ -9,10 +9,10 @@
  * Target : /tmp/vision/gemma4/bundles/2b/text/eliza-1-2b-128k.gguf (gemma4)
  * Drafter: /tmp/mtp/bundles/2b/mtp/drafter-2b.gguf (gemma4-assistant)
  */
-import { loadElizaInferenceFfi } from "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/src/services/voice/ffi-bindings";
+import { loadElizaInferenceFfi } from "/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 
 const LIB =
-	"/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib";
+	"/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib";
 const BUNDLE_ROOT = "/tmp/vision/gemma4/bundles/2b";
 const DRAFTER = "/tmp/mtp/bundles/2b/mtp/drafter-2b.gguf";
 const MAX_TOKENS = 96;

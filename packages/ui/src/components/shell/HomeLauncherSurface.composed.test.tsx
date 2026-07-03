@@ -134,10 +134,9 @@ function flick(testid: string, dx: number, dy = 4): void {
 
 const openLauncher = () => flick("home-launcher-home-page", -140);
 // A real finger on the launcher lands on the inner page window (it fills the
-// launcher half), so the swipe-back-home gesture is owned by the inner Launcher
-// pager (edge-swipe-right → goHome), not the outer rail. Firing on the inner
-// window matches that hit-test; the event still bubbles to the (gesture-
-// disabled) rail div, which correctly ignores it.
+// launcher half); the events bubble up to the outer rail's half div, which owns
+// the back-to-home gesture (the single-page inner Launcher pager is disabled)
+// and tracks it 1:1.
 const swipeBackHome = () => flick("launcher-page-window", 140);
 
 describe("Home ↔ Launcher composed surface", () => {
@@ -296,16 +295,16 @@ describe("Home ↔ Launcher composed surface", () => {
     fireEvent.pointerUp(tile, { ...opts, clientX: 100 });
 
     // There is exactly one curated page, so a left-drag has nowhere to go: the
-    // inner page index stays 0 and the outer rail never moves (it does not own
-    // the gesture on the launcher).
+    // inner page index stays 0 and the outer rail settles back to its resting
+    // launcher offset (the drag only painted its damped right-edge rubber-band).
     expect(getShellSurface().launcherPage).toBe(0);
     expect(surface.getAttribute("data-page")).toBe("launcher");
     expect(outerRail.style.transform).toBe(outerResting);
   });
 
-  it("a left drag on the launcher rubber-bands the inner rail without moving the OUTER rail", () => {
+  it("a left drag on the launcher rubber-bands the OUTER rail (last rail page) while the inner rail stays parked", () => {
     const { outerRail, innerRail, tile } = renderComposedOnLauncher();
-    const outerResting = outerRail.style.transform;
+    const innerResting = innerRail.style.transform;
     const opts = {
       isPrimary: true,
       pointerId: 12,
@@ -317,19 +316,21 @@ describe("Home ↔ Launcher composed surface", () => {
     fireEvent.pointerMove(tile, { ...opts, clientX: 280 });
     fireEvent.pointerMove(tile, { ...opts, clientX: 180 });
 
-    // At the single page's edge a left-drag paints only the damped rubber-band
-    // (dx·EDGE_RESISTANCE = -120·0.35 = -42px) on the inner rail …
-    expect(innerRail.style.transform).toContain("-42px");
-    // … while the outer rail stays parked.
-    expect(outerRail.style.transform).toBe(outerResting);
+    // The launcher is the rail's LAST page and the single-page inner pager is
+    // disabled, so the left-drag paints the damped rubber-band on the OUTER
+    // rail (-390 + -120·EDGE_RESISTANCE = -432px), exactly like iOS's
+    // last-home-page overscroll …
+    expect(outerRail.style.transform).toContain("-432px");
+    // … while the inner rail never moves.
+    expect(innerRail.style.transform).toBe(innerResting);
 
     fireEvent.pointerUp(tile, { ...opts, clientX: 180 });
-    // No commit: still on the launcher, still page 0.
+    // No commit: still on the launcher, still page 0, rail settled back.
     expect(getShellSurface().launcherPage).toBe(0);
-    expect(outerRail.style.transform).toBe(outerResting);
+    expect(outerRail.style.transform).toContain("-390px");
   });
 
-  it("a swipe right on a tile at inner page 0 returns HOME (the inner launcher owns the edge-swipe-back)", () => {
+  it("a swipe right on a tile at inner page 0 returns HOME (the outer rail owns the back-swipe)", () => {
     const { surface, tile } = renderComposedOnLauncher();
     const opts = {
       isPrimary: true,
@@ -343,9 +344,8 @@ describe("Home ↔ Launcher composed surface", () => {
     fireEvent.pointerMove(tile, { ...opts, clientX: 300 });
     fireEvent.pointerUp(tile, { ...opts, clientX: 300 });
 
-    // The inner launcher pager owns the swipe-right-back-to-home gesture
-    // (onEdgeSwipeRight → goHome); the outer rail is gesture-disabled on the
-    // launcher, so exactly one pager handles the finger.
+    // The outer rail owns the swipe-right-back-to-home gesture (the single-page
+    // inner pager is disabled), tracks it 1:1, and commits home on release.
     expect(surface.getAttribute("data-page")).toBe("home");
     expect(getShellSurface().page).toBe("home");
   });

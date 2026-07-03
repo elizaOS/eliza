@@ -4,7 +4,7 @@
 03-11 04:10:29.611 D/BaseIconCache( 8018): Default icon returned for ai.eliza.plugins.talkmode.test
 03-11 04:10:29.637 I/Finsky  ( 7317): [2] Received an install/uninstall event for package ai.eliza.plugins.talkmode.test
 03-11 04:10:29.826 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.talkmode.test appid=10346 user=0: start instr
-03-11 04:10:29.839 I/AppsFilter( 1676): interaction: PackageSetting{29b2868 ai.milady.milady/10323} -> PackageSetting{12fc551 ai.eliza.plugins.talkmode.test/10346} BLOCKED
+03-11 04:10:29.839 I/AppsFilter( 1676): interaction: PackageSetting{29b2868 ai.elizaos.app/10323} -> PackageSetting{12fc551 ai.eliza.plugins.talkmode.test/10346} BLOCKED
 03-11 04:10:29.839 I/AppsFilter( 1676): interaction: PackageSetting{d9e3926 app.eliza/10324} -> PackageSetting{12fc551 ai.eliza.plugins.talkmode.test/10346} BLOCKED
 03-11 04:10:29.839 I/AppsFilter( 1676): interaction: PackageSetting{b2c1967 com.google.android.microdroid.empty_payload/10404} -> PackageSetting{12fc551 ai.eliza.plugins.talkmode.test/10346} BLOCKED
 03-11 04:10:29.851 I/ActivityManager( 1676): Start proc 13399:ai.eliza.plugins.talkmode.test/u0a346 for added application ai.eliza.plugins.talkmode.test
@@ -34,7 +34,7 @@
 03-11 04:10:31.201 I/ActivityManager( 1676): Killing 13399:ai.eliza.plugins.talkmode.test/u0a346 (adj 0): stop ai.eliza.plugins.talkmode.test due to finished inst
 03-11 04:10:31.218 V/ActivityManager( 1676): Got obituary of 13399:ai.eliza.plugins.talkmode.test
 03-11 04:10:31.570 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.talkmode.test appid=10346 user=-1: deletePackageX
-03-11 04:10:31.570 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{d2b894c ai.eliza.plugins.talkmode.test/10346} BLOCKED
+03-11 04:10:31.570 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{d2b894c ai.eliza.plugins.talkmode.test/10346} BLOCKED
 03-11 04:10:31.570 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{d2b894c ai.eliza.plugins.talkmode.test/10346} BLOCKED
 03-11 04:10:31.570 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{d2b894c ai.eliza.plugins.talkmode.test/10346} BLOCKED
 03-11 04:10:31.654 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.eliza.plugins.talkmode.test from 0

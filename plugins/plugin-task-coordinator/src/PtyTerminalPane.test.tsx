@@ -56,7 +56,7 @@ vi.mock("@xterm/xterm", () => ({
 }));
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class FitAddonMock {
-    fit(): void {}
+    fit = (): void => {};
   },
 }));
 

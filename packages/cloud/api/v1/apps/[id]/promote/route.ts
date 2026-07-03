@@ -53,7 +53,7 @@ const PromotionConfigSchema = z.object({
     .optional(),
   advertising: z
     .object({
-      platform: z.enum(["meta", "google", "tiktok", "reddit"]),
+      platform: z.enum(["meta", "google", "tiktok", "reddit", "linkedin"]),
       adAccountId: z.string().uuid(),
       budget: z.number().positive().max(10000),
       budgetType: z.enum(["daily", "lifetime"]),

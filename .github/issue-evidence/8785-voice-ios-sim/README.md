@@ -9,7 +9,7 @@ simulator** — recorded.
 | Artifact | Shows |
 | --- | --- |
 | `ios-sim-app-running.mp4` | Full session recording: install → launch → onboarding → deep-link to voice. |
-| `ios-sim-01-onboarding-runtime-select.png` | The Milady app live on the iOS sim: first-run "How should Milady run?" — **Eliza Cloud (recommended)** / **This device (private)**. The app shell + UI render correctly on iOS. |
+| `ios-sim-01-onboarding-runtime-select.png` | The Eliza app live on the iOS sim: first-run "How should Eliza run?" — **Eliza Cloud (recommended)** / **This device (private)**. The app shell + UI render correctly on iOS. |
 | `ios-sim-02-local-agent-unavailable-graceful.png` | Deep-link `elizaos://voice` → the local-agent path **gracefully** reports `Startup failed: Backend Timeout` with the exact cause (`@elizaos/capacitor-bun-runtime does not resolve`) + Retry — not a crash. |
 
 ## What's gated (and precisely why)
@@ -37,7 +37,7 @@ constraints — the same ones in the [validation runbook §2/§3](../../../plugi
 # install a prebuilt sim App.app + record + screenshot:
 xcrun simctl install booted <DerivedData>/Build/Products/Debug-iphonesimulator/App.app
 xcrun simctl io booted recordVideo --codec h264 /tmp/ios-sim.mp4 &
-xcrun simctl launch booted ai.milady.milady
+xcrun simctl launch booted ai.elizaos.app
 xcrun simctl openurl booted "elizaos://voice"
 xcrun simctl io booted screenshot /tmp/ios-sim.png
 # full-bun engine build (so the local agent starts on the sim):

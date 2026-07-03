@@ -2,13 +2,13 @@ window.SCENARIO_RUN_DATA = {
   schema: "eliza_scenario_run_viewer_v1",
   generatedAt: "2026-06-22T18:49:59.665Z",
   runDir:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
   matrixPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/matrix.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/matrix.json",
   nativeJsonlPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
   nativeManifestPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json",
   report: {
     runId: "1cc460c5-8a07-4562-9a2d-796ac5d032d2",
     startedAtIso: "2026-06-22T18:49:56.114Z",
@@ -209,21 +209,21 @@ window.SCENARIO_RUN_DATA = {
     totalCostUsd: 0,
     artifactPaths: {
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
       matrixJson:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/matrix.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/matrix.json",
       viewerIndex:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/index.html",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/index.html",
       viewerData:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/data.js",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/data.js",
       nativeJsonl:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
       nativeManifest:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json",
     },
   },
   trajectories: {
-    root: "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/trajectories",
+    root: "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/trajectories",
     files: [],
     summaries: [],
   },
@@ -233,13 +233,13 @@ window.SCENARIO_RUN_DATA = {
       schemaVersion: 1,
       generatedAt: "2026-06-22T18:49:59.665Z",
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
       trajectoriesDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/trajectories",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/trajectories",
       jsonlPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
       manifestPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json",
       counts: {
         trajectoryFiles: 0,
         parsedTrajectories: 0,

@@ -154,6 +154,13 @@ export interface XREmulatorAPI {
    * controller isn't aimed at a panel / no scene is mounted.
    */
   dragController(handedness: Handedness, delta: Vec3): Vec3 | null;
+  /**
+   * Drag the panel a hand-tracking input is aimed at by a world delta (metres),
+   * as a pinch-grab-move — the hand-tracking analogue of {@link dragController}.
+   * Returns the panel's new world position, or null when the hand isn't aimed
+   * at a panel / no scene is mounted.
+   */
+  dragHand(handedness: Handedness, delta: Vec3): Vec3 | null;
 
   // ── Input events ─────────────────────────────────────────────────────────
   /** Fire selectstart/select/selectend on the controller (trigger button). */

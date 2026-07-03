@@ -133,7 +133,7 @@
       "rows": 10
     },
     "eliza_runtime_trajectories": {
-      "path": "/home/shaw/.milady/trajectories",
+      "path": "/home/shaw/.eliza/trajectories",
       "exists": true,
       "cutoff_days": 7,
       "cap": 100,

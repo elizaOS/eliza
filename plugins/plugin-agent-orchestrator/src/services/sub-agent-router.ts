@@ -61,6 +61,15 @@ const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // the successor's sessionId (for traceability); presence is what matters. Kept
 // as a matching local literal in swarm-coordinator-service.ts (no cross-import).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+// Metadata marker the router stamps on a successor session (verify-retry,
+// state-lost respawn, account failover) when it re-points the forwarded
+// `roomId` away from the origin session's raw value. Presence tells downstream
+// consumers (emitProgress, swarm synthesis, coordinator enrichment) the
+// routing keys were sanitized at handoff, not copied from a fresh spawn — a
+// hook for future consumers that want to distinguish an inherited target from
+// a first-class one without re-deriving it. Exported as a matching literal in
+// the tests (no cross-import). See sanitizeSuccessorMetadata below.
+export const SUCCESSOR_ROOM_INHERITED_META_KEY = "successorRoomInherited";
 const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
 const AGENT_COORDINATION = "AGENT_COORDINATION";
 const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
@@ -1547,13 +1556,15 @@ export class SubAgentRouter extends Service {
         workdir: session.workdir,
         initialTask: originalTask,
         approvalPreset: session.approvalPreset,
-        // Carry the original metadata forward verbatim — origin routing keys
-        // (roomId/source/...) plus the unchanged `initialTask` — so the
-        // replacement reports back to the same user thread. retryOfSessionId
-        // records the lineage; keepAliveAfterComplete:false mirrors the
-        // verify-retry recovery.
+        // Carry the original metadata forward — origin routing keys
+        // (originRoomId/taskRoomId/source/...) plus the unchanged `initialTask`
+        // — so the replacement reports back to the same user thread, but
+        // SANITIZE the top-level `roomId` to the resolvable origin room instead
+        // of the inherited task-room UUID (see sanitizeSuccessorMetadata).
+        // retryOfSessionId records the lineage; keepAliveAfterComplete:false
+        // mirrors the verify-retry recovery.
         metadata: {
-          ...carriedMeta,
+          ...sanitizeSuccessorMetadata(carriedMeta),
           keepAliveAfterComplete: false,
           retryOfSessionId: session.id,
         },
@@ -1711,10 +1722,13 @@ Do not report done until every referenced URL in the final page resolves without
         initialTask: retryTask,
         approvalPreset: session.approvalPreset,
         // Carry the original metadata forward — origin routing keys
-        // (roomId/source/...) plus the unchanged `initialTask` — and bump
-        // the shared retry counter so the lineage stays bounded.
+        // (originRoomId/taskRoomId/source/...) plus the unchanged `initialTask`
+        // — but SANITIZE the top-level `roomId` first so the successor routes
+        // narration/synthesis to the resolvable origin room, not the inherited
+        // task-room UUID (see sanitizeSuccessorMetadata). Then bump the shared
+        // retry counter so the lineage stays bounded.
         metadata: {
-          ...meta,
+          ...sanitizeSuccessorMetadata(meta),
           buildVerifyRetryCount: nextRetry,
           keepAliveAfterComplete: false,
           retryOfSessionId: session.id,
@@ -2060,6 +2074,62 @@ export function readOrigin(session: SessionInfo): OriginInfo | null {
     spawnRootMessageId: spawnRootIdFromMeta(meta),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
+  };
+}
+
+/**
+ * Sanitize the metadata forwarded to a successor session (verify-retry,
+ * state-lost respawn, account failover) so its routing keys stay resolvable.
+ *
+ * ROOT CAUSE this fixes: TASKS op=spawn_agent stamps `metadata.roomId =
+ * swarmRoomMetadata.taskRoomId` (a freshly minted task-room UUID from
+ * `ensureDistinctTaskRoom`) while carrying the real user-facing chat room on
+ * `originRoomId`. `readOrigin` already prefers `originRoomId ?? sourceRoomId ??
+ * taskRoomId` for the reply room, but every consumer that reads the RAW
+ * top-level `metadata.roomId` (index.ts's session-event hook + emitProgress,
+ * swarm synthesis, coordinator enrichment) sees the task-room UUID. On a fresh
+ * spawn that's tolerable because those paths compensate; but when the router
+ * FORWARDS `{...meta}` wholesale to a successor, the successor inherits a
+ * top-level `roomId` that maps to no live connector channel (live evidence:
+ * task room 8d413ae5 failing while synthesis resolved working room 7b0ef393),
+ * and every downstream site has to individually re-derive the working room.
+ *
+ * Fix at the source: re-point the forwarded top-level `roomId` to the SAME
+ * room the origin router actually routes to (origin.roomId), and stamp
+ * SUCCESSOR_ROOM_INHERITED_META_KEY so consumers can tell the target was
+ * inherited-and-sanitized rather than freshly spawned. Everything else
+ * (`originRoomId`, `sourceRoomId`, `taskRoomId`, `swarmRooms`, `source`,
+ * `label`, retry counters, `initialTask`, …) is preserved byte-for-byte, so
+ * `readOrigin` and the swarm-room fan-out are unchanged. When the origin can't
+ * be read (no room metadata at all) the metadata is returned untouched — no
+ * worse than the prior wholesale copy.
+ *
+ * The downstream compensations that landed as defense-in-depth (#11720
+ * handoff marker, #11728 emitProgress target resolution) remain correct and
+ * are NOT superseded: they now agree with, rather than paper over, the
+ * forwarded `roomId`.
+ */
+export function sanitizeSuccessorMetadata(
+  meta: Record<string, unknown>,
+): Record<string, unknown> {
+  const taskRoomId = pickUuid(meta.taskRoomId) ?? pickUuid(meta.roomId);
+  // Same precedence as readOrigin: the resolvable, user-facing room the origin
+  // router routes replies/narration to.
+  const routingRoomId =
+    pickUuid(meta.originRoomId) ?? pickUuid(meta.sourceRoomId) ?? taskRoomId;
+  // Nothing resolvable to re-point to — leave the metadata exactly as it was.
+  if (!routingRoomId) return { ...meta };
+  const currentRoomId = pickUuid(meta.roomId);
+  // Already pointed at the resolvable room (e.g. task rooms opted out, or the
+  // origin room IS the task room): no re-point needed, but still mark it so a
+  // successor is distinguishable from a first spawn.
+  if (currentRoomId === routingRoomId) {
+    return { ...meta, [SUCCESSOR_ROOM_INHERITED_META_KEY]: true };
+  }
+  return {
+    ...meta,
+    roomId: routingRoomId,
+    [SUCCESSOR_ROOM_INHERITED_META_KEY]: true,
   };
 }
 

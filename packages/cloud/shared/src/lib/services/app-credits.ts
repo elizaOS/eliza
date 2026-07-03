@@ -38,6 +38,16 @@ interface CostMarkupConfig {
   inferenceMarkupPercentage: number;
 }
 
+interface AppCreditAccountingApp {
+  name?: string | null;
+  created_by_user_id?: string | null;
+  monetization_enabled: boolean;
+  platform_offset_amount?: number | string | null;
+  purchase_share_percentage?: number | string | null;
+  inference_markup_percentage?: number | string | null;
+  persistAppEarnings?: boolean;
+}
+
 /** Negative-cache marker for missing apps. */
 interface NoneMarker {
   __none: true;
@@ -249,12 +259,18 @@ export interface AppCreditInferenceReservationParams {
 export interface AppCreditReconciliationParams {
   appId: string;
   userId: string;
+  /**
+   * Server-only override for settling a known debit row against the org that
+   * originally paid it. Stale app-chat sweeps can run long after the user moved
+   * orgs, so recomputing this from the mutable user row is unsafe.
+   */
+  organizationId?: string;
   estimatedBaseCost: number;
   actualBaseCost: number;
   description: string;
   metadata?: Record<string, unknown>;
   /** Optional: pass pre-fetched app to avoid N+1 query */
-  app?: App;
+  app?: AppCreditAccountingApp;
   /**
    * SERVER-GENERATED id of the reservation's deduct transaction
    * (credit_transactions.id, a DB UUID). When present, the reconcile
@@ -543,13 +559,15 @@ export class AppCreditsService {
       amount: totalCost,
       description: description ?? `App inference (${app.name ?? appId})`,
       metadata: {
+        ...metadata,
         appId,
         userId,
         baseCost,
         creatorMarkup,
         totalCost,
         markupPercentage,
-        ...metadata,
+        creatorUserId: app.created_by_user_id,
+        appName: app.name,
       },
     });
 
@@ -704,6 +722,7 @@ export class AppCreditsService {
     const {
       appId,
       userId,
+      organizationId: providedOrganizationId,
       estimatedBaseCost,
       actualBaseCost,
       description,
@@ -765,10 +784,16 @@ export class AppCreditsService {
 
     const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
-    // Resolve the user's organization once — every branch below charges or
-    // refunds against the org credit balance, not a per-app pool.
-    const user = await usersRepository.findById(userId);
-    if (!user?.organization_id) {
+    // Resolve the org once — every branch below charges or refunds against the
+    // org credit balance, not a per-app pool. Stale-settlement callers pass the
+    // original debit row's org id; interactive callers use the user's current
+    // organization.
+    let organizationId = providedOrganizationId ?? null;
+    if (!organizationId) {
+      const user = await usersRepository.findById(userId);
+      organizationId = user?.organization_id ?? null;
+    }
+    if (!organizationId) {
       logger.error("[AppCredits] User not found during reconciliation", { userId });
       return {
         reconciled: false,
@@ -778,7 +803,6 @@ export class AppCreditsService {
         newBalance: 0,
       };
     }
-    const organizationId = user.organization_id;
 
     const markReservationSettled = async (reason: string): Promise<void> => {
       if (!reservationTransactionId) return;
@@ -817,7 +841,8 @@ export class AppCreditsService {
     }
 
     // Use provided app to avoid N+1 query, or fetch if not provided
-    const app = providedApp ?? (await appsRepository.findById(appId));
+    const app: AppCreditAccountingApp | undefined =
+      providedApp ?? (await appsRepository.findById(appId));
     if (!app) {
       logger.error("[AppCredits] App not found during reconciliation", { appId });
       return {
@@ -879,6 +904,7 @@ export class AppCreditsService {
               actualBaseCost,
               description,
             }),
+            app,
           );
         } catch (reversalError) {
           logger.error(
@@ -1183,7 +1209,7 @@ export class AppCreditsService {
     amount: number,
     leg: CreatorEarningsLeg,
     metadata: Record<string, unknown>,
-    providedApp?: App,
+    providedApp?: AppCreditAccountingApp,
   ): Promise<{ deduplicated: boolean }> {
     // CRITICAL: Credit the app creator's redeemable_earnings balance FIRST — it
     // is the idempotency gate. #10423: a settlement retry (a re-run of the
@@ -1193,7 +1219,8 @@ export class AppCreditsService {
     // which repeats across every charge. Fall back to the (non-idempotent)
     // app-scoped id only when no per-charge key is present, preserving prior
     // behavior for callers without one.
-    const app = providedApp ?? (await appsRepository.findById(appId));
+    const app: AppCreditAccountingApp | undefined =
+      providedApp ?? (await appsRepository.findById(appId));
     const chargeKey =
       (typeof metadata.idempotencyKey === "string" && metadata.idempotencyKey) ||
       (typeof metadata.stripePaymentIntentId === "string" && metadata.stripePaymentIntentId) ||
@@ -1258,9 +1285,12 @@ export class AppCreditsService {
 
     // A dedup retry already recorded everything on the first pass — skip the
     // shadow app_earnings + audit-transaction writes so they don't double-count
-    // the withdrawable ceiling (#10423). Callers gate their apps-counter
-    // updates on the returned flag for the same reason.
-    if (deduplicated) return { deduplicated: true };
+    // the withdrawable ceiling (#10423). Synthetic stale-sweep app facts for a
+    // deleted app also skip app-scoped rows because the FK target is gone; the
+    // creator redeemable ledger above remains the settlement source of truth.
+    if (deduplicated || app?.persistAppEarnings === false) {
+      return { deduplicated };
+    }
 
     // Shadow app-level earnings tracking (analytics / withdrawable ceiling).
     if (type === "inference_markup") {
@@ -1295,6 +1325,7 @@ export class AppCreditsService {
     amount: number,
     leg: CreatorEarningsReversalLeg,
     metadata: Record<string, unknown>,
+    providedApp?: AppCreditAccountingApp,
   ): Promise<{ deduplicated: boolean }> {
     // #10423 (symmetry with recordCreatorEarnings): the reversal must also be
     // idempotent, or a retried reconciliation would double-DEBIT the creator.
@@ -1304,7 +1335,8 @@ export class AppCreditsService {
     // DIFFERENT reversals in one request (reconcile refund vs #10910
     // compensation reversal) never collide. reduceEarnings is the gate; skip
     // the shadow writes on a dedup retry.
-    const app = await appsRepository.findById(appId);
+    const app: AppCreditAccountingApp | undefined =
+      providedApp ?? (await appsRepository.findById(appId));
     const chargeKey =
       (typeof metadata.idempotencyKey === "string" && metadata.idempotencyKey) ||
       (typeof metadata.stripePaymentIntentId === "string" && metadata.stripePaymentIntentId) ||
@@ -1352,7 +1384,9 @@ export class AppCreditsService {
       }
     }
 
-    if (deduplicated) return { deduplicated: true };
+    if (deduplicated || app?.persistAppEarnings === false) {
+      return { deduplicated };
+    }
 
     // Shadow app-level reduction (use negative value) + audit trail.
     await appEarningsRepository.addInferenceEarnings(appId, -amount);

@@ -1,8 +1,8 @@
 # e1-phone exploded animation
 
-- GLB: `/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.glb` (258,668 bytes)
-- MP4: `/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4` (914,974 bytes)
-- Frames: `/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded-frames` (360 frames, 24 keyframes)
+- GLB: `/home/shaw/eliza/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.glb` (258,668 bytes)
+- MP4: `/home/shaw/eliza/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4` (914,974 bytes)
+- Frames: `/home/shaw/eliza/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded-frames` (360 frames, 24 keyframes)
 - Clips: explode, reassemble, turntable
 - Durations: explode 3.0s, hold 1.5s, reassemble 3.0s, hold 1.5s — total 12.0s @ 30fps
 - Parts animated: 132

@@ -1,5 +1,5 @@
-EXECUTING: /home/shaw/Android/Sdk/build-tools/35.0.0/aapt dump badging /home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-swabble-debug-androidTest.apk
-CURRENT_WORKING_DIRECTORY: /home/shaw/milady/eliza-wt-9967-network-policy/packages/app-core/platforms/android
+EXECUTING: /home/shaw/Android/Sdk/build-tools/35.0.0/aapt dump badging /home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-swabble-debug-androidTest.apk
+CURRENT_WORKING_DIRECTORY: /home/shaw/eliza/eliza-wt-9967-network-policy/packages/app-core/platforms/android
 START_TIME: 2026-06-30 02:05:03.313
 START_TIME-NANOS: 2026-06-30 02:05:03.313580823
 ENVIRONMENT:

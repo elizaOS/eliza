@@ -135,7 +135,7 @@ describe("eliza-code TUI at cockpit phone width", () => {
 
   test.each([
     39, 43, 47, 60,
-  ])("MainScreen output fits within %i columns", (cols) => {
+  ])("MainScreen output fits within %i columns", (cols: number) => {
     const { chatPane, mainScreen } = makeScreen(cols);
     chatPane.syncFocus(true);
     const lines = mainScreen.render(cols);

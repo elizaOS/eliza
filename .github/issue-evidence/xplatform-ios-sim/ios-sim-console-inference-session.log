@@ -1,0 +1,180 @@
+2026-07-02 15:17:02.375 App[64309:67567066] [AgentWatchdog] bootstrapped (dormant until a local agent starts)
+2026-07-02 15:17:02.390 App[64309:67567066] DiskCookieStorage changing policy from 2 to 0, cookie file: file:///Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/0A4758E0-8EF6-40C6-9230-65E9B83353DB/Library/Cookies/ai.elizaos.app.binarycookies
+2026-07-02 15:17:02.436 App[64309:67567066] KeyboardPlugin: resize mode - body
+Loading network plugin
+2026-07-02 15:17:02.444 App[64309:67567066] [ElizaStartupTrace] iOS startupTraceId=ios-1783019822405-dcbcc714-c17e-41ff-9def-5041b81505e4
+⚡️  Loading app at capacitor://localhost...
+2026-07-02 15:17:02.445 App[64309:67567116] [MobileSignalsPlugin] enableBackgroundDelivery(HKCategoryTypeIdentifierSleepAnalysis) failed: Missing com.apple.developer.healthkit entitlement.
+2026-07-02 15:17:02.445 App[64309:67567116] [MobileSignalsPlugin] enableBackgroundDelivery(HKQuantityTypeIdentifierHeartRate) failed: Missing com.apple.developer.healthkit entitlement.
+2026-07-02 15:17:02.445 App[64309:67567116] [MobileSignalsPlugin] enableBackgroundDelivery(HKQuantityTypeIdentifierRestingHeartRate) failed: Missing com.apple.developer.healthkit entitlement.
+2026-07-02 15:17:02.445 App[64309:67567116] [MobileSignalsPlugin] enableBackgroundDelivery(HKQuantityTypeIdentifierHeartRateVariabilitySDNN) failed: Missing com.apple.developer.healthkit entitlement.
+2026-07-02 15:17:02.445 App[64309:67567116] [MobileSignalsPlugin] enableBackgroundDelivery(HKQuantityTypeIdentifierRespiratoryRate) failed: Missing com.apple.developer.healthkit entitlement.
+2026-07-02 15:17:02.445 App[64309:67567116] [MobileSignalsPlugin] enableBackgroundDelivery(HKQuantityTypeIdentifierOxygenSaturation) failed: Missing com.apple.developer.healthkit entitlement.
+Reachable via WiFi
+⚡️  WebView loaded
+⚡️  [info] - [renderer-build] 1ef17d1de7e8 built 2026-07-02T12:44:12.403Z (variant=direct, target=ios)
+⚡️  [info] - [shell] window shell mode: main (search="")
+⚡️  To Native ->  Preferences get 77861588
+⚡️  TO JS {"value":"1"}
+⚡️  To Native ->  Preferences get 77861589
+⚡️  To Native ->  Preferences get 77861590
+⚡️  To Native ->  Preferences get 77861591
+⚡️  To Native ->  Preferences ⚡️  TO JS get {"value":null}
+77861592
+⚡️  To Native ->  Preferences get 77861593
+⚡️  To Native ->  Preferences get 77861594
+⚡️  To Native ->  Preferences get 77861595
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS ⚡️  To Native ->  Preferences get 77861596
+{"value":"{\"id\":\"local:mobile\",\"kind\":\"remote\",\"label\":\"On-device agent\",\"apiBase\":\"eliza-local-agent:\/\/ipc\"}"}
+⚡️  To Native ->  Preferences get 77861597
+⚡️  To Native ->  Preferences get 77861598
+⚡️  To Native ->  Preferences get 77861599
+⚡️  TO JS {"value":"1"}
+⚡️  To Native ->  Preferences get 77861600
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":"local"}
+⚡️  To Native ->  Preferences get 77861601
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 77861602
+⚡️  To Native ->  Preferences get 77861603
+⚡️  To Native ->  Preferences get 77861604
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 77861605
+⚡️  To Native ->  Preferences get 77861606
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":"{\"ok\":true,\"phase\":\"complete\",\"finishedAt\":\"2026-07-02T11:24:38.125Z\",\"runtimeStatus\":{\"engine\":\"bun\",\"bridgeVersion\":\"bun-ios:3\",\"ready\":true},\"bridgeStatus\":{\"ready\":true,\"engine\":\"bun\",\"bridgeVersion\":\"bun-ios:
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 77861607
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 77861608
+⚡️  To Native ->  Preferences get 77861609
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  StatusBar setStyle 77861610
+⚡️  TO JS {}
+⚡️  [info] - %c Info font-size: 12px; color: #0099ff; [startup-coordinator] phase=restoring-session
+⚡️  [info] - %c Info font-size: 12px; color: #0099ff; [ios-local-agent] importing full-Bun runtime plugin
+⚡️  To Native ->  ElizaBunRuntime getStatus 77861611
+⚡️  [info] - %c Info font-size: 12px; color: #0099ff; [ios-local-agent] full-Bun runtime plugin resolved; probing status
+⚡️  TO JS {"ready":false}
+⚡️  To Native ->  Keyboard setScroll 77861612
+⚡️  TO JS undefined
+⚡️  To Native ->  Keyboard setResizeMode 77861613
+⚡️  TO JS undefined
+⚡️  To Native ->  ElizaBunRuntime start 77861614
+⚡️  [info] - %c Info font-size: 12px; color: #0099ff; [ios-local-agent] starting full-Bun engine
+⚡️  To Native ->  Keyboard setScroll 77861615
+2026-07-02 15:17:03.281 App[64309:67567107] [ElizaBunRuntimePlugin] start requested engine=bun bundlePath=default argv=["bun", "--no-install", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"] envKeys=["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "ELIZA_HEADLESS", "ELIZA_IOS_BRIDGE_TRANSPORT", "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS", "ELIZA_IOS_LOCAL_BACKEND", "ELIZA_MOBILE_PLATFORM", "ELIZA_PGLITE_DISABLE_EXTENSIONS", "ELIZA_PLATFORM", "ELIZA_RUNTIME_MODE", "ELIZA_VAULT_BACKEND", "LOCAL_RUNTIME_MODE", "LOG_LEVEL", "RUNTIME_MODE"]
+2026-07-02 15:17:03.281 App[64309:67567107] [ElizaBunRuntimePlugin] creating ElizaBunRuntime
+⚡️  TO JS undefined
+2026-07-02 15:17:03.282 App[64309:67567116] [ElizaBunRuntime] start queued engine=bun argv=["bun", "--no-install", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"] envKeys=["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "ELIZA_HEADLESS", "ELIZA_IOS_BRIDGE_TRANSPORT", "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS", "ELIZA_IOS_LOCAL_BACKEND", "ELIZA_MOBILE_PLATFORM", "ELIZA_PGLITE_DISABLE_EXTENSIONS", "ELIZA_PLATFORM", "ELIZA_RUNTIME_MODE", "ELIZA_VAULT_BACKEND", "LOCAL_RUNTIME_MODE", "LOG_LEVEL", "RUNTIME_MODE"]
+2026-07-02 15:17:03.282 App[64309:67567116] [ElizaBunRuntime] bootstrap requestedEngine=bun compiledEngine=full-bun
+2026-07-02 15:17:03.282 App[64309:67567116] [ElizaBunRuntime] full Bun bootstrap bundle=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/BF369E9D-DE26-467A-81B4-521D0EF29167/App.app/public/agent/agent-bundle.js appSupport=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/0A4758E0-8EF6-40C6-9230-65E9B83353DB/Library/Application Support/Eliza pglite=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/0A4758E0-8EF6-40C6-9230-65E9B83353DB/Library/Application Support/Eliza/.elizadb assetDir=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/BF369E9D-DE26-467A-81B4-521D0EF29167/App.app/public/agent
+2026-07-02 15:17:03.283 App[64309:67567116] [FullBunEngineHost] start requested bundle=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/BF369E9D-DE26-467A-81B4-521D0EF29167/App.app/public/agent/agent-bundle.js appSupport=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/0A4758E0-8EF6-40C6-9230-65E9B83353DB/Library/Application Support/Eliza argv=["bun", "--no-install", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"] envKeys=["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "ELIZA_HEADLESS", "ELIZA_HOME", "ELIZA_IOS_AGENT_ASSET_DIR", "ELIZA_IOS_AGENT_BUNDLE", "ELIZA_IOS_AGENT_PUBLIC_DIR", "ELIZA_IOS_APP_SUPPORT_DIR", "ELIZA_IOS_BRIDGE_TRANSPORT", "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS", "ELIZA_IOS_DYNAMIC_CODE_SIGNING", "ELIZA_IOS_JAVASCRIPT_ENGINE", "ELIZA_IOS_JIT", "ELIZA_IOS_LOCAL_BACKEND", "ELIZA_IOS_RUNTIME_POLICY", "ELIZA_MOBILE_PLATFORM", "ELIZA_PGLITE_DISABLE_EXTENSIONS", "ELIZA_PLATFORM", "ELIZA_RUNTIME_MODE", "ELIZA_STATE_DIR", "ELIZA_VAULT_BACKEND", "ELIZA_WORKSPACE_DIR", "HOME", "LOCAL_RUNTIME_MODE", "LOG_LEVEL", "MOBILE_WORKSPACE_ROOT", "PGLITE_DATA_DIR", "RUNTIME_MODE"]
+2026-07-02 15:17:03.284 App[64309:67567116] [FullBunEngineHost] loading ElizaBunEngine
+2026-07-02 15:17:03.284 App[64309:67567116] [FullBunEngineHost] loaded ElizaBunEngine abi=3
+ai.elizaos.app: 64309
+2026-07-02 15:36:38.559 App[95117:67684620] [AgentWatchdog] bootstrapped (dormant until a local agent starts)
+2026-07-02 15:36:38.587 App[95117:67684620] DiskCookieStorage changing policy from 2 to 0, cookie file: file:///Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/7222AA6D-6D29-4BE8-94BB-8492F80F1E1F/Library/Cookies/ai.elizaos.app.binarycookies
+Loading network plugin
+2026-07-02 15:36:38.664 App[95117:67684620] KeyboardPlugin: resize mode - body
+2026-07-02 15:36:38.668 App[95117:67684678] [MobileSignalsPlugin] HealthKit background delivery skipped: binary lacks the com.apple.developer.healthkit entitlement (expected for simulator and non-store dev builds); foreground health monitoring is unaffected
+2026-07-02 15:36:38.673 App[95117:67684620] [ElizaStartupTrace] iOS startupTraceId=ios-1783020998579-aaae65ed-d3a5-4d11-a607-36e3b070df75
+⚡️  Loading app at capacitor://localhost...
+Reachable via WiFi
+⚡️  WebView loaded
+⚡️  [info] - [renderer-build] 48e7558a0975 built 2026-07-02T10:03:59.720Z (variant=direct, target=ios)
+⚡️  [info] - [shell] window shell mode: main (search="")
+⚡️  To Native ->  Preferences get 49953733
+⚡️  TO JS {"value":"1"}
+⚡️  To Native ->  Preferences get 49953734
+⚡️  To Native ->  Preferences get 49953735
+⚡️  To Native ->  Preferences get ⚡️  TO JS {"value":null}
+49953736
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953737
+⚡️  TO JS {"value":"{\"id\":\"local:mobile\",\"kind\":\"remote\",\"label\":\"On-device agent\",\"apiBase\":\"eliza-local-agent:\/\/ipc\"}"}
+⚡️  To Native ->  Preferences get 49953738
+⚡️  To Native ->  Preferences get 49953739
+⚡️  To Native ->  Preferences get 49953740
+⚡️  TO JS ⚡️  To Native ->  {"value":"1"}
+Preferences get 49953741
+⚡️  To Native ->  Preferences get 49953742
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953743
+⚡️  TO JS {"value":"local"}
+⚡️  To Native ->  Preferences get 49953744
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953745
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953746
+⚡️  To Native ->  Preferences get 49953747
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953748
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953749
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":"{\"ok\":true,\"phase\":\"complete\",\"finishedAt\":\"2026-07-02T11:24:38.125Z\",\"runtimeStatus\":{\"engine\":\"bun\",\"bridgeVersion\":\"bun-ios:3\",\"ready\":true},\"bridgeStatus\":{\"ready\":true,\"engine\":\"bun\",\"bridgeVersion\":\"bun-ios:
+⚡️  To Native ->  Preferences get 49953750
+⚡️  To Native ->  Preferences get 49953751
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953752
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  Preferences get 49953753
+⚡️  To Native ->  Preferences get 49953754
+⚡️  TO JS {"value":null}
+⚡️  TO JS {"value":null}
+⚡️  To Native ->  StatusBar setStyle 49953755
+⚡️  TO JS {}
+⚡️  [warn] - Capacitor plugin "Agent" already registered. Cannot register plugins twice.
+⚡️  To Native ->  Agent appendBootTrace 49953756
+⚡️  To Native ->  Agent appendBootTrace 49953757
+⚡️  To Native ->  Agent appendBootTrace 49953758
+⚡️  To Native ->  Keyboard setScroll 49953759
+⚡️  To Native ->  Agent appendBootTrace 49953760
+⚡️  To Native ->  Agent appendBootTrace 49953761
+⚡️  To Native ->  Keyboard setResizeMode 49953762
+⚡️  TO JS undefined
+⚡️  TO JS undefined
+⚡️  TO JS undefined
+⚡️  TO JS undefined
+⚡️  TO JS undefined
+⚡️  TO JS undefined
+⚡️  TO JS undefined
+⚡️  To Native ->  Agent appendBootTrace 49953763
+⚡️  To Native ->  ElizaBunRuntime getStatus 49953764
+⚡️  TO JS undefined
+⚡️  TO JS {"ready":false}
+⚡️  To Native ->  Keyboard setScroll 49953765
+⚡️  TO JS undefined
+⚡️  To Native ->  Agent appendBootTrace 49953766
+⚡️  To Native ->  Agent appendBootTrace 49953767
+⚡️  TO JS undefined
+⚡️  To Native ->  ElizaBunRuntime start 49953768
+⚡️  TO JS undefined
+⚡️  To Native ->  Keyboard setAccessoryBarVisible 49953769
+2026-07-02 15:36:39.979 App[95117:67684678] [ElizaBunRuntimePlugin] start requested engine=bun bundlePath=default argv=["bun", "--no-install", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"] envKeys=["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "ELIZA_HEADLESS", "ELIZA_IOS_BRIDGE_TRANSPORT", "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS", "ELIZA_IOS_LOCAL_BACKEND", "ELIZA_MOBILE_PLATFORM", "ELIZA_PGLITE_DISABLE_EXTENSIONS", "ELIZA_PLATFORM", "ELIZA_RUNTIME_MODE", "ELIZA_VAULT_BACKEND", "LOCAL_RUNTIME_MODE", "LOG_LEVEL", "RUNTIME_MODE"]
+2026-07-02 15:36:39.979 App[95117:67684678] [ElizaBunRuntimePlugin] creating ElizaBunRuntime
+2026-07-02 15:36:39.980 App[95117:67684676] [ElizaBunRuntime] start queued engine=bun argv=["bun", "--no-install", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"] envKeys=["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "ELIZA_HEADLESS", "ELIZA_IOS_BRIDGE_TRANSPORT", "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS", "ELIZA_IOS_LOCAL_BACKEND", "ELIZA_MOBILE_PLATFORM", "ELIZA_PGLITE_DISABLE_EXTENSIONS", "ELIZA_PLATFORM", "ELIZA_RUNTIME_MODE", "ELIZA_VAULT_BACKEND", "LOCAL_RUNTIME_MODE", "LOG_LEVEL", "RUNTIME_MODE"]
+2026-07-02 15:36:39.980 App[95117:67684678] Accessory bar visible change 1
+2026-07-02 15:36:39.980 App[95117:67684676] [ElizaBunRuntime] bootstrap requestedEngine=bun compiledEngine=full-bun
+⚡️  TO JS undefined
+2026-07-02 15:36:39.983 App[95117:67684676] [ElizaBunRuntime] full Bun bootstrap bundle=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/10769D51-6812-4F6E-B981-B3204DA5DC0F/App.app/public/agent/agent-bundle.js appSupport=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/7222AA6D-6D29-4BE8-94BB-8492F80F1E1F/Library/Application Support/Eliza pglite=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/7222AA6D-6D29-4BE8-94BB-8492F80F1E1F/Library/Application Support/Eliza/.elizadb assetDir=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/10769D51-6812-4F6E-B981-B3204DA5DC0F/App.app/public/agent
+2026-07-02 15:36:39.983 App[95117:67684676] [FullBunEngineHost] start requested bundle=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/10769D51-6812-4F6E-B981-B3204DA5DC0F/App.app/public/agent/agent-bundle.js appSupport=/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Data/Application/7222AA6D-6D29-4BE8-94BB-8492F80F1E1F/Library/Application Support/Eliza argv=["bun", "--no-install", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"] envKeys=["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "ELIZA_HEADLESS", "ELIZA_HOME", "ELIZA_IOS_AGENT_ASSET_DIR", "ELIZA_IOS_AGENT_BUNDLE", "ELIZA_IOS_AGENT_PUBLIC_DIR", "ELIZA_IOS_APP_SUPPORT_DIR", "ELIZA_IOS_BRIDGE_TRANSPORT", "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS", "ELIZA_IOS_DYNAMIC_CODE_SIGNING", "ELIZA_IOS_JAVASCRIPT_ENGINE", "ELIZA_IOS_JIT", "ELIZA_IOS_LOCAL_BACKEND", "ELIZA_IOS_RUNTIME_POLICY", "ELIZA_MOBILE_PLATFORM", "ELIZA_PGLITE_DISABLE_EXTENSIONS", "ELIZA_PLATFORM", "ELIZA_RUNTIME_MODE", "ELIZA_STATE_DIR", "ELIZA_VAULT_BACKEND", "ELIZA_WORKSPACE_DIR", "HOME", "LOCAL_RUNTIME_MODE", "LOG_LEVEL", "MOBILE_WORKSPACE_ROOT", "PGLITE_DATA_DIR", "RUNTIME_MODE"]
+2026-07-02 15:36:39.983 App[95117:67684676] [FullBunEngineHost] loading ElizaBunEngine
+2026-07-02 15:36:39.984 App[95117:67684676] [FullBunEngineHost] loaded ElizaBunEngine abi=3
+⚡️  To Native ->  Keyboard addListener 49953770
+⚡️  To Native ->  Keyboard addListener 49953771

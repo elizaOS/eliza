@@ -76,7 +76,7 @@ applies that step does **not** have this cascade. The **prebuilt
 manifest** (so it reproduces the failure on 5/6 boots), meaning that specific APK
 was built without the reconcile taking effect — I could not determine why or
 re-verify against a fresh build because `build:android` is broken on this host
-(`@tailwindcss/vite` + an eliza/Milady workspace path crossover).
+(`@tailwindcss/vite` + an eliza/Eliza workspace path crossover).
 
 **So these fallbacks are defensive depth, not a claim that every Android build is
 broken:** they guarantee pause/resume + connectivity still work whenever the
@@ -113,7 +113,7 @@ W3C-standard signals that fire on every surface (web/desktop/iOS/Android WebView
   does not. `app-running-emulator.png` is the running app.
 - **Caveat (honest):** the end-to-end *fixed* behavior could not be captured
   on-device because `build:android` is currently broken on this host
-  (`@tailwindcss/vite` missing + an eliza/Milady workspace path crossover), so a
+  (`@tailwindcss/vite` missing + an eliza/Eliza workspace path crossover), so a
   fresh APK carrying this change can't be produced here. The probe runs against
   the prebuilt APK (old lifecycle), which is why it shows the **broken** state;
   the unit test proves the new handler dispatches the events, and the probe

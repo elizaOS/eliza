@@ -1,8 +1,8 @@
 == bmc ==
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Removing directory '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc'.
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/axi_lite_protocol.sv'.
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/e1_axi_lite_interconnect.sv'.
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/e1_axi_lite_interconnect_bind.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/axi_lite_protocol.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/e1_axi_lite_interconnect.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/e1_axi_lite_interconnect_bind.sv'.
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: smtbmc bitwuzla
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_bmc/src; yosys -ql ../model/design.log ../model/design.ys"
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_fifo with list of registers. See e1_axi_lite_interconnect.sv:742
@@ -116,11 +116,11 @@ SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] summary: engine
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] summary: engine_0 did not produce any traces
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] DONE (PASS, rc=0)
 == prove ==
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Removing directory '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc'.
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Removing directory '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove'.
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/axi_lite_protocol.sv'.
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/milady/eliza/packages/research/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/e1_axi_lite_interconnect.sv'.
-SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/e1_axi_lite_interconnect_bind.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/axi_lite_protocol.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/eliza/eliza/packages/research/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/e1_axi_lite_interconnect.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/e1_axi_lite_interconnect_bind.sv'.
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0: smtbmc bitwuzla
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_prove/src; yosys -ql ../model/design.log ../model/design.ys"
 SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_fifo with list of registers. See e1_axi_lite_interconnect.sv:742

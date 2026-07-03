@@ -16,6 +16,7 @@ export {
 export {
   calculateImageGenerationCostFromCatalog,
   calculateMusicGenerationCostFromCatalog,
+  calculateSfxGenerationCostFromCatalog,
   calculateSTTCostFromCatalog,
   calculateTextCostFromCatalog,
   calculateTTSCostFromCatalog,

@@ -34,7 +34,7 @@
 03-11 04:18:52.357 I/ActivityManager( 1676): Killing 16589:ai.eliza.plugins.gateway.test/u0a352 (adj 0): stop ai.eliza.plugins.gateway.test due to finished inst
 03-11 04:18:52.391 V/ActivityManager( 1676): Got obituary of 16589:ai.eliza.plugins.gateway.test
 03-11 04:18:52.779 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.gateway.test appid=10352 user=-1: deletePackageX
-03-11 04:18:52.779 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{a488b ai.eliza.plugins.gateway.test/10352} BLOCKED
+03-11 04:18:52.779 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{a488b ai.eliza.plugins.gateway.test/10352} BLOCKED
 03-11 04:18:52.780 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{a488b ai.eliza.plugins.gateway.test/10352} BLOCKED
 03-11 04:18:52.780 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{a488b ai.eliza.plugins.gateway.test/10352} BLOCKED
 03-11 04:18:52.780 I/AppsFilter( 1676): interaction: PackageSetting{c45b8e7 ai.eliza.plugins.swabble.test/10351} -> PackageSetting{a488b ai.eliza.plugins.gateway.test/10352} BLOCKED

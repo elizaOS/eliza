@@ -1,10 +1,10 @@
 {
   "artifact": {
     "icu_data": "",
-    "musl_runtime": "/home/shaw/milady/eliza/packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime",
+    "musl_runtime": "/home/shaw/eliza/eliza/packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime",
     "staged_bun": "packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime/bun",
     "staged_bun_sha256": "3da9dabdb7919e415eff9336c7e0aa8b75df0825c961f9802f7703a9bb114779",
-    "zip_path": "/home/shaw/milady/eliza/packages/app-core/scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip",
+    "zip_path": "/home/shaw/eliza/eliza/packages/app-core/scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip",
     "zip_sha256": "28050d21bf92cbae31f27747aaf95d8cd258d461c5fe8a0d4efd8590e929a03c"
   },
   "claim_boundary": "staged riscv64 Bun artifact provenance for Debian/AOSP shared userland runtime; not a boot or agent-health runtime claim",

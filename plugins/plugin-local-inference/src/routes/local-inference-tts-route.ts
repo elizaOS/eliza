@@ -22,6 +22,9 @@ export function sanitizeLocalInferenceSpeechText(input: string): string {
 		" ",
 	);
 	text = text.replace(/```[\s\S]*?```/g, " ");
+	// An unterminated fence swallows to end-of-input, mirroring the
+	// unterminated <think> handling above; TTS must never speak backticks.
+	text = text.replace(/```[\s\S]*$/, " ");
 	text = text.replace(/`([^`]+)`/g, "$1");
 	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 	text = text.replace(/<[^>\n]+>/g, " ");

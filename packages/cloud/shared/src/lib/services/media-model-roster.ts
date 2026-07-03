@@ -1,11 +1,12 @@
 import {
   SUPPORTED_IMAGE_MODEL_IDS,
   SUPPORTED_MUSIC_MODEL_IDS,
+  SUPPORTED_SFX_MODEL_IDS,
   SUPPORTED_VIDEO_MODEL_IDS,
 } from "./ai-pricing-definitions";
 
 export type MediaRosterStatus = "wired" | "deferred" | "rejected";
-export type MediaRosterSurface = "image" | "video" | "music" | "audio";
+export type MediaRosterSurface = "image" | "video" | "music" | "audio" | "sfx";
 export type MediaRosterProvider = "fal" | "atlascloud" | "google" | "elevenlabs" | "suno";
 
 export interface MediaModelRosterEntry {
@@ -66,19 +67,20 @@ export const MEDIA_MODEL_ROSTER: readonly MediaModelRosterEntry[] = [
     family: "Recraft",
     provider: "fal",
     surfaces: ["image"],
-    status: "deferred",
-    sourceUrls: ["https://fal.ai/explore/models"],
+    status: "wired",
+    sourceUrls: ["https://fal.ai/models/fal-ai/recraft/v3/text-to-image"],
+    wiredModelIds: ["fal-ai/recraft/v3/text-to-image"],
     rationale:
-      "Candidate remains cataloged, but no Recraft id has a checked pricing row or route input mapping in this repo.",
+      "Recraft V3 uses the existing FAL image provider input contract and has a checked snapshot pricing row.",
   },
   {
     family: "Ideogram",
     provider: "fal",
     surfaces: ["image"],
-    status: "deferred",
-    sourceUrls: ["https://fal.ai/explore/models"],
-    rationale:
-      "Candidate remains cataloged, but the image route does not yet expose Ideogram-specific parameters or pricing coverage.",
+    status: "wired",
+    sourceUrls: ["https://fal.ai/models/fal-ai/ideogram/v3"],
+    wiredModelIds: ["fal-ai/ideogram/v3"],
+    rationale: "Ideogram V3 routes through the existing FAL image provider with snapshot pricing.",
   },
   {
     family: "Kling",
@@ -158,11 +160,22 @@ export const MEDIA_MODEL_ROSTER: readonly MediaModelRosterEntry[] = [
   {
     family: "Stable Audio",
     provider: "fal",
-    surfaces: ["audio"],
-    status: "deferred",
-    sourceUrls: ["https://fal.ai/explore/models"],
+    surfaces: ["sfx", "audio"],
+    status: "wired",
+    sourceUrls: ["https://fal.ai/models/fal-ai/stable-audio-25/text-to-audio"],
+    wiredModelIds: ["fal-ai/stable-audio-25/text-to-audio"],
     rationale:
-      "The repo has music pricing support, but no generic FAL audio-generation route/provider for Stable Audio yet.",
+      "Stable Audio 2.5 is wired through the FAL audio provider and /api/v1/generate-sfx with snapshot request pricing.",
+  },
+  {
+    family: "ElevenLabs sound effects",
+    provider: "elevenlabs",
+    surfaces: ["sfx", "audio"],
+    status: "wired",
+    sourceUrls: ["https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert"],
+    wiredModelIds: ["elevenlabs/sound_effects_v1"],
+    rationale:
+      "ElevenLabs sound generation is the default SFX model and returns bytes stored by the route in R2.",
   },
   {
     family: "MMAudio",
@@ -268,5 +281,6 @@ export function mediaRosterModelIndexes() {
     image: new Set(SUPPORTED_IMAGE_MODEL_IDS),
     video: new Set(SUPPORTED_VIDEO_MODEL_IDS),
     music: new Set(SUPPORTED_MUSIC_MODEL_IDS),
+    sfx: new Set(SUPPORTED_SFX_MODEL_IDS),
   };
 }

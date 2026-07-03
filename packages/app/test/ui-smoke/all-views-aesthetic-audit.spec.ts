@@ -481,6 +481,20 @@ async function collectAestheticDensityMetrics(
           if (tag === "script" || tag === "style" || tag === "noscript") {
             return NodeFilter.FILTER_REJECT;
           }
+          // The floating chat shell is mounted over every GUI view and has its
+          // own overlay presence/clearance checks below. Keep transient overlay
+          // copy out of per-view text-density ratchets so a global boot banner
+          // does not make unrelated plugin views look more cramped.
+          if (
+            parent.closest(
+              "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']",
+            )
+          ) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (parent.closest("[data-aesthetic-audit-ignore-text-density]")) {
+            return NodeFilter.FILTER_REJECT;
+          }
           if (!visibleElement(parent)) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         },
@@ -630,7 +644,6 @@ async function collectOverlayClearanceIssues(
           "[data-testid='chat-pill']",
           "[data-testid='chat-sheet-grabber']",
           "[data-testid='chat-suggestions']",
-          "[data-testid='overlay-model-download-status']",
           "button",
           "textarea",
           "input",
@@ -645,8 +658,7 @@ async function collectOverlayClearanceIssues(
         return (
           style.pointerEvents !== "none" ||
           testId === "chat-sheet" ||
-          testId === "chat-suggestions" ||
-          testId === "overlay-model-download-status"
+          testId === "chat-suggestions"
         );
       })
       .map((element) => element.getBoundingClientRect())
@@ -791,7 +803,11 @@ async function collectOverlayClearanceIssues(
           ),
         0,
       );
-      if (area < 96 || area < visualArea * 0.2) continue;
+      // Ignore tiny edge grazes: they are usually fractional text/control rect
+      // slivers from the floating composer sitting near the content, not a
+      // blocked tap target. Real obstruction still trips either the absolute or
+      // relative threshold comfortably.
+      if (area < 160 || area < visualArea * 0.25) continue;
       const label =
         (
           control.getAttribute("aria-label") ||

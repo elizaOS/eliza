@@ -49,7 +49,7 @@ llama_model_loader: - type q8_0:  317 tensors
 llama_model_loader: - type bf16:    1 tensors
 print_info: file format = GGUF V3 (latest)
 print_info: file type   = Q8_0
-print_info: file size   = 4.61 GiB (8.52 BPW) 
+print_info: file size   = 4.61 GiB (8.52 BPW)
 llama_prepare_model_devices: using device MTL0 (Apple A18 Pro GPU) (unknown id) - 5460 MiB free
 init_tokenizer: initializing tokenizer for type 2
 load: 0 unused tokens
