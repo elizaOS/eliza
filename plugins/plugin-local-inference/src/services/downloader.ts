@@ -613,12 +613,39 @@ export class Downloader {
 		}
 	}
 
+	/**
+	 * On iOS the on-device runtime streams the model download in-process; if the
+	 * device auto-locks, the runtime is suspended and the multi-GB transfer
+	 * stalls at "Loading eliza-1-2B…" (#11841). While a download is active, ask
+	 * the host app to hold the iOS idle timer open via the native
+	 * `keep_awake_set` host function on the `__ELIZA_BRIDGE__` compatibility
+	 * bridge (reference-counted natively so overlapping downloads compose).
+	 * This removes the common auto-lock stall on the JSContext (sideload/dev)
+	 * path; a *manual* lock or backgrounding still needs the native background
+	 * `URLSession` download (the tracked #11841 primary fix). The bridge global
+	 * — and this host function — are absent on every other platform and on the
+	 * full-Bun engine, so this is a safe unconditional no-op there.
+	 */
+	private setDownloadKeepAwake(active: boolean): void {
+		try {
+			const bridge = (
+				globalThis as {
+					__ELIZA_BRIDGE__?: { keep_awake_set?: (on: boolean) => unknown };
+				}
+			).__ELIZA_BRIDGE__;
+			bridge?.keep_awake_set?.(active);
+		} catch {
+			// Best-effort screen-wake hint; never let it affect the download.
+		}
+	}
+
 	private async runJob(
 		catalogEntry: CatalogModel,
 		record: ActiveJob,
 	): Promise<void> {
 		try {
 			this.updateState(record, "downloading");
+			this.setDownloadKeepAwake(true);
 			await this.assertDiskSpaceForJob(record);
 			if (catalogEntry.bundleManifestFile) {
 				await this.runBundleJob(catalogEntry, record);
@@ -761,6 +788,7 @@ export class Downloader {
 				this.emit({ type: "failed", job: { ...record.job } });
 			}
 		} finally {
+			this.setDownloadKeepAwake(false);
 			this.active.delete(record.job.modelId);
 		}
 	}
