@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import { Service, ServiceType } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
+import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountFailureKind,
@@ -1224,6 +1225,16 @@ export class SubAgentRouter extends Service {
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
+      // A built app was fire-and-forget before this: the verified live URL
+      // survived only in narration/trajectory artifacts, so the app never
+      // appeared in any management list. Persist the durable registry record
+      // (never throws; a registry failure must not break delivery).
+      await registerBuiltAppsForCompletion(
+        this.runtime,
+        session,
+        verifiedUrls,
+        (level, message, ctx) => this.log(level, message, ctx),
+      );
     } else if (
       event === "task_complete" &&
       deliverable &&
