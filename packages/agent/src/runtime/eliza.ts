@@ -352,6 +352,9 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-video") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-video");
     }
+    if (packageName === "@elizaos/plugin-vision") {
+      return await import(/* @vite-ignore */ "@elizaos/plugin-vision");
+    }
     if (packageName === "@elizaos/plugin-background-runner") {
       return await import(
         /* @vite-ignore */ "@elizaos/plugin-background-runner"
@@ -515,6 +518,18 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       phase: "deferred",
       required: false,
       load: () => getOptionalPlugin("@elizaos/plugin-video"),
+    },
+    {
+      // MOBILE_CORE_PLUGINS lists plugin-vision (screen understanding on
+      // mobile — GET_SCREEN, the renderer-pulled screen-capture bridge, and
+      // the #11111 ML Kit OCR bridge routes), but without a static
+      // registration the mobile agent bundle could never resolve it: the
+      // renderer OCR poller polled /api/vision/ocr-requests into a 404
+      // forever (verified live on emulator-5554).
+      packageName: "@elizaos/plugin-vision",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-vision"),
     },
     {
       packageName: "@elizaos/plugin-background-runner",
