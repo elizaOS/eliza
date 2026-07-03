@@ -1202,7 +1202,7 @@ function WalletRailAddress({
       ref={ref}
       type="button"
       className={cn(
-        "group inline-flex min-w-0 items-center gap-2 px-1 py-1.5 text-left transition-colors",
+        "group inline-flex min-h-11 min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-left transition-colors",
         address ? "text-txt hover:text-accent" : "text-muted",
       )}
       onClick={handleCopy}
@@ -1361,7 +1361,7 @@ function WalletRailRpcButton({
     <button
       ref={ref}
       type="button"
-      className="inline-flex h-9 items-center gap-2 px-2 text-xs font-semibold text-txt transition-colors hover:text-accent"
+      className="inline-flex min-h-11 items-center gap-2 rounded-sm px-3 text-xs font-semibold text-txt transition-colors hover:text-accent"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
@@ -1438,7 +1438,7 @@ function WalletRailTabButton({
       ref={ref}
       type="button"
       className={cn(
-        "inline-flex min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-sm font-semibold transition-colors",
+        "inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors",
         active ? "text-txt" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(tab.id)}
@@ -1499,7 +1499,7 @@ function TokenRailRowImpl({
           <button
             ref={hideRef}
             type="button"
-            className="flex h-7 w-7 items-center justify-center text-muted transition-colors hover:text-danger"
+            className="flex h-11 w-11 items-center justify-center rounded-sm text-muted transition-colors hover:text-danger"
             onClick={() => onHideToken(row)}
             aria-label={`Hide ${row.symbol}`}
             title={`Hide ${row.symbol}`}
@@ -1789,8 +1789,9 @@ function DashboardWindowButton({
     <button
       ref={ref}
       type="button"
+      style={{ minWidth: 44 }}
       className={cn(
-        "px-2 py-1.5 text-xs font-medium transition-colors",
+        "min-h-11 rounded-sm px-3 py-2 text-xs font-medium transition-colors",
         active ? "text-accent" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(window)}

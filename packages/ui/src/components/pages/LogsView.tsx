@@ -296,7 +296,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={levelControl.ref}
-              className="w-40 h-10 rounded-sm text-sm text-txt"
+              className="h-11 w-40 rounded-sm text-sm text-txt"
               {...levelControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllLevels")} />
@@ -318,7 +318,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={sourceControl.ref}
-              className="w-40 h-10 rounded-sm text-sm text-txt"
+              className="h-11 w-40 rounded-sm text-sm text-txt"
               {...sourceControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllSources")} />
@@ -342,7 +342,7 @@ function LogsViewBody() {
             >
               <SelectTrigger
                 ref={tagControl.ref}
-                className="w-40 h-10 rounded-sm text-sm text-txt"
+                className="h-11 w-40 rounded-sm text-sm text-txt"
                 {...tagControl.agentProps}
               >
                 <SelectValue placeholder={t("logsview.AllTags")} />

@@ -475,6 +475,7 @@ export function AutomationsFeed({
             ref={newAgent.ref}
             variant="default"
             size="sm"
+            className="min-h-11"
             onClick={focusAutomationChat}
             {...newAgent.agentProps}
           >
@@ -536,7 +537,12 @@ export function AutomationsFeed({
                   })}
                 </p>
               </div>
-              <Button variant="default" size="sm" onClick={focusAutomationChat}>
+              <Button
+                variant="default"
+                size="sm"
+                className="min-h-11"
+                onClick={focusAutomationChat}
+              >
                 <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
                 {t("automationsfeed.createFirst", {
                   defaultValue: "Create your first automation",
@@ -657,7 +663,7 @@ function FilterChipButton({
       aria-current={isActive ? "true" : undefined}
       // Borderless text tab (#10710): active reads as accent text on a faint
       // wash; the count renders as plain text and hides at zero.
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
         isActive
           ? "bg-accent/10 text-accent"
           : "text-muted-strong hover:bg-bg-accent/40"

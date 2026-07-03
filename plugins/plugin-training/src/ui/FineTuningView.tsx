@@ -466,7 +466,7 @@ function summarizeAnalysisCoverage(
 
 /* Bottom-line input — the house resting style for form fields. */
 const AGENT_FIELD_INPUT_CLASS =
-  "h-10 w-full border-b border-border/60 bg-transparent px-3 text-sm text-txt outline-none focus:border-accent";
+  "h-11 w-full border-b border-border/60 bg-transparent px-3 text-sm text-txt outline-none focus:border-accent";
 
 function AgentInlineButton({
   agentId,

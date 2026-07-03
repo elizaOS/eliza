@@ -187,7 +187,7 @@ export const PluginCard = memo(function PluginCard({
           variant="outline"
           size="sm"
           data-plugin-toggle={p.id}
-          className={`h-auto shrink-0 rounded-full border px-3 py-[3px] text-2xs font-bold tracking-wider transition-colors duration-150 ${toggleHealthClass} ${
+          className={`min-h-11 shrink-0 rounded-full border px-3 py-2 text-2xs font-bold tracking-wider transition-colors duration-150 ${toggleHealthClass} ${
             toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
           }`}
           title={toggleTitle}

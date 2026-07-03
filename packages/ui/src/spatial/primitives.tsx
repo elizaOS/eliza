@@ -510,6 +510,8 @@ export const Button = brand<ButtonProps>("button", function Button(props) {
     alignItems: "center",
     justifyContent: "center",
     gap: "0.5em",
+    minHeight: "44px",
+    minWidth: "44px",
     padding: modality === "xr" ? "0.6rem 1.1rem" : "0.4rem 0.8rem",
     borderRadius: "0.4rem",
     fontWeight: 600,

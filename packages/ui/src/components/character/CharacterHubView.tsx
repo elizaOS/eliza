@@ -797,7 +797,7 @@ export function CharacterHubView({
             <button
               type="button"
               onClick={() => navigateToSection("overview")}
-              className="inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-txt"
+              className="inline-flex min-h-11 items-center gap-1 rounded-sm px-2 text-sm text-muted transition-colors hover:text-txt"
               aria-label="Back to Character hub"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />

@@ -51,7 +51,7 @@ function ColorSwatch({
       title={preset.label}
       aria-label={`Set background to ${preset.label}`}
       aria-pressed={selected}
-      className="relative h-9 w-9 shrink-0 rounded-full transition-transform hover:scale-110"
+      className="relative h-12 w-12 shrink-0 rounded-full transition-transform hover:scale-105"
       style={{ backgroundColor: preset.color }}
       {...agentProps}
     >
@@ -219,7 +219,7 @@ export function BackgroundSettingsControls({
           onClick={() => colorInputRef.current?.click()}
           title="Custom color"
           aria-label="Pick a custom background color"
-          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-110"
+          className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105"
           style={{
             background:
               "conic-gradient(from 0deg, #ef5a1f, #f59e0b, #65a30d, #059669, #57534e, #e11d48, #dc2626, #ef5a1f)",

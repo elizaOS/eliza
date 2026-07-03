@@ -456,7 +456,9 @@ function BrowserAddressInput({
     getValue,
     onFill,
   });
-  return <Input ref={ref} {...agentProps} {...inputProps} />;
+  return (
+    <Input ref={ref} aria-label={agentLabel} {...agentProps} {...inputProps} />
+  );
 }
 
 function BrowserTabRow({
@@ -2359,7 +2361,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         onActivate={() => setTabsSidebarCollapsed((current) => !current)}
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="h-11 w-11 shrink-0"
         aria-label={
           tabsSidebarCollapsed
             ? t("browserworkspace.ExpandTabs", {
@@ -2393,7 +2395,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="h-11 w-11 shrink-0"
         aria-label={newTabLabel}
         disabled={busyAction !== null}
         onClick={() =>
@@ -2420,7 +2422,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-8 w-8"
+        className="h-11 w-11"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2445,7 +2447,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-8 w-8"
+        className="h-11 w-11"
         aria-label={t("browserworkspace.CloseAllTabs", {
           defaultValue: "Close all tabs",
         })}
@@ -2494,7 +2496,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="h-8 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
+        className="h-11 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
       <BrowserNavButton
         agentId="go"
@@ -2508,7 +2510,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="outline"
         size="sm"
-        className="h-8 shrink-0 px-3"
+        className="h-11 shrink-0 px-3"
         aria-label={goLabel}
         disabled={
           busyAction !== null ||
@@ -2662,7 +2664,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   variant="outline"
                   disabled={busyAction !== null}
                   onClick={() => void installBrowserBridgeExtension()}
-                  className="sm:col-span-3"
+                  className="min-h-11 sm:col-span-3"
                 >
                   {t("browserworkspace.InstallBrowserBridge", {
                     defaultValue: "Install Agent Browser Bridge",
@@ -2676,7 +2678,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                     !browserBridgePackageStatus?.chromeBuildPath
                   }
                   onClick={() => void revealBrowserBridgeFolder()}
-                  className="min-w-0"
+                  className="min-h-11 min-w-0"
                 >
                   <FolderOpen className="h-4 w-4" />
                   <span className="truncate">
@@ -2690,7 +2692,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   variant="ghost"
                   disabled={busyAction !== null}
                   onClick={() => void openBrowserBridgeChromeExtensions()}
-                  className="min-w-0"
+                  className="min-h-11 min-w-0"
                 >
                   <span className="truncate">
                     {t("browserworkspace.OpenChromeExtensions", {
@@ -2703,7 +2705,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   variant="ghost"
                   disabled={browserBridgeLoading || busyAction !== null}
                   onClick={() => void refreshBrowserBridgeConnection()}
-                  className="min-w-0"
+                  className="min-h-11 min-w-0"
                 >
                   <RefreshCw className="h-4 w-4" />
                   <span className="truncate">

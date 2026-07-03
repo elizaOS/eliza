@@ -86,7 +86,7 @@ export function StatusBar({
           // Go Live is the primary action → accent, not a green status tint
           // (orange is the only accent, #10710). Stop Stream stays danger —
           // that chrome is semantic (destructive).
-          className={`inline-flex h-9 min-h-9 items-center justify-center rounded-sm px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] transition-[background-color,color,box-shadow] disabled:cursor-wait disabled:opacity-50 ${
+          className={`inline-flex min-h-11 items-center justify-center rounded-sm px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] transition-[background-color,color,box-shadow] disabled:cursor-wait disabled:opacity-50 ${
             streamLive
               ? "bg-danger/10 text-danger hover:bg-danger/20"
               : "bg-accent/10 text-accent hover:bg-accent/20"
@@ -113,7 +113,7 @@ export function StatusBar({
           <Button
             variant="ghost"
             size="sm"
-            className="inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-sm bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt"
+            className="inline-flex h-11 min-h-11 w-11 items-center justify-center rounded-sm bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const popoutWin = openStreamPopout(getBootConfig().apiBase);

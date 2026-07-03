@@ -87,7 +87,7 @@ function FtuWelcomeWidget({
             type="button"
             data-testid="ftu-welcome-chip"
             onClick={() => onChip(text)}
-            className="text-sm text-white/75 underline-offset-4 transition-colors hover:text-white hover:underline"
+            className="inline-flex min-h-11 items-center rounded-sm px-1 text-sm text-white/75 underline-offset-4 transition-colors hover:text-white hover:underline"
           >
             {text}
           </button>
@@ -97,7 +97,7 @@ function FtuWelcomeWidget({
           data-testid="ftu-welcome-dismiss"
           aria-label="Dismiss welcome"
           onClick={() => dismissHomeWidget(WIDGET_KEY)}
-          className="text-sm text-white/60 transition-colors hover:text-white/80"
+          className="inline-flex min-h-11 items-center rounded-sm px-1 text-sm text-white/60 transition-colors hover:text-white/80"
         >
           Dismiss
         </button>

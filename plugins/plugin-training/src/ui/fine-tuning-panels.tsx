@@ -31,7 +31,7 @@ import {
 const FINE_TUNING_SECTION_CLASS = "";
 const FINE_TUNING_PANEL_CLASS = "";
 
-const FILTER_INPUT_CLASS = "h-10 text-sm text-txt";
+const FILTER_INPUT_CLASS = "h-11 text-sm text-txt";
 
 /* ── Agent-surface helpers ─────────────────────────────────────────── */
 

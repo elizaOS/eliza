@@ -68,7 +68,7 @@ export function ChatEmptyStateWithRecommendations({
           variant="default"
           size="sm"
           onClick={primaryAction.onClick}
-          className="gap-1.5 text-black hover:text-black"
+          className="min-h-11 gap-1.5 text-black hover:text-black"
         >
           {ActionIcon ? <ActionIcon className="h-4 w-4" aria-hidden /> : null}
           {primaryAction.label}
@@ -81,7 +81,7 @@ export function ChatEmptyStateWithRecommendations({
               key={rec.label}
               type="button"
               onClick={() => prefill(rec.prompt ?? rec.label)}
-              className="max-w-full truncate rounded-full bg-surface/70 px-3 py-1.5 text-xs text-txt transition-colors hover:bg-surface hover:text-txt-strong"
+              className="inline-flex min-h-11 max-w-full items-center truncate rounded-full bg-surface/70 px-3 py-1.5 text-xs text-txt transition-colors hover:bg-surface hover:text-txt-strong"
             >
               {rec.label}
             </button>

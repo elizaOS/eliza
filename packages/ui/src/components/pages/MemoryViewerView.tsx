@@ -869,12 +869,16 @@ export function MemoryViewerView({
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {/* View mode toggle + person context */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div ref={viewModeControl.ref} {...viewModeControl.agentProps}>
+            <div
+              ref={viewModeControl.ref}
+              className="min-h-11"
+              {...viewModeControl.agentProps}
+            >
               <SegmentedControl
                 value={viewMode}
                 onValueChange={(v) => setViewMode(v as ViewMode)}
                 items={viewModeItems}
-                buttonClassName="min-h-8 px-4 py-2"
+                buttonClassName="min-h-11 px-4 py-2"
               />
             </div>
             {selectedPerson ? (
@@ -885,7 +889,7 @@ export function MemoryViewerView({
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="h-6 px-2 text-xs-tight"
+                  className="min-h-11 px-3 text-xs-tight"
                   onClick={handleClearPerson}
                 >
                   {t("memoryviewer.clear", { defaultValue: "Clear" })}

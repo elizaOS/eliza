@@ -137,7 +137,7 @@ function ScopeFilterChip({
       aria-current={active ? "page" : undefined}
       onClick={() => onSelect(value)}
       // Borderless text tab (#10710): active = accent text on a faint wash.
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold transition-colors ${
+      className={`inline-flex min-h-11 items-center gap-1 rounded-full px-3 py-2 text-2xs font-semibold transition-colors ${
         active
           ? "bg-accent/12 text-accent"
           : "text-muted hover:bg-bg-muted/30 hover:text-txt"
@@ -266,7 +266,7 @@ const DocumentListItem = memo(function DocumentListItem({
         })}
         aria-current={active ? "page" : undefined}
         title={doc.filename}
-        className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
       >
         <FileText
           className={`h-4 w-4 shrink-0 ${active ? "text-accent" : "text-muted"}`}
@@ -355,7 +355,7 @@ const CompactSearchChip = memo(function CompactSearchChip({
       type="button"
       onClick={() => onSelect(id)}
       // Borderless selector pill (#10710): selection = accent text on a wash.
-      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+      className={`inline-flex min-h-11 max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${
         active
           ? "bg-accent/12 text-accent"
           : "text-muted hover:bg-bg-muted/30 hover:text-txt"
@@ -392,7 +392,7 @@ function CompactDocChip({
       type="button"
       onClick={() => onSelect(doc.id)}
       // Borderless selector pill (#10710): selection = accent text on a wash.
-      className={`inline-flex max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+      className={`inline-flex min-h-11 max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${
         active
           ? "bg-accent/12 text-accent"
           : "text-muted hover:bg-bg-muted/30 hover:text-txt"

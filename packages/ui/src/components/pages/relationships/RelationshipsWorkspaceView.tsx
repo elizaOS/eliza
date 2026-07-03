@@ -222,7 +222,7 @@ export function RelationshipsWorkspaceView({
             aria-label={t("relationships.platformFilter", {
               defaultValue: "Platform filter",
             })}
-            className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition "
+            className="h-11 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition "
             {...platformAgent.agentProps}
           >
             <option value="all">

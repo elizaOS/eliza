@@ -65,6 +65,25 @@ type ControlRecord = {
   reason: string;
 };
 
+const INTERACTIVE_SELECTOR = [
+  "button",
+  "[role=button]",
+  "[role=tab]",
+  "[role=switch]",
+  "[role=menuitem]",
+  "[role=menuitemcheckbox]",
+  "[role=menuitemradio]",
+  "[role=option]",
+  "[role=link]",
+  "[role=checkbox]",
+  "[role=radio]",
+  "a[href]",
+  "input:not([type=hidden])",
+  "select",
+  "textarea",
+  "[data-agent-id]",
+].join(",");
+
 /**
  * Documented per-view exceptions for controls that survive the in-page filters
  * but are known-acceptable below the floor. Keyed by view id; each entry is a
@@ -77,6 +96,40 @@ const DOCUMENTED_EXCEPTIONS: Record<
   ReadonlyArray<{ match: RegExp; reason: string }>
 > = {};
 
+async function waitForVisibleInteractiveControl(
+  page: Page,
+  view: string,
+): Promise<void> {
+  await page
+    .waitForFunction(
+      (selector) =>
+        Array.from(document.querySelectorAll(selector)).some((el) => {
+          const style = window.getComputedStyle(el);
+          if (
+            style.display === "none" ||
+            style.visibility === "hidden" ||
+            style.visibility === "collapse" ||
+            Number.parseFloat(style.opacity || "1") === 0
+          ) {
+            return false;
+          }
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }),
+      INTERACTIVE_SELECTOR,
+      {
+        polling: 250,
+        timeout: 30_000,
+      },
+    )
+    .catch((error) => {
+      throw new Error(
+        `${view}: expected at least one visible interactive control before collecting tap-target geometry`,
+        { cause: error },
+      );
+    });
+}
+
 /**
  * Collect, classify, and (in-page) exception-filter every interactive control
  * in the current view. Runs entirely in the page so geometry + computed style +
@@ -87,31 +140,24 @@ async function collectControls(
   view: string,
 ): Promise<ControlRecord[]> {
   const raw = await page.evaluate(
-    ({ minTap }) => {
-      const INTERACTIVE_SELECTOR = [
-        "button",
-        "[role=button]",
-        "[role=tab]",
-        "[role=switch]",
-        "[role=menuitem]",
-        "[role=menuitemcheckbox]",
-        "[role=menuitemradio]",
-        "[role=option]",
-        "[role=link]",
-        "[role=checkbox]",
-        "[role=radio]",
-        "a[href]",
-        "input:not([type=hidden])",
-        "select",
-        "textarea",
-        "[data-agent-id]",
-      ].join(",");
-
+    ({ minTap, selector }) => {
       const NATIVE_IMPLICIT_ROLE: Record<string, string> = {
         button: "button",
         a: "link",
         select: "listbox",
         textarea: "textbox",
+      };
+
+      const NATIVE_ROLE_OVERRIDES: Record<string, readonly string[]> = {
+        button: [
+          "combobox",
+          "menuitem",
+          "menuitemcheckbox",
+          "menuitemradio",
+          "option",
+          "tab",
+        ],
+        textarea: ["combobox"],
       };
 
       const isVisible = (el: Element): boolean => {
@@ -201,7 +247,7 @@ async function collectControls(
           .join(" ");
       };
 
-      const nodes = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR));
+      const nodes = Array.from(document.querySelectorAll(selector));
       const results: Array<{
         descriptor: string;
         width: number;
@@ -223,36 +269,12 @@ async function collectControls(
         // (e.g. <button role="link">, <a href role="button"> where the redundant
         // role fights the native semantics) confuses AT users. A redundant role
         // that MATCHES the implicit role is allowed.
-        //
-        // ARIA composite/widget roles are DESIGNED to be layered onto a native
-        // interactive element (the WAI-ARIA authoring patterns build a combobox
-        // from `<input|textarea role="combobox">`, a menu button / tab / toggle
-        // from `<button role="menuitem|tab|switch|…">`, etc.). Those are correct,
-        // not conflicts — only a role that swaps the *interaction model* (link↔
-        // button) or reclassifies the control as non-interactive (heading, img,
-        // presentation) is a real defect. Exempt the widget-role overrides.
-        const LEGITIMATE_WIDGET_OVERRIDES = new Set([
-          "combobox",
-          "searchbox",
-          "spinbutton",
-          "switch",
-          "menuitem",
-          "menuitemcheckbox",
-          "menuitemradio",
-          "tab",
-          "option",
-          "radio",
-          "checkbox",
-        ]);
         const implicit = NATIVE_IMPLICIT_ROLE[tag];
         if (
           explicitRole &&
           implicit &&
           explicitRole !== implicit &&
-          !LEGITIMATE_WIDGET_OVERRIDES.has(explicitRole) &&
-          // Hidden/portal internals (0x0, collapsed popovers) aren't a user-
-          // facing AT surface — only flag a role conflict on a rendered control.
-          isVisible(el) &&
+          !(NATIVE_ROLE_OVERRIDES[tag] ?? []).includes(explicitRole) &&
           // <a> without href has no implicit link role, so an explicit role is fine.
           !(tag === "a" && !el.getAttribute("href"))
         ) {
@@ -317,12 +339,30 @@ async function collectControls(
         const width = Math.round(rect.width * 100) / 100;
         const height = Math.round(rect.height * 100) / 100;
 
+        if (
+          tag === "input" &&
+          (type === "color" || type === "file") &&
+          (el.classList.contains("sr-only") ||
+            rect.width <= 1 ||
+            rect.height <= 1)
+        ) {
+          results.push({
+            descriptor,
+            width,
+            height,
+            status: "exception",
+            kind: "geometry",
+            reason: `visually-hidden ${type} input; visible proxy button is the tap surface`,
+          });
+          continue;
+        }
+
         // Nested inner control: an interactive element inside another
         // interactive element — the OUTER element is the real tap surface.
         const nestedInInteractive = (() => {
           let parent = el.parentElement;
           while (parent) {
-            if (parent.matches(INTERACTIVE_SELECTOR)) return true;
+            if (parent.matches(selector)) return true;
             parent = parent.parentElement;
           }
           return false;
@@ -397,7 +437,7 @@ async function collectControls(
 
       return results;
     },
-    { minTap: MIN_TAP_PX },
+    { minTap: MIN_TAP_PX, selector: INTERACTIVE_SELECTOR },
   );
 
   return raw.map((r) => ({ ...r, view }));
@@ -424,6 +464,7 @@ test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
     }) => {
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });
+      await waitForVisibleInteractiveControl(page, view.id);
 
       const records = await collectControls(page, view.id);
       allRecords.push(...records);
