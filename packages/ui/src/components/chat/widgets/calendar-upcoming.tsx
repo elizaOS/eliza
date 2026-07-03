@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarPlus } from "lucide-react";
+import { CalendarClock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
@@ -13,7 +13,7 @@ import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const CALENDAR_WIDGET_KEY = "calendar/calendar.upcoming";
 const GOOGLE_PROVIDER = "google";
-const DEFAULT_SPAN = "col-span-2 row-span-1";
+const DEFAULT_SPAN = "col-span-4 row-span-1";
 // Bound the bridge/feed calls so a hung agent channel settles the tile (connect
 // CTA / "No events today") instead of spinning on "Loading…" forever.
 const PROBE_TIMEOUT_MS = 6_000;
@@ -111,16 +111,16 @@ function eventsEqual(
 }
 
 /**
- * CALENDAR "Next event" home widget (id `calendar.upcoming`). A naked 2x1 tile
+ * CALENDAR "Next event" home widget (id `calendar.upcoming`). A full-width row
  * that shows the SINGLE soonest upcoming event (title + relative time + a
- * "+N more" badge), a "No events today" connected-but-empty state, or a
- * "Connect calendar" affordance when no Google account is linked — never a
- * silent `null` for the account-gated path, so the user can always act.
+ * "+N more" badge) — and renders ONLY when such an event exists. No connected
+ * calendar, still probing, or nothing upcoming → `null` (the home self-hide
+ * rule); connecting a calendar lives in Settings → Connectors.
  *
  * Connection is probed via `listConnectorAccounts('google')`; events come from
  * the same `/api/lifeops/calendar/feed` route CalendarView reads, polling
- * quietly while the document is visible. Tapping the populated card opens the
- * Calendar view; tapping the connect affordance opens the connectors settings.
+ * quietly while the document is visible. Tapping the card opens the Calendar
+ * view.
  */
 export function CalendarUpcomingWidget({
   slot,
@@ -238,60 +238,14 @@ export function CalendarUpcomingWidget({
     onHome && urgent ? HOME_SIGNAL_WEIGHTS.reminder : null,
   );
 
-  if (connection === "unsupported") return null;
-
-  // No Google account linked → show a connect affordance (never null), so the
-  // user can tap through to the connectors settings and wire it up.
-  if (connection === "disconnected") {
-    return (
-      <div className={spanClassName}>
-        <HomeWidgetCard
-          icon={<CalendarPlus />}
-          label="Calendar"
-          value="Connect calendar"
-          testId="chat-widget-calendar-upcoming-connect"
-          ariaLabel="Connect a Google calendar. Open connector settings."
-          onActivate={() => nav.openView("/settings/connectors", "connectors")}
-        />
-      </div>
-    );
-  }
-
-  // Hold the loading state until the live clock arrives (useNow is 0 on the
-  // first render) and the first probe + (if connected) feed settle.
-  if (
-    now === 0 ||
-    connection === "unknown" ||
-    (connection === "connected" && !feedLoaded)
-  ) {
-    return (
-      <div className={spanClassName}>
-        <HomeWidgetCard
-          icon={<CalendarClock />}
-          label="Calendar"
-          value="Loading…"
-          testId="chat-widget-calendar-upcoming-loading"
-          ariaLabel="Loading upcoming calendar events."
-          onActivate={() => nav.openView("/calendar", "calendar")}
-        />
-      </div>
-    );
-  }
-
-  // Connected but nothing upcoming → an explicit empty state, not a blank.
-  if (next == null) {
-    return (
-      <div className={spanClassName}>
-        <HomeWidgetCard
-          icon={<CalendarClock />}
-          label="Calendar"
-          value="No events today"
-          testId="chat-widget-calendar-upcoming"
-          ariaLabel="No upcoming calendar events. Open Calendar."
-          onActivate={() => nav.openView("/calendar", "calendar")}
-        />
-      </div>
-    );
+  // The calendar row earns its place ONLY when it has an event to show
+  // (matching the home self-hide rule every sibling widget follows): no
+  // connect-CTA tile, no "Loading…" tile, no "No events today" tile. The
+  // connect flow stays reachable via Settings → Connectors (and the onboarding
+  // notification deep-link); an unlinked or empty calendar simply doesn't
+  // occupy the grid.
+  if (connection !== "connected" || now === 0 || !feedLoaded || next == null) {
+    return null;
   }
 
   const title = next.title.trim().length > 0 ? next.title : "(untitled)";
@@ -317,13 +271,14 @@ export function CalendarUpcomingWidget({
 
 /**
  * Home-widget registration metadata for `calendar.upcoming` (consumed by the
- * widget registry). A naked 2x1 tile that surfaces the next calendar event.
+ * widget registry). A full-width row that surfaces the next calendar event,
+ * shown only when one exists.
  */
 export const CALENDAR_HOME_WIDGET = {
   pluginId: "calendar",
   id: "calendar.upcoming",
   order: 110,
-  size: "2x1",
+  size: "4x1",
   signalKinds: ["reminder"],
   Component: CalendarUpcomingWidget,
 } as const;

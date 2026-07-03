@@ -2,13 +2,13 @@ window.SCENARIO_RUN_DATA = {
   schema: "eliza_scenario_run_viewer_v1",
   generatedAt: "2026-06-22T18:08:49.373Z",
   runDir:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress",
   matrixPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/matrix.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/matrix.json",
   nativeJsonlPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.jsonl",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.jsonl",
   nativeManifestPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.manifest.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.manifest.json",
   report: {
     runId: "8912-browser-computeruse-progress",
     startedAtIso: "2026-06-22T18:08:44.633Z",
@@ -369,21 +369,21 @@ window.SCENARIO_RUN_DATA = {
     totalCostUsd: 0,
     artifactPaths: {
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress",
       matrixJson:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/matrix.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/matrix.json",
       viewerIndex:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/viewer/index.html",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/viewer/index.html",
       viewerData:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/viewer/data.js",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/viewer/data.js",
       nativeJsonl:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.jsonl",
       nativeManifest:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.manifest.json",
     },
   },
   trajectories: {
-    root: "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/trajectories",
+    root: "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/trajectories",
     files: [],
     summaries: [],
   },
@@ -393,13 +393,13 @@ window.SCENARIO_RUN_DATA = {
       schemaVersion: 1,
       generatedAt: "2026-06-22T18:08:49.373Z",
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress",
       trajectoriesDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/trajectories",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/trajectories",
       jsonlPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.jsonl",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.jsonl",
       manifestPath:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.manifest.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8912-browser-computeruse-progress/native.manifest.json",
       counts: {
         trajectoryFiles: 0,
         parsedTrajectories: 0,

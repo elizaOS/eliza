@@ -368,7 +368,10 @@ function AppRunCard({
 const noopSetTab = () => undefined;
 const noopSetState = () => undefined;
 
-function AppRunsWidget(_props: ChatSidebarWidgetProps) {
+function AppRunsWidget({
+  slot,
+  spanClassName = "col-span-2 row-span-1",
+}: ChatSidebarWidgetProps) {
   const {
     appRuns,
     setTab: appSetTab,
@@ -508,7 +511,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
     return null;
   }
 
-  return (
+  const section = (
     <WidgetSection
       title={t("appsview.Running", { defaultValue: "Apps" })}
       icon={<Activity className="h-4 w-4" />}
@@ -643,12 +646,20 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       )}
     </WidgetSection>
   );
+  // On the home 4-col grid the widget's root element must carry its grid-span
+  // classes or it collapses to a one-column cell and its content paints over
+  // the neighboring card (#11752). The sidebar stack renders the bare section.
+  if (slot === "home") {
+    return <div className={`min-w-0 ${spanClassName}`}>{section}</div>;
+  }
+  return section;
 }
 
 function OrchestratorActivityWidget({
   events,
   clearEvents,
   slot,
+  spanClassName = "col-span-2 row-span-1",
 }: ChatSidebarWidgetProps) {
   const {
     t: appT,
@@ -688,16 +699,18 @@ function OrchestratorActivityWidget({
   if (slot === "home") {
     const latest = events[0];
     return (
-      <HomeWidgetCard
-        icon={<Activity />}
-        label={t("taskseventspanel.Activity", { defaultValue: "Activity" })}
-        value={latest.summary}
-        meta={relativeDuration(latest.timestamp)}
-        badge={events.length > 1 ? events.length : undefined}
-        testId="chat-widget-events"
-        ariaLabel={`Activity: ${events.length} events, latest ${latest.summary}. Open tasks.`}
-        onActivate={() => nav.openTab("tasks")}
-      />
+      <div className={`min-w-0 ${spanClassName}`}>
+        <HomeWidgetCard
+          icon={<Activity />}
+          label={t("taskseventspanel.Activity", { defaultValue: "Activity" })}
+          value={latest.summary}
+          meta={relativeDuration(latest.timestamp)}
+          badge={events.length > 1 ? events.length : undefined}
+          testId="chat-widget-events"
+          ariaLabel={`Activity: ${events.length} events, latest ${latest.summary}. Open tasks.`}
+          onActivate={() => nav.openTab("tasks")}
+        />
+      </div>
     );
   }
 

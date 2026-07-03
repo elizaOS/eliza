@@ -1,6 +1,6 @@
 {
-  "checkpoint": "/home/shaw/milady/eliza/packages/research/robot/checkpoints/text_conditioned_v2",
-  "calibration": "/home/shaw/milady/eliza/packages/research/robot/calibration/ainex_192_168_1_218.json",
+  "checkpoint": "/home/shaw/eliza/eliza/packages/research/robot/checkpoints/text_conditioned_v2",
+  "calibration": "/home/shaw/eliza/eliza/packages/research/robot/calibration/ainex_192_168_1_218.json",
   "host": "192.168.1.218:9090",
   "policy_hz": 8.0,
   "episode_s": 4.0,

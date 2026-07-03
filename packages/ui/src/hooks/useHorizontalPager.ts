@@ -186,13 +186,7 @@ export interface UseHorizontalPagerOptions {
   page: number;
   pageCount: number;
   enabled?: boolean;
-  /**
-   * Allows a right swipe from page 0 to call `onEdgeSwipeRight`. Keep this off
-   * for nested pagers so the parent rail can own its back gesture.
-   */
-  edgeSwipeRightEnabled?: boolean;
   onPageChange: (page: number) => void;
-  onEdgeSwipeRight?: () => void;
 }
 
 export interface HorizontalPagerBinding<
@@ -209,9 +203,8 @@ export interface HorizontalPagerBinding<
     /**
      * Swallows the click the browser synthesizes from a committed swipe/flick so
      * it doesn't also tap-launch the element under the release point. Armed
-     * gesture-side on every commit (page change AND edge-swipe), NOT for
-     * goPrev/goNext button clicks. Attach on the same element as the pointer
-     * handlers.
+     * gesture-side on every page-change commit, NOT for goPrev/goNext button
+     * clicks. Attach on the same element as the pointer handlers.
      */
     onClickCapture: React.MouseEventHandler<HTMLDivElement>;
   };
@@ -341,9 +334,7 @@ export function useHorizontalPager<
   page,
   pageCount,
   enabled = true,
-  edgeSwipeRightEnabled = false,
   onPageChange,
-  onEdgeSwipeRight,
 }: UseHorizontalPagerOptions): HorizontalPagerBinding<TViewport> {
   const viewportRef = React.useRef<TViewport | null>(null);
   const railRef = React.useRef<HTMLDivElement | null>(null);
@@ -366,9 +357,7 @@ export function useHorizontalPager<
   const pageRef = React.useRef(page);
   const pageCountRef = React.useRef(pageCount);
   const enabledRef = React.useRef(enabled);
-  const edgeSwipeRightEnabledRef = React.useRef(edgeSwipeRightEnabled);
   const onPageChangeRef = React.useRef(onPageChange);
-  const onEdgeSwipeRightRef = React.useRef(onEdgeSwipeRight);
   // This pager's identity in the shared pointer-claim registry. `onEvicted`
   // dispatches through a ref so the registry never holds a stale closure.
   const abandonDragRef = React.useRef<() => void>(() => {});
@@ -379,9 +368,7 @@ export function useHorizontalPager<
   pageRef.current = page;
   pageCountRef.current = pageCount;
   enabledRef.current = enabled;
-  edgeSwipeRightEnabledRef.current = edgeSwipeRightEnabled;
   onPageChangeRef.current = onPageChange;
-  onEdgeSwipeRightRef.current = onEdgeSwipeRight;
 
   const measureWidth = React.useCallback(() => {
     const width =
@@ -445,9 +432,7 @@ export function useHorizontalPager<
 
   const canMove = React.useCallback((state: DragState, dx: number) => {
     if (dx < 0) return state.page < pageCountRef.current - 1;
-    if (dx > 0) {
-      return state.page > 0 || edgeSwipeRightEnabledRef.current;
-    }
+    if (dx > 0) return state.page > 0;
     return false;
   }, []);
 
@@ -589,19 +574,10 @@ export function useHorizontalPager<
         return;
       }
 
-      // The edge-swipe-home direction (right drag at page 0 when enabled) commits
-      // on a shorter slow-drag distance than an inter-page swipe: it's damped by
-      // EDGE_RESISTANCE (the rail only moves ~35% of the finger), so requiring a
-      // full 50%-of-width raw drag would demand a half-screen pull for what reads
-      // as "you can't do this" resistance. Inter-page swipes keep the 50% floor.
-      const isEdgeSwipeHome =
-        dx > 0 && state.page === 0 && edgeSwipeRightEnabledRef.current;
-      const distanceThreshold = isEdgeSwipeHome
-        ? MIN_DISTANCE_THRESHOLD
-        : Math.max(
-            MIN_DISTANCE_THRESHOLD,
-            state.width * DISTANCE_THRESHOLD_RATIO,
-          );
+      const distanceThreshold = Math.max(
+        MIN_DISTANCE_THRESHOLD,
+        state.width * DISTANCE_THRESHOLD_RATIO,
+      );
       const shouldAdvance =
         Math.abs(dx) >= distanceThreshold ||
         // Flick escape hatch: a fast RELEASE (same direction as the drag) commits
@@ -614,18 +590,6 @@ export function useHorizontalPager<
 
       if (!shouldAdvance) {
         settleTo(base);
-        return;
-      }
-
-      if (isEdgeSwipeHome) {
-        settleTo(base);
-        // A committed edge-swipe-home is a gesture commit — swallow the
-        // synthesized click so it doesn't tap-launch the tile under the finger.
-        suppressClickRef.current = true;
-        setTimeout(() => {
-          suppressClickRef.current = false;
-        }, 0);
-        onEdgeSwipeRightRef.current?.();
         return;
       }
 
@@ -850,10 +814,9 @@ export function useHorizontalPager<
     [finish],
   );
 
-  // Swallow the click a committed swipe/flick synthesizes (armed in finish() for
-  // both page-change and edge-swipe commits) so it can't tap-launch the element
-  // under the release point. One mechanism for every consumer — inner launcher
-  // paging and the edge-swipe-home path included.
+  // Swallow the click a committed swipe/flick synthesizes (armed in finish() on
+  // page-change commits) so it can't tap-launch the element under the release
+  // point. One mechanism for every consumer.
   const onClickCapture = React.useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (!suppressClickRef.current) return;

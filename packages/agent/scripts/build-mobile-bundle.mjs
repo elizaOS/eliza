@@ -1133,6 +1133,38 @@ const workspaceSrcFallbackPlugin = {
       const pkgDir = resolvePackageDir(pkgName);
       if (!pkgDir) return undefined;
 
+      // Identity-pinned packages (see dedupePlugin) must resolve their
+      // SUBPATH imports from the same src tree as the bare-name import.
+      // Letting a subpath like `@elizaos/core/node` fall through to the
+      // compiled dist would bundle a SECOND copy of core (the flat
+      // dist/node bundle) next to the pinned src copy — the exact dual-
+      // identity failure the dedupePlugin exists to prevent ("two distinct
+      // AgentRuntime classes"). `@elizaos/core/connectors/account-manager`
+      // and friends already fall back to src because dist has no per-module
+      // files, but `dist/node` exists as a directory and slipped past the
+      // dist-presence check below.
+      if (Object.hasOwn(dedupeTargets, pkgName) && subpath) {
+        // `<pkg>/node` is an entry alias for the package barrel — pin it to
+        // the same dedupe target as the bare name.
+        if (subpath === "node") {
+          return { path: dedupeTargets[pkgName], namespace: "file" };
+        }
+        const pinnedSrcDir = path.dirname(dedupeTargets[pkgName]);
+        const cleanedPinned = subpath.replace(/\.js$/, "");
+        for (const candidate of [
+          `${cleanedPinned}.ts`,
+          `${cleanedPinned}.tsx`,
+          `${cleanedPinned}/index.ts`,
+          `${cleanedPinned}/index.tsx`,
+        ]) {
+          const full = path.join(pinnedSrcDir, candidate);
+          if (existsSync(full)) {
+            return { path: full, namespace: "file" };
+          }
+        }
+        // No src match — fall through to the generic handling below.
+      }
+
       // Skip if dist exists and contains the requested entry — let the
       // default resolver handle it normally. Some workspace packages build a
       // root dist/index.js while package.json exports additional subpaths

@@ -8,6 +8,7 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
       "TELEGRAM_BOT_TOKEN",
       "SLACK_BOT_TOKEN",
       "BOT_TOKEN",
+      "OPENCODE_CONFIG_CONTENT",
       "ELIZA_VAULT_PASSPHRASE",
       "eliza_vault_passphrase",
     ]) {
@@ -34,7 +35,6 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
       "CEREBRAS_API_KEY",
-      "OPENCODE_CONFIG_CONTENT",
       "PATH",
       "HOME",
     ]) {

@@ -61,8 +61,8 @@ ShellError: Failed with exit code 2
 
       at new ShellPromise (75:16)
       at BunShell2 (191:36)
-      at generateTypeScriptDeclarations (/home/shaw/milady/eliza-issue-9943-telegram-build/packages/core/build.ts:1055:8)
-      at async buildAll (/home/shaw/milady/eliza-issue-9943-telegram-build/packages/core/build.ts:893:8)
-      at async withCoreBuildLock (/home/shaw/milady/eliza-issue-9943-telegram-build/packages/core/build.ts:139:16)
+      at generateTypeScriptDeclarations (/home/shaw/eliza/eliza-issue-9943-telegram-build/packages/core/build.ts:1055:8)
+      at async buildAll (/home/shaw/eliza/eliza-issue-9943-telegram-build/packages/core/build.ts:893:8)
+      at async withCoreBuildLock (/home/shaw/eliza/eliza-issue-9943-telegram-build/packages/core/build.ts:139:16)
 
 baseline status=1

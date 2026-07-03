@@ -286,9 +286,9 @@
   "flakyPassedCount": 0,
   "totalCostUsd": 0,
   "artifactPaths": {
-    "runDir": "/tmp/claude-1000/-home-shaw-milady-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run",
-    "matrixJson": "/tmp/claude-1000/-home-shaw-milady-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run/matrix.json",
-    "viewerIndex": "/tmp/claude-1000/-home-shaw-milady-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run/viewer/index.html",
-    "viewerData": "/tmp/claude-1000/-home-shaw-milady-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run/viewer/data.js"
+    "runDir": "/tmp/claude-1000/-home-shaw-eliza-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run",
+    "matrixJson": "/tmp/claude-1000/-home-shaw-eliza-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run/matrix.json",
+    "viewerIndex": "/tmp/claude-1000/-home-shaw-eliza-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run/viewer/index.html",
+    "viewerData": "/tmp/claude-1000/-home-shaw-eliza-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-after2/run/viewer/data.js"
   }
 }

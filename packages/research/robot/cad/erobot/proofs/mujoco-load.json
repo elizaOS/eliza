@@ -3,7 +3,7 @@
   "ok": true,
   "stands_under_gravity": true,
   "robot_model": {
-    "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/research/robot/assets/profiles/erobot/mjcf/erobot.xml",
+    "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/research/robot/assets/profiles/erobot/mjcf/erobot.xml",
     "nq": 31,
     "nv": 30,
     "nu": 24,
@@ -18,7 +18,7 @@
     "contacts": 0
   },
   "scene_model": {
-    "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/research/robot/assets/profiles/erobot/mjcf/scene.xml",
+    "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/research/robot/assets/profiles/erobot/mjcf/scene.xml",
     "nq": 31,
     "nv": 30,
     "nu": 24,

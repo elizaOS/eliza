@@ -8,10 +8,10 @@
 </properties>
 <testcase classname="bmc" name="build execution" time="0">
 </testcase>
-<system-out>SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Removing directory '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc'.
-SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc/src/axi_lite_protocol.sv'.
-SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/rtl/dma/e1_dma.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc/src/e1_dma.sv'.
-SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/properties/dma_axil_bind.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc/src/dma_axil_bind.sv'.
+<system-out>SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc/src/axi_lite_protocol.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/rtl/dma/e1_dma.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc/src/e1_dma.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/properties/dma_axil_bind.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc/src/dma_axil_bind.sv'.
 SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] engine_0: smtbmc bitwuzla
 SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] base: starting process &quot;cd verify/formal/e1_dma_axil_bmc/src; yosys -ql ../model/design.log ../model/design.ys&quot;
 SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] base: finished (returncode=0)

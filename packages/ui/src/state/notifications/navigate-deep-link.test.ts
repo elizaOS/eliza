@@ -18,7 +18,7 @@ describe("isSafeDeepLink", () => {
     );
     expect(isSafeDeepLink("vbscript:msgbox(1)")).toBe(false);
     expect(isSafeDeepLink("file:///etc/passwd")).toBe(false);
-    expect(isSafeDeepLink("milady://do-thing")).toBe(false);
+    expect(isSafeDeepLink("customapp://do-thing")).toBe(false);
     expect(isSafeDeepLink("//attacker.example/x")).toBe(false);
     expect(isSafeDeepLink("")).toBe(false);
   });
@@ -69,7 +69,7 @@ describe("navigateDeepLink", () => {
     "data:text/html,<script>alert(1)</script>",
     "vbscript:msgbox(1)",
     "file:///etc/passwd",
-    "milady://x",
+    "customapp://x",
     "//attacker.example/x",
   ])("performs no navigation for the dangerous deep link %s", (link) => {
     navigateDeepLink(link);

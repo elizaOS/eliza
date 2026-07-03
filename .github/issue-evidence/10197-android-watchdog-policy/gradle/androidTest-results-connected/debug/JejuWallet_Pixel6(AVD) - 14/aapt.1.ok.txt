@@ -1,5 +1,5 @@
-EXECUTING: /home/shaw/Android/Sdk/build-tools/35.0.0/aapt dump badging /home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
-CURRENT_WORKING_DIRECTORY: /home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android
+EXECUTING: /home/shaw/Android/Sdk/build-tools/35.0.0/aapt dump badging /home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+CURRENT_WORKING_DIRECTORY: /home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android
 START_TIME: 2026-06-30 02:23:09.613
 START_TIME-NANOS: 2026-06-30 02:23:09.613935741
 ENVIRONMENT:

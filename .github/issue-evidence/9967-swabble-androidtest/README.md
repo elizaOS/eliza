@@ -13,7 +13,7 @@ config instrumented tests from `develop`, for 7 tests per attached device.
 
 ## Validation
 
-Commands run from `/home/shaw/milady/eliza-wt-9967-network-policy`:
+Commands run from `/home/shaw/eliza/eliza-wt-9967-network-policy`:
 
 - `bun run install:light`
 - `bun run --cwd plugins/plugin-native-swabble test`

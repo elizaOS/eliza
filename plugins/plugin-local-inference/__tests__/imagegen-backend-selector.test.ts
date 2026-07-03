@@ -44,10 +44,21 @@ describe("WS3 backend-selector", () => {
 		]);
 	});
 
-	it("Linux NVIDIA without sd-cpp CUDA proof → sd-cpp CPU only", () => {
+	it("Linux NVIDIA without contrary sd-cpp evidence → sd-cpp CUDA then CPU", () => {
+		// #10727: trust the loader unless the profile carries explicit evidence
+		// the binary CANNOT do CUDA (mirrors src/services/imagegen/backend-selector.test.ts).
 		expect(ids({ platform: "linux", arch: "x64", gpu: "nvidia" })).toEqual([
+			"sd-cpp:cuda",
 			"sd-cpp:cpu",
 		]);
+		expect(
+			ids({
+				platform: "linux",
+				arch: "x64",
+				gpu: "nvidia",
+				sdCpp: { cudaCapable: false, accelerators: ["cpu"] },
+			}),
+		).toEqual(["sd-cpp:cpu"]);
 	});
 
 	it("required CUDA accelerator does not fall back to CPU", () => {

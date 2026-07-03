@@ -8,19 +8,19 @@ Built + signed + installed on 2026-06-22. Device: Shaw's iPhone 15 Pro (iOS 26.5
 - Aligned the 2 DeviceActivity extension entitlements to their profiles (dropped a stale app-group). → **BUILD SUCCEEDED**.
 
 ### Installed on the device (devicectl device info apps):
-Milady                     ai.milady.milady                        1.0       1             
+Eliza                     ai.elizaos.app                        1.0       1             
 
 ### Signed App.app + embedded engine:
-Identifier=ai.milady.milady
+Identifier=ai.elizaos.app
 TeamIdentifier=25877RY2EH
   Frameworks: ElizaBunEngine.framework 
 Identifier=ai.eliza.ElizaBunEngine
 TeamIdentifier=25877RY2EH
 
 ### Remaining (physical action only): launch is blocked while the phone is LOCKED:
-  FBSOpenApplicationErrorDomain error 7: "Unable to launch ai.milady.milady because the device was not, or could not be, unlocked." (Locked)
+  FBSOpenApplicationErrorDomain error 7: "Unable to launch ai.elizaos.app because the device was not, or could not be, unlocked." (Locked)
 
 To finish the on-device VOICE round-trip: UNLOCK the iPhone (Face ID/passcode), trust the developer
-(Settings > General > VPN & Device Management > Apple Development: Shaw Walters), and open Milady →
+(Settings > General > VPN & Device Management > Apple Development: Shaw Walters), and open Eliza →
 select 'This device' (local). The embedded full-Bun engine then runs on the iPhone's real Metal GPU —
 the same fused engine + GGUF proven running real ASR/speaker/diarization/VAD/TTS on this Mac's Apple Silicon.

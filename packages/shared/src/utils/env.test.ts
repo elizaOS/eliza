@@ -37,10 +37,10 @@ describe("isEnvDisabled", () => {
 describe("syncElizaEnvAliases", () => {
   it("does not materialize removed branded aliases into ELIZA env vars", () => {
     const keys = [
-      "MILADY_STATE_DIR",
-      "MILADY_USE_PI_AI",
-      "MILADY_TASK_AGENT_AUTH_TRUSTED_HOSTS",
-      "MILADY_TASK_AGENT_AUTH_API_BASE_URL",
+      "BRAND_STATE_DIR",
+      "BRAND_USE_PI_AI",
+      "BRAND_TASK_AGENT_AUTH_TRUSTED_HOSTS",
+      "BRAND_TASK_AGENT_AUTH_API_BASE_URL",
       "ELIZA_STATE_DIR",
       "ELIZA_USE_PI_AI",
       "ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS",
@@ -55,14 +55,14 @@ describe("syncElizaEnvAliases", () => {
       for (const key of keys) {
         delete process.env[key];
       }
-      process.env.MILADY_STATE_DIR = "/tmp/milady-state";
-      process.env.MILADY_USE_PI_AI = "1";
-      process.env.MILADY_TASK_AGENT_AUTH_TRUSTED_HOSTS = "localhost";
-      process.env.MILADY_TASK_AGENT_AUTH_API_BASE_URL = "http://localhost:3000";
+      process.env.BRAND_STATE_DIR = "/tmp/brand-state";
+      process.env.BRAND_USE_PI_AI = "1";
+      process.env.BRAND_TASK_AGENT_AUTH_TRUSTED_HOSTS = "localhost";
+      process.env.BRAND_TASK_AGENT_AUTH_API_BASE_URL = "http://localhost:3000";
 
-      syncElizaEnvAliases({ brandedPrefix: "MILADY" });
+      syncElizaEnvAliases({ brandedPrefix: "BRAND" });
 
-      expect(process.env.ELIZA_STATE_DIR).toBe("/tmp/milady-state");
+      expect(process.env.ELIZA_STATE_DIR).toBe("/tmp/brand-state");
       expect(process.env.ELIZA_USE_PI_AI).toBeUndefined();
       expect(process.env.ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS).toBeUndefined();
       expect(process.env.ELIZA_TASK_AGENT_AUTH_API_BASE_URL).toBeUndefined();
@@ -90,7 +90,7 @@ describe("syncElizaEnvAliases", () => {
         delete process.env[key];
       }
 
-      syncElizaEnvAliases({ brandedPrefix: "MILADY" });
+      syncElizaEnvAliases({ brandedPrefix: "BRAND" });
 
       expect(process.env.ELIZA_APP_ROUTE_PLUGIN_MODULES).toBe(
         DEFAULT_APP_ROUTE_PLUGIN_MODULES.join(","),

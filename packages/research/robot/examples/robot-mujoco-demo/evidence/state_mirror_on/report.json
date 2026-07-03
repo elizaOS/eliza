@@ -1,5 +1,5 @@
 {
-  "checkpoint": "/home/shaw/milady/eliza/packages/research/robot/checkpoints/text_conditioned_v2",
+  "checkpoint": "/home/shaw/eliza/eliza/packages/research/robot/checkpoints/text_conditioned_v2",
   "mirror_enabled": true,
   "mirror_period_s": 0.1,
   "host": "192.168.1.218:9090",

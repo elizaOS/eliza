@@ -1,5 +1,5 @@
 backend: native-cpu (real libwakeword.dylib via bun:ffi)
-lib:     /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a39b2f574a7430680//packages/native/plugins/wakeword-cpp/build/libwakeword.dylib
+lib:     /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/agent-a39b2f574a7430680//packages/native/plugins/wakeword-cpp/build/libwakeword.dylib
 path:    head-fast-path (name=eliza, head shipped)
 
 ✅ PASS  POSITIVE "hey eliza"

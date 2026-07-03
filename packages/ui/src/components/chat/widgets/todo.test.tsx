@@ -115,4 +115,46 @@ describe("TodoSidebarWidget", () => {
       expect(listWorkbenchTodosMock).toHaveBeenCalled();
     });
   });
+
+  it("home slot: applies the host-supplied spanClassName to its single root grid-item element (#11752)", async () => {
+    // Hold the cached todo (no poll) so the card stays rendered while asserting.
+    authMock.authenticated = false;
+    const { container } = render(
+      <TodoWidget
+        slot="home"
+        events={[]}
+        clearEvents={vi.fn()}
+        spanClassName="col-span-2 row-span-1"
+      />,
+    );
+
+    expect(await screen.findByText("Cached todo")).toBeTruthy();
+    const root = container.firstElementChild;
+    expect(root).not.toBeNull();
+    expect(root?.className).toContain("col-span-2");
+    expect(root?.className).toContain("row-span-1");
+    expect(
+      root?.querySelector('[data-testid="chat-widget-todos"]'),
+    ).not.toBeNull();
+  });
+
+  it("home slot: falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
+    authMock.authenticated = false;
+    const { container } = render(
+      <TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />,
+    );
+    expect(await screen.findByText("Cached todo")).toBeTruthy();
+    expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
+
+  it("chat-sidebar slot: does NOT wrap the section in a grid-span root (#11752)", async () => {
+    authMock.authenticated = false;
+    const { container } = render(
+      <TodoWidget slot="chat-sidebar" events={[]} clearEvents={vi.fn()} />,
+    );
+    expect(await screen.findByText("Cached todo")).toBeTruthy();
+    expect(container.firstElementChild?.className ?? "").not.toContain(
+      "col-span-2",
+    );
+  });
 });

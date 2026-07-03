@@ -39,8 +39,8 @@ describe("buildTutorialSteps", () => {
   });
 
   it("brands the copy with the app name", () => {
-    const steps = buildTutorialSteps("Milady");
-    expect(steps[0].title).toBe("Meet Milady");
+    const steps = buildTutorialSteps("My App");
+    expect(steps[0].title).toBe("Meet My App");
   });
 
   it("carries no stale 'Tutorial tile' launch copy", () => {

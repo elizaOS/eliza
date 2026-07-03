@@ -12,7 +12,7 @@
     "arch": "arm64"
   },
   "options": {
-    "outDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/9581-macos-desktop-cua",
+    "outDir": "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/9581-macos-desktop-cua",
     "skipBrowser": false,
     "skipInput": false
   },

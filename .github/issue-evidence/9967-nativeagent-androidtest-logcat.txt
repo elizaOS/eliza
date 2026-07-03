@@ -1,4 +1,4 @@
-03-11 04:37:17.079 I/AppsFilter( 1676): interaction: PackageSetting{cddc9bd ai.milady.milady/10323} -> PackageSetting{fe2ae00 ai.eliza.plugins.agent.test/10363} BLOCKED
+03-11 04:37:17.079 I/AppsFilter( 1676): interaction: PackageSetting{cddc9bd ai.elizaos.app/10323} -> PackageSetting{fe2ae00 ai.eliza.plugins.agent.test/10363} BLOCKED
 03-11 04:37:17.080 I/AppsFilter( 1676): interaction: PackageSetting{9c98703 app.eliza/10324} -> PackageSetting{fe2ae00 ai.eliza.plugins.agent.test/10363} BLOCKED
 03-11 04:37:17.080 I/AppsFilter( 1676): interaction: PackageSetting{1439680 com.google.android.microdroid.empty_payload/10404} -> PackageSetting{fe2ae00 ai.eliza.plugins.agent.test/10363} BLOCKED
 03-11 04:37:17.098 I/ActivityManager( 1676): Start proc 19086:ai.eliza.plugins.agent.test/u0a363 for added application ai.eliza.plugins.agent.test
@@ -35,7 +35,7 @@
 03-11 04:37:18.655 I/ActivityManager( 1676): Killing 19086:ai.eliza.plugins.agent.test/u0a363 (adj 0): stop ai.eliza.plugins.agent.test due to finished inst
 03-11 04:37:18.717 V/ActivityManager( 1676): Got obituary of 19086:ai.eliza.plugins.agent.test
 03-11 04:37:19.098 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.agent.test appid=10363 user=-1: deletePackageX
-03-11 04:37:19.098 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{1737d00 ai.eliza.plugins.agent.test/10363} BLOCKED
+03-11 04:37:19.098 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{1737d00 ai.eliza.plugins.agent.test/10363} BLOCKED
 03-11 04:37:19.098 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{1737d00 ai.eliza.plugins.agent.test/10363} BLOCKED
 03-11 04:37:19.098 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{1737d00 ai.eliza.plugins.agent.test/10363} BLOCKED
 03-11 04:37:19.178 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.eliza.plugins.agent.test from 0

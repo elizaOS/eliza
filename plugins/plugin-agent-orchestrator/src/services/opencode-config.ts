@@ -284,11 +284,7 @@ export function buildOpencodeAcpEnv(
     next.PATH = prependPathDir(env.PATH, vendoredShimDir);
   }
 
-  const config =
-    typeof env.OPENCODE_CONFIG_CONTENT === "string" &&
-    env.OPENCODE_CONFIG_CONTENT.trim()
-      ? undefined
-      : (buildOpencodeSpawnConfig(runtime, env, model) ?? undefined);
+  const config = buildOpencodeSpawnConfig(runtime, env, model) ?? undefined;
   if (config) {
     next.OPENCODE_CONFIG_CONTENT = config.configContent;
     next.OPENCODE_MODEL = config.model;

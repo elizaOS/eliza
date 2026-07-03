@@ -2,14 +2,14 @@
   "verdict": "pass",
   "usage": "front/side/rear modeling-view background plate for orange-black hard-plastic armor proportions; hair and glasses are excluded from generated geometry",
   "image": {
-    "path": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
+    "path": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
     "width": 1024,
     "height": 1536,
     "bytes": 1960756,
     "sha256": "4519b7bd3acef1551383d3171cc68dae7e183ec76d0f444c28416a6f249064d0"
   },
   "mesh": {
-    "path": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
+    "path": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
     "mesh_count": 1,
     "vertices": 299410,
     "faces": 493875,

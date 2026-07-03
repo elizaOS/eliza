@@ -37,8 +37,8 @@ describe("isSafeResetStateDir", () => {
 
   it("refuses a dir under home that lacks the allowed segment", () => {
     expect(isSafeResetStateDir("/home/user/Documents", home)).toBe(false);
-    expect(isSafeResetStateDir("/home/user/.local/state/milady", home)).toBe(
-      false,
-    );
+    expect(
+      isSafeResetStateDir("/home/user/.local/state/custom-app", home),
+    ).toBe(false);
   });
 });

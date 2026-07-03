@@ -8,12 +8,6 @@
       "reason": "Cross-client convergence e2e — needs two live browser contexts driving one agent with real BroadcastChannel sync; not run in the deterministic ui-smoke lane. Tracked in #10718."
     },
     {
-      "file": "packages/app/test/ui-smoke/multi-window-sync.spec.ts",
-      "title": "a synced preference toggled in window A propagates to window B",
-      "count": 1,
-      "reason": "Cross-window useTabSync/BroadcastChannel propagation e2e — needs two same-context pages; not run in the deterministic ui-smoke lane. Tracked in #10718."
-    },
-    {
       "file": "packages/cloud/api/test/e2e/group-g2-mcp-registry.test.ts",
       "title": "Group G2 — user MCP registry CRUD writes",
       "count": 1,

@@ -16,9 +16,12 @@ import { type ContentSafetyReview, contentSafetyService } from "../content-safet
 import { creditsService } from "../credits";
 import { secretsService } from "../secrets";
 import { googleAdsProvider } from "./providers/google";
+import { linkedinAdsProvider } from "./providers/linkedin";
 import { metaAdsProvider } from "./providers/meta";
+import { redditAdsProvider } from "./providers/reddit";
 import { snapAdsProvider } from "./providers/snap";
 import { tiktokAdsProvider } from "./providers/tiktok";
+import { xTwitterAdsProvider } from "./providers/x-twitter";
 import { DaypartingScheduleSchema } from "./schemas";
 import type {
   AdAccountCredentials,
@@ -54,6 +57,9 @@ const providers: Record<AdPlatform, AdProvider | null> = {
   google: googleAdsProvider,
   tiktok: tiktokAdsProvider,
   snap: snapAdsProvider,
+  "x-twitter": xTwitterAdsProvider,
+  reddit: redditAdsProvider,
+  linkedin: linkedinAdsProvider,
 };
 
 class AdvertisingService {

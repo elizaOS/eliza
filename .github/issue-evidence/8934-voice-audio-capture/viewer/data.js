@@ -2,9 +2,9 @@ window.SCENARIO_RUN_DATA = {
   schema: "eliza_scenario_run_viewer_v1",
   generatedAt: "2026-06-30T04:50:37.843Z",
   runDir:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a1e006784a3648282/.github/issue-evidence/8934-voice-audio-capture",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/agent-a1e006784a3648282/.github/issue-evidence/8934-voice-audio-capture",
   matrixPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a1e006784a3648282/.github/issue-evidence/8934-voice-audio-capture/matrix.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/agent-a1e006784a3648282/.github/issue-evidence/8934-voice-audio-capture/matrix.json",
   nativeJsonlPath: null,
   nativeManifestPath: null,
   report: {
@@ -78,7 +78,7 @@ window.SCENARIO_RUN_DATA = {
     totalCostUsd: 0,
   },
   trajectories: {
-    root: "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a1e006784a3648282/.github/issue-evidence/8934-voice-audio-capture/trajectories",
+    root: "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/agent-a1e006784a3648282/.github/issue-evidence/8934-voice-audio-capture/trajectories",
     files: [],
     summaries: [],
   },

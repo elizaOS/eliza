@@ -15,7 +15,7 @@ INFO: Configuring Android Instrumentation driver: android_instrumentation_runtim
 am_instrument_timeout: 31536000
 
 INFO: Configuring AndroidTestApkInstallerPlugin: apks_to_install {
-  apk_paths: "/home/shaw/milady/eliza-pr-10437-location/plugins/plugin-native-location/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-location-debug-androidTest.apk"
+  apk_paths: "/home/shaw/eliza/eliza-pr-10437-location/plugins/plugin-native-location/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-location-debug-androidTest.apk"
   install_options {
   }
   uninstall_after_test: true
@@ -23,10 +23,10 @@ INFO: Configuring AndroidTestApkInstallerPlugin: apks_to_install {
 instrumentation_target_package_id: "ai.eliza.plugins.location.test"
 
 INFO: No installables found in test fixture. Nothing to install.
-INFO: Installing [/home/shaw/milady/eliza-pr-10437-location/plugins/plugin-native-location/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-location-debug-androidTest.apk] on device emulator-5554.
+INFO: Installing [/home/shaw/eliza/eliza-pr-10437-location/plugins/plugin-native-location/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-location-debug-androidTest.apk] on device emulator-5554.
 INFO: Start logcat streaming.
 INFO: Running Android Instrumentation driver.
-INFO: Copying files from device to host: /sdcard/Android/media/ai.eliza.plugins.location.test/additional_test_output to /home/shaw/milady/eliza-pr-10437-location/plugins/plugin-native-location/android/build/outputs/connected_android_test_additional_output/debugAndroidTest/connected/JejuWallet_Pixel6(AVD) - 14
+INFO: Copying files from device to host: /sdcard/Android/media/ai.eliza.plugins.location.test/additional_test_output to /home/shaw/eliza/eliza-pr-10437-location/plugins/plugin-native-location/android/build/outputs/connected_android_test_additional_output/debugAndroidTest/connected/JejuWallet_Pixel6(AVD) - 14
 INFO: Stop logcat streaming.
 INFO: Uninstalling ai.eliza.plugins.location.test for device emulator-5554.
 INFO: Execute ai.eliza.plugins.location.LocationFixReaderDeviceStateInstrumentedTest.buildPositionResult_preservesAndroidLocationFields: PASSED

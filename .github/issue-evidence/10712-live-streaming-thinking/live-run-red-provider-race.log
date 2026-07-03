@@ -1,5 +1,5 @@
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/fervent-knuth-55d14b/packages/app-core
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/fervent-knuth-55d14b/packages/app-core
 
 [streaming-live][api] ◇ injected env (29) from ../../../.env // tip: ◈ secrets for agents [www.dotenvx.com]
 [streaming-live][api] [eliza-api] Listening on http://127.0.0.1:64093

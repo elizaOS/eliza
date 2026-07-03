@@ -7,6 +7,7 @@ import * as cloudFilesActual from "@/lib/services/cloud-files";
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const OTHER_ORG = "00000000-0000-4000-8000-0000000000cc";
 const USER = "00000000-0000-4000-8000-0000000000bb";
+const FILE_ID = "00000000-0000-4000-8000-0000000000dd";
 
 const requireUserOrApiKeyWithOrg = mock();
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -50,7 +51,7 @@ afterAll(() => {
 
 function fileRecord(overrides: Record<string, unknown> = {}) {
   return {
-    id: "file-1",
+    id: FILE_ID,
     organization_id: ORG,
     user_id: USER,
     api_key_id: null,
@@ -138,7 +139,7 @@ describe("/api/v1/files", () => {
       nextOffset: 6,
     });
     expect(body.files[0]).toMatchObject({
-      id: "file-1",
+      id: FILE_ID,
       filename: "hero.png",
       sizeBytes: 5,
       metadata: { folder: "campaigns" },
@@ -192,16 +193,20 @@ describe("/api/v1/files", () => {
 describe("/api/v1/files/:id", () => {
   test("gets a file only through the caller organization scope", async () => {
     get.mockImplementation(async (organizationId: string, id: string) => {
-      if (organizationId !== ORG || id !== "file-1") return undefined;
+      if (organizationId !== ORG || id !== FILE_ID) return undefined;
       return fileRecord();
     });
 
-    const res = await fileRouteWithParam.request("/file-1", {}, env() as never);
+    const res = await fileRouteWithParam.request(
+      `/${FILE_ID}`,
+      {},
+      env() as never,
+    );
 
     expect(res.status).toBe(200);
-    expect(get).toHaveBeenCalledWith(ORG, "file-1");
+    expect(get).toHaveBeenCalledWith(ORG, FILE_ID);
     const body = (await res.json()) as { file: { id: string } };
-    expect(body.file.id).toBe("file-1");
+    expect(body.file.id).toBe(FILE_ID);
   });
 
   test("returns 404 when a file belongs to another organization", async () => {
@@ -212,28 +217,43 @@ describe("/api/v1/files/:id", () => {
     });
     get.mockResolvedValue(undefined);
 
-    const res = await fileRouteWithParam.request("/file-1", {}, env() as never);
+    const res = await fileRouteWithParam.request(
+      `/${FILE_ID}`,
+      {},
+      env() as never,
+    );
 
     expect(res.status).toBe(404);
-    expect(get).toHaveBeenCalledWith(OTHER_ORG, "file-1");
+    expect(get).toHaveBeenCalledWith(OTHER_ORG, FILE_ID);
   });
 
   test("deletes through organization scope", async () => {
     deleteFile.mockResolvedValue(fileRecord());
 
     const res = await fileRouteWithParam.request(
-      "/file-1",
+      `/${FILE_ID}`,
       { method: "DELETE" },
       env() as never,
     );
 
     expect(res.status).toBe(200);
-    expect(deleteFile).toHaveBeenCalledWith(expect.any(Object), ORG, "file-1");
+    expect(deleteFile).toHaveBeenCalledWith(expect.any(Object), ORG, FILE_ID);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toEqual({
       success: true,
       deleted: true,
-      id: "file-1",
+      id: FILE_ID,
     });
+  });
+
+  test("rejects malformed file ids before service access", async () => {
+    const res = await fileRouteWithParam.request(
+      "/not-a-uuid",
+      {},
+      env() as never,
+    );
+
+    expect(res.status).toBe(400);
+    expect(get).not.toHaveBeenCalled();
   });
 });

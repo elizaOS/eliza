@@ -6,7 +6,6 @@
 
 import { Buffer } from "node:buffer";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Readable } from "node:stream";
 
 import type { IAgentRuntime, Route } from "@elizaos/core";
 import type { Hono } from "hono";
@@ -66,6 +65,44 @@ function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
     }
   }
   return out;
+}
+
+async function pipeWebBodyToNodeResponse(
+  body: ReadableStream<Uint8Array>,
+  res: ServerResponse,
+): Promise<void> {
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        if (!res.writableEnded) res.end();
+        return;
+      }
+      if (!res.write(Buffer.from(value))) {
+        await new Promise<void>((resolve, reject) => {
+          function cleanup() {
+            res.off("drain", onDrain);
+            res.off("error", onError);
+          }
+          function onDrain() {
+            cleanup();
+            resolve();
+          }
+          function onError(error: Error) {
+            cleanup();
+            reject(error);
+          }
+          res.once("drain", onDrain);
+          res.once("error", onError);
+        });
+      }
+    }
+  } catch {
+    if (!res.writableEnded) res.end();
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /**
@@ -155,12 +192,6 @@ export async function tryHandleHonoRuntimeRoute(options: {
   }
 
   // Stream the body through the Node response.
-  const nodeStream = Readable.fromWeb(
-    response.body as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
-  );
-  nodeStream.on("error", () => {
-    if (!res.writableEnded) res.end();
-  });
-  nodeStream.pipe(res);
+  void pipeWebBodyToNodeResponse(response.body, res);
   return true;
 }

@@ -9,9 +9,9 @@ Generating keyword code from JSON...
 
 Total: 239 entries, 6 locales
 
-  TypeScript (shared): /home/shaw/milady/eliza-pr-10374/packages/shared/src/i18n/generated/validation-keyword-data.ts
-  JavaScript (shared): /home/shaw/milady/eliza-pr-10374/packages/shared/src/i18n/generated/validation-keyword-data.js
-  TypeScript (core):   /home/shaw/milady/eliza-pr-10374/packages/core/src/i18n/generated/validation-keyword-data.ts
+  TypeScript (shared): /home/shaw/eliza/eliza-pr-10374/packages/shared/src/i18n/generated/validation-keyword-data.ts
+  JavaScript (shared): /home/shaw/eliza/eliza-pr-10374/packages/shared/src/i18n/generated/validation-keyword-data.js
+  TypeScript (core):   /home/shaw/eliza/eliza-pr-10374/packages/core/src/i18n/generated/validation-keyword-data.ts
 
 Done!
 ▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
@@ -99,7 +99,7 @@ end state: OPEN_HALF_OR_OVER
 — canary: injecting a one-frame wrong state —
 ✓ canary: flash detector FIRES on the injected bad frame
 ✓ canary: two-pills detector FIRES on the injected both-visible sample
-  🎬 recording → /home/shaw/milady/eliza-pr-10374/.github/issue-evidence/9142-frame-glitch/transition.gif
+  🎬 recording → /home/shaw/eliza/eliza-pr-10374/.github/issue-evidence/9142-frame-glitch/transition.gif
 
 PASS — 34 frames, peak pair-diff 59359, worst two-pills overlap 0.000
-evidence → /home/shaw/milady/eliza-pr-10374/.github/issue-evidence/9142-frame-glitch
+evidence → /home/shaw/eliza/eliza-pr-10374/.github/issue-evidence/9142-frame-glitch

@@ -203,6 +203,6 @@
   "release_rule": "No part-part overlap may grow beyond its assembled baseline anywhere on the explode trajectory (no pass-through). Residual overlaps at full explode are reported for review; same-axis stacked parts may legitimately remain nested if their assembled overlap does not grow.",
   "part_screenshots": {
     "part_shot_count": 132,
-    "contact_sheet": "/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png"
+    "contact_sheet": "/home/shaw/eliza/eliza/packages/research/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png"
   }
 }

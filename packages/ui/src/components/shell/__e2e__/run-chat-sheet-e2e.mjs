@@ -660,7 +660,8 @@ try {
     await p.close();
   }
 
-  // recording: mic active + interim transcript
+  // recording: mic active — NO interim transcript text; the pulsing chrome cue
+  // (grabber/pill bar) is the "audio is on" signal instead.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -672,8 +673,16 @@ try {
       "RECORDING: mic shows active (aria-pressed)",
     );
     assert(
-      (await p.getByText("tell me the plan for", { exact: false }).count()) > 0,
-      "LISTENING: interim transcript line is rendered",
+      (await p.getByText("tell me the plan for", { exact: false }).count()) === 0,
+      "LISTENING: interim transcript text is NOT rendered above the composer",
+    );
+    assert(
+      await p
+        .getByTestId("chat-sheet-grabber")
+        .locator("span")
+        .first()
+        .evaluate((el) => el.className.includes("animate-pulse")),
+      "LISTENING: the grabber bar pulses while the mic is hot",
     );
     await snap(p, "state-recording-listening");
     await p.close();

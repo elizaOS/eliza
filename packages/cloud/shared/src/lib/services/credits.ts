@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import {
+  appsRepository,
   type CreditPack,
   type CreditTransaction,
   creditPacksRepository,
@@ -1775,7 +1776,7 @@ export class CreditsService {
             reservationMetadata.settlement_marker === APP_CHAT_RESERVATION_SETTLEMENT_MARKER
           ) {
             await this.sweepAppChatReservation(
-              { id: row.id, description },
+              { id: row.id, description, organizationId: row.organization_id },
               reservationMetadata,
               stats,
             );
@@ -1848,7 +1849,7 @@ export class CreditsService {
    * so whichever writer runs second is a no-op.
    */
   private async sweepAppChatReservation(
-    row: { id: string; description: string },
+    row: { id: string; description: string; organizationId: string },
     reservationMetadata: Record<string, unknown>,
     stats: ReservationSweepStats,
   ): Promise<void> {
@@ -1876,6 +1877,60 @@ export class CreditsService {
       metadataNumber(reservationMetadata.estimated_cost) ??
       metadataNumber(reservationMetadata.estimatedCost) ??
       reservedBaseCost;
+    const storedMarkupPercentage =
+      metadataNumber(reservationMetadata.markupPercentage) ??
+      metadataNumber(reservationMetadata.markup_percentage);
+    const storedCreatorMarkup =
+      metadataNumber(reservationMetadata.creatorMarkup) ??
+      metadataNumber(reservationMetadata.creator_markup);
+    const markupPercentage =
+      storedMarkupPercentage ??
+      (storedCreatorMarkup !== null && reservedBaseCost > 0
+        ? (storedCreatorMarkup / reservedBaseCost) * 100
+        : 0);
+
+    const currentApp = await appsRepository.findById(appId);
+    const storedCreatorUserId =
+      typeof reservationMetadata.creatorUserId === "string"
+        ? reservationMetadata.creatorUserId
+        : typeof reservationMetadata.creator_user_id === "string"
+          ? reservationMetadata.creator_user_id
+          : null;
+    const appName =
+      typeof reservationMetadata.appName === "string" ? reservationMetadata.appName : appId;
+    const app =
+      currentApp ??
+      (storedCreatorUserId || markupPercentage === 0
+        ? {
+            name: appName,
+            created_by_user_id: storedCreatorUserId,
+            monetization_enabled: markupPercentage > 0,
+            platform_offset_amount: 0,
+            purchase_share_percentage: 0,
+            inference_markup_percentage: markupPercentage,
+            persistAppEarnings: false,
+          }
+        : null);
+    if (!app) {
+      stats.skipped++;
+      logger.error(
+        "[Credits] Stale app-chat reservation is missing app accounting inputs — skipping",
+        {
+          reservationTransactionId: row.id,
+          appId,
+          hasCreatorUserId: storedCreatorUserId !== null,
+          markupPercentage,
+        },
+      );
+      return;
+    }
+    const chargeTimeApp = {
+      ...app,
+      monetization_enabled: markupPercentage > 0,
+      platform_offset_amount: 0,
+      purchase_share_percentage: 0,
+      inference_markup_percentage: markupPercentage,
+    };
 
     // Lazy import: app-credits statically imports this module, so a static
     // import here would create a module cycle.
@@ -1883,10 +1938,15 @@ export class CreditsService {
     const result = await appCreditsService.reconcileCredits({
       appId,
       userId,
+      organizationId: row.organizationId,
       estimatedBaseCost: reservedBaseCost,
       actualBaseCost: assumedActualBaseCost,
       description: row.description,
-      metadata: { settlement_source: "stale_reservation_sweep" },
+      metadata: {
+        settlement_source: "stale_reservation_sweep",
+        charge_time_markup_percentage: markupPercentage,
+      },
+      app: chargeTimeApp,
       reservationTransactionId: row.id,
     });
 

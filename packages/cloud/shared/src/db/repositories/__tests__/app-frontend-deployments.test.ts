@@ -28,7 +28,12 @@ import { and, eq } from "drizzle-orm";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../../lib/storage/r2-runtime-binding";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { appFrontendDeployments } from "../../schemas/app-frontend-deployments";
-import { appDeploymentStatusEnum, apps, userDatabaseStatusEnum } from "../../schemas/apps";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  userDatabaseStatusEnum,
+} from "../../schemas/apps";
 import { organizations } from "../../schemas/organizations";
 import { users } from "../../schemas/users";
 import { appFrontendDeploymentsRepository } from "../app-frontend-deployments";
@@ -113,6 +118,7 @@ beforeAll(async () => {
       apps,
       appFrontendDeployments,
       appDeploymentStatusEnum,
+      appReviewStatusEnum,
       userDatabaseStatusEnum,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);

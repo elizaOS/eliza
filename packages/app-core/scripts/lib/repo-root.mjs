@@ -78,7 +78,7 @@ export function resolveRepoRootFromImportMeta(
 
 // The eliza workspace itself: package.json + packages/app-core + packages/agent
 // + packages/scripts. Unlike resolveRepoRoot, this does NOT defer to an outer
-// consumer container when eliza is nested as a subrepo (milady/eliza local mode).
+// consumer container when eliza is nested as a subrepo for local integration.
 // Use it to locate eliza-internal `packages/scripts/*`.
 function hasElizaWorkspaceShape(dir) {
   return (

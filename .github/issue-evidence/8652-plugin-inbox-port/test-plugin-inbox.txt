@@ -1,5 +1,5 @@
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/plugins/plugin-inbox
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/plugins/plugin-inbox
 
 
  Test Files  18 passed | 1 skipped (19)

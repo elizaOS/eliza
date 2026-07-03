@@ -1,7 +1,7 @@
 03-11 03:49:42.929 I/SatelliteAppTracker( 2466): onPackageModified : ai.eliza.plugins.networkpolicy.test
 03-11 03:49:42.967 I/Finsky  ( 7317): [2] Received an install/uninstall event for package ai.eliza.plugins.networkpolicy.test
 03-11 03:49:43.099 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.networkpolicy.test appid=10338 user=0: start instr
-03-11 03:49:43.105 I/AppsFilter( 1676): interaction: PackageSetting{5c84a34 ai.milady.milady/10323} -> PackageSetting{2b7e2af ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
+03-11 03:49:43.105 I/AppsFilter( 1676): interaction: PackageSetting{5c84a34 ai.elizaos.app/10323} -> PackageSetting{2b7e2af ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
 03-11 03:49:43.105 I/AppsFilter( 1676): interaction: PackageSetting{c8dcdd2 app.eliza/10324} -> PackageSetting{2b7e2af ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
 03-11 03:49:43.105 I/AppsFilter( 1676): interaction: PackageSetting{f82cea3 com.google.android.microdroid.empty_payload/10404} -> PackageSetting{2b7e2af ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
 03-11 03:49:43.122 I/ActivityManager( 1676): Start proc 11107:ai.eliza.plugins.networkpolicy.test/u0a338 for added application ai.eliza.plugins.networkpolicy.test
@@ -34,7 +34,7 @@
 03-11 03:49:44.655 I/ActivityManager( 1676): Killing 11107:ai.eliza.plugins.networkpolicy.test/u0a338 (adj 0): stop ai.eliza.plugins.networkpolicy.test due to finished inst
 03-11 03:49:44.687 V/ActivityManager( 1676): Got obituary of 11107:ai.eliza.plugins.networkpolicy.test
 03-11 03:49:45.073 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.networkpolicy.test appid=10338 user=-1: deletePackageX
-03-11 03:49:45.073 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{cb835f1 ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
+03-11 03:49:45.073 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{cb835f1 ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
 03-11 03:49:45.073 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{cb835f1 ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
 03-11 03:49:45.073 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{cb835f1 ai.eliza.plugins.networkpolicy.test/10338} BLOCKED
 03-11 03:49:45.131 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.eliza.plugins.networkpolicy.test from 0

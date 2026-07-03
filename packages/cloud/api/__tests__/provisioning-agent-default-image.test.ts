@@ -26,6 +26,11 @@ const mockCreateAgent = mock(async () => ({
 
 const mockEnqueueAgentProvision = mock(async () => ({}));
 const mockListByOrganization = mock(async () => []);
+const mockCheckAgentCreditGate = mock(async () => ({
+  allowed: true as boolean,
+  balance: 10,
+  error: undefined as string | undefined,
+}));
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
@@ -45,6 +50,10 @@ mock.module("@/lib/services/eliza-app", () => ({
         : null,
     ),
   },
+}));
+
+mock.module("@/lib/services/agent-billing-gate", () => ({
+  checkAgentCreditGate: mockCheckAgentCreditGate,
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
@@ -71,15 +80,6 @@ mock.module("@/lib/utils/logger", () => ({
     warn: mock(),
     error: mock(),
   },
-}));
-
-const mockCheckAgentCreditGate = mock(async () => ({
-  allowed: true as boolean,
-  balance: 10,
-  error: undefined as string | undefined,
-}));
-mock.module("@/lib/services/agent-billing-gate", () => ({
-  checkAgentCreditGate: mockCheckAgentCreditGate,
 }));
 
 // Import after all mocks are in place.

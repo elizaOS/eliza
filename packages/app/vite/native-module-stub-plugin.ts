@@ -761,6 +761,22 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
+      // @elizaos/plugin-agent-orchestrator — server-only orchestrator. The
+      // agent runtime's api/server-helpers-swarm.ts statically imports
+      // sanitizeCompletionRelay, which the dist barrel pulls into the
+      // renderer graph; the export must exist for rollup's named-import scan.
+      if (
+        strippedId === "@elizaos/plugin-agent-orchestrator" ||
+        strippedId.startsWith("@elizaos/plugin-agent-orchestrator/")
+      ) {
+        return [
+          "const noop = () => undefined;",
+          "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
+          "export const sanitizeCompletionRelay = (text) => (text ? String(text) : '');",
+          "export default proxy;",
+        ].join("\n");
+      }
+
       if (strippedId === "@protobufjs/inquire") {
         return [
           "function inquire() { return null; }",

@@ -1,4 +1,4 @@
-[harness] lib=/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib
+[harness] lib=/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib
 [harness] abi=? llmStreamSupported=true llmMtpSupported=true tokenizeSupported=true
 [harness] fused ctx created over bundle root /tmp/vision/gemma4/bundles/2b
 
@@ -2244,7 +2244,7 @@ set_embeddings: value = 0
 
 [TOTAL] drafted=38 accepted=32 acceptance=0.842
 [harness] clean shutdown
-/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-metal/ggml-metal-device.m:637: GGML_ASSERT([rsets->data count] == 0) failed
+/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-metal/ggml-metal-device.m:637: GGML_ASSERT([rsets->data count] == 0) failed
 WARNING: Using native backtrace. Set GGML_BACKTRACE_LLDB for more info.
 WARNING: GGML_BACKTRACE_LLDB may cause native MacOS Terminal.app to crash.
 See: https://github.com/ggml-org/llama.cpp/pull/17869

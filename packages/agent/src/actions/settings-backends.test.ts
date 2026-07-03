@@ -1,6 +1,7 @@
-import { satisfiesRoleGate } from "@elizaos/core";
+import { ModelType, satisfiesRoleGate } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  hasLoadedTextProvider,
   normalizeCodingBackend,
   readBackendRouting,
   settingsAction,
@@ -111,5 +112,56 @@ describe("readBackendRouting", () => {
       },
     });
     expect(routing.allow).toEqual(["claude", "codex"]);
+  });
+
+  it("preserves an explicitly empty allow lock-list", () => {
+    const routing = readBackendRouting({
+      env: { ELIZA_BACKEND_ROUTING: { coding: { allow: [] } } },
+    });
+    expect(routing.allow).toEqual([]);
+  });
+});
+
+describe("hasLoadedTextProvider", () => {
+  it("detects registered text-generation handlers by provider", () => {
+    const runtime = {
+      models: new Map([
+        [ModelType.TEXT_LARGE, [{ provider: "anthropic" }]],
+        [ModelType.TEXT_EMBEDDING, [{ provider: "cerebras" }]],
+      ]),
+    };
+
+    expect(hasLoadedTextProvider(runtime as never, "anthropic")).toBe(true);
+    expect(hasLoadedTextProvider(runtime as never, "cerebras")).toBe(false);
+    expect(hasLoadedTextProvider({} as never, "anthropic")).toBe(false);
+  });
+});
+
+describe("set_backend allow-list enforcement", () => {
+  it("does not persist a backend outside the effective coding allow-list", async () => {
+    const runtime = {
+      character: {
+        settings: {
+          routing: { coding: { allow: ["claude"] } },
+        },
+      },
+    };
+
+    const result = await settingsAction.handler(
+      runtime as never,
+      { entityId: "owner" } as never,
+      undefined,
+      { parameters: { action: "set_backend", backend: "opencode" } } as never,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("SETTINGS_BACKEND_DISALLOWED");
+    expect(
+      (
+        runtime.character.settings.routing.coding as {
+          default?: string;
+        }
+      ).default,
+    ).toBeUndefined();
   });
 });

@@ -1,0 +1,45 @@
+gemma4-assistant E4B drafter (f16, converted from google/gemma-4-E4B-it-assistant)
+target: /tmp/vision/gemma4/bundles/4b/text/eliza-1-4b-128k.gguf (eliza-1-4b, gemma4, n_embd 2560, Q8_0)
+host: Apple M4 Max, Metal, llama-server (fork build-desktop-metal @ 58c0391eb), greedy (temperature 0), n_predict 96, --cache-ram 0
+
+=== 3-prompt set (same prompts/methodology as the published 2b numbers) ===
+
+baseline (no drafter):
+  counting-to-twenty : predicted_n=41 tok/s= 54.62
+  quick-brown-fox    : predicted_n= 8 tok/s= 69.51
+  weekdays           : predicted_n=21 tok/s= 53.51
+
+-md drafter --spec-type draft-mtp --spec-draft-n-max 1 (catalog shipped window):
+  counting-to-twenty : predicted_n=41 tok/s= 87.02  draft_n=20 accepted=20  (1.59x, 100%)
+  quick-brown-fox    : predicted_n= 8 tok/s= 77.47  draft_n= 5 accepted= 3  (1.11x,  60%)
+  weekdays           : predicted_n=21 tok/s= 68.92  draft_n=13 accepted= 7  (1.29x,  54%)
+
+aggregate acceptance: 30/38 = 0.79 ; mean tok/s speedup ~1.33x
+greedy outputs byte-identical to baseline on all three prompts
+(server lane emits "seventeen" correctly — the fused-lane tie-flip is
+batched-verify numerics, not a drafter defect).
+
+=== extended 8-prompt set (structured + free-form prose) ===
+
+  prompt                baseline     MTP          draft_n accepted acc    speedup
+  counting-to-twenty    57.26 tok/s  77.44 tok/s  20      20       1.000  1.35x
+  quick-brown-fox       73.36        64.98         5       3       0.600  0.89x
+  weekdays              60.43        64.55        13       7       0.538  1.07x
+  twelve-months         55.76        74.17        18      12       0.667  1.33x
+  why-sky-is-blue       58.89        57.08        35      15       0.429  0.97x
+  autumn-haiku          56.37        53.96        16       5       0.313  0.96x
+  eight-planets         52.07        70.13        35      29       0.829  1.35x
+  hash-table-summary    51.53        59.26        30      10       0.333  1.15x
+
+aggregate acceptance: 101/172 = 0.587
+aggregate decode speedup (sum tokens / sum decode time): 279 tok in 5.01s -> 4.30s = 1.17x
+
+Read: the E4B drafter is strongly positive on structured/list-like generations
+(0.67-1.0 acceptance, 1.3-1.4x) and roughly break-even on short free-form prose
+at draft window 1. Net-positive in aggregate on both prompt sets. Same shape as
+the 2b tier, whose published 0.84 figure is on the 3-prompt structured set.
+
+Full logs: server-baseline.log / server-mtp.log (3-prompt),
+server-baseline-8.log / server-mtp-8.log (8-prompt), prompts.txt.
+"common_speculative_init: adding speculative implementation 'draft-mtp'"
+present in both MTP server logs.

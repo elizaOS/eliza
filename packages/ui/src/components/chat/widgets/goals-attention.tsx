@@ -153,7 +153,9 @@ function goalsEqual(a: AttentionGoal[] | null, b: AttentionGoal[]): boolean {
  * GoalsView reads and floats itself up via the home-attention store when any
  * goal is at risk or needs attention. Tapping the card opens the Goals view.
  */
-export function GoalsAttentionWidget(_props: Partial<WidgetProps>) {
+export function GoalsAttentionWidget({
+  spanClassName = "col-span-2 row-span-1",
+}: Partial<WidgetProps>) {
   // `null` distinguishes "first load still pending" from "loaded, empty" so the
   // home surface renders nothing (not a card) until we actually know the data.
   const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
@@ -202,16 +204,18 @@ export function GoalsAttentionWidget(_props: Partial<WidgetProps>) {
     urgent.reviewState === "at_risk" ? "at risk" : "needs attention";
 
   return (
-    <HomeWidgetCard
-      icon={<Target />}
-      label="Goals"
-      value={urgent.title}
-      badge={count > 1 ? `${count}` : undefined}
-      tone={tone}
-      testId="widget-goals-attention"
-      ariaLabel={`Goals: ${count} need attention, top "${urgent.title}" ${status}. Open Goals.`}
-      onActivate={() => nav.openView("/goals", "goals")}
-    />
+    <div className={`min-w-0 ${spanClassName}`}>
+      <HomeWidgetCard
+        icon={<Target />}
+        label="Goals"
+        value={urgent.title}
+        badge={count > 1 ? `${count}` : undefined}
+        tone={tone}
+        testId="widget-goals-attention"
+        ariaLabel={`Goals: ${count} need attention, top "${urgent.title}" ${status}. Open Goals.`}
+        onActivate={() => nav.openView("/goals", "goals")}
+      />
+    </div>
   );
 }
 

@@ -12,6 +12,7 @@
 
 import { and, asc, desc, eq, gt, gte, isNull, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
+import { adAccounts } from "../schemas/ad-accounts";
 import { type AdCampaign, adCampaigns } from "../schemas/ad-campaigns";
 import { adCreatives } from "../schemas/ad-creatives";
 import {
@@ -124,10 +125,12 @@ export class AdSlotsRepository {
         metadata: adCampaigns.metadata,
       })
       .from(adCampaigns)
+      .innerJoin(adAccounts, eq(adAccounts.id, adCampaigns.ad_account_id))
       .innerJoin(adCreatives, eq(adCreatives.campaign_id, adCampaigns.id))
       .where(
         and(
           eq(adCampaigns.status, "active"),
+          eq(adAccounts.status, "active"),
           eq(adCreatives.status, "active"),
           sql`${adCampaigns.organization_id} <> ${input.publisherOrgId}`,
           gt(sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`, sql`0`),
@@ -192,6 +195,12 @@ export class AdSlotsRepository {
           .where(
             and(
               eq(adCampaigns.id, input.campaignId),
+              eq(adCampaigns.status, "active"),
+              sql`exists (
+                select 1 from ${adAccounts}
+                where ${adAccounts.id} = ${adCampaigns.ad_account_id}
+                  and ${adAccounts.status} = 'active'
+              )`,
               gte(
                 sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`,
                 sql`${price}`,

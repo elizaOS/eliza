@@ -4,7 +4,7 @@
 03-11 03:42:48.858 I/Finsky  ( 7317): [313] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [ai.eliza.plugins.appblocker.test]
 03-11 03:42:48.983 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.appblocker.test appid=10337 user=0: start instr
 03-11 03:42:48.994 I/Finsky  ( 7317): [2] Received an install/uninstall event for package ai.eliza.plugins.appblocker.test
-03-11 03:42:49.012 I/AppsFilter( 1676): interaction: PackageSetting{3d9dc9b ai.milady.milady/10323} -> PackageSetting{f749774 ai.eliza.plugins.appblocker.test/10337} BLOCKED
+03-11 03:42:49.012 I/AppsFilter( 1676): interaction: PackageSetting{3d9dc9b ai.elizaos.app/10323} -> PackageSetting{f749774 ai.eliza.plugins.appblocker.test/10337} BLOCKED
 03-11 03:42:49.012 I/AppsFilter( 1676): interaction: PackageSetting{702d011 ai.eliza.plugins.mobilesignals.test/10335} -> PackageSetting{f749774 ai.eliza.plugins.appblocker.test/10337} BLOCKED
 03-11 03:42:49.012 I/AppsFilter( 1676): interaction: PackageSetting{5bdf576 app.eliza/10324} -> PackageSetting{f749774 ai.eliza.plugins.appblocker.test/10337} BLOCKED
 03-11 03:42:49.012 I/AppsFilter( 1676): interaction: PackageSetting{1efa777 com.google.android.microdroid.empty_payload/10404} -> PackageSetting{f749774 ai.eliza.plugins.appblocker.test/10337} BLOCKED
@@ -33,7 +33,7 @@
 03-11 03:42:50.453 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.appblocker.test appid=10337 user=0: finished inst
 03-11 03:42:50.454 I/ActivityManager( 1676): Killing 10371:ai.eliza.plugins.appblocker.test/u0a337 (adj 0): stop ai.eliza.plugins.appblocker.test due to finished inst
 03-11 03:42:50.502 V/ActivityManager( 1676): Got obituary of 10371:ai.eliza.plugins.appblocker.test
-03-11 03:42:50.847 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{a56c946 ai.eliza.plugins.appblocker.test/10337} BLOCKED
+03-11 03:42:50.847 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{a56c946 ai.eliza.plugins.appblocker.test/10337} BLOCKED
 03-11 03:42:50.847 I/AppsFilter( 1676): interaction: PackageSetting{bd5ff6 ai.eliza.plugins.mobilesignals.test/10335} -> PackageSetting{a56c946 ai.eliza.plugins.appblocker.test/10337} BLOCKED
 03-11 03:42:50.847 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{a56c946 ai.eliza.plugins.appblocker.test/10337} BLOCKED
 03-11 03:42:50.847 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{a56c946 ai.eliza.plugins.appblocker.test/10337} BLOCKED

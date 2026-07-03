@@ -193,7 +193,9 @@ function financesEqual(
   });
 }
 
-function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
+function FinancesAlertsWidget({
+  spanClassName = "col-span-2 row-span-1",
+}: Partial<WidgetProps>) {
   const [data, setData] = useState<FinancesWidgetData | null>(null);
   const nav = useWidgetNavigation();
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
@@ -265,31 +267,35 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
   if (overdrawn) {
     const amount = formatMinor(data.netBalanceMinor, data.currency);
     return (
-      <HomeWidgetCard
-        icon={<Wallet />}
-        label="Bills"
-        value={amount}
-        badge="Overdrawn"
-        tone="danger"
-        testId="chat-widget-finances-alerts"
-        ariaLabel={`Bills: account overdrawn ${amount}. Open Finances.`}
-        onActivate={() => nav.openView("/finances", "finances")}
-      />
+      <div className={`min-w-0 ${spanClassName}`}>
+        <HomeWidgetCard
+          icon={<Wallet />}
+          label="Bills"
+          value={amount}
+          badge="Overdrawn"
+          tone="danger"
+          testId="chat-widget-finances-alerts"
+          ariaLabel={`Bills: account overdrawn ${amount}. Open Finances.`}
+          onActivate={() => nav.openView("/finances", "finances")}
+        />
+      </div>
     );
   }
   const soonest = dueSoon[0];
   return (
-    <HomeWidgetCard
-      icon={<Wallet />}
-      label="Bills"
-      value={soonest.label}
-      meta={dueInLabel(soonest.nextChargeAt as string, now)}
-      badge={dueSoon.length > 1 ? `${dueSoon.length} due` : undefined}
-      tone="warn"
-      testId="chat-widget-finances-alerts"
-      ariaLabel={`Bills: ${dueSoon.length} due this week, next ${soonest.label} ${dueInLabel(soonest.nextChargeAt as string, now)}. Open Finances.`}
-      onActivate={() => nav.openView("/finances", "finances")}
-    />
+    <div className={`min-w-0 ${spanClassName}`}>
+      <HomeWidgetCard
+        icon={<Wallet />}
+        label="Bills"
+        value={soonest.label}
+        meta={dueInLabel(soonest.nextChargeAt as string, now)}
+        badge={dueSoon.length > 1 ? `${dueSoon.length} due` : undefined}
+        tone="warn"
+        testId="chat-widget-finances-alerts"
+        ariaLabel={`Bills: ${dueSoon.length} due this week, next ${soonest.label} ${dueInLabel(soonest.nextChargeAt as string, now)}. Open Finances.`}
+        onActivate={() => nav.openView("/finances", "finances")}
+      />
+    </div>
   );
 }
 

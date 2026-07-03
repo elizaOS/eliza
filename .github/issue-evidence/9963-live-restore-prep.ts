@@ -24,7 +24,7 @@ const worldId = stringToUuid(`scenario-runner-world:${scenarioId}`);
 
 function applyEvidenceEnv(localRootKey: string): void {
   process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_SCENARIO_PGLITE_DIR = pgliteDir;
   process.env.ELIZA_SAVE_TRAJECTORIES = "1";
   process.env.ELIZA_KMS_BACKEND = "local";

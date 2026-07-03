@@ -23,7 +23,7 @@ Implemented behavior:
 
 Base commit: `01b3ca36a9 test(bun-runtime): extract + device-test the agent-service selection rule (#9967) (#10466)`
 
-Commands run from `/home/shaw/milady/eliza-issue-10450-app-cap`:
+Commands run from `/home/shaw/eliza/eliza-issue-10450-app-cap`:
 
 ```bash
 bun run install:light

@@ -41,19 +41,27 @@ The desktop OpenXR runtime (the end-user dependency below) is detected + install
 - OpenXR runtime detector — **9/9** (`plugin-facewear`): Linux active/stale/XDG/env, Windows registry, macOS-native, parse/identify.
 - Full `packages/ui` spatial suite, no regression.
 
-## NOT yet validated (#10722 — do not claim otherwise)
+## Known gap (#10722) — no production UI caller yet
 
-- **The immersive render path (`enterImmersiveScene` / `enterImmersiveFromSpecs`)
-  is not covered end-to-end.** The only committed test exercises the mocked
-  `navigator.xr` availability contract; there is **no** IWER-emulator run that
-  opens an `immersive-vr` session and reads back the session framebuffer, and no
-  `setHandPose`/gaze interaction test. `enterImmersiveScene` also has **no
-  production caller** today. Before advertising immersive as shipped, either add
-  the framebuffer-readback + hand-pose e2e (IWER, headless chromium, WebGL2) or
-  wire/remove the unused entry points.
+The immersive render path **is** now covered end-to-end: a committed, CI-gated
+IWER-emulator run opens an `immersive-vr` session and reads the session
+framebuffer back with `gl.readPixels()` (see *Validated* above,
+`test:immersive-e2e`), and hand/gaze input is driven through the live IWER
+pipeline (`plugins/plugin-xr/simulator/e2e/{hand,gaze}-input.spec.ts`, real
+`setHandPose`/select asserts). The earlier "not validated" note is obsolete.
+
+What is still **not** shipped: `enterImmersiveScene` /
+`enterImmersiveFromSpecs` have **no production UI caller**. They are public
+`@elizaos/ui/spatial` exports, exercised by the immersive e2e, but nothing in
+the app yet renders an "enter immersive" affordance. That surface is
+hardware-gated — it needs a headset plus an active OpenXR runtime, neither
+present in CI — and lands with the native desktop-immersive work below (the CSS
+`XRSpatialScene` deliberately scopes the WebGL headset path out). **Do not claim
+immersive is *shipped to users*** until a real UI entry point exists; the render
+path itself is proven.
 
 ## Remaining to ship desktop-immersive — all three done ✅
 
 1. **OpenXR runtime** end-user dependency on Linux/Windows — ✅ detected + installed via **plugin-facewear** (`SETUP_XR_RUNTIME`, `GET /api/facewear/xr-runtime`, `setup:openxr`, FacewearView "vr/ar runtime" row). The user still installs Monado/SteamVR once; the plugin guides + automates the no-root path.
 2. **Electrobun WebKit `permission-request` grant** — ✅ merged in our fork (`elizaOS/electrobun#1`); lands here via the `upstreams/electrobun` submodule bump (#10095).
-3. **DOM→texture panel content** — code exists (`enterImmersiveScene` textures each panel from its rasterized DOM; `enterImmersiveFromSpecs` is the one-call author→immersive bridge) but is **not yet validated end-to-end and has no production caller** — see "NOT yet validated" above (#10722).
+3. **DOM→texture panel content** — `enterImmersiveScene` textures each panel from its rasterized canvas; `enterImmersiveFromSpecs` is the one-call author→immersive bridge. **Validated end-to-end** by the committed immersive framebuffer-readback e2e (see *Validated*). The one remaining gap is a **production UI caller** — see "Known gap" above (#10722).

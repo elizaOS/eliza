@@ -88,7 +88,7 @@ export function CloudOverviewSection() {
         })}
         description={t("settings.cloudOverview.description", {
           defaultValue:
-            "Keep Milady local-first, then add hosted services when you want always-on agents, managed connectors, publishing, and account-backed inference.",
+            "Keep Eliza local-first, then add hosted services when you want always-on agents, managed connectors, publishing, and account-backed inference.",
         })}
         action={
           <Button
@@ -122,7 +122,7 @@ export function CloudOverviewSection() {
           })}
           description={t("settings.cloudOverview.localModeDescription", {
             defaultValue: elizaCloudConnected
-              ? "Milady can use Cloud account features while keeping this local runtime available."
+              ? "Eliza can use Cloud account features while keeping this local runtime available."
               : "This build keeps agent runtime and local connectors on your machine unless you choose to connect Cloud.",
           })}
         />
