@@ -3,6 +3,12 @@ import type { AgentContext } from "./contexts";
 import type { JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
+/**
+ * Scheduling priority for a single-lane local inference request (#11914).
+ * The gate honoring it lives in `utils/inference-priority-gate.ts`.
+ */
+export type LocalInferencePriority = "interactive" | "background";
+
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
 
 /**
@@ -510,6 +516,21 @@ export interface GenerateTextParams {
 	 * unset or set it to `"internal"`.
 	 */
 	voiceOutput?: "user-visible" | "internal";
+	/**
+	 * Scheduling priority on single-lane local inference backends (#11914).
+	 * On-device text runs one decode at a time; `"background"` marks deferred
+	 * autonomous work (scheduled prompt tasks, prompt-batcher drains) so the
+	 * local lane can (a) dispatch waiting interactive turns first, (b) bound
+	 * how long the job waits for the lane before failing back to its
+	 * scheduler, and (c) cap the job's `maxTokens`/prompt size by device RAM
+	 * class. Unset means `"interactive"` (user-facing turns are never
+	 * deprioritized or clamped). Cloud adapters ignore this field.
+	 *
+	 * Producers: `promptRunnerTaskWorker`, `PromptDispatcher` (prompt batcher).
+	 * Consumers: the mobile/AOSP local text handlers via
+	 * `InferencePriorityGate` (`utils/inference-priority-gate.ts`).
+	 */
+	priority?: LocalInferencePriority;
 	user?: string;
 	/**
 	 * Provider-neutral system instruction for text-generation calls. When omitted,

@@ -45,6 +45,23 @@ describe("prompt-runner TaskWorker", () => {
 		expect(params.prompt).toContain("send the morning summary");
 	});
 
+	it("marks the scheduled generation background so single-lane local backends deprioritize and budget it (#11914)", async () => {
+		const useModel = vi.fn(async () => "ok");
+		const runtime = runtimeWithModel(useModel as IAgentRuntime["useModel"]);
+
+		await promptRunnerTaskWorker.execute(
+			runtime,
+			{},
+			makeTask("summarize the day"),
+		);
+
+		const [, params] = useModel.mock.calls[0] as [
+			string,
+			{ priority?: string },
+		];
+		expect(params.priority).toBe("background");
+	});
+
 	it("throws if metadata.prompt is missing", async () => {
 		const useModel = vi.fn();
 		const runtime = runtimeWithModel(useModel as IAgentRuntime["useModel"]);

@@ -54,7 +54,13 @@ export const promptRunnerTaskWorker: TaskWorker = {
 
 		const composed = PROMPT_RUNNER_SYSTEM_PROMPT.replace("{{prompt}}", prompt);
 
-		await runtime.useModel(ModelType.TEXT_LARGE, { prompt: composed });
+		// Scheduled jobs are background work: on single-lane local backends this
+		// lets interactive chat turns jump the model lane and caps the job by the
+		// device-class background budget (#11914).
+		await runtime.useModel(ModelType.TEXT_LARGE, {
+			prompt: composed,
+			priority: "background",
+		});
 		return undefined;
 	},
 };

@@ -48,10 +48,14 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
+  applyBackgroundInferenceBudget,
   type GenerateTextParams,
+  getInferencePriorityGate,
   type IAgentRuntime,
+  InferenceBackgroundWaitTimeoutError,
   logger,
   ModelType,
+  resolveBackgroundInferenceBudget,
   resolveStateDir,
   type TextEmbeddingParams,
   type TextToSpeechParams,
@@ -857,6 +861,12 @@ function classifyLocalError(err: unknown): {
     if (name === "AbortError") {
       return { fallback: false, reason: "local-aborted-pre-completion" };
     }
+    if (err instanceof InferenceBackgroundWaitTimeoutError) {
+      // The local lane was busy for the whole bounded background wait
+      // (#11914) — the job never started locally, so a configured cloud
+      // handler may run it instead.
+      return { fallback: true, reason: "local-overloaded" };
+    }
     if (
       msg.includes("no bundled") ||
       msg.includes("not installed in this build") ||
@@ -1604,9 +1614,76 @@ function makeLoaderLifecycle(loader: AospLoader): {
 }
 
 /**
+ * Route one text generation through the process-wide interactive-over-
+ * background lane (elizaOS/eliza#11914). The fused context runs one decode at
+ * a time, so ALL text generates (model load included — a swap touches the same
+ * native lane) acquire the shared {@link getInferencePriorityGate} first:
+ * interactive turns dispatch ahead of queued background jobs; background jobs
+ * run only when the lane is idle, wait at most the RAM-class bound before
+ * failing back to their scheduler, and are clamped to the RAM-class budget
+ * (`maxTokens` + prompt size) so one autonomous job cannot hold the lane for
+ * multi-minute stretches on a constrained phone.
+ *
+ * Exported for unit tests; production callers go through the registered
+ * TEXT_SMALL / TEXT_LARGE handlers.
+ */
+export async function generateOnPriorityLane(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+  params: GenerateTextParams,
+): Promise<string> {
+  const priority = params.priority ?? "interactive";
+  const args = buildGenerateArgsFromParams(params);
+  let lockWaitMs: number | undefined;
+  if (priority === "background") {
+    const budget = resolveBackgroundInferenceBudget(
+      classifyInferenceRamClass(),
+    );
+    const clampedArgs = applyBackgroundInferenceBudget(
+      { prompt: args.prompt, maxTokens: args.maxTokens },
+      budget,
+    );
+    if (clampedArgs.clamped.length > 0) {
+      logger.info(
+        `[aosp-local-inference] background generate clamped to the device-class budget: ${clampedArgs.clamped.join(", ")} (#11914)`,
+      );
+    }
+    args.prompt = clampedArgs.prompt;
+    args.maxTokens = clampedArgs.maxTokens;
+    lockWaitMs = budget.lockWaitMs;
+  }
+  return getInferencePriorityGate().runExclusive(
+    {
+      priority,
+      label: `aosp-text (${args.prompt.length} chars, maxTokens=${args.maxTokens ?? "default"})`,
+      ...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
+      ...(params.signal ? { signal: params.signal } : {}),
+    },
+    async () => {
+      writeAospLlamaDebugLog("bootstrap:generate:ensureChat:start", {
+        maxTokens: args.maxTokens ?? null,
+        priority,
+        hasGrammar:
+          typeof args.grammar === "string" && args.grammar.trim().length > 0,
+      });
+      await lifecycle.ensureChatLoaded();
+      writeAospLlamaDebugLog("bootstrap:generate:ensureChat:done");
+      writeAospLlamaDebugLog("bootstrap:generate:start", {
+        promptChars: args.prompt.length,
+        maxTokens: args.maxTokens ?? null,
+        priority,
+        grammarBytes: args.grammar?.trim().length ?? 0,
+      });
+      return loader.generate(args);
+    },
+  );
+}
+
+/**
  * Internal: attempt local generate and classify the outcome explicitly.
  * The wrapper at priority -1 consumes this and decides whether to forward
- * to a cloud handler.
+ * to a cloud handler. Load errors and generate errors classify through the
+ * same {@link classifyLocalError} table.
  */
 async function tryLocalGenerate(
   loader: AospLoader,
@@ -1614,20 +1691,7 @@ async function tryLocalGenerate(
   params: GenerateTextParams,
 ): Promise<LocalGenerateOutcome> {
   try {
-    await lifecycle.ensureChatLoaded();
-  } catch (err) {
-    const cls = classifyLocalError(err);
-    return cls.fallback
-      ? {
-          kind: "fallback",
-          reason: cls.reason,
-          cause: err instanceof Error ? err : undefined,
-        }
-      : Promise.reject(err);
-  }
-  const args = buildGenerateArgsFromParams(params);
-  try {
-    const text = await loader.generate(args);
+    const text = await generateOnPriorityLane(loader, lifecycle, params);
     return { kind: "ok", text };
   } catch (err) {
     const cls = classifyLocalError(err);
@@ -1646,28 +1710,14 @@ function makeGenerateHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
 ): GenerateTextHandler {
-  return async (_runtime, params) => {
-    writeAospLlamaDebugLog("bootstrap:generate:ensureChat:start", {
-      maxTokens: params.maxTokens ?? null,
-      hasGrammar:
-        typeof params.grammar === "string" && params.grammar.trim().length > 0,
-    });
-    await lifecycle.ensureChatLoaded();
-    writeAospLlamaDebugLog("bootstrap:generate:ensureChat:done");
-    // The runtime injects `signal` into `params` from the active streaming
-    // context's `abortSignal` when the caller didn't pass one explicitly
-    // (see runtime.ts useModel: paramsAsStreaming.signal ??= abortSignal).
-    // We forward it into the FFI decode loop so APP_PAUSE etc. can cancel
-    // an in-flight phone-CPU prefill that would otherwise pin the bun
-    // process for minutes.
-    const args = buildGenerateArgsFromParams(params);
-    writeAospLlamaDebugLog("bootstrap:generate:start", {
-      promptChars: args.prompt.length,
-      maxTokens: args.maxTokens ?? null,
-      grammarBytes: args.grammar?.trim().length ?? 0,
-    });
-    return loader.generate(args);
-  };
+  // The runtime injects `signal` into `params` from the active streaming
+  // context's `abortSignal` when the caller didn't pass one explicitly
+  // (see runtime.ts useModel: paramsAsStreaming.signal ??= abortSignal).
+  // `generateOnPriorityLane` forwards it into the FFI decode loop so
+  // APP_PAUSE etc. can cancel an in-flight phone-CPU prefill that would
+  // otherwise pin the bun process for minutes.
+  return async (_runtime, params) =>
+    generateOnPriorityLane(loader, lifecycle, params);
 }
 
 /**

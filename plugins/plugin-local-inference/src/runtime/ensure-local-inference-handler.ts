@@ -26,13 +26,17 @@ import { existsSync, linkSync, mkdirSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import {
 	type AgentRuntime,
+	applyBackgroundInferenceBudget,
 	type GenerateTextParams,
+	getInferencePriorityGate,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
+	inferenceRamClassFromEnv,
 	logger,
 	ModelType,
 	renderMessageHandlerStablePrefix,
+	resolveBackgroundInferenceBudget,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -488,10 +492,43 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 		const engineArgs = engineGenerateArgsFromParams(params, cacheKey);
 
 		// Prefer a runtime-registered loader that implements `generate` — that's
-		// the mobile / device-bridge path. On desktop we fall back to the
-		// standalone engine.
+		// the mobile / device-bridge path (bionic host / AOSP adapter / device
+		// bridge). Those backends decode ONE request at a time on a shared
+		// resident model, so route through the process-wide interactive-over-
+		// background lane (#11914): interactive turns dispatch ahead of queued
+		// background jobs; background jobs wait a bounded time and are clamped
+		// to the device-class budget. Desktop falls through to the standalone
+		// engine, which owns its own session pool and is NOT gated.
 		if (loader?.generate) {
-			return loader.generate(engineArgs);
+			const generate = loader.generate.bind(loader);
+			const priority = params.priority ?? "interactive";
+			let lockWaitMs: number | undefined;
+			if (priority === "background") {
+				const budget = resolveBackgroundInferenceBudget(
+					inferenceRamClassFromEnv() ?? "standard",
+				);
+				const clamped = applyBackgroundInferenceBudget(
+					{ prompt: engineArgs.prompt, maxTokens: engineArgs.maxTokens },
+					budget,
+				);
+				if (clamped.clamped.length > 0) {
+					logger.info(
+						`[local-inference] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
+					);
+				}
+				engineArgs.prompt = clamped.prompt;
+				engineArgs.maxTokens = clamped.maxTokens;
+				lockWaitMs = budget.lockWaitMs;
+			}
+			return getInferencePriorityGate().runExclusive(
+				{
+					priority,
+					label: `${slot} local-loader (${engineArgs.prompt.length} chars)`,
+					...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
+					...(params.signal ? { signal: params.signal } : {}),
+				},
+				() => generate(engineArgs),
+			);
 		}
 		if (!(await localInferenceEngine.available())) {
 			// No native binding: signal UNAVAILABLE (typed) so the cross-provider

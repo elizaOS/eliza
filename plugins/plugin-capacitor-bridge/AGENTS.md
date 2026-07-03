@@ -170,6 +170,7 @@ If a new `node:fs` function needs sandboxing, add it to the appropriate array (`
 - **Pre-build manifest check:** `scripts/check-android-manifest.mjs` runs before every build and exits non-zero if `tools:*` attributes appear in the manifest without the `xmlns:tools` declaration.
 - **No Plugin object.** This package does not follow the standard elizaOS plugin shape. It cannot be passed to `character.plugins`. It is imported and called directly by the agent bundle entry point.
 - **ws is a runtime dep.** The `ws` package is loaded dynamically (`await import("ws")`) so the module can be bundled for environments where WebSocket is not needed.
+- **Interactive-over-background text lane (#11914).** Both TEXT handler paths (bionic UDS delegation and the renderer device bridge) route every generate through the process-wide `InferencePriorityGate` (`@elizaos/core`): interactive turns (the default) dispatch ahead of queued background jobs; requests marked `priority: "background"` run only when the lane is idle, wait at most the RAM-class bound, and are clamped to the RAM-class budget (`resolveMobileLaneBudget`, driven by the `ELIZA_INFERENCE_RAM_CLASS` env contract from #11760) before the decode. This is what stops a long autonomous job from self-queueing on the bionic host's resident lock and starving chat.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

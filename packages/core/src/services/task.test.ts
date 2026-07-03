@@ -209,6 +209,56 @@ describe("TaskService tick re-arm", () => {
 		expect(meta?.lastError).toBe("boom");
 	});
 
+	it("skips a repeat task whose previous run is still executing (self-queue suppression, #11914)", async () => {
+		// The on-device starvation in #11914 came from a scheduled background
+		// job that outlived its own period: each next firing must SKIP while the
+		// previous run is still executing (blocking default), never enqueue.
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		let releaseRun: (() => void) | undefined;
+		const running = new Promise<void>((resolve) => {
+			releaseRun = resolve;
+		});
+		const execute = vi.fn(() => running.then(() => undefined));
+		workers.set("LONG_BACKGROUND_JOB", {
+			name: "LONG_BACKGROUND_JOB",
+			execute,
+		});
+		tasks.set("t-long", {
+			id: "t-long" as UUID,
+			name: "LONG_BACKGROUND_JOB",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			// Due immediately: last ran a full interval ago.
+			metadata: { updateInterval: 60_000, updatedAt: T0 - 61_000 },
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// First firing starts and hangs mid-run (a long on-device decode).
+		const firstRun = service.runDueTasks();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(execute).toHaveBeenCalledTimes(1);
+
+		// The next firings arrive while it is still running: they must skip.
+		await service.runDueTasks();
+		await service.runDueTasks();
+		expect(execute).toHaveBeenCalledTimes(1);
+
+		releaseRun?.();
+		await firstRun;
+
+		// Immediately after completion the task is not yet due again (interval
+		// re-measured from completion) — still no extra run.
+		await service.runDueTasks();
+		expect(execute).toHaveBeenCalledTimes(1);
+
+		// A full interval after completion it fires again exactly once.
+		await vi.advanceTimersByTimeAsync(61_000);
+		await service.runDueTasks();
+		expect(execute).toHaveBeenCalledTimes(2);
+	});
+
 	it("still auto-pauses a repeat task after 5 consecutive failures by default", async () => {
 		const { runtime, tasks, workers } = makeTaskRuntime();
 		const execute = vi.fn(async () => {

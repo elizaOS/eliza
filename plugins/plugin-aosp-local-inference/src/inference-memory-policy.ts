@@ -23,8 +23,12 @@
  */
 
 import { readFileSync } from "node:fs";
+import {
+  type InferenceRamClass,
+  inferenceRamClassFromEnv,
+} from "@elizaos/core";
 
-export type InferenceRamClass = "constrained" | "standard";
+export type { InferenceRamClass };
 
 /**
  * Usable-RAM ceiling for the constrained class, MiB. 6 GB-nominal devices
@@ -139,8 +143,8 @@ export function classifyInferenceRamClass(
   env: NodeJS.ProcessEnv = process.env,
   totalRamMb?: number,
 ): InferenceRamClass {
-  const override = env.ELIZA_INFERENCE_RAM_CLASS?.trim().toLowerCase();
-  if (override === "constrained" || override === "standard") return override;
+  const override = inferenceRamClassFromEnv(env);
+  if (override !== null) return override;
   const total = totalRamMb ?? readProcMemTotalMb();
   if (total == null || total <= 0) return "standard";
   return total < CONSTRAINED_MAX_TOTAL_RAM_MB ? "constrained" : "standard";

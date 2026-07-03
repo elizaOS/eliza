@@ -30,10 +30,15 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
 	type AgentRuntime,
+	applyBackgroundInferenceBudget,
 	type GenerateTextParams,
+	getInferencePriorityGate,
 	type IAgentRuntime,
+	inferenceRamClassFromEnv,
+	type LocalInferencePriority,
 	logger,
 	ModelType,
+	resolveBackgroundInferenceBudget,
 	resolveStateDir,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
@@ -1511,8 +1516,46 @@ function bionicHostGenerateStream(
 	});
 }
 
+/**
+ * Clamp a background-priority request to the device-class budget and resolve
+ * its bounded lane wait (#11914). Interactive requests pass through untouched
+ * with an unbounded lane wait (their transport timeout governs the total).
+ */
+function resolveMobileLaneBudget(
+	priority: LocalInferencePriority,
+	prompt: string,
+	maxTokens: number | undefined,
+): { prompt: string; maxTokens: number | undefined; lockWaitMs?: number } {
+	if (priority !== "background") {
+		return { prompt, maxTokens };
+	}
+	const budget = resolveBackgroundInferenceBudget(
+		inferenceRamClassFromEnv() ?? "standard",
+	);
+	const clamped = applyBackgroundInferenceBudget({ prompt, maxTokens }, budget);
+	if (clamped.clamped.length > 0) {
+		logger.info(
+			`[mobile-device-bridge] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
+		);
+	}
+	return {
+		prompt: clamped.prompt,
+		maxTokens: clamped.maxTokens,
+		lockWaitMs: budget.lockWaitMs,
+	};
+}
+
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+		// The bionic host decodes ONE request at a time on its resident-model
+		// lock, and the device-bridge path shares one loaded model — so every
+		// generate goes through the process-wide interactive-over-background
+		// lane (#11914): interactive turns dispatch ahead of queued background
+		// jobs; background jobs run only when the lane is idle, wait a bounded
+		// time, and are clamped to the device-class budget. Without this, one
+		// long autonomous job self-queues on the host lock and starves chat.
+		const priority = params.priority ?? "interactive";
+
 		// GPU delegation: run the whole decode in the bionic app process over the
 		// abstract UDS (the device-bridge renderer path can't reach Vulkan). The
 		// in-process host OWNS its default bundle (filesDir/eliza-1/bundle), so a
@@ -1525,27 +1568,42 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		const bionicSock = bionicSocketName();
 		if (bionicSock) {
 			const installed = resolveLocalLoadArgs(slot);
+			const lane = resolveMobileLaneBudget(
+				priority,
+				buildGemmaBionicPrompt(params),
+				params.maxTokens ?? 256,
+			);
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				drafterPath: installed?.draftModelPath ?? "",
-				prompt: buildGemmaBionicPrompt(params),
-				maxTokens: params.maxTokens ?? 256,
+				prompt: lane.prompt,
+				maxTokens: lane.maxTokens ?? 256,
 			};
-			// When the runtime wants streaming (chat SSE / voice), server-push the
-			// decode token-by-token over the UDS so the UI paints at the first
-			// token instead of after the whole reply. Otherwise one buffered RPC.
-			const onChunk = params.onStreamChunk;
-			let accumulated = "";
-			const res =
-				typeof onChunk === "function"
-					? await bionicHostGenerateStream(bionicSock, baseRequest, (text) => {
-							accumulated += text;
-							void onChunk(text, undefined, accumulated);
-						})
-					: await bionicHostGenerate(bionicSock, {
-							op: "generate",
-							...baseRequest,
-						});
+			const res = await getInferencePriorityGate().runExclusive(
+				{
+					priority,
+					label: `${slot} bionic-host (${lane.prompt.length} chars, maxTokens=${baseRequest.maxTokens})`,
+					...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
+					...(params.signal ? { signal: params.signal } : {}),
+				},
+				async () => {
+					// When the runtime wants streaming (chat SSE / voice), server-push
+					// the decode token-by-token over the UDS so the UI paints at the
+					// first token instead of after the whole reply. Otherwise one
+					// buffered RPC.
+					const onChunk = params.onStreamChunk;
+					let accumulated = "";
+					return typeof onChunk === "function"
+						? bionicHostGenerateStream(bionicSock, baseRequest, (text) => {
+								accumulated += text;
+								void onChunk(text, undefined, accumulated);
+							})
+						: bionicHostGenerate(bionicSock, {
+								op: "generate",
+								...baseRequest,
+							});
+				},
+			);
 			if (!res.ok) {
 				throw new Error(
 					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
@@ -1594,12 +1652,22 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			}
 		}
 		const prompt = nativePrompt ?? flattenChatParamsForPrompt(params);
-		return mobileDeviceBridge.generate({
-			prompt,
-			stopSequences: params.stopSequences,
-			maxTokens: params.maxTokens,
-			temperature: params.temperature,
-		});
+		const lane = resolveMobileLaneBudget(priority, prompt, params.maxTokens);
+		return getInferencePriorityGate().runExclusive(
+			{
+				priority,
+				label: `${slot} device-bridge (${lane.prompt.length} chars)`,
+				...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
+				...(params.signal ? { signal: params.signal } : {}),
+			},
+			() =>
+				mobileDeviceBridge.generate({
+					prompt: lane.prompt,
+					stopSequences: params.stopSequences,
+					maxTokens: lane.maxTokens,
+					temperature: params.temperature,
+				}),
+		);
 	};
 }
 

@@ -56,4 +56,52 @@ describe("PromptDispatcher", () => {
 			},
 		});
 	});
+
+	test("marks non-immediate call plans background so single-lane local backends deprioritize them (#11914)", async () => {
+		const seen: Array<{ params?: { priority?: string } }> = [];
+		const runtime = createMockRuntime({
+			dynamicPromptExecFromState: async (args: unknown) => {
+				seen.push(args as { params?: { priority?: string } });
+				return { first__value: "one" };
+			},
+		});
+		const dispatcher = new PromptDispatcher({
+			packingDensity: 1,
+			maxTokensPerCall: 8_000,
+			maxParallelCalls: 1,
+			modelSeparation: 1,
+			maxSectionsPerCall: 8,
+		});
+
+		await dispatcher.dispatch([makeResolvedSection("first", 0)], runtime);
+
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.params?.priority).toBe("background");
+	});
+
+	test("keeps immediate call plans interactive (#11914)", async () => {
+		const seen: Array<{ params?: { priority?: string } }> = [];
+		const runtime = createMockRuntime({
+			dynamicPromptExecFromState: async (args: unknown) => {
+				seen.push(args as { params?: { priority?: string } });
+				return { first__value: "one" };
+			},
+		});
+		const dispatcher = new PromptDispatcher({
+			packingDensity: 1,
+			maxTokensPerCall: 8_000,
+			maxParallelCalls: 1,
+			modelSeparation: 1,
+			maxSectionsPerCall: 8,
+		});
+
+		const immediate: ResolvedSection = {
+			...makeResolvedSection("first", 0),
+			priority: "immediate",
+		};
+		await dispatcher.dispatch([immediate], runtime);
+
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.params?.priority).toBe("interactive");
+	});
 });

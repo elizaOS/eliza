@@ -1,0 +1,10 @@
+$ node ../scripts/run-vitest.mjs run src/utils/inference-priority-gate.test.ts src/services/task.test.ts src/utils/prompt-batcher/dispatcher.test.ts src/features/basic-capabilities/prompt-runner-task.test.ts
+
+ RUN  v4.1.5 /home/shaw/eliza-worktrees/fix-11914-model-lock-priority/packages/core
+
+
+ Test Files  4 passed (4)
+      Tests  33 passed (33)
+   Start at  08:07:56
+   Duration  7.68s (transform 4.99s, setup 0ms, import 6.33s, tests 689ms, environment 1ms)
+
