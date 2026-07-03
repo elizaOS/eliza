@@ -56,6 +56,42 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
   });
 });
 
+describe("host-external importer resolution (__ELIZA_DYNAMIC_VIEW_IMPORT__)", () => {
+  async function resolveHostExternal(
+    specifier: string,
+  ): Promise<Record<string, unknown>> {
+    const importFn = window.__ELIZA_DYNAMIC_VIEW_IMPORT__;
+    if (!importFn) throw new Error("import hook not installed");
+    return importFn(specifier);
+  }
+
+  it("consults an importer contributed through registerHostExternalImporter", async () => {
+    const { registerHostExternalImporter } = await import(
+      "../../app-shell-registry"
+    );
+    const marker = { __registered: true };
+    registerHostExternalImporter(
+      "@test/plugin-registered-external",
+      async () => marker,
+    );
+
+    await expect(
+      resolveHostExternal("@test/plugin-registered-external"),
+    ).resolves.toBe(marker);
+  });
+
+  it("still resolves a framework module from the trunk map", async () => {
+    const react = await resolveHostExternal("react");
+    expect(typeof react.useState).toBe("function");
+  });
+
+  it("throws for an unknown specifier that is neither framework nor registered", async () => {
+    await expect(
+      resolveHostExternal("@test/never-registered-external"),
+    ).rejects.toThrow(/unsupported host external/);
+  });
+});
+
 const { sendWsMessage } = vi.hoisted(() => ({
   sendWsMessage: vi.fn(),
 }));

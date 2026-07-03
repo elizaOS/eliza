@@ -2271,10 +2271,6 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/unpdf.ts"),
       },
       {
-        find: /^react-plaid-link$/,
-        replacement: path.resolve(here, "src/shims/react-plaid-link.ts"),
-      },
-      {
         find: /^handlebars$/,
         replacement: path.resolve(here, "src/shims/handlebars.ts"),
       },

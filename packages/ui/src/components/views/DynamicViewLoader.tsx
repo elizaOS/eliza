@@ -43,6 +43,11 @@ import {
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
 import {
+  type HostExternalImporter,
+  registeredHostExternalSpecifiers,
+  resolveRegisteredHostExternalImporter,
+} from "../../app-shell-registry";
+import {
   type EvictReason,
   emitModuleCacheTelemetry,
   type ModuleCacheTelemetryEvent,
@@ -330,8 +335,6 @@ function isReactComponentExport(
   );
 }
 
-type HostExternalImporter = () => Promise<Record<string, unknown>>;
-
 function importHostExternal(
   specifier: string,
 ): Promise<Record<string, unknown>> {
@@ -376,6 +379,13 @@ async function importUiRootCompat(): Promise<Record<string, unknown>> {
   return import("../../index.ts");
 }
 
+// Framework + host modules the shell always provides to every view bundle:
+// react, three, `@elizaos/ui/*`, the `@elizaos/app-core` view compat surface,
+// `@elizaos/shared`, and the native capacitor bridges. This map is
+// FRAMEWORK-ONLY — it must never list a plugin-specific specifier. A plugin (or
+// a build-variant entrypoint) contributes its own specifiers through
+// `registerHostExternalImporter` so adding a host-external plugin never edits
+// this shared UI module.
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/app-core": importAppCoreViewCompat,
   "@elizaos/app-core/browser": importAppCoreViewCompat,
@@ -392,14 +402,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     importHostExternal("@elizaos/capacitor-system"),
   "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
   "@elizaos/ui": importUiRootCompat,
-  "@elizaos/plugin-browser": () =>
-    importHostExternal("@elizaos/plugin-browser"),
-  "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
-    importHostExternal(
-      "@elizaos/plugin-health/screen-time/mobile-signal-setup",
-    ),
-  "@elizaos/plugin-training": () =>
-    importHostExternal("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": () => import("../../app-navigate-view.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
@@ -449,7 +451,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),
   react: () => import("react"),
-  "react-plaid-link": () => import("react-plaid-link"),
   "react/jsx-dev-runtime": async () => {
     const devRuntime = await import("react/jsx-dev-runtime");
     if (typeof devRuntime.jsxDEV === "function") {
@@ -474,7 +475,31 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     import("three/examples/jsm/loaders/GLTFLoader.js"),
 };
 
-const HOST_EXTERNAL_IMPORTER_SPECIFIERS = Object.keys(HOST_EXTERNAL_IMPORTERS);
+/**
+ * Resolve a view-bundle external specifier to its importer: the framework trunk
+ * map first, then the specifiers plugins/build variants contributed through
+ * `registerHostExternalImporter`.
+ */
+function resolveHostExternalImporter(
+  specifier: string,
+): HostExternalImporter | undefined {
+  return (
+    HOST_EXTERNAL_IMPORTERS[specifier] ??
+    resolveRegisteredHostExternalImporter(specifier)
+  );
+}
+
+/**
+ * Every specifier the shell can rewrite for a view bundle — the framework trunk
+ * map plus the registered extension specifiers. Computed per bundle load so a
+ * plugin registered after this module evaluated is still honored.
+ */
+function hostExternalSpecifiers(): string[] {
+  return [
+    ...Object.keys(HOST_EXTERNAL_IMPORTERS),
+    ...registeredHostExternalSpecifiers(),
+  ];
+}
 
 declare global {
   interface Window {
@@ -489,7 +514,7 @@ declare global {
 
 if (typeof window !== "undefined" && !window.__ELIZA_DYNAMIC_VIEW_IMPORT__) {
   window.__ELIZA_DYNAMIC_VIEW_IMPORT__ = async (specifier) => {
-    const importer = HOST_EXTERNAL_IMPORTERS[specifier];
+    const importer = resolveHostExternalImporter(specifier);
     if (!importer) {
       throw new Error(
         `DynamicViewLoader: unsupported host external "${specifier}"`,
@@ -573,7 +598,7 @@ function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   rewrittenUrl.searchParams.set("hostExternalRuntime", "1");
   rewrittenUrl.searchParams.set(
     "hostExternalSpecifiers",
-    HOST_EXTERNAL_IMPORTER_SPECIFIERS.join(","),
+    hostExternalSpecifiers().join(","),
   );
   return rewrittenUrl.href;
 }

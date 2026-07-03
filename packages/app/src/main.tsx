@@ -141,6 +141,7 @@ import {
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
 import { runEmbedHandshake } from "./embed-bootstrap";
+import { registerAppHostExternalImporters } from "./host-externals";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -182,6 +183,11 @@ let deferredAppModuleLoadsScheduled = false;
 // earliest renderer-JS checkpoint after the import graph evaluates.
 initStartupTrace();
 markStartup("module-eval", { platform: Capacitor.getPlatform() });
+
+// Contribute this build's plugin-owned host-external importers to
+// DynamicViewLoader before any view can load. Synchronous + idempotent, so it
+// is safe to run at the earliest renderer checkpoint.
+registerAppHostExternalImporters();
 
 function cachedDynamicImport<T>(
   key: string,

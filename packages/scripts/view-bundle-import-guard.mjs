@@ -36,6 +36,15 @@ const LOADER_PATH = path.join(
   "packages/ui/src/components/views/DynamicViewLoader.tsx",
 );
 
+// Build-variant entrypoints contribute plugin-owned host-external specifiers
+// through `registerHostExternalImporter` (the loader's trunk map stays
+// framework-only). These specifiers are just as loadable as the trunk ones, so
+// the guard must union them into the allowed set. Any additional file that
+// registers host externals must be listed here.
+const HOST_EXTERNAL_REGISTRATION_PATHS = [
+  path.join(repoRoot, "packages/app/src/host-externals.ts"),
+];
+
 /**
  * Extract the keys of the `HOST_EXTERNAL_IMPORTERS` object literal from the
  * loader source. The keys ARE the contract the agent's bundle route rewrites
@@ -145,6 +154,24 @@ export async function getHostExternalSpecifiers() {
       "[view-bundle-guard] extracted zero host-external specifiers — parser broke",
     );
   }
+
+  // Union the specifiers registered through the extension point. Each
+  // `registerHostExternalImporter("<specifier>", …)` call names a specifier the
+  // shell can rewrite, exactly like a trunk-map key.
+  for (const registrationPath of HOST_EXTERNAL_REGISTRATION_PATHS) {
+    let registrationSource;
+    try {
+      registrationSource = await fs.readFile(registrationPath, "utf8");
+    } catch {
+      continue;
+    }
+    for (const match of registrationSource.matchAll(
+      /registerHostExternalImporter\(\s*["']([^"']+)["']/g,
+    )) {
+      specifiers.add(match[1]);
+    }
+  }
+
   return specifiers;
 }
 
@@ -259,7 +286,8 @@ if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
         "These specifiers are externalised by the view build but NOT rewritable by\n" +
         "DynamicViewLoader, so the view fails to load in the browser. Import them from\n" +
         "a specifier the loader's HOST_EXTERNAL_IMPORTERS map already provides (e.g. the\n" +
-        "`@elizaos/ui/components` barrel) instead of a deep subpath.\n",
+        "`@elizaos/ui/components` barrel) instead of a deep subpath, or contribute the\n" +
+        "specifier through registerHostExternalImporter (see packages/app/src/host-externals.ts).\n",
     );
     for (const v of violations) {
       console.error(`  ✗ ${v.plugin}: ${v.specifier}`);

@@ -104,3 +104,55 @@ export function subscribeAppShellPages(listener: () => void): () => void {
 export function getAppShellPageRegistrySnapshot(): number {
   return getRegistryStore().version;
 }
+
+/**
+ * A thunk that resolves a host-provided module for view bundles. View bundles
+ * are built with `@elizaos/ui`, `react`, etc. left external; at runtime the
+ * shell resolves each external specifier to the host's own singleton through
+ * this importer so the view shares the host realm.
+ */
+export type HostExternalImporter = () => Promise<Record<string, unknown>>;
+
+function hostExternalImporterRegistryKey(): symbol {
+  return Symbol.for("elizaos.app-core.host-external-importer-registry");
+}
+
+function getHostExternalImporterStore(): Map<string, HostExternalImporter> {
+  const globalObject = globalThis as Record<PropertyKey, unknown>;
+  const registryKey = hostExternalImporterRegistryKey();
+  const existing = globalObject[registryKey] as
+    | Map<string, HostExternalImporter>
+    | undefined;
+  if (existing) return existing;
+  const created = new Map<string, HostExternalImporter>();
+  globalObject[registryKey] = created;
+  return created;
+}
+
+/**
+ * Contribute a host-external importer for a view-bundle specifier the framework
+ * trunk map in `DynamicViewLoader` does not own. This is the extension point
+ * that keeps plugin-specific specifiers (e.g. `@elizaos/plugin-browser`) out of
+ * the shared UI trunk: a plugin app-shell bundle or a build-variant entrypoint
+ * registers its own specifiers, and `DynamicViewLoader` consults this registry
+ * after its framework map. Backed by a global-symbol store so a single registry
+ * is shared even if `@elizaos/ui` is instantiated in more than one chunk.
+ */
+export function registerHostExternalImporter(
+  specifier: string,
+  importer: HostExternalImporter,
+): void {
+  getHostExternalImporterStore().set(specifier, importer);
+}
+
+/** Resolve a registered host-external importer, or `undefined` if none. */
+export function resolveRegisteredHostExternalImporter(
+  specifier: string,
+): HostExternalImporter | undefined {
+  return getHostExternalImporterStore().get(specifier);
+}
+
+/** The specifiers contributed through {@link registerHostExternalImporter}. */
+export function registeredHostExternalSpecifiers(): string[] {
+  return [...getHostExternalImporterStore().keys()];
+}
