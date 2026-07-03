@@ -1018,18 +1018,49 @@ export class RuntimeDbTaskStore {
     // JSON-parse those. The authoritative decision is still the JS
     // `sessions.find(...)` below, so a substring false-positive can never
     // resolve to the wrong session.
+    //
+    // Both the prefilter AND the legacy fallback below use this one portable
+    // `WHERE search_text LIKE ?` query shape (see #11778) — never a bare
+    // full-table `SELECT document FROM orchestrator_tasks`, which pglite/
+    // postgres reject.
     const needle = `%${sessionId.toLowerCase()}%`;
-    let rows = await this.exec().all(
+    const rows = await this.exec().all(
       "SELECT document FROM orchestrator_tasks WHERE search_text LIKE ?",
       [needle],
     );
     const match = this.matchSession(rows, sessionId);
     if (match) return match;
     // Legacy fallback: rows persisted before session ids were added to
-    // `search_text` won't match the prefilter. Only pay for a full scan when
-    // the targeted lookup misses, so the steady-state hot path stays cheap.
-    rows = await this.exec().all("SELECT document FROM orchestrator_tasks");
-    return this.matchSession(rows, sessionId);
+    // `search_text` won't match the prefilter, so scan the rest. Two hardening
+    // rules apply here, both learned from #11641/#11778:
+    //
+    //   1. Route the fallback through the SAME `WHERE search_text LIKE ?`
+    //      query SHAPE the prefilter uses (an always-true `%` needle), rather
+    //      than a bare `SELECT document FROM orchestrator_tasks`. The bare
+    //      full-table select is the exact statement pglite/postgres rejected in
+    //      #11778 (`Failed query: SELECT document FROM orchestrator_tasks
+    //      params:`), in the same driver-quirk family as #11641's `document
+    //      LIKE`. Reusing the proven-portable prefilter shape keeps every read
+    //      on this method to one query form that all three backends accept.
+    //
+    //   2. Never let a fallback failure POISON the caller. `findSession` sits
+    //      on the session-event hot path (`onSessionEvent → resolveTaskId →
+    //      findSession`); if a driver quirk still throws here, the service
+    //      suppresses ALL further event records for that session and the whole
+    //      session's orchestration telemetry is silently lost (#11778's live
+    //      symptom). A missed lookup is a clean `null`, not an exception, so a
+    //      degraded fallback degrades to "session not found yet" instead of
+    //      killing recording. The authoritative decision is still the JS
+    //      `sessions.find(...)` in `matchSession`.
+    try {
+      const fallbackRows = await this.exec().all(
+        "SELECT document FROM orchestrator_tasks WHERE search_text LIKE ?",
+        ["%"],
+      );
+      return this.matchSession(fallbackRows, sessionId);
+    } catch {
+      return null;
+    }
   }
 
   private matchSession(rows: unknown[], sessionId: string) {
