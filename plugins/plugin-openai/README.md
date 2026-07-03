@@ -219,3 +219,11 @@ await runtime.useModel(ModelType.TEXT_LARGE, {
   },
 });
 ```
+
+## Free-form record/map tool arguments degrade under strict schema
+
+A tool parameter that declares a free-form record/map — `additionalProperties: true` or a value schema (e.g. a contact `customFields: { type: "object", additionalProperties: { type: "string" } }`) — **cannot round-trip today**. The plugin's single schema choke point forces `additionalProperties: false` on every object before it reaches the wire, because strict-grammar backends (Cerebras / Eliza Cloud) reject open maps with a hard 400 and provider strictness is proxy-blind (an agent pointed at `api.elizacloud.ai` with `OPENAI_API_KEY` looks like plain OpenAI but may still route to strict Cerebras — see #11123 / #11156). With the object closed, the model can emit no arbitrary keys, so the map arg arrives **empty**.
+
+This is a known limitation, not a silent one: the declared intent is folded into the property `description`, and when a tool's parameters contain such a record the plugin emits **one structured `logger.warn` per tool** (`[OpenAI] Tool "…" declares N free-form record/map argument(s) …`) listing each offending path so the degradation is observable in logs. The warning is scoped to **tool parameters only** — `response_format` is intentionally excluded.
+
+Making these args actually emittable requires a product decision tracked in [#12150](https://github.com/elizaOS/eliza/issues/12150): option **A** (preserve open records for known non-strict providers, which first needs a reliable strictness signal) or option **B** (a two-sided transform that rewrites records into a strict-safe key/value shape and reverse-maps returned tool-call arguments). This plugin currently ships option **C** (accept the limitation, but make it observable + documented) as the safe stopgap.

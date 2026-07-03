@@ -404,6 +404,31 @@ function buildStructuredOutput(responseSchema: unknown): NativeOutput {
   }) as NativeOutput;
 }
 
+/**
+ * Surface free-form record/map tool args that the strict-safe schema policy
+ * closes on the wire. `sanitizeJsonSchema` forces `additionalProperties: false`
+ * unconditionally — strict-grammar backends (Cerebras/Eliza Cloud) 400 on open
+ * maps and provider strictness is proxy-blind (#11123/#11156) — so a tool
+ * parameter that declared an open map (`additionalProperties: true` or a value
+ * schema) can no longer emit keys and the arg arrives empty. That degradation is
+ * real and unavoidable under the current policy (#12150 options A/B are the full
+ * fix); warn once per tool with the offending locations so it is observable
+ * instead of lost silently (#12150 option C). Scoped to TOOL parameters only;
+ * response_format is intentionally excluded, per #12150.
+ */
+function warnDroppedRecordArgs(toolName: string, drops: DroppedRecordArg[]): void {
+  logger.warn(
+    {
+      tool: toolName,
+      droppedRecordArgs: drops.map(({ path, kind }) => ({
+        path,
+        additionalProperties: kind,
+      })),
+    },
+    `[OpenAI] Tool "${toolName}" declares ${drops.length} free-form record/map argument(s) (additionalProperties) that the strict-safe schema policy forces to additionalProperties:false; the model cannot emit map keys, so these args degrade to empty. See #12150 (options A/B) for the full fix.`
+  );
+}
+
 function normalizeNativeTools(
   tools: unknown,
   options: { cerebrasMode?: boolean } = {}
@@ -438,7 +463,11 @@ function normalizeNativeTools(
     // 'anyOf' with a list of possible properties`.
     const rawSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
-    let inputSchema = sanitizeJsonSchema(rawSchema, true);
+    const droppedRecordArgs: DroppedRecordArg[] = [];
+    let inputSchema = sanitizeJsonSchema(rawSchema, true, droppedRecordArgs);
+    if (droppedRecordArgs.length > 0) {
+      warnDroppedRecordArgs(name, droppedRecordArgs);
+    }
     if (options.cerebrasMode) {
       // User-supplied schemas may still contain empty-properties subobjects
       // even after sanitizeJsonSchema. Apply Cerebras-specific normalization
@@ -750,7 +779,34 @@ function additionalPropertiesHint(additionalProperties: unknown): string | null 
   return null;
 }
 
-function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
+/**
+ * A DECLARED free-form/open map arg (`additionalProperties: true` or a value
+ * schema) that the strict-safe policy closes to `additionalProperties: false`
+ * on the wire. The intent still survives in `description`, but the model can no
+ * longer emit map keys, so the arg degrades to empty — see #12150 (options A/B)
+ * for the full fix. `sanitizeJsonSchema` records one entry per clobbered node so
+ * the tool layer can surface the degradation with its location instead of
+ * dropping it without a trace.
+ */
+interface DroppedRecordArg {
+  /** Dotted location of the offending object within the schema (root is `$`). */
+  path: string;
+  /** Whether the author declared `additionalProperties: true` or a value schema. */
+  kind: "true" | "schema";
+}
+
+/**
+ * @param drops - optional collector; when provided, every clobbered free-form
+ *   record node is appended (used by the TOOL path only — response_format
+ *   intentionally passes no collector, per #12150).
+ * @param path - dotted location threaded through the recursion for the collector.
+ */
+function sanitizeJsonSchema(
+  schema: unknown,
+  isRoot = false,
+  drops?: DroppedRecordArg[],
+  path = "$"
+): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     // Permissive fallback: no `properties: {}`/`additionalProperties: false`
     // pair, which strict-grammar providers reject. See `normalizeSchemaForCerebras`
@@ -797,7 +853,7 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   ) {
     const properties: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(sanitized.properties as Record<string, unknown>)) {
-      properties[key] = sanitizeJsonSchema(value);
+      properties[key] = sanitizeJsonSchema(value, false, drops, `${path}.${key}`);
     }
     sanitized.properties = properties;
 
@@ -822,6 +878,15 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
     // re-checks the caller's ORIGINAL schema and accepts them), and strict
     // providers surface the intent instead of losing it without a trace.
     const hint = additionalPropertiesHint(sanitized.additionalProperties);
+    if (hint) {
+      // A DECLARED free-form map is being closed — a real degradation, not a
+      // plain object. Record it (with location + kind) so the tool layer can
+      // warn once with context instead of losing it silently (#12150 option C).
+      drops?.push({
+        path,
+        kind: sanitized.additionalProperties === true ? "true" : "schema",
+      });
+    }
     sanitized.additionalProperties = false;
     if (hint) {
       const existing =
@@ -832,14 +897,18 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
 
   if (sanitized.items) {
     sanitized.items = Array.isArray(sanitized.items)
-      ? sanitized.items.map((item) => sanitizeJsonSchema(item))
-      : sanitizeJsonSchema(sanitized.items);
+      ? sanitized.items.map((item, i) =>
+          sanitizeJsonSchema(item, false, drops, `${path}.items[${i}]`)
+        )
+      : sanitizeJsonSchema(sanitized.items, false, drops, `${path}.items`);
   }
 
   for (const unionKey of ["anyOf", "oneOf", "allOf"] as const) {
     const value = sanitized[unionKey];
     if (Array.isArray(value)) {
-      sanitized[unionKey] = value.map((item) => sanitizeJsonSchema(item));
+      sanitized[unionKey] = value.map((item, i) =>
+        sanitizeJsonSchema(item, false, drops, `${path}.${unionKey}[${i}]`)
+      );
     }
   }
 
@@ -853,7 +922,7 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   for (const singleKey of ["contains", "propertyNames", "not", "if", "then", "else"] as const) {
     const value = sanitized[singleKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      sanitized[singleKey] = sanitizeJsonSchema(value);
+      sanitized[singleKey] = sanitizeJsonSchema(value, false, drops, `${path}.${singleKey}`);
     }
   }
   for (const mapKey of ["patternProperties", "$defs", "definitions"] as const) {
@@ -861,7 +930,7 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const walked: Record<string, unknown> = {};
       for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
-        walked[key] = sanitizeJsonSchema(sub);
+        walked[key] = sanitizeJsonSchema(sub, false, drops, `${path}.${mapKey}.${key}`);
       }
       sanitized[mapKey] = walked;
     }
@@ -1593,3 +1662,5 @@ export const __INTERNAL_normalizeNativeMessages = normalizeNativeMessages;
 export const __INTERNAL_stripReasoningParts = stripReasoningParts;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_sanitizeJsonSchema = sanitizeJsonSchema;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_normalizeNativeTools = normalizeNativeTools;
