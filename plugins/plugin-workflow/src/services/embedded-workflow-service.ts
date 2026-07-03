@@ -8,6 +8,7 @@ import {
   type TriggerConfig,
   type UUID,
 } from '@elizaos/core';
+import { detectHostCapabilities } from '@elizaos/shared';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -28,7 +29,6 @@ import type {
   WorkflowTag,
 } from '../types/index';
 import { WorkflowApiError } from '../types/index';
-import { detectHostCapabilities } from '../utils/host-capabilities';
 import { runWorkflowWithSmithers, type SmithersExecutionPlan } from './smithers-runtime';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
