@@ -51,6 +51,7 @@ import type {
   LinkedAccountsConfig,
   LinkedAccountUsage,
 } from "@elizaos/shared/contracts/service-routing";
+import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   pollAnthropicUsage,
   pollCodexUsage,
@@ -594,23 +595,6 @@ function metadataFile(): string {
   return path.join(authRoot(), "_pool-metadata.json");
 }
 
-function isPoolProviderId(value: string): value is PoolProviderId {
-  return (
-    value === "anthropic-subscription" ||
-    value === "openai-codex" ||
-    value === "gemini-cli" ||
-    value === "zai-coding" ||
-    value === "kimi-coding" ||
-    value === "deepseek-coding" ||
-    value === "anthropic-api" ||
-    value === "openai-api" ||
-    value === "deepseek-api" ||
-    value === "zai-api" ||
-    value === "moonshot-api" ||
-    value === "cerebras-api"
-  );
-}
-
 function readMetaStore(): PoolMetaStore {
   const file = metadataFile();
   if (!existsSync(file)) {
@@ -692,7 +676,7 @@ function loadAllAccounts(): Record<string, LinkedAccountConfig> {
 }
 
 async function persistAccount(account: LinkedAccountConfig): Promise<void> {
-  if (!isPoolProviderId(account.providerId)) return;
+  if (!isLinkedAccountProviderId(account.providerId)) return;
   const store = readMetaStore();
   if (!store[account.providerId]) {
     store[account.providerId] = {};
