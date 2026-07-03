@@ -29,11 +29,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
   ) => void;
 };
 
-/**
- * `@elizaos/agent` boot calls its own `collectPluginNames`, so the app wrapper
- * that adds the default TTS provider is bypassed. Register the model handler on
- * the live runtime so streaming / swarm voice can still resolve TEXT_TO_SPEECH.
- */
+/** Register the runtime fallback TTS model for streaming / swarm voice paths. */
 export async function ensureTextToSpeechHandler(
   runtime: AgentRuntime,
 ): Promise<void> {

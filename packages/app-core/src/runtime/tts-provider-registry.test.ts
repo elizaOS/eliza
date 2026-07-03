@@ -81,6 +81,17 @@ describe("TTS provider registry", () => {
     expect(ensureSource).not.toContain("@elizaos/plugin-edge-tts");
   });
 
+  it("does not force-inject edge-tts from the app-core plugin collector wrapper", () => {
+    const elizaSource = readFileSync(
+      resolve(appCoreRoot, "src/runtime/eliza.ts"),
+      "utf8",
+    );
+
+    expect(elizaSource).not.toContain("AGENT_ORCHESTRATOR_PLUGIN");
+    expect(elizaSource).not.toContain("resolveDefaultTextToSpeechPluginName");
+    expect(elizaSource).not.toContain("result.add(defaultTtsPluginName)");
+  });
+
   it("keeps the default TTS package literal owned by the registry entry", () => {
     const registrySource = readFileSync(
       resolve(appCoreRoot, "src/runtime/tts-provider-registry.ts"),

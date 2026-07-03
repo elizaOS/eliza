@@ -97,7 +97,6 @@ import { bootLap } from "../boot-profile.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
   ensureTextToSpeechHandler,
-  isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
 import {
   type EmbeddingWarmupPhase,
@@ -105,14 +104,11 @@ import {
 } from "./startup-overlay.js";
 import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
-import { resolveDefaultTextToSpeechPluginName } from "./tts-provider-registry.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
 const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 
-/** Swarm / PTY paths call TEXT_TO_SPEECH; Edge TTS supplies that model with no API key. */
-const AGENT_ORCHESTRATOR_PLUGIN = "agent-orchestrator";
 const require = createRequire(import.meta.url);
 const DIRECT_HELP_FLAGS = new Set(["-h", "--help", "help"]);
 const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
@@ -216,17 +212,7 @@ export function collectPluginNames(
   ...args: Parameters<typeof upstreamCollectPluginNames>
 ): ReturnType<typeof upstreamCollectPluginNames> {
   syncBrandEnvAliases();
-  const [config] = args;
   const result = upstreamCollectPluginNames(...args);
-  const defaultTtsPluginName = resolveDefaultTextToSpeechPluginName();
-  if (
-    result.has(AGENT_ORCHESTRATOR_PLUGIN) &&
-    !isTextToSpeechEdgeTtsDisabled(config) &&
-    defaultTtsPluginName &&
-    !result.has(defaultTtsPluginName)
-  ) {
-    result.add(defaultTtsPluginName);
-  }
   syncBrandEnvAliases();
   return result;
 }
