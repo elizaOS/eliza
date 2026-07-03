@@ -60,21 +60,19 @@ import {
   scanDropInPlugins,
 } from "./plugin-types.ts";
 
-const LAST_FAILED_PLUGIN_NAMES = Symbol.for(
-  "@elizaos/plugin-resolver/last-failed-plugin-names",
-);
+/** {name,error} for a plugin that failed to load on the last resolve pass. */
+export interface FailedPluginDetail {
+  name: string;
+  error: string;
+}
 
-type GlobalWithLastFailedPluginNames = typeof globalThis & {
-  [LAST_FAILED_PLUGIN_NAMES]?: string[];
-};
-
-const LAST_FAILED_PLUGIN_DETAILS = Symbol.for(
-  "@elizaos/plugin-resolver/last-failed-plugin-details",
-);
-
-type GlobalWithLastFailedPluginDetails = typeof globalThis & {
-  [LAST_FAILED_PLUGIN_DETAILS]?: Array<{ name: string; error: string }>;
-};
+/**
+ * The failure list from the most recent `resolvePlugins` pass in this module
+ * instance. Owned by the resolver rather than stashed on globalThis: readers
+ * (dev boot-history route, PGlite recovery skip-list) import the typed accessors
+ * below, which resolve to the same `@elizaos/agent` copy that ran the resolve.
+ */
+let lastFailedPluginDetails: readonly FailedPluginDetail[] = [];
 
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-calendar",
@@ -828,22 +826,15 @@ async function findNearestNodeModulesDir(
   }
 }
 
-function setLastFailedPlugins(
-  failed: ReadonlyArray<{ name: string; error: string }>,
-): void {
-  (globalThis as GlobalWithLastFailedPluginNames)[LAST_FAILED_PLUGIN_NAMES] =
-    failed.map((plugin) => plugin.name);
-  (globalThis as GlobalWithLastFailedPluginDetails)[
-    LAST_FAILED_PLUGIN_DETAILS
-  ] = failed.map((plugin) => ({ name: plugin.name, error: plugin.error }));
+function setLastFailedPlugins(failed: ReadonlyArray<FailedPluginDetail>): void {
+  lastFailedPluginDetails = failed.map((plugin) => ({
+    name: plugin.name,
+    error: plugin.error,
+  }));
 }
 
 export function getLastFailedPluginNames(): string[] {
-  return [
-    ...((globalThis as GlobalWithLastFailedPluginNames)[
-      LAST_FAILED_PLUGIN_NAMES
-    ] ?? []),
-  ];
+  return lastFailedPluginDetails.map((plugin) => plugin.name);
 }
 
 /**
@@ -852,15 +843,11 @@ export function getLastFailedPluginNames(): string[] {
  * the error message (e.g. a missing-export from a stale @elizaos/* copy) so the
  * dev boot-history endpoint can surface it without log scraping.
  */
-export function getLastFailedPluginDetails(): Array<{
-  name: string;
-  error: string;
-}> {
-  return [
-    ...((globalThis as GlobalWithLastFailedPluginDetails)[
-      LAST_FAILED_PLUGIN_DETAILS
-    ] ?? []),
-  ];
+export function getLastFailedPluginDetails(): FailedPluginDetail[] {
+  return lastFailedPluginDetails.map((plugin) => ({
+    name: plugin.name,
+    error: plugin.error,
+  }));
 }
 
 async function findAncestorNodeModulesDirs(

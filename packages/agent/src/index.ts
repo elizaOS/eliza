@@ -217,6 +217,7 @@ export * from "./runtime/owner-entity.ts";
 export * from "./runtime/plugin-collector.ts";
 export * from "./runtime/plugin-lifecycle.ts";
 export {
+  type FailedPluginDetail,
   getLastFailedPluginDetails,
   getLastFailedPluginNames,
   resolvePlugins,

@@ -14,15 +14,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import {
+  type FailedPluginDetail,
+  getLastFailedPluginDetails,
+} from "@elizaos/agent";
 import { resolveStateDir } from "@elizaos/core";
 
 export const ELIZA_DEV_BOOT_HISTORY_SCHEMA = "elizaos.dev.boot-history/v1";
-
-/** {name,error} for plugins that failed to load on the last resolve pass. */
-interface FailedPluginDetail {
-  name: string;
-  error: string;
-}
 
 export interface BootHistoryPayload {
   schema: typeof ELIZA_DEV_BOOT_HISTORY_SCHEMA;
@@ -55,28 +53,6 @@ async function readJson(filePath: string): Promise<unknown> {
   }
 }
 
-/**
- * Read the plugin-load failures the resolver stashes on a global Symbol
- * (`@elizaos/agent` exposes the same data via `getLastFailedPluginDetails()`).
- * Reading the global directly keeps this dev route decoupled from the agent
- * barrel and robust to whichever `@elizaos/*` copy is loaded.
- */
-function readFailedPluginDetails(): FailedPluginDetail[] {
-  const raw = (globalThis as Record<symbol, unknown>)[
-    Symbol.for("@elizaos/plugin-resolver/last-failed-plugin-details")
-  ];
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.filter(
-    (entry): entry is FailedPluginDetail =>
-      typeof entry === "object" &&
-      entry !== null &&
-      typeof (entry as { name?: unknown }).name === "string" &&
-      typeof (entry as { error?: unknown }).error === "string",
-  );
-}
-
 export async function buildBootHistoryPayload(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BootHistoryPayload> {
@@ -99,7 +75,7 @@ export async function buildBootHistoryPayload(
     latestBoot,
     memory,
     restarts,
-    failedPlugins: readFailedPluginDetails(),
+    failedPlugins: getLastFailedPluginDetails(),
     hints: [
       "latestBoot===null means the runtime has not completed a boot since this process started (restart storm or hard crash) — check restarts and /api/dev/console-log.",
       "watch===true means the API runs under node --watch; a concurrent workspace build (tsc/vite) can rewrite watched files and trigger a restart loop.",
