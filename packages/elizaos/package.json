@@ -24,12 +24,14 @@
   ],
   "scripts": {
     "build": "bun run build.ts",
+    "build:standalone": "bun run build-standalone.ts",
     "dev": "bun run build.ts --watch",
-    "lint": "bunx @biomejs/biome check --write README.md build.ts package.json scripts src templates-manifest.json templates/min-plugin templates/min-project templates/project/.env.example templates/project/.gitignore templates/project/README.md templates/project/bunfig.toml templates/project/package.json templates/project/scripts templates/project/template.json templates/project/test tsconfig.json vitest.config.ts && cd templates/plugin && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false && cd ../project/apps/app && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false",
-    "lint:check": "bunx @biomejs/biome check README.md build.ts package.json scripts src templates-manifest.json templates/min-plugin templates/min-project templates/project/.env.example templates/project/.gitignore templates/project/README.md templates/project/bunfig.toml templates/project/package.json templates/project/scripts templates/project/template.json templates/project/test tsconfig.json vitest.config.ts && cd templates/plugin && bunx @biomejs/biome check . --config-path ./biome.json --vcs-enabled=false && cd ../project/apps/app && bunx @biomejs/biome check . --config-path ./biome.json --vcs-enabled=false",
+    "lint": "bunx @biomejs/biome check --write README.md build.ts build-standalone.ts package.json scripts src templates-manifest.json templates/min-plugin templates/min-project templates/project/.env.example templates/project/.gitignore templates/project/README.md templates/project/bunfig.toml templates/project/package.json templates/project/scripts templates/project/template.json templates/project/test tsconfig.json vitest.config.ts && cd templates/plugin && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false && cd ../project/apps/app && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false",
+    "lint:check": "bunx @biomejs/biome check README.md build.ts build-standalone.ts package.json scripts src templates-manifest.json templates/min-plugin templates/min-project templates/project/.env.example templates/project/.gitignore templates/project/README.md templates/project/bunfig.toml templates/project/package.json templates/project/scripts templates/project/template.json templates/project/test tsconfig.json vitest.config.ts && cd templates/plugin && bunx @biomejs/biome check . --config-path ./biome.json --vcs-enabled=false && cd ../project/apps/app && bunx @biomejs/biome check . --config-path ./biome.json --vcs-enabled=false",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:packaged": "node ./scripts/packaged-smoke.mjs",
+    "test:standalone": "node ./scripts/standalone-smoke.mjs",
     "lint:bin-exports": "node ./scripts/lint-bin-exports.mjs",
     "prepublishOnly": "bun run build && bun run lint:bin-exports"
   },

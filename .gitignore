@@ -1518,3 +1518,8 @@ railway.json
 .railwayignore
 .dockerignore
 packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
+
+# Standalone CLI build output (packages/elizaos/build-standalone.ts)
+packages/elizaos/dist-standalone/
+# Release artifacts staged by release.yaml (npm tarballs + CLI binaries)
+release-artifacts/

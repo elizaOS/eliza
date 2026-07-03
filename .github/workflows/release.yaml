@@ -626,6 +626,40 @@ jobs:
         run: |
           node packages/scripts/verify-npm-pack-dist.mjs --all-public-dist-packages --build
 
+      # Stage downloadable release binaries so the GitHub Release carries more
+      # than just source archives (#11858): headline npm tarballs + standalone
+      # `elizaos` CLI executables for every platform + a combined checksum file.
+      # Runs while workspace:* refs are still replaced (packed dependency ranges
+      # match the registry) and before the "Restore workspace references" step.
+      # Gated to real release events — a workflow_dispatch beta (tag_created) or
+      # a stable GitHub `release`.
+      - name: Stage release binaries (npm tarballs + standalone CLI)
+        id: stage_artifacts
+        if: steps.tag.outputs.tag_created == 'true' || github.event_name == 'release'
+        run: |
+          set -euo pipefail
+          ARTIFACT_DIR="${GITHUB_WORKSPACE}/release-artifacts"
+          rm -rf "${ARTIFACT_DIR}"
+          mkdir -p "${ARTIFACT_DIR}"
+
+          echo "📦 Packing headline npm tarballs..."
+          node packages/scripts/pack-release-artifacts.mjs --out "${ARTIFACT_DIR}/npm"
+
+          echo "🛠  Compiling standalone elizaos CLI binaries (all platforms)..."
+          bun packages/elizaos/build-standalone.ts --out "${ARTIFACT_DIR}/cli"
+
+          echo "🔐 Writing combined SHA256SUMS.txt..."
+          (
+            cd "${ARTIFACT_DIR}"
+            find . -type f \( -name '*.tgz' -o -name '*.tar.gz' -o -name '*.zip' \) \
+              | sed 's|^\./||' | sort \
+              | while read -r f; do shasum -a 256 "$f"; done > SHA256SUMS.txt
+          )
+
+          echo "artifact_dir=${ARTIFACT_DIR}" >> "$GITHUB_OUTPUT"
+          echo "=== staged release artifacts ==="
+          find "${ARTIFACT_DIR}" -type f | sort
+
       # Publish to NPM (only after git operations succeed)
       - name: Skip NPM publish on forks
         if: github.repository != 'elizaOS/eliza'
@@ -793,6 +827,17 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag_name }}
           name: ${{ steps.tag.outputs.tag_name }}
+          # Attach the staged downloadable binaries alongside the auto-generated
+          # source archives. fail_on_unmatched_files surfaces a broken staging
+          # step instead of silently publishing a source-only release again.
+          files: |
+            release-artifacts/npm/*.tgz
+            release-artifacts/npm/SHA256SUMS-npm.txt
+            release-artifacts/cli/*.tar.gz
+            release-artifacts/cli/*.zip
+            release-artifacts/cli/SHA256SUMS-cli.txt
+            release-artifacts/SHA256SUMS.txt
+          fail_on_unmatched_files: true
           body: |
             🔵 Beta Release
 
@@ -811,11 +856,37 @@ jobs:
             bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
             ```
 
+            ### Downloads
+
+            Prefer a self-contained binary? Grab a standalone `elizaos` CLI
+            (`elizaos-<platform>.tar.gz` / `.zip`) below — no npm or Bun required.
+            The `*.tgz` files are the exact npm tarballs; verify any download
+            against `SHA256SUMS.txt`.
+
             ---
 
             > **Note:** This is a ${{ steps.release_type.outputs.type }} release. Production releases use the `latest` tag and are triggered by GitHub releases on tags matching `v*.*.*`.
           draft: false
           prerelease: true
+
+      # Stable production releases already exist (a human created the GitHub
+      # release before this workflow fired on the `release` event), so we append
+      # the staged binaries to that existing release instead of creating one.
+      - name: Attach release binaries to production release
+        if: github.event_name == 'release' && steps.stage_artifacts.outputs.artifact_dir != ''
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            release-artifacts/npm/*.tgz
+            release-artifacts/npm/SHA256SUMS-npm.txt
+            release-artifacts/cli/*.tar.gz
+            release-artifacts/cli/*.zip
+            release-artifacts/cli/SHA256SUMS-cli.txt
+            release-artifacts/SHA256SUMS.txt
+          fail_on_unmatched_files: true
 
       - name: Summary
         if: always()

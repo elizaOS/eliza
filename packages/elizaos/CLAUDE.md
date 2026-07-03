@@ -53,10 +53,12 @@ Token replacement (`scaffold.ts`): plugin templates substitute `${PLUGINNAME}`, 
 
 ```bash
 bun run --cwd packages/elizaos build          # build.ts: prep templates + manifest, tsc, shebang
+bun run --cwd packages/elizaos build:standalone  # build-standalone.ts: cross-compile CLI binaries + archives
 bun run --cwd packages/elizaos dev            # build.ts --watch
 bun run --cwd packages/elizaos typecheck      # tsgo --noEmit
 bun run --cwd packages/elizaos test           # vitest run --passWithNoTests
 bun run --cwd packages/elizaos test:packaged  # scripts/packaged-smoke.mjs (packs + installs + create/upgrade)
+bun run --cwd packages/elizaos test:standalone  # scripts/standalone-smoke.mjs (compiles host binary, runs version/info/create)
 bun run --cwd packages/elizaos lint           # biome check --write (also lints templates/plugin + project/apps/app)
 bun run --cwd packages/elizaos lint:check     # biome check (no write)
 ```
@@ -78,6 +80,7 @@ Generated projects record state in `.elizaos/template.json` (`ProjectTemplateMet
 ## Conventions / gotchas
 
 - `manifest.ts` and `getTemplatesDir` read `templates-manifest.json` and `templates/` relative to `getPackageRoot()` (one dir up from `dist/`), so the CLI only works after `build` and against the shipped `dist` + `templates` (both in the `files` allowlist). `loadManifest` throws if the manifest is missing — run `build` first.
+- **Standalone binaries** (`build-standalone.ts`, released via `release.yaml`): a `bun build --compile` binary serves its embedded modules from the unreadable `/$bunfs` virtual root, so `getPackageRoot()` (`package-info.ts`) detects that case via `isStandaloneBinary()` and resolves assets from `path.dirname(process.execPath)` instead. The build script therefore stages `templates/`, `templates-manifest.json`, and `package.json` next to the executable inside each archive. `scripts/standalone-smoke.mjs` is the regression guard — if you change asset resolution, run `test:standalone`. The CLI still shells out to `git`/`gh`/`npm` at runtime, so the binary is self-contained for scaffolding but not for the git/registry steps.
 - `cli.ts` ends with top-level `await program.parseAsync()`; the bin shebang is `#!/usr/bin/env node` (re-applied by `ensureCliShebang` in `build.ts`).
 - Commands that interact with the user use `@clack/prompts` and call `process.exit(...)` directly on cancel/error; `deploy`/`capabilityRouterConnect` split a pure `run*` function (returns exit code) from the thin `process.exit` wrapper for testability.
 - `plugins submit --dry-run` prints the generated `entries/third-party/<pkg>.json` metadata. Opening a PR requires an explicit `--registry owner/repo`; no public default registry repository is configured. `@elizaos/*` names are rejected (reserved for first-party).
