@@ -231,7 +231,7 @@ export function HomeScreen({
         type="button"
         data-testid="home-notification-pull-zone"
         aria-label="Open notifications"
-        className="absolute inset-x-0 top-0 z-[2] min-h-11 h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+44px)] cursor-default rounded-none border-0 bg-transparent p-0 outline-none"
+        className="absolute inset-x-0 top-0 z-[2] h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default rounded-none border-0 bg-transparent p-0 outline-none"
         style={{ touchAction: "none" }}
         onClick={() => dispatchOpenNotificationCenter()}
         {...edgePull}

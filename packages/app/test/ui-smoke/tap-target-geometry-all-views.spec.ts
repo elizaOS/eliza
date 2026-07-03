@@ -114,18 +114,6 @@ async function collectControls(
         textarea: "textbox",
       };
 
-      const NATIVE_ROLE_OVERRIDES: Record<string, readonly string[]> = {
-        button: [
-          "combobox",
-          "menuitem",
-          "menuitemcheckbox",
-          "menuitemradio",
-          "option",
-          "tab",
-        ],
-        textarea: ["combobox"],
-      };
-
       const isVisible = (el: Element): boolean => {
         const style = window.getComputedStyle(el);
         if (
@@ -235,12 +223,36 @@ async function collectControls(
         // (e.g. <button role="link">, <a href role="button"> where the redundant
         // role fights the native semantics) confuses AT users. A redundant role
         // that MATCHES the implicit role is allowed.
+        //
+        // ARIA composite/widget roles are DESIGNED to be layered onto a native
+        // interactive element (the WAI-ARIA authoring patterns build a combobox
+        // from `<input|textarea role="combobox">`, a menu button / tab / toggle
+        // from `<button role="menuitem|tab|switch|…">`, etc.). Those are correct,
+        // not conflicts — only a role that swaps the *interaction model* (link↔
+        // button) or reclassifies the control as non-interactive (heading, img,
+        // presentation) is a real defect. Exempt the widget-role overrides.
+        const LEGITIMATE_WIDGET_OVERRIDES = new Set([
+          "combobox",
+          "searchbox",
+          "spinbutton",
+          "switch",
+          "menuitem",
+          "menuitemcheckbox",
+          "menuitemradio",
+          "tab",
+          "option",
+          "radio",
+          "checkbox",
+        ]);
         const implicit = NATIVE_IMPLICIT_ROLE[tag];
         if (
           explicitRole &&
           implicit &&
           explicitRole !== implicit &&
-          !(NATIVE_ROLE_OVERRIDES[tag] ?? []).includes(explicitRole) &&
+          !LEGITIMATE_WIDGET_OVERRIDES.has(explicitRole) &&
+          // Hidden/portal internals (0x0, collapsed popovers) aren't a user-
+          // facing AT surface — only flag a role conflict on a rendered control.
+          isVisible(el) &&
           // <a> without href has no implicit link role, so an explicit role is fine.
           !(tag === "a" && !el.getAttribute("href"))
         ) {
@@ -304,24 +316,6 @@ async function collectControls(
         const rect = el.getBoundingClientRect();
         const width = Math.round(rect.width * 100) / 100;
         const height = Math.round(rect.height * 100) / 100;
-
-        if (
-          tag === "input" &&
-          (type === "color" || type === "file") &&
-          (el.classList.contains("sr-only") ||
-            rect.width <= 1 ||
-            rect.height <= 1)
-        ) {
-          results.push({
-            descriptor,
-            width,
-            height,
-            status: "exception",
-            kind: "geometry",
-            reason: `visually-hidden ${type} input; visible proxy button is the tap surface`,
-          });
-          continue;
-        }
 
         // Nested inner control: an interactive element inside another
         // interactive element — the OUTER element is the real tap surface.
