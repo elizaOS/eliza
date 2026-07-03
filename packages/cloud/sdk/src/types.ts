@@ -1368,6 +1368,147 @@ export interface ListAdSlotsResponse {
   slots: AdSlotDto[];
 }
 
+// ---- Press release workflow (#11819) ----
+
+export type PressReleaseStatus =
+  | "draft"
+  | "ready"
+  | "submitted"
+  | "distributed"
+  | "failed"
+  | "cancelled";
+
+export type PressDistributionStatus =
+  | "pending"
+  | "submitted"
+  | "distributed"
+  | "failed"
+  | "cancelled";
+
+export interface PressReleaseAsset {
+  url: string;
+  mimeType?: string;
+  label?: string;
+}
+
+export interface PressReleaseTargetAudience {
+  niches?: string[];
+  regions?: string[];
+  languages?: string[];
+  outletTypes?: string[];
+}
+
+export interface PressReleaseDto {
+  id: string;
+  organization_id: string;
+  created_by_user_id: string | null;
+  title: string;
+  summary: string | null;
+  body: string;
+  boilerplate: string | null;
+  status: PressReleaseStatus;
+  target_audience: PressReleaseTargetAudience;
+  target_regions: string[];
+  assets: PressReleaseAsset[];
+  embargo_at: string | null;
+  submitted_at: string | null;
+  distributed_at: string | null;
+  failed_reason: string | null;
+  idempotency_key: string | null;
+  metadata: JsonObject;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PressReleaseDistributionDto {
+  id: string;
+  organization_id: string;
+  press_release_id: string;
+  provider: string;
+  external_distribution_id: string | null;
+  status: PressDistributionStatus;
+  idempotency_key: string | null;
+  request_payload: JsonObject;
+  provider_response: JsonObject;
+  error_message: string | null;
+  submitted_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PressCoverageDto {
+  id: string;
+  organization_id: string;
+  press_release_id: string;
+  distribution_id: string | null;
+  url: string;
+  title: string | null;
+  outlet: string | null;
+  published_at: string | null;
+  metadata: JsonObject;
+  created_at: string;
+}
+
+export interface CreatePressReleaseInput {
+  title: string;
+  body: string;
+  summary?: string;
+  boilerplate?: string;
+  targetAudience?: PressReleaseTargetAudience;
+  targetRegions?: string[];
+  assets?: PressReleaseAsset[];
+  embargoAt?: string | null;
+  idempotencyKey?: string;
+  metadata?: JsonObject;
+}
+
+export type UpdatePressReleaseInput = Partial<
+  Omit<CreatePressReleaseInput, "idempotencyKey">
+>;
+
+export interface SubmitPressReleaseInput {
+  /** Must be true before the server will attempt any paid/provider-backed distribution. */
+  confirmPaidDistribution: true;
+  idempotencyKey?: string;
+}
+
+export interface CreatePressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+}
+
+export interface ListPressReleasesResponse {
+  success: boolean;
+  releases: PressReleaseDto[];
+}
+
+export interface GetPressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+}
+
+export interface UpdatePressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+}
+
+export interface SubmitPressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+  distribution?: PressReleaseDistributionDto;
+}
+
+export interface CancelPressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+}
+
+export interface ListPressCoverageResponse {
+  success: boolean;
+  coverage: PressCoverageDto[];
+}
+
 // ---- Advertising campaign management (#11599) ----
 
 export interface CampaignDaypartingWindow {

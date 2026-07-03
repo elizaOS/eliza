@@ -36,6 +36,11 @@
  *                                     to honest replies; money never transits the connector.
  *   - Action  LIST_APP_DOMAINS      — READ-ONLY: registrar/status/SSL/verification per domain.
  *
+ * Press layer:
+ *   - Action  CREATE_PRESS_RELEASE_DRAFT — create a draft PR artifact.
+ *   - Action  LIST_PRESS_RELEASES        — READ-ONLY status list.
+ *   - Action  SUBMIT_PRESS_RELEASE       — PAID/PROVIDER-BACKED: requires explicit confirm.
+ *
  * Auth: reads `ELIZAOS_CLOUD_API_KEY` (+ optional `ELIZAOS_CLOUD_BASE_URL`) via
  * runtime settings — the same credentials plugin-elizacloud uses. With no key
  * the actions degrade gracefully and the provider stays EMPTY.
@@ -74,6 +79,11 @@ import {
 } from "./actions/influencer.js";
 import { listAppDomainsAction } from "./actions/list-app-domains.js";
 import { listCloudAppsAction } from "./actions/list-cloud-apps.js";
+import {
+  createPressReleaseDraftAction,
+  listPressReleasesAction,
+  submitPressReleaseAction,
+} from "./actions/press-releases.js";
 import { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
 import {
   listFrontendDeploymentsAction,
@@ -110,6 +120,11 @@ export {
 } from "./actions/influencer.js";
 export { listAppDomainsAction } from "./actions/list-app-domains.js";
 export { listCloudAppsAction } from "./actions/list-cloud-apps.js";
+export {
+  createPressReleaseDraftAction,
+  listPressReleasesAction,
+  submitPressReleaseAction,
+} from "./actions/press-releases.js";
 export { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
 export {
   listFrontendDeploymentsAction,
@@ -159,6 +174,9 @@ export const cloudAppsPlugin: Plugin = {
     checkAppDomainAction,
     buyAppDomainAction,
     listAppDomainsAction,
+    createPressReleaseDraftAction,
+    listPressReleasesAction,
+    submitPressReleaseAction,
   ],
   providers: [cloudAppsProvider],
 };
