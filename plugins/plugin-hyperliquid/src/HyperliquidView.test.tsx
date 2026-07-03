@@ -10,7 +10,7 @@
 // retired HyperliquidTuiView surface. Also covers the unchanged `interact`
 // terminal capability handler the view bundle re-exports.
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import {
   cleanup,
   fireEvent,

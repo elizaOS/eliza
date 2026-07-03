@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../registry-host";
-import { tabFromPath } from "./index";
+import { ALL_TAB_GROUPS, tabFromPath } from "./index";
 
 beforeEach(() => {
   resetUiRegistryHostForTests();
@@ -48,5 +48,33 @@ describe("navigation tabFromPath", () => {
     });
 
     expect(tabFromPath("/test/phone-companion")).toBe("test.phone-companion");
+  });
+
+  it("builds wallet launcher grouping from app-shell page group metadata", () => {
+    registerAppShellPage({
+      id: "test.wallet",
+      pluginId: "test-wallet",
+      label: "Wallet",
+      path: "/inventory",
+      tabAffinity: "inventory",
+      group: "wallet",
+      order: 10,
+      loader: async () => ({ default: () => null }),
+    });
+    registerAppShellPage({
+      id: "test.perps",
+      pluginId: "test-perps",
+      label: "Perps",
+      path: "/perps",
+      tabAffinity: "inventory",
+      group: "wallet",
+      order: 20,
+      loader: async () => ({ default: () => null }),
+    });
+
+    const walletGroup = ALL_TAB_GROUPS.find(
+      (group) => group.label === "Wallet",
+    );
+    expect(walletGroup?.tabs).toEqual(["inventory", "test.perps"]);
   });
 });

@@ -23,9 +23,12 @@ if (typeof window === "undefined") {
 registerAppShellPage({
   id: "polymarket",
   pluginId: "@elizaos/plugin-polymarket",
-  label: "Polymarket",
+  label: "Predictions",
   icon: "BarChart2",
   path: "/polymarket",
+  tabAffinity: "inventory",
+  group: "wallet",
+  order: 70,
   loader: () =>
     import("./polymarket-view-bundle.ts").then((m) => ({
       default: m.PolymarketView,

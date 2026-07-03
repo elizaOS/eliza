@@ -105,6 +105,23 @@ export interface TabGroup {
   description?: string;
 }
 
+function walletLauncherTabs(): Tab[] {
+  const tabs = listAppShellPages()
+    .filter((entry) => entry.group === "wallet")
+    .sort(
+      (a, b) =>
+        (a.order ?? 100) - (b.order ?? 100) ||
+        a.label.localeCompare(b.label) ||
+        a.id.localeCompare(b.id),
+    )
+    .map((entry) =>
+      normalizePath(entry.path).toLowerCase() === "/inventory"
+        ? ((entry.tabAffinity ?? "inventory") as Tab)
+        : (entry.id as Tab),
+    );
+  return [...new Set(tabs.length ? tabs : ["inventory"])];
+}
+
 export interface AndroidPhoneSurfaceDetection {
   platform?: string;
   isNative?: boolean;
@@ -275,9 +292,10 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Avatar identity, style, examples, and knowledge",
   },
   {
-    // Hyperliquid + Polymarket are sub-views of Wallet, not standalone apps.
     label: "Wallet",
-    tabs: ["inventory", "hyperliquid", "polymarket"],
+    get tabs() {
+      return walletLauncherTabs();
+    },
     icon: Wallet,
     description:
       "Crypto wallets, token balances, perps, and prediction markets",
@@ -489,9 +507,9 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/connectors") return "settings";
 
   // Check current paths first, then route unknown top-level paths through the
-  // view registry. Plugin views declare routes like `/hyperliquid` and
-  // `/contacts/tui` that are not built-in tabs; the Views tab can then match
-  // the exact registry path and mount the remote bundle.
+  // view registry. Plugin views can declare routes that are not built-in tabs;
+  // the Views tab can then match the exact registry path and mount the remote
+  // bundle.
   const knownTab = PATH_TO_TAB.get(normalized);
   if (knownTab) return knownTab;
   if (APPS_ENABLED && normalized.startsWith("/") && normalized !== "/") {

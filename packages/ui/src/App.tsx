@@ -651,8 +651,8 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  */
 /**
  * Props every app-shell page view receives, mirroring the OverlayAppContext that
- * `DynamicViewLoader` injects on web/desktop. Overlay-app views (polymarket,
- * …) read `t` / `exitToApps` from props and crash ("t is not a
+ * `DynamicViewLoader` injects on web/desktop. Overlay-app views can read
+ * `t` / `exitToApps` from props and crash ("t is not a
  * function") if mounted with none — which is exactly what happens on iOS/Android
  * where these views render through the in-process app-shell path instead of
  * DynamicViewLoader. Views that read translations from hooks ignore the extras.
@@ -1319,8 +1319,8 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
-  // Hyperliquid + Polymarket are sub-views of Wallet: the wallet family of
-  // routes shares one sub-nav rendered in the workspace chrome nav slot.
+  // Wallet-family routes share one sub-nav rendered in the workspace chrome
+  // nav slot. Plugins join it by registering app-shell pages with group=wallet.
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;

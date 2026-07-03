@@ -21,13 +21,15 @@
  * spatial-unsafe modules leak into the view bundle.
  */
 
-import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import {
   client,
   type PluginInfo,
   type ScheduledTaskView,
 } from "@elizaos/ui/api";
-import { dispatchFocusConnector } from "@elizaos/ui/events";
+import {
+  dispatchFocusConnector,
+  dispatchNavigateViewEvent,
+} from "@elizaos/ui/events";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

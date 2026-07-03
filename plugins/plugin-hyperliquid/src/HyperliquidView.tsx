@@ -11,9 +11,9 @@
  * `register-terminal-view.tsx`).
  */
 
-import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 import { type CSSProperties, useCallback } from "react";
 import {
   type HyperliquidSnapshot,

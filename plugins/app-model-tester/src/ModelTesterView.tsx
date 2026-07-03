@@ -16,8 +16,8 @@
  * presentational view stays modality-portable.
  */
 
-import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

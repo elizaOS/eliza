@@ -23,6 +23,7 @@ export const walletAppPlugin: Plugin = {
         icon: "Wallet",
         path: "/inventory",
         tabAffinity: "inventory",
+        group: "wallet",
         order: 50,
         componentExport: "@elizaos/plugin-wallet-ui#InventoryView",
       },

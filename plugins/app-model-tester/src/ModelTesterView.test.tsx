@@ -7,7 +7,7 @@
 // navigation — functional parity with the legacy ModelTesterAppView surface,
 // expressed through the spatial action contract.
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import {
   cleanup,
   fireEvent,

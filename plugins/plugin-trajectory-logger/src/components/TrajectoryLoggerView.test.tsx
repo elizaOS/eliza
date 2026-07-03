@@ -7,7 +7,7 @@
 // ids (`back`, `select:<slot>:<phase>`, `refresh`) — functional parity with the
 // retired hand-written GUI/TUI surfaces.
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
   cleanup,

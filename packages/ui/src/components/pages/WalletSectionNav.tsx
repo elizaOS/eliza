@@ -1,12 +1,10 @@
-/**
- * WalletSectionNav — the sub-navigation shared by the Wallet family of routes.
- *
- * Hyperliquid (perps) and Polymarket (predictions) are sub-views of Wallet
- * rather than standalone launcher apps, so the three routes render one another
- * under a common tab strip. Mounted in the workspace chrome `nav` slot for
- * `/wallet`, `/inventory`, `/hyperliquid`, and `/polymarket` (see App.tsx).
- */
-
+import { useSyncExternalStore } from "react";
+import {
+  type AppShellPageRegistration,
+  getAppShellPageRegistrySnapshot,
+  listAppShellPages,
+  subscribeAppShellPages,
+} from "../../app-shell-registry";
 import { cn } from "../../lib/utils";
 import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
@@ -19,11 +17,8 @@ interface WalletSectionTab {
   aliases?: string[];
 }
 
-export const WALLET_SECTION_TABS: readonly WalletSectionTab[] = [
-  { id: "wallet", label: "Wallet", path: "/wallet", aliases: ["/inventory"] },
-  { id: "hyperliquid", label: "Perps", path: "/hyperliquid" },
-  { id: "polymarket", label: "Predictions", path: "/polymarket" },
-];
+const WALLET_SECTION_GROUP = "wallet";
+const WALLET_ROOT_PATH = "/wallet";
 
 function normalizePath(path: string): string {
   const trimmed = (path || "/").split(/[?#]/, 1)[0].toLowerCase();
@@ -33,22 +28,61 @@ function normalizePath(path: string): string {
     : withSlash;
 }
 
-const WALLET_SECTION_PATHS = new Set(
-  WALLET_SECTION_TABS.flatMap((tab) => [tab.path, ...(tab.aliases ?? [])]),
-);
+function compareWalletRegistrations(
+  a: AppShellPageRegistration,
+  b: AppShellPageRegistration,
+): number {
+  return (
+    (a.order ?? 100) - (b.order ?? 100) ||
+    a.label.localeCompare(b.label) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+function walletRegistrationToTab(
+  registration: AppShellPageRegistration,
+): WalletSectionTab {
+  const registrationPath = normalizePath(registration.path);
+  if (registrationPath === "/inventory") {
+    return {
+      id: registration.id,
+      label: registration.label,
+      path: WALLET_ROOT_PATH,
+      aliases: [registrationPath],
+    };
+  }
+  return {
+    id: registration.id,
+    label: registration.label,
+    path: registrationPath,
+  };
+}
+
+export function walletSectionTabs(): WalletSectionTab[] {
+  return listAppShellPages()
+    .filter((registration) => registration.group === WALLET_SECTION_GROUP)
+    .sort(compareWalletRegistrations)
+    .map(walletRegistrationToTab);
+}
+
+function walletSectionPathSet(): Set<string> {
+  return new Set(
+    walletSectionTabs().flatMap((tab) => [tab.path, ...(tab.aliases ?? [])]),
+  );
+}
 
 /** True when a route belongs to the Wallet section (wallet + its sub-views). */
 export function isWalletSectionPath(path: string): boolean {
-  return WALLET_SECTION_PATHS.has(normalizePath(path));
+  return walletSectionPathSet().has(normalizePath(path));
 }
 
-function activeTabId(path: string): string {
+function activeTabId(path: string, tabs: readonly WalletSectionTab[]): string {
   const normalized = normalizePath(path);
-  const match = WALLET_SECTION_TABS.find(
+  const match = tabs.find(
     (tab) =>
       tab.path === normalized || (tab.aliases ?? []).includes(normalized),
   );
-  return match?.id ?? "wallet";
+  return match?.id ?? tabs[0]?.id ?? "";
 }
 
 function navigate(path: string): void {
@@ -70,7 +104,13 @@ export function WalletSectionNav({
 }: {
   activePath: string;
 }): React.JSX.Element {
-  const active = activeTabId(activePath);
+  useSyncExternalStore(
+    subscribeAppShellPages,
+    getAppShellPageRegistrySnapshot,
+    getAppShellPageRegistrySnapshot,
+  );
+  const tabs = walletSectionTabs();
+  const active = activeTabId(activePath, tabs);
   return (
     <nav
       aria-label="Wallet sections"
@@ -82,7 +122,7 @@ export function WalletSectionNav({
        *  it owns the launcher back button the other top-level views get from
        *  ViewHeader. Without it there is no way back to the launcher on mobile. */}
       <ViewBackButton className="mr-1" />
-      {WALLET_SECTION_TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = tab.id === active;
         return (
           <Button

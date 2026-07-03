@@ -11,10 +11,10 @@
  * registry (see `register-terminal-view.tsx`).
  */
 
-import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useState } from "react";
 import type { PhaseName } from "../phases";

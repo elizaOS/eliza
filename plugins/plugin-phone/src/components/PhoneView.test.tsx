@@ -7,7 +7,7 @@
 // native bridge with the exact normalized arguments — functional parity with
 // the retired hand-written PhonePluginView/PhoneTuiView surfaces.
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import {
   cleanup,
   configure,

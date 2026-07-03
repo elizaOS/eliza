@@ -11,10 +11,10 @@
  */
 
 import { Phone } from "@elizaos/capacitor-phone";
-import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
 import { Button } from "@elizaos/ui/components/ui/button";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

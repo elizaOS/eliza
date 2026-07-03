@@ -24,9 +24,12 @@ if (typeof window === "undefined") {
 registerAppShellPage({
   id: "hyperliquid",
   pluginId: "@elizaos/plugin-hyperliquid",
-  label: "Hyperliquid",
+  label: "Perps",
   icon: "TrendingUp",
   path: "/hyperliquid",
+  tabAffinity: "inventory",
+  group: "wallet",
+  order: 60,
   loader: () =>
     import("./hyperliquid-app-view-bundle.ts").then((m) => ({
       default: m.HyperliquidView,
