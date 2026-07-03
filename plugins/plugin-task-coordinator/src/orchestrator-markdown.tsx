@@ -1,3 +1,5 @@
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens, type TokensList } from "marked";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -60,12 +62,12 @@ function renderToken(token: Token, key: string): ReactNode {
         return (
           <li key={itemKey} className="my-0.5 marker:text-muted">
             {item.task ? (
-              <input
+              <Input
                 type="checkbox"
                 checked={Boolean(item.checked)}
                 readOnly
                 aria-hidden
-                className="mr-1.5 align-middle accent-accent"
+                className="mr-1.5 h-4 w-4 p-0 align-middle accent-accent"
               />
             ) : null}
             {renderChildren(item.tokens, itemKey)}
@@ -243,7 +245,8 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
           {lang}
         </div>
       ) : null}
-      <button
+      <Button
+        unstyled
         type="button"
         onClick={copy}
         aria-label={copied ? "Copied" : "Copy code"}
@@ -258,7 +261,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
         ) : (
           <Copy className="h-3.5 w-3.5" aria-hidden />
         )}
-      </button>
+      </Button>
       <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
         <code className="whitespace-pre-wrap break-words">{code}</code>
       </pre>

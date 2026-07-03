@@ -897,7 +897,8 @@ export function CodingAgentTasksPanel() {
             inputRef={searchRef}
             agentProps={searchAgentProps}
           />
-          <button
+          <Button
+            unstyled
             ref={archivedRef}
             type="button"
             onClick={() => setShowArchived((value) => !value)}
@@ -912,7 +913,7 @@ export function CodingAgentTasksPanel() {
           >
             <Archive className="h-3.5 w-3.5" />
             {showArchivedLabel}
-          </button>
+          </Button>
         </div>
       ) : null}
 

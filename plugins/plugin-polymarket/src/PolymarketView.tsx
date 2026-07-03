@@ -11,6 +11,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { type CSSProperties, useCallback, useEffect } from "react";
 import {
   type PolymarketSnapshot,
@@ -128,7 +129,8 @@ export function PolymarketView() {
         aria-label="Polymarket controls"
         style={AGENT_TOOLBAR_STYLE}
       >
-        <button
+        <Button
+          unstyled
           ref={refreshControl.ref}
           {...refreshControl.agentProps}
           type="button"
@@ -141,9 +143,10 @@ export function PolymarketView() {
           }}
         >
           {loading ? "Refreshing…" : "Refresh"}
-        </button>
+        </Button>
         {selectedMarket ? (
-          <button
+          <Button
+            unstyled
             ref={backToMarketsControl.ref}
             {...backToMarketsControl.agentProps}
             type="button"
@@ -151,7 +154,7 @@ export function PolymarketView() {
             style={AGENT_BUTTON_OUTLINE_STYLE}
           >
             All markets
-          </button>
+          </Button>
         ) : null}
       </div>
       <PolymarketSpatialView snapshot={snapshot} onAction={onAction} />

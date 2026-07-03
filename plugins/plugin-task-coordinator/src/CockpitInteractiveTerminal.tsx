@@ -162,7 +162,8 @@ export function CockpitInteractiveTerminal({
         }}
       >
         <span>{headerLabel}</span>
-        <button
+        <Button
+          unstyled
           type="button"
           data-testid="cockpit-terminal-close"
           onClick={close}
@@ -175,7 +176,7 @@ export function CockpitInteractiveTerminal({
           }}
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       <div style={{ position: "relative", flex: 1, minHeight: 0 }}>

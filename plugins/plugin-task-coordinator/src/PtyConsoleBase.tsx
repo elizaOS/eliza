@@ -1,4 +1,5 @@
 import { Button, type CodingAgentSession, client } from "@elizaos/ui";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { Send, Square, Terminal, X } from "lucide-react";
 import {
   type KeyboardEvent,
@@ -55,6 +56,7 @@ export function PtyConsoleBase({
     };
   }, [activeSessionId, variant]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: output changes should scroll the terminal to the newest line.
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
@@ -141,7 +143,7 @@ export function PtyConsoleBase({
         </pre>
       </div>
       <footer className="flex h-11 shrink-0 items-center gap-2 border-t border-border/60 px-2">
-        <input
+        <Input
           value={input}
           onChange={(event) => setInput(event.currentTarget.value)}
           onKeyDown={onInputKeyDown}

@@ -1,3 +1,4 @@
+import { Button } from "@elizaos/ui/components/ui/button";
 import { Link2, MonitorUp, QrCode, Radio } from "lucide-react";
 import type React from "react";
 import { useEffect } from "react";
@@ -55,16 +56,18 @@ export function Chat({
         </div>
 
         <div style={styles.actions}>
-          <button
+          <Button
+            unstyled
             type="button"
             onClick={onOpenPairing}
             style={paired ? styles.secondaryAction : styles.primaryAction}
           >
             <QrCode size={18} />
             <span>{paired ? "Re-pair" : "Pair"}</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
+            unstyled
             type="button"
             onClick={onOpenRemoteSession}
             disabled={!remoteSessionAvailable}
@@ -76,7 +79,7 @@ export function Chat({
           >
             <MonitorUp size={18} />
             <span>Remote</span>
-          </button>
+          </Button>
         </div>
       </section>
     </main>

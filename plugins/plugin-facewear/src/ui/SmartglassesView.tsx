@@ -1,4 +1,6 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import {
   BatteryCharging,
   Bluetooth,
@@ -791,7 +793,8 @@ export function SmartglassesView() {
             <div>
               <h2 className="text-sm font-semibold">Setup</h2>
             </div>
-            <button
+            <Button
+              unstyled
               ref={connectRef}
               type="button"
               onClick={() => void connectHeadset()}
@@ -802,7 +805,7 @@ export function SmartglassesView() {
             >
               <Bluetooth className="h-4 w-4" />
               Connect
-            </button>
+            </Button>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <LensStatus side="left" state={lenses.left} />
@@ -845,7 +848,8 @@ export function SmartglassesView() {
             <div>
               <h2 className="text-sm font-semibold">Test</h2>
             </div>
-            <button
+            <Button
+              unstyled
               ref={runCheckRef}
               type="button"
               onClick={() => void runHardwareCheck()}
@@ -856,11 +860,12 @@ export function SmartglassesView() {
             >
               <RefreshCw className="h-4 w-4" />
               Check
-            </button>
+            </Button>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2">
             {DISPLAY_PRESETS.map((preset) => (
-              <button
+              <Button
+                unstyled
                 key={preset.id}
                 type="button"
                 onClick={() => setTestText(preset.text)}
@@ -872,7 +877,7 @@ export function SmartglassesView() {
                 }`}
               >
                 {preset.label}
-              </button>
+              </Button>
             ))}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -938,7 +943,7 @@ export function SmartglassesView() {
             <h2 className="text-sm font-semibold">Wi-Fi</h2>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <input
+            <Input
               ref={wifiSsidRef}
               value={wifiSsid}
               onChange={(event) => setWifiSsid(event.target.value)}
@@ -947,7 +952,7 @@ export function SmartglassesView() {
               className="h-9 rounded-md border border-border bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               {...wifiSsidAgentProps}
             />
-            <input
+            <Input
               ref={wifiPasswordRef}
               value={wifiPassword}
               onChange={(event) => setWifiPassword(event.target.value)}
@@ -1147,7 +1152,8 @@ function ActionButton({
     onActivate: () => void onClick(),
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       onClick={() => void onClick()}
@@ -1157,7 +1163,7 @@ function ActionButton({
       {...agentProps}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -1182,7 +1188,8 @@ function PlatformTabButton({
     onActivate: () => onSelect(platformKey),
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       onClick={() => onSelect(platformKey)}
@@ -1194,7 +1201,7 @@ function PlatformTabButton({
       {...agentProps}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 

@@ -12,6 +12,8 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { type CSSProperties, useCallback, useState } from "react";
 import {
   type ShopifySnapshot,
@@ -240,7 +242,8 @@ export function ShopifyView() {
         aria-label="Shopify controls"
         style={AGENT_TOOLBAR_STYLE}
       >
-        <button
+        <Button
+          unstyled
           ref={refreshControl.ref}
           {...refreshControl.agentProps}
           type="button"
@@ -253,8 +256,8 @@ export function ShopifyView() {
           }}
         >
           {loading ? "Refreshing…" : "Refresh"}
-        </button>
-        <input
+        </Button>
+        <Input
           ref={productSearchControl.ref}
           {...productSearchControl.agentProps}
           type="search"

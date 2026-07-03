@@ -13,6 +13,7 @@
 
 import type { OverlayAppContext } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
 
 import { useCallback, useState } from "react";
 import type { PhaseName } from "../phases";
@@ -106,7 +107,8 @@ export function TrajectoryLoggerView({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex justify-start">
-        <button
+        <Button
+          unstyled
           type="button"
           ref={backControl.ref}
           {...backControl.agentProps}
@@ -115,7 +117,7 @@ export function TrajectoryLoggerView({
           className="inline-flex items-center justify-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-strong transition-colors hover:bg-bg-hover hover:text-txt"
         >
           Back to apps
-        </button>
+        </Button>
       </div>
       <TrajectoryLoggerSpatialView snapshot={snapshot} onAction={onAction} />
     </div>

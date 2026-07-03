@@ -30,12 +30,15 @@ import {
   useAppSelectorShallow,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Input } from "@elizaos/ui/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "@elizaos/ui/components/ui/select";
+import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import {
   Archive,
   ArrowDownToLine,
@@ -622,7 +625,8 @@ function SubAgentCard({
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
           {session.label}
         </span>
-        <button
+        <Button
+          unstyled
           ref={inspectRef}
           type="button"
           onClick={() => onInspect(session.sessionId)}
@@ -633,9 +637,10 @@ function SubAgentCard({
           {...inspectAgentProps}
         >
           <PanelRightOpen className="h-3 w-3" />
-        </button>
+        </Button>
         {stoppable ? (
-          <button
+          <Button
+            unstyled
             ref={stopRef}
             type="button"
             disabled={busy}
@@ -646,7 +651,7 @@ function SubAgentCard({
             {...stopAgentProps}
           >
             <CircleStop className="h-3 w-3" />
-          </button>
+          </Button>
         ) : null}
       </div>
       {provider ? (
@@ -803,7 +808,8 @@ function EditedPlanRestartSection({
             {latestPlanRevisionId ?? currentPlanLabel}
           </span>
         </div>
-        <button
+        <Button
+          unstyled
           ref={toggleRef}
           type="button"
           disabled={busy}
@@ -818,13 +824,14 @@ function EditedPlanRestartSection({
             <ChevronDown className="h-3 w-3" />
           )}
           {toggleLabel}
-        </button>
+        </Button>
       </div>
       {open ? (
         <div className="mt-2 space-y-2">
-          <label className="block">
+          <label htmlFor="orchestrator-plan-edit-summary" className="block">
             <FieldLabel>{summaryLabel}</FieldLabel>
-            <input
+            <Input
+              id="orchestrator-plan-edit-summary"
               value={summary}
               onChange={(event) => setSummary(event.target.value)}
               className={FIELD_CLASS}
@@ -834,9 +841,10 @@ function EditedPlanRestartSection({
               data-testid="orchestrator-plan-edit-summary"
             />
           </label>
-          <label className="block">
+          <label htmlFor="orchestrator-plan-draft" className="block">
             <FieldLabel>{draftLabel}</FieldLabel>
-            <textarea
+            <Textarea
+              id="orchestrator-plan-draft"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               rows={8}
@@ -1126,7 +1134,7 @@ function AddAgentForm({
 
   return (
     <div className="mt-1.5 space-y-1.5">
-      <input
+      <Input
         ref={labelRef}
         value={label}
         onChange={(event) => setLabel(event.target.value)}
@@ -1137,7 +1145,7 @@ function AddAgentForm({
         {...labelAgentProps}
       />
       <div className="flex gap-1.5">
-        <input
+        <Input
           ref={frameworkRef}
           value={framework}
           onChange={(event) => setFramework(event.target.value)}
@@ -1146,7 +1154,7 @@ function AddAgentForm({
           aria-label={fieldLabels.framework}
           {...frameworkAgentProps}
         />
-        <input
+        <Input
           ref={modelRef}
           value={model}
           onChange={(event) => setModel(event.target.value)}
@@ -1156,7 +1164,7 @@ function AddAgentForm({
           {...modelAgentProps}
         />
       </div>
-      <input
+      <Input
         ref={workdirRef}
         value={workdir}
         onChange={(event) => setWorkdir(event.target.value)}
@@ -1165,7 +1173,7 @@ function AddAgentForm({
         aria-label={fieldLabels.workdir}
         {...workdirAgentProps}
       />
-      <input
+      <Input
         ref={repoRef}
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
@@ -1174,7 +1182,7 @@ function AddAgentForm({
         aria-label={fieldLabels.repo}
         {...repoAgentProps}
       />
-      <textarea
+      <Textarea
         ref={taskRef}
         value={task}
         onChange={(event) => setTask(event.target.value)}
@@ -1238,7 +1246,8 @@ function ControlButton({
     description,
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       disabled={disabled}
@@ -1254,7 +1263,7 @@ function ControlButton({
       {...agentProps}
     >
       {icon}
-    </button>
+    </Button>
   );
 }
 
@@ -1283,7 +1292,8 @@ function RecoveryActionButton({
     description,
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       disabled={disabled}
@@ -1294,7 +1304,7 @@ function RecoveryActionButton({
     >
       {icon}
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -1391,7 +1401,7 @@ export function TaskInspector({
       description: "Close the task details panel",
     });
   const { ref: priorityRef, agentProps: priorityAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "inspector-priority",
       role: "select",
       label: setPriorityLabel,
@@ -1416,7 +1426,8 @@ export function TaskInspector({
           <h3 className="text-xs font-medium text-muted">
             {t("orchestrator.inspector.title", { defaultValue: "Details" })}
           </h3>
-          <button
+          <Button
+            unstyled
             ref={closeRef}
             type="button"
             onClick={onClose}
@@ -1426,7 +1437,7 @@ export function TaskInspector({
             {...closeAgentProps}
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1">
@@ -1550,24 +1561,34 @@ export function TaskInspector({
           testId="orchestrator-copy-link"
         />
         {terminal ? null : (
-          <select
-            ref={priorityRef}
-            aria-label={setPriorityLabel}
+          <Select
             value={detail.priority}
-            disabled={busy}
-            onChange={(event) => {
-              const next = paramPriority(event.target.value);
+            onValueChange={(value) => {
+              const next = paramPriority(value);
               if (next && next !== detail.priority) onSetPriority(next);
             }}
-            className="border-border/35 border-b bg-transparent px-1 py-1 text-2xs text-muted transition-colors hover:border-accent/60 hover:text-txt disabled:opacity-50"
-            data-testid="orchestrator-priority-select"
-            {...priorityAgentProps}
+            disabled={busy}
           >
-            <option value="low">{labelPriority("low", t)}</option>
-            <option value="normal">{labelPriority("normal", t)}</option>
-            <option value="high">{labelPriority("high", t)}</option>
-            <option value="urgent">{labelPriority("urgent", t)}</option>
-          </select>
+            <SelectTrigger
+              ref={priorityRef}
+              aria-label={setPriorityLabel}
+              className="border-border/35 h-auto w-auto border-b bg-transparent px-1 py-1 text-2xs text-muted transition-colors hover:border-accent/60 hover:text-txt disabled:opacity-50"
+              data-testid="orchestrator-priority-select"
+              {...priorityAgentProps}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">{labelPriority("low", t)}</SelectItem>
+              <SelectItem value="normal">
+                {labelPriority("normal", t)}
+              </SelectItem>
+              <SelectItem value="high">{labelPriority("high", t)}</SelectItem>
+              <SelectItem value="urgent">
+                {labelPriority("urgent", t)}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         )}
         <AlertDialog>
           <AlertDialogTrigger asChild>
@@ -1808,7 +1829,8 @@ function OperatorTabs({
       })}
     >
       {tabs.map((tab) => (
-        <button
+        <Button
+          unstyled
           key={tab.id}
           type="button"
           role="tab"
@@ -1819,7 +1841,7 @@ function OperatorTabs({
           }`}
         >
           {tab.label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -2018,7 +2040,8 @@ function OperatorDrawerShell({
             {subtitle}
           </p>
         </div>
-        <button
+        <Button
+          unstyled
           type="button"
           onClick={onClose}
           className="-mr-1 p-1 text-muted transition-colors hover:text-txt"
@@ -2026,7 +2049,7 @@ function OperatorDrawerShell({
           data-testid="orchestrator-close-operator-detail"
         >
           <X className="h-4 w-4" />
-        </button>
+        </Button>
       </div>
       {children}
     </div>
@@ -2632,7 +2655,8 @@ function TimelineHeader({
     return (
       <div className="px-3 py-2">
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            unstyled
             ref={backRef}
             type="button"
             onClick={onBack}
@@ -2642,10 +2666,11 @@ function TimelineHeader({
             {...backAgentProps}
           >
             <ArrowLeft className="h-4 w-4" />
-          </button>
+          </Button>
           {statusDot}
           {title}
-          <button
+          <Button
+            unstyled
             ref={detailsRef}
             type="button"
             onClick={onOpenInspector}
@@ -2656,7 +2681,7 @@ function TimelineHeader({
             {...detailsAgentProps}
           >
             <PanelRightOpen className="h-4 w-4" aria-hidden />
-          </button>
+          </Button>
         </div>
         {pausedBadge ? (
           <div className="mt-1.5 flex items-center gap-1.5">{pausedBadge}</div>
@@ -2671,7 +2696,8 @@ function TimelineHeader({
       {statusDot}
       {title}
       {pausedBadge}
-      <button
+      <Button
+        unstyled
         ref={detailsRef}
         type="button"
         onClick={onOpenInspector}
@@ -2682,7 +2708,7 @@ function TimelineHeader({
         {...detailsAgentProps}
       >
         <PanelRightOpen className="h-4 w-4" aria-hidden />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -3059,7 +3085,8 @@ export function OrchestratorWorkbench() {
                       t={t}
                     />
                   </div>
-                  <button
+                  <Button
+                    unstyled
                     ref={showArchivedRef}
                     type="button"
                     onClick={() => setShowArchived((value) => !value)}
@@ -3072,7 +3099,7 @@ export function OrchestratorWorkbench() {
                   >
                     <Archive className="h-3.5 w-3.5" />
                     {showArchivedLabel}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : null}
@@ -3166,7 +3193,8 @@ export function OrchestratorWorkbench() {
               >
                 {timelineCursor ? (
                   <div className="flex justify-center">
-                    <button
+                    <Button
+                      unstyled
                       ref={loadOlderRef}
                       type="button"
                       onClick={() => void loadOlderTimeline()}
@@ -3177,7 +3205,7 @@ export function OrchestratorWorkbench() {
                     >
                       <ArrowDownToLine className="h-3 w-3" />
                       {loadOlderLabel}
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
                 {conversation.length === 0 ? (
@@ -3199,7 +3227,8 @@ export function OrchestratorWorkbench() {
                         }`}
                         data-testid="orchestrator-conversation-block"
                       >
-                        <button
+                        <Button
+                          unstyled
                           type="button"
                           onClick={() => handleSelectBlock(block)}
                           className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center text-muted opacity-0 transition-colors hover:text-txt focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -3212,7 +3241,7 @@ export function OrchestratorWorkbench() {
                           data-testid="orchestrator-inspect-block"
                         >
                           <PanelRightOpen className="h-3.5 w-3.5" />
-                        </button>
+                        </Button>
                         <div className="min-w-0 flex-1">
                           <ConversationBlockView
                             block={block}
@@ -3236,7 +3265,8 @@ export function OrchestratorWorkbench() {
                       defaultValue: "Agent working…",
                     })}
                   </span>
-                  <button
+                  <Button
+                    unstyled
                     ref={stopActiveRef}
                     type="button"
                     onClick={handleStopActive}
@@ -3251,7 +3281,7 @@ export function OrchestratorWorkbench() {
                     <kbd className="ml-0.5 px-1 text-[0.9em] text-muted">
                       Esc
                     </kbd>
-                  </button>
+                  </Button>
                 </div>
               ) : null}
               <div className="pb-24" />
@@ -3285,7 +3315,8 @@ export function OrchestratorWorkbench() {
 
         {/* Inspector — stacked below activity so the registered view stays one-column. */}
         {detail && isMobile && inspectorOpen ? (
-          <button
+          <Button
+            unstyled
             type="button"
             aria-label={t("orchestrator.action.closeDetails", {
               defaultValue: "Close details",

@@ -12,6 +12,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { type CSSProperties, useCallback } from "react";
 import {
   type HyperliquidSnapshot,
@@ -136,7 +137,8 @@ export function HyperliquidView() {
         aria-label="Hyperliquid controls"
         style={AGENT_TOOLBAR_STYLE}
       >
-        <button
+        <Button
+          unstyled
           ref={refreshControl.ref}
           {...refreshControl.agentProps}
           type="button"
@@ -149,8 +151,9 @@ export function HyperliquidView() {
           }}
         >
           {loading ? "Refreshing…" : "Refresh"}
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           ref={homeControl.ref}
           {...homeControl.agentProps}
           type="button"
@@ -158,7 +161,7 @@ export function HyperliquidView() {
           style={AGENT_BUTTON_OUTLINE_STYLE}
         >
           Home
-        </button>
+        </Button>
       </div>
       <HyperliquidSpatialView snapshot={snapshot} onAction={onAction} />
     </>

@@ -1,6 +1,7 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {
   Activity,
@@ -358,7 +359,8 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
 
             <div className="mt-3 grid grid-cols-3 gap-2">
               {PROMPT_PRESETS.map((preset) => (
-                <button
+                <Button
+                  unstyled
                   key={preset.id}
                   type="button"
                   onClick={() => setPrompt(preset.prompt)}
@@ -370,17 +372,21 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   }`}
                 >
                   {preset.label}
-                </button>
+                </Button>
               ))}
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 px-2 py-1.5 text-sm text-txt hover:bg-bg-accent/50">
+              <label
+                htmlFor="model-tester-image-file"
+                className="flex min-h-10 cursor-pointer items-center justify-center gap-2 px-2 py-1.5 text-sm text-txt hover:bg-bg-accent/50"
+              >
                 <ImageIcon
                   className={`h-4 w-4 ${imageDataUrl ? "text-ok" : "text-muted"}`}
                 />
                 <span className="min-w-0 truncate">Image</span>
-                <input
+                <Input
+                  id="model-tester-image-file"
                   ref={imageInputControl.ref}
                   {...imageInputControl.agentProps}
                   type="file"
@@ -391,12 +397,16 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   }
                 />
               </label>
-              <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 px-2 py-1.5 text-sm text-txt hover:bg-bg-accent/50">
+              <label
+                htmlFor="model-tester-audio-file"
+                className="flex min-h-10 cursor-pointer items-center justify-center gap-2 px-2 py-1.5 text-sm text-txt hover:bg-bg-accent/50"
+              >
                 <FileAudio
                   className={`h-4 w-4 ${audioPayload ? "text-ok" : "text-muted"}`}
                 />
                 <span className="min-w-0 truncate">Audio</span>
-                <input
+                <Input
+                  id="model-tester-audio-file"
                   ref={audioInputControl.ref}
                   {...audioInputControl.agentProps}
                   type="file"

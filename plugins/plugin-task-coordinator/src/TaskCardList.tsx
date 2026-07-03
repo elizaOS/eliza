@@ -2,6 +2,8 @@
 // single-pane landings. Both views render the same card medallion + chips so the
 // two surfaces read as one product. Pure presentation — no data fetching.
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import {
   Archive,
   Circle,
@@ -204,7 +206,7 @@ export function TaskSearchInput({
         className="pointer-events-none absolute left-1 h-3.5 w-3.5 text-muted"
         aria-hidden
       />
-      <input
+      <Input
         ref={inputRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -260,7 +262,8 @@ export function TaskCard({
     description: `Open the "${title}" task`,
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       onClick={() => onOpen(id)}
@@ -287,7 +290,7 @@ export function TaskCard({
         ) : null}
         <span className="flex flex-wrap items-center gap-1.5">{chips}</span>
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -389,7 +392,8 @@ export function BackChip({
     description: "Return to the task list",
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       onClick={onClick}
@@ -399,6 +403,6 @@ export function BackChip({
     >
       <span aria-hidden>←</span>
       {label}
-    </button>
+    </Button>
   );
 }
