@@ -332,6 +332,21 @@ async function main(): Promise<number> {
   const { runtime, providerName, cleanup } = await createScenarioRuntime();
   logger.info(`[eliza-scenarios] provider: ${providerName}`);
 
+  // Per-turn timeout. Defaults to 120s (fast hosted providers), but a real
+  // local model on a CPU backend needs a larger budget; expose it via env so
+  // the local-model bench lane can run without editing this file.
+  const turnTimeoutMs = (() => {
+    const raw = process.env.SCENARIO_TURN_TIMEOUT_MS?.trim();
+    if (!raw) return 120_000;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(
+        `SCENARIO_TURN_TIMEOUT_MS must be a positive integer (got '${raw}')`,
+      );
+    }
+    return parsed;
+  })();
+
   const reports: ScenarioReport[] = [];
   try {
     for (const { scenario } of loaded) {
@@ -342,7 +357,7 @@ async function main(): Promise<number> {
       const report = await runScenario(scenario, runtime, {
         providerName,
         minJudgeScore,
-        turnTimeoutMs: 120_000,
+        turnTimeoutMs,
       });
       reports.push(report);
       logger.info(
