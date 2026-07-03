@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorState = vi.hoisted(() => ({ isNative: false }));
@@ -112,6 +112,42 @@ describe("shared cloud query gate — session from persisted JWT only (page-relo
     setBootConfig({ branding: {}, apiToken: "eliza_native_owner_key" });
 
     const { result } = renderHook(() => useAuthenticatedQueryGate());
+
+    expect(result.current.enabled).toBe(true);
+    expect(result.current.userId).toMatch(/^native-api-key:/);
+  });
+
+  it("native: ignores a local-agent bearer token in boot config", () => {
+    capacitorState.isNative = true;
+    setBootConfig({ branding: {}, apiToken: "local-agent-bearer-token" });
+
+    const { result } = renderHook(() => useAuthenticatedQueryGate());
+
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.userId).toBeNull();
+  });
+
+  it("native: ignores a non-cloud legacy global token", () => {
+    capacitorState.isNative = true;
+    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+      "legacy-local-agent-bearer-token";
+
+    const { result } = renderHook(() => useAuthenticatedQueryGate());
+
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.userId).toBeNull();
+  });
+
+  it("native: refreshes the API-key session when the token sync event fires in the same view", () => {
+    capacitorState.isNative = true;
+
+    const { result } = renderHook(() => useAuthenticatedQueryGate());
+    expect(result.current.enabled).toBe(false);
+
+    setBootConfig({ branding: {}, apiToken: "eliza_native_owner_key" });
+    act(() => {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    });
 
     expect(result.current.enabled).toBe(true);
     expect(result.current.userId).toMatch(/^native-api-key:/);

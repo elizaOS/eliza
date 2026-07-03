@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client-base";
 import { cloudTokenSecsRemaining, getCloudAuthToken } from "./client-cloud";
 
@@ -47,6 +47,18 @@ describe("getCloudAuthToken (Cloud = Steward everywhere)", () => {
     client.setToken("client-token");
     expect(getCloudAuthToken(client)).toBe("client-token");
     client.setToken(null);
+  });
+
+  it("dispatches steward-token-sync when the client REST token changes", () => {
+    const listener = vi.fn();
+    window.addEventListener("steward-token-sync", listener);
+    const client = new ElizaClient();
+
+    client.setToken("client-token");
+    client.setToken(null);
+
+    window.removeEventListener("steward-token-sync", listener);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it("returns null when no token is available anywhere", () => {

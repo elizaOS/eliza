@@ -11,3 +11,10 @@
 export function isCloudApiKeyToken(token: string | null | undefined): boolean {
   return typeof token === "string" && token.trim().startsWith("eliza_");
 }
+
+export function normalizeCloudApiKeyToken(
+  token: string | null | undefined,
+): string | null {
+  const trimmed = token?.trim() ?? null;
+  return isCloudApiKeyToken(trimmed) ? trimmed : null;
+}

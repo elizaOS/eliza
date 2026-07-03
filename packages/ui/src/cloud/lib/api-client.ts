@@ -29,6 +29,7 @@ import { getElizaApiToken } from "@elizaos/shared";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
+import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";
 
 // The single Eliza Cloud API host the native/Electrobun transport is allowed to
@@ -202,12 +203,14 @@ function readCloudBearerToken(): string | null {
   if (!isNativeCloudRuntime()) return null;
   const globalToken = (globalThis as Record<string, unknown>)
     .__ELIZA_CLOUD_AUTH_TOKEN__;
-  if (typeof globalToken === "string" && globalToken.trim()) {
-    return globalToken.trim();
+  if (typeof globalToken === "string") {
+    const cloudKey = normalizeCloudApiKeyToken(globalToken);
+    if (cloudKey) return cloudKey;
   }
-  const restToken =
-    getBootConfig().apiToken?.trim() || getElizaApiToken()?.trim();
-  return restToken || null;
+  return (
+    normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
+    normalizeCloudApiKeyToken(getElizaApiToken())
+  );
 }
 
 // ---------------------------------------------------------------------------
