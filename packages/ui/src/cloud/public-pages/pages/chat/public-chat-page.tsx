@@ -181,7 +181,7 @@ export default function PublicChatPage() {
         </div>
         <Link
           to={`/?characterId=${encodeURIComponent(character.id)}`}
-          className="inline-flex w-full items-center justify-center bg-[#FF5800] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#e54f00]"
+          className="inline-flex w-full items-center justify-center bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#e54f00]"
         >
           {t("cloud.publicChat.startChat", {
             name: character.name,

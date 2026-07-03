@@ -46,7 +46,7 @@ export default function ApplicationsPage() {
               defaultValue: "Total Apps",
             })}
             value={apps.length}
-            icon={<Grid3x3 className="h-5 w-5 text-[#FF5800]" />}
+            icon={<Grid3x3 className="h-5 w-5 text-[var(--accent)]" />}
           />
           <DashboardStatCard
             label={t("cloud.apps.stat.activeApps", {

@@ -347,7 +347,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <Globe className="h-4 w-4 text-[#FF5800]" />
+                <Globe className="h-4 w-4 text-[var(--accent)]" />
                 {t("cloud.appDomains.title", { defaultValue: "Domains" })}
               </h3>
               <p className="text-xs text-neutral-500 mt-1">
@@ -363,7 +363,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 <Button
                   onClick={() => setShowAddForm(true)}
                   size="sm"
-                  className="bg-[#FF5800] hover:bg-[#e54f00] text-white rounded-sm"
+                  className="bg-[var(--accent)] hover:bg-[#e54f00] text-white rounded-sm"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   {t("cloud.appDomains.addDomain", {
@@ -509,7 +509,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                             className={`h-9 px-4 ${
                               isAdding || !newDomain.trim()
                                 ? "bg-neutral-700 text-neutral-400"
-                                : "bg-[#FF5800] hover:bg-[#e54f00] text-white"
+                                : "bg-[var(--accent)] hover:bg-[#e54f00] text-white"
                             }`}
                           >
                             {isAdding ? (

@@ -248,15 +248,15 @@ export function ApiKeysTable({
                 <TableCell>
                   <div className="flex flex-col gap-2 text-xs text-white/60">
                     <div className="flex items-center gap-2">
-                      <CalendarClock className="h-3.5 w-3.5 text-[#FF5800]" />
+                      <CalendarClock className="h-3.5 w-3.5 text-[var(--accent)]" />
                       <span>Created {formatDate(key.createdAt)}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <CalendarClock className="h-3.5 w-3.5 text-[#FF5800]" />
+                      <CalendarClock className="h-3.5 w-3.5 text-[var(--accent)]" />
                       <span>Last used {formatDate(key.lastUsedAt)}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <CalendarClock className="h-3.5 w-3.5 text-[#FF5800]" />
+                      <CalendarClock className="h-3.5 w-3.5 text-[var(--accent)]" />
                       <span>
                         {key.expiresAt
                           ? `Expires ${formatDate(key.expiresAt)}`

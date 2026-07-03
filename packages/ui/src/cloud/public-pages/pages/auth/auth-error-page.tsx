@@ -70,7 +70,7 @@ export default function AuthErrorPage() {
           <div className="w-full space-y-3">
             <Button
               onClick={() => navigate("/login")}
-              className="w-full h-11 bg-[#FF5800] hover:bg-[#e54f00] text-white"
+              className="w-full h-11 bg-[var(--accent)] hover:bg-[#e54f00] text-white"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               {t("cloud.authError.tryAgain", { defaultValue: "Try Again" })}

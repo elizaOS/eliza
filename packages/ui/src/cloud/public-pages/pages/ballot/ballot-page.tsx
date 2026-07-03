@@ -234,7 +234,7 @@ export default function BallotPage() {
           <button
             type="submit"
             disabled={isSubmitting || !scopedToken.trim() || !value.trim()}
-            className="inline-flex items-center gap-2 rounded-md bg-[#FF5800] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />

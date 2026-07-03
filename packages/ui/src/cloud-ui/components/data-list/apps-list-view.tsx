@@ -86,7 +86,7 @@ export function AppsListView({
                 {renderAppLink({
                   app,
                   className:
-                    "min-w-0 truncate text-sm font-medium text-white transition-colors hover:text-[#FF5800]",
+                    "min-w-0 truncate text-sm font-medium text-white transition-colors hover:text-[var(--accent)]",
                   children: app.name,
                 })}
                 <StatusBadge

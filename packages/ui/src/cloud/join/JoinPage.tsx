@@ -152,7 +152,7 @@ export default function JoinPage(): React.JSX.Element {
             <button
               type="button"
               onClick={handleRetry}
-              className="bg-[#FF5800] px-6 py-2.5 font-semibold text-white transition-colors hover:bg-[#e54f00]"
+              className="bg-[var(--accent)] px-6 py-2.5 font-semibold text-white transition-colors hover:bg-[#e54f00]"
             >
               {t("cloud.join.retry", { defaultValue: "Try again" })}
             </button>

@@ -12749,7 +12749,7 @@
       };
       BRAND_COLORS = {
         blue: "#0B35F1",
-        orange: "#FF5800",
+        orange: "var(--accent)",
         white: "#FFFFFF",
         black: "#000000",
         gray: "#D1D0D4"
@@ -138930,7 +138930,7 @@ ${text}`;
         },
         className: cn(
           "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-          active ? "bg-[rgb(255,88,0)]/25 text-white" : "bg-white/10 text-white/80 hover:bg-white/20"
+          active ? "bg-[rgb(var(--accent-rgb))]/25 text-white" : "bg-white/10 text-white/80 hover:bg-white/20"
         ),
         children: icon
       }
@@ -138989,7 +138989,7 @@ ${text}`;
             type: "button",
             "data-testid": "thread-line-edit-save",
             onClick: onSave,
-            className: "rounded-full bg-[rgb(255,88,0)] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]",
+            className: "rounded-full bg-[rgb(var(--accent-rgb))] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]",
             children: "Send"
           }
         )

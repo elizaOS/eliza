@@ -33,7 +33,7 @@ const PALETTES: ReadonlyArray<{
   glyph: string;
 }> = [
   // 0 — Signature orange
-  { from: "#ff5800", to: "#ffb070", glyph: "#7a2600" },
+  { from: "var(--accent)", to: "#ffb070", glyph: "#7a2600" },
   // 1 — Warm sand neutral (light, low-chroma)
   { from: "#c9956b", to: "#f3dcc4", glyph: "#5c3d22" },
   // 2 — Ember / deep orange-red

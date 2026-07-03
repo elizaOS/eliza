@@ -236,7 +236,7 @@ export function LogViewer({
         <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#FF5800]" />
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
               <h2
                 className="text-xl font-normal text-white"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}

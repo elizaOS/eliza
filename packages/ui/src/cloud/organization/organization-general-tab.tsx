@@ -26,7 +26,7 @@ export function OrganizationGeneralTab({
         <div className="relative z-10 space-y-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+              <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
               <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                 Organization Details
               </h3>
@@ -69,7 +69,7 @@ export function OrganizationGeneralTab({
                 Created
               </p>
               <p className="mt-1 text-sm font-mono flex items-center gap-1.5 text-white">
-                <Calendar className="h-3.5 w-3.5 text-[#FF5800]" />
+                <Calendar className="h-3.5 w-3.5 text-[var(--accent)]" />
                 {format(new Date(organization.created_at), "MMM d, yyyy")}
               </p>
             </div>
@@ -82,7 +82,7 @@ export function OrganizationGeneralTab({
         <div className="relative z-10 space-y-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+              <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
               <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                 Billing Information
               </h3>

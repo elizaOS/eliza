@@ -243,7 +243,7 @@ export default function ApprovalPage() {
   return (
     <div className="mx-auto max-w-xl p-6">
       <div className="flex items-center gap-2">
-        <ShieldCheck className="h-6 w-6 text-[#FF5800]" />
+        <ShieldCheck className="h-6 w-6 text-[var(--accent)]" />
         <h1 className="text-xl font-semibold">
           {t("cloud.approval.heading", { defaultValue: "Approval request" })}
         </h1>
@@ -361,7 +361,7 @@ export default function ApprovalPage() {
               type="button"
               onClick={handleApprove}
               disabled={submitting || signature.trim().length === 0}
-              className="inline-flex items-center gap-2 rounded bg-[#FF5800] hover:bg-[#e54f00] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded bg-[var(--accent)] hover:bg-[#e54f00] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {t("cloud.approval.approve", { defaultValue: "Approve" })}

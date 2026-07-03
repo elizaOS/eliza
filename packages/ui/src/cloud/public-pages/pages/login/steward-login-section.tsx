@@ -603,7 +603,7 @@ export default function StewardLoginSection() {
           type="button"
           onClick={handleVerifyOtpAndRegister}
           disabled={loading !== null || otpCode.trim().length < 4}
-          className="flex w-full items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 bg-[var(--accent)] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
         >
           {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
           {t("cloud.login.otp.createPasskey", {
@@ -690,7 +690,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 bg-[var(--accent)] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}

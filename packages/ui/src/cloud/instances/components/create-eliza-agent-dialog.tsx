@@ -110,9 +110,9 @@ function StepIndicator({ state }: { state: StepState }) {
     case "active":
       return (
         <div
-          className={`${base} bg-[#FF5800]/15 border border-[#FF5800]/30 relative`}
+          className={`${base} bg-[var(--accent)]/15 border border-[var(--accent)]/30 relative`}
         >
-          <Loader2 className="h-3 w-3 text-[#FF5800] animate-spin" />
+          <Loader2 className="h-3 w-3 text-[var(--accent)] animate-spin" />
         </div>
       );
     case "error":
@@ -646,7 +646,7 @@ export function CreateElizaAgentDialog({
                           : "cursor-pointer"
                       } ${
                         !isDedicated
-                          ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
+                          ? "border-[var(--accent)]/60 bg-[var(--accent)]/[0.06]"
                           : "border-white/10 bg-black/20 hover:border-white/20"
                       }`}
                     >
@@ -686,7 +686,7 @@ export function CreateElizaAgentDialog({
                           : "cursor-pointer"
                       } ${
                         isDedicated
-                          ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
+                          ? "border-[var(--accent)]/60 bg-[var(--accent)]/[0.06]"
                           : "border-white/10 bg-black/20 hover:border-white/20"
                       }`}
                     >
@@ -819,8 +819,8 @@ export function CreateElizaAgentDialog({
 
                 {/* Cost notice */}
                 {isDedicated && autoStart ? (
-                  <div className="flex items-start gap-2.5 border border-[#FF5800]/15 bg-[#FF5800]/5 px-3 py-2.5">
-                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-[#FF5800] rounded-full" />
+                  <div className="flex items-start gap-2.5 border border-[var(--accent)]/15 bg-[var(--accent)]/5 px-3 py-2.5">
+                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-[var(--accent)] rounded-full" />
                     <div className="space-y-0.5">
                       <p className="text-[11px] font-mono text-white/70">
                         {t("cloud.createAgent.hourlyRates", {

@@ -40,7 +40,7 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
       label: t("cloud.analytics.usageChart.requests", {
         defaultValue: "Requests",
       }),
-      color: "#FF5800",
+      color: "var(--accent)",
     },
     cost: {
       label: t("cloud.analytics.usageChart.costUsd", {

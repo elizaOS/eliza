@@ -409,9 +409,9 @@ export default function AgentDetailPage() {
               </div>
               {adminDetails.bridgePort !== null && adminDetails.headscaleIp && (
                 <div className="flex items-center gap-3 px-4 py-3 border border-white/10 bg-black/60">
-                  <Terminal className="h-4 w-4 text-[#FF5800] shrink-0" />
+                  <Terminal className="h-4 w-4 text-[var(--accent)] shrink-0" />
                   <code
-                    className="text-sm text-[#FF5800] font-mono flex-1"
+                    className="text-sm text-[var(--accent)] font-mono flex-1"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
                   >
                     {`curl http://${adminDetails.headscaleIp}:${adminDetails.bridgePort}/health`}

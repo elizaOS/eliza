@@ -241,7 +241,7 @@ export function ElizaAgentActions({
     <BrandCard className="relative" cornerSize="md">
       <div className="relative z-10 space-y-4">
         <div className="flex items-center gap-2 pb-4 border-b border-white/10">
-          <span className="inline-block w-2 h-2 rounded-full bg-[#FF5800]" />
+          <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)]" />
           <h2
             className="text-xl font-normal text-white"
             style={{ fontFamily: "var(--font-roboto-mono)" }}

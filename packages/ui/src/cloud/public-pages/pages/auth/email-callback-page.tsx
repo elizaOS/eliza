@@ -127,7 +127,7 @@ function EmailCallbackContent() {
   if (status === "error") {
     return (
       <Frame>
-        <div className="bg-[#FF5800] p-4 text-black">
+        <div className="bg-[var(--accent)] p-4 text-black">
           <AlertTriangle className="h-8 w-8" />
         </div>
         <h1 className="text-lg font-semibold text-white">
@@ -166,7 +166,7 @@ function EmailCallbackContent() {
 
   return (
     <Frame>
-      <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
+      <Loader2 className="h-12 w-12 animate-spin text-[var(--accent)]" />
       <h1 className="text-lg font-semibold text-white">
         {t("cloud.emailCallback.verifying", {
           defaultValue: "Verifying sign-in link...",

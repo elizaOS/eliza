@@ -167,7 +167,7 @@ export function EarningsSimulator({
         {/* Total */}
         <div className="flex items-center justify-between">
           <span className="text-white font-medium">Your Earnings</span>
-          <span className="text-xl font-semibold text-[#FF5800]">
+          <span className="text-xl font-semibold text-[var(--accent)]">
             ${calculations.totalEarnings.toFixed(2)}
           </span>
         </div>

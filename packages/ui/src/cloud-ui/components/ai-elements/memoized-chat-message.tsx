@@ -101,12 +101,12 @@ const REASONING_ANIMATION_CSS = `
   @keyframes pulseGlow {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgba(255, 88, 0, 0);
-      border-color: rgba(255, 88, 0, 0.15);
+      box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
+      border-color: rgba(var(--accent-rgb), 0.15);
     }
     50% {
-      box-shadow: 0 0 8px 2px rgba(255, 88, 0, 0.1);
-      border-color: rgba(255, 88, 0, 0.25);
+      box-shadow: 0 0 8px 2px rgba(var(--accent-rgb), 0.1);
+      border-color: rgba(var(--accent-rgb), 0.25);
     }
   }
 
@@ -376,20 +376,20 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                   <div className="reasoning-container space-y-2.5">
                     <div className="flex items-center gap-2">
                       <div className="relative">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#FF5800]/70" />
-                        <div className="absolute inset-0 h-3.5 w-3.5 animate-ping opacity-20 rounded-full bg-[#FF5800]" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]/70" />
+                        <div className="absolute inset-0 h-3.5 w-3.5 animate-ping opacity-20 rounded-full bg-[var(--accent)]" />
                       </div>
-                      <span className="text-xs font-medium text-[#FF5800]/70 uppercase tracking-wider">
+                      <span className="text-xs font-medium text-[var(--accent)]/70 uppercase tracking-wider">
                         {reasoningPhase === "planning" && "Planning"}
                         {reasoningPhase === "actions" && "Executing"}
                         {reasoningPhase === "response" && "Composing"}
                         {!reasoningPhase && "Thinking"}
                       </span>
                     </div>
-                    <div className="reasoning-text reasoning-border text-sm text-white/85 italic leading-relaxed border-l-2 border-[#FF5800]/30 pl-3 ml-1 py-0.5">
+                    <div className="reasoning-text reasoning-border text-sm text-white/85 italic leading-relaxed border-l-2 border-[var(--accent)]/30 pl-3 ml-1 py-0.5">
                       {displayReasoningText}
                       <span
-                        className="streaming-cursor inline-block w-[2px] h-[0.9em] bg-[#FF5800]/50 ml-0.5 rounded-sm align-text-bottom"
+                        className="streaming-cursor inline-block w-[2px] h-[0.9em] bg-[var(--accent)]/50 ml-0.5 rounded-sm align-text-bottom"
                         style={{ verticalAlign: "text-bottom" }}
                       />
                     </div>
@@ -416,13 +416,13 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                   <div className="mb-2 py-2 px-3 bg-white/[0.02] border border-white/[0.05] rounded-sm">
                     <div className="flex items-center gap-2">
                       <div className="relative">
-                        <Loader2 className="h-3 w-3 animate-spin text-[#FF5800]/60" />
+                        <Loader2 className="h-3 w-3 animate-spin text-[var(--accent)]/60" />
                       </div>
-                      <span className="text-[10px] font-medium text-[#FF5800]/60 uppercase tracking-wider">
+                      <span className="text-[10px] font-medium text-[var(--accent)]/60 uppercase tracking-wider">
                         Composing
                       </span>
                     </div>
-                    <div className="text-xs text-white/70 italic leading-relaxed border-l-2 border-[#FF5800]/20 pl-2 mt-1.5 line-clamp-2">
+                    <div className="text-xs text-white/70 italic leading-relaxed border-l-2 border-[var(--accent)]/20 pl-2 mt-1.5 line-clamp-2">
                       {displayReasoningText}
                     </div>
                   </div>
@@ -452,7 +452,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                     {/* Elegant blinking cursor for streaming messages */}
                     {isStreamingMessage && (
                       <span
-                        className="streaming-cursor inline-block w-[3px] h-[1.1em] bg-[#FF5800] ml-0.5 rounded-sm align-text-bottom"
+                        className="streaming-cursor inline-block w-[3px] h-[1.1em] bg-[var(--accent)] ml-0.5 rounded-sm align-text-bottom"
                         style={{
                           verticalAlign: "text-bottom",
                           marginBottom: "2px",
@@ -538,7 +538,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
       ) : (
         <div className="flex flex-col max-w-[85%] sm:max-w-[75%] group/message items-end">
           {/* User Message */}
-          <div className="py-2 px-3 bg-[#FF5800]/10 border border-[#FF5800]/20 rounded-sm transition-colors hover:bg-[#FF5800]/15 hover:border-[#FF5800]/30 w-fit ml-auto">
+          <div className="py-2 px-3 bg-[var(--accent)]/10 border border-[var(--accent)]/20 rounded-sm transition-colors hover:bg-[var(--accent)]/15 hover:border-[var(--accent)]/30 w-fit ml-auto">
             <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-white/95 text-left">
               {message.content.text}
             </div>

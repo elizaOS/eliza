@@ -168,7 +168,7 @@ interface RequestLogsResponse {
 const SOURCE_COLORS: Record<string, string> = {
   api_key: BRAND_COLORS.orange,
   sandbox_preview: "#e11d48",
-  embed: "#FF5800",
+  embed: "var(--accent)",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -181,7 +181,7 @@ const TYPE_COLORS: Record<string, string> = {
   pageview: "#10b981",
   chat: BRAND_COLORS.orange,
   image: "#e11d48",
-  video: "#FF5800",
+  video: "var(--accent)",
   voice: "#f59e0b",
   agent: "#ec4899",
 };
@@ -526,7 +526,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     }}
                   />
                   <Bar dataKey="newUsers" fill="#e11d48" name="New Users" />
-                  <Bar dataKey="users" fill="#FF5800" name="Total Users" />
+                  <Bar dataKey="users" fill="var(--accent)" name="Total Users" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

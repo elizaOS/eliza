@@ -179,10 +179,10 @@ export function ApiRouteExplorerClient({
         <div className="lg:sticky lg:top-4 h-fit">
           <div className="border border-white/10 bg-gradient-to-b from-black/60 to-black/40 overflow-hidden">
             {/* Header */}
-            <div className="border-b border-white/10 p-4 bg-gradient-to-r from-[#ff5800]/5 to-transparent">
+            <div className="border-b border-white/10 p-4 bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#ff5800] " />
+                  <div className="w-2 h-2 rounded-full bg-[var(--accent)] " />
                   <span className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">
                     Route Explorer
                   </span>
@@ -192,7 +192,7 @@ export function ApiRouteExplorerClient({
                     type="checkbox"
                     checked={showAll}
                     onChange={(e) => setShowAll(e.target.checked)}
-                    className="accent-[#ff5800] w-3.5 h-3.5"
+                    className="accent-[var(--accent)] w-3.5 h-3.5"
                   />
                   Show all
                 </label>
@@ -264,7 +264,7 @@ export function ApiRouteExplorerClient({
                             className={cn(
                               "w-full text-left rounded-none border px-3 py-2.5 transition-all my-1",
                               active
-                                ? "bg-[#ff5800]/10 border-[#ff5800]/40 "
+                                ? "bg-[var(--accent)]/10 border-[var(--accent)]/40 "
                                 : "border-transparent hover:bg-white/5 hover:border-white/10",
                             )}
                           >
@@ -493,7 +493,7 @@ export function ApiRouteExplorerClient({
                   <div className="flex items-center gap-2">
                     <svg
                       aria-hidden="true"
-                      className="w-4 h-4 text-[#ff5800]"
+                      className="w-4 h-4 text-[var(--accent)]"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -554,12 +554,12 @@ export function ApiRouteExplorerClient({
 
                 <p className="mt-3 text-xs text-white/40">
                   Replace{" "}
-                  <code className="text-[#ff5800] bg-[#ff5800]/10 px-1.5 py-0.5">
+                  <code className="text-[var(--accent)] bg-[var(--accent)]/10 px-1.5 py-0.5">
                     YOUR_API_KEY
                   </code>{" "}
                   with your actual API key from{" "}
                   <a
-                    className="text-[#ff5800] hover:underline"
+                    className="text-[var(--accent)] hover:underline"
                     href="/dashboard/api-keys"
                   >
                     Dashboard → API Keys
@@ -594,10 +594,10 @@ export function ApiRouteExplorerClient({
           ) : (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#ff5800]/20 to-[#ff5800]/5 flex items-center justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 flex items-center justify-center mb-4">
                 <svg
                   aria-hidden="true"
-                  className="w-8 h-8 text-[#ff5800]/60"
+                  className="w-8 h-8 text-[var(--accent)]/60"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
