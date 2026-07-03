@@ -43,6 +43,8 @@ import type {
   UUID,
   World,
 } from "@elizaos/core";
+import { DISCORD_SERVICE_NAME } from "@elizaos/plugin-discord/constants";
+import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord/service";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
@@ -736,8 +738,9 @@ function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
   const runtimeWithServices = runtime as AgentRuntime & {
     getService?: (name: string) => unknown;
   };
-  const service = runtimeWithServices.getService("discord") as
-    | { client?: DiscordClientLike | null }
+  const service = runtimeWithServices.getService(DISCORD_SERVICE_NAME) as
+    | IDiscordService
+    | null
     | undefined;
   return service?.client ?? null;
 }
