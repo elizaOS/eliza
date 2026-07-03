@@ -45,7 +45,9 @@ function DrawerOverlay({
         // sheet reads through it (the prior bg-black/50 let content bleed). The
         // brand palette is black/white/orange only, so the scrim is the brand
         // black at 72% rather than an off-palette "ember" rgba.
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-scrim backdrop-blur-[2px]",
+        // Solid bg-scrim token: the opaque scrim already hides content behind
+        // the sheet, so no blur filter is needed (flat system + battery gate).
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-scrim",
         className,
       )}
       {...props}
