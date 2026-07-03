@@ -28,6 +28,7 @@ registerAppShellPage({
   viewKind: "system",
   icon: "Wallet",
   path: "/inventory",
+  tabAffinity: "inventory",
   order: 50,
   loader: () =>
     import("./InventoryView.tsx").then((module) => ({

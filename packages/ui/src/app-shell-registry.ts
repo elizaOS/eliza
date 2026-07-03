@@ -22,6 +22,11 @@ export interface AppShellPageRegistration {
   icon?: string;
   /** Route path the tab links to. */
   path: string;
+  /**
+   * Optional shell tab id this route activates. Defaults to `id`; use this for
+   * plugin pages that are mounted under an existing built-in tab.
+   */
+  tabAffinity?: string;
   /** Sort priority within the nav (lower = first). Default 100. */
   order?: number;
   /**

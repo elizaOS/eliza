@@ -18,6 +18,7 @@ registerAppShellPage({
   label: "Phone Companion",
   icon: "Smartphone",
   path: "/phone-companion",
+  tabAffinity: "phone-companion",
   loader: () =>
     import("./companion/components/PhoneCompanionApp").then((module) => ({
       default: module.PhoneCompanionApp,

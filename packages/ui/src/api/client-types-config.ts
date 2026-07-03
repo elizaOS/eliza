@@ -192,6 +192,7 @@ export interface PluginInfo {
       label: string;
       icon?: string;
       path: string;
+      tabAffinity?: string;
       order?: number;
       developerOnly?: boolean;
       viewKind?: ViewKind;

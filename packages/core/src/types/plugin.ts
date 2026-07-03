@@ -445,6 +445,11 @@ export interface PluginAppNavTab {
 	icon?: string;
 	/** Route path the tab links to (e.g. "/inventory"). */
 	path: string;
+	/**
+	 * Optional shell tab id this route should activate when it is not the same
+	 * as `id` (for example, an app-shell page that lives inside a built-in tab).
+	 */
+	tabAffinity?: string;
 	/** Sort priority within the nav (lower = first). Default 100. */
 	order?: number;
 	/**
