@@ -1,3 +1,4 @@
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildRotatedSubprocessEnv,
@@ -26,7 +27,7 @@ import { ProviderApiError } from "../src/provider-errors";
  * plan requires.
  */
 
-const BRIDGE_SYMBOL = Symbol.for("eliza.account-pool.coding-agent.v1");
+const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
 
 interface FakeBridge {
   select: ReturnType<typeof vi.fn>;

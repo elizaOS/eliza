@@ -15,8 +15,9 @@
  * *account* of the SAME provider first. A user with two Claude Max accounts
  * still stalls the brain when account #1 limits, exactly like a solo account.
  *
- * The fix (this module): consume the `eliza.account-pool.coding-agent.v1`
- * bridge (the SAME bridge coding sub-agents rotate through — it maps backend →
+ * The fix (this module): consume the coding-agent selector bridge
+ * (`CODING_AGENT_SELECTOR_BRIDGE_SYMBOL`, single-sourced in `@elizaos/core`) —
+ * the SAME bridge coding sub-agents rotate through, which maps backend →
  * provider, pool-selects the next healthy account, and MATERIALIZES the exact
  * env the subprocess needs: `CLAUDE_CODE_OAUTH_TOKEN` for claude, a per-account
  * `CODEX_HOME` for codex) at TWO points:
@@ -60,12 +61,12 @@
  * @module plugin-cli-inference/account-rotation
  */
 
-import { logger } from "@elizaos/core";
-
-/** Symbol the app-core coding-agent selector bridge is published under. */
-const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1"
-);
+import {
+  type CodingAccountStrategy,
+  type CodingAgentSelectorBridge,
+  getCodingAgentSelectorBridge,
+  logger,
+} from "@elizaos/core";
 
 export type RotationAgentType = "claude" | "codex";
 export type RotationSubprocessEnv = Record<string, string | undefined>;
@@ -88,30 +89,12 @@ export interface RotationAccountSelection {
   envPatch: Record<string, string>;
 }
 
-/** The narrow slice of the coding-agent bridge this module consumes. */
-interface CodingAgentSelectorBridge {
-  select(
-    agentType: string,
-    opts?: { sessionKey?: string; strategy?: string; exclude?: string[] }
-  ): Promise<RotationAccountSelection | null>;
-  markRateLimited(
-    providerId: string,
-    accountId: string,
-    untilMs: number,
-    detail?: string
-  ): Promise<void>;
-  recordUsage(
-    providerId: string,
-    accountId: string,
-    result: { tokens?: number; ok: boolean; model?: string; latencyMs?: number }
-  ): Promise<void>;
-}
-
-/** Read the installed bridge, or null when no pool has been constructed. */
+/**
+ * Read the installed bridge, or null when no pool has been constructed. The
+ * bridge symbol + contract are single-sourced in `@elizaos/core`.
+ */
 export function getCodingAccountBridge(): CodingAgentSelectorBridge | null {
-  if (typeof globalThis === "undefined") return null;
-  const bridge = (globalThis as Record<symbol, unknown>)[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL];
-  return (bridge as CodingAgentSelectorBridge | undefined) ?? null;
+  return getCodingAgentSelectorBridge();
 }
 
 /**
@@ -230,7 +213,7 @@ export interface RotationContext {
    */
   onRotate: () => void | Promise<void>;
   /** Selection strategy override (else the pool's default). */
-  strategy?: string;
+  strategy?: CodingAccountStrategy;
 }
 
 function rotationStateKey(ctx: RotationContext): string {

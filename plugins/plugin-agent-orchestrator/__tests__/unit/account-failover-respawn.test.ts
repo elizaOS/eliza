@@ -1,3 +1,4 @@
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Mid-session account failover: a running sub-agent that dies on a pooled
  * account's rate-limit / auth failure must not fail the task. The router marks
@@ -13,9 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SubAgentRouter } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
 
-const BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
+const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
 const ROOM = "11111111-2222-3333-4444-555555555555";
 const ORIGIN_MESSAGE = "99999999-8888-7777-6666-555555555555";
 

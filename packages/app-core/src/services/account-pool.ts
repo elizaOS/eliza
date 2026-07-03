@@ -35,9 +35,13 @@ import {
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
   isSubscriptionProvider,
-  type SubscriptionProvider,
 } from "@elizaos/agent/auth/types";
-import { logger, resolveStateDir } from "@elizaos/core";
+import {
+  type AnthropicAccountPoolBridge,
+  logger,
+  resolveStateDir,
+  setAnthropicAccountPoolBridge,
+} from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
@@ -718,46 +722,6 @@ async function deleteAccountMeta(
   writeMetaStore(store);
 }
 
-/**
- * Symbol-keyed bridge contract consumed by plugin-anthropic's
- * `credential-store.ts`. Kept narrow so the plugin doesn't have to import
- * the full pool surface (or the rest of `@elizaos/app-core`).
- */
-const ANTHROPIC_POOL_BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.anthropic.v1",
-);
-
-interface AnthropicPoolBridge {
-  selectAnthropicSubscription(opts?: {
-    sessionKey?: string;
-    exclude?: string[];
-  }): Promise<{ id: string; expiresAt: number } | null>;
-  getAccessToken(
-    providerId: "anthropic-subscription",
-    accountId: string,
-  ): Promise<string | null>;
-  markInvalid(accountId: string, detail?: string): Promise<void>;
-  markRateLimited(
-    accountId: string,
-    untilMs: number,
-    detail?: string,
-  ): Promise<void>;
-}
-
-/**
- * Bridge used by `applySubscriptionCredentials` in `@elizaos/agent` to pick
- * the active Codex account when applying `OPENAI_API_KEY`. Lives behind
- * a symbol so the agent package doesn't need to depend on app-core.
- */
-const SUBSCRIPTION_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.subscription-selector.v1",
-);
-
-interface SubscriptionSelectorBridge {
-  /** Pick an enabled, healthy account; returns its id or null. */
-  pickAccountId(providerId: SubscriptionProvider): Promise<string | null>;
-}
-
 let cachedDefaultPool: AccountPool | null = null;
 let defaultSelectionConfig: AccountPoolSelectionConfig = {};
 
@@ -851,7 +815,6 @@ export function getDefaultAccountPool(): AccountPool {
       deleteAccount: deleteAccountMeta,
     });
     installAnthropicBridge(cachedDefaultPool);
-    installSubscriptionSelectorBridge(cachedDefaultPool);
     installCodingAgentSelectorBridge(cachedDefaultPool);
   }
   return cachedDefaultPool;
@@ -1051,8 +1014,7 @@ export function stopAccountPoolKeepAliveForTests(): void {
  * previous bridge.
  */
 function installAnthropicBridge(pool: AccountPool): void {
-  if (typeof globalThis === "undefined") return;
-  const bridge: AnthropicPoolBridge = {
+  const bridge: AnthropicAccountPoolBridge = {
     selectAnthropicSubscription: async (opts) => {
       const account = await pool.select({
         providerId: "anthropic-subscription",
@@ -1078,23 +1040,7 @@ function installAnthropicBridge(pool: AccountPool): void {
         providerId: "anthropic-subscription",
       }),
   };
-  (globalThis as Record<symbol, unknown>)[ANTHROPIC_POOL_BRIDGE_SYMBOL] =
-    bridge;
-}
-
-function installSubscriptionSelectorBridge(pool: AccountPool): void {
-  if (typeof globalThis === "undefined") return;
-  const bridge: SubscriptionSelectorBridge = {
-    pickAccountId: async (providerId) => {
-      const account = await pool.select({
-        providerId,
-        ...selectionForProvider(providerId),
-      });
-      return account?.id ?? null;
-    },
-  };
-  (globalThis as Record<symbol, unknown>)[SUBSCRIPTION_SELECTOR_BRIDGE_SYMBOL] =
-    bridge;
+  setAnthropicAccountPoolBridge(bridge);
 }
 
 /**

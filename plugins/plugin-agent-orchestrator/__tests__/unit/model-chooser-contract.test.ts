@@ -1,3 +1,4 @@
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Gap (J): sub-agent model + auth selection is dispersed across `buildEnv`
  * (private, in acp-service.ts) and `buildOpencodeAcpEnv` / `buildOpencodeSpawnConfig`
@@ -144,9 +145,7 @@ import {
 // Pooled-account bridge helpers (drives oauth/api-key auth mode on spawn).
 // ---------------------------------------------------------------------------
 
-const BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
+const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
 
 interface FakeSelection {
   providerId: string;
