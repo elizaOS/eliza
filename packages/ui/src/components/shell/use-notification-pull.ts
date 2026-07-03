@@ -53,12 +53,15 @@ export function revealOffsetForTravel(rawDown: number): number {
 }
 
 export interface NotificationPullOptions {
-  /** Live reveal offset (px, rAF-paced) while pulling; 0 when it settles/aborts. */
-  onReveal: (offset: number, armed: boolean) => void;
-  /** The pull crossed the threshold and was released — open the center. */
-  onCommit: () => void;
-  /** Pull started (true) / ended (false) — toggle the reveal affordance + its transition. */
-  onPullingChange?: (pulling: boolean) => void;
+  /** The pull engaged (finger committed to a downward top-overscroll drag). */
+  onStart?: () => void;
+  /** Live reveal distance (px, rAF-paced) while pulling. */
+  onReveal: (offset: number) => void;
+  /**
+   * The pull was released. `committed` is true when it crossed the distance OR
+   * velocity threshold (open the center) and false otherwise (retract).
+   */
+  onEnd: (committed: boolean) => void;
   /** Distance (px) to commit. Default {@link DEFAULT_DISTANCE_THRESHOLD}. */
   distanceThreshold?: number;
   /** Velocity (px/ms) to commit as a flick. Default {@link DEFAULT_VELOCITY_THRESHOLD}. */
@@ -107,17 +110,17 @@ export function useNotificationPull(options: NotificationPullOptions): {
   const rejected = React.useRef(false);
 
   // Coalesce the high-frequency reveal updates to one per frame.
-  const pending = React.useRef<{ offset: number; armed: boolean } | null>(null);
+  const pending = React.useRef<number | null>(null);
   const raf = React.useRef(0);
   const flush = React.useCallback(() => {
     raf.current = 0;
     const next = pending.current;
     pending.current = null;
-    if (next) optsRef.current.onReveal(next.offset, next.armed);
+    if (next != null) optsRef.current.onReveal(next);
   }, []);
   const schedule = React.useCallback(
-    (offset: number, armed: boolean) => {
-      pending.current = { offset, armed };
+    (offset: number) => {
+      pending.current = offset;
       if (raf.current === 0 && typeof requestAnimationFrame === "function") {
         raf.current = requestAnimationFrame(flush);
       } else if (typeof requestAnimationFrame !== "function") {
@@ -187,19 +190,14 @@ export function useNotificationPull(options: NotificationPullOptions): {
         }
         if (dy < ENGAGE_SLOP) return; // still ambiguous — wait for more travel
         engaged.current = true;
-        optsRef.current.onPullingChange?.(true);
+        optsRef.current.onStart?.();
       }
 
       // Engaged: stop the compositor from scrolling/overscrolling this drag and
       // drive the live reveal. `preventDefault` needs the non-passive listener
       // registered below.
       if (event.cancelable) event.preventDefault();
-      const rawDown = Math.max(0, dy);
-      schedule(
-        revealOffsetForTravel(rawDown),
-        rawDown >=
-          (optsRef.current.distanceThreshold ?? DEFAULT_DISTANCE_THRESHOLD),
-      );
+      schedule(revealOffsetForTravel(Math.max(0, dy)));
     },
     [schedule],
   );
@@ -233,10 +231,7 @@ export function useNotificationPull(options: NotificationPullOptions): {
         allowCommit &&
         (dy >= distanceThreshold || velocity >= velocityThreshold);
 
-      // Settle the reveal first (enables the snap-back transition), then commit.
-      optsRef.current.onPullingChange?.(false);
-      optsRef.current.onReveal(0, false);
-      if (commit) optsRef.current.onCommit();
+      optsRef.current.onEnd(commit);
     },
     [cancelScheduled, resetGesture],
   );

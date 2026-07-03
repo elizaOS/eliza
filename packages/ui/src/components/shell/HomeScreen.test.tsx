@@ -29,10 +29,15 @@ vi.mock("../../widgets/WidgetHost", () => ({
   ),
 }));
 
+import {
+  __getNotificationShellStateForTests,
+  __resetNotificationShellForTests,
+} from "../../state/notifications/notification-shell";
 import { HomeScreen } from "./HomeScreen";
 
 afterEach(() => {
   cleanup();
+  __resetNotificationShellForTests();
 });
 
 const NATIVE_OS_TILES = ["messages", "phone", "contacts", "camera"];
@@ -87,14 +92,13 @@ describe("HomeScreen", () => {
 
   // The resting pull "pill"/grabber is gone — pulling down from anywhere on the
   // dashboard is the affordance now, and a bare pill at the top was noise the
-  // redesign removes. The reveal capsule exists but is hidden (opacity 0) until
-  // an active pull.
-  it("has NO resting notification pill/grabber; the pull reveal is hidden at rest", () => {
+  // redesign removes. There is no separate reveal element either: the real sheet
+  // (rendered by the headless NotificationCenter) fades in and tracks the pull.
+  it("has NO resting notification pill/grabber or reveal affordance", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-notification-grabber")).toBeNull();
-    const reveal = screen.getByTestId("home-notification-reveal");
-    expect(reveal.style.opacity).toBe("0");
-    expect(reveal.getAttribute("data-armed")).toBeNull();
+    expect(screen.queryByTestId("home-notification-reveal")).toBeNull();
+    expect(__getNotificationShellStateForTests().open).toBe(false);
   });
 
   // Drive a real touch drag on the scroller (the gesture uses touch events, not
@@ -127,96 +131,71 @@ describe("HomeScreen", () => {
   }
 
   // The iOS-style pull-down: a downward drag ANYWHERE on the dashboard (while the
-  // widget list is at the top) DISPATCHES the surface-agnostic open event. The
-  // single always-mounted headless NotificationCenter (App.tsx) is the sole
-  // renderer of the sheet/panel, so two shells can never stack; HomeScreen's job
-  // is only to fire the event.
-  it("dispatches the open-notification event on a downward pull from anywhere on the dashboard", async () => {
-    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
-    const onOpen = vi.fn();
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    try {
-      render(<HomeScreen onOpenTile={vi.fn()} />);
-      // The gesture lives on the scroller itself, not a thin top strip. jsdom
-      // keeps scrollTop at 0, so the surface is "at the top" and the
-      // top-overscroll pull engages. Pull DOWN ~76px past the 60px threshold.
-      touchDrag(screen.getByTestId("home-screen"), [
-        [120, 20],
-        [120, 60],
-        [120, 96],
-      ]);
+  // widget list is at the top) drives the shared shell store so the real sheet
+  // fades in + tracks the finger; a release past threshold settles it OPEN.
+  it("opens the notification center on a downward pull from anywhere on the dashboard", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    // The gesture lives on the scroller itself, not a thin top strip. jsdom keeps
+    // scrollTop at 0, so the surface is "at the top" and the top-overscroll pull
+    // engages. Pull DOWN ~76px past the 60px threshold.
+    touchDrag(screen.getByTestId("home-screen"), [
+      [120, 20],
+      [120, 60],
+      [120, 96],
+    ]);
 
-      expect(onOpen).toHaveBeenCalledTimes(1);
-    } finally {
-      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    }
+    expect(__getNotificationShellStateForTests().open).toBe(true);
   });
 
-  it("does NOT open on an UPWARD drag (direction-gated — that is native scroll)", async () => {
-    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
-    const onOpen = vi.fn();
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    try {
-      render(<HomeScreen onOpenTile={vi.fn()} />);
-      // Pull UP: the notification pull is downward-only.
-      touchDrag(screen.getByTestId("home-screen"), [
-        [120, 96],
-        [120, 60],
-        [120, 20],
-      ]);
+  it("does NOT open on an UPWARD drag (direction-gated — that is native scroll)", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    // Pull UP: the notification pull is downward-only.
+    touchDrag(screen.getByTestId("home-screen"), [
+      [120, 96],
+      [120, 60],
+      [120, 20],
+    ]);
 
-      expect(onOpen).not.toHaveBeenCalled();
-    } finally {
-      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    }
+    const shell = __getNotificationShellStateForTests();
+    expect(shell.open).toBe(false);
+    expect(shell.dragging).toBe(false);
   });
 
-  it("does NOT open when the list is scrolled down (only a top-overscroll pull opens)", async () => {
-    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
-    const onOpen = vi.fn();
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    try {
-      render(<HomeScreen onOpenTile={vi.fn()} />);
-      const surface = screen.getByTestId("home-screen");
-      // Simulate a list scrolled away from the top: a downward drag here is a
-      // real scroll-up of content, never the notification pull.
-      Object.defineProperty(surface, "scrollTop", {
-        configurable: true,
-        value: 240,
-      });
+  it("does NOT open when the list is scrolled down (only a top-overscroll pull opens)", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const surface = screen.getByTestId("home-screen");
+    // Simulate a list scrolled away from the top: a downward drag here is a real
+    // scroll-up of content, never the notification pull.
+    Object.defineProperty(surface, "scrollTop", {
+      configurable: true,
+      value: 240,
+    });
 
-      touchDrag(surface, [
-        [120, 20],
-        [120, 60],
-        [120, 96],
-      ]);
+    touchDrag(surface, [
+      [120, 20],
+      [120, 60],
+      [120, 96],
+    ]);
 
-      expect(onOpen).not.toHaveBeenCalled();
-    } finally {
-      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    }
+    expect(__getNotificationShellStateForTests().open).toBe(false);
   });
 
-  it("does NOT open on a horizontal swipe (that belongs to the home↔launcher pager)", async () => {
-    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
-    const onOpen = vi.fn();
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    try {
-      render(<HomeScreen onOpenTile={vi.fn()} />);
-      // Horizontal-dominant drag: the pull hook rejects it so the pager owns it.
-      touchDrag(screen.getByTestId("home-screen"), [
-        [40, 40],
-        [120, 46],
-        [220, 52],
-      ]);
+  it("does NOT open on a horizontal swipe (that belongs to the home↔launcher pager)", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    // Horizontal-dominant drag: the pull hook rejects it so the pager owns it.
+    touchDrag(screen.getByTestId("home-screen"), [
+      [40, 40],
+      [120, 46],
+      [220, 52],
+    ]);
 
-      expect(onOpen).not.toHaveBeenCalled();
-    } finally {
-      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    }
+    expect(__getNotificationShellStateForTests().open).toBe(false);
   });
 
   it("keeps a click/keyboard entry point on the top-edge button (desktop/AT)", async () => {
+    // The top-edge button opens via the surface-agnostic event (the headless
+    // NotificationCenter — mounted app-wide, not here — turns it into a store
+    // open), so this asserts the event, the button's public contract.
     const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
     const onOpen = vi.fn();
     window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);

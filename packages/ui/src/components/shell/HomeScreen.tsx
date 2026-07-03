@@ -1,19 +1,23 @@
 import {
-  Bell,
   Camera,
-  ChevronDown,
   Contact,
   type LucideIcon,
   MessageSquare,
   Phone,
 } from "lucide-react";
 import type * as React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { dispatchOpenNotificationCenter } from "../../events";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import {
+  beginNotificationDrag,
+  cancelNotificationDrag,
+  commitNotificationDrag,
+  setNotificationDrag,
+} from "../../state/notifications/notification-shell";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
@@ -179,64 +183,24 @@ export function HomeScreen({
   useHomeLayoutShiftObserver();
 
   // iOS Notification-Center pull-down: a downward drag ANYWHERE on the dashboard
-  // (while the widget list is scrolled to the top) reveals the notification
-  // center — the same gesture as dragging it down from an iOS home screen. The
-  // gesture is bound to the scroller itself and only engages on a top-overscroll
-  // downward drag, so it never fights the list's vertical scroll or the home ↔
-  // launcher horizontal pager (see use-notification-pull). During the pull a
-  // capsule affordance follows the finger and brightens once past the open
-  // threshold; there is no resting indicator (a bare pill at the top was noise).
+  // (while the widget list is scrolled to the top) pulls the notification center
+  // down — the same gesture as dragging it down from an iOS home screen. There
+  // is no separate affordance: the REAL sheet fades in and tracks the finger, so
+  // the pull drives the shared shell store live (a release past threshold settles
+  // it open; a short release retracts it). The gesture only engages on a
+  // top-overscroll downward drag, so it never fights the list's vertical scroll
+  // or the home ↔ launcher horizontal pager (see use-notification-pull).
   //
   // The notification center has ONE owner: the always-mounted headless
-  // NotificationCenter in the app shell (App.tsx), which listens for
-  // OPEN_NOTIFICATION_CENTER_EVENT and renders the surface-appropriate shell.
-  // The pull + the top-edge button just DISPATCH that event, so the home path
-  // and the desktop tray/menu/deep-link path converge on one open state — two
+  // NotificationCenter (App.tsx), which subscribes to the shell store and also
+  // listens for OPEN_NOTIFICATION_CENTER_EVENT (tray/menu/deep-link + the
+  // top-edge button). The home path and those converge on one open state — two
   // shells can never stack.
-  const revealRef = useRef<HTMLDivElement | null>(null);
-  const [pulling, setPulling] = useState(false);
-  const [armed, setArmed] = useState(false);
-  const armedRef = useRef(false);
-
-  // High-frequency: drive the reveal bar straight on the DOM node (no render per
-  // frame). The bar sits above its own height (translateY -100%) and the drag
-  // pulls it down toward its resting spot, so it reads as the notification
-  // center descending from the top edge. Low-frequency: flip `armed` only when
-  // it actually crosses the threshold so the label/grabber swap is a single
-  // re-render, not one per move.
-  const applyReveal = useCallback((offset: number, isArmed: boolean) => {
-    const el = revealRef.current;
-    if (el) {
-      // Clamp the descent so a long over-pull doesn't push the bar past the top.
-      const descend = Math.min(offset, 84);
-      el.style.transform = `translateY(-100%) translateY(${descend}px)`;
-      el.style.opacity = String(Math.min(1, Math.max(0, offset / 28)));
-    }
-    if (isArmed !== armedRef.current) {
-      armedRef.current = isArmed;
-      setArmed(isArmed);
-    }
-  }, []);
-
-  const handlePullingChange = useCallback((next: boolean) => {
-    const el = revealRef.current;
-    if (el) {
-      // Track the finger instantly while pulling; ease the snap-back on release.
-      el.style.transition = next
-        ? "none"
-        : "transform 240ms cubic-bezier(0.22,1,0.36,1), opacity 200ms ease-out";
-    }
-    setPulling(next);
-    if (!next) {
-      armedRef.current = false;
-      setArmed(false);
-    }
-  }, []);
-
   const pull = useNotificationPull({
-    onReveal: applyReveal,
-    onCommit: () => dispatchOpenNotificationCenter(),
-    onPullingChange: handlePullingChange,
+    onStart: () => beginNotificationDrag(),
+    onReveal: (px) => setNotificationDrag(px),
+    onEnd: (committed) =>
+      committed ? commitNotificationDrag() : cancelNotificationDrag(),
   });
 
   // The top-edge button is a dedicated pull HANDLE (not a scroll surface), so it
@@ -272,50 +236,9 @@ export function HomeScreen({
         onClick={() => dispatchOpenNotificationCenter()}
         {...edgePull}
       />
-      {/* Live pull affordance: a frosted bar that descends from the top edge as
-          the finger pulls down — a preview of the notification center coming, in
-          the same glass treatment as the sheet — brightening once past the open
-          threshold. Hidden at rest, never hit-tested (pointer-events-none); the
-          gesture lives on the scroller. */}
-      <div
-        ref={revealRef}
-        data-testid="home-notification-reveal"
-        data-armed={armed || undefined}
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 z-[3] flex justify-center"
-        style={{ transform: "translateY(-100%)", opacity: 0 }}
-      >
-        <div
-          className="flex w-[min(440px,calc(100vw-1rem))] flex-col items-center gap-2 rounded-b-2xl border-x border-b border-white/10 bg-black/55 px-4 pb-2.5 text-white backdrop-blur-2xl"
-          style={{ paddingTop: "calc(var(--safe-area-top,0px) + 0.55rem)" }}
-        >
-          <span className="flex items-center gap-2 [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">
-            <Bell className="h-4 w-4" aria-hidden />
-            <span className="text-sm font-medium">
-              {armed ? "Release to open" : "Notifications"}
-            </span>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 transition-transform",
-                armed ? "translate-y-0.5 opacity-100" : "opacity-70",
-              )}
-              aria-hidden
-            />
-          </span>
-          {/* The sheet's grabber, previewed — neutral, then accent when armed. */}
-          <span
-            className={cn(
-              "h-1 w-9 rounded-full transition-colors",
-              armed ? "bg-accent" : "bg-white/40",
-            )}
-            aria-hidden
-          />
-        </div>
-      </div>
       <div
         ref={pull.ref}
         data-testid="home-screen"
-        data-pulling={pulling || undefined}
         className={cn(
           // `touch-pan-y`: this scroller covers the whole home half, and a
           // scroll container's OWN touch-action governs which pans the browser

@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { __resetNotificationShellForTests } from "../../state/notifications/notification-shell";
 import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
@@ -123,6 +124,7 @@ describe("NotificationCenter", () => {
     // Default surface: coarse pointer / narrow viewport → mobile sheet shell.
     mockMatchMedia(() => false);
     __resetNotificationStoreForTests();
+    __resetNotificationShellForTests();
     mocks.appState.setActionNotice.mockReset();
     mocks.listNotifications.mockReset().mockResolvedValue({
       notifications: [],
@@ -210,7 +212,7 @@ describe("NotificationCenter", () => {
     ).toBeNull();
   });
 
-  it("sheet variant: renders the panel controlled + closes via backdrop and X (#10706)", async () => {
+  it("sheet variant: renders the panel controlled + closes via backdrop and grabber (#10706)", async () => {
     seedNotifications([notification("s1", "Pulled-down alert", "system")]);
     const onOpenChange = vi.fn();
     const { rerender } = render(
@@ -226,9 +228,11 @@ describe("NotificationCenter", () => {
     await user.click(screen.getByTestId("notification-sheet-backdrop"));
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
 
-    // The X control also requests close.
-    await user.click(screen.getByTestId("notification-sheet-close"));
+    // The grabber also requests close (there is no close X — removed chrome).
+    onOpenChange.mockClear();
+    await user.click(screen.getByTestId("notification-sheet-grabber"));
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByTestId("notification-sheet-close")).toBeNull();
 
     // Closed: nothing renders (controlled).
     rerender(
@@ -316,7 +320,6 @@ describe("NotificationCenter", () => {
     mockMatchMedia((q) => q.includes("pointer: fine"));
     const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
     seedNotifications([notification("d1", "Deploy finished", "system")]);
-    const user = userEvent.setup();
 
     render(<NotificationCenter headless />);
     expect(screen.queryByTestId("notification-panel")).toBeNull();
@@ -329,12 +332,8 @@ describe("NotificationCenter", () => {
     // The desktop shell is the panel — never the mobile pull-down sheet.
     expect(screen.queryByTestId("notification-sheet")).toBeNull();
     expect(screen.getByText("Deploy finished")).toBeTruthy();
-
-    // The panel-specific close control dismisses it.
-    await user.click(screen.getByTestId("notification-panel-close"));
-    await waitFor(() => {
-      expect(screen.queryByTestId("notification-panel")).toBeNull();
-    });
+    // No close X — dismissal is via the outside/backdrop click (covered below).
+    expect(screen.queryByTestId("notification-panel-close")).toBeNull();
   });
 
   it("desktop panel: dismisses on an outside (backdrop) click", async () => {

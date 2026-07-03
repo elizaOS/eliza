@@ -514,54 +514,55 @@ try {
   );
 
   // The resting notification "pill"/grabber is gone — the redesign removed the
-  // always-visible top indicator; pulling down from anywhere is the affordance.
+  // always-visible top indicator (and the pull "tag"); pulling down from
+  // anywhere brings the real sheet down.
   assert(
-    (await mobile.getByTestId("home-notification-grabber").count()) === 0,
-    "no resting notification pill/grabber (removed)",
+    (await mobile.getByTestId("home-notification-grabber").count()) === 0 &&
+      (await mobile.getByTestId("home-notification-reveal").count()) === 0,
+    "no resting pill/grabber and no pull-tag affordance (removed)",
   );
 
-  // Mid-pull evidence: hold a partial downward drag from the dashboard body to
-  // reveal the LIVE pull affordance (the capsule that follows the finger and
-  // brightens past the open threshold), screenshot it, then CANCEL — a cancelled
-  // pull must not open the sheet.
+  const OPEN_SHEET = '[data-testid="notification-sheet"][data-open]';
+
+  // Mid-pull evidence: hold a partial downward drag from the dashboard body. The
+  // REAL sheet itself fades in and tracks the finger (it is mounted but NOT yet
+  // "open"), so this is what the user sees being pulled down. Screenshot it, then
+  // CANCEL — a short/cancelled pull must retract, leaving nothing open.
   {
     const drag = await touchDragHold(
       mobile,
       '[data-testid="home-screen"]',
       0,
-      72,
+      80,
       { steps: 8, stepDelayMs: 12 },
     );
-    await mobile.waitForTimeout(80);
+    await mobile.waitForTimeout(90);
     assert(
-      (await mobile
-        .getByTestId("home-notification-reveal")
-        .getAttribute("data-armed")) === "true",
-      "a partial downward pull arms the live reveal affordance (past threshold)",
+      (await mobile.getByTestId("notification-sheet").count()) === 1 &&
+        (await mobile.locator(OPEN_SHEET).count()) === 0,
+      "a partial pull reveals the real sheet, tracking the finger (not yet open)",
     );
     await snap(mobile, "mobile-notification-pull-reveal");
     await drag.cancel();
-    await mobile.waitForTimeout(150);
+    await mobile.waitForTimeout(420);
     assert(
-      (await mobile.getByTestId("notification-sheet-close").count()) === 0,
-      "a CANCELLED pull leaves the sheet closed",
+      (await mobile.getByTestId("notification-sheet").count()) === 0,
+      "a CANCELLED pull retracts the sheet (nothing left open)",
     );
   }
 
-  // iOS-style pull-down from ANYWHERE on the dashboard body opens the
-  // NotificationCenter sheet — a real touch drag down over the widget list
-  // (scrolled to the top), not just a thin top strip. This is the headline of
-  // the redesign, driven through the same CDP touch path as the rail swipes.
+  // iOS-style pull-down from ANYWHERE on the dashboard body fades in + pulls down
+  // the NotificationCenter sheet and settles it OPEN — a real touch drag over the
+  // widget list (scrolled to the top), not a thin top strip. This is the headline
+  // of the redesign, driven through the same CDP touch path as the rail swipes.
   assert(
-    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    (await mobile.getByTestId("notification-sheet").count()) === 0,
     "notification sheet starts closed",
   );
   await touchSwipeDown(mobile, "home-screen");
-  await mobile
-    .getByTestId("notification-sheet-close")
-    .waitFor({ state: "visible", timeout: 4000 });
+  await mobile.locator(OPEN_SHEET).waitFor({ state: "visible", timeout: 4000 });
   assert(
-    await mobile.getByTestId("notification-sheet-close").isVisible(),
+    (await mobile.locator(OPEN_SHEET).count()) === 1,
     "real-touch pull-down from the dashboard body opens the notification sheet",
   );
   // On-screen + horizontally centered: the sheet must sit within the viewport,
@@ -580,35 +581,32 @@ try {
       `notification sheet is on-screen + centered (x ${Math.round(sheetBox?.x ?? -1)}, w ${Math.round(sheetBox?.width ?? -1)}, vw ${vw})`,
     );
   }
-  // Visual evidence of the mobile pull-down sheet shell (flat, full-width,
-  // safe-area aware) while it is open — let the slide-in settle first so the
+  // Visual evidence of the open glass sheet — let the settle finish first so the
   // capture is the resting sheet, not a mid-animation frame.
   await mobile.waitForTimeout(450);
   await snap(mobile, "mobile-notification-sheet");
-  // Close it again (Escape — the sheet's documented dismiss) so the rail swipe
-  // below starts from a clean, settled home.
+  // Close it again (Escape — a documented dismiss) so the rail swipe below starts
+  // from a clean, settled home.
   await mobile.keyboard.press("Escape");
   await mobile
-    .getByTestId("notification-sheet-close")
+    .getByTestId("notification-sheet")
     .waitFor({ state: "detached", timeout: 4000 });
   assert(
-    (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+    (await mobile.getByTestId("notification-sheet").count()) === 0,
     "the notification sheet closes again (Escape)",
   );
 
   // The top-edge band (the iOS-natural place to start a pull, and the click /
   // keyboard entry point) still opens the sheet via a pull too.
   await touchSwipeDown(mobile, "home-notification-pull-zone");
-  await mobile
-    .getByTestId("notification-sheet-close")
-    .waitFor({ state: "visible", timeout: 4000 });
+  await mobile.locator(OPEN_SHEET).waitFor({ state: "visible", timeout: 4000 });
   assert(
-    await mobile.getByTestId("notification-sheet-close").isVisible(),
+    (await mobile.locator(OPEN_SHEET).count()) === 1,
     "a pull from the top-edge band also opens the notification sheet",
   );
   await mobile.keyboard.press("Escape");
   await mobile
-    .getByTestId("notification-sheet-close")
+    .getByTestId("notification-sheet")
     .waitFor({ state: "detached", timeout: 4000 });
   await waitForSurfacePageSettled(mobile, "home");
 
@@ -955,6 +953,8 @@ try {
       `desktop notification panel is right-anchored on-screen (right edge ${Math.round(rightEdge)}, vw ${vw})`,
     );
   }
+  // Let the fade-in settle before capturing the glass panel.
+  await finePointer.waitForTimeout(300);
   await snap(finePointer, "desktop-notification-panel");
   await finePointer.getByTestId("notification-panel-backdrop").click();
   await finePointer
