@@ -805,6 +805,7 @@
         "@ai-sdk/provider": "3.0.10",
         "@ai-sdk/provider-utils": "4.0.26",
         "@bufbuild/protobuf": "^2.12.0",
+        "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/contracts": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/prompts": "workspace:*",
