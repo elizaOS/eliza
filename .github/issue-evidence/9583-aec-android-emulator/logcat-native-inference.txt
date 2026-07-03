@@ -1,0 +1,2 @@
+07-03 00:53:41.874  8383  8471 I ElizaAgent: libelizainference.so present; exporting ELIZA_INFERENCE_LIBRARY=/data/app/~~wgi076SHKGvnGzcmGAV70w==/ai.elizaos.app-n2oiJvgbPzhYM06PoIIZWw==/lib/arm64/libelizainference.so
+07-03 00:53:41.877  8383  8471 I ElizaAgent: agent/arm64-v8a/libelizainference.so present; enabling native bun:ffi inference (ELIZA_LOCAL_LLAMA=1)

@@ -1,0 +1,145 @@
+{
+  "issue": 11373,
+  "label": "android-emulator-echo-only",
+  "input": "/private/tmp/eliza-11373/.github/issue-evidence/9583-aec-android-emulator/aec-loop-result-echo-only.json",
+  "sourceUsed": "agent aec-capture snapshot (production session buffers)",
+  "sampleRateHz": 16000,
+  "frameSamples": 320,
+  "nearSeconds": 26.44,
+  "nearRms": 0.00028372009736492244,
+  "farRms": 0.0933912209271851,
+  "tag": "echo-only",
+  "deviceStatusBefore": {
+    "ready": true,
+    "libs": {
+      "fusedInference": "/data/app/~~wgi076SHKGvnGzcmGAV70w==/ai.elizaos.app-n2oiJvgbPzhYM06PoIIZWw==/lib/arm64/libelizainference.so"
+    },
+    "models": {
+      "dir": "/data/data/ai.elizaos.app/files/.eliza/models/voice"
+    },
+    "framesReceived": 0,
+    "framesDropped": 0,
+    "turnsObserved": 0,
+    "aec": {
+      "echoReferenceWired": false,
+      "playbackFramesReceived": 0,
+      "playbackSamplesReceived": 0,
+      "lastPlaybackFrameAt": null,
+      "echoDelaySamples": 0,
+      "echoDelayConfidence": 0
+    },
+    "recentTurns": []
+  },
+  "deviceStatusAfter": {
+    "ready": true,
+    "libs": {
+      "fusedInference": "/data/app/~~wgi076SHKGvnGzcmGAV70w==/ai.elizaos.app-n2oiJvgbPzhYM06PoIIZWw==/lib/arm64/libelizainference.so"
+    },
+    "models": {
+      "dir": "/data/data/ai.elizaos.app/files/.eliza/models/voice"
+    },
+    "framesReceived": 1313,
+    "framesDropped": 0,
+    "turnsObserved": 0,
+    "aec": {
+      "echoReferenceWired": true,
+      "playbackFramesReceived": 1305,
+      "playbackSamplesReceived": 417600,
+      "lastPlaybackFrameAt": 1783054491660,
+      "echoDelaySamples": 0,
+      "echoDelayConfidence": 0
+    },
+    "recentTurns": []
+  },
+  "deviceTrackSettings": {
+    "autoGainControl": false,
+    "channelCount": 1,
+    "deviceId": "default",
+    "echoCancellation": false,
+    "groupId": "529452f9be199cef4dfda2841a52cbfdb31cb77d954c6fd54b6f485d8e7f4dc6",
+    "latency": 0.032,
+    "noiseSuppression": false,
+    "sampleRate": 48000,
+    "sampleSize": 16,
+    "voiceIsolation": false
+  },
+  "deviceContextSampleRate": 48000,
+  "offlineDelayEstimate": {
+    "lagSamples": 0,
+    "lagMs": 0,
+    "confidence": 0
+  },
+  "deviceDelaySelfCalibration": {
+    "echoDelaySamples": 0,
+    "echoDelayConfidence": 0,
+    "echoDelayCalibrated": false
+  },
+  "delaySamplesUsed": 0,
+  "erle": {
+    "aecOffBaselineDb": 0,
+    "linear": {
+      "erleOverallDb": 0,
+      "erleConvergedHalfDb": 0,
+      "perSecondErleDb": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "framesCancelled": 947,
+      "framesPassthrough": 375
+    },
+    "residualSuppression": {
+      "erleOverallDb": 0,
+      "erleConvergedHalfDb": 0,
+      "perSecondErleDb": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  }
+}
