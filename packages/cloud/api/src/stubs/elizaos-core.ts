@@ -18,6 +18,21 @@ function throwingExport(name: string): (...args: unknown[]) => never {
   return () => unavailable(name);
 }
 
+/**
+ * Worker-safe pass-through for core's `runWithTrajectoryPurpose`. The Worker
+ * build has no AsyncLocalStorage trajectory-context manager (node-only), so we
+ * just invoke the fn directly — trajectory-purpose tracking is a no-op in the
+ * Worker. Added because #11580 imports it into email-classifier.ts, which the
+ * Worker build bundles; without this export the Deploy API Worker step fails
+ * with "No matching export ... for import runWithTrajectoryPurpose".
+ */
+export function runWithTrajectoryPurpose<T>(
+  _purpose: string,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return fn();
+}
+
 function readEnvValue(
   env: Record<string, string | undefined>,
   keys: readonly string[],
@@ -253,20 +268,6 @@ export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
  */
 export function runWithTrajectoryContext<T>(
   _context: unknown,
-  fn: () => T | Promise<T>,
-): T | Promise<T> {
-  return fn();
-}
-
-/**
- * Worker-safe stand-in for `runWithTrajectoryPurpose`. Same rationale as
- * `runWithTrajectoryContext` above — the trajectory context manager lives on
- * the agent sidecar, not in the Worker bundle (pulled in transitively via
- * `@elizaos/shared` email-classification, not invoked on a Worker route), so
- * there is no active context to tag with a purpose; just run the function.
- */
-export function runWithTrajectoryPurpose<T>(
-  _purpose: string,
   fn: () => T | Promise<T>,
 ): T | Promise<T> {
   return fn();
