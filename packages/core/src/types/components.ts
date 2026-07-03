@@ -278,6 +278,8 @@ export const HOOK_MODES: readonly ActionMode[] = [
 /**
  * Represents an action the agent can perform
  */
+export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
+
 export interface Action {
 	/** Action name */
 	name: string;

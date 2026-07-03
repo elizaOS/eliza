@@ -7,6 +7,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { runBookTravelHandler } from "./book-travel.js";
@@ -250,6 +251,7 @@ export const ownerRemindersAction: Action = {
     defaultKind: "definition",
   }),
   name: "OWNER_REMINDERS",
+  tags: [...OWNER_OPERATION_TAGS, FOLLOW_UP_CAPABLE_ACTION_TAG],
   similes: [
     "REMINDER",
     "REMINDERS",

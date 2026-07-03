@@ -9,6 +9,7 @@ import type {
 	Provider,
 	State,
 } from "../../../types/index.ts";
+import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "../../../types/index.ts";
 import {
 	resolveActionContexts,
 	resolveProviderContexts,
@@ -32,16 +33,13 @@ import {
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTIONS");
 const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
-const CONTACT_FOLLOW_UP_ACTIONS = new Set([
-	"CONTACT",
-	"OWNER_REMINDERS",
-	"REPLY",
-	"IGNORE",
-	"NONE",
-]);
 const GENERAL_CONTEXT = "general";
 const MAX_GROUPED_CAPABILITY_ACTIONS = 8;
 const MAX_GROUPED_CAPABILITY_PROVIDERS = 4;
+
+export function isFollowUpCapableAction(action: Pick<Action, "tags">): boolean {
+	return action.tags?.includes(FOLLOW_UP_CAPABLE_ACTION_TAG) ?? false;
+}
 
 type GroupedAction = Action & {
 	actionGroup?: {
@@ -391,8 +389,7 @@ export const actionsProvider: Provider = {
 			looksLikeRelationshipFollowUpReminder(message);
 		const availableActions = resolvedActions.filter(Boolean) as Action[];
 		const hasContactFollowUpAction = availableActions.some(
-			(action) =>
-				action.name === "CONTACT" || action.name === "OWNER_REMINDERS",
+			isFollowUpCapableAction,
 		);
 		const visibleActions = availableActions.filter((action) => {
 			if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {
@@ -401,7 +398,8 @@ export const actionsProvider: Provider = {
 			if (
 				relationshipFollowUpReminder &&
 				hasContactFollowUpAction &&
-				!CONTACT_FOLLOW_UP_ACTIONS.has(action.name)
+				!GENERIC_CHAT_ACTIONS.has(action.name) &&
+				!isFollowUpCapableAction(action)
 			) {
 				return false;
 			}

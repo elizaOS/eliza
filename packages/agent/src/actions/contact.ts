@@ -51,6 +51,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  FOLLOW_UP_CAPABLE_ACTION_TAG,
   findEntityByName,
   logger,
   ModelType,
@@ -1853,6 +1854,7 @@ async function handleFollowup(
 export const contactAction: Action = {
   name: CONTACT_ACTION,
   contexts: ["contacts", "messaging", "documents", "memory", "documents"],
+  tags: [FOLLOW_UP_CAPABLE_ACTION_TAG],
   roleGate: { minRole: "ADMIN" },
   similes: [
     // Original agent leaves
