@@ -13,6 +13,15 @@
  *      auth-gated 401/403 app, or one with no `/health` route, is still live).
  * Only when BOTH pass do we report the app live.
  *
+ * ROBUSTNESS: the deploy is already running server-side once the gate starts,
+ * so a transient status-poll failure (network blip, 5xx, HTTP timeout) must
+ * NOT abort the gate — it is logged via `onPollError` and the gate keeps
+ * polling until the overall attempt budget runs out, at which point it returns
+ * the honest "still building" timeout result (never a claim of done). Every
+ * poll is also bounded by a per-request timeout (`requestTimeoutMs`): the dep
+ * receives an AbortSignal to tear down the stalled connection, and the gate
+ * additionally races the call so even a signal-ignoring dep can never wedge it.
+ *
  * The gate is pure and fully injectable (status fetch, app fetch, probe, sleep)
  * so it can be unit-tested against a mocked status progression + reachability —
  * which is the proof for now: a real end-to-end deploy cannot be verified until
@@ -52,21 +61,41 @@ export interface DeployGateConfig {
   maxDelayMs: number;
   /** Per-probe HTTP timeout passed through to the reachability probe (ms). */
   probeTimeoutMs: number;
+  /**
+   * Per-request HTTP timeout for each Cloud API call the gate makes (the status
+   * poll + the app re-read), so one stalled connection can never hang a poll —
+   * let alone the gate — indefinitely.
+   */
+  requestTimeoutMs: number;
   /** Health path probed after READY. */
   healthPath: string;
 }
 
 export interface DeployGateDeps {
-  /** `client.getAppDeployStatus(id)`. */
-  getStatus: () => Promise<AppDeployStatusResponse>;
-  /** `client.getApp(id)` — re-read to get the authoritative production_url. */
-  getApp: () => Promise<AppResponse>;
+  /**
+   * `client.getAppDeployStatus(id)` — thread the per-poll `signal` into the
+   * HTTP request so a stalled connection is actually torn down at the
+   * `requestTimeoutMs` budget (the gate also races the call, so a dep that
+   * ignores the signal still can't hang it).
+   */
+  getStatus: (signal: AbortSignal) => Promise<AppDeployStatusResponse>;
+  /**
+   * `client.getApp(id)` — re-read to get the authoritative production_url.
+   * Receives the same per-request abort signal as `getStatus`.
+   */
+  getApp: (signal: AbortSignal) => Promise<AppResponse>;
   /** Probe a fully-qualified URL for reachability. */
   probe: (url: string) => Promise<ReachabilityResult>;
   /** Sleep between polls (injected so tests run instantly). */
   sleep?: (ms: number) => Promise<void>;
   /** Optional progress hook for streaming "still building…" updates. */
   onProgress?: (status: string, attempt: number) => void;
+  /**
+   * Optional hook fired when one status poll fails transiently (network error,
+   * HTTP timeout). The gate logs-and-continues — it never aborts on a poll
+   * error, because the deploy is still running server-side.
+   */
+  onPollError?: (error: unknown, attempt: number) => void;
 }
 
 /** Production defaults: ~ up to ~2 min of polling with capped backoff. */
@@ -75,6 +104,7 @@ export const DEFAULT_DEPLOY_GATE_CONFIG: DeployGateConfig = {
   initialDelayMs: 2_000,
   maxDelayMs: 10_000,
   probeTimeoutMs: 10_000,
+  requestTimeoutMs: 10_000,
   healthPath: "/health",
 };
 
@@ -107,6 +137,37 @@ function normalizeUrl(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Run one injected network call under a hard per-request budget. The dep gets
+ * an `AbortSignal` (threaded into `fetch` so the stalled connection is actually
+ * torn down), and the call is ALSO raced against the same deadline — so even an
+ * implementation that ignores the signal can never hang the gate.
+ */
+function callWithTimeout<T>(
+  call: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () =>
+      controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`)),
+    timeoutMs,
+  );
+  const deadline = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener(
+      "abort",
+      () => reject(controller.signal.reason),
+      { once: true },
+    );
+  });
+  const attempt = Promise.resolve(call(controller.signal));
+  // If the deadline wins, the in-flight call may still reject later (e.g. the
+  // aborted fetch) — swallow that so it never surfaces as an unhandled rejection.
+  attempt.catch(() => {});
+  return Promise.race([attempt, deadline]).finally(() => clearTimeout(timer));
+}
+
 export async function runDeployGate(
   deps: DeployGateDeps,
   config: DeployGateConfig = DEFAULT_DEPLOY_GATE_CONFIG,
@@ -116,62 +177,44 @@ export async function runDeployGate(
   let delay = config.initialDelayMs;
 
   for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
-    const statusRes = await deps.getStatus();
-    lastStatus = statusRes.status ?? "";
-    deps.onProgress?.(lastStatus, attempt);
-
-    const cls = classifyDeployStatus(lastStatus);
-
-    if (cls === "error") {
-      return {
-        phase: "error",
-        url: normalizeUrl(statusRes.vercelUrl),
-        status: lastStatus,
-        attempts: attempt,
-        error: statusRes.error ?? undefined,
-      };
+    let statusRes: AppDeployStatusResponse | undefined;
+    try {
+      statusRes = await callWithTimeout(
+        deps.getStatus,
+        config.requestTimeoutMs,
+        "deploy status poll",
+      );
+    } catch (err) {
+      // A transient poll failure must NOT abort the gate — the deploy is
+      // already running server-side. Log it and keep polling until the
+      // overall attempt budget runs out (which reports "still building",
+      // never a claim of done).
+      deps.onPollError?.(err, attempt);
     }
 
-    if (cls === "success") {
-      // Authoritative URL is the app row's production_url (deriveAppPublicUrl),
-      // NOT the create/deploy response. Fall back to the status' vercelUrl only
-      // if the re-read fails or hasn't populated production_url yet.
-      let url = normalizeUrl(statusRes.vercelUrl);
-      try {
-        const { app } = await deps.getApp();
-        url = normalizeUrl(app?.production_url) ?? url;
-      } catch {
-        // keep vercelUrl fallback
-      }
-      if (!url) {
+    if (statusRes) {
+      lastStatus = statusRes.status ?? "";
+      deps.onProgress?.(lastStatus, attempt);
+
+      const cls = classifyDeployStatus(lastStatus);
+
+      if (cls === "error") {
         return {
-          phase: "unreachable",
-          url: null,
+          phase: "error",
+          url: normalizeUrl(statusRes.vercelUrl),
           status: lastStatus,
           attempts: attempt,
-          error: "no_production_url",
+          error: statusRes.error ?? undefined,
         };
       }
-      const reachability = await deps.probe(healthUrl(url, config.healthPath));
-      return respondedLive(reachability)
-        ? {
-            phase: "ready",
-            url,
-            status: lastStatus,
-            attempts: attempt,
-            reachability,
-          }
-        : {
-            phase: "unreachable",
-            url,
-            status: lastStatus,
-            attempts: attempt,
-            reachability,
-            error: reachability.error,
-          };
+
+      if (cls === "success") {
+        return finishReady(deps, config, statusRes, lastStatus, attempt);
+      }
     }
 
-    // pending — wait then retry (skip the final wait so the loop exits to timeout)
+    // pending or failed poll — wait then retry (skip the final wait so the
+    // loop exits straight to the honest timeout result)
     if (attempt < config.maxAttempts) {
       await sleep(delay);
       delay = Math.min(delay * 2, config.maxDelayMs);
@@ -184,4 +227,54 @@ export async function runDeployGate(
     status: lastStatus,
     attempts: config.maxAttempts,
   };
+}
+
+/** READY observed — resolve the authoritative URL and run the reachability leg. */
+async function finishReady(
+  deps: DeployGateDeps,
+  config: DeployGateConfig,
+  statusRes: AppDeployStatusResponse,
+  lastStatus: string,
+  attempt: number,
+): Promise<DeployGateResult> {
+  // Authoritative URL is the app row's production_url (deriveAppPublicUrl),
+  // NOT the create/deploy response. Fall back to the status' vercelUrl only
+  // if the re-read fails or hasn't populated production_url yet.
+  let url = normalizeUrl(statusRes.vercelUrl);
+  try {
+    const { app } = await callWithTimeout(
+      deps.getApp,
+      config.requestTimeoutMs,
+      "app re-read",
+    );
+    url = normalizeUrl(app?.production_url) ?? url;
+  } catch {
+    // keep vercelUrl fallback
+  }
+  if (!url) {
+    return {
+      phase: "unreachable",
+      url: null,
+      status: lastStatus,
+      attempts: attempt,
+      error: "no_production_url",
+    };
+  }
+  const reachability = await deps.probe(healthUrl(url, config.healthPath));
+  return respondedLive(reachability)
+    ? {
+        phase: "ready",
+        url,
+        status: lastStatus,
+        attempts: attempt,
+        reachability,
+      }
+    : {
+        phase: "unreachable",
+        url,
+        status: lastStatus,
+        attempts: attempt,
+        reachability,
+        error: reachability.error,
+      };
 }

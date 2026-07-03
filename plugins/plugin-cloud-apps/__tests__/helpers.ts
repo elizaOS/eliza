@@ -55,8 +55,14 @@ import type {
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 
+/** Per-request options the SDK's poll-friendly app getters accept. */
+type SdkRequestOptions = { signal?: AbortSignal; timeoutMs?: number };
+
 type ListAppsFn = () => Promise<ListAppsResponse>;
-type GetAppFn = (id: string) => Promise<AppResponse>;
+type GetAppFn = (
+  id: string,
+  options?: SdkRequestOptions,
+) => Promise<AppResponse>;
 type CreateAppFn = (input: CreateAppInput) => Promise<CreateAppResponse>;
 type CreateAdSlotFn = (
   input: CreateAdSlotInput,
@@ -103,7 +109,10 @@ type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
 ) => Promise<DeployAppResponse>;
-type GetAppDeployStatusFn = (id: string) => Promise<AppDeployStatusResponse>;
+type GetAppDeployStatusFn = (
+  id: string,
+  options?: SdkRequestOptions,
+) => Promise<AppDeployStatusResponse>;
 type DeleteAppFn = (id: string) => Promise<DeleteAppResponse>;
 type UpdateAppFn = (id: string, patch: UpdateAppInput) => Promise<AppResponse>;
 type UpdateMonetizationFn = (
@@ -564,8 +573,8 @@ export class FakeElizaCloudClient {
   listApps(): Promise<ListAppsResponse> {
     return state.listApps();
   }
-  getApp(id: string): Promise<AppResponse> {
-    return state.getApp(id);
+  getApp(id: string, options?: SdkRequestOptions): Promise<AppResponse> {
+    return state.getApp(id, options);
   }
   createApp(input: CreateAppInput): Promise<CreateAppResponse> {
     return state.createApp(input);
@@ -638,8 +647,11 @@ export class FakeElizaCloudClient {
   exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
     return state.exportAppBackup(appId);
   }
-  getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
-    return state.getAppDeployStatus(id);
+  getAppDeployStatus(
+    id: string,
+    options?: SdkRequestOptions,
+  ): Promise<AppDeployStatusResponse> {
+    return state.getAppDeployStatus(id, options);
   }
   deleteApp(id: string): Promise<DeleteAppResponse> {
     return state.deleteApp(id);

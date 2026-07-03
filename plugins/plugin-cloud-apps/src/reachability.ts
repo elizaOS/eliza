@@ -76,8 +76,10 @@ export function respondedLive(result: ReachabilityResult): boolean {
 /**
  * Probe a URL with a bounded HTTP GET. Never throws — a network error or abort
  * resolves to `{ ok: false }` with no `status`; any HTTP response resolves with
- * its `status` (and `ok` reflecting a strict 2xx). Callers that want the
- * server's "the app answered" rule should use {@link respondedLive}.
+ * its `status` (and `ok` reflecting a strict 2xx). Redirects are NOT followed
+ * (same as the server's probe): a 3xx surfaces as its own status, which
+ * {@link respondedLive} counts as live. Callers that want the server's "the app
+ * answered" rule should use {@link respondedLive}.
  */
 export async function probeReachable(
   url: string,
@@ -96,10 +98,17 @@ export async function probeReachable(
     // `app.production_url`, read back from the authenticated Cloud row via
     // `getApp` (Cloud-authoritative first-party origin), never from message text.
     // So a raw bounded GET is acceptable here without the core network SSRF guard.
+    //
+    // `redirect: "manual"` MIRRORS the server's authoritative probe
+    // (`probeUrlReachable` in cloud-shared app-reachability): don't chase
+    // redirects (avoid loops / external hops) — a 3xx already proves the app
+    // answered, and `respondedLive` treats it as live. Following redirects here
+    // let a redirecting `/health` land on a failing target and contradict the
+    // server's READY with a false "not live".
     const res = await fetchImpl(url, {
       method: "GET",
       signal: controller.signal,
-      redirect: "follow",
+      redirect: "manual",
     });
     const ok =
       res.ok === true ||
