@@ -77,6 +77,10 @@ const ONLY_TASK = opt("--only", null);
 const STATE_DIR = path.resolve(opt("--state-dir", DEFAULT_STATE_DIR));
 const MAX_RERUN = Number(opt("--max-rerun", "0")) || 0; // 0 = all failing scenarios for the task
 const SCENARIO_TIMEOUT_MS = Number(opt("--timeout-ms", "300000")) || 300000;
+// GEPA optimizes a SHARED prompt — sample the gold pool rather than scoring all
+// 300+ full-context rows every candidate. 0 = no cap.
+const SAMPLE_ROWS = Number(opt("--sample-rows", "0")) || 0;
+const MAX_ROW_CHARS = Number(opt("--max-row-chars", "0")) || 0;
 
 /**
  * native `task_type` (stamped on every harvested row) → GEPA `--task` id.
@@ -414,8 +418,19 @@ function buildTaskDataset(task, goldRows) {
     seen.add(key);
     lines.push(JSON.stringify(rec));
   }
-  writeFileSync(outPath, lines.join("\n") + (lines.length ? "\n" : ""));
-  return { path: outPath, size: lines.length };
+  // --sample-rows N + --max-row-chars C : GEPA optimizes a SHARED prompt, so a
+  // size-filtered diverse sample gives the signal without blowing the Cerebras
+  // TPM on 189K-char full-tool-catalog rows. Drop oversized rows first (they
+  // exceed the model context / dominate the token budget), then take an evenly
+  // spaced diverse sample.
+  let kept = lines;
+  if (MAX_ROW_CHARS > 0) kept = kept.filter((l) => l.length <= MAX_ROW_CHARS);
+  if (SAMPLE_ROWS > 0 && kept.length > SAMPLE_ROWS) {
+    const n = kept.length;
+    kept = Array.from({ length: SAMPLE_ROWS }, (_, i) => kept[Math.floor((i * n) / SAMPLE_ROWS)]);
+  }
+  writeFileSync(outPath, kept.join("\n") + (kept.length ? "\n" : ""));
+  return { path: outPath, size: kept.length, poolSize: lines.length };
 }
 
 /** The exact `train` command for a task (as an argv array + a printable line). */
