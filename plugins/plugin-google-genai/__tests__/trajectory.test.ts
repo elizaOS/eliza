@@ -90,5 +90,61 @@ if (!SHOULD_RUN) {
       expect(structuredCall.completionTokens ?? 0).toBeGreaterThan(0);
       expect(structuredCall.response).toContain("4");
     }, 120_000);
+
+    it("records a native Gemini tool call trajectory", async () => {
+      const { handleTextSmall } = await import("../models/text");
+
+      const calls: CapturedLlmCall[] = [];
+      const runtime = createInlineRuntime(calls);
+
+      const result = (await runWithTrajectoryContext(
+        { trajectoryStepId: "step-google-tool-call" },
+        async () =>
+          handleTextSmall(runtime, {
+            prompt:
+              "Use the lookup_weather tool for Paris. Do not answer in plain text.",
+            maxTokens: 128,
+            tools: {
+              lookup_weather: {
+                description: "Lookup current weather for a city.",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    city: { type: "string" },
+                  },
+                  required: ["city"],
+                },
+              },
+            },
+            toolChoice: { type: "tool", toolName: "lookup_weather" },
+          } as Parameters<typeof handleTextSmall>[1]),
+      )) as unknown as {
+        text: string;
+        toolCalls?: Array<{
+          name?: string;
+          toolName?: string;
+          input?: unknown;
+          arguments?: unknown;
+        }>;
+        finishReason?: string;
+      };
+
+      expect(result.toolCalls?.length ?? 0).toBeGreaterThan(0);
+      expect(
+        result.toolCalls?.some(
+          (call) =>
+            call.name === "lookup_weather" ||
+            call.toolName === "lookup_weather",
+        ),
+      ).toBe(true);
+      expect(result.finishReason).toBe("tool-calls");
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.stepId).toBe("step-google-tool-call");
+      expect(calls[0]?.actionType).toBe(
+        "google-genai.TEXT_SMALL.generateContent",
+      );
+      expect(calls[0]?.response ?? result.text).toBe(result.text);
+    }, 120_000);
   });
 }
