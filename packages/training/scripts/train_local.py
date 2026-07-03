@@ -926,6 +926,11 @@ def main() -> int:
             "max_seq_len": args.max_seq_len, "lr": args.lr,
             "registry_key": args.registry_key,
         },
+        # Reproducibility manifest (AGENTS.md §9): hash the exact inputs. A bare
+        # HF repo id for --model won't resolve to a local path and is skipped;
+        # a local base checkpoint is hashed.
+        dataset_files=[args.train_file, args.val_file],
+        base_checkpoint=args.model,
     )
     # Post-step finite-weights guard — registered unconditionally. A divergent
     # run (e.g. a fused kernel that doesn't model an arch's layer layout) must

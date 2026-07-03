@@ -28,6 +28,7 @@ import platform
 import shutil
 import subprocess
 import time
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -126,8 +127,84 @@ def _gpu_info() -> dict[str, Any]:
     return info
 
 
-def log_environment(out_dir: Path | str, *, run_meta: dict[str, Any] | None = None) -> Path:
-    """Write a one-shot env snapshot for the training run."""
+def _sha256_file(path: Path, *, chunk: int = 1 << 20) -> str:
+    """Stream a file through sha256. Raises if the path is not a real file."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as fp:
+        while True:
+            block = fp.read(chunk)
+            if not block:
+                break
+            h.update(block)
+    return h.hexdigest()
+
+
+def _hash_paths(paths: Iterable[Path | str] | None) -> dict[str, str]:
+    """sha256 every path that resolves to a local file. Directories are hashed
+    by combining their files' hashes (sorted by relative path) so a tokenizer or
+    checkpoint directory gets one stable digest. Paths that don't exist locally
+    (e.g. a bare HuggingFace repo id) are skipped — reproducibility hashing only
+    covers artifacts actually present on disk for this run."""
+    import hashlib
+
+    out: dict[str, str] = {}
+    for raw in paths or ():
+        p = Path(raw)
+        if p.is_file():
+            out[str(p)] = f"sha256:{_sha256_file(p)}"
+        elif p.is_dir():
+            combined = hashlib.sha256()
+            files = sorted(f for f in p.rglob("*") if f.is_file())
+            for f in files:
+                combined.update(f.relative_to(p).as_posix().encode("utf-8"))
+                combined.update(_sha256_file(f).encode("ascii"))
+            out[str(p)] = f"sha256:{combined.hexdigest()}"
+    return out
+
+
+def _git_head() -> dict[str, Any]:
+    """Capture the training commit for the reproducibility manifest.
+
+    Best-effort: outside a git checkout (or with git absent) the head is
+    reported as a structured field, not an exception.
+    """
+    if not shutil.which("git"):
+        return {"available": False, "reason": "git not on PATH"}
+    out = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=False, capture_output=True, text=True, timeout=5,
+    )
+    if out.returncode != 0:
+        return {"available": False, "reason": out.stderr.strip() or f"exit={out.returncode}"}
+    head = out.stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"],
+        check=False, capture_output=True, text=True, timeout=5,
+    )
+    return {
+        "available": True,
+        "head": head,
+        "dirty": bool(dirty.stdout.strip()) if dirty.returncode == 0 else None,
+    }
+
+
+def log_environment(
+    out_dir: Path | str,
+    *,
+    run_meta: dict[str, Any] | None = None,
+    dataset_files: Iterable[Path | str] | None = None,
+    tokenizer_path: Path | str | None = None,
+    base_checkpoint: Path | str | None = None,
+) -> Path:
+    """Write a one-shot env snapshot for the training run.
+
+    Beyond platform/GPU/torch, this records the AGENTS.md §9 reproducibility
+    manifest: sha256 of every dataset file, the tokenizer artifact hash, the
+    base-checkpoint hash, and the training git commit — so a run can be tied
+    back to the exact inputs that produced it. Hashes only cover artifacts on
+    local disk (a bare HF repo id for the base is skipped, not faked)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     env_path = out / "environment.json"
@@ -137,6 +214,16 @@ def log_environment(out_dir: Path | str, *, run_meta: dict[str, Any] | None = No
         "cwd": os.getcwd(),
         "gpu": _gpu_info(),
         "run_meta": run_meta or {},
+        "reproducibility": {
+            "git": _git_head(),
+            "dataset_hashes": _hash_paths(dataset_files),
+            "tokenizer_hashes": _hash_paths(
+                [tokenizer_path] if tokenizer_path is not None else None
+            ),
+            "base_checkpoint_hashes": _hash_paths(
+                [base_checkpoint] if base_checkpoint is not None else None
+            ),
+        },
         "timestamp": time.time(),
     }
     env_path.write_text(json.dumps(payload, indent=2))
