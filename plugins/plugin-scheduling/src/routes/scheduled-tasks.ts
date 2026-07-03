@@ -29,6 +29,7 @@ import {
   scheduledTaskInputSchema,
   scheduledTaskSnoozePayloadSchema,
 } from "../scheduled-task/schema.js";
+import { ScheduledTaskValidationError } from "../scheduled-task/validation.js";
 
 /**
  * Minimal generic route context. A host adapts its own request/response
@@ -216,10 +217,18 @@ export function makeScheduledTasksRouteHandler(
         );
         return true;
       }
-      const task = await runner.schedule(
-        parsed.data as Omit<ScheduledTask, "taskId" | "state">,
-      );
-      json(res, { task }, 201);
+      try {
+        const task = await runner.schedule(
+          parsed.data as Omit<ScheduledTask, "taskId" | "state">,
+        );
+        json(res, { task }, 201);
+      } catch (err) {
+        if (err instanceof ScheduledTaskValidationError) {
+          error(res, err.message, 400);
+          return true;
+        }
+        throw err;
+      }
       return true;
     }
 

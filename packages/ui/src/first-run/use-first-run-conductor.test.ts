@@ -264,10 +264,12 @@ describe("useFirstRunConductor", () => {
     const { turn, unmount } = renderConductor();
     const greeting = await waitForTurn(turn, "first-run:greeting");
 
-    // The clean chooser offers exactly two locations — no "Bring your own keys"
-    // (runtime:other) button; BYOK is the provider sub-choice one step later.
+    // The chooser offers three locations — Cloud, On this device, Remote — but
+    // NOT "Bring your own keys" (runtime:other); BYOK is the provider sub-choice
+    // one step later.
     expect(greeting.text).toContain("__first_run__:runtime:cloud=");
     expect(greeting.text).toContain("__first_run__:runtime:local=");
+    expect(greeting.text).toContain("__first_run__:runtime:remote=");
     expect(greeting.text).not.toContain("runtime:other");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
@@ -291,14 +293,14 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("the runtime chooser offers exactly two locations and consumes a stale runtime:other pick as a no-op", async () => {
+  it("the runtime chooser offers exactly three locations and consumes a stale runtime:other pick as a no-op", async () => {
     seedAppStore();
     const { turn, transcript, unmount } = renderConductor();
     const greeting = await waitForTurn(turn, "first-run:greeting");
     const runtimeButtons = (
       greeting.text.match(/__first_run__:runtime:/g) ?? []
     ).length;
-    expect(runtimeButtons).toBe(2);
+    expect(runtimeButtons).toBe(3);
 
     // A leftover/stale runtime:other action (e.g. an old transcript widget) is
     // still consumed by the handler but seeds no provider turn.
@@ -306,6 +308,33 @@ describe("useFirstRunConductor", () => {
     expect(transcript.current.some((m) => m.id === "first-run:provider")).toBe(
       false,
     );
+    unmount();
+  });
+
+  it("REMOTE pick seeds the inline URL+token connect form (no provider step, no immediate finish)", async () => {
+    seedAppStore();
+    const { turn, transcript, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:remote")).toBe(true);
+    const connect = await waitForTurn(turn, "first-run:remote-connect");
+
+    // A remote_connect secret form with a URL field + optional token field.
+    expect(connect.secretRequest?.form?.kind).toBe("remote_connect");
+    const fieldNames = (connect.secretRequest?.form?.fields ?? []).map(
+      (f) => f.name,
+    );
+    expect(fieldNames).toEqual(["url", "token"]);
+    expect(
+      connect.secretRequest?.delivery?.canCollectValueInCurrentChannel,
+    ).toBe(true);
+
+    // Remote owns its provider: no provider sub-step, and onboarding is NOT
+    // finished yet (the user must submit the form → CONNECT_EVENT completes it).
+    expect(transcript.current.some((m) => m.id === "first-run:provider")).toBe(
+      false,
+    );
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     unmount();
   });
 

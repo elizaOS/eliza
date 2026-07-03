@@ -123,6 +123,50 @@ describe("SCHEDULED_TASK action", () => {
     );
   });
 
+  it("rejects malformed LLM-supplied gate structure before writing a row (#11791)", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+
+    const result = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "schedule a gated reminder"),
+      undefined,
+      {
+        parameters: {
+          subaction: "create",
+          kind: "reminder",
+          promptInstructions: "drink a glass of water",
+          trigger: { kind: "manual" },
+          priority: "medium",
+          shouldFire: {
+            gates: [{ kind: "not_registered", params: {} }],
+          },
+        },
+      },
+      undefined,
+      [],
+    );
+
+    expect(result?.success).toBe(false);
+    expect((result?.data as { error?: string } | undefined)?.error).toBe(
+      "INVALID_SCHEDULED_TASK",
+    );
+    expect(
+      JSON.stringify((result?.data as { issues?: string[] }).issues),
+    ).toContain("not_registered");
+
+    const listed = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "list scheduled tasks"),
+      undefined,
+      { parameters: { subaction: "list" } },
+      undefined,
+      [],
+    );
+    const tasks = (listed?.data as { tasks?: ScheduledTask[] }).tasks ?? [];
+    expect(tasks).toHaveLength(0);
+  });
+
   it("get returns NOT_FOUND for an unknown taskId", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;

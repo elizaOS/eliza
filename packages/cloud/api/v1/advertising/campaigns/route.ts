@@ -64,6 +64,7 @@ app.get("/", async (c) => {
         budgetType: c.budget_type,
         budgetAmount: c.budget_amount,
         budgetCurrency: c.budget_currency,
+        spendCapCredits: c.spend_cap_credits,
         bidStrategy: c.metadata.bid_strategy,
         optimizationGoal: c.metadata.optimization_goal,
         creditsAllocated: c.credits_allocated,
@@ -107,6 +108,7 @@ app.post("/", async (c) => {
       budgetType: parsed.data.budgetType,
       budgetAmount: parsed.data.budgetAmount,
       budgetCurrency: parsed.data.budgetCurrency,
+      spendCapCredits: parsed.data.spendCapCredits,
       bidStrategy: parsed.data.bidStrategy,
       optimizationGoal: parsed.data.optimizationGoal,
       startDate: parsed.data.startDate
@@ -133,6 +135,7 @@ app.post("/", async (c) => {
         status: campaign.status,
         budgetType: campaign.budget_type,
         budgetAmount: campaign.budget_amount,
+        spendCapCredits: campaign.spend_cap_credits,
         bidStrategy: campaign.metadata.bid_strategy,
         optimizationGoal: campaign.metadata.optimization_goal,
         creditsAllocated: campaign.credits_allocated,

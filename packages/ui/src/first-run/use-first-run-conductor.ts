@@ -99,16 +99,18 @@ function newestLocalBackup(
   );
 }
 
-// Onboarding stays a clean two-option location chooser: Cloud (managed) or
-// On this device. "Bring your own keys" is NOT a location — it just ran the
-// local backend and pre-highlighted the BYOK inference provider, so it lived on
-// the wrong axis. BYOK stays fully reachable one step later via the provider
-// sub-choice (provider:other → localInference "configure-later"). Remote agents
-// + multi-instance management live in Settings → Runtime (post-#9952).
+// The first-run location chooser: Cloud (managed), On this device, or Remote
+// (connect to an existing agent elsewhere). "Bring your own keys" is NOT a
+// location — it just ran the local backend and pre-highlighted the BYOK
+// inference provider, so it lived on the wrong axis; it stays reachable one step
+// later via the provider sub-choice (provider:other → localInference
+// "configure-later"). Remote picks an already-running agent by URL + token; it
+// owns its own provider, so it skips the provider sub-step.
 const RUNTIME_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
   `${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device`,
+  `${FIRST_RUN_ACTION_PREFIX}runtime:remote=Connect to a remote agent`,
   "[/CHOICE]",
 ].join("\n");
 
@@ -152,6 +154,44 @@ function cloudOAuthSecretRequest(
       submitLabel: "Connect Eliza Cloud",
       provider: "elizacloud",
       authorizationUrl: getBootConfig().cloudApiBase || "https://elizacloud.ai",
+    },
+  };
+}
+
+// The inline Remote connect form: a URL field + an optional access-token field.
+// `delivery.canCollectValueInCurrentChannel` makes SensitiveRequestBlock render
+// the form here on the owner's device; its `remote_connect` submit dispatches
+// the hardened CONNECT_EVENT (validate URL → connect → adopt as the active
+// runtime → finish first-run) rather than writing the values to the secret
+// store — see SensitiveRequestBlock.handleSubmit.
+function remoteConnectSecretRequest(): ConversationSecretRequest {
+  return {
+    key: "remote-agent",
+    reason: "Connect to a remote agent by its URL and access token",
+    status: "pending",
+    delivery: {
+      mode: "inline_owner_app",
+      canCollectValueInCurrentChannel: true,
+    },
+    form: {
+      type: "sensitive_request_form",
+      kind: "remote_connect",
+      mode: "inline_owner_app",
+      fields: [
+        {
+          name: "url",
+          label: "Remote agent URL",
+          input: "text",
+          required: true,
+        },
+        {
+          name: "token",
+          label: "Access token (optional)",
+          input: "secret",
+          required: false,
+        },
+      ],
+      submitLabel: "Connect",
     },
   };
 }
@@ -477,7 +517,7 @@ export function useFirstRunConductor(): void {
       pendingCloudResumeRef.current = null;
 
       if (group === "runtime") {
-        if (id !== "cloud" && id !== "local") return true;
+        if (id !== "cloud" && id !== "local" && id !== "remote") return true;
         if (id === "cloud") {
           draftRef.current = {
             ...draftRef.current,
@@ -492,6 +532,23 @@ export function useFirstRunConductor(): void {
           seedTurn(connecting);
           replaceTurn("first-run:cloud-oauth", connecting);
           startCloudProvisionFlow();
+          return true;
+        }
+        if (id === "remote") {
+          // Remote: point at an already-running agent. Seed the inline URL +
+          // token form; its `remote_connect` submit dispatches CONNECT_EVENT,
+          // and the App handler connects + adopts the remote as the active
+          // runtime + flips firstRunComplete (finishing onboarding). Remote owns
+          // its own provider, so there is no provider sub-step — and it never
+          // routes through runFirstRunFinish, so draftRef (a FirstRunFinishDraft,
+          // which excludes "remote") is intentionally left untouched.
+          const connect = makeTurn(
+            "first-run:remote-connect",
+            "Enter your remote agent's URL and access token to connect.",
+            { secretRequest: remoteConnectSecretRequest() },
+          );
+          seedTurn(connect);
+          replaceTurn("first-run:remote-connect", connect);
           return true;
         }
         // On this device: run the local backend, then ask which model provider.

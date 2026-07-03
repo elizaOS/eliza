@@ -163,3 +163,8 @@ export {
   DEFAULT_TASK_EXECUTION_PROFILE,
   TASK_EXECUTION_PROFILES,
 } from "./types.js";
+export {
+  type ScheduledTaskValidationDeps,
+  ScheduledTaskValidationError,
+  validateScheduledTaskInput,
+} from "./validation.js";

@@ -17,6 +17,7 @@ export interface FrameBudget {
 }
 
 export const DEFAULT_FRAME_BUDGET: FrameBudget = { targetFps: 60 };
+const DROPPED_FRAME_EPSILON_FACTOR = 1.05;
 
 /** The per-frame budget in milliseconds for a target frame rate. */
 export function frameBudgetMs(
@@ -92,7 +93,9 @@ export function summarizeFrameSamples(
   const total = samples.reduce((sum, delta) => sum + delta, 0);
   const meanFrameMs = total / samples.length;
   const worstFrameMs = samples.reduce((max, delta) => Math.max(max, delta), 0);
-  const droppedFrames = samples.filter((delta) => delta > budgetMs).length;
+  const droppedFrames = samples.filter(
+    (delta) => delta > budgetMs * DROPPED_FRAME_EPSILON_FACTOR,
+  ).length;
 
   return {
     sampleCount: samples.length,

@@ -141,6 +141,7 @@ async function generateOneImage(request: ImageRequest): Promise<{
         ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
         FAL_KEY: env.FAL_KEY,
         FAL_API_KEY: env.FAL_API_KEY,
+        FAL_RUN_BASE_URL: env.FAL_RUN_BASE_URL,
       },
     });
   } catch (error) {

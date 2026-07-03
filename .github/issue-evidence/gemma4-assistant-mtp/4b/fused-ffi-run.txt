@@ -1,0 +1,2501 @@
+[harness] lib=/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib
+[harness] abi=? llmStreamSupported=true llmMtpSupported=true tokenizeSupported=true
+[harness] fused ctx created over bundle root /tmp/vision/gemma4/bundles/4b
+
+=== prompt: "Count from one to twenty, writing each number as a word separated by commas."
+ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+ggml_metal_library_init: using embedded compiled metal library
+ggml_metal_library_init: loaded in 0.008 sec
+ggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)
+ggml_metal_device_init: GPU name:   MTL0 (Apple M4 Max)
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)
+ggml_metal_device_init: simdgroup reduction   = true
+ggml_metal_device_init: simdgroup matrix mul. = true
+ggml_metal_device_init: has unified memory    = true
+ggml_metal_device_init: has bfloat            = true
+ggml_metal_device_init: has tensor            = false
+ggml_metal_device_init: use residency sets    = true
+ggml_metal_device_init: use shared buffers    = true
+ggml_metal_device_init: use managed buffers   = false
+ggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB
+llama_model_loader: loaded meta data with 44 key-value pairs and 720 tensors from /tmp/vision/gemma4/bundles/4b/text/eliza-1-4b-128k.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma4
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                     general.sampling.top_k i32              = 64
+llama_model_loader: - kv   3:                     general.sampling.top_p f32              = 0.950000
+llama_model_loader: - kv   4:                      general.sampling.temp f32              = 1.000000
+llama_model_loader: - kv   5:                         general.size_label str              = 7.5B
+llama_model_loader: - kv   6:                            general.license str              = apache-2.0
+llama_model_loader: - kv   7:                       general.license.link str              = https://ai.google.dev/gemma/docs/gemm...
+llama_model_loader: - kv   8:                               general.tags arr[str,1]       = ["any-to-any"]
+llama_model_loader: - kv   9:                         gemma4.block_count u32              = 42
+llama_model_loader: - kv  10:                      gemma4.context_length u32              = 131072
+llama_model_loader: - kv  11:                    gemma4.embedding_length u32              = 2560
+llama_model_loader: - kv  12:                 gemma4.feed_forward_length u32              = 10240
+llama_model_loader: - kv  13:                gemma4.attention.head_count u32              = 8
+llama_model_loader: - kv  14:             gemma4.attention.head_count_kv u32              = 2
+llama_model_loader: - kv  15:                      gemma4.rope.freq_base f32              = 1000000.000000
+llama_model_loader: - kv  16:                  gemma4.rope.freq_base_swa f32              = 10000.000000
+llama_model_loader: - kv  17:    gemma4.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  18:                gemma4.attention.key_length u32              = 512
+llama_model_loader: - kv  19:              gemma4.attention.value_length u32              = 512
+llama_model_loader: - kv  20:             gemma4.final_logit_softcapping f32              = 30.000000
+llama_model_loader: - kv  21:            gemma4.attention.sliding_window u32              = 512
+llama_model_loader: - kv  22:          gemma4.attention.shared_kv_layers u32              = 18
+llama_model_loader: - kv  23:    gemma4.embedding_length_per_layer_input u32              = 256
+llama_model_loader: - kv  24:    gemma4.attention.sliding_window_pattern arr[bool,42]     = [true, true, true, true, true, false,...
+llama_model_loader: - kv  25:            gemma4.attention.key_length_swa u32              = 256
+llama_model_loader: - kv  26:          gemma4.attention.value_length_swa u32              = 256
+llama_model_loader: - kv  27:                gemma4.rope.dimension_count u32              = 512
+llama_model_loader: - kv  28:            gemma4.rope.dimension_count_swa u32              = 256
+llama_model_loader: - kv  29:                       tokenizer.ggml.model str              = gemma4
+llama_model_loader: - kv  30:                      tokenizer.ggml.tokens arr[str,262144]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  31:                      tokenizer.ggml.scores arr[f32,262144]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  32:                  tokenizer.ggml.token_type arr[i32,262144]  = [3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  33:                      tokenizer.ggml.merges arr[str,514906]  = ["\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n", ...
+llama_model_loader: - kv  34:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  35:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  36:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  37:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  38:               tokenizer.ggml.mask_token_id u32              = 4
+llama_model_loader: - kv  39:                    tokenizer.chat_template str              = {%- macro format_parameters(propertie...
+llama_model_loader: - kv  40:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  41:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  42:               general.quantization_version u32              = 2
+llama_model_loader: - kv  43:                          general.file_type u32              = 7
+llama_model_loader: - type  f32:  339 tensors
+llama_model_loader: - type q8_0:  380 tensors
+llama_model_loader: - type bf16:    1 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q8_0
+print_info: file size   = 7.46 GiB (8.53 BPW) 
+llama_prepare_model_devices: using device MTL0 (Apple M4 Max) (unknown id) - 110100 MiB free
+init_tokenizer: initializing tokenizer for type 2
+load: 0 unused tokens
+load: control token: 258883 '<audio|>' is not marked as EOG
+load: control token: 258881 '<|audio|>' is not marked as EOG
+load: control token: 258880 '<|image|>' is not marked as EOG
+load: control token: 256000 '<|audio>' is not marked as EOG
+load: control token: 255999 '<|image>' is not marked as EOG
+load: control token:    105 '<|turn>' is not marked as EOG
+load: control token: 258882 '<image|>' is not marked as EOG
+load: control-looking token:     50 '<|tool_response>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: control token:     46 '<|tool>' is not marked as EOG
+load: control token:      3 '<unk>' is not marked as EOG
+load: control-looking token:    212 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: control token: 258884 '<|video|>' is not marked as EOG
+load: control token:     47 '<tool|>' is not marked as EOG
+load: control token:      4 '<mask>' is not marked as EOG
+load: control token:      2 '<bos>' is not marked as EOG
+load: control token:     98 '<|think|>' is not marked as EOG
+load: control token:      0 '<pad>' is not marked as EOG
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 50 ('<|tool_response>')
+load:   - 106 ('<turn|>')
+load:   - 212 ('</s>')
+load: special_eog_ids contains '<|tool_response>', removing '</s>' token from EOG list
+load: special tokens cache size = 24
+load: token to piece cache size = 1.9445 MB
+print_info: arch                  = gemma4
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 131072
+print_info: n_embd                = 2560
+print_info: n_embd_inp            = 2560
+print_info: n_layer               = 42
+print_info: n_head                = 8
+print_info: n_head_kv             = 2
+print_info: n_rot                 = 512
+print_info: n_swa                 = 512
+print_info: is_swa_any            = 1
+print_info: n_embd_head_k         = 512
+print_info: n_embd_head_v         = 512
+print_info: n_gqa                 = 4
+print_info: n_embd_k_gqa          = [512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024]
+print_info: n_embd_v_gqa          = [512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024]
+print_info: f_norm_eps            = 0.0e+00
+print_info: f_norm_rms_eps        = 1.0e-06
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 1.0e+00
+print_info: f_attn_value_scale    = 0.0000
+print_info: n_ff                  = 10240
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = 2
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 1000000.0
+print_info: freq_scale_train      = 1
+print_info: freq_base_swa         = 10000.0
+print_info: freq_scale_swa        = 1
+print_info: n_embd_head_k_swa     = 256
+print_info: n_embd_head_v_swa     = 256
+print_info: n_rot_swa             = 256
+print_info: n_ctx_orig_yarn       = 131072
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: model type            = E4B
+print_info: model params          = 7.52 B
+print_info: general.name          = n/a
+print_info: vocab type            = BPE
+print_info: n_vocab               = 262144
+print_info: n_merges              = 514906
+print_info: BOS token             = 2 '<bos>'
+print_info: EOS token             = 1 '<eos>'
+print_info: UNK token             = 3 '<unk>'
+print_info: PAD token             = 0 '<pad>'
+print_info: MASK token            = 4 '<mask>'
+print_info: LF token              = 107 '
+'
+print_info: EOG token             = 1 '<eos>'
+print_info: EOG token             = 50 '<|tool_response>'
+print_info: EOG token             = 106 '<turn|>'
+print_info: max token length      = 93
+load_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)
+load_tensors: layer   0 assigned to device MTL0, is_swa = 1
+load_tensors: layer   1 assigned to device MTL0, is_swa = 1
+load_tensors: layer   2 assigned to device MTL0, is_swa = 1
+load_tensors: layer   3 assigned to device MTL0, is_swa = 1
+load_tensors: layer   4 assigned to device MTL0, is_swa = 1
+load_tensors: layer   5 assigned to device MTL0, is_swa = 0
+load_tensors: layer   6 assigned to device MTL0, is_swa = 1
+load_tensors: layer   7 assigned to device MTL0, is_swa = 1
+load_tensors: layer   8 assigned to device MTL0, is_swa = 1
+load_tensors: layer   9 assigned to device MTL0, is_swa = 1
+load_tensors: layer  10 assigned to device MTL0, is_swa = 1
+load_tensors: layer  11 assigned to device MTL0, is_swa = 0
+load_tensors: layer  12 assigned to device MTL0, is_swa = 1
+load_tensors: layer  13 assigned to device MTL0, is_swa = 1
+load_tensors: layer  14 assigned to device MTL0, is_swa = 1
+load_tensors: layer  15 assigned to device MTL0, is_swa = 1
+load_tensors: layer  16 assigned to device MTL0, is_swa = 1
+load_tensors: layer  17 assigned to device MTL0, is_swa = 0
+load_tensors: layer  18 assigned to device MTL0, is_swa = 1
+load_tensors: layer  19 assigned to device MTL0, is_swa = 1
+load_tensors: layer  20 assigned to device MTL0, is_swa = 1
+load_tensors: layer  21 assigned to device MTL0, is_swa = 1
+load_tensors: layer  22 assigned to device MTL0, is_swa = 1
+load_tensors: layer  23 assigned to device MTL0, is_swa = 0
+load_tensors: layer  24 assigned to device MTL0, is_swa = 1
+load_tensors: layer  25 assigned to device MTL0, is_swa = 1
+load_tensors: layer  26 assigned to device MTL0, is_swa = 1
+load_tensors: layer  27 assigned to device MTL0, is_swa = 1
+load_tensors: layer  28 assigned to device MTL0, is_swa = 1
+load_tensors: layer  29 assigned to device MTL0, is_swa = 0
+load_tensors: layer  30 assigned to device MTL0, is_swa = 1
+load_tensors: layer  31 assigned to device MTL0, is_swa = 1
+load_tensors: layer  32 assigned to device MTL0, is_swa = 1
+load_tensors: layer  33 assigned to device MTL0, is_swa = 1
+load_tensors: layer  34 assigned to device MTL0, is_swa = 1
+load_tensors: layer  35 assigned to device MTL0, is_swa = 0
+load_tensors: layer  36 assigned to device MTL0, is_swa = 1
+load_tensors: layer  37 assigned to device MTL0, is_swa = 1
+load_tensors: layer  38 assigned to device MTL0, is_swa = 1
+load_tensors: layer  39 assigned to device MTL0, is_swa = 1
+load_tensors: layer  40 assigned to device MTL0, is_swa = 1
+load_tensors: layer  41 assigned to device MTL0, is_swa = 0
+load_tensors: layer  42 assigned to device MTL0, is_swa = 0
+create_tensor: loading tensor token_embd.weight
+create_tensor: loading tensor token_embd.weight
+create_tensor: loading tensor per_layer_token_embd.weight
+create_tensor: loading tensor per_layer_model_proj.weight
+create_tensor: loading tensor per_layer_proj_norm.weight
+create_tensor: loading tensor output_norm.weight
+create_tensor: loading tensor blk.0.attn_norm.weight
+create_tensor: loading tensor blk.0.attn_q.weight
+create_tensor: loading tensor blk.0.attn_k.weight
+create_tensor: loading tensor blk.0.attn_v.weight
+create_tensor: loading tensor blk.0.attn_output.weight
+create_tensor: loading tensor blk.0.attn_q_norm.weight
+create_tensor: loading tensor blk.0.attn_k_norm.weight
+create_tensor: loading tensor blk.0.post_attention_norm.weight
+create_tensor: loading tensor blk.0.layer_output_scale.weight
+create_tensor: loading tensor blk.0.ffn_norm.weight
+create_tensor: loading tensor blk.0.ffn_gate.weight
+create_tensor: loading tensor blk.0.ffn_up.weight
+create_tensor: loading tensor blk.0.ffn_down.weight
+create_tensor: loading tensor blk.0.post_ffw_norm.weight
+create_tensor: loading tensor blk.0.inp_gate.weight
+create_tensor: loading tensor blk.0.proj.weight
+create_tensor: loading tensor blk.0.post_norm.weight
+create_tensor: loading tensor blk.1.attn_norm.weight
+create_tensor: loading tensor blk.1.attn_q.weight
+create_tensor: loading tensor blk.1.attn_k.weight
+create_tensor: loading tensor blk.1.attn_v.weight
+create_tensor: loading tensor blk.1.attn_output.weight
+create_tensor: loading tensor blk.1.attn_q_norm.weight
+create_tensor: loading tensor blk.1.attn_k_norm.weight
+create_tensor: loading tensor blk.1.post_attention_norm.weight
+create_tensor: loading tensor blk.1.layer_output_scale.weight
+create_tensor: loading tensor blk.1.ffn_norm.weight
+create_tensor: loading tensor blk.1.ffn_gate.weight
+create_tensor: loading tensor blk.1.ffn_up.weight
+create_tensor: loading tensor blk.1.ffn_down.weight
+create_tensor: loading tensor blk.1.post_ffw_norm.weight
+create_tensor: loading tensor blk.1.inp_gate.weight
+create_tensor: loading tensor blk.1.proj.weight
+create_tensor: loading tensor blk.1.post_norm.weight
+create_tensor: loading tensor blk.2.attn_norm.weight
+create_tensor: loading tensor blk.2.attn_q.weight
+create_tensor: loading tensor blk.2.attn_k.weight
+create_tensor: loading tensor blk.2.attn_v.weight
+create_tensor: loading tensor blk.2.attn_output.weight
+create_tensor: loading tensor blk.2.attn_q_norm.weight
+create_tensor: loading tensor blk.2.attn_k_norm.weight
+create_tensor: loading tensor blk.2.post_attention_norm.weight
+create_tensor: loading tensor blk.2.layer_output_scale.weight
+create_tensor: loading tensor blk.2.ffn_norm.weight
+create_tensor: loading tensor blk.2.ffn_gate.weight
+create_tensor: loading tensor blk.2.ffn_up.weight
+create_tensor: loading tensor blk.2.ffn_down.weight
+create_tensor: loading tensor blk.2.post_ffw_norm.weight
+create_tensor: loading tensor blk.2.inp_gate.weight
+create_tensor: loading tensor blk.2.proj.weight
+create_tensor: loading tensor blk.2.post_norm.weight
+create_tensor: loading tensor blk.3.attn_norm.weight
+create_tensor: loading tensor blk.3.attn_q.weight
+create_tensor: loading tensor blk.3.attn_k.weight
+create_tensor: loading tensor blk.3.attn_v.weight
+create_tensor: loading tensor blk.3.attn_output.weight
+create_tensor: loading tensor blk.3.attn_q_norm.weight
+create_tensor: loading tensor blk.3.attn_k_norm.weight
+create_tensor: loading tensor blk.3.post_attention_norm.weight
+create_tensor: loading tensor blk.3.layer_output_scale.weight
+create_tensor: loading tensor blk.3.ffn_norm.weight
+create_tensor: loading tensor blk.3.ffn_gate.weight
+create_tensor: loading tensor blk.3.ffn_up.weight
+create_tensor: loading tensor blk.3.ffn_down.weight
+create_tensor: loading tensor blk.3.post_ffw_norm.weight
+create_tensor: loading tensor blk.3.inp_gate.weight
+create_tensor: loading tensor blk.3.proj.weight
+create_tensor: loading tensor blk.3.post_norm.weight
+create_tensor: loading tensor blk.4.attn_norm.weight
+create_tensor: loading tensor blk.4.attn_q.weight
+create_tensor: loading tensor blk.4.attn_k.weight
+create_tensor: loading tensor blk.4.attn_v.weight
+create_tensor: loading tensor blk.4.attn_output.weight
+create_tensor: loading tensor blk.4.attn_q_norm.weight
+create_tensor: loading tensor blk.4.attn_k_norm.weight
+create_tensor: loading tensor blk.4.post_attention_norm.weight
+create_tensor: loading tensor blk.4.layer_output_scale.weight
+create_tensor: loading tensor blk.4.ffn_norm.weight
+create_tensor: loading tensor blk.4.ffn_gate.weight
+create_tensor: loading tensor blk.4.ffn_up.weight
+create_tensor: loading tensor blk.4.ffn_down.weight
+create_tensor: loading tensor blk.4.post_ffw_norm.weight
+create_tensor: loading tensor blk.4.inp_gate.weight
+create_tensor: loading tensor blk.4.proj.weight
+create_tensor: loading tensor blk.4.post_norm.weight
+create_tensor: loading tensor blk.5.attn_norm.weight
+create_tensor: loading tensor blk.5.attn_q.weight
+create_tensor: loading tensor blk.5.attn_k.weight
+create_tensor: loading tensor blk.5.attn_v.weight
+create_tensor: loading tensor blk.5.attn_output.weight
+create_tensor: loading tensor blk.5.attn_q_norm.weight
+create_tensor: loading tensor blk.5.attn_k_norm.weight
+create_tensor: loading tensor blk.5.post_attention_norm.weight
+create_tensor: loading tensor blk.5.layer_output_scale.weight
+create_tensor: loading tensor rope_freqs.weight
+create_tensor: loading tensor blk.5.ffn_norm.weight
+create_tensor: loading tensor blk.5.ffn_gate.weight
+create_tensor: loading tensor blk.5.ffn_up.weight
+create_tensor: loading tensor blk.5.ffn_down.weight
+create_tensor: loading tensor blk.5.post_ffw_norm.weight
+create_tensor: loading tensor blk.5.inp_gate.weight
+create_tensor: loading tensor blk.5.proj.weight
+create_tensor: loading tensor blk.5.post_norm.weight
+create_tensor: loading tensor blk.6.attn_norm.weight
+create_tensor: loading tensor blk.6.attn_q.weight
+create_tensor: loading tensor blk.6.attn_k.weight
+create_tensor: loading tensor blk.6.attn_v.weight
+create_tensor: loading tensor blk.6.attn_output.weight
+create_tensor: loading tensor blk.6.attn_q_norm.weight
+create_tensor: loading tensor blk.6.attn_k_norm.weight
+create_tensor: loading tensor blk.6.post_attention_norm.weight
+create_tensor: loading tensor blk.6.layer_output_scale.weight
+create_tensor: loading tensor blk.6.ffn_norm.weight
+create_tensor: loading tensor blk.6.ffn_gate.weight
+create_tensor: loading tensor blk.6.ffn_up.weight
+create_tensor: loading tensor blk.6.ffn_down.weight
+create_tensor: loading tensor blk.6.post_ffw_norm.weight
+create_tensor: loading tensor blk.6.inp_gate.weight
+create_tensor: loading tensor blk.6.proj.weight
+create_tensor: loading tensor blk.6.post_norm.weight
+create_tensor: loading tensor blk.7.attn_norm.weight
+create_tensor: loading tensor blk.7.attn_q.weight
+create_tensor: loading tensor blk.7.attn_k.weight
+create_tensor: loading tensor blk.7.attn_v.weight
+create_tensor: loading tensor blk.7.attn_output.weight
+create_tensor: loading tensor blk.7.attn_q_norm.weight
+create_tensor: loading tensor blk.7.attn_k_norm.weight
+create_tensor: loading tensor blk.7.post_attention_norm.weight
+create_tensor: loading tensor blk.7.layer_output_scale.weight
+create_tensor: loading tensor blk.7.ffn_norm.weight
+create_tensor: loading tensor blk.7.ffn_gate.weight
+create_tensor: loading tensor blk.7.ffn_up.weight
+create_tensor: loading tensor blk.7.ffn_down.weight
+create_tensor: loading tensor blk.7.post_ffw_norm.weight
+create_tensor: loading tensor blk.7.inp_gate.weight
+create_tensor: loading tensor blk.7.proj.weight
+create_tensor: loading tensor blk.7.post_norm.weight
+create_tensor: loading tensor blk.8.attn_norm.weight
+create_tensor: loading tensor blk.8.attn_q.weight
+create_tensor: loading tensor blk.8.attn_k.weight
+create_tensor: loading tensor blk.8.attn_v.weight
+create_tensor: loading tensor blk.8.attn_output.weight
+create_tensor: loading tensor blk.8.attn_q_norm.weight
+create_tensor: loading tensor blk.8.attn_k_norm.weight
+create_tensor: loading tensor blk.8.post_attention_norm.weight
+create_tensor: loading tensor blk.8.layer_output_scale.weight
+create_tensor: loading tensor blk.8.ffn_norm.weight
+create_tensor: loading tensor blk.8.ffn_gate.weight
+create_tensor: loading tensor blk.8.ffn_up.weight
+create_tensor: loading tensor blk.8.ffn_down.weight
+create_tensor: loading tensor blk.8.post_ffw_norm.weight
+create_tensor: loading tensor blk.8.inp_gate.weight
+create_tensor: loading tensor blk.8.proj.weight
+create_tensor: loading tensor blk.8.post_norm.weight
+create_tensor: loading tensor blk.9.attn_norm.weight
+create_tensor: loading tensor blk.9.attn_q.weight
+create_tensor: loading tensor blk.9.attn_k.weight
+create_tensor: loading tensor blk.9.attn_v.weight
+create_tensor: loading tensor blk.9.attn_output.weight
+create_tensor: loading tensor blk.9.attn_q_norm.weight
+create_tensor: loading tensor blk.9.attn_k_norm.weight
+create_tensor: loading tensor blk.9.post_attention_norm.weight
+create_tensor: loading tensor blk.9.layer_output_scale.weight
+create_tensor: loading tensor blk.9.ffn_norm.weight
+create_tensor: loading tensor blk.9.ffn_gate.weight
+create_tensor: loading tensor blk.9.ffn_up.weight
+create_tensor: loading tensor blk.9.ffn_down.weight
+create_tensor: loading tensor blk.9.post_ffw_norm.weight
+create_tensor: loading tensor blk.9.inp_gate.weight
+create_tensor: loading tensor blk.9.proj.weight
+create_tensor: loading tensor blk.9.post_norm.weight
+create_tensor: loading tensor blk.10.attn_norm.weight
+create_tensor: loading tensor blk.10.attn_q.weight
+create_tensor: loading tensor blk.10.attn_k.weight
+create_tensor: loading tensor blk.10.attn_v.weight
+create_tensor: loading tensor blk.10.attn_output.weight
+create_tensor: loading tensor blk.10.attn_q_norm.weight
+create_tensor: loading tensor blk.10.attn_k_norm.weight
+create_tensor: loading tensor blk.10.post_attention_norm.weight
+create_tensor: loading tensor blk.10.layer_output_scale.weight
+create_tensor: loading tensor blk.10.ffn_norm.weight
+create_tensor: loading tensor blk.10.ffn_gate.weight
+create_tensor: loading tensor blk.10.ffn_up.weight
+create_tensor: loading tensor blk.10.ffn_down.weight
+create_tensor: loading tensor blk.10.post_ffw_norm.weight
+create_tensor: loading tensor blk.10.inp_gate.weight
+create_tensor: loading tensor blk.10.proj.weight
+create_tensor: loading tensor blk.10.post_norm.weight
+create_tensor: loading tensor blk.11.attn_norm.weight
+create_tensor: loading tensor blk.11.attn_q.weight
+create_tensor: loading tensor blk.11.attn_k.weight
+create_tensor: loading tensor blk.11.attn_v.weight
+create_tensor: loading tensor blk.11.attn_output.weight
+create_tensor: loading tensor blk.11.attn_q_norm.weight
+create_tensor: loading tensor blk.11.attn_k_norm.weight
+create_tensor: loading tensor blk.11.post_attention_norm.weight
+create_tensor: loading tensor blk.11.layer_output_scale.weight
+create_tensor: loading tensor blk.11.ffn_norm.weight
+create_tensor: loading tensor blk.11.ffn_gate.weight
+create_tensor: loading tensor blk.11.ffn_up.weight
+create_tensor: loading tensor blk.11.ffn_down.weight
+create_tensor: loading tensor blk.11.post_ffw_norm.weight
+create_tensor: loading tensor blk.11.inp_gate.weight
+create_tensor: loading tensor blk.11.proj.weight
+create_tensor: loading tensor blk.11.post_norm.weight
+create_tensor: loading tensor blk.12.attn_norm.weight
+create_tensor: loading tensor blk.12.attn_q.weight
+create_tensor: loading tensor blk.12.attn_k.weight
+create_tensor: loading tensor blk.12.attn_v.weight
+create_tensor: loading tensor blk.12.attn_output.weight
+create_tensor: loading tensor blk.12.attn_q_norm.weight
+create_tensor: loading tensor blk.12.attn_k_norm.weight
+create_tensor: loading tensor blk.12.post_attention_norm.weight
+create_tensor: loading tensor blk.12.layer_output_scale.weight
+create_tensor: loading tensor blk.12.ffn_norm.weight
+create_tensor: loading tensor blk.12.ffn_gate.weight
+create_tensor: loading tensor blk.12.ffn_up.weight
+create_tensor: loading tensor blk.12.ffn_down.weight
+create_tensor: loading tensor blk.12.post_ffw_norm.weight
+create_tensor: loading tensor blk.12.inp_gate.weight
+create_tensor: loading tensor blk.12.proj.weight
+create_tensor: loading tensor blk.12.post_norm.weight
+create_tensor: loading tensor blk.13.attn_norm.weight
+create_tensor: loading tensor blk.13.attn_q.weight
+create_tensor: loading tensor blk.13.attn_k.weight
+create_tensor: loading tensor blk.13.attn_v.weight
+create_tensor: loading tensor blk.13.attn_output.weight
+create_tensor: loading tensor blk.13.attn_q_norm.weight
+create_tensor: loading tensor blk.13.attn_k_norm.weight
+create_tensor: loading tensor blk.13.post_attention_norm.weight
+create_tensor: loading tensor blk.13.layer_output_scale.weight
+create_tensor: loading tensor blk.13.ffn_norm.weight
+create_tensor: loading tensor blk.13.ffn_gate.weight
+create_tensor: loading tensor blk.13.ffn_up.weight
+create_tensor: loading tensor blk.13.ffn_down.weight
+create_tensor: loading tensor blk.13.post_ffw_norm.weight
+create_tensor: loading tensor blk.13.inp_gate.weight
+create_tensor: loading tensor blk.13.proj.weight
+create_tensor: loading tensor blk.13.post_norm.weight
+create_tensor: loading tensor blk.14.attn_norm.weight
+create_tensor: loading tensor blk.14.attn_q.weight
+create_tensor: loading tensor blk.14.attn_k.weight
+create_tensor: loading tensor blk.14.attn_v.weight
+create_tensor: loading tensor blk.14.attn_output.weight
+create_tensor: loading tensor blk.14.attn_q_norm.weight
+create_tensor: loading tensor blk.14.attn_k_norm.weight
+create_tensor: loading tensor blk.14.post_attention_norm.weight
+create_tensor: loading tensor blk.14.layer_output_scale.weight
+create_tensor: loading tensor blk.14.ffn_norm.weight
+create_tensor: loading tensor blk.14.ffn_gate.weight
+create_tensor: loading tensor blk.14.ffn_up.weight
+create_tensor: loading tensor blk.14.ffn_down.weight
+create_tensor: loading tensor blk.14.post_ffw_norm.weight
+create_tensor: loading tensor blk.14.inp_gate.weight
+create_tensor: loading tensor blk.14.proj.weight
+create_tensor: loading tensor blk.14.post_norm.weight
+create_tensor: loading tensor blk.15.attn_norm.weight
+create_tensor: loading tensor blk.15.attn_q.weight
+create_tensor: loading tensor blk.15.attn_k.weight
+create_tensor: loading tensor blk.15.attn_v.weight
+create_tensor: loading tensor blk.15.attn_output.weight
+create_tensor: loading tensor blk.15.attn_q_norm.weight
+create_tensor: loading tensor blk.15.attn_k_norm.weight
+create_tensor: loading tensor blk.15.post_attention_norm.weight
+create_tensor: loading tensor blk.15.layer_output_scale.weight
+create_tensor: loading tensor blk.15.ffn_norm.weight
+create_tensor: loading tensor blk.15.ffn_gate.weight
+create_tensor: loading tensor blk.15.ffn_up.weight
+create_tensor: loading tensor blk.15.ffn_down.weight
+create_tensor: loading tensor blk.15.post_ffw_norm.weight
+create_tensor: loading tensor blk.15.inp_gate.weight
+create_tensor: loading tensor blk.15.proj.weight
+create_tensor: loading tensor blk.15.post_norm.weight
+create_tensor: loading tensor blk.16.attn_norm.weight
+create_tensor: loading tensor blk.16.attn_q.weight
+create_tensor: loading tensor blk.16.attn_k.weight
+create_tensor: loading tensor blk.16.attn_v.weight
+create_tensor: loading tensor blk.16.attn_output.weight
+create_tensor: loading tensor blk.16.attn_q_norm.weight
+create_tensor: loading tensor blk.16.attn_k_norm.weight
+create_tensor: loading tensor blk.16.post_attention_norm.weight
+create_tensor: loading tensor blk.16.layer_output_scale.weight
+create_tensor: loading tensor blk.16.ffn_norm.weight
+create_tensor: loading tensor blk.16.ffn_gate.weight
+create_tensor: loading tensor blk.16.ffn_up.weight
+create_tensor: loading tensor blk.16.ffn_down.weight
+create_tensor: loading tensor blk.16.post_ffw_norm.weight
+create_tensor: loading tensor blk.16.inp_gate.weight
+create_tensor: loading tensor blk.16.proj.weight
+create_tensor: loading tensor blk.16.post_norm.weight
+create_tensor: loading tensor blk.17.attn_norm.weight
+create_tensor: loading tensor blk.17.attn_q.weight
+create_tensor: loading tensor blk.17.attn_k.weight
+create_tensor: loading tensor blk.17.attn_v.weight
+create_tensor: loading tensor blk.17.attn_output.weight
+create_tensor: loading tensor blk.17.attn_q_norm.weight
+create_tensor: loading tensor blk.17.attn_k_norm.weight
+create_tensor: loading tensor blk.17.post_attention_norm.weight
+create_tensor: loading tensor blk.17.layer_output_scale.weight
+create_tensor: loading tensor blk.17.ffn_norm.weight
+create_tensor: loading tensor blk.17.ffn_gate.weight
+create_tensor: loading tensor blk.17.ffn_up.weight
+create_tensor: loading tensor blk.17.ffn_down.weight
+create_tensor: loading tensor blk.17.post_ffw_norm.weight
+create_tensor: loading tensor blk.17.inp_gate.weight
+create_tensor: loading tensor blk.17.proj.weight
+create_tensor: loading tensor blk.17.post_norm.weight
+create_tensor: loading tensor blk.18.attn_norm.weight
+create_tensor: loading tensor blk.18.attn_q.weight
+create_tensor: loading tensor blk.18.attn_k.weight
+create_tensor: loading tensor blk.18.attn_v.weight
+create_tensor: loading tensor blk.18.attn_output.weight
+create_tensor: loading tensor blk.18.attn_q_norm.weight
+create_tensor: loading tensor blk.18.attn_k_norm.weight
+create_tensor: loading tensor blk.18.post_attention_norm.weight
+create_tensor: loading tensor blk.18.layer_output_scale.weight
+create_tensor: loading tensor blk.18.ffn_norm.weight
+create_tensor: loading tensor blk.18.ffn_gate.weight
+create_tensor: loading tensor blk.18.ffn_up.weight
+create_tensor: loading tensor blk.18.ffn_down.weight
+create_tensor: loading tensor blk.18.post_ffw_norm.weight
+create_tensor: loading tensor blk.18.inp_gate.weight
+create_tensor: loading tensor blk.18.proj.weight
+create_tensor: loading tensor blk.18.post_norm.weight
+create_tensor: loading tensor blk.19.attn_norm.weight
+create_tensor: loading tensor blk.19.attn_q.weight
+create_tensor: loading tensor blk.19.attn_k.weight
+create_tensor: loading tensor blk.19.attn_v.weight
+create_tensor: loading tensor blk.19.attn_output.weight
+create_tensor: loading tensor blk.19.attn_q_norm.weight
+create_tensor: loading tensor blk.19.attn_k_norm.weight
+create_tensor: loading tensor blk.19.post_attention_norm.weight
+create_tensor: loading tensor blk.19.layer_output_scale.weight
+create_tensor: loading tensor blk.19.ffn_norm.weight
+create_tensor: loading tensor blk.19.ffn_gate.weight
+create_tensor: loading tensor blk.19.ffn_up.weight
+create_tensor: loading tensor blk.19.ffn_down.weight
+create_tensor: loading tensor blk.19.post_ffw_norm.weight
+create_tensor: loading tensor blk.19.inp_gate.weight
+create_tensor: loading tensor blk.19.proj.weight
+create_tensor: loading tensor blk.19.post_norm.weight
+create_tensor: loading tensor blk.20.attn_norm.weight
+create_tensor: loading tensor blk.20.attn_q.weight
+create_tensor: loading tensor blk.20.attn_k.weight
+create_tensor: loading tensor blk.20.attn_v.weight
+create_tensor: loading tensor blk.20.attn_output.weight
+create_tensor: loading tensor blk.20.attn_q_norm.weight
+create_tensor: loading tensor blk.20.attn_k_norm.weight
+create_tensor: loading tensor blk.20.post_attention_norm.weight
+create_tensor: loading tensor blk.20.layer_output_scale.weight
+create_tensor: loading tensor blk.20.ffn_norm.weight
+create_tensor: loading tensor blk.20.ffn_gate.weight
+create_tensor: loading tensor blk.20.ffn_up.weight
+create_tensor: loading tensor blk.20.ffn_down.weight
+create_tensor: loading tensor blk.20.post_ffw_norm.weight
+create_tensor: loading tensor blk.20.inp_gate.weight
+create_tensor: loading tensor blk.20.proj.weight
+create_tensor: loading tensor blk.20.post_norm.weight
+create_tensor: loading tensor blk.21.attn_norm.weight
+create_tensor: loading tensor blk.21.attn_q.weight
+create_tensor: loading tensor blk.21.attn_k.weight
+create_tensor: loading tensor blk.21.attn_v.weight
+create_tensor: loading tensor blk.21.attn_output.weight
+create_tensor: loading tensor blk.21.attn_q_norm.weight
+create_tensor: loading tensor blk.21.attn_k_norm.weight
+create_tensor: loading tensor blk.21.post_attention_norm.weight
+create_tensor: loading tensor blk.21.layer_output_scale.weight
+create_tensor: loading tensor blk.21.ffn_norm.weight
+create_tensor: loading tensor blk.21.ffn_gate.weight
+create_tensor: loading tensor blk.21.ffn_up.weight
+create_tensor: loading tensor blk.21.ffn_down.weight
+create_tensor: loading tensor blk.21.post_ffw_norm.weight
+create_tensor: loading tensor blk.21.inp_gate.weight
+create_tensor: loading tensor blk.21.proj.weight
+create_tensor: loading tensor blk.21.post_norm.weight
+create_tensor: loading tensor blk.22.attn_norm.weight
+create_tensor: loading tensor blk.22.attn_q.weight
+create_tensor: loading tensor blk.22.attn_k.weight
+create_tensor: loading tensor blk.22.attn_v.weight
+create_tensor: loading tensor blk.22.attn_output.weight
+create_tensor: loading tensor blk.22.attn_q_norm.weight
+create_tensor: loading tensor blk.22.attn_k_norm.weight
+create_tensor: loading tensor blk.22.post_attention_norm.weight
+create_tensor: loading tensor blk.22.layer_output_scale.weight
+create_tensor: loading tensor blk.22.ffn_norm.weight
+create_tensor: loading tensor blk.22.ffn_gate.weight
+create_tensor: loading tensor blk.22.ffn_up.weight
+create_tensor: loading tensor blk.22.ffn_down.weight
+create_tensor: loading tensor blk.22.post_ffw_norm.weight
+create_tensor: loading tensor blk.22.inp_gate.weight
+create_tensor: loading tensor blk.22.proj.weight
+create_tensor: loading tensor blk.22.post_norm.weight
+create_tensor: loading tensor blk.23.attn_norm.weight
+create_tensor: loading tensor blk.23.attn_q.weight
+create_tensor: loading tensor blk.23.attn_k.weight
+create_tensor: loading tensor blk.23.attn_v.weight
+create_tensor: loading tensor blk.23.attn_output.weight
+create_tensor: loading tensor blk.23.attn_q_norm.weight
+create_tensor: loading tensor blk.23.attn_k_norm.weight
+create_tensor: loading tensor blk.23.post_attention_norm.weight
+create_tensor: loading tensor blk.23.layer_output_scale.weight
+create_tensor: loading tensor blk.23.ffn_norm.weight
+create_tensor: loading tensor blk.23.ffn_gate.weight
+create_tensor: loading tensor blk.23.ffn_up.weight
+create_tensor: loading tensor blk.23.ffn_down.weight
+create_tensor: loading tensor blk.23.post_ffw_norm.weight
+create_tensor: loading tensor blk.23.inp_gate.weight
+create_tensor: loading tensor blk.23.proj.weight
+create_tensor: loading tensor blk.23.post_norm.weight
+create_tensor: loading tensor blk.24.attn_norm.weight
+create_tensor: loading tensor blk.24.attn_q.weight
+create_tensor: loading tensor blk.24.attn_k.weight
+create_tensor: loading tensor blk.24.attn_v.weight
+create_tensor: loading tensor blk.24.attn_output.weight
+create_tensor: loading tensor blk.24.attn_q_norm.weight
+create_tensor: loading tensor blk.24.attn_k_norm.weight
+create_tensor: loading tensor blk.24.post_attention_norm.weight
+create_tensor: loading tensor blk.24.layer_output_scale.weight
+create_tensor: loading tensor blk.24.ffn_norm.weight
+create_tensor: loading tensor blk.24.ffn_gate.weight
+create_tensor: loading tensor blk.24.ffn_up.weight
+create_tensor: loading tensor blk.24.ffn_down.weight
+create_tensor: loading tensor blk.24.post_ffw_norm.weight
+create_tensor: loading tensor blk.24.inp_gate.weight
+create_tensor: loading tensor blk.24.proj.weight
+create_tensor: loading tensor blk.24.post_norm.weight
+create_tensor: loading tensor blk.25.attn_norm.weight
+create_tensor: loading tensor blk.25.attn_q.weight
+create_tensor: loading tensor blk.25.attn_k.weight
+create_tensor: loading tensor blk.25.attn_v.weight
+create_tensor: loading tensor blk.25.attn_output.weight
+create_tensor: loading tensor blk.25.attn_q_norm.weight
+create_tensor: loading tensor blk.25.attn_k_norm.weight
+create_tensor: loading tensor blk.25.post_attention_norm.weight
+create_tensor: loading tensor blk.25.layer_output_scale.weight
+create_tensor: loading tensor blk.25.ffn_norm.weight
+create_tensor: loading tensor blk.25.ffn_gate.weight
+create_tensor: loading tensor blk.25.ffn_up.weight
+create_tensor: loading tensor blk.25.ffn_down.weight
+create_tensor: loading tensor blk.25.post_ffw_norm.weight
+create_tensor: loading tensor blk.25.inp_gate.weight
+create_tensor: loading tensor blk.25.proj.weight
+create_tensor: loading tensor blk.25.post_norm.weight
+create_tensor: loading tensor blk.26.attn_norm.weight
+create_tensor: loading tensor blk.26.attn_q.weight
+create_tensor: loading tensor blk.26.attn_k.weight
+create_tensor: loading tensor blk.26.attn_v.weight
+create_tensor: loading tensor blk.26.attn_output.weight
+create_tensor: loading tensor blk.26.attn_q_norm.weight
+create_tensor: loading tensor blk.26.attn_k_norm.weight
+create_tensor: loading tensor blk.26.post_attention_norm.weight
+create_tensor: loading tensor blk.26.layer_output_scale.weight
+create_tensor: loading tensor blk.26.ffn_norm.weight
+create_tensor: loading tensor blk.26.ffn_gate.weight
+create_tensor: loading tensor blk.26.ffn_up.weight
+create_tensor: loading tensor blk.26.ffn_down.weight
+create_tensor: loading tensor blk.26.post_ffw_norm.weight
+create_tensor: loading tensor blk.26.inp_gate.weight
+create_tensor: loading tensor blk.26.proj.weight
+create_tensor: loading tensor blk.26.post_norm.weight
+create_tensor: loading tensor blk.27.attn_norm.weight
+create_tensor: loading tensor blk.27.attn_q.weight
+create_tensor: loading tensor blk.27.attn_k.weight
+create_tensor: loading tensor blk.27.attn_v.weight
+create_tensor: loading tensor blk.27.attn_output.weight
+create_tensor: loading tensor blk.27.attn_q_norm.weight
+create_tensor: loading tensor blk.27.attn_k_norm.weight
+create_tensor: loading tensor blk.27.post_attention_norm.weight
+create_tensor: loading tensor blk.27.layer_output_scale.weight
+create_tensor: loading tensor blk.27.ffn_norm.weight
+create_tensor: loading tensor blk.27.ffn_gate.weight
+create_tensor: loading tensor blk.27.ffn_up.weight
+create_tensor: loading tensor blk.27.ffn_down.weight
+create_tensor: loading tensor blk.27.post_ffw_norm.weight
+create_tensor: loading tensor blk.27.inp_gate.weight
+create_tensor: loading tensor blk.27.proj.weight
+create_tensor: loading tensor blk.27.post_norm.weight
+create_tensor: loading tensor blk.28.attn_norm.weight
+create_tensor: loading tensor blk.28.attn_q.weight
+create_tensor: loading tensor blk.28.attn_k.weight
+create_tensor: loading tensor blk.28.attn_v.weight
+create_tensor: loading tensor blk.28.attn_output.weight
+create_tensor: loading tensor blk.28.attn_q_norm.weight
+create_tensor: loading tensor blk.28.attn_k_norm.weight
+create_tensor: loading tensor blk.28.post_attention_norm.weight
+create_tensor: loading tensor blk.28.layer_output_scale.weight
+create_tensor: loading tensor blk.28.ffn_norm.weight
+create_tensor: loading tensor blk.28.ffn_gate.weight
+create_tensor: loading tensor blk.28.ffn_up.weight
+create_tensor: loading tensor blk.28.ffn_down.weight
+create_tensor: loading tensor blk.28.post_ffw_norm.weight
+create_tensor: loading tensor blk.28.inp_gate.weight
+create_tensor: loading tensor blk.28.proj.weight
+create_tensor: loading tensor blk.28.post_norm.weight
+create_tensor: loading tensor blk.29.attn_norm.weight
+create_tensor: loading tensor blk.29.attn_q.weight
+create_tensor: loading tensor blk.29.attn_k.weight
+create_tensor: loading tensor blk.29.attn_v.weight
+create_tensor: loading tensor blk.29.attn_output.weight
+create_tensor: loading tensor blk.29.attn_q_norm.weight
+create_tensor: loading tensor blk.29.attn_k_norm.weight
+create_tensor: loading tensor blk.29.post_attention_norm.weight
+create_tensor: loading tensor blk.29.layer_output_scale.weight
+create_tensor: loading tensor blk.29.ffn_norm.weight
+create_tensor: loading tensor blk.29.ffn_gate.weight
+create_tensor: loading tensor blk.29.ffn_up.weight
+create_tensor: loading tensor blk.29.ffn_down.weight
+create_tensor: loading tensor blk.29.post_ffw_norm.weight
+create_tensor: loading tensor blk.29.inp_gate.weight
+create_tensor: loading tensor blk.29.proj.weight
+create_tensor: loading tensor blk.29.post_norm.weight
+create_tensor: loading tensor blk.30.attn_norm.weight
+create_tensor: loading tensor blk.30.attn_q.weight
+create_tensor: loading tensor blk.30.attn_k.weight
+create_tensor: loading tensor blk.30.attn_v.weight
+create_tensor: loading tensor blk.30.attn_output.weight
+create_tensor: loading tensor blk.30.attn_q_norm.weight
+create_tensor: loading tensor blk.30.attn_k_norm.weight
+create_tensor: loading tensor blk.30.post_attention_norm.weight
+create_tensor: loading tensor blk.30.layer_output_scale.weight
+create_tensor: loading tensor blk.30.ffn_norm.weight
+create_tensor: loading tensor blk.30.ffn_gate.weight
+create_tensor: loading tensor blk.30.ffn_up.weight
+create_tensor: loading tensor blk.30.ffn_down.weight
+create_tensor: loading tensor blk.30.post_ffw_norm.weight
+create_tensor: loading tensor blk.30.inp_gate.weight
+create_tensor: loading tensor blk.30.proj.weight
+create_tensor: loading tensor blk.30.post_norm.weight
+create_tensor: loading tensor blk.31.attn_norm.weight
+create_tensor: loading tensor blk.31.attn_q.weight
+create_tensor: loading tensor blk.31.attn_k.weight
+create_tensor: loading tensor blk.31.attn_v.weight
+create_tensor: loading tensor blk.31.attn_output.weight
+create_tensor: loading tensor blk.31.attn_q_norm.weight
+create_tensor: loading tensor blk.31.attn_k_norm.weight
+create_tensor: loading tensor blk.31.post_attention_norm.weight
+create_tensor: loading tensor blk.31.layer_output_scale.weight
+create_tensor: loading tensor blk.31.ffn_norm.weight
+create_tensor: loading tensor blk.31.ffn_gate.weight
+create_tensor: loading tensor blk.31.ffn_up.weight
+create_tensor: loading tensor blk.31.ffn_down.weight
+create_tensor: loading tensor blk.31.post_ffw_norm.weight
+create_tensor: loading tensor blk.31.inp_gate.weight
+create_tensor: loading tensor blk.31.proj.weight
+create_tensor: loading tensor blk.31.post_norm.weight
+create_tensor: loading tensor blk.32.attn_norm.weight
+create_tensor: loading tensor blk.32.attn_q.weight
+create_tensor: loading tensor blk.32.attn_k.weight
+create_tensor: loading tensor blk.32.attn_v.weight
+create_tensor: loading tensor blk.32.attn_output.weight
+create_tensor: loading tensor blk.32.attn_q_norm.weight
+create_tensor: loading tensor blk.32.attn_k_norm.weight
+create_tensor: loading tensor blk.32.post_attention_norm.weight
+create_tensor: loading tensor blk.32.layer_output_scale.weight
+create_tensor: loading tensor blk.32.ffn_norm.weight
+create_tensor: loading tensor blk.32.ffn_gate.weight
+create_tensor: loading tensor blk.32.ffn_up.weight
+create_tensor: loading tensor blk.32.ffn_down.weight
+create_tensor: loading tensor blk.32.post_ffw_norm.weight
+create_tensor: loading tensor blk.32.inp_gate.weight
+create_tensor: loading tensor blk.32.proj.weight
+create_tensor: loading tensor blk.32.post_norm.weight
+create_tensor: loading tensor blk.33.attn_norm.weight
+create_tensor: loading tensor blk.33.attn_q.weight
+create_tensor: loading tensor blk.33.attn_k.weight
+create_tensor: loading tensor blk.33.attn_v.weight
+create_tensor: loading tensor blk.33.attn_output.weight
+create_tensor: loading tensor blk.33.attn_q_norm.weight
+create_tensor: loading tensor blk.33.attn_k_norm.weight
+create_tensor: loading tensor blk.33.post_attention_norm.weight
+create_tensor: loading tensor blk.33.layer_output_scale.weight
+create_tensor: loading tensor blk.33.ffn_norm.weight
+create_tensor: loading tensor blk.33.ffn_gate.weight
+create_tensor: loading tensor blk.33.ffn_up.weight
+create_tensor: loading tensor blk.33.ffn_down.weight
+create_tensor: loading tensor blk.33.post_ffw_norm.weight
+create_tensor: loading tensor blk.33.inp_gate.weight
+create_tensor: loading tensor blk.33.proj.weight
+create_tensor: loading tensor blk.33.post_norm.weight
+create_tensor: loading tensor blk.34.attn_norm.weight
+create_tensor: loading tensor blk.34.attn_q.weight
+create_tensor: loading tensor blk.34.attn_k.weight
+create_tensor: loading tensor blk.34.attn_v.weight
+create_tensor: loading tensor blk.34.attn_output.weight
+create_tensor: loading tensor blk.34.attn_q_norm.weight
+create_tensor: loading tensor blk.34.attn_k_norm.weight
+create_tensor: loading tensor blk.34.post_attention_norm.weight
+create_tensor: loading tensor blk.34.layer_output_scale.weight
+create_tensor: loading tensor blk.34.ffn_norm.weight
+create_tensor: loading tensor blk.34.ffn_gate.weight
+create_tensor: loading tensor blk.34.ffn_up.weight
+create_tensor: loading tensor blk.34.ffn_down.weight
+create_tensor: loading tensor blk.34.post_ffw_norm.weight
+create_tensor: loading tensor blk.34.inp_gate.weight
+create_tensor: loading tensor blk.34.proj.weight
+create_tensor: loading tensor blk.34.post_norm.weight
+create_tensor: loading tensor blk.35.attn_norm.weight
+create_tensor: loading tensor blk.35.attn_q.weight
+create_tensor: loading tensor blk.35.attn_k.weight
+create_tensor: loading tensor blk.35.attn_v.weight
+create_tensor: loading tensor blk.35.attn_output.weight
+create_tensor: loading tensor blk.35.attn_q_norm.weight
+create_tensor: loading tensor blk.35.attn_k_norm.weight
+create_tensor: loading tensor blk.35.post_attention_norm.weight
+create_tensor: loading tensor blk.35.layer_output_scale.weight
+create_tensor: loading tensor blk.35.ffn_norm.weight
+create_tensor: loading tensor blk.35.ffn_gate.weight
+create_tensor: loading tensor blk.35.ffn_up.weight
+create_tensor: loading tensor blk.35.ffn_down.weight
+create_tensor: loading tensor blk.35.post_ffw_norm.weight
+create_tensor: loading tensor blk.35.inp_gate.weight
+create_tensor: loading tensor blk.35.proj.weight
+create_tensor: loading tensor blk.35.post_norm.weight
+create_tensor: loading tensor blk.36.attn_norm.weight
+create_tensor: loading tensor blk.36.attn_q.weight
+create_tensor: loading tensor blk.36.attn_k.weight
+create_tensor: loading tensor blk.36.attn_v.weight
+create_tensor: loading tensor blk.36.attn_output.weight
+create_tensor: loading tensor blk.36.attn_q_norm.weight
+create_tensor: loading tensor blk.36.attn_k_norm.weight
+create_tensor: loading tensor blk.36.post_attention_norm.weight
+create_tensor: loading tensor blk.36.layer_output_scale.weight
+create_tensor: loading tensor blk.36.ffn_norm.weight
+create_tensor: loading tensor blk.36.ffn_gate.weight
+create_tensor: loading tensor blk.36.ffn_up.weight
+create_tensor: loading tensor blk.36.ffn_down.weight
+create_tensor: loading tensor blk.36.post_ffw_norm.weight
+create_tensor: loading tensor blk.36.inp_gate.weight
+create_tensor: loading tensor blk.36.proj.weight
+create_tensor: loading tensor blk.36.post_norm.weight
+create_tensor: loading tensor blk.37.attn_norm.weight
+create_tensor: loading tensor blk.37.attn_q.weight
+create_tensor: loading tensor blk.37.attn_k.weight
+create_tensor: loading tensor blk.37.attn_v.weight
+create_tensor: loading tensor blk.37.attn_output.weight
+create_tensor: loading tensor blk.37.attn_q_norm.weight
+create_tensor: loading tensor blk.37.attn_k_norm.weight
+create_tensor: loading tensor blk.37.post_attention_norm.weight
+create_tensor: loading tensor blk.37.layer_output_scale.weight
+create_tensor: loading tensor blk.37.ffn_norm.weight
+create_tensor: loading tensor blk.37.ffn_gate.weight
+create_tensor: loading tensor blk.37.ffn_up.weight
+create_tensor: loading tensor blk.37.ffn_down.weight
+create_tensor: loading tensor blk.37.post_ffw_norm.weight
+create_tensor: loading tensor blk.37.inp_gate.weight
+create_tensor: loading tensor blk.37.proj.weight
+create_tensor: loading tensor blk.37.post_norm.weight
+create_tensor: loading tensor blk.38.attn_norm.weight
+create_tensor: loading tensor blk.38.attn_q.weight
+create_tensor: loading tensor blk.38.attn_k.weight
+create_tensor: loading tensor blk.38.attn_v.weight
+create_tensor: loading tensor blk.38.attn_output.weight
+create_tensor: loading tensor blk.38.attn_q_norm.weight
+create_tensor: loading tensor blk.38.attn_k_norm.weight
+create_tensor: loading tensor blk.38.post_attention_norm.weight
+create_tensor: loading tensor blk.38.layer_output_scale.weight
+create_tensor: loading tensor blk.38.ffn_norm.weight
+create_tensor: loading tensor blk.38.ffn_gate.weight
+create_tensor: loading tensor blk.38.ffn_up.weight
+create_tensor: loading tensor blk.38.ffn_down.weight
+create_tensor: loading tensor blk.38.post_ffw_norm.weight
+create_tensor: loading tensor blk.38.inp_gate.weight
+create_tensor: loading tensor blk.38.proj.weight
+create_tensor: loading tensor blk.38.post_norm.weight
+create_tensor: loading tensor blk.39.attn_norm.weight
+create_tensor: loading tensor blk.39.attn_q.weight
+create_tensor: loading tensor blk.39.attn_k.weight
+create_tensor: loading tensor blk.39.attn_v.weight
+create_tensor: loading tensor blk.39.attn_output.weight
+create_tensor: loading tensor blk.39.attn_q_norm.weight
+create_tensor: loading tensor blk.39.attn_k_norm.weight
+create_tensor: loading tensor blk.39.post_attention_norm.weight
+create_tensor: loading tensor blk.39.layer_output_scale.weight
+create_tensor: loading tensor blk.39.ffn_norm.weight
+create_tensor: loading tensor blk.39.ffn_gate.weight
+create_tensor: loading tensor blk.39.ffn_up.weight
+create_tensor: loading tensor blk.39.ffn_down.weight
+create_tensor: loading tensor blk.39.post_ffw_norm.weight
+create_tensor: loading tensor blk.39.inp_gate.weight
+create_tensor: loading tensor blk.39.proj.weight
+create_tensor: loading tensor blk.39.post_norm.weight
+create_tensor: loading tensor blk.40.attn_norm.weight
+create_tensor: loading tensor blk.40.attn_q.weight
+create_tensor: loading tensor blk.40.attn_k.weight
+create_tensor: loading tensor blk.40.attn_v.weight
+create_tensor: loading tensor blk.40.attn_output.weight
+create_tensor: loading tensor blk.40.attn_q_norm.weight
+create_tensor: loading tensor blk.40.attn_k_norm.weight
+create_tensor: loading tensor blk.40.post_attention_norm.weight
+create_tensor: loading tensor blk.40.layer_output_scale.weight
+create_tensor: loading tensor blk.40.ffn_norm.weight
+create_tensor: loading tensor blk.40.ffn_gate.weight
+create_tensor: loading tensor blk.40.ffn_up.weight
+create_tensor: loading tensor blk.40.ffn_down.weight
+create_tensor: loading tensor blk.40.post_ffw_norm.weight
+create_tensor: loading tensor blk.40.inp_gate.weight
+create_tensor: loading tensor blk.40.proj.weight
+create_tensor: loading tensor blk.40.post_norm.weight
+create_tensor: loading tensor blk.41.attn_norm.weight
+create_tensor: loading tensor blk.41.attn_q.weight
+create_tensor: loading tensor blk.41.attn_k.weight
+create_tensor: loading tensor blk.41.attn_v.weight
+create_tensor: loading tensor blk.41.attn_output.weight
+create_tensor: loading tensor blk.41.attn_q_norm.weight
+create_tensor: loading tensor blk.41.attn_k_norm.weight
+create_tensor: loading tensor blk.41.post_attention_norm.weight
+create_tensor: loading tensor blk.41.layer_output_scale.weight
+create_tensor: loading tensor blk.41.ffn_norm.weight
+create_tensor: loading tensor blk.41.ffn_gate.weight
+create_tensor: loading tensor blk.41.ffn_up.weight
+create_tensor: loading tensor blk.41.ffn_down.weight
+create_tensor: loading tensor blk.41.post_ffw_norm.weight
+create_tensor: loading tensor blk.41.inp_gate.weight
+create_tensor: loading tensor blk.41.proj.weight
+create_tensor: loading tensor blk.41.post_norm.weight
+done_getting_tensors: tensor 'token_embd.weight' (q8_0) (and 1 others) cannot be used with preferred buffer type CPU_REPACK, using CPU instead
+ggml_metal_log_allocated_size: allocated buffer, size =  7644.11 MiB, ( 7644.56 / 110100.48)
+load_tensors: offloading output layer to GPU
+load_tensors: offloading 41 repeating layers to GPU
+load_tensors: offloaded 43/43 layers to GPU
+load_tensors:   CPU_Mapped model buffer size =  3536.00 MiB
+load_tensors:  MTL0_Mapped model buffer size =  7644.10 MiB
+.....................................................
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 4096
+llama_context: n_ctx_seq     = 4096
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 1000000.0
+llama_context: freq_scale    = 1
+llama_context: n_rs_seq      = 0
+llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4 Max
+ggml_metal_init: picking default device: Apple M4 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+set_abort_callback: call
+llama_context:        CPU  output buffer size =     1.00 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: filtered
+llama_kv_cache: layer   1: filtered
+llama_kv_cache: layer   2: filtered
+llama_kv_cache: layer   3: filtered
+llama_kv_cache: layer   4: filtered
+llama_kv_cache: layer   5: dev = MTL0
+llama_kv_cache: layer   6: filtered
+llama_kv_cache: layer   7: filtered
+llama_kv_cache: layer   8: filtered
+llama_kv_cache: layer   9: filtered
+llama_kv_cache: layer  10: filtered
+llama_kv_cache: layer  11: dev = MTL0
+llama_kv_cache: layer  12: filtered
+llama_kv_cache: layer  13: filtered
+llama_kv_cache: layer  14: filtered
+llama_kv_cache: layer  15: filtered
+llama_kv_cache: layer  16: filtered
+llama_kv_cache: layer  17: dev = MTL0
+llama_kv_cache: layer  18: filtered
+llama_kv_cache: layer  19: filtered
+llama_kv_cache: layer  20: filtered
+llama_kv_cache: layer  21: filtered
+llama_kv_cache: layer  22: filtered
+llama_kv_cache: layer  23: dev = MTL0
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: filtered
+llama_kv_cache: - layer  25: filtered
+llama_kv_cache: - layer  26: filtered
+llama_kv_cache: - layer  27: filtered
+llama_kv_cache: - layer  28: filtered
+llama_kv_cache: - layer  29: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  30: filtered
+llama_kv_cache: - layer  31: filtered
+llama_kv_cache: - layer  32: filtered
+llama_kv_cache: - layer  33: filtered
+llama_kv_cache: - layer  34: filtered
+llama_kv_cache: - layer  35: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  36: filtered
+llama_kv_cache: - layer  37: filtered
+llama_kv_cache: - layer  38: filtered
+llama_kv_cache: - layer  39: filtered
+llama_kv_cache: - layer  40: filtered
+llama_kv_cache: - layer  41: reuse layer 23, is_swa = 0
+llama_kv_cache:       MTL0 KV buffer size =    64.00 MiB
+llama_kv_cache: size =   64.00 MiB (  4096 cells,   4 layers,  1/1 seqs), K (f16):   32.00 MiB, V (f16):   32.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 512
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 512
+llama_kv_cache_iswa: creating     SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: dev = MTL0
+llama_kv_cache: layer   1: dev = MTL0
+llama_kv_cache: layer   2: dev = MTL0
+llama_kv_cache: layer   3: dev = MTL0
+llama_kv_cache: layer   4: dev = MTL0
+llama_kv_cache: layer   5: filtered
+llama_kv_cache: layer   6: dev = MTL0
+llama_kv_cache: layer   7: dev = MTL0
+llama_kv_cache: layer   8: dev = MTL0
+llama_kv_cache: layer   9: dev = MTL0
+llama_kv_cache: layer  10: dev = MTL0
+llama_kv_cache: layer  11: filtered
+llama_kv_cache: layer  12: dev = MTL0
+llama_kv_cache: layer  13: dev = MTL0
+llama_kv_cache: layer  14: dev = MTL0
+llama_kv_cache: layer  15: dev = MTL0
+llama_kv_cache: layer  16: dev = MTL0
+llama_kv_cache: layer  17: filtered
+llama_kv_cache: layer  18: dev = MTL0
+llama_kv_cache: layer  19: dev = MTL0
+llama_kv_cache: layer  20: dev = MTL0
+llama_kv_cache: layer  21: dev = MTL0
+llama_kv_cache: layer  22: dev = MTL0
+llama_kv_cache: layer  23: filtered
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  25: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  26: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  27: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  28: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  29: filtered
+llama_kv_cache: - layer  30: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  31: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  32: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  33: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  34: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  35: filtered
+llama_kv_cache: - layer  36: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  37: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  38: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  39: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  40: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  41: filtered
+llama_kv_cache:       MTL0 KV buffer size =   160.00 MiB
+llama_kv_cache: size =  160.00 MiB (  4096 cells,  20 layers,  1/1 seqs), K (f16):   80.00 MiB, V (f16):   80.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 256
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 256
+llama_context: enumerating backends
+llama_context: backend_ptrs.size() = 3
+sched_reserve: reserving ...
+sched_reserve: max_nodes = 5768
+sched_reserve: reserving full memory module
+sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16
+sched_reserve: fused Gated Delta Net (chunked) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+sched_reserve:       MTL0 compute buffer size =   538.50 MiB
+sched_reserve:        CPU compute buffer size =    47.02 MiB
+sched_reserve: graph nodes  = 1867
+sched_reserve: graph splits = 2
+sched_reserve: reserve took 22.74 ms, sched copies = 1
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_unary_f32_f32_4', name = 'kernel_unary_f32_f32_4_op=10_cnt=0'
+ggml_metal_library_compile_pipeline: loaded kernel_unary_f32_f32_4_op=10_cnt=0            0x1093997f0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_cpy_f32_f16', name = 'kernel_cpy_f32_f16'
+ggml_metal_library_compile_pipeline: loaded kernel_cpy_f32_f16                            0x109399ff0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_rms_norm_mul_f32_4', name = 'kernel_rms_norm_mul_f32_4'
+ggml_metal_library_compile_pipeline: loaded kernel_rms_norm_mul_f32_4                     0x10939a7f0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mm_q8_0_f32', name = 'kernel_mul_mm_q8_0_f32_bci=0_bco=1_ne12=1_ne13=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mm_q8_0_f32_bci=0_bco=1_ne12=1_ne13=1_r2=1_r3=1      0x10939b2f0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_rms_norm_f32_4', name = 'kernel_rms_norm_f32_4'
+ggml_metal_library_compile_pipeline: loaded kernel_rms_norm_f32_4                         0x10939baf0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_rope_neox_f32', name = 'kernel_rope_neox_f32_imrope=0'
+ggml_metal_library_compile_pipeline: loaded kernel_rope_neox_f32_imrope=0                 0x10939bdf0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_set_rows_f16_i64', name = 'kernel_set_rows_f16_i64'
+ggml_metal_library_compile_pipeline: loaded kernel_set_rows_f16_i64                       0x10939c0f0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mm_bf16_f32', name = 'kernel_mul_mm_bf16_f32_bci=0_bco=1_ne12=1_ne13=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mm_bf16_f32_bci=0_bco=1_ne12=1_ne13=1_r2=1_r3=1      0x10939c6f0 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_blk', name = 'kernel_flash_attn_ext_blk_nqptg=8_ncpsg=64'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_blk_nqptg=8_ncpsg=64      0x769540000 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_f16_dk256_dv256', name = 'kernel_flash_attn_ext_f16_dk256_dv256_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=1_ns10=512_ns20=512_nsg=4'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_f16_dk256_dv256_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=1_ns10=512_ns20=512_nsg=4      0x769540300 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_rms_norm_mul_add_f32_4', name = 'kernel_rms_norm_mul_add_f32_4'
+ggml_metal_library_compile_pipeline: loaded kernel_rms_norm_mul_add_f32_4                 0x769540600 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_cpy_f32_f32', name = 'kernel_cpy_f32_f32'
+ggml_metal_library_compile_pipeline: loaded kernel_cpy_f32_f32                            0x769540900 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_geglu_f32', name = 'kernel_geglu_f32'
+ggml_metal_library_compile_pipeline: loaded kernel_geglu_f32                              0x769540c00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_unary_f32_f32_4', name = 'kernel_unary_f32_f32_4_op=103_cnt=1'
+ggml_metal_library_compile_pipeline: loaded kernel_unary_f32_f32_4_op=103_cnt=1           0x769540f00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_bin_fuse_f32_f32_f32_4', name = 'kernel_bin_fuse_f32_f32_f32_4_op=2_nf=1_rb=0_cb=0'
+ggml_metal_library_compile_pipeline: loaded kernel_bin_fuse_f32_f32_f32_4_op=2_nf=1_rb=0_cb=0      0x769541200 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_bin_fuse_f32_f32_f32_4', name = 'kernel_bin_fuse_f32_f32_f32_4_op=0_nf=1_rb=0_cb=0'
+ggml_metal_library_compile_pipeline: loaded kernel_bin_fuse_f32_f32_f32_4_op=0_nf=1_rb=0_cb=0      0x769541500 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_bin_fuse_f32_f32_f32', name = 'kernel_bin_fuse_f32_f32_f32_op=2_nf=1_rb=0_cb=1'
+ggml_metal_library_compile_pipeline: loaded kernel_bin_fuse_f32_f32_f32_op=2_nf=1_rb=0_cb=1      0x769541800 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_f16_dk512_dv512', name = 'kernel_flash_attn_ext_f16_dk512_dv512_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=1_ns10=1024_ns20=1024_nsg=8'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_f16_dk512_dv512_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=1_ns10=1024_ns20=1024_nsg=8      0x769541b00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_get_rows_f32', name = 'kernel_get_rows_f32'
+ggml_metal_library_compile_pipeline: loaded kernel_get_rows_f32                           0x769541e00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mv_q8_0_f32', name = 'kernel_mul_mv_q8_0_f32_nsg=4_ne12=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mv_q8_0_f32_nsg=4_ne12=1_r2=1_r3=1      0x769542100 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_bin_fuse_f32_f32_f32_4', name = 'kernel_bin_fuse_f32_f32_f32_4_op=2_nf=1_rb=1_cb=0'
+ggml_metal_library_compile_pipeline: loaded kernel_bin_fuse_f32_f32_f32_4_op=2_nf=1_rb=1_cb=0      0x769542400 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_bin_fuse_f32_f32_f32_4', name = 'kernel_bin_fuse_f32_f32_f32_4_op=0_nf=1_rb=1_cb=0'
+ggml_metal_library_compile_pipeline: loaded kernel_bin_fuse_f32_f32_f32_4_op=0_nf=1_rb=1_cb=0      0x769542700 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_bin_fuse_f32_f32_f32', name = 'kernel_bin_fuse_f32_f32_f32_op=2_nf=1_rb=1_cb=1'
+ggml_metal_library_compile_pipeline: loaded kernel_bin_fuse_f32_f32_f32_op=2_nf=1_rb=1_cb=1      0x769542a00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_unary_f32_f32_4', name = 'kernel_unary_f32_f32_4_op=100_cnt=0'
+ggml_metal_library_compile_pipeline: loaded kernel_unary_f32_f32_4_op=100_cnt=0           0x769542d00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_unary_f32_f32_4', name = 'kernel_unary_f32_f32_4_op=10_cnt=1'
+ggml_metal_library_compile_pipeline: loaded kernel_unary_f32_f32_4_op=10_cnt=1            0x769543000 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mv_bf16_f32_4', name = 'kernel_mul_mv_bf16_f32_4_nsg=4_ne12=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mv_bf16_f32_4_nsg=4_ne12=1_r2=1_r3=1      0x769543300 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_vec_f16_dk256_dv256', name = 'kernel_flash_attn_ext_vec_f16_dk256_dv256_mask=1_sink=0_bias=0_scap=0_kvpad=0_ns10=512_ns20=512_nsg=1_nwg=32'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_vec_f16_dk256_dv256_mask=1_sink=0_bias=0_scap=0_kvpad=0_ns10=512_ns20=512_nsg=1_nwg=32      0x769543600 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_vec_reduce', name = 'kernel_flash_attn_ext_vec_reduce_dv=256_nwg=32'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_vec_reduce_dv=256_nwg=32      0x769543900 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_vec_f16_dk512_dv512', name = 'kernel_flash_attn_ext_vec_f16_dk512_dv512_mask=1_sink=0_bias=0_scap=0_kvpad=0_ns10=1024_ns20=1024_nsg=1_nwg=32'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_vec_f16_dk512_dv512_mask=1_sink=0_bias=0_scap=0_kvpad=0_ns10=1024_ns20=1024_nsg=1_nwg=32      0x769543c00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_vec_reduce', name = 'kernel_flash_attn_ext_vec_reduce_dv=512_nwg=32'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_vec_reduce_dv=512_nwg=32      0x769984000 | th_max = 1024 | th_width =   32
+[baseline] n=40 30.6 tok/s (prefill+decode 1306ms)
+[baseline] text: "One, two, three, four, five, six, seven, eight, nine, ten, eleven, twelve, thirteen, fourteen, fifteen, sixteen, seventeen, eighteen, nineteen, twenty."
+llama_context: constructing llama_context
+llama_context: n_rs_seq=1 requested but model arch does not support recurrent partial rollback; clamping to 0
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 4096
+llama_context: n_ctx_seq     = 4096
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 1000000.0
+llama_context: freq_scale    = 1
+llama_context: n_rs_seq      = 0
+llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4 Max
+ggml_metal_init: picking default device: Apple M4 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+set_abort_callback: call
+llama_context:        CPU  output buffer size =     1.00 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: filtered
+llama_kv_cache: layer   1: filtered
+llama_kv_cache: layer   2: filtered
+llama_kv_cache: layer   3: filtered
+llama_kv_cache: layer   4: filtered
+llama_kv_cache: layer   5: dev = MTL0
+llama_kv_cache: layer   6: filtered
+llama_kv_cache: layer   7: filtered
+llama_kv_cache: layer   8: filtered
+llama_kv_cache: layer   9: filtered
+llama_kv_cache: layer  10: filtered
+llama_kv_cache: layer  11: dev = MTL0
+llama_kv_cache: layer  12: filtered
+llama_kv_cache: layer  13: filtered
+llama_kv_cache: layer  14: filtered
+llama_kv_cache: layer  15: filtered
+llama_kv_cache: layer  16: filtered
+llama_kv_cache: layer  17: dev = MTL0
+llama_kv_cache: layer  18: filtered
+llama_kv_cache: layer  19: filtered
+llama_kv_cache: layer  20: filtered
+llama_kv_cache: layer  21: filtered
+llama_kv_cache: layer  22: filtered
+llama_kv_cache: layer  23: dev = MTL0
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: filtered
+llama_kv_cache: - layer  25: filtered
+llama_kv_cache: - layer  26: filtered
+llama_kv_cache: - layer  27: filtered
+llama_kv_cache: - layer  28: filtered
+llama_kv_cache: - layer  29: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  30: filtered
+llama_kv_cache: - layer  31: filtered
+llama_kv_cache: - layer  32: filtered
+llama_kv_cache: - layer  33: filtered
+llama_kv_cache: - layer  34: filtered
+llama_kv_cache: - layer  35: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  36: filtered
+llama_kv_cache: - layer  37: filtered
+llama_kv_cache: - layer  38: filtered
+llama_kv_cache: - layer  39: filtered
+llama_kv_cache: - layer  40: filtered
+llama_kv_cache: - layer  41: reuse layer 23, is_swa = 0
+llama_kv_cache:       MTL0 KV buffer size =    64.00 MiB
+llama_kv_cache: size =   64.00 MiB (  4096 cells,   4 layers,  1/1 seqs), K (f16):   32.00 MiB, V (f16):   32.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 512
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 512
+llama_kv_cache_iswa: creating     SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: dev = MTL0
+llama_kv_cache: layer   1: dev = MTL0
+llama_kv_cache: layer   2: dev = MTL0
+llama_kv_cache: layer   3: dev = MTL0
+llama_kv_cache: layer   4: dev = MTL0
+llama_kv_cache: layer   5: filtered
+llama_kv_cache: layer   6: dev = MTL0
+llama_kv_cache: layer   7: dev = MTL0
+llama_kv_cache: layer   8: dev = MTL0
+llama_kv_cache: layer   9: dev = MTL0
+llama_kv_cache: layer  10: dev = MTL0
+llama_kv_cache: layer  11: filtered
+llama_kv_cache: layer  12: dev = MTL0
+llama_kv_cache: layer  13: dev = MTL0
+llama_kv_cache: layer  14: dev = MTL0
+llama_kv_cache: layer  15: dev = MTL0
+llama_kv_cache: layer  16: dev = MTL0
+llama_kv_cache: layer  17: filtered
+llama_kv_cache: layer  18: dev = MTL0
+llama_kv_cache: layer  19: dev = MTL0
+llama_kv_cache: layer  20: dev = MTL0
+llama_kv_cache: layer  21: dev = MTL0
+llama_kv_cache: layer  22: dev = MTL0
+llama_kv_cache: layer  23: filtered
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  25: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  26: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  27: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  28: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  29: filtered
+llama_kv_cache: - layer  30: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  31: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  32: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  33: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  34: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  35: filtered
+llama_kv_cache: - layer  36: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  37: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  38: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  39: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  40: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  41: filtered
+llama_kv_cache:       MTL0 KV buffer size =   160.00 MiB
+llama_kv_cache: size =  160.00 MiB (  4096 cells,  20 layers,  1/1 seqs), K (f16):   80.00 MiB, V (f16):   80.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 256
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 256
+llama_context: enumerating backends
+llama_context: backend_ptrs.size() = 3
+sched_reserve: reserving ...
+sched_reserve: max_nodes = 5768
+sched_reserve: reserving full memory module
+sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16
+sched_reserve: fused Gated Delta Net (chunked) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+sched_reserve:       MTL0 compute buffer size =   538.50 MiB
+sched_reserve:        CPU compute buffer size =    47.02 MiB
+sched_reserve: graph nodes  = 1867
+sched_reserve: graph splits = 2
+sched_reserve: reserve took 72.48 ms, sched copies = 1
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mv_ext_q8_0_f32_r1_2', name = 'kernel_mul_mv_ext_q8_0_f32_r1_2_nsg=2_nxpsg=16_ne12=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mv_ext_q8_0_f32_r1_2_nsg=2_nxpsg=16_ne12=1_r2=1_r3=1      0x769984300 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mv_ext_bf16_f32_r1_2', name = 'kernel_mul_mv_ext_bf16_f32_r1_2_nsg=2_nxpsg=16_ne12=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mv_ext_bf16_f32_r1_2_nsg=2_nxpsg=16_ne12=1_r2=1_r3=1      0x769984600 | th_max = 1024 | th_width =   32
+llama_model_loader: loaded meta data with 42 key-value pairs and 49 tensors from /tmp/mtp/bundles/4b/mtp/drafter-4b.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma4-assistant
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                     general.sampling.top_k i32              = 64
+llama_model_loader: - kv   3:                     general.sampling.top_p f32              = 0.950000
+llama_model_loader: - kv   4:                      general.sampling.temp f32              = 1.000000
+llama_model_loader: - kv   5:                               general.name str              = Model
+llama_model_loader: - kv   6:                         general.size_label str              = 78M
+llama_model_loader: - kv   7:               gemma4-assistant.block_count u32              = 4
+llama_model_loader: - kv   8:            gemma4-assistant.context_length u32              = 131072
+llama_model_loader: - kv   9:          gemma4-assistant.embedding_length u32              = 256
+llama_model_loader: - kv  10:       gemma4-assistant.feed_forward_length u32              = 2048
+llama_model_loader: - kv  11:      gemma4-assistant.attention.head_count u32              = 4
+llama_model_loader: - kv  12:   gemma4-assistant.attention.head_count_kv u32              = 2
+llama_model_loader: - kv  13:            gemma4-assistant.rope.freq_base f32              = 1000000.000000
+llama_model_loader: - kv  14:        gemma4-assistant.rope.freq_base_swa f32              = 10000.000000
+llama_model_loader: - kv  15: gemma4-assistant.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  16:      gemma4-assistant.attention.key_length u32              = 512
+llama_model_loader: - kv  17:    gemma4-assistant.attention.value_length u32              = 512
+llama_model_loader: - kv  18:                          general.file_type u32              = 1
+llama_model_loader: - kv  19:  gemma4-assistant.attention.sliding_window u32              = 512
+llama_model_loader: - kv  20: gemma4-assistant.attention.shared_kv_layers u32              = 4
+llama_model_loader: - kv  21: gemma4-assistant.embedding_length_per_layer_input u32              = 0
+llama_model_loader: - kv  22: gemma4-assistant.attention.sliding_window_pattern arr[bool,4]      = [true, true, true, false]
+llama_model_loader: - kv  23:  gemma4-assistant.attention.key_length_swa u32              = 256
+llama_model_loader: - kv  24: gemma4-assistant.attention.value_length_swa u32              = 256
+llama_model_loader: - kv  25:      gemma4-assistant.rope.dimension_count u32              = 512
+llama_model_loader: - kv  26:  gemma4-assistant.rope.dimension_count_swa u32              = 256
+llama_model_loader: - kv  27:      gemma4-assistant.embedding_length_out u32              = 2560
+llama_model_loader: - kv  28:      gemma4-assistant.nextn_predict_layers u32              = 1
+llama_model_loader: - kv  29:               general.quantization_version u32              = 2
+llama_model_loader: - kv  30:                       tokenizer.ggml.model str              = gemma4
+llama_model_loader: - kv  31:                      tokenizer.ggml.tokens arr[str,262144]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  32:                      tokenizer.ggml.scores arr[f32,262144]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  33:                  tokenizer.ggml.token_type arr[i32,262144]  = [3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  34:                      tokenizer.ggml.merges arr[str,514906]  = ["\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n", ...
+llama_model_loader: - kv  35:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  36:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  37:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  38:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  39:               tokenizer.ggml.mask_token_id u32              = 4
+llama_model_loader: - kv  40:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  41:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - type  f32:   26 tensors
+llama_model_loader: - type  f16:   23 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = F16
+print_info: file size   = 148.77 MiB (16.00 BPW) 
+llama_prepare_model_devices: using device MTL0 (Apple M4 Max) (unknown id) - 100930 MiB free
+init_tokenizer: initializing tokenizer for type 2
+load: 0 unused tokens
+load: control token: 258883 '<audio|>' is not marked as EOG
+load: control token: 258881 '<|audio|>' is not marked as EOG
+load: control token: 258880 '<|image|>' is not marked as EOG
+load: control token: 256000 '<|audio>' is not marked as EOG
+load: control token: 255999 '<|image>' is not marked as EOG
+load: control token:    105 '<|turn>' is not marked as EOG
+load: control token: 258882 '<image|>' is not marked as EOG
+load: control-looking token:     50 '<|tool_response>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: control token:     46 '<|tool>' is not marked as EOG
+load: control token:      3 '<unk>' is not marked as EOG
+load: control-looking token:    212 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: control token:     47 '<tool|>' is not marked as EOG
+load: control token:      4 '<mask>' is not marked as EOG
+load: control token:      2 '<bos>' is not marked as EOG
+load: control token:     98 '<|think|>' is not marked as EOG
+load: control token:      0 '<pad>' is not marked as EOG
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 50 ('<|tool_response>')
+load:   - 106 ('<turn|>')
+load:   - 212 ('</s>')
+load: special_eog_ids contains '<|tool_response>', removing '</s>' token from EOG list
+load: special tokens cache size = 23
+load: token to piece cache size = 1.9445 MB
+print_info: arch                  = gemma4-assistant
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 131072
+print_info: n_embd                = 256
+print_info: n_embd_inp            = 2560
+print_info: n_layer               = 4
+print_info: n_head                = 4
+print_info: n_head_kv             = 2
+print_info: n_rot                 = 512
+print_info: n_swa                 = 512
+print_info: is_swa_any            = 1
+print_info: n_embd_head_k         = 512
+print_info: n_embd_head_v         = 512
+print_info: n_gqa                 = 2
+print_info: n_embd_k_gqa          = [512, 512, 512, 1024]
+print_info: n_embd_v_gqa          = [512, 512, 512, 1024]
+print_info: f_norm_eps            = 0.0e+00
+print_info: f_norm_rms_eps        = 1.0e-06
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 1.0e+00
+print_info: f_attn_value_scale    = 0.0000
+print_info: n_ff                  = 2048
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = 2
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 1000000.0
+print_info: freq_scale_train      = 1
+print_info: freq_base_swa         = 10000.0
+print_info: freq_scale_swa        = 1
+print_info: n_embd_head_k_swa     = 256
+print_info: n_embd_head_v_swa     = 256
+print_info: n_rot_swa             = 256
+print_info: n_ctx_orig_yarn       = 131072
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: model type            = E2B
+print_info: model params          = 77.99 M
+print_info: general.name          = Model
+print_info: vocab type            = BPE
+print_info: n_vocab               = 262144
+print_info: n_merges              = 514906
+print_info: BOS token             = 2 '<bos>'
+print_info: EOS token             = 1 '<eos>'
+print_info: UNK token             = 3 '<unk>'
+print_info: PAD token             = 0 '<pad>'
+print_info: MASK token            = 4 '<mask>'
+print_info: LF token              = 107 '
+'
+print_info: EOG token             = 1 '<eos>'
+print_info: EOG token             = 50 '<|tool_response>'
+print_info: EOG token             = 106 '<turn|>'
+print_info: max token length      = 93
+load_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)
+load_tensors: layer   0 assigned to device MTL0, is_swa = 1
+load_tensors: layer   1 assigned to device MTL0, is_swa = 1
+load_tensors: layer   2 assigned to device MTL0, is_swa = 1
+load_tensors: layer   3 assigned to device MTL0, is_swa = 0
+load_tensors: layer   4 assigned to device MTL0, is_swa = 0
+create_tensor: loading tensor token_embd.weight
+create_tensor: loading tensor token_embd.weight
+create_tensor: loading tensor output_norm.weight
+create_tensor: loading tensor nextn.post_projection.weight
+create_tensor: loading tensor nextn.pre_projection.weight
+create_tensor: loading tensor blk.0.attn_norm.weight
+create_tensor: loading tensor blk.0.attn_q.weight
+create_tensor: loading tensor blk.0.attn_output.weight
+create_tensor: loading tensor blk.0.attn_q_norm.weight
+create_tensor: loading tensor blk.0.post_attention_norm.weight
+create_tensor: loading tensor blk.0.layer_output_scale.weight
+create_tensor: loading tensor blk.0.ffn_norm.weight
+create_tensor: loading tensor blk.0.ffn_gate.weight
+create_tensor: loading tensor blk.0.ffn_up.weight
+create_tensor: loading tensor blk.0.ffn_down.weight
+create_tensor: loading tensor blk.0.post_ffw_norm.weight
+create_tensor: loading tensor blk.1.attn_norm.weight
+create_tensor: loading tensor blk.1.attn_q.weight
+create_tensor: loading tensor blk.1.attn_output.weight
+create_tensor: loading tensor blk.1.attn_q_norm.weight
+create_tensor: loading tensor blk.1.post_attention_norm.weight
+create_tensor: loading tensor blk.1.layer_output_scale.weight
+create_tensor: loading tensor blk.1.ffn_norm.weight
+create_tensor: loading tensor blk.1.ffn_gate.weight
+create_tensor: loading tensor blk.1.ffn_up.weight
+create_tensor: loading tensor blk.1.ffn_down.weight
+create_tensor: loading tensor blk.1.post_ffw_norm.weight
+create_tensor: loading tensor blk.2.attn_norm.weight
+create_tensor: loading tensor blk.2.attn_q.weight
+create_tensor: loading tensor blk.2.attn_output.weight
+create_tensor: loading tensor blk.2.attn_q_norm.weight
+create_tensor: loading tensor blk.2.post_attention_norm.weight
+create_tensor: loading tensor blk.2.layer_output_scale.weight
+create_tensor: loading tensor blk.2.ffn_norm.weight
+create_tensor: loading tensor blk.2.ffn_gate.weight
+create_tensor: loading tensor blk.2.ffn_up.weight
+create_tensor: loading tensor blk.2.ffn_down.weight
+create_tensor: loading tensor blk.2.post_ffw_norm.weight
+create_tensor: loading tensor blk.3.attn_norm.weight
+create_tensor: loading tensor blk.3.attn_q.weight
+create_tensor: loading tensor blk.3.attn_output.weight
+create_tensor: loading tensor blk.3.attn_q_norm.weight
+create_tensor: loading tensor blk.3.post_attention_norm.weight
+create_tensor: loading tensor blk.3.layer_output_scale.weight
+create_tensor: loading tensor rope_freqs.weight
+create_tensor: loading tensor blk.3.ffn_norm.weight
+create_tensor: loading tensor blk.3.ffn_gate.weight
+create_tensor: loading tensor blk.3.ffn_up.weight
+create_tensor: loading tensor blk.3.ffn_down.weight
+create_tensor: loading tensor blk.3.post_ffw_norm.weight
+done_getting_tensors: tensor 'token_embd.weight' (f16) (and 0 others) cannot be used with preferred buffer type CPU_REPACK, using CPU instead
+ggml_metal_log_allocated_size: allocated buffer, size =   148.78 MiB, ( 9318.59 / 110100.48)
+load_tensors: offloading output layer to GPU
+load_tensors: offloading 3 repeating layers to GPU
+load_tensors: offloaded 5/5 layers to GPU
+load_tensors:   CPU_Mapped model buffer size =   128.00 MiB
+load_tensors:  MTL0_Mapped model buffer size =   148.77 MiB
+..........
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 4096
+llama_context: n_ctx_seq     = 4096
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 1000000.0
+llama_context: freq_scale    = 1
+llama_context: n_rs_seq      = 0
+llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4 Max
+ggml_metal_init: picking default device: Apple M4 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+set_abort_callback: call
+llama_context:        CPU  output buffer size =     1.00 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: filtered
+llama_kv_cache: layer   1: filtered
+llama_kv_cache: layer   2: filtered
+llama_kv_cache: layer   3: sharing with sibling layer 41
+llama_kv_cache: size =   16.00 MiB (  4096 cells,   1 layers,  1/1 seqs), K (f16):    8.00 MiB, V (f16):    8.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 0
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 0
+llama_kv_cache_iswa: creating     SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: sharing with sibling layer 40
+llama_kv_cache: layer   1: sharing with sibling layer 40
+llama_kv_cache: layer   2: sharing with sibling layer 40
+llama_kv_cache: layer   3: filtered
+llama_kv_cache: size =   24.00 MiB (  4096 cells,   3 layers,  1/1 seqs), K (f16):   12.00 MiB, V (f16):   12.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 0
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 0
+llama_context: enumerating backends
+llama_context: backend_ptrs.size() = 3
+sched_reserve: reserving ...
+sched_reserve: max_nodes = 1024
+sched_reserve: reserving full memory module
+sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16
+sched_reserve: fused Gated Delta Net (chunked) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+sched_reserve:       MTL0 compute buffer size =   518.00 MiB
+sched_reserve:        CPU compute buffer size =    26.01 MiB
+sched_reserve: graph nodes  = 128
+sched_reserve: graph splits = 2
+sched_reserve: reserve took 86.37 ms, sched copies = 1
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_concat', name = 'kernel_concat'
+ggml_metal_library_compile_pipeline: loaded kernel_concat                                 0x769984900 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mv_ext_f16_f32_r1_2', name = 'kernel_mul_mv_ext_f16_f32_r1_2_nsg=2_nxpsg=16_ne12=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mv_ext_f16_f32_r1_2_nsg=2_nxpsg=16_ne12=1_r2=1_r3=1      0x769984c00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mv_f16_f32_4', name = 'kernel_mul_mv_f16_f32_4_nsg=2_ne12=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mv_f16_f32_4_nsg=2_ne12=1_r2=1_r3=1      0x769984f00 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mv_f16_f32_4', name = 'kernel_mul_mv_f16_f32_4_nsg=4_ne12=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mv_f16_f32_4_nsg=4_ne12=1_r2=1_r3=1      0x769985200 | th_max = 1024 | th_width =   32
+common_speculative_init: adding speculative implementation 'draft-mtp'
+set_embeddings_pre_norm: value = 1
+set_embeddings_pre_norm: value = 1
+set_embeddings: value = 0
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_mul_mm_f16_f32', name = 'kernel_mul_mm_f16_f32_bci=0_bco=1_ne12=1_ne13=1_r2=1_r3=1'
+ggml_metal_library_compile_pipeline: loaded kernel_mul_mm_f16_f32_bci=0_bco=1_ne12=1_ne13=1_r2=1_r3=1      0x769985500 | th_max = 1024 | th_width =   32
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+[mtp]      n=39 56.0 tok/s (prefill+decode 697ms) drafted=20 accepted=20 acceptance=1.000
+[mtp]      text: "One, two, three, four, five, six, seven, eight, nine, ten, eleven, twelve, thirteen, fourteen, fifteen, sixteen,, eighteen, nineteen, twenty."
+[check]    greedy outputs identical: false
+
+=== prompt: "List the seven days of the week in order, one per line."
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 4096
+llama_context: n_ctx_seq     = 4096
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 1000000.0
+llama_context: freq_scale    = 1
+llama_context: n_rs_seq      = 0
+llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4 Max
+ggml_metal_init: picking default device: Apple M4 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+set_abort_callback: call
+llama_context:        CPU  output buffer size =     1.00 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: filtered
+llama_kv_cache: layer   1: filtered
+llama_kv_cache: layer   2: filtered
+llama_kv_cache: layer   3: filtered
+llama_kv_cache: layer   4: filtered
+llama_kv_cache: layer   5: dev = MTL0
+llama_kv_cache: layer   6: filtered
+llama_kv_cache: layer   7: filtered
+llama_kv_cache: layer   8: filtered
+llama_kv_cache: layer   9: filtered
+llama_kv_cache: layer  10: filtered
+llama_kv_cache: layer  11: dev = MTL0
+llama_kv_cache: layer  12: filtered
+llama_kv_cache: layer  13: filtered
+llama_kv_cache: layer  14: filtered
+llama_kv_cache: layer  15: filtered
+llama_kv_cache: layer  16: filtered
+llama_kv_cache: layer  17: dev = MTL0
+llama_kv_cache: layer  18: filtered
+llama_kv_cache: layer  19: filtered
+llama_kv_cache: layer  20: filtered
+llama_kv_cache: layer  21: filtered
+llama_kv_cache: layer  22: filtered
+llama_kv_cache: layer  23: dev = MTL0
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: filtered
+llama_kv_cache: - layer  25: filtered
+llama_kv_cache: - layer  26: filtered
+llama_kv_cache: - layer  27: filtered
+llama_kv_cache: - layer  28: filtered
+llama_kv_cache: - layer  29: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  30: filtered
+llama_kv_cache: - layer  31: filtered
+llama_kv_cache: - layer  32: filtered
+llama_kv_cache: - layer  33: filtered
+llama_kv_cache: - layer  34: filtered
+llama_kv_cache: - layer  35: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  36: filtered
+llama_kv_cache: - layer  37: filtered
+llama_kv_cache: - layer  38: filtered
+llama_kv_cache: - layer  39: filtered
+llama_kv_cache: - layer  40: filtered
+llama_kv_cache: - layer  41: reuse layer 23, is_swa = 0
+llama_kv_cache:       MTL0 KV buffer size =    64.00 MiB
+llama_kv_cache: size =   64.00 MiB (  4096 cells,   4 layers,  1/1 seqs), K (f16):   32.00 MiB, V (f16):   32.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 512
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 512
+llama_kv_cache_iswa: creating     SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: dev = MTL0
+llama_kv_cache: layer   1: dev = MTL0
+llama_kv_cache: layer   2: dev = MTL0
+llama_kv_cache: layer   3: dev = MTL0
+llama_kv_cache: layer   4: dev = MTL0
+llama_kv_cache: layer   5: filtered
+llama_kv_cache: layer   6: dev = MTL0
+llama_kv_cache: layer   7: dev = MTL0
+llama_kv_cache: layer   8: dev = MTL0
+llama_kv_cache: layer   9: dev = MTL0
+llama_kv_cache: layer  10: dev = MTL0
+llama_kv_cache: layer  11: filtered
+llama_kv_cache: layer  12: dev = MTL0
+llama_kv_cache: layer  13: dev = MTL0
+llama_kv_cache: layer  14: dev = MTL0
+llama_kv_cache: layer  15: dev = MTL0
+llama_kv_cache: layer  16: dev = MTL0
+llama_kv_cache: layer  17: filtered
+llama_kv_cache: layer  18: dev = MTL0
+llama_kv_cache: layer  19: dev = MTL0
+llama_kv_cache: layer  20: dev = MTL0
+llama_kv_cache: layer  21: dev = MTL0
+llama_kv_cache: layer  22: dev = MTL0
+llama_kv_cache: layer  23: filtered
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  25: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  26: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  27: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  28: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  29: filtered
+llama_kv_cache: - layer  30: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  31: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  32: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  33: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  34: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  35: filtered
+llama_kv_cache: - layer  36: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  37: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  38: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  39: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  40: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  41: filtered
+llama_kv_cache:       MTL0 KV buffer size =   160.00 MiB
+llama_kv_cache: size =  160.00 MiB (  4096 cells,  20 layers,  1/1 seqs), K (f16):   80.00 MiB, V (f16):   80.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 256
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 256
+llama_context: enumerating backends
+llama_context: backend_ptrs.size() = 3
+sched_reserve: reserving ...
+sched_reserve: max_nodes = 5768
+sched_reserve: reserving full memory module
+sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16
+sched_reserve: fused Gated Delta Net (chunked) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+sched_reserve:       MTL0 compute buffer size =   538.50 MiB
+sched_reserve:        CPU compute buffer size =    47.02 MiB
+sched_reserve: graph nodes  = 1867
+sched_reserve: graph splits = 2
+sched_reserve: reserve took 302.35 ms, sched copies = 1
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_f16_dk256_dv256', name = 'kernel_flash_attn_ext_f16_dk256_dv256_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=0_ns10=512_ns20=512_nsg=4'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_f16_dk256_dv256_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=0_ns10=512_ns20=512_nsg=4      0x769985800 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_f16_dk512_dv512', name = 'kernel_flash_attn_ext_f16_dk512_dv512_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=0_ns10=1024_ns20=1024_nsg=8'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_f16_dk512_dv512_mask=1_sinks=0_bias=0_scap=0_kvpad=0_bcm=0_ns10=1024_ns20=1024_nsg=8      0x769985b00 | th_max = 1024 | th_width =   32
+[baseline] n=20 38.4 tok/s (prefill+decode 520ms)
+[baseline] text: "Sunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday<end_of_turn>"
+llama_context: constructing llama_context
+llama_context: n_rs_seq=1 requested but model arch does not support recurrent partial rollback; clamping to 0
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 4096
+llama_context: n_ctx_seq     = 4096
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 1000000.0
+llama_context: freq_scale    = 1
+llama_context: n_rs_seq      = 0
+llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4 Max
+ggml_metal_init: picking default device: Apple M4 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+set_abort_callback: call
+llama_context:        CPU  output buffer size =     1.00 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: filtered
+llama_kv_cache: layer   1: filtered
+llama_kv_cache: layer   2: filtered
+llama_kv_cache: layer   3: filtered
+llama_kv_cache: layer   4: filtered
+llama_kv_cache: layer   5: dev = MTL0
+llama_kv_cache: layer   6: filtered
+llama_kv_cache: layer   7: filtered
+llama_kv_cache: layer   8: filtered
+llama_kv_cache: layer   9: filtered
+llama_kv_cache: layer  10: filtered
+llama_kv_cache: layer  11: dev = MTL0
+llama_kv_cache: layer  12: filtered
+llama_kv_cache: layer  13: filtered
+llama_kv_cache: layer  14: filtered
+llama_kv_cache: layer  15: filtered
+llama_kv_cache: layer  16: filtered
+llama_kv_cache: layer  17: dev = MTL0
+llama_kv_cache: layer  18: filtered
+llama_kv_cache: layer  19: filtered
+llama_kv_cache: layer  20: filtered
+llama_kv_cache: layer  21: filtered
+llama_kv_cache: layer  22: filtered
+llama_kv_cache: layer  23: dev = MTL0
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: filtered
+llama_kv_cache: - layer  25: filtered
+llama_kv_cache: - layer  26: filtered
+llama_kv_cache: - layer  27: filtered
+llama_kv_cache: - layer  28: filtered
+llama_kv_cache: - layer  29: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  30: filtered
+llama_kv_cache: - layer  31: filtered
+llama_kv_cache: - layer  32: filtered
+llama_kv_cache: - layer  33: filtered
+llama_kv_cache: - layer  34: filtered
+llama_kv_cache: - layer  35: reuse layer 23, is_swa = 0
+llama_kv_cache: - layer  36: filtered
+llama_kv_cache: - layer  37: filtered
+llama_kv_cache: - layer  38: filtered
+llama_kv_cache: - layer  39: filtered
+llama_kv_cache: - layer  40: filtered
+llama_kv_cache: - layer  41: reuse layer 23, is_swa = 0
+llama_kv_cache:       MTL0 KV buffer size =    64.00 MiB
+llama_kv_cache: size =   64.00 MiB (  4096 cells,   4 layers,  1/1 seqs), K (f16):   32.00 MiB, V (f16):   32.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 512
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 512
+llama_kv_cache_iswa: creating     SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: dev = MTL0
+llama_kv_cache: layer   1: dev = MTL0
+llama_kv_cache: layer   2: dev = MTL0
+llama_kv_cache: layer   3: dev = MTL0
+llama_kv_cache: layer   4: dev = MTL0
+llama_kv_cache: layer   5: filtered
+llama_kv_cache: layer   6: dev = MTL0
+llama_kv_cache: layer   7: dev = MTL0
+llama_kv_cache: layer   8: dev = MTL0
+llama_kv_cache: layer   9: dev = MTL0
+llama_kv_cache: layer  10: dev = MTL0
+llama_kv_cache: layer  11: filtered
+llama_kv_cache: layer  12: dev = MTL0
+llama_kv_cache: layer  13: dev = MTL0
+llama_kv_cache: layer  14: dev = MTL0
+llama_kv_cache: layer  15: dev = MTL0
+llama_kv_cache: layer  16: dev = MTL0
+llama_kv_cache: layer  17: filtered
+llama_kv_cache: layer  18: dev = MTL0
+llama_kv_cache: layer  19: dev = MTL0
+llama_kv_cache: layer  20: dev = MTL0
+llama_kv_cache: layer  21: dev = MTL0
+llama_kv_cache: layer  22: dev = MTL0
+llama_kv_cache: layer  23: filtered
+llama_kv_cache: layer  24: does not have KV cache
+llama_kv_cache: layer  25: does not have KV cache
+llama_kv_cache: layer  26: does not have KV cache
+llama_kv_cache: layer  27: does not have KV cache
+llama_kv_cache: layer  28: does not have KV cache
+llama_kv_cache: layer  29: does not have KV cache
+llama_kv_cache: layer  30: does not have KV cache
+llama_kv_cache: layer  31: does not have KV cache
+llama_kv_cache: layer  32: does not have KV cache
+llama_kv_cache: layer  33: does not have KV cache
+llama_kv_cache: layer  34: does not have KV cache
+llama_kv_cache: layer  35: does not have KV cache
+llama_kv_cache: layer  36: does not have KV cache
+llama_kv_cache: layer  37: does not have KV cache
+llama_kv_cache: layer  38: does not have KV cache
+llama_kv_cache: layer  39: does not have KV cache
+llama_kv_cache: layer  40: does not have KV cache
+llama_kv_cache: layer  41: does not have KV cache
+llama_kv_cache: reusing layers:
+llama_kv_cache: - layer   0: no reuse
+llama_kv_cache: - layer   1: no reuse
+llama_kv_cache: - layer   2: no reuse
+llama_kv_cache: - layer   3: no reuse
+llama_kv_cache: - layer   4: no reuse
+llama_kv_cache: - layer   5: no reuse
+llama_kv_cache: - layer   6: no reuse
+llama_kv_cache: - layer   7: no reuse
+llama_kv_cache: - layer   8: no reuse
+llama_kv_cache: - layer   9: no reuse
+llama_kv_cache: - layer  10: no reuse
+llama_kv_cache: - layer  11: no reuse
+llama_kv_cache: - layer  12: no reuse
+llama_kv_cache: - layer  13: no reuse
+llama_kv_cache: - layer  14: no reuse
+llama_kv_cache: - layer  15: no reuse
+llama_kv_cache: - layer  16: no reuse
+llama_kv_cache: - layer  17: no reuse
+llama_kv_cache: - layer  18: no reuse
+llama_kv_cache: - layer  19: no reuse
+llama_kv_cache: - layer  20: no reuse
+llama_kv_cache: - layer  21: no reuse
+llama_kv_cache: - layer  22: no reuse
+llama_kv_cache: - layer  23: no reuse
+llama_kv_cache: - layer  24: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  25: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  26: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  27: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  28: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  29: filtered
+llama_kv_cache: - layer  30: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  31: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  32: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  33: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  34: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  35: filtered
+llama_kv_cache: - layer  36: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  37: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  38: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  39: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  40: reuse layer 22, is_swa = 1
+llama_kv_cache: - layer  41: filtered
+llama_kv_cache:       MTL0 KV buffer size =   160.00 MiB
+llama_kv_cache: size =  160.00 MiB (  4096 cells,  20 layers,  1/1 seqs), K (f16):   80.00 MiB, V (f16):   80.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 256
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 256
+llama_context: enumerating backends
+llama_context: backend_ptrs.size() = 3
+sched_reserve: reserving ...
+sched_reserve: max_nodes = 5768
+sched_reserve: reserving full memory module
+sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16
+sched_reserve: fused Gated Delta Net (chunked) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+sched_reserve:       MTL0 compute buffer size =   538.50 MiB
+sched_reserve:        CPU compute buffer size =    47.02 MiB
+sched_reserve: graph nodes  = 1867
+sched_reserve: graph splits = 2
+sched_reserve: reserve took 72.19 ms, sched copies = 1
+llama_model_loader: loaded meta data with 42 key-value pairs and 49 tensors from /tmp/mtp/bundles/4b/mtp/drafter-4b.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma4-assistant
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                     general.sampling.top_k i32              = 64
+llama_model_loader: - kv   3:                     general.sampling.top_p f32              = 0.950000
+llama_model_loader: - kv   4:                      general.sampling.temp f32              = 1.000000
+llama_model_loader: - kv   5:                               general.name str              = Model
+llama_model_loader: - kv   6:                         general.size_label str              = 78M
+llama_model_loader: - kv   7:               gemma4-assistant.block_count u32              = 4
+llama_model_loader: - kv   8:            gemma4-assistant.context_length u32              = 131072
+llama_model_loader: - kv   9:          gemma4-assistant.embedding_length u32              = 256
+llama_model_loader: - kv  10:       gemma4-assistant.feed_forward_length u32              = 2048
+llama_model_loader: - kv  11:      gemma4-assistant.attention.head_count u32              = 4
+llama_model_loader: - kv  12:   gemma4-assistant.attention.head_count_kv u32              = 2
+llama_model_loader: - kv  13:            gemma4-assistant.rope.freq_base f32              = 1000000.000000
+llama_model_loader: - kv  14:        gemma4-assistant.rope.freq_base_swa f32              = 10000.000000
+llama_model_loader: - kv  15: gemma4-assistant.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  16:      gemma4-assistant.attention.key_length u32              = 512
+llama_model_loader: - kv  17:    gemma4-assistant.attention.value_length u32              = 512
+llama_model_loader: - kv  18:                          general.file_type u32              = 1
+llama_model_loader: - kv  19:  gemma4-assistant.attention.sliding_window u32              = 512
+llama_model_loader: - kv  20: gemma4-assistant.attention.shared_kv_layers u32              = 4
+llama_model_loader: - kv  21: gemma4-assistant.embedding_length_per_layer_input u32              = 0
+llama_model_loader: - kv  22: gemma4-assistant.attention.sliding_window_pattern arr[bool,4]      = [true, true, true, false]
+llama_model_loader: - kv  23:  gemma4-assistant.attention.key_length_swa u32              = 256
+llama_model_loader: - kv  24: gemma4-assistant.attention.value_length_swa u32              = 256
+llama_model_loader: - kv  25:      gemma4-assistant.rope.dimension_count u32              = 512
+llama_model_loader: - kv  26:  gemma4-assistant.rope.dimension_count_swa u32              = 256
+llama_model_loader: - kv  27:      gemma4-assistant.embedding_length_out u32              = 2560
+llama_model_loader: - kv  28:      gemma4-assistant.nextn_predict_layers u32              = 1
+llama_model_loader: - kv  29:               general.quantization_version u32              = 2
+llama_model_loader: - kv  30:                       tokenizer.ggml.model str              = gemma4
+llama_model_loader: - kv  31:                      tokenizer.ggml.tokens arr[str,262144]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  32:                      tokenizer.ggml.scores arr[f32,262144]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  33:                  tokenizer.ggml.token_type arr[i32,262144]  = [3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  34:                      tokenizer.ggml.merges arr[str,514906]  = ["\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n", ...
+llama_model_loader: - kv  35:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  36:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  37:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  38:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  39:               tokenizer.ggml.mask_token_id u32              = 4
+llama_model_loader: - kv  40:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  41:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - type  f32:   26 tensors
+llama_model_loader: - type  f16:   23 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = F16
+print_info: file size   = 148.77 MiB (16.00 BPW) 
+llama_prepare_model_devices: using device MTL0 (Apple M4 Max) (unknown id) - 98738 MiB free
+init_tokenizer: initializing tokenizer for type 2
+load: 0 unused tokens
+load: control token: 258883 '<audio|>' is not marked as EOG
+load: control token: 258881 '<|audio|>' is not marked as EOG
+load: control token: 258880 '<|image|>' is not marked as EOG
+load: control token: 256000 '<|audio>' is not marked as EOG
+load: control token: 255999 '<|image>' is not marked as EOG
+load: control token:    105 '<|turn>' is not marked as EOG
+load: control token: 258882 '<image|>' is not marked as EOG
+load: control-looking token:     50 '<|tool_response>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: control token:     46 '<|tool>' is not marked as EOG
+load: control token:      3 '<unk>' is not marked as EOG
+load: control-looking token:    212 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: control token:     47 '<tool|>' is not marked as EOG
+load: control token:      4 '<mask>' is not marked as EOG
+load: control token:      2 '<bos>' is not marked as EOG
+load: control token:     98 '<|think|>' is not marked as EOG
+load: control token:      0 '<pad>' is not marked as EOG
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 50 ('<|tool_response>')
+load:   - 106 ('<turn|>')
+load:   - 212 ('</s>')
+load: special_eog_ids contains '<|tool_response>', removing '</s>' token from EOG list
+load: special tokens cache size = 23
+load: token to piece cache size = 1.9445 MB
+print_info: arch                  = gemma4-assistant
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 131072
+print_info: n_embd                = 256
+print_info: n_embd_inp            = 2560
+print_info: n_layer               = 4
+print_info: n_head                = 4
+print_info: n_head_kv             = 2
+print_info: n_rot                 = 512
+print_info: n_swa                 = 512
+print_info: is_swa_any            = 1
+print_info: n_embd_head_k         = 512
+print_info: n_embd_head_v         = 512
+print_info: n_gqa                 = 2
+print_info: n_embd_k_gqa          = [512, 512, 512, 1024]
+print_info: n_embd_v_gqa          = [512, 512, 512, 1024]
+print_info: f_norm_eps            = 0.0e+00
+print_info: f_norm_rms_eps        = 1.0e-06
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 1.0e+00
+print_info: f_attn_value_scale    = 0.0000
+print_info: n_ff                  = 2048
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = 2
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 1000000.0
+print_info: freq_scale_train      = 1
+print_info: freq_base_swa         = 10000.0
+print_info: freq_scale_swa        = 1
+print_info: n_embd_head_k_swa     = 256
+print_info: n_embd_head_v_swa     = 256
+print_info: n_rot_swa             = 256
+print_info: n_ctx_orig_yarn       = 131072
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: model type            = E2B
+print_info: model params          = 77.99 M
+print_info: general.name          = Model
+print_info: vocab type            = BPE
+print_info: n_vocab               = 262144
+print_info: n_merges              = 514906
+print_info: BOS token             = 2 '<bos>'
+print_info: EOS token             = 1 '<eos>'
+print_info: UNK token             = 3 '<unk>'
+print_info: PAD token             = 0 '<pad>'
+print_info: MASK token            = 4 '<mask>'
+print_info: LF token              = 107 '
+'
+print_info: EOG token             = 1 '<eos>'
+print_info: EOG token             = 50 '<|tool_response>'
+print_info: EOG token             = 106 '<turn|>'
+print_info: max token length      = 93
+load_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)
+load_tensors: layer   0 assigned to device MTL0, is_swa = 1
+load_tensors: layer   1 assigned to device MTL0, is_swa = 1
+load_tensors: layer   2 assigned to device MTL0, is_swa = 1
+load_tensors: layer   3 assigned to device MTL0, is_swa = 0
+load_tensors: layer   4 assigned to device MTL0, is_swa = 0
+create_tensor: loading tensor token_embd.weight
+create_tensor: loading tensor token_embd.weight
+create_tensor: loading tensor output_norm.weight
+create_tensor: loading tensor nextn.post_projection.weight
+create_tensor: loading tensor nextn.pre_projection.weight
+create_tensor: loading tensor blk.0.attn_norm.weight
+create_tensor: loading tensor blk.0.attn_q.weight
+create_tensor: loading tensor blk.0.attn_output.weight
+create_tensor: loading tensor blk.0.attn_q_norm.weight
+create_tensor: loading tensor blk.0.post_attention_norm.weight
+create_tensor: loading tensor blk.0.layer_output_scale.weight
+create_tensor: loading tensor blk.0.ffn_norm.weight
+create_tensor: loading tensor blk.0.ffn_gate.weight
+create_tensor: loading tensor blk.0.ffn_up.weight
+create_tensor: loading tensor blk.0.ffn_down.weight
+create_tensor: loading tensor blk.0.post_ffw_norm.weight
+create_tensor: loading tensor blk.1.attn_norm.weight
+create_tensor: loading tensor blk.1.attn_q.weight
+create_tensor: loading tensor blk.1.attn_output.weight
+create_tensor: loading tensor blk.1.attn_q_norm.weight
+create_tensor: loading tensor blk.1.post_attention_norm.weight
+create_tensor: loading tensor blk.1.layer_output_scale.weight
+create_tensor: loading tensor blk.1.ffn_norm.weight
+create_tensor: loading tensor blk.1.ffn_gate.weight
+create_tensor: loading tensor blk.1.ffn_up.weight
+create_tensor: loading tensor blk.1.ffn_down.weight
+create_tensor: loading tensor blk.1.post_ffw_norm.weight
+create_tensor: loading tensor blk.2.attn_norm.weight
+create_tensor: loading tensor blk.2.attn_q.weight
+create_tensor: loading tensor blk.2.attn_output.weight
+create_tensor: loading tensor blk.2.attn_q_norm.weight
+create_tensor: loading tensor blk.2.post_attention_norm.weight
+create_tensor: loading tensor blk.2.layer_output_scale.weight
+create_tensor: loading tensor blk.2.ffn_norm.weight
+create_tensor: loading tensor blk.2.ffn_gate.weight
+create_tensor: loading tensor blk.2.ffn_up.weight
+create_tensor: loading tensor blk.2.ffn_down.weight
+create_tensor: loading tensor blk.2.post_ffw_norm.weight
+create_tensor: loading tensor blk.3.attn_norm.weight
+create_tensor: loading tensor blk.3.attn_q.weight
+create_tensor: loading tensor blk.3.attn_output.weight
+create_tensor: loading tensor blk.3.attn_q_norm.weight
+create_tensor: loading tensor blk.3.post_attention_norm.weight
+create_tensor: loading tensor blk.3.layer_output_scale.weight
+create_tensor: loading tensor rope_freqs.weight
+create_tensor: loading tensor blk.3.ffn_norm.weight
+create_tensor: loading tensor blk.3.ffn_gate.weight
+create_tensor: loading tensor blk.3.ffn_up.weight
+create_tensor: loading tensor blk.3.ffn_down.weight
+create_tensor: loading tensor blk.3.post_ffw_norm.weight
+done_getting_tensors: tensor 'token_embd.weight' (f16) (and 0 others) cannot be used with preferred buffer type CPU_REPACK, using CPU instead
+ggml_metal_log_allocated_size: allocated buffer, size =   148.78 MiB, (11510.38 / 110100.48)
+load_tensors: offloading output layer to GPU
+load_tensors: offloading 3 repeating layers to GPU
+load_tensors: offloaded 5/5 layers to GPU
+load_tensors:   CPU_Mapped model buffer size =   128.00 MiB
+load_tensors:  MTL0_Mapped model buffer size =   148.77 MiB
+..........
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 4096
+llama_context: n_ctx_seq     = 4096
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 1000000.0
+llama_context: freq_scale    = 1
+llama_context: n_rs_seq      = 0
+llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4 Max
+ggml_metal_init: picking default device: Apple M4 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+set_abort_callback: call
+llama_context:        CPU  output buffer size =     1.00 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: filtered
+llama_kv_cache: layer   1: filtered
+llama_kv_cache: layer   2: filtered
+llama_kv_cache: layer   3: sharing with sibling layer 41
+llama_kv_cache: size =   16.00 MiB (  4096 cells,   1 layers,  1/1 seqs), K (f16):    8.00 MiB, V (f16):    8.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 0
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 0
+llama_kv_cache_iswa: creating     SWA KV cache, size = 4096 cells
+llama_kv_cache: layer   0: sharing with sibling layer 40
+llama_kv_cache: layer   1: sharing with sibling layer 40
+llama_kv_cache: layer   2: sharing with sibling layer 40
+llama_kv_cache: layer   3: filtered
+llama_kv_cache: size =   24.00 MiB (  4096 cells,   3 layers,  1/1 seqs), K (f16):   12.00 MiB, V (f16):   12.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 0
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 0
+llama_context: enumerating backends
+llama_context: backend_ptrs.size() = 3
+sched_reserve: reserving ...
+sched_reserve: max_nodes = 1024
+sched_reserve: reserving full memory module
+sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16
+sched_reserve: fused Gated Delta Net (chunked) enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+sched_reserve:       MTL0 compute buffer size =   518.00 MiB
+sched_reserve:        CPU compute buffer size =    26.01 MiB
+sched_reserve: graph nodes  = 128
+sched_reserve: graph splits = 2
+sched_reserve: reserve took 15.45 ms, sched copies = 1
+set_embeddings_pre_norm: value = 1
+set_embeddings_pre_norm: value = 1
+set_embeddings: value = 0
+common_speculative_init: adding speculative implementation 'draft-mtp'
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+set_embeddings: value = 0
+[mtp]      n=20 40.1 tok/s (prefill+decode 498ms) drafted=11 accepted=9 acceptance=0.818
+[mtp]      text: "Sunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday<end_of_turn>"
+[check]    greedy outputs identical: true
+
+[TOTAL] drafted=31 accepted=29 acceptance=0.935
+[harness] clean shutdown
+/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-metal/ggml-metal-device.m:710: GGML_ASSERT([rsets->data count] == 0) failed
+WARNING: Using native backtrace. Set GGML_BACKTRACE_LLDB for more info.
+WARNING: GGML_BACKTRACE_LLDB may cause native MacOS Terminal.app to crash.
+See: https://github.com/ggml-org/llama.cpp/pull/17869
+0   libggml-base.0.12.0.dylib           0x0000000140105490 ggml_print_backtrace + 276
+1   libggml-base.0.12.0.dylib           0x000000014017eaa0 ggml_abort + 156
+2   libggml-metal.0.12.0.dylib          0x00000001412a648c ggml_metal_device_init + 0
+3   libggml-metal.0.12.0.dylib          0x00000001412a6e94 ggml_metal_device_free + 24
+4   libggml-metal.0.12.0.dylib          0x00000001412a8e68 _ZNSt3__16vectorINS_10unique_ptrI17ggml_metal_device25ggml_metal_device_deleterEENS_9allocatorIS4_EEED1B9nqe210106Ev + 72
+5   libsystem_c.dylib                   0x000000018e5b542c __cxa_finalize_ranges + 480
+6   libsystem_c.dylib                   0x000000018e5b51ec exit + 44
+7   bun                                 0x0000000105086734 bun + 10217268
+8   bun                                 0x000000010532a844 bun + 12986436
+9   bun                                 0x000000010584a334 bun + 18359092
+10  bun                                 0x0000000104a894e0 bun + 3937504
+11  bun                                 0x00000001050fd9cc bun + 10705356
+12  bun                                 0x0000000105117f8c bun + 10813324
+13  bun                                 0x00000001050d5abc bun + 10541756
+14  bun                                 0x0000000105094f6c bun + 10276716
+15  bun                                 0x0000000105086670 bun + 10217072
+16  bun                                 0x0000000105085d0c bun + 10214668
+17  dyld                                0x000000018e339d54 start + 7184

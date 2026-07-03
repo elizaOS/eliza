@@ -317,6 +317,31 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "diarizer",
+    version: "0.3.0",
+    parentVersion: "0.2.0",
+    publishedToHfAt: "2026-07-03T03:24:18Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "a89e5615ad616f7bf6c4982cd9eed2805b90370f",
+    preferredBackend: "ffi",
+    deprecatedBackends: ["onnx"],
+    ggufAssets: [
+      {
+        filename: "voice/diarizer/pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+        sha256:
+          "100a5dbfd480b0cd6b0e01f0a9974ba836412721dfa0e36b7c1bb5a041abfbde",
+        sizeBytes: 5_976_032,
+        quant: "gguf-fp32",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "0.3.0 — epoch-2 IFGO re-bake (#11377): converter_epoch=2 + lstm_gate_order=IFGO metadata; " +
+      "pairs with the IFGO fused reader (fail-closed guard rejects gate-order skew). " +
+      "New filename; 0.2.0 IOFC artifact kept on HF for older fused libs.",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "diarizer",
     version: "0.2.0",
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-19T00:00:00Z",

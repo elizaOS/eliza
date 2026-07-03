@@ -198,7 +198,11 @@ test.describe("walkthrough capture smoke", () => {
     await expect(
       page.getByTestId("choice-__first_run__:runtime:local"),
     ).toBeVisible();
-    // runtime:other ("Bring your own keys") was removed as a location in #11509.
+    // Remote (connect to an existing agent) is the third location chip.
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:remote"),
+    ).toBeVisible();
+    // runtime:other ("Bring your own keys") stays removed as a location (#11509).
     await expect(
       page.getByTestId("choice-__first_run__:runtime:other"),
     ).toHaveCount(0);

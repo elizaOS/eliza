@@ -1,0 +1,95 @@
+INFO:hf-to-gguf:Loading model: model
+INFO:hf-to-gguf:Model architecture: Gemma4AssistantForCausalLM
+INFO:hf-to-gguf:gguf: indexing model part 'model.safetensors'
+INFO:gguf.gguf_writer:gguf: This GGUF file is for Little Endian only
+INFO:hf-to-gguf:Exporting model...
+INFO:hf-to-gguf:rope_freqs.weight,                torch.float32 --> F32, shape = {256}
+INFO:hf-to-gguf:token_embd.weight,                torch.bfloat16 --> F16, shape = {256, 262144}
+INFO:hf-to-gguf:blk.0.attn_norm.weight,           torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.0.layer_output_scale.weight,  torch.bfloat16 --> F32, shape = {1}
+INFO:hf-to-gguf:blk.0.ffn_down.weight,            torch.bfloat16 --> F16, shape = {2048, 256}
+INFO:hf-to-gguf:blk.0.ffn_gate.weight,            torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.0.ffn_up.weight,              torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.0.post_attention_norm.weight, torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.0.post_ffw_norm.weight,       torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.0.ffn_norm.weight,            torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.0.attn_output.weight,         torch.bfloat16 --> F16, shape = {1024, 256}
+INFO:hf-to-gguf:blk.0.attn_q_norm.weight,         torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.0.attn_q.weight,              torch.bfloat16 --> F16, shape = {256, 1024}
+INFO:hf-to-gguf:blk.1.attn_norm.weight,           torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.1.layer_output_scale.weight,  torch.bfloat16 --> F32, shape = {1}
+INFO:hf-to-gguf:blk.1.ffn_down.weight,            torch.bfloat16 --> F16, shape = {2048, 256}
+INFO:hf-to-gguf:blk.1.ffn_gate.weight,            torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.1.ffn_up.weight,              torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.1.post_attention_norm.weight, torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.1.post_ffw_norm.weight,       torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.1.ffn_norm.weight,            torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.1.attn_output.weight,         torch.bfloat16 --> F16, shape = {1024, 256}
+INFO:hf-to-gguf:blk.1.attn_q_norm.weight,         torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.1.attn_q.weight,              torch.bfloat16 --> F16, shape = {256, 1024}
+INFO:hf-to-gguf:blk.2.attn_norm.weight,           torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.2.layer_output_scale.weight,  torch.bfloat16 --> F32, shape = {1}
+INFO:hf-to-gguf:blk.2.ffn_down.weight,            torch.bfloat16 --> F16, shape = {2048, 256}
+INFO:hf-to-gguf:blk.2.ffn_gate.weight,            torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.2.ffn_up.weight,              torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.2.post_attention_norm.weight, torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.2.post_ffw_norm.weight,       torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.2.ffn_norm.weight,            torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.2.attn_output.weight,         torch.bfloat16 --> F16, shape = {1024, 256}
+INFO:hf-to-gguf:blk.2.attn_q_norm.weight,         torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.2.attn_q.weight,              torch.bfloat16 --> F16, shape = {256, 1024}
+INFO:hf-to-gguf:blk.3.attn_norm.weight,           torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.3.layer_output_scale.weight,  torch.bfloat16 --> F32, shape = {1}
+INFO:hf-to-gguf:blk.3.ffn_down.weight,            torch.bfloat16 --> F16, shape = {2048, 256}
+INFO:hf-to-gguf:blk.3.ffn_gate.weight,            torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.3.ffn_up.weight,              torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:blk.3.post_attention_norm.weight, torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.3.post_ffw_norm.weight,       torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.3.ffn_norm.weight,            torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:blk.3.attn_output.weight,         torch.bfloat16 --> F16, shape = {2048, 256}
+INFO:hf-to-gguf:blk.3.attn_q_norm.weight,         torch.bfloat16 --> F32, shape = {512}
+INFO:hf-to-gguf:blk.3.attn_q.weight,              torch.bfloat16 --> F16, shape = {256, 2048}
+INFO:hf-to-gguf:output_norm.weight,               torch.bfloat16 --> F32, shape = {256}
+INFO:hf-to-gguf:nextn.post_projection.weight,     torch.bfloat16 --> F16, shape = {256, 2560}
+INFO:hf-to-gguf:nextn.pre_projection.weight,      torch.bfloat16 --> F16, shape = {5120, 256}
+INFO:hf-to-gguf:Set meta model
+INFO:hf-to-gguf:Set model parameters
+INFO:hf-to-gguf:gguf: context length = 131072
+INFO:hf-to-gguf:gguf: embedding length = 256
+INFO:hf-to-gguf:gguf: feed forward length = 2048
+INFO:hf-to-gguf:gguf: head count = 4
+INFO:hf-to-gguf:gguf: key-value head count = 2
+WARNING:hf-to-gguf:Unknown RoPE type: proportional
+INFO:hf-to-gguf:gguf: rope scaling type = NONE
+INFO:hf-to-gguf:gguf: rope theta = 1000000.0
+INFO:hf-to-gguf:gguf: rope theta swa = 10000.0
+INFO:hf-to-gguf:gguf: rms norm epsilon = 1e-06
+INFO:hf-to-gguf:gguf: file type = 1
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.context_length', overwriting it with new value 131072 of type UINT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.attention.head_count', overwriting it with new value 4 of type UINT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.attention.layer_norm_rms_epsilon', overwriting it with new value 1e-06 of type FLOAT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.attention.key_length', overwriting it with new value 256 of type UINT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.attention.value_length', overwriting it with new value 256 of type UINT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.rope.freq_base', overwriting it with new value 1000000.0 of type FLOAT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.attention.head_count_kv', overwriting it with new value 2 of type UINT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.attention.key_length', overwriting it with new value 512 of type UINT32
+WARNING:gguf.gguf_writer:Duplicated key name 'gemma4-assistant.attention.value_length', overwriting it with new value 512 of type UINT32
+INFO:hf-to-gguf:Set model quantization version
+INFO:hf-to-gguf:Set model tokenizer
+INFO:hf-to-gguf:Token '<|tool_call>' is set to USER_DEFINED
+INFO:hf-to-gguf:Token '<tool_call|>' is set to USER_DEFINED
+INFO:hf-to-gguf:Token '<|tool_response>' is set to USER_DEFINED
+INFO:hf-to-gguf:Token '<tool_response|>' is set to USER_DEFINED
+INFO:hf-to-gguf:Token '<|"|>' is set to USER_DEFINED
+INFO:hf-to-gguf:Token '<|channel>' is set to USER_DEFINED
+INFO:hf-to-gguf:Token '<channel|>' is set to USER_DEFINED
+INFO:gguf.vocab:Adding 514906 merge(s).
+INFO:gguf.vocab:Setting special token type bos to 2
+INFO:gguf.vocab:Setting special token type eos to 1
+INFO:gguf.vocab:Setting special token type unk to 3
+INFO:gguf.vocab:Setting special token type pad to 0
+INFO:gguf.vocab:Setting special token type mask to 4
+INFO:gguf.gguf_writer:Writing the following files:
+INFO:gguf.gguf_writer:/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf: n_tensors = 49, total_size = 156.0M
+Writing:   0%|          | 0.00/156M [00:00<?, ?byte/s]Writing:  86%|████████▌ | 134M/156M [00:00<00:00, 273Mbyte/s]Writing: 100%|██████████| 156M/156M [00:00<00:00, 172Mbyte/s]
+INFO:hf-to-gguf:Model successfully exported to /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf

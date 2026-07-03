@@ -87,11 +87,14 @@ test("in-chat first-run exposes cloud and local runtimes and Local is configurab
 
   const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
   const local = page.getByTestId("choice-__first_run__:runtime:local");
+  const remote = page.getByTestId("choice-__first_run__:runtime:remote");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible();
-  // Only Cloud and Local are runtime locations (#11509). The old third chip
-  // (runtime:other = "Bring your own keys") was removed — it conflated the
-  // inference-provider axis with the location axis. BYOK lives one step down.
+  // Remote (connect to an existing agent by URL + token) is the third location.
+  await expect(remote).toBeVisible();
+  // The old runtime:other ("Bring your own keys") chip stays gone (#11509) — it
+  // conflated the inference-provider axis with the location axis. BYOK lives
+  // one step down as the provider sub-choice.
   await expect(
     page.getByTestId("choice-__first_run__:runtime:other"),
   ).toHaveCount(0);

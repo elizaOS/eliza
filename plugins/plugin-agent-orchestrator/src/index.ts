@@ -828,9 +828,39 @@ Rules:
 Recent activity:
 {tail}`;
 
+/**
+ * Normalize a raw ACP `title` into either an informative noun or the empty
+ * string. The upstream `stringifyMaybe` serializer turns a missing title
+ * (`undefined`/`null`) into the literal two-character string `""` (a
+ * JSON-stringified empty string), and some adapters send whitespace- or
+ * quote-only titles. Left unhandled those became junk "tool calls" in the
+ * hb_signal summarizer prompt (`Tools the sub-agent has called recently: "", ""`).
+ * Strip surrounding quotes + whitespace; if nothing informative survives,
+ * return "" so the caller falls back to a kind-derived noun or "Tool".
+ */
+function sanitizeToolTitle(raw: string | undefined): string {
+  let t = (raw ?? "").trim();
+  // Peel matched surrounding quotes (straight or smart), repeatedly, so
+  // `""`, `''`, `"  "`, `"\"x\""` all collapse toward their inner content.
+  // Bounded iterations guard against pathological input.
+  for (let i = 0; i < 4; i++) {
+    const next = t
+      .replace(
+        /^["'\u201c\u201d\u2018\u2019]+|["'\u201c\u201d\u2018\u2019]+$/g,
+        "",
+      )
+      .trim();
+    if (next === t) break;
+    t = next;
+  }
+  // If nothing but punctuation/quotes remained, it carries no signal.
+  if (!/[\p{L}\p{N}]/u.test(t)) return "";
+  return t;
+}
+
 function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
   if (!tc) return "tool";
-  const title = (tc.title ?? "").trim();
+  const title = sanitizeToolTitle(tc.title);
   const kind = (tc.kind ?? "").toLowerCase();
   const input = tc.rawInput ?? {};
   const firstLoc = Array.isArray(tc.locations) ? tc.locations[0] : undefined;
@@ -2039,7 +2069,21 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           const tc = (data as { toolCall?: AcpToolCall })?.toolCall;
           const formatted = formatToolCallForHuman(tc);
           const id = tc?.id?.trim() ?? "";
-          if (formatted && formatted !== "tool") {
+          // Only record entries that carry signal. Reject:
+          //  - empty / whitespace-only `formatted` (defensive; sanitizeToolTitle
+          //    already collapses junk titles like the JSON-serialized `""`),
+          //  - the bare noun fallback ("tool"/"Tool") produced when the ACP
+          //    update has no kind, no informative title, and no args — a
+          //    content-free placeholder that used to pollute the heartbeat
+          //    summarizer prompt.
+          // Bare INFORMATIVE nouns (Bash/Read/Edit/Grep/WebFetch) are kept on
+          // purpose: they're the debounced fallback for arg-less updates and
+          // still tell the summarizer what class of work is happening.
+          const trimmedFormatted = formatted.trim();
+          const isNonInformative =
+            trimmedFormatted.length === 0 ||
+            trimmedFormatted.toLowerCase() === "tool";
+          if (!isNonInformative) {
             const arr = toolHistory.get(sessionId) ?? [];
             // Same toolCallId as an existing entry: replace it. claude-agent-acp
             // sends an initial `tool_call` with empty rawInput / generic title

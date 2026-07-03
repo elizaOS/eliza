@@ -40,6 +40,7 @@ export default defineConfig({
     ...baseConfig.test,
     include: [
       `${packageRootFromRepo}/src/**/*.integration.test.{ts,tsx}`,
+      `${packageRootFromRepo}/test/scheduled-task-action.integration.test.ts`,
       `${packageRootFromRepo}/test/global-pause.integration.test.ts`,
     ],
     exclude: [

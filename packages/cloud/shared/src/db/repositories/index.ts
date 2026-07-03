@@ -31,6 +31,7 @@ export * from "./ad-audience-segments";
 export * from "./ad-campaigns";
 export * from "./ad-conversions";
 export * from "./ad-creatives";
+export * from "./ad-report-shares";
 export * from "./ad-transactions";
 export * from "./affiliates";
 export * from "./agent-billing";
@@ -70,6 +71,7 @@ export * from "./apps";
 // ============================================
 export * from "./characters";
 export * from "./cli-auth-sessions";
+export * from "./cloud-files";
 export * from "./container-billing";
 // ============================================
 // Deployment Domain (Infrastructure)

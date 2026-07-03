@@ -20,6 +20,7 @@ import type {
   BuyAppDomainInput,
   BuyAppDomainResponse,
   CampaignDaypartingResponse,
+  CampaignPerformanceReportResponse,
   CheckAppDomainInput,
   CheckAppDomainResponse,
   CreateAdSlotInput,
@@ -28,6 +29,8 @@ import type {
   CreateAppResponse,
   CreateBookingInput,
   CreateBookingResponse,
+  CreateCampaignReportShareInput,
+  CreateCampaignReportShareResponse,
   CreateInfluencerProfileInput,
   CreateInfluencerProfileResponse,
   DeleteAppResponse,
@@ -70,6 +73,13 @@ type DuplicateAdCampaignFn = (
 type GetAdCampaignAttributionFn = (
   campaignId: string,
 ) => Promise<AdCampaignAttributionResponse>;
+type GetAdCampaignPerformanceReportFn = (
+  campaignId: string,
+) => Promise<CampaignPerformanceReportResponse>;
+type CreateAdCampaignReportShareFn = (
+  campaignId: string,
+  input?: CreateCampaignReportShareInput,
+) => Promise<CreateCampaignReportShareResponse>;
 type ListFrontendDeploymentsFn = (
   appId: string,
 ) => Promise<ListAppFrontendDeploymentsResponse>;
@@ -136,6 +146,8 @@ interface SdkState {
   updateAdCampaignDayparting: UpdateAdCampaignDaypartingFn;
   duplicateAdCampaign: DuplicateAdCampaignFn;
   getAdCampaignAttribution: GetAdCampaignAttributionFn;
+  getAdCampaignPerformanceReport: GetAdCampaignPerformanceReportFn;
+  createAdCampaignReportShare: CreateAdCampaignReportShareFn;
   deployAppFrontend: DeployAppFrontendFn;
   listAppFrontendDeployments: ListFrontendDeploymentsFn;
   activateAppFrontend: ActivateFrontendFn;
@@ -240,6 +252,63 @@ function defaultState(): SdkState {
               dedupeKey: "ORDER_OR_EVENT_ID",
             },
           },
+        },
+      }),
+    getAdCampaignPerformanceReport: (campaignId) =>
+      Promise.resolve({
+        success: true,
+        report: {
+          generatedAt: "2026-07-02T00:00:00.000Z",
+          campaign: {
+            id: campaignId,
+            name: "Campaign",
+            platform: "meta",
+            objective: "traffic",
+            status: "active",
+            externalCampaignId: "ext_1",
+            appId: null,
+            budgetType: "daily",
+            budgetAmount: 100,
+            budgetCurrency: "USD",
+            creditsAllocated: 110,
+            creditsSpent: 11,
+            startDate: null,
+            endDate: null,
+            createdAt: "2026-07-01T00:00:00.000Z",
+            updatedAt: "2026-07-02T00:00:00.000Z",
+          },
+          dateRange: null,
+          summary: {
+            spend: 10,
+            impressions: 1000,
+            clicks: 50,
+            conversions: 5,
+            ctr: 5,
+            cpc: 0.2,
+            cpm: 10,
+            conversionRate: 10,
+            costPerConversion: 2,
+            budgetUtilization: 10,
+            conversionValue: 0,
+          },
+          provider: {
+            platform: "meta",
+            accountId: "acct_1",
+            externalAccountId: "external_acct",
+            externalCampaignId: "ext_1",
+          },
+        },
+      }),
+    createAdCampaignReportShare: (campaignId, input) =>
+      Promise.resolve({
+        success: true,
+        share: {
+          id: "share_1",
+          campaignId,
+          token: "token_1",
+          publicPath: "/api/v1/advertising/reports/token_1",
+          publicUrl: "https://elizacloud.ai/api/v1/advertising/reports/token_1",
+          expiresAt: input?.expiresAt ?? "2026-07-09T00:00:00.000Z",
         },
       }),
     deployAppFrontend: () =>
@@ -414,6 +483,16 @@ export function setGetAdCampaignAttribution(
 ): void {
   state.getAdCampaignAttribution = fn;
 }
+export function setGetAdCampaignPerformanceReport(
+  fn: GetAdCampaignPerformanceReportFn,
+): void {
+  state.getAdCampaignPerformanceReport = fn;
+}
+export function setCreateAdCampaignReportShare(
+  fn: CreateAdCampaignReportShareFn,
+): void {
+  state.createAdCampaignReportShare = fn;
+}
 export function setDeployAppFrontend(fn: DeployAppFrontendFn): void {
   state.deployAppFrontend = fn;
 }
@@ -511,6 +590,17 @@ export class FakeElizaCloudClient {
     campaignId: string,
   ): Promise<AdCampaignAttributionResponse> {
     return state.getAdCampaignAttribution(campaignId);
+  }
+  getAdCampaignPerformanceReport(
+    campaignId: string,
+  ): Promise<CampaignPerformanceReportResponse> {
+    return state.getAdCampaignPerformanceReport(campaignId);
+  }
+  createAdCampaignReportShare(
+    campaignId: string,
+    input?: CreateCampaignReportShareInput,
+  ): Promise<CreateCampaignReportShareResponse> {
+    return state.createAdCampaignReportShare(campaignId, input);
   }
   deployAppFrontend(
     id: string,

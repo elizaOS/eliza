@@ -102,6 +102,12 @@ const M = {
     "voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
   ),
   dia: firstExisting(
+    // epoch-2 IFGO bake first (#11377) — the IFGO fused reader rejects the
+    // legacy epoch-less IOFC artifact below.
+    "pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+    "diariz/pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+    "diarizer/pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+    "voice/diarizer/pyannote-segmentation-3.0-ifgo-epoch2.gguf",
     "pyannote-segmentation-3.0.gguf",
     "diariz/pyannote-segmentation-3.0.gguf",
     "diarizer/pyannote-segmentation-3.0.gguf",

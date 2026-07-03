@@ -857,4 +857,130 @@ describe("emitProgress routing ladder + cadence", () => {
 
     await rt.dispose();
   });
+
+  // ── heartbeat tool-history hygiene: junk `""` titles must not enter the
+  //    summarizer prompt. The upstream `stringifyMaybe` serializer turns a
+  //    missing ACP tool title (undefined/null) into the literal two-character
+  //    string `""`; without sanitizing, the summarizer prompt filled up with
+  //    `Tools the sub-agent has called recently (most recent last): "", ""`,
+  //    burning tokens every 30s tick and feeding the small model garbage. ──
+
+  it("heartbeat drops content-free tool titles (JSON-serialized empty string) from the prompt", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    // edit_message cap → fast (10s) heartbeat interval so a single tick fires.
+    // Non-empty session output so the tick reaches the useModel call.
+    const rt = await buildHookedRuntime(
+      [{ source: SOURCE, capabilities: ["edit_message"] }],
+      { sessionOutput: "Working through the change set." },
+    );
+    seedSession(rt, "s-hb-junk", "noise-task");
+
+    // Reproduce the live round-5 trajectory: an ACP tool_call whose title the
+    // serializer rendered as the literal 2-char string `""` (missing title),
+    // with NO kind and NO args — the exact junk that used to leak. Interleave a
+    // real, informative call so we can assert the good one survives.
+    await fire(rt, "s-hb-junk", "tool_running", {
+      toolCall: { id: "j1", title: '""' },
+    });
+    await fire(rt, "s-hb-junk", "tool_running", {
+      toolCall: { id: "j2", title: '""' },
+    });
+    await fire(rt, "s-hb-junk", "tool_running", {
+      toolCall: {
+        id: "e1",
+        kind: "edit",
+        rawInput: { file_path: "/repo/src/app.ts" },
+      },
+    });
+    await fire(rt, "s-hb-junk", "tool_running", {
+      toolCall: { id: "j3", title: '""' },
+    });
+
+    rt.useModel.mockClear();
+    rt.useModel.mockResolvedValueOnce("Editing src/app.ts.");
+
+    // One fast heartbeat tick.
+    await advanceTimersByTime(10_500);
+
+    expect(rt.useModel).toHaveBeenCalledTimes(1);
+    const [, params] = rt.useModel.mock.calls[0] as [
+      unknown,
+      { prompt: string },
+    ];
+    // The junk `""` tool entries must NOT be in the summarizer prompt.
+    expect(params.prompt).not.toContain('"", ""');
+    expect(params.prompt).not.toMatch(/recently[^\n]*:\s*""/);
+    // The real, informative call still made it in (path >2 segments → shortPath
+    // abbreviates the leading segments to `…/`).
+    expect(params.prompt).toContain("Edit(\u2026/src/app.ts)");
+
+    await rt.dispose();
+  });
+
+  it("heartbeat skips entirely when the only tool activity is content-free junk titles", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    // edit_message cap → fast (10s) tick. EMPTY session output so the tick's
+    // skip-empty guard depends purely on whether the junk tools were recorded.
+    const rt = await buildHookedRuntime(
+      [{ source: SOURCE, capabilities: ["edit_message"] }],
+      { sessionOutput: "" },
+    );
+    seedSession(rt, "s-hb-alljunk", "noise-task");
+
+    // Only junk `""` titles arrive — nothing informative, no narration.
+    await fire(rt, "s-hb-alljunk", "tool_running", {
+      toolCall: { id: "j1", title: '""' },
+    });
+    await fire(rt, "s-hb-alljunk", "tool_running", {
+      toolCall: { id: "j2", title: '""' },
+    });
+
+    rt.useModel.mockClear();
+    rt.sendMessageToTarget.mockClear();
+    rt.editMessageOnTarget.mockClear();
+
+    // Advance past the tick. With empty output AND no recorded tool history
+    // (the junk was rejected), the skip-empty guard short-circuits before
+    // calling the model or posting anything.
+    await advanceTimersByTime(10_500);
+
+    expect(rt.useModel).not.toHaveBeenCalled();
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
+    expect(rt.editMessageOnTarget).not.toHaveBeenCalled();
+
+    await rt.dispose();
+  });
+
+  it("heartbeat keeps a bare informative noun (arg-less Bash) so class-of-work still surfaces", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rt = await buildHookedRuntime(
+      [{ source: SOURCE, capabilities: ["edit_message"] }],
+      { sessionOutput: "" },
+    );
+    seedSession(rt, "s-hb-bare", "bare-task");
+
+    // An arg-less execute call: no rawInput/locations, but kind=execute yields
+    // the informative bare noun "Bash". This MUST survive (documented debounce
+    // fallback) so the summarizer knows shell work is happening.
+    await fire(rt, "s-hb-bare", "tool_running", {
+      toolCall: { id: "b1", kind: "execute" },
+    });
+
+    rt.useModel.mockClear();
+    rt.useModel.mockResolvedValueOnce("Running a shell command.");
+
+    await advanceTimersByTime(10_500);
+
+    expect(rt.useModel).toHaveBeenCalledTimes(1);
+    const [, params] = rt.useModel.mock.calls[0] as [
+      unknown,
+      { prompt: string },
+    ];
+    expect(params.prompt).toContain("Bash");
+
+    await rt.dispose();
+  });
 });

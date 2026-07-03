@@ -55,6 +55,7 @@ import type {
   SubjectStoreView,
   TaskGateContribution,
 } from "./types.js";
+import { ScheduledTaskValidationError } from "./validation.js";
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -219,6 +220,83 @@ describe("ScheduledTaskRunner — schedule + idempotency", () => {
           (l.reason ?? "").includes("pipeline.onSkip overrides"),
       ),
     ).toBe(true);
+  });
+
+  it("rejects unknown shouldFire gates before persistence (#11791)", async () => {
+    const h = makeHarness();
+    await expect(
+      h.runner.schedule(
+        baseInput({
+          shouldFire: {
+            gates: [{ kind: "not_registered", params: {} }],
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ScheduledTaskValidationError);
+    expect(await h.runner.list()).toHaveLength(0);
+  });
+
+  it("rejects malformed built-in gate params before persistence (#11791)", async () => {
+    const h = makeHarness();
+    await expect(
+      h.runner.schedule(
+        baseInput({
+          shouldFire: {
+            gates: [
+              {
+                kind: "weekday_only",
+                params: { weekdays: ["monday"] },
+              },
+            ],
+          },
+        }),
+      ),
+    ).rejects.toThrow(/weekdays must contain integers 0\.\.6/);
+    expect(await h.runner.list()).toHaveLength(0);
+  });
+
+  it("rejects unknown completion checks and invalid output kinds before persistence (#11791)", async () => {
+    const h = makeHarness();
+    await expect(
+      h.runner.schedule(
+        baseInput({
+          completionCheck: { kind: "made_up_check" },
+        }),
+      ),
+    ).rejects.toThrow(
+      /completionCheck\.kind "made_up_check" is not registered/,
+    );
+    await expect(
+      h.runner.schedule(
+        baseInput({
+          output: { destination: "invalid_output" } as never,
+        }),
+      ),
+    ).rejects.toThrow(/output\.destination "invalid_output" is invalid/);
+    expect(await h.runner.list()).toHaveLength(0);
+  });
+
+  it("rejects invalid inline pipeline children before any parent or child write (#11791)", async () => {
+    const h = makeHarness();
+    await expect(
+      h.runner.schedule(
+        baseInput({
+          pipeline: {
+            onComplete: [
+              baseInput({
+                promptInstructions: "bad child",
+                completionCheck: {
+                  kind: "not_registered_child_check",
+                },
+              }) as never,
+            ],
+          },
+        }),
+      ),
+    ).rejects.toThrow(
+      /pipeline\.onComplete\[0\]\.completionCheck\.kind "not_registered_child_check" is not registered/,
+    );
+    expect(await h.runner.list()).toHaveLength(0);
   });
 });
 

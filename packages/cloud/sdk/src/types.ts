@@ -1425,6 +1425,91 @@ export interface AdCampaignAttributionResponse {
   install: AdCampaignAttributionInstall;
 }
 
+export type CampaignReportFormat = "json" | "csv";
+
+export interface CampaignPerformanceReportSummary {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  conversionRate: number;
+  costPerConversion: number;
+  budgetUtilization: number;
+  conversionValue: number;
+}
+
+export interface CampaignPerformanceReport {
+  generatedAt: string;
+  campaign: {
+    id: string;
+    name: string;
+    platform: string;
+    objective: string;
+    status: string;
+    externalCampaignId: string | null;
+    appId: string | null;
+    budgetType: string;
+    budgetAmount: number;
+    budgetCurrency: string;
+    creditsAllocated: number;
+    creditsSpent: number;
+    startDate: string | null;
+    endDate: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  dateRange: { start: string; end: string } | null;
+  summary: CampaignPerformanceReportSummary;
+  provider: {
+    platform: string;
+    accountId: string;
+    externalAccountId: string;
+    externalCampaignId: string | null;
+  };
+}
+
+export interface GetCampaignPerformanceReportOptions {
+  format?: CampaignReportFormat;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface CampaignPerformanceReportResponse {
+  success: boolean;
+  report: CampaignPerformanceReport;
+}
+
+export interface CreateCampaignReportShareInput {
+  expiresAt?: string;
+  expiresInHours?: number;
+}
+
+export interface CampaignReportShareDto {
+  id: string;
+  campaignId: string;
+  token: string;
+  publicPath: string;
+  publicUrl: string;
+  expiresAt: string;
+}
+
+export interface CreateCampaignReportShareResponse {
+  success: boolean;
+  share: CampaignReportShareDto;
+}
+
+export interface RevokeCampaignReportShareResponse {
+  success: boolean;
+  share: {
+    id: string;
+    status: string;
+    revokedAt: string | null;
+  };
+}
+
 // ---- Influencer marketplace (#10687) ----
 
 export interface InfluencerProfileDto {

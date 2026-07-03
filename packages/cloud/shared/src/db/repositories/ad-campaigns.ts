@@ -1,4 +1,4 @@
-import { and, count, desc, eq, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, ne, sql, sum } from "drizzle-orm";
 import { db } from "../client";
 import { type AdPlatform } from "../schemas/ad-accounts";
 import {
@@ -117,6 +117,21 @@ export class AdCampaignsRepository {
       .where(eq(adCampaigns.id, id))
       .returning();
     return updated;
+  }
+
+  async sumCreditsAllocatedByAdAccount(
+    adAccountId: string,
+    options?: { excludeCampaignId?: string },
+  ): Promise<number> {
+    const conditions = [eq(adCampaigns.ad_account_id, adAccountId)];
+    if (options?.excludeCampaignId) {
+      conditions.push(ne(adCampaigns.id, options.excludeCampaignId));
+    }
+    const [result] = await db
+      .select({ total: sum(adCampaigns.credits_allocated) })
+      .from(adCampaigns)
+      .where(and(...conditions));
+    return Number(result?.total ?? 0);
   }
 
   async delete(id: string): Promise<void> {

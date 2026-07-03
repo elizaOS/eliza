@@ -137,9 +137,13 @@ mock.module("@/lib/utils/request-timeout", () => ({
 }));
 
 const generateText = mock();
+const jsonSchemaMock = mock((schema: unknown) =>
+  (aiActual.jsonSchema as (schema: unknown) => unknown)(schema),
+);
 mock.module("ai", () => ({
   ...aiActual,
   generateText,
+  jsonSchema: jsonSchemaMock,
 }));
 
 const messagesRoute = (await import("../v1/messages/route")).default;
@@ -162,6 +166,7 @@ beforeEach(() => {
   getAuthorizedMonetizedAppForUser.mockReset();
   createCreditReservationSettler.mockReset();
   generateText.mockReset();
+  jsonSchemaMock.mockReset();
 
   resolveInferenceAuthContext.mockResolvedValue({
     kind: "authorized",
@@ -188,9 +193,15 @@ beforeEach(() => {
   generateText.mockImplementation(() => {
     throw new Error("model-call-stub");
   });
+  jsonSchemaMock.mockImplementation((schema: unknown) =>
+    (aiActual.jsonSchema as (schema: unknown) => unknown)(schema),
+  );
 });
 
-function postMessages(extraHeaders: Record<string, string> = {}) {
+function postMessages(
+  extraHeaders: Record<string, string> = {},
+  bodyOverrides: Record<string, unknown> = {},
+) {
   return messagesRoute.request("/", {
     method: "POST",
     headers: {
@@ -202,6 +213,7 @@ function postMessages(extraHeaders: Record<string, string> = {}) {
       model: "claude-3-5-sonnet-20241022",
       max_tokens: 16,
       messages: [{ role: "user", content: "hello" }],
+      ...bodyOverrides,
     }),
   });
 }
@@ -303,5 +315,35 @@ describe("/v1/messages IAC fast path", () => {
     expect(createCreditReservationSettler).toHaveBeenCalledWith(appReservation);
     expect(settleAppReservation).toHaveBeenCalledWith(0.002);
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  test("refunds the reservation when post-reserve payload conversion throws", async () => {
+    const settleReservation = mock(async () => null);
+    createCreditReservationSettler.mockReturnValueOnce(settleReservation);
+    jsonSchemaMock.mockImplementationOnce(() => {
+      throw new Error("bad-tool-schema");
+    });
+
+    const response = await postMessages(
+      {},
+      {
+        tools: [
+          {
+            name: "bad_tool",
+            description: "malformed schema",
+            input_schema: { type: "object" },
+          },
+        ],
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    expect(createCreditReservationSettler).toHaveBeenCalledTimes(1);
+    expect(settleReservation).toHaveBeenCalledTimes(1);
+    expect(settleReservation).toHaveBeenCalledWith(0);
+    expect(generateText).not.toHaveBeenCalled();
+    const body = (await response.json()) as { error?: { message?: string } };
+    expect(body.error?.message).toContain("bad-tool-schema");
   });
 });

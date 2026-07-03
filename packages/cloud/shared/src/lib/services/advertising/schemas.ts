@@ -1,6 +1,14 @@
 import { z } from "zod";
 
-export const AdPlatformSchema = z.enum(["meta", "google", "tiktok"]);
+export const AdPlatformSchema = z.enum([
+  "meta",
+  "google",
+  "tiktok",
+  "snap",
+  "x-twitter",
+  "reddit",
+  "linkedin",
+]);
 
 export const CampaignObjectiveSchema = z.enum([
   "awareness",
@@ -177,6 +185,10 @@ export const ConnectAccountSchema = z.object({
   accountName: z.string().optional(),
 });
 
+export const UpdateAdAccountSchema = z.object({
+  spendCapCredits: z.number().positive().nullable().optional(),
+});
+
 export const DiscoverAdAccountsSchema = z.object({
   platform: AdPlatformSchema,
   accessToken: z.string().min(1),
@@ -210,6 +222,7 @@ export const CreateCampaignSchema = z
     budgetType: BudgetTypeSchema,
     budgetAmount: z.number().positive(),
     budgetCurrency: z.string().length(3).optional(),
+    spendCapCredits: z.number().positive().nullable().optional(),
     bidStrategy: CampaignBidStrategySchema.optional(),
     optimizationGoal: CampaignOptimizationGoalSchema.optional(),
     startDate: z.string().datetime().optional(),
@@ -223,6 +236,7 @@ export const UpdateCampaignSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
     budgetAmount: z.number().positive().optional(),
+    spendCapCredits: z.number().positive().nullable().optional(),
     bidStrategy: CampaignBidStrategySchema.optional(),
     optimizationGoal: CampaignOptimizationGoalSchema.optional(),
     startDate: z.string().datetime().optional(),

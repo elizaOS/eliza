@@ -55,6 +55,7 @@ app.get("/", async (c) => {
       budgetType: campaign.budget_type,
       budgetAmount: campaign.budget_amount,
       budgetCurrency: campaign.budget_currency,
+      spendCapCredits: campaign.spend_cap_credits,
       bidStrategy: campaign.metadata.bid_strategy,
       optimizationGoal: campaign.metadata.optimization_goal,
       creditsAllocated: campaign.credits_allocated,
@@ -98,6 +99,7 @@ app.patch("/", async (c) => {
       {
         name: parsed.data.name,
         budgetAmount: parsed.data.budgetAmount,
+        spendCapCredits: parsed.data.spendCapCredits,
         bidStrategy: parsed.data.bidStrategy,
         optimizationGoal: parsed.data.optimizationGoal,
         startDate: parsed.data.startDate
@@ -118,6 +120,8 @@ app.patch("/", async (c) => {
       id: campaign.id,
       name: campaign.name,
       status: campaign.status,
+      budgetAmount: campaign.budget_amount,
+      spendCapCredits: campaign.spend_cap_credits,
       dayparting: campaign.metadata.dayparting ?? null,
       targeting: serializeTargeting(campaign.targeting),
       updatedAt: campaign.updated_at.toISOString(),

@@ -201,23 +201,41 @@ export function viewScopedActionNames(
 
 /**
  * Validate VIEW_ACTION_MAP against the runtime's registered actions, mirroring
- * validateIntentActionMap. Logs a warning for any mapped name that no longer
- * exists so drift is caught at startup rather than silently dropped.
+ * validateIntentActionMap. Missing names are reported as ONE aggregated warn
+ * line per boot (grouped by view) so drift is caught at startup without a
+ * per-action warn flood: most VIEW_ACTION_MAP actions belong to optional
+ * plugins (wallet, polymarket, hyperliquid, …) and a deployment that doesn't
+ * load them would otherwise emit dozens of boot warnings that bury real ones.
+ * Per-action detail is still available at debug level.
  */
 export function validateViewActionMap(
   registeredActions: string[],
-  logger?: { warn: (msg: string) => void },
+  logger?: { warn: (msg: string) => void; debug?: (msg: string) => void },
 ): void {
   const registered = new Set(registeredActions.map((a) => a.toUpperCase()));
+  const missingByView = new Map<string, string[]>();
   for (const [viewId, actions] of Object.entries(VIEW_ACTION_MAP)) {
     for (const action of actions) {
       if (!registered.has(action.toUpperCase())) {
-        logger?.warn(
-          `[eliza] VIEW_ACTION_MAP["${viewId}"] references "${action}" which is not a registered action — may be renamed or removed upstream`,
+        logger?.debug?.(
+          `[eliza] VIEW_ACTION_MAP["${viewId}"] references "${action}" which is not a registered action`,
         );
+        const list = missingByView.get(viewId);
+        if (list) list.push(action);
+        else missingByView.set(viewId, [action]);
       }
     }
   }
+  if (missingByView.size === 0) return;
+  let total = 0;
+  const detail: string[] = [];
+  for (const [viewId, actions] of missingByView) {
+    total += actions.length;
+    detail.push(`${viewId}: ${actions.join(", ")}`);
+  }
+  logger?.warn(
+    `[eliza] VIEW_ACTION_MAP: ${total} referenced action${total === 1 ? "" : "s"} not registered (${detail.join("; ")}) — renamed/removed upstream, or provided by plugins not loaded in this config`,
+  );
 }
 
 /**

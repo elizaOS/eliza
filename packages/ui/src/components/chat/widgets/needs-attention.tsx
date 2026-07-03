@@ -110,7 +110,9 @@ function oldestPending(
   );
 }
 
-export function NeedsAttentionWidget(_props: Partial<WidgetProps>) {
+export function NeedsAttentionWidget({
+  spanClassName = "col-span-2 row-span-1",
+}: Partial<WidgetProps>) {
   const { pending, loaded } = useApprovals();
 
   // `useNow` is 0 on the first render (deterministic render path — no Date.now
@@ -148,16 +150,18 @@ export function NeedsAttentionWidget(_props: Partial<WidgetProps>) {
   const count = pending.length;
   const stale = now - top.createdAt >= STALE_PENDING_AGE_MS;
   return (
-    <HomeWidgetCard
-      icon={<CircleHelp />}
-      label="Needs response"
-      value={top.title}
-      badge={count}
-      tone={stale ? "warn" : "default"}
-      testId="chat-widget-needs-attention"
-      ariaLabel={`${count} action${count === 1 ? "" : "s"} need your response, oldest: ${top.title}. Respond in chat.`}
-      onActivate={onActivate}
-    />
+    <div className={`min-w-0 ${spanClassName}`}>
+      <HomeWidgetCard
+        icon={<CircleHelp />}
+        label="Needs response"
+        value={top.title}
+        badge={count}
+        tone={stale ? "warn" : "default"}
+        testId="chat-widget-needs-attention"
+        ariaLabel={`${count} action${count === 1 ? "" : "s"} need your response, oldest: ${top.title}. Respond in chat.`}
+        onActivate={onActivate}
+      />
+    </div>
   );
 }
 

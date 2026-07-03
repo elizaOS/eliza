@@ -1,0 +1,10 @@
+[kokoro] default voice af_same preset not staged at /Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/tts/kokoro/voices/af_same.bin — falling back to af_bella. Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md to produce a real Samantha preset.
+[kokoro-real-smoke] lib=/private/tmp/llama-cpp-11377/build-fused/bin/libelizainference.dylib (ABI v12)
+[kokoro-real-smoke] model=kokoro-82m-v1_0-Q4_K_M.gguf voice=af_bella
+ Info       [voice/kokoro] runtime backend=ffi reason="model layout default → ffi (in-process fused libelizainference)"
+[kokoro] using phonemizer=phonemizer
+ Info       [KokoroFfiRuntime] loaded Eliza-1 voice af_bella from /Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/tts/kokoro/voices/af_bella.bin
+[kokoro-real-smoke] synthesized 91800 samples @ 24000Hz (3.83s), TTFA=6230ms
+[kokoro-real-smoke] envelope-cv 1.229 (speech ≫0.4, noise ≈0)
+[kokoro-real-smoke] WARN: ELIZA_ASR_BUNDLE not set — audio CORRECTNESS is UNVERIFIED (non-empty PCM only). Set it to a dir with asr/eliza-1-asr.gguf + -mmproj.gguf to gate intelligibility (WER).
+[kokoro-real-smoke] FAIL: TTFA 6230ms exceeds the mobile budget 700ms

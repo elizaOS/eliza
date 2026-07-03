@@ -21,6 +21,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { adAccountsRepository, adCampaignsRepository } from "../../../db/repositories";
 import type { AdAccount, AdAccountStatus } from "../../../db/schemas/ad-accounts";
 import { advertisingService } from "../advertising";
+import { creditsService } from "../credits";
 
 const ORG_ID = "org-1";
 const ACCOUNT_ID = "acct-1";
@@ -47,6 +48,7 @@ function makeAccount(status: AdAccountStatus): AdAccount {
     access_token_secret_id: "sec-1",
     refresh_token_secret_id: null,
     status,
+    spend_cap_credits: null,
     metadata: {},
     created_at: new Date(),
     updated_at: new Date(),
@@ -158,4 +160,109 @@ describe("campaign spend requires an approved (active) account (#11364)", () => 
       ).rejects.toThrow(/not active/);
     });
   }
+});
+
+describe("spend caps (#11364)", () => {
+  test("setAccountSpendCap rejects lowering below already allocated campaign exposure", async () => {
+    track(spyOn(adAccountsRepository, "findById").mockResolvedValue(makeAccount("active")));
+    track(spyOn(adCampaignsRepository, "sumCreditsAllocatedByAdAccount").mockResolvedValue(75));
+    const update = track(spyOn(adAccountsRepository, "update").mockResolvedValue(undefined));
+
+    await expect(advertisingService.setAccountSpendCap(ACCOUNT_ID, ORG_ID, 50)).rejects.toThrow(
+      /already has 75.00 allocated credits/,
+    );
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test("setAccountSpendCap persists a nullable cap for an org-owned account", async () => {
+    track(spyOn(adAccountsRepository, "findById").mockResolvedValue(makeAccount("active")));
+    track(spyOn(adCampaignsRepository, "sumCreditsAllocatedByAdAccount").mockResolvedValue(25));
+    const update = track(
+      spyOn(adAccountsRepository, "update").mockResolvedValue({
+        ...makeAccount("active"),
+        spend_cap_credits: "50.00",
+      }),
+    );
+
+    const account = await advertisingService.setAccountSpendCap(ACCOUNT_ID, ORG_ID, 50);
+
+    expect(account.spend_cap_credits).toBe("50.00");
+    expect(update).toHaveBeenCalledWith(ACCOUNT_ID, { spend_cap_credits: "50.00" });
+  });
+
+  test("createCampaign rejects a campaign cap below the marked-up budget before credit debit", async () => {
+    track(spyOn(adAccountsRepository, "findById").mockResolvedValue(makeAccount("active")));
+    const debit = track(
+      spyOn(creditsService, "deductCredits").mockResolvedValue({ success: true } as never),
+    );
+
+    await expect(
+      advertisingService.createCampaign({
+        organizationId: ORG_ID,
+        adAccountId: ACCOUNT_ID,
+        name: "Campaign",
+        objective: "traffic",
+        budgetType: "lifetime",
+        budgetAmount: 100,
+        spendCapCredits: 50,
+      }),
+    ).rejects.toThrow(/Campaign spend cap would be exceeded/);
+
+    expect(debit).not.toHaveBeenCalled();
+  });
+
+  test("createCampaign rejects an account cap breach before credit debit", async () => {
+    track(
+      spyOn(adAccountsRepository, "findById").mockResolvedValue({
+        ...makeAccount("active"),
+        spend_cap_credits: "120.00",
+      }),
+    );
+    track(spyOn(adCampaignsRepository, "sumCreditsAllocatedByAdAccount").mockResolvedValue(60));
+    const debit = track(
+      spyOn(creditsService, "deductCredits").mockResolvedValue({ success: true } as never),
+    );
+
+    await expect(
+      advertisingService.createCampaign({
+        organizationId: ORG_ID,
+        adAccountId: ACCOUNT_ID,
+        name: "Campaign",
+        objective: "traffic",
+        budgetType: "lifetime",
+        budgetAmount: 100,
+      }),
+    ).rejects.toThrow(/Ad account spend cap would be exceeded/);
+
+    expect(debit).not.toHaveBeenCalled();
+  });
+
+  test("updateCampaign persists a cap-only update on an unsynced campaign", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({
+          external_campaign_id: null,
+          credits_allocated: "10.00",
+          spend_cap_credits: null,
+          metadata: {},
+        }),
+      ),
+    );
+    const update = track(
+      spyOn(adCampaignsRepository, "update").mockResolvedValue(
+        makeCampaign({ spend_cap_credits: "25.00" }),
+      ),
+    );
+
+    const campaign = await advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, {
+      spendCapCredits: 25,
+    });
+
+    expect(campaign.spend_cap_credits).toBe("25.00");
+    expect(update).toHaveBeenCalledWith(CAMPAIGN_ID, {
+      metadata: {},
+      spend_cap_credits: "25.00",
+    });
+  });
 });

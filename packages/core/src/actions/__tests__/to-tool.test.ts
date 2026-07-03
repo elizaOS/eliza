@@ -9,6 +9,8 @@ import {
 	buildPlannerToolsFromActions,
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
+	createHandleResponseTool,
+	HANDLE_RESPONSE_SCHEMA,
 } from "../to-tool.ts";
 
 function makeAction(overrides: Partial<Action>): Action {
@@ -405,5 +407,27 @@ describe("buildPlannerToolsFromTieredActions", () => {
 			"IGNORE",
 			"STOP",
 		]);
+	});
+});
+
+describe("createHandleResponseTool descriptions", () => {
+	it("mentions every schema-required field in both channel variants", () => {
+		const required = HANDLE_RESPONSE_SCHEMA.required ?? [];
+		expect(required).toContain("topics");
+
+		const standard = createHandleResponseTool().description;
+		const direct = createHandleResponseTool({
+			directMessage: true,
+		}).description;
+
+		for (const field of required) {
+			// The strict tool schema requires each of these fields, so the
+			// instruction list in the description must tell the model to fill
+			// them — the direct-message variant used to omit `topics`.
+			expect(standard, `standard description missing '${field}'`).toContain(
+				field,
+			);
+			expect(direct, `direct description missing '${field}'`).toContain(field);
+		}
 	});
 });

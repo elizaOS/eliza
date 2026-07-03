@@ -73,7 +73,14 @@ function parseContentDispositionFileName(
 	const starMatch = /filename\*\s*=\s*([^;]+)/i.exec(header);
 	if (starMatch?.[1]) {
 		const cleaned = stripQuotes(starMatch[1].trim());
-		const encoded = cleaned.split("''").slice(1).join("''") || cleaned;
+		// RFC 5987 ext-value is `charset'language'value` where the language
+		// tag is optional but both single quotes are mandatory, e.g.
+		// `UTF-8''na%C3%AFve.txt` or `UTF-8'en'na%C3%AFve.txt`. Strip the
+		// charset/language prefix whether or not a language tag is present;
+		// splitting on `''` only handled the empty-language form and leaked
+		// `UTF-8'en'` into the filename otherwise.
+		const extValueMatch = /^([^']*)'([^']*)'([\s\S]*)$/.exec(cleaned);
+		const encoded = extValueMatch ? extValueMatch[3] : cleaned;
 		try {
 			return getBasename(decodeURIComponent(encoded));
 		} catch {

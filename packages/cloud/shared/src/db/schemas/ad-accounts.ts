@@ -1,5 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { secrets } from "./secrets";
 import { users } from "./users";
@@ -7,7 +7,14 @@ import { users } from "./users";
 /**
  * Ad platform type.
  */
-export type AdPlatform = "meta" | "google" | "tiktok";
+export type AdPlatform =
+  | "meta"
+  | "google"
+  | "tiktok"
+  | "snap"
+  | "x-twitter"
+  | "reddit"
+  | "linkedin";
 
 /**
  * Ad account status.
@@ -52,6 +59,8 @@ export const adAccounts = pgTable(
 
     status: text("status").$type<AdAccountStatus>().notNull().default("pending"),
 
+    spend_cap_credits: numeric("spend_cap_credits", { precision: 12, scale: 2 }),
+
     // Platform-specific metadata
     metadata: jsonb("metadata")
       .$type<{
@@ -65,6 +74,16 @@ export const adAccounts = pgTable(
         timezone?: string;
         // TikTok-specific
         advertiser_id?: string;
+        // Snap-specific
+        organization_id?: string;
+        snap_roles?: string[];
+        // X/Twitter Ads-specific
+        promotable_user_ids?: string[];
+        // Reddit-specific
+        business_ids?: string[];
+        profile_ids?: string[];
+        // LinkedIn-specific
+        organization_urn?: string;
         // Common
         permissions?: string[];
         last_sync_at?: string;

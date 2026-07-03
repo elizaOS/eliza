@@ -144,6 +144,32 @@ describe("scheduled-tasks REST handler", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("POST schedule returns 400 for unknown gates before persistence (#11791)", async () => {
+    const runner = makeRunner();
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/scheduled-tasks",
+      body: {
+        kind: "reminder",
+        promptInstructions: "drink water",
+        trigger: { kind: "manual" },
+        priority: "low",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        createdBy: "tester",
+        ownerVisible: true,
+        shouldFire: { gates: [{ kind: "not_registered" }] },
+      },
+    });
+    await handler(ctx);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toContain("not_registered");
+    expect(await runner.list()).toHaveLength(0);
+  });
+
   it("GET /api/lifeops/scheduled-tasks lists tasks", async () => {
     const runner = makeRunner();
     await runner.schedule({

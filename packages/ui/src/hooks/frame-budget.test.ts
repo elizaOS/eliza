@@ -54,6 +54,12 @@ describe("summarizeFrameSamples", () => {
     expect(s.p95FrameMs).toBe(50);
   });
 
+  it("does not count normal 60Hz rAF jitter as dropped frames", () => {
+    const s = summarizeFrameSamples([16.6, 16.7, 16.8, 16.7]);
+    expect(s.droppedFrames).toBe(0);
+    expect(s.p95FrameMs).toBe(16.8);
+  });
+
   it("rejects non-finite / negative deltas (tab-switch gaps, clock skew)", () => {
     const s = summarizeFrameSamples([
       16,

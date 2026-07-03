@@ -128,18 +128,22 @@ async function sniffMime(
  */
 export function getFileExtension(filePath?: string | null): string | undefined {
 	if (!filePath) return undefined;
+	let candidate = filePath;
 	try {
 		if (/^https?:\/\//i.test(filePath)) {
-			const url = new URL(filePath);
-			const ext = url.pathname.split(".").pop()?.toLowerCase();
-			return ext ? `.${ext}` : undefined;
+			candidate = new URL(filePath).pathname;
 		}
 	} catch {
 		// fall back to plain path parsing
 	}
-	const parts = filePath.split(".");
-	if (parts.length < 2) return undefined;
-	return `.${parts.pop()?.toLowerCase()}`;
+	// Only the last path segment can carry an extension; splitting the whole
+	// path on "." would treat a dot in a directory name (or a dotless URL
+	// pathname) as an extension boundary and return garbage like ".2/notes".
+	const base = candidate.split(/[\\/]/).pop() ?? "";
+	const dotIndex = base.lastIndexOf(".");
+	if (dotIndex === -1) return undefined;
+	const ext = base.slice(dotIndex + 1).toLowerCase();
+	return ext ? `.${ext}` : undefined;
 }
 
 /**

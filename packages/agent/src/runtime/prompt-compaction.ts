@@ -176,14 +176,18 @@ export function hasIntent(prompt: string, keywords: RegExp): boolean {
 
 /**
  * Validate INTENT_ACTION_MAP against the runtime's registered actions.
- * Logs warnings for any mapped action names that don't exist in the runtime.
+ * Missing names are reported as ONE aggregated warn line per boot (grouped by
+ * category) — mirroring validateViewActionMap — so drift is caught at startup
+ * without per-action warn spam when several mapped plugins are absent.
+ * Per-action detail is still available at debug level.
  * Call once at startup after plugins are loaded.
  */
 export function validateIntentActionMap(
   registeredActions: string[],
-  logger?: { warn: (msg: string) => void },
+  logger?: { warn: (msg: string) => void; debug?: (msg: string) => void },
 ): void {
   const registered = new Set(registeredActions.map((a) => a.toUpperCase()));
+  const missingByCategory = new Map<string, string[]>();
   for (const [category, actions] of Object.entries(INTENT_ACTION_MAP)) {
     for (const action of actions) {
       if (!registered.has(action)) {
@@ -191,12 +195,25 @@ export function validateIntentActionMap(
         // isn't loaded — keep them mapped (for full param detail when present)
         // without emitting startup noise.
         if (OPTIONAL_PLUGIN_ACTIONS.has(action)) continue;
-        logger?.warn(
-          `[eliza] INTENT_ACTION_MAP["${category}"] references "${action}" which is not a registered action — may be renamed or removed upstream`,
+        logger?.debug?.(
+          `[eliza] INTENT_ACTION_MAP["${category}"] references "${action}" which is not a registered action`,
         );
+        const list = missingByCategory.get(category);
+        if (list) list.push(action);
+        else missingByCategory.set(category, [action]);
       }
     }
   }
+  if (missingByCategory.size === 0) return;
+  let total = 0;
+  const detail: string[] = [];
+  for (const [category, actions] of missingByCategory) {
+    total += actions.length;
+    detail.push(`${category}: ${actions.join(", ")}`);
+  }
+  logger?.warn(
+    `[eliza] INTENT_ACTION_MAP: ${total} referenced action${total === 1 ? "" : "s"} not registered (${detail.join("; ")}) — renamed/removed upstream, or provided by plugins not loaded in this config`,
+  );
 }
 
 /**

@@ -95,14 +95,12 @@ const scheduledTaskTriggerSchema = z.discriminatedUnion("kind", [
 
 const scheduledTaskShouldFireSchema = z.object({
   compose: z.enum(["all", "any", "first_deny"]).optional(),
-  gates: z
-    .array(
-      z.object({
-        kind: z.string().min(1),
-        params: z.unknown().optional(),
-      }),
-    )
-    .min(1),
+  gates: z.array(
+    z.object({
+      kind: z.string().min(1),
+      params: z.unknown().optional(),
+    }),
+  ),
 });
 
 const scheduledTaskCompletionCheckSchema = z.object({

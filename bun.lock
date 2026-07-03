@@ -723,6 +723,7 @@
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/app-core": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-elevenlabs": "workspace:*",

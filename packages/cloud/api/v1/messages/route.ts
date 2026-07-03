@@ -685,17 +685,21 @@ app.post("/", async (c) => {
 
   settleReservation = createCreditReservationSettler(reservation);
 
-  const messages = anthropicMessagesToModelMessages(request.messages);
-  const tools = convertTools(request.tools);
-  const toolChoice = mapToolChoice(request.tool_choice);
-  const safeParams = getSafeModelParams(model, {
-    temperature: request.temperature,
-    topP: request.top_p,
-    topK: request.top_k,
-    stopSequences: request.stop_sequences,
-  });
-
   try {
+    // Payload conversion is throwable (convertTools rejects a malformed-but-
+    // valid `tools` array); keep it inside the settle-refunding try so a
+    // conversion throw refunds the reservation instead of stranding the debit
+    // the caller was just charged (refund-gap class, #11795).
+    const messages = anthropicMessagesToModelMessages(request.messages);
+    const tools = convertTools(request.tools);
+    const toolChoice = mapToolChoice(request.tool_choice);
+    const safeParams = getSafeModelParams(model, {
+      temperature: request.temperature,
+      topP: request.top_p,
+      topK: request.top_k,
+      stopSequences: request.stop_sequences,
+    });
+
     if (request.stream) {
       return await handleStream(
         model,

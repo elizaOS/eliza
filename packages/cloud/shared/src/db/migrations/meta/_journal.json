@@ -920,6 +920,13 @@
       "breakpoints": true
     },
     {
+      "idx": 131,
+      "version": "7",
+      "when": 1779408000000,
+      "tag": "0132_legacy_milady_cores_disable",
+      "breakpoints": true
+    },
+    {
       "idx": 132,
       "version": "7",
       "when": 1779408100000,
@@ -1162,6 +1169,27 @@
       "version": "7",
       "when": 1781396460000,
       "tag": "0168_ad_accounts_pending_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1781482800000,
+      "tag": "0168_cloud_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1781569200000,
+      "tag": "0169_ad_report_shares",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1781655600000,
+      "tag": "0170_ad_spend_caps",
       "breakpoints": true
     }
   ]

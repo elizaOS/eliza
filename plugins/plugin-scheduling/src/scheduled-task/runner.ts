@@ -54,6 +54,10 @@ import {
   type TaskExecutionProfile,
   type TerminalState,
 } from "./types.js";
+import {
+  ScheduledTaskValidationError,
+  validateScheduledTaskInput,
+} from "./validation.js";
 
 /**
  * Typed error thrown by `runner.schedule()` when an `escalation.steps[].channelKey`
@@ -683,6 +687,11 @@ export function createScheduledTaskRunner(
         input.idempotencyKey,
       );
       if (existing) return existing;
+    }
+
+    const validationIssues = validateScheduledTaskInput(input, deps);
+    if (validationIssues.length > 0) {
+      throw new ScheduledTaskValidationError(validationIssues);
     }
 
     // A11: channel-key validation against the runtime ChannelRegistry.

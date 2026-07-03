@@ -50,6 +50,7 @@ import type {
   ScheduledTaskSubjectKind,
   ScheduledTaskTrigger,
 } from "../lifeops/scheduled-task/index.js";
+import { ScheduledTaskValidationError } from "../lifeops/scheduled-task/index.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { OWNER_OPERATION_VALIDATE } from "./life.js";
 
@@ -616,36 +617,56 @@ async function handleCreate(
       ? { pendingPromptRoomId: scope.roomId }
       : {}),
   };
-  const created = await scope.runner.schedule({
-    kind,
-    promptInstructions,
-    trigger,
-    priority,
-    ...(params.contextRequest ? { contextRequest: params.contextRequest } : {}),
-    ...(params.shouldFire ? { shouldFire: params.shouldFire } : {}),
-    ...(params.completionCheck
-      ? { completionCheck: params.completionCheck }
-      : {}),
-    ...(params.escalation ? { escalation: params.escalation } : {}),
-    ...(params.output
-      ? { output: params.output }
-      : scope.roomId
-        ? {
-            output: {
-              destination: "channel",
-              target: `in_app:${scope.roomId}`,
-            },
-          }
+  let created: ScheduledTask;
+  try {
+    created = await scope.runner.schedule({
+      kind,
+      promptInstructions,
+      trigger,
+      priority,
+      ...(params.contextRequest
+        ? { contextRequest: params.contextRequest }
         : {}),
-    ...(params.pipeline ? { pipeline: params.pipeline } : {}),
-    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-    ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
-    respectsGlobalPause: params.respectsGlobalPause ?? true,
-    source: params.source ?? "user_chat",
-    createdBy: scope.agentId,
-    ownerVisible: params.ownerVisible ?? true,
-    ...(subject ? { subject } : {}),
-  });
+      ...(params.shouldFire ? { shouldFire: params.shouldFire } : {}),
+      ...(params.completionCheck
+        ? { completionCheck: params.completionCheck }
+        : {}),
+      ...(params.escalation ? { escalation: params.escalation } : {}),
+      ...(params.output
+        ? { output: params.output }
+        : scope.roomId
+          ? {
+              output: {
+                destination: "channel",
+                target: `in_app:${scope.roomId}`,
+              },
+            }
+          : {}),
+      ...(params.pipeline ? { pipeline: params.pipeline } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      ...(params.idempotencyKey
+        ? { idempotencyKey: params.idempotencyKey }
+        : {}),
+      respectsGlobalPause: params.respectsGlobalPause ?? true,
+      source: params.source ?? "user_chat",
+      createdBy: scope.agentId,
+      ownerVisible: params.ownerVisible ?? true,
+      ...(subject ? { subject } : {}),
+    });
+  } catch (error) {
+    if (error instanceof ScheduledTaskValidationError) {
+      return {
+        success: false,
+        text: `Scheduled task validation failed: ${error.issues.join("; ")}`,
+        data: {
+          subaction: "create",
+          error: "INVALID_SCHEDULED_TASK",
+          issues: error.issues,
+        },
+      };
+    }
+    throw error;
+  }
   return {
     success: true,
     text: `Scheduled ${kind} task ${created.taskId}.`,
