@@ -214,6 +214,14 @@ app.post("/", async (c) => {
     // in v1/chat/completions/route.ts).
     const requestId = crypto.randomUUID();
     const orgId = user.organization_id;
+    // Read once, up front: the affiliate code must reach BOTH the reserve
+    // (#12017 — so the upfront hold covers the affiliate markup delta,
+    // fail-closed, exactly like /v1/messages and /v1/chat/completions) and the
+    // deferred billUsage below. Reserving WITHOUT it left the hold at
+    // base+platform only, so an attacker-set markup (up to 1000%) settled as an
+    // uncollectable overage while the affiliate was still credited cashable
+    // earnings — minting money the platform never collected (#11972 residual).
+    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
     let reservation: Awaited<ReturnType<typeof reserveCredits>> | undefined;
     let optimisticReady = false;
 
@@ -364,6 +372,10 @@ app.post("/", async (c) => {
             model,
             provider,
             billingSource,
+            // #12017: fold the affiliate markup into the hold
+            // (estimatedCostMultiplier inside reserveCredits) so the later
+            // affiliate credit is always backed by collected money.
+            affiliateCode,
           },
           estimatedInputTokens,
           0,
@@ -429,7 +441,6 @@ app.post("/", async (c) => {
     // the only residual risk is an under-bill if the Worker dies before the
     // deferred task completes — an accepted trade-off for this route. The settler
     // prevents double-settlement inside the task.
-    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
     const settleBilling = async () => {
       try {
         // #10557: bill WITHOUT handing billUsage the reservation, then settle
