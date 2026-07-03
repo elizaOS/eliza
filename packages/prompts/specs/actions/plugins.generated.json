@@ -2210,6 +2210,13 @@
       "similes": ["RUN_CODE", "EVALUATE_CODE", "EXEC_JS", "RUN_JS", "EVAL_JS"]
     },
     {
+      "name": "EXPORT_AD_CAMPAIGN_REPORT",
+      "description": "Export a Cloud advertising campaign performance report. Requires structured campaignId; optional share=true creates a public expiring report link.",
+      "parameters": [],
+      "descriptionCompressed": "Export or share an ad campaign performance report.",
+      "similes": ["GET_AD_CAMPAIGN_REPORT", "SHARE_AD_CAMPAIGN_REPORT"]
+    },
+    {
       "name": "FACEWEAR_CONNECT",
       "description": "Show connection instructions for a facewear device (Meta Quest, XReal, Even Realities, Apple Vision Pro).",
       "parameters": [],
@@ -3161,21 +3168,14 @@
         "USE_MCP",
         "CALL_MCP_TOOL",
         "CALL_TOOL",
-        "USE_TOOL",
         "USE_MCP_TOOL",
-        "EXECUTE_TOOL",
         "EXECUTE_MCP_TOOL",
-        "RUN_TOOL",
         "RUN_MCP_TOOL",
-        "INVOKE_TOOL",
         "INVOKE_MCP_TOOL",
         "READ_MCP_RESOURCE",
         "READ_RESOURCE",
-        "GET_RESOURCE",
         "GET_MCP_RESOURCE",
-        "FETCH_RESOURCE",
         "FETCH_MCP_RESOURCE",
-        "ACCESS_RESOURCE",
         "ACCESS_MCP_RESOURCE"
       ],
       "exampleCalls": [
@@ -5804,9 +5804,7 @@
         "EXECUTE_SKILL",
         "CALL_SKILL",
         "USE_AGENT_SKILL",
-        "RUN_AGENT_SKILL",
-        "USE_CAPABILITY",
-        "RUN_CAPABILITY"
+        "RUN_AGENT_SKILL"
       ],
       "exampleCalls": [
         {
