@@ -1,0 +1,46 @@
+{
+  "runId": "586f4e7a-e250-46e8-bece-c0abe21a7041",
+  "startedAtIso": "2026-07-03T18:09:13.965Z",
+  "completedAtIso": "2026-07-03T18:14:32.337Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "brush-teeth-basic",
+      "title": "Brush teeth basic save flow",
+      "domain": "tasks",
+      "tags": [
+        "lifeops",
+        "tasks",
+        "smoke"
+      ],
+      "status": "failed",
+      "durationMs": 282635,
+      "turns": [],
+      "finalChecks": [],
+      "actionsCalled": [],
+      "failedAssertions": [],
+      "providerName": "openai",
+      "error": "handleMessage(brush-teeth preview) timed out after 280000ms"
+    }
+  ],
+  "totals": {
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 0,
+  "failedCount": 1,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/home/shaw/eliza-worktrees/goal-11789/.github/issue-evidence/10721-lifeops-benchmark-history/reports/brush-teeth-basic",
+    "matrixJson": "/home/shaw/eliza-worktrees/goal-11789/.github/issue-evidence/10721-lifeops-benchmark-history/reports/brush-teeth-basic/matrix.json",
+    "viewerIndex": "/home/shaw/eliza-worktrees/goal-11789/.github/issue-evidence/10721-lifeops-benchmark-history/reports/brush-teeth-basic/viewer/index.html",
+    "viewerData": "/home/shaw/eliza-worktrees/goal-11789/.github/issue-evidence/10721-lifeops-benchmark-history/reports/brush-teeth-basic/viewer/data.js"
+  }
+}

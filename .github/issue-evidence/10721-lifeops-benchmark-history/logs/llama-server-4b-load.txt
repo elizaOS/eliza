@@ -1,0 +1,3 @@
+0.00.008.710 I   - CPU     : Intel(R) Core(TM) Ultra 9 275HX (31439 MiB, 14053 MiB free)
+0.00.008.760 I system_info: n_threads = 22 (n_threads_batch = 22) / 24 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.58.452.655 I srv          main: model loaded
