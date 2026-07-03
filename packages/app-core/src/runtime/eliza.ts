@@ -47,6 +47,7 @@ import {
   formatError,
   formatErrorWithStack,
   isMobilePlatform,
+  resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
   syncAppEnvToEliza,
@@ -1186,6 +1187,17 @@ export async function bootElizaRuntime(
 export interface StartElizaOptionsExt extends StartElizaOptions {
   /** Optional callback for embedding model download/init progress. */
   onEmbeddingProgress?: EmbeddingProgressCallback;
+  /**
+   * Local-agent IPC mode: the frontend reaches the runtime over native IPC
+   * (Capacitor / Electrobun RPC / stdio bridge), not an HTTP port. When set,
+   * `startEliza` skips binding the API TCP listener unless the operator opts
+   * back in via `ELIZA_API_EXPOSE_PORT`. The in-process route kernel is still
+   * initialized so the IPC bridge can drive `dispatchRoute`. Default
+   * false/unset — the desktop Electrobun launcher, `eliza start`, and the plain
+   * server-only path leave this unset and keep binding the port exactly as
+   * today. (#12180)
+   */
+  localAgentMode?: boolean;
 }
 
 function collectErrorObjects(err: unknown): ErrorWithCause[] {
@@ -1511,6 +1523,21 @@ export async function startEliza(
       let updateStartup:
         | Awaited<ReturnType<typeof startApiServer>>["updateStartup"]
         | undefined;
+      // Local-agent IPC mode binds NO TCP listener (frontend reaches the
+      // runtime over native IPC), unless the operator opts back in with
+      // ELIZA_API_EXPOSE_PORT for dev tooling / LAN access / e2e harnesses.
+      // Every other caller (desktop launcher, `eliza start`, plain server-only)
+      // leaves `localAgentMode` unset, so `skipApiListen` is false and the bind
+      // path is byte-for-byte identical to today. (#12180)
+      const skipApiListen =
+        options?.localAgentMode === true &&
+        resolveApiExposePort(process.env) !== true;
+      if (skipApiListen) {
+        bootLap("startEliza:local-agent IPC mode — skipping API TCP bind");
+        logger.info(
+          "[eliza] Local-agent IPC mode: initializing route kernel without a TCP listener (set ELIZA_API_EXPOSE_PORT=1 to re-open the port)",
+        );
+      }
       bootLap(
         "startEliza:before startApiServer (config/registry/embedding setup done)",
       );
@@ -1519,9 +1546,12 @@ export async function startEliza(
         // the desktop webview connects + hydrates in PARALLEL with the heavier
         // agent boot instead of waiting the full boot. The runtime is wired in
         // via updateRuntime once it finishes booting below. Mirrors the
-        // dev-server's bind-first orchestration.
+        // dev-server's bind-first orchestration. In local-agent IPC mode
+        // (skipApiListen) the same route kernel is initialized in-process but no
+        // socket is opened; the IPC bridge drives dispatchRoute directly.
         const startedApiServer = await startApiServer({
           port: apiPort,
+          skipListen: skipApiListen,
           initialAgentState: "starting",
           onRestart: async () => {
             if (currentRuntime) {
