@@ -292,6 +292,10 @@ async function probeAnthropicUsage(accessToken: string): Promise<{
       headers: {
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
+        // OAuth subscription tokens are rejected with a 401 unless the
+        // oauth beta header is present — same header the canonical
+        // `pollAnthropicUsage` (app-core account-usage) sends.
+        "anthropic-beta": "oauth-2025-04-20",
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
