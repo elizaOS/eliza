@@ -1537,7 +1537,10 @@ function ElementRenderer({ elementId }: { elementId: string }) {
     );
   }
 
-  const resolvedProps = resolveProps(el.props, ctx);
+  // Model-emitted specs routinely omit `props`/`children` on an element;
+  // Object.entries(undefined) / undefined.map() would throw and (without the
+  // ErrorBoundary around MessageUiSpecBlock) crash the whole app. Default them.
+  const resolvedProps = resolveProps(el.props ?? {}, ctx);
 
   // Handle repeat / list rendering
   if (el.repeat) {
@@ -1566,8 +1569,8 @@ function ElementRenderer({ elementId }: { elementId: string }) {
     );
   }
 
-  // Normal rendering: resolve children
-  const childNodes = el.children.map((childId) => (
+  // Normal rendering: resolve children (default missing children to []).
+  const childNodes = (el.children ?? []).map((childId) => (
     <ElementRenderer key={childId} elementId={childId} />
   ));
 

@@ -32,6 +32,7 @@ import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
+import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input";
 import { AccountConnectBlock } from "./AccountConnectBlock";
 import { MessageAttachments } from "./MessageAttachments";
@@ -550,7 +551,32 @@ export function MessageUiSpecBlock({
         </div>
       )}
       <div className="p-3">
-        <UiRenderer spec={spec} onAction={handleAction} />
+        {/*
+          A model-emitted UiSpec can be malformed in ways the renderer can't
+          fully normalize (wrong-typed array props, unknown shapes). Without a
+          boundary here a single bad widget throws past every view boundary to
+          the app ROOT error screen — and because the message re-hydrates from
+          history, "Try Again"/restart re-crash it, bricking the app. Contain
+          any render throw to this one message and offer the raw JSON instead.
+        */}
+        <ErrorBoundary
+          fallback={() => (
+            <div className="rounded-sm border border-destructive/30 bg-destructive/5 p-3 text-xs text-muted">
+              <span className="font-semibold text-destructive">
+                Couldn't render this widget.
+              </span>{" "}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() => setShowRaw((v) => !v)}
+              >
+                {showRaw ? "Hide JSON" : "View JSON"}
+              </button>
+            </div>
+          )}
+        >
+          <UiRenderer spec={spec} onAction={handleAction} />
+        </ErrorBoundary>
       </div>
     </div>
   );
