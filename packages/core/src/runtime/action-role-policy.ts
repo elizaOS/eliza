@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import type { RoleGateRole } from "../types/contexts";
 import {
 	normalizeGateRole,
@@ -16,9 +17,12 @@ import {
  * policy's minimum role. Used to whitelist actions whose upstream `contextGate`
  * is narrower than a particular deployment needs.
  *
- * Lookup is honored in two places:
- *   - `executePlannedToolCall` (top-level planner picks)
- *   - `runSubPlanner` (sub-planner child action list)
+ * The policy is evaluated in exactly one place — the shared `actionGateFailure`
+ * / `canActionRun` gate in `runtime/action-gate.ts` (#12087 Item 9) — which every
+ * exposure/execution path (planner, sub-planner, tool-call executor, shortcut
+ * gate) routes through. A policy key that matches no registered action name or
+ * simile is silently inert; `warnOnUnmatchedActionRolePolicyKeys` surfaces that at
+ * startup (#12087 Item 19).
  */
 
 let cachedActionRolePolicy: Record<string, RoleGateRole> | undefined;
@@ -156,6 +160,26 @@ export function getActionRolePolicyWarnings(
 	}
 
 	return warnings;
+}
+
+/**
+ * Warn about `ACTION_ROLE_POLICY` keys that match no registered action name.
+ * Policy lookup is exact-name only; similes intentionally do not authorize.
+ * Returns the unmatched keys for tests.
+ */
+export function warnOnUnmatchedActionRolePolicyKeys(
+	actions: readonly PolicyAddressableAction[],
+): string[] {
+	const warnings = getActionRolePolicyWarnings(actions);
+	const unmatched = warnings
+		.filter((warning) => warning.type === "unmatched")
+		.map((warning) => warning.actionName);
+	if (unmatched.length > 0) {
+		logger.warn(
+			`[action-role-policy] ACTION_ROLE_POLICY key(s) match no registered action name and are inert: ${unmatched.join(", ")}`,
+		);
+	}
+	return unmatched;
 }
 
 /** Test seam — clears the cached `ACTION_ROLE_POLICY` parse. */

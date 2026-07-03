@@ -3,6 +3,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	State,
 } from "../../../types/index.ts";
 import { choiceAction } from "./choice.ts";
 
@@ -79,6 +80,45 @@ describe("CHOOSE_OPTION action", () => {
 		expect(result?.success).toBe(true);
 		expect(result?.values?.taskId).toBe(TASK_ID);
 		expect(executed.options).toEqual({ option: "post" });
+	});
+
+	// #12087 Item 17: validate() must NOT re-derive authorization from a stored
+	// world role (getUserServerRole) — that path returned no role for a canonical
+	// owner and wrongly rejected them. Authorization is the declared
+	// roleGate:{minRole:"ADMIN"} enforced by canActionRun. validate() checks only
+	// the precondition: a pending choice exists.
+	it("validate passes on a pending choice without consulting a stored world role", async () => {
+		const getTasks = vi.fn(async () => [
+			{ id: TASK_ID, metadata: { options: [{ name: "post" }] } },
+		]);
+		const getUserServerRole = vi.fn();
+		const runtime = {
+			agentId: AGENT_ID,
+			getRoom: vi.fn(async () => ({ id: ROOM_ID, messageServerId: "srv-1" })),
+			getTasks,
+			getUserServerRole,
+		} as unknown as IAgentRuntime;
+
+		const ok = await choiceAction.validate?.(runtime, createMessage(), {
+			data: {},
+		} as unknown as State);
+
+		expect(ok).toBe(true);
+		expect(getUserServerRole).not.toHaveBeenCalled();
+	});
+
+	it("validate returns false when no pending choice exists", async () => {
+		const runtime = {
+			agentId: AGENT_ID,
+			getRoom: vi.fn(async () => ({ id: ROOM_ID, messageServerId: "srv-1" })),
+			getTasks: vi.fn(async () => []),
+		} as unknown as IAgentRuntime;
+
+		const ok = await choiceAction.validate?.(runtime, createMessage(), {
+			data: {},
+		} as unknown as State);
+
+		expect(ok).toBe(false);
 	});
 
 	it("rejects an unknown task id", async () => {

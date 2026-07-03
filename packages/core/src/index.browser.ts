@@ -91,6 +91,7 @@ export * from "./model-gateway";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
+export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";

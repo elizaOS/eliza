@@ -462,9 +462,15 @@ async function applyAssignments(args: {
 		{ liveEntityMetadata: getLiveEntityMetadataFromMessage(message) },
 	);
 
-	if (requesterRole !== "OWNER" && requesterRole !== "ADMIN") {
+	// #12087 Item 17: the declared `roleGate: { minRole: "OWNER" }` is the
+	// enforced entry gate (canActionRun blocks anyone below OWNER before the
+	// handler runs on every exposure/execution path). This assertion agrees with
+	// it — the previous `|| requesterRole === "ADMIN"` branch was dead under the
+	// gate and contradicted the declaration. Per-assignment `canModifyRole` below
+	// still bounds which target roles an OWNER may set.
+	if (requesterRole !== "OWNER") {
 		await callback?.({
-			text: "Only OWNERs and ADMINs can manage roles.",
+			text: "Only OWNERs can manage roles.",
 		});
 		return {
 			success: false,

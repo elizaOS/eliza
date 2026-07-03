@@ -8,7 +8,10 @@ import {
 	canActionRun,
 	type GateableAction,
 } from "./action-gate";
-import { _resetActionRolePolicyCacheForTests } from "./action-role-policy";
+import {
+	_resetActionRolePolicyCacheForTests,
+	warnOnUnmatchedActionRolePolicyKeys,
+} from "./action-role-policy";
 
 /**
  * #12087 Item 9: one gate — `canActionRun` — for every exposure/execution path
@@ -108,6 +111,38 @@ describe("canActionRun — ACTION_ROLE_POLICY replaces the declared gate", () =>
 		// a child whose policy role the caller fails.
 		expect(canActionRun(shell, ctx({ userRoles: ["GUEST"] }))).toBe(false);
 		expect(canActionRun(shell, ctx({ userRoles: ["ADMIN"] }))).toBe(true);
+	});
+});
+
+describe("warnOnUnmatchedActionRolePolicyKeys (#12087 Item 19)", () => {
+	it("flags policy keys matching no registered action name or simile", () => {
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({
+			SHELL: "OWNER",
+			RENAMED_OLD_NAME: "USER",
+		});
+		_resetActionRolePolicyCacheForTests();
+		const unmatched = warnOnUnmatchedActionRolePolicyKeys([
+			{ name: "SHELL" },
+			{ name: "REPLY", similes: ["RESPOND"] },
+		]);
+		expect(unmatched).toEqual(["RENAMED_OLD_NAME"]);
+	});
+
+	it("matches a policy key against action similes", () => {
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({ RESPOND: "USER" });
+		_resetActionRolePolicyCacheForTests();
+		expect(
+			warnOnUnmatchedActionRolePolicyKeys([
+				{ name: "REPLY", similes: ["RESPOND"] },
+			]),
+		).toEqual([]);
+	});
+
+	it("is a no-op when no policy is configured", () => {
+		_resetActionRolePolicyCacheForTests();
+		expect(warnOnUnmatchedActionRolePolicyKeys([{ name: "SHELL" }])).toEqual(
+			[],
+		);
 	});
 });
 

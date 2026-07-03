@@ -26,6 +26,35 @@ import { persistCharacterPatch } from "./shared/persist-character-patch.ts";
 const CHARACTER_OPS = ["modify", "persist", "update_identity"] as const;
 type CharacterOp = (typeof CHARACTER_OPS)[number];
 
+/**
+ * Per-operation minimum role for CHARACTER (#12087 Item 17). The action's
+ * declared `roleGate: { minRole: "ADMIN" }` is the coarse floor enforced by
+ * canActionRun before the handler runs; this map is the single, visible source
+ * of truth for the finer per-op requirement the handler enforces (renaming the
+ * agent / replacing its system prompt via `update_identity` requires OWNER, not
+ * just ADMIN). Previously these were three scattered inline `hasRoleAccess`
+ * checks, so the OWNER requirement was invisible in the action metadata.
+ */
+export const CHARACTER_OP_ACCESS: Record<
+	CharacterOp,
+	{ minRole: "ADMIN" | "OWNER"; denyMessage: string }
+> = {
+	modify: {
+		minRole: "ADMIN",
+		denyMessage:
+			"Permission denied: only admins or the owner may modify the character.",
+	},
+	persist: {
+		minRole: "ADMIN",
+		denyMessage:
+			"Permission denied: only admins or the owner may persist the character.",
+	},
+	update_identity: {
+		minRole: "OWNER",
+		denyMessage: "Permission denied: only the owner may update agent identity.",
+	},
+};
+
 const IDENTITY_NAME_MAX_LENGTH = 120;
 const IDENTITY_SYSTEM_MAX_LENGTH = 100_000;
 
@@ -85,6 +114,7 @@ function denyResult(op: CharacterOp, message: string): ActionResult {
 export const characterAction: Action = {
 	name: "CHARACTER",
 	contexts: ["settings", "agent_internal", "media", "admin"],
+	// Coarse floor; per-op requirements (update_identity → OWNER) in CHARACTER_OP_ACCESS.
 	roleGate: { minRole: "ADMIN" },
 	similes: [
 		// Old leaf action names
@@ -207,26 +237,9 @@ export const characterAction: Action = {
 			};
 		}
 
-		if (op === "modify" && !(await hasRoleAccess(runtime, message, "ADMIN"))) {
-			return denyResult(
-				op,
-				"Permission denied: only admins or the owner may modify the character.",
-			);
-		}
-		if (
-			op === "update_identity" &&
-			!(await hasRoleAccess(runtime, message, "OWNER"))
-		) {
-			return denyResult(
-				op,
-				"Permission denied: only the owner may update agent identity.",
-			);
-		}
-		if (op === "persist" && !(await hasRoleAccess(runtime, message, "ADMIN"))) {
-			return denyResult(
-				op,
-				"Permission denied: only admins or the owner may persist the character.",
-			);
+		const opAccess = CHARACTER_OP_ACCESS[op];
+		if (!(await hasRoleAccess(runtime, message, opAccess.minRole))) {
+			return denyResult(op, opAccess.denyMessage);
 		}
 
 		switch (op) {

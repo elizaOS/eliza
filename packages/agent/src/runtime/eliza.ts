@@ -109,6 +109,7 @@ import {
   subAgentCredentialsPlugin,
   type TargetInfo,
   type UUID,
+  warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
 import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
@@ -5335,6 +5336,10 @@ export async function startEliza(
     await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
+    // #12087 Item 19: now that every plugin's actions are registered, warn about
+    // ACTION_ROLE_POLICY keys that match no action name/simile (a silently-inert
+    // policy, usually from an action rename after the operator wrote the policy).
+    warnOnUnmatchedActionRolePolicyKeys(runtime.actions ?? []);
     await registerConversationProximityProvider();
     // Probe the embedding dimension BEFORE seeding bundled documents (#8769).
     // The deferred plugin waves above register the cloud TEXT_EMBEDDING handler
