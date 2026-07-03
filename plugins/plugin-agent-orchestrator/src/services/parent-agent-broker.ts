@@ -32,7 +32,7 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped bridge for asking the running parent Eliza agent to use its loaded capabilities, actions, providers, connectors, and confirmation flow.",
   guidance:
-    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). For paid self-spend commands (e.g. `domains.buy`, `containers.create`), pass `params.spendEstimateUsd` (such as the price from `domains.check`) so they auto-authorize within the configured agent spend cap instead of stalling. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
+    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). Fixed-cost self-spend commands such as `containers.create` may auto-authorize within the configured agent spend cap; variable-cost self-spend commands such as `domains.buy`, `media.*`, `promote.*`, and `advertising.*` always require human confirmation because the server-quoted price cannot be trusted from child-declared `params.spendEstimateUsd`. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
 } as const;
 
 type ParentAgentMode =
@@ -1154,10 +1154,9 @@ async function runCloudCommand(args: {
     ) {
       preview = `${definition.command} would spend ~$${spendDecision.estimatedCostUsd.toFixed(2)}, exceeding your remaining $${remainingUsd.toFixed(2)} self-spend allowance. Proceed?`;
     } else if (spendDecision.reason === "unknown-cost") {
-      // Self-spend command with no cost hint. Give an autonomous agent an
-      // actionable path: fetch a quote and retry with the estimate so it can
-      // self-authorize within the cap instead of waiting on a human "yes".
-      preview = `${definition.command} is a paid Eliza Cloud command with an unknown cost. To self-authorize within your remaining $${remainingUsd.toFixed(2)} allowance, first fetch a quote (e.g. domains.check) and retry with params.spendEstimateUsd set to that price.`;
+      // Variable-cost self-spend is server-quoted and the child-declared
+      // estimate is untrusted, so the spend cap cannot self-authorize it.
+      preview = `${definition.command} is a paid Eliza Cloud command with a server-quoted variable cost. It requires explicit confirmation because child-declared spend estimates cannot self-authorize this kind of charge. Remaining self-spend allowance: $${remainingUsd.toFixed(2)}. Proceed?`;
     } else {
       preview = `${definition.command} is a ${definition.risk} Eliza Cloud command. Proceed?`;
     }

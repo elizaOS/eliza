@@ -35,17 +35,17 @@ import {
 import { readStringOption } from "../params.js";
 import type { InstalledAppInfo } from "../types.js";
 import {
+	preflightCodingDispatch,
+	resolveScaffoldTemplateDir,
+	templateMissingGuidance,
+} from "./scaffold-env.js";
+import {
 	createPreEditSnapshot,
 	persistSnapshotRecord,
 } from "./views-snapshot.js";
 
 export const APP_CREATE_INTENT_TAG = "app-create-intent";
 
-/** Resolves from eliza repo root or monorepo root (with embedded `eliza/`). */
-const MIN_APP_TEMPLATE_CANDIDATES = [
-	"packages/elizaos/templates/min-project",
-	"eliza/packages/elizaos/templates/min-project",
-] as const;
 const APPS_RELATIVE_PATH = "eliza/apps";
 const NAME_PLACEHOLDER = "__APP_NAME__";
 const DISPLAY_NAME_PLACEHOLDER = "__APP_DISPLAY_NAME__";
@@ -620,17 +620,6 @@ async function persistIntentTask(
 	});
 }
 
-async function resolveMinAppTemplateDir(
-	repoRoot: string,
-): Promise<string | undefined> {
-	for (const rel of MIN_APP_TEMPLATE_CANDIDATES) {
-		const dir = path.join(repoRoot, rel);
-		const stat = await fs.stat(dir).catch(() => null);
-		if (stat?.isDirectory()) return dir;
-	}
-	return undefined;
-}
-
 async function deleteIntentTask(
 	runtime: IAgentRuntime,
 	taskId: string,
@@ -675,18 +664,27 @@ async function createNewApp({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const { name, displayName } = await extractNames(runtime, intent);
-	const { workdir, appDirName } = await findFreeWorkdir(repoRoot, name);
-
-	const templateSrc = await resolveMinAppTemplateDir(repoRoot);
-	if (!templateSrc) {
-		const tried = MIN_APP_TEMPLATE_CANDIDATES.map((rel) =>
-			path.join(repoRoot, rel),
-		).join(", ");
-		const text = `min-project template not found (tried: ${tried}); cannot scaffold a new app.`;
+	// Preflight orchestrator + coding-CLI availability BEFORE scaffolding so a
+	// missing prerequisite answers with setup guidance instead of leaving a
+	// half-created app dir behind.
+	const preflight = await preflightCodingDispatch(runtime);
+	if (!preflight.ok) {
+		const text = `I can't build an app yet. ${preflight.guidance.join(" ")}`;
 		await callback?.({ text });
 		return { success: false, text };
 	}
+
+	const { name, displayName } = await extractNames(runtime, intent);
+
+	const template = await resolveScaffoldTemplateDir(repoRoot, "min-project");
+	const templateSrc = template.dir;
+	if (!templateSrc) {
+		const text = `I can't scaffold a new app: ${templateMissingGuidance("min-project", template.tried)}`;
+		await callback?.({ text });
+		return { success: false, text };
+	}
+
+	const { workdir, appDirName } = await findFreeWorkdir(repoRoot, name);
 
 	await copyTemplate(templateSrc, workdir, {
 		[NAME_PLACEHOLDER]: name,
@@ -764,6 +762,15 @@ async function editExistingApp({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
+	// Same preflight as the create path: surface missing orchestrator/CLI as
+	// setup guidance before taking a snapshot or dispatching.
+	const preflight = await preflightCodingDispatch(runtime);
+	if (!preflight.ok) {
+		const text = `I can't edit ${app.displayName} yet. ${preflight.guidance.join(" ")}`;
+		await callback?.({ text });
+		return { success: false, text };
+	}
+
 	const workdir = await locateInstalledAppWorkdir(repoRoot, app);
 	if (!workdir) {
 		const text = `Could not locate the source directory for ${app.displayName} (${app.name}). Try passing { workdir: "/abs/path" } explicitly.`;

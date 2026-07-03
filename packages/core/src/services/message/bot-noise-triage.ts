@@ -23,9 +23,15 @@
  */
 
 import type { Memory } from "../../types/memory";
-import { type GenerateTextParams, ModelType } from "../../types/model";
+import {
+	type GenerateTextParams,
+	type GenerateTextResult,
+	ModelType,
+} from "../../types/model";
 import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
+import { stripReasoningBlocks } from "./fallback-reply";
+import { getV5ModelText } from "./generate-text-result";
 
 /**
  * Text group-ish channel types the gate applies to. Private channels
@@ -241,11 +247,16 @@ export async function runBotNoiseTriage(
 			temperature: 0,
 			voiceOutput: "internal",
 		};
-		const raw = await runtime.useModel(ModelType.TEXT_SMALL, params);
-		const text =
-			typeof raw === "string"
-				? raw
-				: (((raw as { text?: unknown })?.text as string | undefined) ?? "");
+		const raw = (await runtime.useModel(ModelType.TEXT_SMALL, params)) as
+			| string
+			| GenerateTextResult;
+		// Reuse the canonical helpers Stage 1 uses for the same TEXT_SMALL call:
+		// getV5ModelText handles the content-array / response-field result shapes
+		// (structured output from reasoning-tier providers has no flat `.text`),
+		// and stripReasoningBlocks drops <think>…</think> so a reasoning model
+		// that names both RESPOND and IGNORE while deliberating still yields a
+		// clean one-word verdict instead of an ambiguous fail-open.
+		const text = stripReasoningBlocks(getV5ModelText(raw));
 		const verdict = parseTriageVerdict(text);
 		if (verdict === undefined) {
 			// Unparseable verdict — fail open into the full pipeline.

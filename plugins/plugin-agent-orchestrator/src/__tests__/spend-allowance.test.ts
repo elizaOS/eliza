@@ -49,33 +49,37 @@ describe("estimateSelfSpendCostUsd", () => {
     );
   });
 
-  it("honors an explicit spend hint", () => {
+  it("honors an explicit spend hint above the base for server-known-cost commands", () => {
     expect(
       estimateSelfSpendCostUsd("containers.create", {
         [SPEND_HINT_PARAM]: 2.5,
       }),
     ).toBe(2.5);
-    expect(
-      estimateSelfSpendCostUsd("domains.buy", { [SPEND_HINT_PARAM]: 14.95 }),
-    ).toBe(14.95);
-    // string hints are coerced
-    expect(
-      estimateSelfSpendCostUsd("domains.buy", { [SPEND_HINT_PARAM]: "9.99" }),
-    ).toBe(9.99);
   });
 
-  it("returns null for hint-required commands without a hint", () => {
-    expect(estimateSelfSpendCostUsd("domains.buy")).toBeNull();
-    expect(estimateSelfSpendCostUsd("media.image.generate")).toBeNull();
-  });
-
-  it("rejects negative / non-finite hints", () => {
-    expect(
-      estimateSelfSpendCostUsd("domains.buy", { [SPEND_HINT_PARAM]: -5 }),
-    ).toBeNull();
-    expect(
-      estimateSelfSpendCostUsd("domains.buy", { [SPEND_HINT_PARAM]: "abc" }),
-    ).toBeNull();
+  // #11952: the child's self-declared hint is untrusted — for variable-cost
+  // commands it must NEVER produce an auto-authorizable estimate, no matter how
+  // it is declared. A positive under-declaration ($0.01 for a real $500 buy)
+  // was the residual hole left by #10980 (which only closed the $0 case).
+  it("always returns null for variable-cost commands regardless of the declared hint", () => {
+    for (const command of [
+      "domains.buy",
+      "media.image.generate",
+      "media.video.generate",
+      "promote.execute",
+      "advertising.campaigns.start",
+    ]) {
+      expect(estimateSelfSpendCostUsd(command)).toBeNull();
+      expect(
+        estimateSelfSpendCostUsd(command, { [SPEND_HINT_PARAM]: 0.01 }),
+      ).toBeNull();
+      expect(
+        estimateSelfSpendCostUsd(command, { [SPEND_HINT_PARAM]: 14.95 }),
+      ).toBeNull();
+      expect(
+        estimateSelfSpendCostUsd(command, { [SPEND_HINT_PARAM]: "9.99" }),
+      ).toBeNull();
+    }
   });
 
   // Regression: an attacker-declared cost of exactly 0 must not slip a paid
@@ -95,17 +99,6 @@ describe("estimateSelfSpendCostUsd", () => {
       estimateSelfSpendCostUsd("containers.create", { [SPEND_HINT_PARAM]: 3 }),
     ).toBe(3);
   });
-
-  it("treats a declared cost of 0 for a hint-required paid command as unknown (confirm)", () => {
-    expect(
-      estimateSelfSpendCostUsd("domains.buy", { [SPEND_HINT_PARAM]: 0 }),
-    ).toBeNull();
-    expect(
-      estimateSelfSpendCostUsd("media.image.generate", {
-        [SPEND_HINT_PARAM]: "0",
-      }),
-    ).toBeNull();
-  });
 });
 
 describe("decideSpendAuthorization — spend-cap bypass regression", () => {
@@ -119,6 +112,28 @@ describe("decideSpendAuthorization — spend-cap bypass regression", () => {
     });
     expect(decision.autoAuthorize).toBe(false);
     expect(decision.reason).toBe("unknown-cost");
+  });
+
+  // #11952: the positive-under-declaration hole. A rogue/injected sub-agent
+  // declaring a tiny price for a real, expensive variable-cost self-spend must
+  // NOT auto-authorize under the cap — the untrusted hint can't meter it.
+  it("does NOT auto-authorize a variable-cost self-spend under-declared to slip beneath the cap", () => {
+    for (const command of [
+      "domains.buy",
+      "media.video.generate",
+      "promote.execute",
+      "advertising.campaigns.start",
+    ]) {
+      const decision = decideSpendAuthorization({
+        command,
+        risk: "paid",
+        capUsd: 1000,
+        alreadySpentUsd: 0,
+        params: { [SPEND_HINT_PARAM]: 0.01 },
+      });
+      expect(decision.autoAuthorize).toBe(false);
+      expect(decision.reason).toBe("unknown-cost");
+    }
   });
 
   it("meters a 0-hint container at its base cost so a tiny cap is respected", () => {
@@ -176,9 +191,9 @@ describe("decideSpendAuthorization", () => {
     expect(decision.reason).toBe("destructive-requires-human");
   });
 
-  it("auto-authorizes a self-spend command within the cap and reports its cost", () => {
+  it("auto-authorizes a server-known-cost self-spend within the cap and reports its cost", () => {
     const decision = decideSpendAuthorization({
-      command: "domains.buy",
+      command: "containers.create",
       risk: "paid",
       capUsd: 50,
       alreadySpentUsd: 0,
@@ -189,9 +204,9 @@ describe("decideSpendAuthorization", () => {
     expect(decision.estimatedCostUsd).toBe(14.95);
   });
 
-  it("requires confirmation when a self-spend command exceeds the remaining budget", () => {
+  it("requires confirmation when a server-known-cost self-spend exceeds the remaining budget", () => {
     const decision = decideSpendAuthorization({
-      command: "domains.buy",
+      command: "containers.create",
       risk: "paid",
       capUsd: 20,
       alreadySpentUsd: 18,
@@ -203,12 +218,15 @@ describe("decideSpendAuthorization", () => {
     expect(decision.estimatedCostUsd).toBe(14.95);
   });
 
-  it("requires confirmation for a self-spend command of unknown cost", () => {
+  it("always requires confirmation for a variable-cost self-spend command", () => {
+    // Even a plausible, well-within-cap hint cannot auto-authorize — the price
+    // is server-quoted and the hint is untrusted (#11952).
     const decision = decideSpendAuthorization({
       command: "domains.buy",
       risk: "paid",
       capUsd: 50,
       alreadySpentUsd: 0,
+      params: { [SPEND_HINT_PARAM]: 14.95 },
     });
     expect(decision.autoAuthorize).toBe(false);
     expect(decision.reason).toBe("unknown-cost");
@@ -356,11 +374,10 @@ describe("durable spend ledger (#8924)", () => {
     });
     expect(within.autoAuthorize).toBe(true); // 9 + 0.67 <= 10
     const over = decideSpendAuthorization({
-      command: "domains.buy",
+      command: "containers.create",
       risk: "paid",
-      capUsd: 10,
-      alreadySpentUsd: getSessionSpendUsd("s1"),
-      params: { spendEstimateUsd: 2 },
+      capUsd: 9.5,
+      alreadySpentUsd: getSessionSpendUsd("s1"), // 9 + 0.67 > 9.5
     });
     expect(over.autoAuthorize).toBe(false);
     expect(over.reason).toBe("over-cap");
@@ -440,7 +457,7 @@ describe("spend ledger concurrency hardening", () => {
       withSessionSpendLock("sLock", async () => {
         await hydrateSessionSpendUsd("sLock");
         const decision = decideSpendAuthorization({
-          command: "domains.buy",
+          command: "containers.create",
           risk: "paid",
           capUsd: 10,
           alreadySpentUsd: getSessionSpendUsd("sLock"),

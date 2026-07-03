@@ -220,6 +220,30 @@ describe("ElizaCloudClient typed app methods", () => {
     });
   });
 
+  it("getAppDeployStatus + getApp thread a per-request AbortSignal into fetch (deploy-gate poll timeout)", async () => {
+    const seenSignals: Array<AbortSignal | null | undefined> = [];
+    const fetchImpl = (async (_input, init = {}) => {
+      seenSignals.push(init.signal);
+      return new Response(JSON.stringify({ success: true, app: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      apiKey: "eliza_test_key",
+      fetchImpl,
+    });
+
+    const controller = new AbortController();
+    await client.getAppDeployStatus("app_1", { signal: controller.signal });
+    await client.getApp("app_1", { signal: controller.signal });
+
+    expect(seenSignals).toHaveLength(2);
+    expect(seenSignals[0]).toBe(controller.signal);
+    expect(seenSignals[1]).toBe(controller.signal);
+  });
+
   it("deleteApp DELETEs /api/v1/apps/:id", async () => {
     const { client, requests } = createClientRecorder({
       success: true,

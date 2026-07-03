@@ -784,10 +784,19 @@ export class ElizaCloudClient {
     return this.routes.getApiV1Apps<ListAppsResponse>();
   }
 
-  /** `GET /api/v1/apps/:id` — fetch a single app. */
-  getApp(appId: string): Promise<AppResponse> {
+  /**
+   * `GET /api/v1/apps/:id` — fetch a single app. Accepts a per-request
+   * `signal`/`timeoutMs` so long-running pollers (the DEPLOY_APP completion
+   * gate) can bound a stalled connection.
+   */
+  getApp(
+    appId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<AppResponse> {
     return this.routes.getApiV1AppsById<AppResponse>({
       pathParams: { id: appId },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
     });
   }
 
@@ -829,10 +838,19 @@ export class ElizaCloudClient {
     });
   }
 
-  /** `GET /api/v1/apps/:id/deploy/status` — latest deploy status (poll target). */
-  getAppDeployStatus(appId: string): Promise<AppDeployStatusResponse> {
+  /**
+   * `GET /api/v1/apps/:id/deploy/status` — latest deploy status (poll target).
+   * Accepts a per-request `signal`/`timeoutMs` so a stalled poll can be torn
+   * down instead of hanging the caller's poll loop.
+   */
+  getAppDeployStatus(
+    appId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<AppDeployStatusResponse> {
     return this.routes.getApiV1AppsByIdDeployStatus<AppDeployStatusResponse>({
       pathParams: { id: appId },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
     });
   }
 

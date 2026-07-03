@@ -90,10 +90,15 @@ const getByApiKeyId = mock(
   async (apiKeyId: string) =>
     Object.values(APPS).find((a) => a.api_key_id === apiKeyId) ?? null,
 );
+const withDatabaseState = mock(async (app: Record<string, unknown>) => ({
+  ...app,
+  database_state: "ready",
+}));
 mock.module("@/lib/services/apps", () => ({
   appsService: {
     getById: async (id: string) => APPS[id] ?? null,
     getByApiKeyId,
+    withDatabaseState,
     trackPageView: mock(async () => undefined),
   },
 }));
@@ -163,6 +168,15 @@ const runAppReview = mock(async () => ({
 mock.module("@/lib/services/app-review", () => ({
   runAppReview,
   getLatestAppReview: mock(async () => null),
+  buildReviewCandidate: mock(() => ({ contentHash: "hash" })),
+}));
+
+mock.module("@/lib/services/app-cleanup", () => ({
+  appCleanupService: { cleanupAndDeleteApp: mock(async () => undefined) },
+}));
+
+mock.module("@/lib/services/characters/characters", () => ({
+  charactersService: { getById: mock(async () => null) },
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -183,6 +197,7 @@ const { default: activateRoute } = await import(
 );
 const { default: reviewRoute } = await import("../v1/apps/[id]/review/route");
 const { default: backupRoute } = await import("../v1/apps/[id]/backup/route");
+const { default: appDetailRoute } = await import("../v1/apps/[id]/route");
 
 const app = new Hono();
 app.route("/api/v1/apps/:id/frontend", frontendRoute);
@@ -191,6 +206,7 @@ app.route("/api/v1/apps/:id/frontend/:deploymentId/activate", activateRoute);
 app.route("/api/v1/apps/:id/frontend/:deploymentId", deploymentRoute);
 app.route("/api/v1/apps/:id/review", reviewRoute);
 app.route("/api/v1/apps/:id/backup", backupRoute);
+app.route("/api/v1/apps/:id", appDetailRoute);
 
 function publishBody(): RequestInit {
   return {
@@ -218,6 +234,37 @@ beforeEach(() => {
   exportApp.mockClear();
   runAppReview.mockClear();
   getByApiKeyId.mockClear();
+  withDatabaseState.mockClear();
+});
+
+describe("raw app row detail — GET /api/v1/apps/:id", () => {
+  test("app A's key reading app B's raw app row → 403, row not expanded", async () => {
+    currentApiKeyId = KEY_A;
+    const res = await app.request(`/api/v1/apps/${APP_B}`);
+    await expectAccessDenied(res);
+    expect(withDatabaseState).not.toHaveBeenCalled();
+  });
+
+  test("own key → raw app row read allowed", async () => {
+    currentApiKeyId = KEY_B;
+    const res = await app.request(`/api/v1/apps/${APP_B}`);
+    expect(res.status).toBe(200);
+    expect(withDatabaseState).toHaveBeenCalledTimes(1);
+    const body = (await res.json()) as {
+      success: boolean;
+      app: { id: string };
+    };
+    expect(body.success).toBe(true);
+    expect(body.app.id).toBe(APP_B);
+  });
+
+  test("session auth → raw app row read allowed", async () => {
+    currentApiKeyId = undefined;
+    const res = await app.request(`/api/v1/apps/${APP_B}`);
+    expect(res.status).toBe(200);
+    expect(withDatabaseState).toHaveBeenCalledTimes(1);
+    expect(getByApiKeyId).not.toHaveBeenCalled();
+  });
 });
 
 describe("frontend publish — POST /api/v1/apps/:id/frontend (#10852 gap)", () => {

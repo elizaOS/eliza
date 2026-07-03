@@ -14,6 +14,7 @@ const FAST_CONFIG: DeployGateConfig = {
   initialDelayMs: 1,
   maxDelayMs: 2,
   probeTimeoutMs: 10,
+  requestTimeoutMs: 50,
   healthPath: "/health",
 };
 
@@ -202,5 +203,146 @@ describe("runDeployGate", () => {
     const result = await runDeployGate(deps, FAST_CONFIG);
     expect(result.phase).toBe("unreachable");
     expect(result.error).toBe("no_production_url");
+  });
+});
+
+describe("runDeployGate — poll robustness (transient errors + per-request timeout)", () => {
+  it("REGRESSION: one throwing status poll does NOT abort the gate — it keeps polling and still resolves READY", async () => {
+    // Poll 1 throws (network blip), poll 2 is BUILDING, poll 3 is READY.
+    let calls = 0;
+    const pollErrors: Array<{ error: unknown; attempt: number }> = [];
+    const responses = [
+      statusRes({ status: "BUILDING" }),
+      statusRes({ status: "READY" }),
+    ];
+    const deps: DeployGateDeps = {
+      getStatus: () => {
+        calls += 1;
+        if (calls === 1) {
+          return Promise.reject(new Error("ECONNRESET: transient blip"));
+        }
+        return Promise.resolve(
+          responses[Math.min(calls - 2, responses.length - 1)],
+        );
+      },
+      getApp: () => Promise.resolve(appRes("https://acme.elizacloud.ai")),
+      probe: () => Promise.resolve({ ok: true, status: 200 }),
+      sleep: () => Promise.resolve(),
+      onPollError: (error, attempt) => pollErrors.push({ error, attempt }),
+    };
+
+    const result = await runDeployGate(deps, FAST_CONFIG);
+
+    expect(result.phase).toBe("ready");
+    expect(result.url).toBe("https://acme.elizacloud.ai");
+    expect(result.attempts).toBe(3);
+    expect(pollErrors).toHaveLength(1);
+    expect(pollErrors[0]?.attempt).toBe(1);
+    expect((pollErrors[0]?.error as Error).message).toContain("ECONNRESET");
+  });
+
+  it("a stalled status poll is cut off by the per-request timeout (signal aborts) and the gate continues", async () => {
+    // Poll 1 stalls forever unless the abort signal fires; poll 2 is READY.
+    let calls = 0;
+    let sawAbort = false;
+    const pollErrors: unknown[] = [];
+    const deps: DeployGateDeps = {
+      getStatus: (signal) => {
+        calls += 1;
+        if (calls === 1) {
+          // Simulate a signal-honoring fetch: resolve never, reject on abort.
+          return new Promise((_, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                sawAbort = true;
+                reject(signal.reason);
+              },
+              { once: true },
+            );
+          });
+        }
+        return Promise.resolve(statusRes({ status: "READY" }));
+      },
+      getApp: () => Promise.resolve(appRes("https://acme.elizacloud.ai")),
+      probe: () => Promise.resolve({ ok: true, status: 200 }),
+      sleep: () => Promise.resolve(),
+      onPollError: (error) => pollErrors.push(error),
+    };
+
+    const result = await runDeployGate(deps, {
+      ...FAST_CONFIG,
+      requestTimeoutMs: 5,
+    });
+
+    expect(result.phase).toBe("ready");
+    expect(result.attempts).toBe(2);
+    expect(sawAbort).toBe(true);
+    expect(pollErrors).toHaveLength(1);
+    expect((pollErrors[0] as Error).message).toContain("timed out after 5ms");
+  });
+
+  it("even a signal-IGNORING stalled poll cannot hang the gate (raced against the deadline)", async () => {
+    let calls = 0;
+    const deps: DeployGateDeps = {
+      getStatus: () => {
+        calls += 1;
+        if (calls === 1) {
+          return new Promise(() => {}); // never settles, ignores the signal
+        }
+        return Promise.resolve(statusRes({ status: "READY" }));
+      },
+      getApp: () => Promise.resolve(appRes("https://acme.elizacloud.ai")),
+      probe: () => Promise.resolve({ ok: true, status: 200 }),
+      sleep: () => Promise.resolve(),
+    };
+
+    const result = await runDeployGate(deps, {
+      ...FAST_CONFIG,
+      requestTimeoutMs: 5,
+    });
+
+    expect(result.phase).toBe("ready");
+    expect(result.attempts).toBe(2);
+  });
+
+  it("every poll failing still returns the HONEST timeout result (never claims done)", async () => {
+    const pollAttempts: number[] = [];
+    const deps: DeployGateDeps = {
+      getStatus: () => Promise.reject(new Error("boom")),
+      getApp: () => Promise.resolve(appRes("https://acme.elizacloud.ai")),
+      probe: () => Promise.resolve({ ok: true, status: 200 }),
+      sleep: () => Promise.resolve(),
+      onPollError: (_error, attempt) => pollAttempts.push(attempt),
+    };
+
+    const result = await runDeployGate(deps, {
+      ...FAST_CONFIG,
+      maxAttempts: 3,
+    });
+
+    expect(result.phase).toBe("timeout");
+    expect(result.attempts).toBe(3);
+    expect(pollAttempts).toEqual([1, 2, 3]);
+  });
+
+  it("a stalled app re-read after READY falls back to the status vercelUrl instead of hanging", async () => {
+    const deps: DeployGateDeps = {
+      getStatus: () =>
+        Promise.resolve(
+          statusRes({ status: "READY", vercelUrl: "https://fallback.example" }),
+        ),
+      getApp: () => new Promise(() => {}), // stalls forever
+      probe: () => Promise.resolve({ ok: true, status: 200 }),
+      sleep: () => Promise.resolve(),
+    };
+
+    const result = await runDeployGate(deps, {
+      ...FAST_CONFIG,
+      requestTimeoutMs: 5,
+    });
+
+    expect(result.phase).toBe("ready");
+    expect(result.url).toBe("https://fallback.example");
   });
 });

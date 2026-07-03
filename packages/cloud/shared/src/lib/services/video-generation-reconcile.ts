@@ -16,6 +16,13 @@
  *    is never refunded blind. The stranded-reservation sweep (#11493, ~2h
  *    grace) remains the platform-safe backstop that settles the hold at the
  *    estimated cost if this sweep can never reach the provider.
+ *
+ * The "refunded exactly once" guarantee holds even when that stale sweep
+ * settled the hold at full cost BEFORE this sweep verified the terminal state:
+ * `reconcile` can no longer move the refund on a settled row, so this sweep
+ * issues a compensating refund under the same `recon:<txid>:refund` key
+ * (`ensureHoldRefunded`) — otherwise a verified failure would be charged full
+ * price while the ledger falsely claimed a refund (#11942).
  */
 
 import { type Generation, generationsRepository } from "../../db/repositories/generations";
@@ -26,7 +33,7 @@ import {
   type VideoPendingSettlement,
 } from "../providers/video/types";
 import { logger } from "../utils/logger";
-import { creditsService } from "./credits";
+import { type CreditReconciliationResult, creditsService } from "./credits";
 
 /**
  * How long a pending video may stay non-terminal upstream before the sweep
@@ -89,8 +96,8 @@ async function settleHold(
   generation: Generation,
   settlement: VideoPendingSettlement,
   actualCost: number,
-): Promise<void> {
-  await creditsService.reconcile({
+): Promise<CreditReconciliationResult> {
+  return await creditsService.reconcile({
     organizationId: generation.organization_id,
     reservedAmount: settlement.reserved_amount,
     actualCost,
@@ -101,6 +108,47 @@ async function settleHold(
       model: generation.model,
       settlement_source: "video_pending_reconcile",
     },
+  });
+}
+
+/**
+ * Guarantees the hold for a dead render is refunded exactly once — even when the
+ * generic stranded-reservation sweep (#11493) beat this sweep to the
+ * reservation and settled it at full estimated cost.
+ *
+ * Once the reservation row carries `settled_at`, `creditsService.reconcile` is a
+ * no-op (`adjustmentType: 'none'`) and its keyed refund lane is unreachable, so
+ * `settleHold(…, 0)` alone leaves the org charged full price for a render we
+ * have now determined died upstream — while `markFailed` would still stamp a
+ * `settlement_state='refunded'` the ledger never backed (#11942). When
+ * `settleHold` could not move the refund itself, issue the compensating refund
+ * under the SAME idempotency key the reconcile refund lane uses
+ * (`recon:<reservationTxId>:refund`). `applyCreditIncrease` dedupes on that key
+ * (`ON CONFLICT DO NOTHING`), so the refund fires exactly once across the normal
+ * path, the stale-sweep path, crash-retries, and concurrent sweeps — the
+ * "refund exactly once" invariant now holds regardless of which sweep wins the
+ * race, instead of silently degrading to "refund zero times".
+ */
+async function ensureHoldRefunded(
+  generation: Generation,
+  settlement: VideoPendingSettlement,
+  reconciliation: CreditReconciliationResult,
+): Promise<void> {
+  if (reconciliation.adjustmentType === "refund") {
+    // settleHold refunded through the reservation lane under the same key.
+    return;
+  }
+  await creditsService.refundCredits({
+    organizationId: generation.organization_id,
+    amount: settlement.reserved_amount,
+    description: `Video generation: ${generation.model} (verified-failure refund)`,
+    metadata: {
+      ...(generation.user_id ? { user_id: generation.user_id } : {}),
+      reservation_transaction_id: settlement.reservation_transaction_id,
+      model: generation.model,
+      settlement_source: "video_pending_reconcile_stale_sweep_compensation",
+    },
+    stripePaymentIntentId: `recon:${settlement.reservation_transaction_id}:refund`,
   });
 }
 
@@ -203,7 +251,8 @@ export async function reconcilePendingVideoGenerations(params: {
     }
 
     if (job.state === "failed") {
-      await settleHold(generation, settlement, 0);
+      const reconciliation = await settleHold(generation, settlement, 0);
+      await ensureHoldRefunded(generation, settlement, reconciliation);
       await markFailed(generation, "refunded", job.error);
       stats.refunded++;
       logger.info("[VideoReconcile] Verified upstream failure — hold refunded", {
@@ -221,8 +270,11 @@ export async function reconcilePendingVideoGenerations(params: {
     }
 
     // Verified non-terminal past the deadline: the render is presumed dead
-    // upstream. Refund once (bounded loss if it somehow completes later).
-    await settleHold(generation, settlement, 0);
+    // upstream. Refund once (bounded loss if it somehow completes later). The
+    // outcome must not hinge on whether the stale sweep settled first, so the
+    // compensating refund keeps this branch's "refund once" promise honest too.
+    const reconciliation = await settleHold(generation, settlement, 0);
+    await ensureHoldRefunded(generation, settlement, reconciliation);
     await markFailed(
       generation,
       "refunded_expired",

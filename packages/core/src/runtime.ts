@@ -8713,7 +8713,18 @@ ${section_end}`;
 		}));
 		const bm25 = new BM25(docs);
 		const results = bm25.search(query, memories.length);
-		return results.map((result) => memories[result.index]);
+		const rankedIndexes = new Set(results.map((result) => result.index));
+		const rerankedMemories = results.map((result) => memories[result.index]);
+
+		// BM25 is a reranker, not a filter. Keep zero-overlap vector hits
+		// after scored matches so semantic recall cannot disappear.
+		for (let index = 0; index < memories.length; index++) {
+			if (!rankedIndexes.has(index)) {
+				rerankedMemories.push(memories[index]);
+			}
+		}
+
+		return rerankedMemories;
 	}
 	/**
 	 * Get the secrets to redact from character settings.

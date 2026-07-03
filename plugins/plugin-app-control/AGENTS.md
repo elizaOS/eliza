@@ -74,6 +74,7 @@ src/
     app-list.ts                   list sub-handler
     app-load-from-directory.ts    load_from_directory sub-handler
     app-create.ts                 create sub-handler (multi-turn scaffold + coding agent)
+    scaffold-env.ts               shared template/plugins-dir resolution + coding-dispatch preflight for the create flows
     background.ts                 BACKGROUND action (set color/shader-preset/image/generate, tweak, undo, redo, reset)
     views.ts                      VIEWS action dispatcher
     views-client.ts               ViewsClient — loopback HTTP to /api/views/*
@@ -136,7 +137,7 @@ bun run --cwd plugins/plugin-app-control build:views
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `ELIZA_REPO_ROOT` | No | `cwd()` | Repo root for scaffolding new apps/plugins. Falls back to `ELIZA_WORKSPACE_DIR`. |
+| `ELIZA_REPO_ROOT` | No | `cwd()` | Repo root for scaffolding new apps/plugins. Falls back to `ELIZA_WORKSPACE_DIR`. Packaged installs without a checkout still scaffold: templates resolve from the installed `elizaos` package and new plugins land in `<stateDir>/plugins` (see `src/actions/scaffold-env.ts`). |
 | `ELIZA_WORKSPACE_DIR` | No | `cwd()` | Alternate repo/workspace root. |
 | `ELIZA_STATE_DIR` | No | `~/.eliza` | State dir for registry, audit logs, granted-permissions store. |
 | `ELIZA_NAMESPACE` | No | `eliza` | Namespace prefix used in state dir paths. |
@@ -174,6 +175,7 @@ Follow the same pattern in `src/actions/views.ts` and create a `src/actions/view
 - **Loopback HTTP only.** The client (`src/client/api.ts`) and all action helpers call the Eliza dashboard over `http://127.0.0.1:<port>`. Port is auto-detected; never hardcode it.
 - **APP action requires owner role.** `hasOwnerAccess` from `@elizaos/core` gates all `APP` writes. `VIEWS` read modes are open; write modes (`create`, `edit`, `delete`) are owner-gated.
 - **Multi-turn flows.** `APP create` and `VIEWS create` use `hasPendingIntent` / `hasPendingViewsCreateIntent` to detect follow-up choice replies (`new`, `edit-N`, `cancel`). Both check a pending-task record in the runtime before routing to the create sub-handler.
+- **Create flows work outside a checkout and preflight their dependencies.** `src/actions/scaffold-env.ts` resolves the min-plugin / min-project templates from the repo root first and then from the installed `elizaos` package (declared as a dependency so packaged builds ship the templates), lands new plugins in `<stateDir>/plugins` when the repo root has no plugins/ dir, and `preflightCodingDispatch` checks the orchestrator action + a coding CLI on PATH BEFORE scaffolding so a missing prerequisite answers with setup guidance instead of a dead-end error (or a half-created workdir). Keep new scaffold paths on these helpers; do not reintroduce repo-root-only resolution.
 - **Build has three steps.** `tsup` compiles the main entry and the worker entry to ESM. `tsc` emits declarations only (`--emitDeclarationOnly`). `vite build:views` compiles the React view bundle separately. All three run in sequence via `bun run build`.
 - **`puppeteer-core` is an optional peer dep.** `AppVerificationService` only loads it when a browser step is requested and the dep is present. Set `ELIZA_BROWSER_VERIFY_OPTIONAL=1` if you want failures there to be non-blocking.
 - **`AppWorkerHostService` auto-starts persisted worker apps best-effort.** On service start it asks `AppRegistryService` for persisted entries and spawns apps whose resolved isolation is `"worker"`. Spawn failures are reported without preventing the registry entry from remaining inspectable.
