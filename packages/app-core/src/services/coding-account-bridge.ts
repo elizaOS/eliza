@@ -45,7 +45,11 @@ import type {
   LinkedAccountProviderId,
   LinkedAccountUsage,
 } from "@elizaos/shared/contracts/service-routing";
-import type { AccountPool, Strategy } from "./account-pool.js";
+import {
+  type AccountPool,
+  type Strategy,
+  selectionForProvider,
+} from "./account-pool.js";
 
 const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
   "eliza.account-pool.coding-agent.v1",
@@ -58,7 +62,7 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "quota-aware",
 ]);
 
-/** Default selection strategy — overridable via ELIZA_CODING_ACCOUNT_STRATEGY env var. */
+/** Last-resort strategy — the ELIZA_CODING_ACCOUNT_STRATEGY env var, else least-used. */
 function getDefaultCodingStrategy(): Strategy {
   const env =
     typeof process !== "undefined"
@@ -394,8 +398,17 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
     async select(agentType, opts) {
       const candidates = candidatesFor(agentType);
       if (candidates.length === 0) return null;
-      const strategy = opts?.strategy ?? getDefaultCodingStrategy();
       for (const providerId of candidates) {
+        // Explicit caller override > the app's per-provider
+        // config.accountStrategies (same live selectionForProvider read the
+        // anthropic/subscription bridges use, so the rotation-strategy picker
+        // steers coding spawns too) > ELIZA_CODING_ACCOUNT_STRATEGY env >
+        // least-used. Strategy only — the llmText route's accountIds pin the
+        // chat brain's account, not coding sub-agents.
+        const strategy =
+          opts?.strategy ??
+          selectionForProvider(providerId).strategy ??
+          getDefaultCodingStrategy();
         const account = await pool.select({
           providerId,
           strategy,

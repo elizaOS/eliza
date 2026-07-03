@@ -803,7 +803,13 @@ function routeTargetsProvider(
   return providerId === "openai-codex" && route.backend === "openai";
 }
 
-function selectionForProvider(providerId: PoolProviderId): {
+/**
+ * Live read of the configured per-provider selection (the app's
+ * `config.accountStrategies` picker plus any llmText service-routing pin).
+ * Every account-selecting bridge resolves through this so the picker steers
+ * all of them — including the coding-agent bridge.
+ */
+export function selectionForProvider(providerId: PoolProviderId): {
   strategy?: Strategy;
   accountIds?: string[];
 } {
@@ -820,15 +826,6 @@ function selectionForProvider(providerId: PoolProviderId): {
       normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId]),
     accountIds: routeSelection.accountIds,
   };
-}
-
-export function __getDefaultAccountPoolSelectionForTests(
-  providerId: PoolProviderId,
-): {
-  strategy?: Strategy;
-  accountIds?: string[];
-} {
-  return selectionForProvider(providerId);
 }
 
 export function configureDefaultAccountPoolSelection(

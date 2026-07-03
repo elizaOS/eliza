@@ -6,6 +6,7 @@ import type { AccountCredentialProvider } from "@elizaos/agent/auth/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
+  configureDefaultAccountPoolSelection,
   getDefaultAccountPool,
 } from "./account-pool.js";
 import { readTodayCounters } from "./account-usage.js";
@@ -19,6 +20,7 @@ let home: string;
 let prevHome: string | undefined;
 let prevStateDir: string | undefined;
 let prevCodexModel: string | undefined;
+let prevCodingStrategy: string | undefined;
 
 function writeAccount(
   providerId: AccountCredentialProvider,
@@ -58,15 +60,29 @@ async function setUsage(
   });
 }
 
+async function setPriority(
+  providerId: AccountCredentialProvider,
+  id: string,
+  priority: number,
+): Promise<void> {
+  const pool = getDefaultAccountPool();
+  const account = pool.list(providerId as never).find((a) => a.id === id);
+  if (!account) throw new Error(`no account ${id}`);
+  await pool.upsert({ ...account, priority });
+}
+
 beforeEach(() => {
   prevHome = process.env.ELIZA_HOME;
   prevStateDir = process.env.ELIZA_STATE_DIR;
   prevCodexModel = process.env.ELIZA_CODEX_MODEL;
+  prevCodingStrategy = process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
+  delete process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
   home = mkdtempSync(path.join(tmpdir(), "coding-acct-"));
   process.env.ELIZA_HOME = home;
   // account-usage counters live under resolveStateDir() (ELIZA_STATE_DIR), not
   // ELIZA_HOME — isolate both so the usage-delta test doesn't touch real state.
   process.env.ELIZA_STATE_DIR = home;
+  configureDefaultAccountPoolSelection();
   __resetDefaultAccountPoolForTests();
 });
 
@@ -78,6 +94,12 @@ afterEach(() => {
   else process.env.ELIZA_STATE_DIR = prevStateDir;
   if (prevCodexModel === undefined) delete process.env.ELIZA_CODEX_MODEL;
   else process.env.ELIZA_CODEX_MODEL = prevCodexModel;
+  if (prevCodingStrategy === undefined) {
+    delete process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
+  } else {
+    process.env.ELIZA_CODING_ACCOUNT_STRATEGY = prevCodingStrategy;
+  }
+  configureDefaultAccountPoolSelection();
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -96,6 +118,51 @@ describe("coding-account-bridge", () => {
     expect(sel?.accountId).toBe("idle");
     expect(sel?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-IDLE");
     expect(sel?.source).toBe("oauth");
+  });
+
+  it("honors config.accountStrategies so the app's strategy picker steers coding spawns", async () => {
+    writeAccount("anthropic-subscription", "primary", "sk-ant-oat-PRIMARY");
+    writeAccount("anthropic-subscription", "spare", "sk-ant-oat-SPARE");
+    getDefaultAccountPool();
+    // priority-strategy favors "primary"; least-used favors the idle "spare".
+    await setPriority("anthropic-subscription", "primary", 0);
+    await setPriority("anthropic-subscription", "spare", 1);
+    await setUsage("anthropic-subscription", "primary", 90);
+    await setUsage("anthropic-subscription", "spare", 5);
+    const bridge = getCodingAgentSelectorBridge();
+
+    // Unconfigured: least-used default.
+    const unconfigured = await bridge?.select("claude");
+    expect(unconfigured?.strategy).toBe("least-used");
+    expect(unconfigured?.accountId).toBe("spare");
+
+    // The picker writes config.accountStrategies — selection must follow it.
+    configureDefaultAccountPoolSelection({
+      accountStrategies: { "anthropic-subscription": "priority" },
+    });
+    const configured = await bridge?.select("claude");
+    expect(configured?.strategy).toBe("priority");
+    expect(configured?.accountId).toBe("primary");
+
+    // An explicit caller strategy still overrides the configured one.
+    const explicit = await bridge?.select("claude", {
+      strategy: "least-used",
+    });
+    expect(explicit?.strategy).toBe("least-used");
+    expect(explicit?.accountId).toBe("spare");
+
+    // The env var stays a fallback: used when no config, beaten by config.
+    configureDefaultAccountPoolSelection();
+    process.env.ELIZA_CODING_ACCOUNT_STRATEGY = "priority";
+    const envFallback = await bridge?.select("claude");
+    expect(envFallback?.strategy).toBe("priority");
+    expect(envFallback?.accountId).toBe("primary");
+    configureDefaultAccountPoolSelection({
+      accountStrategies: { "anthropic-subscription": "least-used" },
+    });
+    const configOverEnv = await bridge?.select("claude");
+    expect(configOverEnv?.strategy).toBe("least-used");
+    expect(configOverEnv?.accountId).toBe("spare");
   });
 
   it("materializes a per-account CODEX_HOME/auth.json for Codex (incl. id_token)", async () => {
