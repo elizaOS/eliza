@@ -160,6 +160,40 @@ def test_eliza1_tier_ids_are_canonical():
     assert VOICE_BACKENDS_BY_TIER["27b"] == ("omnivoice",)
 
 
+def _parse_publish_all_tiers() -> tuple[str, ...]:
+    """Mechanically extract the TIERS bash array from publish_all_eliza1.sh.
+
+    Matches ``readonly TIERS=("2b" "4b" ...)`` and returns the quoted tokens.
+    Parsing (not importing) the shell keeps this a real cross-file agreement
+    check rather than a duplicated constant.
+    """
+    import re
+
+    sh_path = Path(__file__).resolve().parent.parent / "publish_all_eliza1.sh"
+    assert sh_path.exists(), f"publish_all_eliza1.sh not found at {sh_path}"
+    text = sh_path.read_text()
+    m = re.search(r"^\s*(?:readonly\s+)?TIERS=\(([^)]*)\)", text, re.MULTILINE)
+    assert m, "could not find the TIERS=(...) array in publish_all_eliza1.sh"
+    return tuple(re.findall(r'"([^"]+)"', m.group(1)))
+
+
+def test_catalog_manifest_publish_tiers_agree():
+    """The Eliza-1 tier set is declared in THREE places that must stay in sync:
+    eliza1_manifest.py::ELIZA_1_TIERS (here), catalog.ts::ELIZA_1_TIER_IDS (the
+    runtime catalog, asserted in packages/shared/.../catalog.test.ts), and
+    publish_all_eliza1.sh::TIERS (the per-tier publish matrix). Renaming a tier
+    means updating all three together. This converts the previously
+    comment-only invariant into an enforced one for two of the three surfaces
+    (the TS surface is enforced in catalog.test.ts)."""
+    expected = ("2b", "4b", "9b", "27b", "27b-256k")
+    assert ELIZA_1_TIERS == expected
+    assert _parse_publish_all_tiers() == expected, (
+        "publish_all_eliza1.sh::TIERS drifted from eliza1_manifest.py::"
+        "ELIZA_1_TIERS — update catalog.ts, eliza1_manifest.py, and "
+        "publish_all_eliza1.sh together"
+    )
+
+
 def test_build_manifest_happy_path():
     manifest = build_manifest(**base_kwargs())
     assert manifest["tier"] == "4b"

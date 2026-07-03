@@ -25,6 +25,26 @@ const EXPECTED_CHAT_PARAMS: Record<string, string> = {
 };
 
 describe("Eliza-1 runtime quant metadata", () => {
+  it("pins the canonical tier set (three-file agreement)", () => {
+    // The Eliza-1 tier set is declared in THREE places that must stay in sync:
+    // catalog.ts::ELIZA_1_TIER_IDS (here), eliza1_manifest.py::ELIZA_1_TIERS,
+    // and publish_all_eliza1.sh::TIERS. Renaming a tier means updating all
+    // three together (the Python + shell surfaces are enforced in
+    // packages/training/scripts/manifest/test_eliza1_manifest.py::
+    // test_catalog_manifest_publish_tiers_agree). The runtime catalog uses the
+    // full `eliza-1-<tier>` slugs; the bare tier ids are what the manifest and
+    // publish matrix key on.
+    expect(ELIZA_1_TIER_IDS).toEqual([
+      "eliza-1-2b",
+      "eliza-1-4b",
+      "eliza-1-9b",
+      "eliza-1-27b",
+      "eliza-1-27b-256k",
+    ]);
+    const bareTiers = ELIZA_1_TIER_IDS.map((id) => id.slice("eliza-1-".length));
+    expect(bareTiers).toEqual(["2b", "4b", "9b", "27b", "27b-256k"]);
+  });
+
   it("keeps stable ids but exposes requested size-cased display names", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
