@@ -1,3 +1,7 @@
+import { registerHyperliquidAutomationNodeContributor } from "./automation-node-contributor";
+
+registerHyperliquidAutomationNodeContributor();
+
 export * from "./actions/perpetual-market";
 export * from "./client";
 export { HyperliquidView } from "./HyperliquidView";

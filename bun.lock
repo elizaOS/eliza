@@ -5314,6 +5314,7 @@
         "@coral-xyz/anchor": "^0.32.1",
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "@lifi/sdk": "^3.7.9",
         "@meteora-ag/dlmm": "^1.9.7",
         "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
@@ -5336,9 +5337,13 @@
         "vitest": "^4.0.18",
       },
       "peerDependencies": {
+        "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
       },
+      "optionalPeers": [
+        "@elizaos/app-core",
+      ],
     },
     "plugins/plugin-wallet-ui": {
       "name": "@elizaos/plugin-wallet-ui",

@@ -7,6 +7,13 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
+      // app-core only ships a built-dist export condition; point the automation
+      // node contributor registry at source so vitest resolves it without a
+      // pre-built app-core dist (the module is type-only at runtime).
+      "@elizaos/app-core/api/automation-node-contributors": path.resolve(
+        rootDir,
+        "../../packages/app-core/src/api/automation-node-contributors.ts",
+      ),
       "@elizaos/core": path.resolve(
         rootDir,
         "../../packages/core/src/index.node.ts",

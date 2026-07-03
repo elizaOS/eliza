@@ -21,9 +21,83 @@ vi.doMock("../../src/api/auth.ts", () => ({
 }));
 
 import {
+  buildRuntimeCapabilityNodes,
   clearAutomationNodeContributorsForTests,
+  type RuntimeCapabilityNodeSpec,
   registerAutomationNodeContributor,
 } from "../../src/api/automation-node-contributors";
+
+// Representative crypto specs mirroring what plugin-wallet / plugin-hyperliquid
+// register through the contributor extension point. The plugins' own suites
+// assert their exact specs; here we prove app-core's catalog drains such
+// contributors and gates availability on runtime capabilities.
+const CRYPTO_CONTRIBUTOR_SPECS: RuntimeCapabilityNodeSpec[] = [
+  {
+    id: "crypto:evm.swap",
+    label: "EVM swap",
+    description:
+      "EVM token swap automation backed by a loaded EVM runtime action.",
+    class: "action",
+    backingCapability: "SWAP",
+    actionNames: ["SWAP", "SWAP_TOKENS", "SWAP_TOKEN"],
+    pluginNames: ["evm", "wallet"],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the EVM plugin with swap support.",
+  },
+  {
+    id: "crypto:evm.bridge",
+    label: "EVM bridge",
+    description:
+      "EVM cross-chain bridge automation backed by a loaded EVM runtime action.",
+    class: "action",
+    backingCapability: "CROSS_CHAIN_TRANSFER",
+    actionNames: ["CROSS_CHAIN_TRANSFER", "BRIDGE", "BRIDGE_TOKENS"],
+    pluginNames: ["evm", "wallet"],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the EVM plugin with bridge support.",
+  },
+  {
+    id: "crypto:solana.swap",
+    label: "Solana swap",
+    description:
+      "Solana token swap automation backed by a loaded Solana runtime action.",
+    class: "action",
+    backingCapability: "SWAP_SOLANA",
+    actionNames: ["SWAP_SOLANA", "SWAP_SOL"],
+    pluginNames: ["chain_solana", "solana", "wallet"],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the Solana plugin with swap support.",
+  },
+  {
+    id: "crypto:hyperliquid.action",
+    label: "Hyperliquid action",
+    description:
+      "Hyperliquid automation entry point backed by a loaded Hyperliquid runtime plugin.",
+    class: "action",
+    backingCapability: "HYPERLIQUID_ACTION",
+    actionNames: ["HYPERLIQUID_ACTION", "HYPERLIQUID_ORDER"],
+    pluginNames: ["hyperliquid", "@elizaos/plugin-hyperliquid"],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the Hyperliquid runtime plugin.",
+  },
+  {
+    id: "trigger:order.event",
+    label: "Order event",
+    description:
+      "React to order lifecycle events emitted by a loaded trading venue plugin.",
+    class: "trigger",
+    backingCapability: "ORDER_EVENT",
+    actionNames: ["ORDER_EVENT", "ORDER_FILLED", "HYPERLIQUID_ACTION"],
+    pluginNames: ["hyperliquid", "@elizaos/plugin-hyperliquid"],
+    ownerScoped: false,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load an order-event-capable runtime plugin.",
+  },
+];
 
 interface Harness {
   request: (
@@ -324,46 +398,6 @@ describe("automations compat routes", () => {
     );
     expect(body.nodes).toContainEqual(
       expect.objectContaining({
-        id: "crypto:evm.swap",
-        class: "action",
-        source: "static_catalog",
-        ownerScoped: true,
-        availability: "disabled",
-        disabledReason: "Load the EVM plugin with swap support.",
-      }),
-    );
-    expect(body.nodes).toContainEqual(
-      expect.objectContaining({
-        id: "crypto:evm.bridge",
-        class: "action",
-        source: "static_catalog",
-        ownerScoped: true,
-        availability: "disabled",
-        disabledReason: "Load the EVM plugin with bridge support.",
-      }),
-    );
-    expect(body.nodes).toContainEqual(
-      expect.objectContaining({
-        id: "crypto:solana.swap",
-        class: "action",
-        source: "static_catalog",
-        ownerScoped: true,
-        availability: "disabled",
-        disabledReason: "Load the Solana plugin with swap support.",
-      }),
-    );
-    expect(body.nodes).toContainEqual(
-      expect.objectContaining({
-        id: "crypto:hyperliquid.action",
-        class: "action",
-        source: "static_catalog",
-        ownerScoped: true,
-        availability: "disabled",
-        disabledReason: "Load the Hyperliquid runtime plugin.",
-      }),
-    );
-    expect(body.nodes).toContainEqual(
-      expect.objectContaining({
         id: "trigger:order.schedule",
         class: "trigger",
         source: "static_catalog",
@@ -371,19 +405,28 @@ describe("automations compat routes", () => {
         availability: "enabled",
       }),
     );
-    expect(body.nodes).toContainEqual(
-      expect.objectContaining({
-        id: "trigger:order.event",
-        class: "trigger",
-        source: "static_catalog",
-        ownerScoped: false,
-        availability: "disabled",
-        disabledReason: "Load an order-event-capable runtime plugin.",
-      }),
-    );
+
+    // Crypto nodes are owned by their plugins (plugin-wallet / plugin-hyperliquid)
+    // and only appear when those plugins register a contributor. With none
+    // registered here, they must be absent from the app-core static catalog.
+    for (const id of [
+      "crypto:evm.swap",
+      "crypto:evm.bridge",
+      "crypto:solana.swap",
+      "crypto:hyperliquid.action",
+      "trigger:order.event",
+    ]) {
+      expect(body.nodes.map((node) => node.id)).not.toContain(id);
+    }
   });
 
-  it("enables crypto automation descriptors only when matching capabilities are loaded", async () => {
+  it("drains crypto contributor nodes registered by owning plugins", async () => {
+    // Mirror how plugin-wallet / plugin-hyperliquid contribute their nodes: a
+    // registered contributor turns runtime-capability specs into descriptors.
+    registerAutomationNodeContributor("crypto-plugins", ({ runtime }) =>
+      buildRuntimeCapabilityNodes(CRYPTO_CONTRIBUTOR_SPECS, runtime),
+    );
+
     harness = await startApiHarness({
       current: buildRuntimeWithCryptoAutomationCapabilities() as never,
       pendingAgentName: null,
@@ -407,6 +450,36 @@ describe("automations compat routes", () => {
         expect.objectContaining({ id, availability: "enabled" }),
       );
     }
+  });
+
+  it("keeps crypto contributor nodes disabled when their capability is absent", async () => {
+    registerAutomationNodeContributor("crypto-plugins", ({ runtime }) =>
+      buildRuntimeCapabilityNodes(CRYPTO_CONTRIBUTOR_SPECS, runtime),
+    );
+
+    harness = await startApiHarness({
+      current: buildRuntimeStub() as never,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    });
+
+    const response = await harness.request("/api/automations/nodes");
+    expect(response.status).toBe(200);
+    const body = response.json() as {
+      nodes: Array<{
+        id: string;
+        availability: string;
+        disabledReason?: string;
+      }>;
+    };
+
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:evm.swap",
+        availability: "disabled",
+        disabledReason: "Load the EVM plugin with swap support.",
+      }),
+    );
   });
 
   it("does not leak crypto secrets in the automation node catalog", async () => {
