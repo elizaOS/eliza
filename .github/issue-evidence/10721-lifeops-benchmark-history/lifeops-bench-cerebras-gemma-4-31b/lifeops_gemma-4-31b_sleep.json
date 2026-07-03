@@ -1,0 +1,1067 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "sleep.set_bedtime_reminder_1030pm_daily",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "cadence": "daily",
+                  "kind": "alarm",
+                  "timeOfDay": "22:30"
+                },
+                "kind": "definition",
+                "subaction": "create",
+                "title": "Bedtime Reminder"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 672,
+          "input_tokens": 41269,
+          "output_tokens": 56,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've set a daily bedtime reminder for 10:30 PM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 560,
+          "input_tokens": 41364,
+          "output_tokens": 20,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true,
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 1232,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.find_calendar_conflict_with_bedtime_window",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_SEARCH_EVENTS",
+              "kwargs": {
+                "action": "search_events",
+                "details": {
+                  "start": "2026-05-10T22:00:00Z"
+                },
+                "intent": "Find calendar events tonight after 10pm."
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 60344,
+          "input_tokens": 41279,
+          "output_tokens": 62,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "You have nothing on your calendar tonight after 10:00 PM, so there are no conflicts with your 10:30 PM bedtime.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 1488,
+          "input_tokens": 46291,
+          "output_tokens": 33,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61832,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.schedule_wind_down_routine_tonight",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_CREATE_EVENT",
+              "kwargs": {
+                "details": {
+                  "durationMinutes": 30,
+                  "start": "2026-05-10T22:00:00Z"
+                },
+                "title": "Wind-down session (no screens, lights low)"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 60385,
+          "input_tokens": 41283,
+          "output_tokens": 61,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've scheduled your 30-minute wind-down session for tonight at 10:00 PM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 975,
+          "input_tokens": 41395,
+          "output_tokens": 28,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61360,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.last_week_sleep_summary",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "days": 7,
+                "subaction": "trends"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 850,
+          "input_tokens": 41264,
+          "output_tokens": 18,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "days": 7,
+                "metric": "sleep",
+                "subaction": "by_metric"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 592,
+          "input_tokens": 41309,
+          "output_tokens": 26,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "subaction": "summary"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 730,
+          "input_tokens": 41383,
+          "output_tokens": 14,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 4,
+          "agent_message": "I couldn't find any sleep data recorded for the past week.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 797,
+          "input_tokens": 41424,
+          "output_tokens": 15,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 2969,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.set_daily_bedtime_1030pm",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "cadence": "daily",
+                  "kind": "alarm",
+                  "timeOfDay": "22:30"
+                },
+                "kind": "definition",
+                "subaction": "create",
+                "title": "Bedtime Alarm"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 659,
+          "input_tokens": 41275,
+          "output_tokens": 56,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've created a daily bedtime alarm for 10:30 PM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 722,
+          "input_tokens": 41372,
+          "output_tokens": 20,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true,
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 1381,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.set_oneoff_winddown_10pm",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_CREATE_EVENT",
+              "kwargs": {
+                "details": {
+                  "durationMinutes": 30,
+                  "start": "2026-05-10T22:00:00Z"
+                },
+                "title": "Wind-down routine (no screens)"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 798,
+          "input_tokens": 41283,
+          "output_tokens": 58,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've scheduled your 30-minute wind-down routine (no screens) for tonight at 10:00 PM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 524,
+          "input_tokens": 41390,
+          "output_tokens": 32,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 1322,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.find_conflicts_after_10pm",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_SEARCH_EVENTS",
+              "kwargs": {
+                "action": "search_events",
+                "intent": "events after 10pm that could interfere with bedtime",
+                "startAt": "2026-05-10T22:00:00Z",
+                "subaction": "search_events"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 1336,
+          "input_tokens": 41278,
+          "output_tokens": 71,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "I've checked your primary calendar for events starting after 10 PM. Based on the current schedule, there are no events on your primary calendar that occur after 10 PM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 60021,
+          "input_tokens": 46299,
+          "output_tokens": 39,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        false
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61357,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.set_weekend_bedtime_11pm",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "cadence": "weekly",
+                  "dayOfWeek": [
+                    "Saturday",
+                    "Sunday"
+                  ],
+                  "timeOfDay": "23:00"
+                },
+                "kind": "definition",
+                "subaction": "create",
+                "title": "Bedtime Alarm"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 830,
+          "input_tokens": 41272,
+          "output_tokens": 61,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "SCHEDULED_TASK_CREATE",
+              "kwargs": {
+                "kind": "reminder",
+                "promptInstructions": "Bedtime!",
+                "subaction": "create",
+                "trigger": {
+                  "kind": "recurring",
+                  "rrule": "FREQ=WEEKLY;BYDAY=SA,SU;BYHOUR=23;BYMINUTE=0;BYSECOND=0"
+                }
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 59981,
+          "input_tokens": 41393,
+          "output_tokens": 75,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "OK. I've created a bedtime alarm for Saturdays and Sundays at 11 PM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 533,
+          "input_tokens": 41515,
+          "output_tokens": 20,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        false,
+        false
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61344,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.update_bedtime_to_1030",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_REVIEW",
+              "kwargs": {
+                "subaction": "review"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 716,
+          "input_tokens": 41272,
+          "output_tokens": 16,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_REVIEW",
+              "kwargs": {
+                "intent": "Find bedtime alarm to update its time.",
+                "subaction": "review"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 575,
+          "input_tokens": 41341,
+          "output_tokens": 29,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_UPDATE",
+              "kwargs": {
+                "details": {
+                  "timeOfDay": "22:30"
+                },
+                "intent": "Move bedtime alarm to 10:30 pm",
+                "kind": "definition",
+                "subaction": "update",
+                "title": "Bedtime"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 786,
+          "input_tokens": 41423,
+          "output_tokens": 58,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 4,
+          "agent_message": "OK. I've moved your bedtime alarm to 10:30 PM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 605,
+          "input_tokens": 41510,
+          "output_tokens": 19,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.55,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 2682,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.skip_bedtime_tomorrow",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_REVIEW",
+              "kwargs": {
+                "subaction": "review"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 547,
+          "input_tokens": 41264,
+          "output_tokens": 16,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_SKIP",
+              "kwargs": {
+                "details": {
+                  "skipDate": "2026-05-11"
+                },
+                "kind": "definition",
+                "subaction": "skip",
+                "title": "bedtime alarm"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 742,
+          "input_tokens": 41333,
+          "output_tokens": 48,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "OK. I've skipped your bedtime alarm for tomorrow morning (Monday, May 11th).",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 494,
+          "input_tokens": 41410,
+          "output_tokens": 22,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        false,
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 1783,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.delete_nap_alarm",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_REVIEW",
+              "kwargs": {
+                "subaction": "review"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 621,
+          "input_tokens": 41272,
+          "output_tokens": 16,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_DELETE",
+              "kwargs": {
+                "kind": "definition",
+                "subaction": "delete",
+                "title": "nap alarm"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 680,
+          "input_tokens": 41341,
+          "output_tokens": 29,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_REVIEW",
+              "kwargs": {
+                "intent": "Find the nap alarm definition to delete it.",
+                "subaction": "review"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 59817,
+          "input_tokens": 41412,
+          "output_tokens": 30,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 4,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_DELETE",
+              "kwargs": {
+                "kind": "definition",
+                "subaction": "delete",
+                "title": "Nap"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 562,
+          "input_tokens": 41495,
+          "output_tokens": 28,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41344,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 5,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_REVIEW",
+              "kwargs": {
+                "intent": "List all life records to find the nap alarm.",
+                "subaction": "review"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 542,
+          "input_tokens": 41565,
+          "output_tokens": 31,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        false,
+        false
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "max_turns",
+      "total_cost_usd": 0,
+      "total_latency_ms": 62222,
+      "error": null
+    },
+    {
+      "scenario_id": "sleep.create_morning_wakeup_7am",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "cadence": "daily",
+                  "timeOfDay": "07:00"
+                },
+                "kind": "definition",
+                "subaction": "create",
+                "title": "Wake-up Alarm"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 589,
+          "input_tokens": 41270,
+          "output_tokens": 51,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "SCHEDULED_TASK_CREATE",
+              "kwargs": {
+                "kind": "reminder",
+                "promptInstructions": "Wake up!",
+                "subaction": "create",
+                "trigger": {
+                  "kind": "recurring",
+                  "rrule": "FREQ=DAILY;BYHOUR=7;BYMINUTE=0;BYSECOND=0"
+                }
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 717,
+          "input_tokens": 41381,
+          "output_tokens": 66,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "OK. I've set a daily wake-up alarm for 7:00 AM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 59808,
+          "input_tokens": 41494,
+          "output_tokens": 21,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41344,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true,
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61114,
+      "error": null
+    }
+  ],
+  "pass_at_1": 0.0,
+  "pass_at_k": 0.0,
+  "mean_score_per_domain": {
+    "sleep": 0.04583333333333334
+  },
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 380598,
+  "model_name": "gemma-4-31b",
+  "judge_model_name": "claude-opus-4-7",
+  "timestamp": "2026-07-03T20:01:28.255074+00:00",
+  "seeds": 1,
+  "agent_cost_usd": 0.0,
+  "eval_cost_usd": 0.0,
+  "_note": "tool_results (deterministic world observations returned to the model) elided for size; full observations reproducible via README 'How to reproduce'. All model I/O (agent_actions, agent_message, tokens, latency, total_score, state_hash_match) retained."
+}

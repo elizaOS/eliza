@@ -140,3 +140,84 @@ OPENAI_API_KEY=sk-local OPENAI_BASE_URL=http://127.0.0.1:8095/v1 \
   src/cli.ts run ../../plugins/plugin-personal-assistant/test/scenarios \
   --scenario brush-teeth-basic --report-dir <out> --run-dir <out>
 ```
+
+## Clean-capability datapoint — Cerebras `gemma-4-31b`, native tool-calling
+
+The local-model rows above scored **0.000 only because of the Hermes-adapter /
+gemma-native `tool_code` mismatch** — the models emitted correct tools+args in
+the wrong envelope, so `agent_actions` came back empty and nothing executed. The
+residual flagged at #11789 closure was *"a clean capability number,"* reachable
+via the native `eliza` adapter on a GPU-recovered host **or** by parsing
+gemma-native tool syntax. This run takes a **third path that needs neither**: the
+LifeOpsBench **`cerebras-direct`** agent, which uses the provider's **native
+OpenAI tool-calling API** (function-call JSON) — so there is **no text-protocol
+parse step to confound**.
+
+| Field | Value |
+| --- | --- |
+| Benchmark | `packages/benchmarks/lifeops-bench`, **`cerebras-direct`** agent, `--mode static` |
+| Model under test | **`gemma-4-31b`** (same gemma-4 family as eliza-1's E2B/E4B, larger tier) via **Cerebras** |
+| Serving | `https://api.cerebras.ai/v1`, `CEREBRAS_API_KEY` (liveness proof: `lifeops-bench-cerebras-gemma-4-31b/cerebras-endpoint-proof-gemma-4-31b.txt`) |
+| Scoring | deterministic `state_hash` + required-output substring — **no judge, no mock** |
+| Coverage | **12 scenarios × 10 domains = 120** static evaluations (vs the local runs' 5 + 5 + 10) |
+| develop SHA | `517ad615d08` |
+
+### Result — pass@1 **13.3%** (16/120), mean normalized score 0.245
+
+| domain | pass@1 | mean score | | domain | pass@1 | mean score |
+| --- | ---: | ---: | --- | --- | ---: | ---: |
+| calendar | 50.0% | 0.567 | | finance | 8.3% | 0.121 |
+| mail | 25.0% | 0.321 | | focus | 8.3% | 0.108 |
+| travel | 25.0% | 0.422 | | messages | 0.0% | 0.175 |
+| reminders | 16.7% | 0.242 | | health | 0.0% | 0.067 |
+| contacts | 0.0% | 0.383 | | sleep | 0.0% | 0.046 |
+
+### Why this is a *clean* number (hand-reviewed, no cherry-picking)
+
+Unlike the confounded 0.000 local rows, **`agent_actions` is populated and
+executed on every domain** — the model natively emits `CALENDAR_CREATE_EVENT`,
+`MESSAGE_SEND`, `ENTITY`, `HEALTH`, `CALENDAR_SEARCH_EVENTS`, etc. There is **no
+parse artifact**; the score is a genuine task-completion measure. The failures
+are real, and fall into three honest buckets (see the raw `scenarios[].turns[]`):
+
+- **Partial world state** (score `0.3`, `state_hash_match=false`) — right action,
+  wrong details (e.g. `calendar.create_dentist_event_next_friday`: created the
+  event but off on time/attributes).
+- **Correct state, wrong answer text** (`state_hash_match=true`, score `0.0`) —
+  read-only tasks where the world matched but the required output substring
+  didn't (e.g. `health.step_count_today` answered a value that missed the
+  seeded expectation).
+- **Read-loop to `max_turns`** — the agent kept calling a read tool
+  (`MESSAGE_READ_CHANNEL` ×6) without terminating (e.g.
+  `messages.summarize_unread_whatsapp_family_chat`).
+
+So `gemma-4-31b` at this tier is **strong on single-shot writes (calendar 50%)
+and weak on multi-step read-summarize-and-answer** — a real, actionable capability
+signal for the LifeOps action set, which the adapter-confounded local rows could
+not produce. `smoke_static_calendar_01` passing at 1.0 with correct
+`CALENDAR_CREATE_EVENT` + confirmation is the spot-checked proof the path is end
+to end real.
+
+## Machine-maintained score-history series + scheduled lane
+
+Two additions operationalize the retention decision above (*"future runs append
+new timestamped JSON here … or a nightly CI lane"*):
+
+- **`score-history.jsonl` + `HISTORY.md`** — an append-only, harness-keyed series
+  (regenerated, never hand-edited) so the *trend* across models/adapters stays
+  reviewer-visible. Add a point with `scripts/append-score-history.mjs` (ingests
+  either the TS prompt-benchmark or the Python `lifeops_bench` report format;
+  `--report-dir` merges a per-domain run).
+- **`.github/workflows/lifeops-benchmark-history.yml`** — the nightly lane,
+  **opt-in and inert on merge**: it no-ops without a `CEREBRAS_API_KEY` secret
+  and its `schedule:` trigger is commented out. Enabling it (secret + cron) runs
+  both the `lifeops_bench` (`cerebras-direct`) and TS prompt-benchmark harnesses,
+  appends each point to the series in the runner's checkout, prints it to the job
+  summary, and uploads it as a build artifact — a maintainer commits the new row
+  via a normal PR (the lane never writes to the repo itself).
+
+> **Note on the raw artifacts:** each `lifeops_gemma-4-31b_<domain>.json` retains
+> the full model I/O (`agent_actions`, `agent_message`, tokens, latency,
+> `total_score`, `state_hash_match`); the per-turn `tool_results` (the
+> deterministic world observations returned to the model) are elided for size and
+> reproducible via the run command above.
