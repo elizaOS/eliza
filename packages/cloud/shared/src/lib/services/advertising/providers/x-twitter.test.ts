@@ -97,6 +97,24 @@ describe("xTwitterAdsProvider", () => {
   test("creates a Tweet and associates it as a promoted tweet", async () => {
     enqueue({ data: { id_str: "tweet_1" } });
     enqueue({ data: [{ id: "promoted_1" }] });
+    const media = [
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        source: "upload" as const,
+        url: "https://cdn.example.com/ad-second.png",
+        providerAssetId: "4_media",
+        type: "image" as const,
+        order: 1,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        source: "upload" as const,
+        url: "https://cdn.example.com/ad-first.png",
+        providerAssetId: "3_media",
+        type: "image" as const,
+        order: 0,
+      },
+    ];
 
     const result = await xTwitterAdsProvider.createCreative(
       { accessToken: "user-token", refreshToken: "token-secret" },
@@ -109,26 +127,18 @@ describe("xTwitterAdsProvider", () => {
         headline: "Try it",
         primaryText: "Build faster",
         pageId: "user_1",
-        media: [
-          {
-            id: "00000000-0000-4000-8000-000000000001",
-            source: "upload",
-            url: "https://cdn.example.com/ad.png",
-            providerAssetId: "3_media",
-            type: "image",
-            order: 0,
-          },
-        ],
+        media,
       },
     );
 
     expect(result).toEqual({ success: true, externalCreativeId: "tweet_1/promoted_1" });
+    expect(media.map((item) => item.providerAssetId)).toEqual(["4_media", "3_media"]);
     expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
       "/12/accounts/18ce54d4x5t/tweet",
       "/12/accounts/18ce54d4x5t/promoted_tweets",
     ]);
     expect(query(calls[0] as FetchCall).get("as_user_id")).toBe("user_1");
-    expect(query(calls[0] as FetchCall).get("media_keys")).toBe("3_media");
+    expect(query(calls[0] as FetchCall).get("media_keys")).toBe("3_media,4_media");
     expect(query(calls[1] as FetchCall).get("line_item_id")).toBe("line_1");
     expect(query(calls[1] as FetchCall).get("tweet_ids")).toBe("tweet_1");
   });
@@ -156,6 +166,94 @@ describe("xTwitterAdsProvider", () => {
     expect(query(calls[1] as FetchCall).get("entity_status")).toBe("PAUSED");
     expect(query(calls[2] as FetchCall).get("entity_status")).toBe("ACTIVE");
     expect(query(calls[3] as FetchCall).get("entity_status")).toBe("ACTIVE");
+  });
+
+  test("updates and deletes campaign and line item resources", async () => {
+    enqueue({ data: { id: "camp_1" } });
+    enqueue({ data: { id: "line_1" } });
+    enqueue({ data: { id: "line_1" } });
+    enqueue({ data: { id: "camp_1" } });
+
+    await expect(
+      xTwitterAdsProvider.updateCampaign(
+        { accessToken: "user-token", refreshToken: "token-secret" },
+        "18ce54d4x5t/camp_1/line_1",
+        {
+          name: "Renamed",
+          budgetAmount: 25,
+          endDate: new Date("2026-07-10T00:00:00Z"),
+        },
+      ),
+    ).resolves.toMatchObject({ success: true });
+    await expect(
+      xTwitterAdsProvider.deleteCampaign(
+        { accessToken: "user-token", refreshToken: "token-secret" },
+        "18ce54d4x5t/camp_1/line_1",
+      ),
+    ).resolves.toMatchObject({ success: true });
+
+    expect(new URL(calls[0]?.url ?? "").pathname).toBe("/12/accounts/18ce54d4x5t/campaigns/camp_1");
+    expect(query(calls[0] as FetchCall).get("name")).toBe("Renamed");
+    expect(query(calls[0] as FetchCall).get("daily_budget_amount_local_micro")).toBe("25000000");
+    expect(query(calls[0] as FetchCall).get("end_time")).toBe("2026-07-10T00:00:00Z");
+    expect(new URL(calls[1]?.url ?? "").pathname).toBe(
+      "/12/accounts/18ce54d4x5t/line_items/line_1",
+    );
+    expect(query(calls[1] as FetchCall).get("daily_budget_amount_local_micro")).toBe("25000000");
+    expect(calls[2]?.init?.method).toBe("DELETE");
+    expect(new URL(calls[2]?.url ?? "").pathname).toBe(
+      "/12/accounts/18ce54d4x5t/line_items/line_1",
+    );
+    expect(calls[3]?.init?.method).toBe("DELETE");
+    expect(new URL(calls[3]?.url ?? "").pathname).toBe("/12/accounts/18ce54d4x5t/campaigns/camp_1");
+  });
+
+  test("updates a campaign from a two-part account/campaign id", async () => {
+    enqueue({ data: { id: "camp_1" } });
+
+    await expect(
+      xTwitterAdsProvider.updateCampaign(
+        { accessToken: "user-token", refreshToken: "token-secret" },
+        "18ce54d4x5t/camp_1",
+        { name: "Renamed" },
+      ),
+    ).resolves.toMatchObject({ success: true });
+
+    expect(calls).toHaveLength(1);
+    expect(new URL(calls[0]?.url ?? "").pathname).toBe("/12/accounts/18ce54d4x5t/campaigns/camp_1");
+    expect(query(calls[0] as FetchCall).get("name")).toBe("Renamed");
+  });
+
+  test("maps media status and rejects unsafe media upload URLs", async () => {
+    enqueue({ data: { media_key: "3_media", media_status: "TRANSCODE_COMPLETED" } });
+
+    await expect(
+      xTwitterAdsProvider.getMediaStatus?.(
+        { accessToken: "user-token", refreshToken: "token-secret" },
+        "18ce54d4x5t",
+        { providerAssetResourceName: "3_media" },
+      ),
+    ).resolves.toMatchObject({
+      success: true,
+      providerAssetId: "3_media",
+      providerAssetResourceName: "3_media",
+      status: "TRANSCODE_COMPLETED",
+      ready: true,
+    });
+
+    await expect(
+      xTwitterAdsProvider.uploadMedia?.(
+        { accessToken: "user-token", refreshToken: "token-secret" },
+        "18ce54d4x5t",
+        {
+          type: "image",
+          url: "http://127.0.0.1/ad.png",
+        },
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: "Private or reserved IP addresses are not allowed",
+    });
   });
 
   test("maps line item stats into campaign metrics", async () => {
@@ -204,5 +302,22 @@ describe("xTwitterAdsProvider", () => {
     expect(query(calls[0] as FetchCall).get("metric_groups")).toBe(
       "ENGAGEMENT,BILLING,WEB_CONVERSION",
     );
+  });
+
+  test("does not query stats without a line-item id", async () => {
+    const result = await xTwitterAdsProvider.getCampaignMetrics(
+      { accessToken: "user-token", refreshToken: "token-secret" },
+      "18ce54d4x5t/camp_1",
+      {
+        start: new Date("2026-07-01T00:00:00Z"),
+        end: new Date("2026-07-02T00:00:00Z"),
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "X Ads metrics require a composite account/campaign/line-item id",
+    });
+    expect(calls).toEqual([]);
   });
 });

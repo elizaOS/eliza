@@ -204,7 +204,7 @@ function splitExternalCampaignId(externalCampaignId: string): {
 } {
   const [accountId, campaignId, lineItemId] = externalCampaignId.split("/");
   if (accountId && campaignId && lineItemId) return { accountId, campaignId, lineItemId };
-  if (accountId && campaignId) return { campaignId: accountId, lineItemId: campaignId };
+  if (accountId && campaignId) return { accountId, campaignId };
   return { campaignId: externalCampaignId };
 }
 
@@ -477,8 +477,8 @@ export const xTwitterAdsProvider: AdProvider = {
       const { lineItemId } = splitExternalCampaignId(externalCampaignId);
       if (!lineItemId) throw new Error("X Ads creative creation requires a line item id");
       const asUserId = input.pageId ?? (await firstPromotableUser(credentials, accountId));
-      const mediaKeys = input.media
-        .sort((left, right) => left.order - right.order)
+      const orderedMedia = [...input.media].sort((left, right) => left.order - right.order);
+      const mediaKeys = orderedMedia
         .map((media) => media.providerAssetId)
         .filter((value): value is string => Boolean(value));
       const tweetResponse = await xAdsRequest<XEntity>(
