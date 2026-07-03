@@ -25,8 +25,15 @@ interface ElementMetrics {
   height: number;
 }
 
-interface MouseCaptureWindow extends Window {
-  __elizaLastMouse?: { clientX: number; clientY: number } | null;
+interface LastMouseEvent {
+  clientX: number;
+  clientY: number;
+}
+
+declare global {
+  interface Window {
+    __elizaLastMouse?: LastMouseEvent | null;
+  }
 }
 
 async function metricsOf(
@@ -149,15 +156,11 @@ export class XtestInputDriver implements InputDriver {
     this.dpr = await page.evaluate(() => window.devicePixelRatio || 1);
 
     await page.evaluate(() => {
-      const mouseWindow = window as MouseCaptureWindow;
-      mouseWindow.__elizaLastMouse = null;
+      window.__elizaLastMouse = null;
       window.addEventListener(
         "mousemove",
         (e) => {
-          mouseWindow.__elizaLastMouse = {
-            clientX: e.clientX,
-            clientY: e.clientY,
-          };
+          window.__elizaLastMouse = { clientX: e.clientX, clientY: e.clientY };
         },
         { capture: true },
       );
@@ -186,9 +189,7 @@ export class XtestInputDriver implements InputDriver {
     for (const p of probes) {
       await this.x11.moveAbs(p.x, p.y);
       await sleep(120);
-      const ev = await page.evaluate(
-        () => (window as MouseCaptureWindow).__elizaLastMouse,
-      );
+      const ev = await page.evaluate(() => window.__elizaLastMouse ?? null);
       if (ev) {
         sample = { sx: p.x, sy: p.y, cx: ev.clientX, cy: ev.clientY };
         break;

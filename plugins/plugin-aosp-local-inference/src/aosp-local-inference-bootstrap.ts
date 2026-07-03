@@ -2667,7 +2667,8 @@ function makeFusedFfiHelpers(
 
 interface AospFusedTextLoaderState {
   ffi: BunFfiModule;
-  symbols: Record<string, (...args: unknown[]) => unknown>;
+  symbols: Record<string, (...args: unknown[]) => unknown> &
+    AospFusedLlmSymbols;
   helpers: AospFfiPointerHelpers;
   close: () => void;
   ctx: bigint;
@@ -2679,6 +2680,26 @@ interface AospFusedTextLoaderState {
   draftModelPath: string | null;
   /** Set after a one-time f16 retry when the build rejects KV-quant. */
   kvQuantRejected?: boolean;
+}
+
+function assertFusedLlmSymbols(
+  symbols: Record<string, (...args: unknown[]) => unknown>,
+): asserts symbols is Record<string, (...args: unknown[]) => unknown> &
+  AospFusedLlmSymbols {
+  const requiredSymbols = [
+    "eliza_inference_llm_stream_open",
+    "eliza_inference_llm_stream_prefill",
+    "eliza_inference_llm_stream_next",
+    "eliza_inference_llm_stream_cancel",
+    "eliza_inference_llm_stream_close",
+  ] as const;
+  for (const name of requiredSymbols) {
+    if (typeof symbols[name] !== "function") {
+      throw new Error(
+        `[aosp-local-inference] fused libelizainference missing ${name}`,
+      );
+    }
+  }
 }
 
 /**
@@ -2884,6 +2905,8 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
     );
     return null;
   }
+  assertFusedLlmSymbols(symbols);
+  const streamingSymbols: AospFusedLlmSymbols = symbols;
 
   let state: AospFusedTextLoaderState | null = null;
 
@@ -2930,7 +2953,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           ctx,
           binding: createAospStreamingLlmBinding({
             ctx,
-            symbols: symbols as unknown as AospFusedLlmSymbols,
+            symbols: streamingSymbols,
             helpers,
           }),
           bundleRoot,
@@ -2969,7 +2992,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       }
       state.binding = createAospStreamingLlmBinding({
         ctx: state.ctx,
-        symbols: symbols as unknown as AospFusedLlmSymbols,
+        symbols: streamingSymbols,
         helpers,
         ...(typeof args.gpuLayers === "number"
           ? { gpuLayers: args.gpuLayers }
@@ -3051,7 +3074,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         });
         active.binding = createAospStreamingLlmBinding({
           ctx: active.ctx,
-          symbols: active.symbols as unknown as AospFusedLlmSymbols,
+          symbols: active.symbols,
           helpers: active.helpers,
           ...(typeof active.gpuLayers === "number"
             ? { gpuLayers: active.gpuLayers }

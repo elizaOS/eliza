@@ -97,10 +97,6 @@ import {
 } from "./lib/stage-android-agent.mjs";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
 import {
-  ANDROID_APP_ACTION_CAPABILITIES,
-  ANDROID_APP_ACTION_FORBIDDEN_MARKERS,
-  ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS,
-  ANDROID_APP_ACTION_SHORTCUT_IDS,
   appendMissingAndroidManifestBlock,
   appendMissingApplicationBlock,
   applyAndroidCleartextPolicy,
@@ -588,13 +584,17 @@ function resolveJavaHome(env = process.env) {
     "/usr/lib/jvm/java-21-openjdk",
   ];
   for (const candidate of candidates) {
-    if (candidate && (javaMajorVersion(candidate) ?? 0) >= 21) return candidate;
+    const majorVersion = candidate ? javaMajorVersion(candidate) : undefined;
+    if (typeof majorVersion === "number" && majorVersion >= 21) {
+      return candidate;
+    }
   }
   const jvmRoot = "/usr/lib/jvm";
   if (fs.existsSync(jvmRoot)) {
     for (const name of fs.readdirSync(jvmRoot)) {
       const full = path.join(jvmRoot, name);
-      if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+      const majorVersion = javaMajorVersion(full);
+      if (typeof majorVersion === "number" && majorVersion >= 21) return full;
     }
   }
   if (process.platform === "win32") {
@@ -604,7 +604,10 @@ function resolveJavaHome(env = process.env) {
       if (!fs.existsSync(vendorRoot)) continue;
       for (const name of fs.readdirSync(vendorRoot)) {
         const full = path.join(vendorRoot, name);
-        if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+        const majorVersion = javaMajorVersion(full);
+        if (typeof majorVersion === "number" && majorVersion >= 21) {
+          return full;
+        }
       }
     }
   }

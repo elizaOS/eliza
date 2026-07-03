@@ -2,11 +2,11 @@
 // Re-export the public surface so downstream callers that imported from
 // `@elizaos/agent` keep working during the transition. New callers
 // should import from `@elizaos/plugin-app-manager` directly.
-export {
-  type AppManagerLike,
-  type AppsRouteActorRole,
-  type AppsRouteContext,
-  type FavoriteAppsStore,
+export type {
+  AppManagerLike,
+  AppsRouteActorRole,
+  AppsRouteContext,
+  FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 export const handleAppsRoutes: typeof import("@elizaos/plugin-app-manager").handleAppsRoutes =
   async (context) => {

@@ -3,9 +3,9 @@
  * is active (AppManager run and/or overlay heartbeat for local overlay apps).
  */
 
-import type { Action, Plugin, Provider } from "@elizaos/core";
 import * as fs from "node:fs";
 import path from "node:path";
+import type { Action, Plugin, Provider } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
 import { isOverlayAppPresenceActive } from "./overlay-app-presence.ts";
 
@@ -43,7 +43,7 @@ function readAppRunActivitySnapshots(): AppRunActivitySnapshot[] {
           return { appName: record.appName, status: record.status };
         })
         .filter((run): run is AppRunActivitySnapshot => run !== null);
-    } catch (err) {
+    } catch {
       const corruptPath = `${filePath}.corrupt-${Date.now()}.json`;
       try {
         fs.renameSync(filePath, corruptPath);

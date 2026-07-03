@@ -46,6 +46,11 @@ type StaticPluginRegistryGlobal = typeof globalThis & {
   __STATIC_ELIZA_PLUGINS__?: Record<string, unknown>;
 };
 
+const staticPluginRegistryGlobal = globalThis as StaticPluginRegistryGlobal;
+if (!staticPluginRegistryGlobal.__STATIC_ELIZA_PLUGINS__) {
+  staticPluginRegistryGlobal.__STATIC_ELIZA_PLUGINS__ = {};
+}
+
 /**
  * Static plugin registry.
  *
@@ -60,7 +65,7 @@ type StaticPluginRegistryGlobal = typeof globalThis & {
  * runtime resolver.
  */
 export const STATIC_ELIZA_PLUGINS: Record<string, unknown> =
-  ((globalThis as StaticPluginRegistryGlobal).__STATIC_ELIZA_PLUGINS__ ??= {});
+  staticPluginRegistryGlobal.__STATIC_ELIZA_PLUGINS__;
 
 /** Subdirectory under the Eliza state dir for drop-in custom plugins. */
 export const CUSTOM_PLUGINS_DIRNAME = "plugins/custom";
