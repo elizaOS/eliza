@@ -46,6 +46,15 @@ export interface JniVoiceTurnSummary {
 export interface JniVoiceStatus {
   running: boolean;
   framesSent: number;
+  /**
+   * AEC far-end delivery counter: native `playbackFrame` events (the
+   * TalkMode AudioTrack tap) consumed by the pipeline's echo reference.
+   * Zero while the agent has not spoken; must be > 0 during/after native TTS
+   * playback for the echo canceller to have a live far-end (#11373).
+   */
+  playbackFramesReceived: number;
+  /** ERLE (dB) of the most recent echo-cancelled batch. 0 until cancelling. */
+  lastEchoErleDb: number;
   turnsObserved: number;
   abi?: Awaited<
     ReturnType<ReturnType<typeof getElizaVoicePlugin>["voiceAbiVersion"]>
@@ -170,6 +179,8 @@ export function installJniVoiceHarness(
         return {
           running: pipeline?.isRunning ?? false,
           framesSent: pipeline?.framesSent ?? 0,
+          playbackFramesReceived: pipeline?.playbackFramesReceived ?? 0,
+          lastEchoErleDb: pipeline?.lastEchoErleDb ?? 0,
           turnsObserved: pipeline?.turnsObserved ?? 0,
           recentTurns: [...recentTurns],
           error: err instanceof Error ? err.message : String(err),
@@ -178,6 +189,8 @@ export function installJniVoiceHarness(
       return {
         running: pipeline?.isRunning ?? false,
         framesSent: pipeline?.framesSent ?? 0,
+        playbackFramesReceived: pipeline?.playbackFramesReceived ?? 0,
+        lastEchoErleDb: pipeline?.lastEchoErleDb ?? 0,
         turnsObserved: pipeline?.turnsObserved ?? 0,
         abi,
         recentTurns: [...recentTurns],
