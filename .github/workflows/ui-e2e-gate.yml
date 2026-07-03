@@ -125,6 +125,12 @@ jobs:
       - name: Fused wake integration e2e
         run: bun run --cwd packages/ui test:fused-wake-integration-e2e
 
+      # Warm-up eviction (#11670): a user message sent while the local model
+      # 503s during warm-up must survive the post-turn reconcile, show a
+      # retryable failed turn, and deliver exactly once on Retry.
+      - name: Warm-up message eviction e2e
+        run: bun run --cwd packages/ui test:warmup-eviction-e2e
+
       # Launcher grid (#10722): genuine CDP long-press pointer drag-to-reorder
       # (section 2b) → onReorder → persisted LAUNCHER_STORAGE_KEY order +
       # reorder telemetry + no duplicate ids. The jsdom Launcher.gestures suite
@@ -183,5 +189,6 @@ jobs:
             packages/ui/src/cloud/applications/__e2e__/output-frontend-hosting
             packages/ui/src/cloud/organization/__e2e__/output-credentials
             packages/ui/src/cloud/__e2e__/output-slop-removal
+            packages/ui/src/components/shell/__e2e__/output-warmup-eviction
           retention-days: 14
           if-no-files-found: ignore
