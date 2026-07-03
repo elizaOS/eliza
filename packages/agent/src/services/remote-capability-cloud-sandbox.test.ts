@@ -344,6 +344,8 @@ describe("cloud capability sandbox provisioner", () => {
                       path: "/cloud/capability",
                       public: true,
                       name: "cloud-capability-route",
+                      publicReason:
+                        "Remote cloud sandbox fixture public route.",
                     },
                   ],
                   views: [

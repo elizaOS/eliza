@@ -1,6 +1,10 @@
 import { getAmbientSingleton } from "./ambient-context";
 import { logger } from "./logger";
-import type { Plugin, Route } from "./types/plugin";
+import {
+	assertPublicRouteIntent,
+	type Plugin,
+	type Route,
+} from "./types/plugin";
 
 export type AppRoutePluginLoader = () => Plugin | Promise<Plugin>;
 
@@ -125,6 +129,7 @@ export async function drainAppRoutePluginLoaders(
 		if (!plugin?.routes?.length) continue;
 		let added = 0;
 		for (const route of plugin.routes) {
+			assertPublicRouteIntent(route, plugin.name);
 			const routePath = route.path.startsWith("/")
 				? route.path
 				: `/${route.path}`;

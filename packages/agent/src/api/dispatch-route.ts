@@ -25,6 +25,7 @@ import { Readable } from "node:stream";
 
 import {
   type AgentRuntime,
+  assertPublicRouteIntent,
   type IAgentRuntime,
   type LegacyRouteHandler,
   logger,
@@ -435,6 +436,7 @@ export async function dispatchRoute(
   const query = args.query ?? {};
 
   for (const route of runtime.routes as Route[]) {
+    assertPublicRouteIntent(route, "runtime.routes");
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;
     if (!route.handler && !route.routeHandler) continue;

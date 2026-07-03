@@ -625,6 +625,8 @@ describe("capability router", () => {
 										method: "GET",
 										path: "/weather/:city",
 										public: true,
+										publicReason:
+											"Capability manifest weather fixture public route.",
 									},
 								],
 								views: [
@@ -757,7 +759,14 @@ describe("capability router", () => {
 					appBridge: {
 						hooks: ["prepareLaunch"],
 					},
-					routes: [{ method: "GET", path: "/weather/:city", public: true }],
+					routes: [
+						{
+							method: "GET",
+							path: "/weather/:city",
+							public: true,
+							publicReason: "Capability manifest weather fixture public route.",
+						},
+					],
 					views: [
 						{
 							id: "weather-panel",

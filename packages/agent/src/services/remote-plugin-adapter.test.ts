@@ -206,6 +206,7 @@ const remoteModule: RemotePluginModuleManifest = {
       path: "/remote/demo",
       public: true,
       name: "remote-demo",
+      publicReason: "Remote adapter fixture public route.",
       description: "Remote route.",
     },
   ],
@@ -2363,6 +2364,7 @@ describe("remote plugin adapter", () => {
                 method: "STATIC",
                 path: "/remote/static",
                 public: true,
+                publicReason: "Remote adapter invalid static fixture.",
               },
             ],
           },
@@ -2469,6 +2471,7 @@ describe("remote plugin adapter", () => {
           method: "POST",
           path: "/volatile/route",
           public: true,
+          publicReason: "Remote adapter volatility fixture public route.",
         },
       ],
       views: [
@@ -2547,6 +2550,7 @@ describe("remote plugin adapter", () => {
           method: "POST",
           path: "/device-a/route",
           public: true,
+          publicReason: "Remote adapter device A fixture public route.",
         },
       ],
       views: [
@@ -2572,6 +2576,7 @@ describe("remote plugin adapter", () => {
           method: "POST",
           path: "/device-b/route",
           public: true,
+          publicReason: "Remote adapter device B fixture public route.",
         },
       ],
       views: [
@@ -3363,6 +3368,8 @@ describe("remote plugin adapter", () => {
                       path: "/device/ping",
                       public: true,
                       name: "device-ping",
+                      publicReason:
+                        "Remote adapter device ping fixture public route.",
                     },
                   ],
                   views: [
@@ -3608,6 +3615,8 @@ describe("remote plugin adapter", () => {
                   path: "/localhost/route",
                   public: true,
                   name: "localhost-route",
+                  publicReason:
+                    "Remote adapter localhost fixture public route.",
                 },
               ],
               views: [
@@ -3830,7 +3839,7 @@ export function createRouter() {
               methods: ["lookup"],
             }],
             appBridge: { hooks: ["prepareLaunch"] },
-            routes: [{ method: "POST", path: "/built-source/route", public: true, name: "built-source-route" }],
+            routes: [{ method: "POST", path: "/built-source/route", public: true, name: "built-source-route", publicReason: "Remote adapter built source fixture public route." }],
             views: [{ id: "built-source.view", label: "Built Source View", bundlePath: "/assets/remote-view.js" }],
           },
         ],
@@ -4249,7 +4258,7 @@ const server = createServer(async (req, res) => {
           description: "Remote plugin served from a child process.",
           actions: [{ name: "PROCESS_ACTION", description: "Run process action." }],
           providers: [{ name: "PROCESS_CONTEXT", description: "Process provider." }],
-          routes: [{ method: "POST", path: "/process/route", public: true, name: "process-route" }],
+          routes: [{ method: "POST", path: "/process/route", public: true, name: "process-route", publicReason: "Remote adapter process fixture public route." }],
           views: [{ id: "process.view", label: "Process View", bundlePath: "/assets/process-view.js" }],
         }] } });
       }
@@ -4494,7 +4503,7 @@ createServer(async (req, res) => {
             models: [{ modelType: "DOCKER_TEXT", priority: 10 }],
             services: [{ serviceType: "docker_service", capabilityDescription: "Docker service.", methods: ["lookup"] }],
             appBridge: { hooks: ["prepareLaunch"] },
-            routes: [{ method: "POST", path: "/docker/route", public: true, name: "docker-route" }],
+            routes: [{ method: "POST", path: "/docker/route", public: true, name: "docker-route", publicReason: "Remote adapter Docker fixture public route." }],
             views: [{ id: "docker.view", label: "Docker View", bundlePath: "/assets/docker-view.js" }],
           },
           {
@@ -4511,7 +4520,7 @@ createServer(async (req, res) => {
             models: [{ modelType: "DOCKER_TOOLS_TEXT", priority: 11 }],
             services: [{ serviceType: "docker_tools_service", capabilityDescription: "Docker tools service.", methods: ["lookup"] }],
             appBridge: { hooks: ["prepareLaunch"] },
-            routes: [{ method: "POST", path: "/docker-tools/route", public: true, name: "docker-tools-route" }],
+            routes: [{ method: "POST", path: "/docker-tools/route", public: true, name: "docker-tools-route", publicReason: "Remote adapter Docker tools fixture public route." }],
             views: [{ id: "docker.tools.view", label: "Docker Tools View", bundlePath: "/assets/docker-tools-view.js" }],
           },
         ] } });

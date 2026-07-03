@@ -47,6 +47,8 @@ const computerUseRoutes: Route[] = [
     rawPath: true,
     public: true,
     name: "computeruse-approvals-stream",
+    publicReason:
+      "Approval event stream is consumed by the local approval UI before API auth.",
     handler: computerUseRouteHandler(),
   },
   {

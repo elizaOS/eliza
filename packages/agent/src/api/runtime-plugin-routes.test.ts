@@ -35,8 +35,20 @@ function runtimeWithRoutes(routes: Route[]): AgentRuntime {
 describe("isPublicRuntimePluginRoute", () => {
   it("recognizes webhook endpoints through public route declarations", () => {
     const runtime = runtimeWithRoutes([
-      { type: "POST", path: "/api/whatsapp/webhook", public: true },
-      { type: "POST", path: "/webhooks/bluebubbles", public: true },
+      {
+        type: "POST",
+        path: "/api/whatsapp/webhook",
+        public: true,
+        name: "whatsapp-webhook",
+        publicReason: "WhatsApp webhook callback is externally delivered.",
+      },
+      {
+        type: "POST",
+        path: "/webhooks/bluebubbles",
+        public: true,
+        name: "bluebubbles-webhook",
+        publicReason: "BlueBubbles webhook callback is externally delivered.",
+      },
     ] as Route[]);
 
     expect(
@@ -103,6 +115,30 @@ async function startRouteServer(runtime: AgentRuntime): Promise<string> {
 }
 
 describe("tryHandleRuntimePluginRoute", () => {
+  it("rejects public routes without declared auth intent before dispatch", () => {
+    const runtime = {
+      routes: [
+        {
+          type: "GET",
+          path: "/plugin/public-without-intent",
+          public: true,
+          name: "public-without-intent",
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
+            res.json({ reached: true });
+          },
+        },
+      ],
+    } as unknown as AgentRuntime;
+
+    expect(() =>
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "GET",
+        pathname: "/plugin/public-without-intent",
+      }),
+    ).toThrow(/must declare publicReason/);
+  });
+
   it("supports legacy handlers that call res.json directly", async () => {
     const runtime = {
       routes: [

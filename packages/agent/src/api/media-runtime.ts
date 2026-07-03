@@ -79,6 +79,8 @@ export const mediaFileRoute: Route = {
   rawPath: true,
   public: true,
   name: "media-file",
+  publicReason:
+    "Media URLs are content-addressed capability links served pre-auth.",
   routeHandler: async (ctx) => {
     const filename = ctx.params?.filename ?? "";
     const result = handleMediaRouteRequest(

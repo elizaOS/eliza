@@ -27,6 +27,8 @@ function makeRuntime(): IAgentRuntime {
         type: "GET",
         path: "/api/test-plugin/data",
         public: true,
+        name: "test-data",
+        publicReason: "Hono mount path normalization fixture route.",
         routeHandler: async () => ({ status: 200, body: { ok: true } }),
       },
     ],

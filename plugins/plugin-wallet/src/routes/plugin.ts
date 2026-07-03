@@ -35,6 +35,8 @@ const walletHttpRoutes: Route[] = [
     rawPath: true,
     public: true,
     name: "wallet-market-overview",
+    publicReason:
+      "Market overview is cached public market data for unauthenticated wallet empty states.",
     handler: marketOverviewHandler,
   },
 ];

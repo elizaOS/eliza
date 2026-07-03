@@ -102,6 +102,7 @@ import {
 	type ActionResult,
 	type Agent,
 	type AppendConnectorAccountAuditEventParams,
+	assertPublicRouteIntent,
 	ChannelType,
 	type Character,
 	type Component,
@@ -2029,6 +2030,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		if (pluginToRegister.routes) {
 			for (const route of pluginToRegister.routes) {
+				assertPublicRouteIntent(route, pluginToRegister.name);
 				const routePath = route.path.startsWith("/")
 					? route.path
 					: `/${route.path}`;

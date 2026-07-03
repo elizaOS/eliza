@@ -24,6 +24,8 @@ function makeRuntime(): IAgentRuntime {
         type: "GET",
         path: "/api/test-plugin/events",
         public: true,
+        name: "test-events",
+        publicReason: "Hono adapter stream header fixture route.",
         routeHandler: async () => ({
           status: 201,
           headers: {
@@ -38,6 +40,8 @@ function makeRuntime(): IAgentRuntime {
         type: "GET",
         path: "/api/test-plugin/plain",
         public: true,
+        name: "test-plain",
+        publicReason: "Hono adapter plain response fixture route.",
         routeHandler: async () => ({
           status: 201,
           headers: { "x-custom": "yes" },

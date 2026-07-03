@@ -245,10 +245,16 @@ export function createRemoteCapabilityPlugin(
       },
     };
     if (route.public) {
+      if (!route.publicReason?.trim()) {
+        throw new Error(
+          `[RemotePluginAdapter] public route ${route.path} must declare publicReason`,
+        );
+      }
       return {
         ...baseRoute,
         public: true,
         name: route.name ?? `${module.name}:${route.path}`,
+        publicReason: route.publicReason,
       };
     }
     return {

@@ -83,6 +83,25 @@ describe("drainAppRoutePluginLoaders", () => {
 		expect(target.routes).toHaveLength(2);
 	});
 
+	it("rejects public routes without declared auth intent", async () => {
+		const target: { routes: Route[] } = { routes: [] };
+		await expect(
+			drainAppRoutePluginLoaders(target, [
+				loader("public-no-intent", () =>
+					plugin("public-no-intent", [
+						{
+							type: "GET",
+							path: "/api/public-no-intent",
+							public: true,
+							name: "public-no-intent",
+						} as Route,
+					]),
+				),
+			]),
+		).rejects.toThrow(/must declare publicReason/);
+		expect(target.routes).toEqual([]);
+	});
+
 	it("isolates an optional-unavailable loader (core error class) and still drains the rest", async () => {
 		const target: { routes: Route[] } = { routes: [] };
 		await drainAppRoutePluginLoaders(target, [

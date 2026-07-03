@@ -305,6 +305,7 @@ export function buildAnnounceDescriptor(
       if (route.type) entry.type = route.type;
       if (route.name) entry.name = route.name;
       if (route.public !== undefined) entry.public = route.public;
+      if (route.publicReason) entry.publicReason = route.publicReason;
       if (route.isMultipart !== undefined)
         entry.isMultipart = route.isMultipart;
       if (route.routeHandler) {

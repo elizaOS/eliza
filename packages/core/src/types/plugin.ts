@@ -166,6 +166,12 @@ interface BaseRoute {
 interface PublicRoute extends BaseRoute {
 	public: true;
 	name: string; // Name is required for public routes
+	/**
+	 * Reviewed reason this route may bypass the central auth gate.
+	 * Public routes without this intent are rejected by route registration and
+	 * dispatchers.
+	 */
+	publicReason: string;
 }
 
 interface PrivateRoute extends BaseRoute {
@@ -174,6 +180,15 @@ interface PrivateRoute extends BaseRoute {
 }
 
 export type Route = PublicRoute | PrivateRoute;
+
+export function assertPublicRouteIntent(route: Route, source = "plugin"): void {
+	if (route.public !== true) return;
+	const reason = (route as { publicReason?: unknown }).publicReason;
+	if (typeof reason === "string" && reason.trim().length > 0) return;
+	throw new Error(
+		`[RouteAuth] Public route ${source}:${route.type} ${route.path} must declare publicReason`,
+	);
+}
 
 /** Route that may include x402 payment fields (alias for authoring clarity) */
 export type PaymentEnabledRoute = Route;
