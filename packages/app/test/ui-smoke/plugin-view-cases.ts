@@ -35,6 +35,8 @@ export const VIEW_CASES: ViewCase[] = (
     ["finances", "tui", "/finances"],
     ["goals", "gui", "/goals"],
     ["goals", "tui", "/goals"],
+    ["lifeops-live-test", "gui", "/lifeops-live-test"],
+    ["lifeops-live-test", "tui", "/lifeops-live-test"],
     ["health", "gui", "/health"],
     ["health", "tui", "/health"],
     ["inbox", "gui", "/inbox"],

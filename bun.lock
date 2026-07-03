@@ -4827,19 +4827,27 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "zod": "^4.4.3",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.2",
         "@types/node": "^25.0.6",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "fast-check": "^4.8.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
+        "vite": "^8.0.0",
         "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-screenshare": {
