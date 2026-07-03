@@ -305,6 +305,48 @@ export interface PluginAppLaunchDiagnostic {
 	message: string;
 }
 
+/**
+ * A single prerequisite a plugin declares for its diagnostic card. The host
+ * resolves runtime state and maps {@link key} to a satisfied boolean; the
+ * plugin owns the human-readable {@link label}.
+ */
+export interface PluginDiagnosticPrerequisite {
+	/** Stable key the host's status resolver maps to a satisfied boolean. */
+	key: string;
+	/** Human-readable label shown on the diagnostic card. */
+	label: string;
+}
+
+/**
+ * Static metadata a plugin contributes so the host can render its diagnostic
+ * card without hardcoding the plugin's identity, config keys, tags, or
+ * prerequisites. The host resolves the runtime-dynamic status (enabled,
+ * capability, prerequisite satisfaction) separately and merges it with this
+ * descriptor. Owning this here keeps a single source of truth: renaming a
+ * config key changes the descriptor, not the host.
+ */
+export interface PluginDiagnosticDescriptor {
+	id: string;
+	name: string;
+	description: string;
+	tags: string[];
+	envKey: string | null;
+	category:
+		| "ai-provider"
+		| "connector"
+		| "streaming"
+		| "database"
+		| "app"
+		| "feature";
+	source: "bundled" | "store";
+	configKeys: string[];
+	npmName: string;
+	managementMode: "standard" | "core-optional";
+	/** Config-allowlist entries that mean "this plugin is enabled". */
+	aliases: string[];
+	prerequisites: PluginDiagnosticPrerequisite[];
+}
+
 export interface PluginAppBridgeLaunchContext {
 	appName?: string;
 	launchUrl?: string | null;

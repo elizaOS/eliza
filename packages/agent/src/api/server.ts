@@ -341,6 +341,7 @@ function getPluginRegistryApi(): Promise<
   return pluginRegistryApiPromise;
 }
 
+import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -428,6 +429,10 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import { computeCanRespond } from "./health-routes.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
+import {
+  buildPluginDiagnosticEntry,
+  resolveWalletDiagnosticStatus,
+} from "./plugin-diagnostic.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
 import {
   cloneWithoutBlockedObjectKeys,
@@ -1550,63 +1555,18 @@ function persistAgentAutomationMode(
   };
 }
 
+/**
+ * Build the EVM wallet diagnostic card from the plugin-owned static descriptor
+ * (identity, config keys, tags, prerequisite labels) merged with the
+ * host-resolved runtime status. No plugin-specific literals live in the host.
+ */
 function buildPluginEvmDiagnosticEntry(
   state: Pick<ServerState, "config" | "runtime">,
 ): PluginEntry {
-  const capability = resolveWalletCapabilityStatus(state);
-  const enabled =
-    capability.pluginEvmLoaded ||
-    capability.pluginEvmRequired ||
-    (state.config.plugins?.allow ?? []).some((entry) => {
-      return (
-        entry === EVM_PLUGIN_PACKAGE || entry === "evm" || entry === "wallet"
-      );
-    });
-
-  const capabilityStatus = capability.pluginEvmLoaded
-    ? capability.pluginEvmRequired
-      ? "loaded"
-      : "auto-enabled"
-    : enabled
-      ? capability.evmAddress || capability.localSignerAvailable
-        ? "blocked"
-        : "missing-prerequisites"
-      : "disabled";
-
-  return {
-    id: "evm",
-    name: "Plugin EVM",
-    description:
-      "EVM wallet runtime for balance, transfer, and trade actions. Required for wallet execution in chat.",
-    tags: ["wallet", "evm", "bsc", "onchain"],
-    enabled,
-    configured: capability.pluginEvmRequired,
-    envKey: "EVM_PRIVATE_KEY",
-    category: "feature",
-    source: "bundled",
-    configKeys: [
-      "EVM_PRIVATE_KEY",
-      "BSC_RPC_URL",
-      "BSC_TESTNET_RPC_URL",
-      "ELIZA_WALLET_NETWORK",
-    ],
-    parameters: [],
-    validationErrors: [],
-    validationWarnings: [],
-    npmName: EVM_PLUGIN_PACKAGE,
-    isActive: capability.pluginEvmLoaded,
-    autoEnabled: capability.pluginEvmRequired && !capability.pluginEvmLoaded,
-    managementMode: "core-optional",
-    capabilityStatus,
-    capabilityReason: capability.executionReady
-      ? "Wallet execution is ready."
-      : capability.executionBlockedReason,
-    prerequisites: [
-      { label: "wallet present", met: Boolean(capability.evmAddress) },
-      { label: "rpc ready", met: capability.rpcReady },
-      { label: "plugin loaded", met: capability.pluginEvmLoaded },
-    ],
-  };
+  return buildPluginDiagnosticEntry(
+    walletDiagnosticDescriptor,
+    resolveWalletDiagnosticStatus(walletDiagnosticDescriptor, state),
+  );
 }
 
 import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";

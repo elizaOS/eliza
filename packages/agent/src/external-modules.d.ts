@@ -742,6 +742,11 @@ declare module "@elizaos/plugin-wallet" {
   export function getWalletExportAuditLog(): unknown[];
 }
 
+declare module "@elizaos/plugin-wallet/diagnostic" {
+  import type { PluginDiagnosticDescriptor } from "@elizaos/core";
+  export const walletDiagnosticDescriptor: PluginDiagnosticDescriptor;
+}
+
 declare module "@elizaos/ui" {
   import type { ComponentType, RefObject } from "react";
 
