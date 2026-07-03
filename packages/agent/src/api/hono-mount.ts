@@ -117,6 +117,22 @@ async function pipeWebBodyToNodeResponse(
  * `tryHandleRuntimePluginRoute`, so we let that path own it for the duration
  * of the migration.
  */
+/**
+ * Normalize a request pathname to the same shape the canonical
+ * `matchPluginRoutePath` matcher tolerates (it splits on `/` and drops empty
+ * segments, so duplicate and trailing slashes are ignored). Hono's router is
+ * strict about both, so without this a path like `/api/foo/` passes the
+ * tolerant `hasHonoEligibleRoute` gate below, then 404s inside Hono — the
+ * request is swallowed with a 404 even though `dispatchRoute` (the canonical
+ * dispatcher, used by the in-process IPC surface) serves the same path.
+ */
+function normalizeRoutePathname(pathname: string): string {
+  const collapsed = pathname.replace(/\/{2,}/g, "/");
+  return collapsed.length > 1 && collapsed.endsWith("/")
+    ? collapsed.slice(0, -1)
+    : collapsed;
+}
+
 function hasHonoEligibleRoute(
   runtime: IAgentRuntime,
   method: string,
@@ -145,14 +161,16 @@ export async function tryHandleHonoRuntimeRoute(options: {
 
   const method = req.method ?? "GET";
   const requestUrl = req.url ?? "/";
-  const pathname = (() => {
-    try {
-      return new URL(requestUrl, `http://${req.headers.host ?? "localhost"}`)
-        .pathname;
-    } catch {
-      return requestUrl.split("?")[0] ?? "/";
-    }
-  })();
+  const pathname = normalizeRoutePathname(
+    (() => {
+      try {
+        return new URL(requestUrl, `http://${req.headers.host ?? "localhost"}`)
+          .pathname;
+      } catch {
+        return requestUrl.split("?")[0] ?? "/";
+      }
+    })(),
+  );
 
   if (!hasHonoEligibleRoute(runtime, method, pathname)) {
     return false;
@@ -165,6 +183,10 @@ export async function tryHandleHonoRuntimeRoute(options: {
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   );
+  // Hand Hono the normalized path so its strict router agrees with the
+  // tolerant eligibility gate above (and with dispatchRoute inside the
+  // handler, which re-matches against the same normalized path).
+  url.pathname = pathname;
   const headers = nodeHeadersToWeb(req.headers);
   headers.set(INTERNAL_AUTHORIZED_HEADER, options.isAuthorized() ? "1" : "0");
   headers.set(

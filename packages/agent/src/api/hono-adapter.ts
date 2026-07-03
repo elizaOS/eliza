@@ -14,6 +14,7 @@
 import type { IAgentRuntime, Route, RouteHandlerResult } from "@elizaos/core";
 import { type Context, Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { dispatchRoute } from "./dispatch-route.ts";
 
@@ -156,6 +157,14 @@ export function mountRoutesOnHono(
       const headers = new Headers(result.headers ?? {});
       if (result.stream) {
         const resultStream = result.stream;
+        // Carry the handler's status and headers onto the streamed response —
+        // honoStream builds the Response from the context, so without this an
+        // SSE route loses its `content-type: text/event-stream` (breaking
+        // EventSource clients) and any non-200 status collapses to 200.
+        ctx.status(result.status as ContentfulStatusCode);
+        headers.forEach((value, key) => {
+          ctx.header(key, value);
+        });
         return honoStream(ctx, async (stream) => {
           for await (const chunk of resultStream) {
             await stream.write(chunk);
