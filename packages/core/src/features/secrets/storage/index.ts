@@ -18,6 +18,9 @@ export { BaseSecretStorage, CompositeSecretStorage } from "./interface.ts";
 export { MemorySecretStorage } from "./memory-store.ts";
 export { WorldMetadataStorage } from "./world-store.ts";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -33,9 +36,7 @@ import {
 import { MemorySecretStorage as _bs_5_MemorySecretStorage } from "./memory-store.ts";
 import { WorldMetadataStorage as _bs_6_WorldMetadataStorage } from "./world-store.ts";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__ = [
+anchorBundleSafety("FEATURES_SECRETS_STORAGE_INDEX", [
 	_bs_0_BrokerSecretStorage,
 	_bs_1_CharacterSettingsStorage,
 	_bs_2_ComponentSecretStorage,
@@ -43,8 +44,4 @@ const __bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__ = [
 	_bs_4_CompositeSecretStorage,
 	_bs_5_MemorySecretStorage,
 	_bs_6_WorldMetadataStorage,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__ =
-	__bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__;
+]);

@@ -9,6 +9,9 @@ export {
 } from "./plugin-activator.ts";
 export { SECRETS_SERVICE_TYPE, SecretsService } from "./secrets.ts";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -23,15 +26,9 @@ import {
 	SecretsService as _bs_4_SecretsService,
 } from "./secrets.ts";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_SECRETS_SERVICES_INDEX__ = [
+anchorBundleSafety("FEATURES_SECRETS_SERVICES_INDEX", [
 	_bs_1_PLUGIN_ACTIVATOR_SERVICE_TYPE,
 	_bs_2_PluginActivatorService,
 	_bs_3_SECRETS_SERVICE_TYPE,
 	_bs_4_SecretsService,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_SECRETS_SERVICES_INDEX__ =
-	__bundle_safety_FEATURES_SECRETS_SERVICES_INDEX__;
+]);

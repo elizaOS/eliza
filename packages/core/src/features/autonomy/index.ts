@@ -24,6 +24,9 @@ export {
 // Types
 export type { AutonomyConfig, AutonomyStatus } from "./types";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -46,9 +49,7 @@ import {
 	AutonomyService as _bs_8_AutonomyService,
 } from "./service";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_AUTONOMY_INDEX__ = [
+anchorBundleSafety("FEATURES_AUTONOMY_INDEX", [
 	_bs_1a_escalateAction,
 	_bs_1b_enableAutonomousModeAction,
 	_bs_1c_disableAutonomousModeAction,
@@ -59,8 +60,4 @@ const __bundle_safety_FEATURES_AUTONOMY_INDEX__ = [
 	_bs_6_AUTONOMY_TASK_NAME,
 	_bs_7_AUTONOMY_TASK_TAGS,
 	_bs_8_AutonomyService,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_AUTONOMY_INDEX__ =
-	__bundle_safety_FEATURES_AUTONOMY_INDEX__;
+]);

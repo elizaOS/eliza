@@ -26,6 +26,9 @@ export { uiContextProvider } from "./uiContext.ts";
 export { userEmotionSignalProvider } from "./userEmotionSignal.ts";
 export { worldProvider } from "./world.ts";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -53,9 +56,7 @@ import { uiContextProvider as _bs_15_uiContextProvider } from "./uiContext.ts";
 import { userEmotionSignalProvider as _bs_17_userEmotionSignalProvider } from "./userEmotionSignal.ts";
 import { worldProvider as _bs_16_worldProvider } from "./world.ts";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX__ = [
+anchorBundleSafety("FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX", [
 	_bs_1_actionStateProvider,
 	_bs_2_actionsProvider,
 	_bs_3_attachmentsProvider,
@@ -75,8 +76,4 @@ const __bundle_safety_FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX__ = [
 	_bs_17_userEmotionSignalProvider,
 	_bs_18_runtimeModelContextProvider,
 	_bs_19_channelTopicsProvider,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX__ =
-	__bundle_safety_FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX__;
+]);

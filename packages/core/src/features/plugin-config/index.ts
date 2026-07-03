@@ -33,18 +33,13 @@ export {
 	PLUGIN_CONFIG_CLIENT_SERVICE,
 } from "./types.ts";
 
-import { pluginConfigPlugin as _bs_1_pluginConfigPlugin } from "./plugin.ts";
-
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name. Without this eager anchor
 // the whole feature is reachable only through re-export edges and Bun.build
 // tree-shakes the module bodies out of the mobile agent bundle (see
 // features/payments/index.ts — same incident class). The plugin eagerly
 // imports every action, so anchoring it keeps the full feature.
-const __bundle_safety_FEATURES_PLUGIN_CONFIG_INDEX__ = [
-	_bs_1_pluginConfigPlugin,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_PLUGIN_CONFIG_INDEX__ =
-	__bundle_safety_FEATURES_PLUGIN_CONFIG_INDEX__;
+import { anchorBundleSafety } from "../../bundle-safety.ts";
+import { pluginConfigPlugin as _bs_1_pluginConfigPlugin } from "./plugin.ts";
+
+anchorBundleSafety("FEATURES_PLUGIN_CONFIG_INDEX", [_bs_1_pluginConfigPlugin]);
