@@ -56,8 +56,10 @@ const far = readWav(
 const offSamp = Math.round((OFFSET_MS / 1000) * SR);
 const mic = new Float32Array(offSamp + DELAY + far.length + SR);
 let seed = 42;
-const rnd = () =>
-  (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5;
+const rnd = () => {
+  seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+  return seed / 0x7fffffff - 0.5;
+};
 for (let i = 0; i < mic.length; i++) mic[i] = rnd() * NOISE * 2;
 for (let i = 0; i < far.length; i++) {
   const j = offSamp + DELAY + i;
