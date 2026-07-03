@@ -155,6 +155,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   historyBackSpy.mockRestore();
 });
 
@@ -326,6 +327,33 @@ describe("createMobileLifecycle — app lifecycle", () => {
     await vi.waitFor(() =>
       expect(ctx.handleDeepLink).toHaveBeenCalledWith("elizaos://voice"),
     );
+    expect(ctx.handleDeepLink).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays a late cold-launch URL once during the bounded startup window (#12074)", async () => {
+    vi.useFakeTimers();
+    const ctx = makeContext();
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() =>
+      expect(capacitorAppMock.getLaunchUrl).toHaveBeenCalledTimes(1),
+    );
+    expect(ctx.handleDeepLink).not.toHaveBeenCalled();
+
+    capacitorAppMock.__setLaunchUrl({
+      url: "elizaos://aec-loop?tag=echo-only",
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledTimes(1);
+    expect(ctx.handleDeepLink).toHaveBeenCalledWith(
+      "elizaos://aec-loop?tag=echo-only",
+    );
+
+    fireAppEvent("appUrlOpen", { url: "elizaos://aec-loop?tag=echo-only" });
+    await vi.advanceTimersByTimeAsync(2_000);
+
     expect(ctx.handleDeepLink).toHaveBeenCalledTimes(1);
   });
 
