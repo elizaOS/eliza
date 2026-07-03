@@ -320,19 +320,32 @@ export function useFirstRunConductor(): void {
 
   const seedBackupRestoreChoice = React.useCallback(
     (backups: LocalAgentBackupMetadata[]) => {
-      latestLocalBackupRef.current = newestLocalBackup(backups);
-      if (!latestLocalBackupRef.current) {
-        seedRuntimeChoice();
-        return;
-      }
-      seedTurn(
-        makeTurn(
-          "first-run:backup-restore",
-          `${RESTORE_GREETING}\n\n${BACKUP_RESTORE_CHOICE}`,
-        ),
-      );
+      const latest = newestLocalBackup(backups);
+      // The greeting + runtime choice is already seeded on mount, so there is
+      // nothing to fall back to when there is no restorable backup.
+      if (!latest) return;
+      latestLocalBackupRef.current = latest;
+      // Offer restore as an ADDITIONAL turn below the greeting — but only while
+      // the user has NOT advanced past it (picking a runtime seeds a
+      // provider / cloud-oauth / remote-connect / tutorial / error turn, all
+      // source "first_run" with a non-greeting id). The atomic updater also
+      // prevents a double-seed if the backup probe ever fires twice (the
+      // restore turn itself is source "first_run" + non-greeting id).
+      setConversationMessages((prev) => {
+        const advancedPastGreeting = prev.some(
+          (m) => m.source === "first_run" && m.id !== "first-run:greeting",
+        );
+        if (advancedPastGreeting) return prev;
+        return [
+          ...prev,
+          makeTurn(
+            "first-run:backup-restore",
+            `${RESTORE_GREETING}\n\n${BACKUP_RESTORE_CHOICE}`,
+          ),
+        ];
+      });
     },
-    [seedRuntimeChoice, seedTurn],
+    [setConversationMessages],
   );
 
   // Ports for the headless finish use case. completeFirstRun is INTERCEPTED:
@@ -704,20 +717,20 @@ export function useFirstRunConductor(): void {
     }
     resetFirstRunPersistGuard();
     setFirstRunActionHandler((value) => handleActionRef.current(value));
+    // Seed the greeting + runtime choice IMMEDIATELY on mount — never gate it
+    // on the agent-readiness probe below. `listLocalAgentBackups()` hits the
+    // local agent API, which on a fresh/booting/wedged device can hang
+    // indefinitely; coupling the greeting to it stranded the user at a locked
+    // composer ("Tap a highlighted option above to continue") with no visible
+    // choices. The backup probe is now a purely additive upgrade.
+    seedRuntimeChoice();
     let cancelled = false;
     void client
       .listLocalAgentBackups()
       .then((backups) => {
-        if (cancelled) return;
-        if (backups.length > 0) {
-          seedBackupRestoreChoice(backups);
-          return;
-        }
-        seedRuntimeChoice();
+        if (!cancelled && backups.length > 0) seedBackupRestoreChoice(backups);
       })
-      .catch(() => {
-        if (!cancelled) seedRuntimeChoice();
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
       setFirstRunActionHandler(null);
