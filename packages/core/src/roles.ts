@@ -1,10 +1,8 @@
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
-import type { IAgentRuntime, Memory, Role, UUID, World } from "./types";
+import type { IAgentRuntime, Memory, UUID, World } from "./types";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
-
-const DEFAULT_SERVER_ROLE: Role = "NONE";
 
 export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
@@ -244,28 +242,6 @@ async function getEntityMetadata(
 		);
 		return undefined;
 	}
-}
-
-export async function getUserServerRole(
-	runtime: IAgentRuntime,
-	entityId: string,
-	serverId: string,
-): Promise<Role> {
-	const worldId = createUniqueUuid(runtime, serverId);
-	const world = await runtime.getWorld(worldId);
-
-	const worldMetadata = world?.metadata;
-	const roles = worldMetadata?.roles;
-	if (!roles) {
-		return DEFAULT_SERVER_ROLE;
-	}
-
-	const role = roles[entityId as UUID];
-	if (role) {
-		return role;
-	}
-
-	return DEFAULT_SERVER_ROLE;
 }
 
 export async function findWorldsForOwner(

@@ -10,6 +10,12 @@ import type { Memory } from "../types/memory";
  * stamps on its self-prompts. Any other message (a real user turn, a connector
  * inbound, a sub-agent dispatch) is non-autonomous and a private action must be
  * withheld.
+ *
+ * The marker is trustworthy here because inbound messages are stripped of a
+ * forged `isAutonomous` upstream: `hardenIncomingUserMessage`
+ * (security/incoming-message-security.ts, #12087 Item 7) removes it from every
+ * message whose source is not the autonomy service, so a connector forwarding
+ * client-supplied metadata cannot use it to unlock private actions.
  */
 export function isAutonomousTurn(message: Memory | undefined): boolean {
 	const metadata = message?.content?.metadata;
