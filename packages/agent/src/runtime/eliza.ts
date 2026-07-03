@@ -4848,9 +4848,13 @@ export async function startEliza(
       // is fail-closed per provider.
       applyPluginRoleGating(runtime.plugins ?? []);
     } catch (err) {
-      // Never silently disable redaction — report loudly at ERROR.
+      // #12087 Item 1: this was logged at debug — an import/apply failure here
+      // silently disabled ALL sensitive-provider redaction (SECRETS_STATUS,
+      // walletPortfolio, …). Surface it loudly. Registration-time gating in the
+      // plugin-lifecycle wrapper is the primary enforcement; this boot pass is a
+      // defense-in-depth backstop for plugins registered before that wrapper.
       logger.error(
-        `[eliza] Plugin provider role gating sweep failed: ${formatError(err)}`,
+        `[eliza] Plugin provider role gating FAILED — sensitive providers may be ungated: ${formatError(err)}`,
       );
     }
   };
