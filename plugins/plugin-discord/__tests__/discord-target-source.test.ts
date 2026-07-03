@@ -1,4 +1,7 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+	CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+	type IAgentRuntime,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createDiscordSourceCache,
@@ -168,12 +171,15 @@ describe("registerDiscordTargetSource", () => {
 		const register = vi.fn();
 		const runtime = {
 			getService: vi.fn((name: string) =>
-				name === "ConnectorTargetSourceRegistry" ? { register } : null,
+				name === CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE ? { register } : null,
 			),
 		} as unknown as IAgentRuntime;
 
 		registerDiscordTargetSource(runtime);
 
+		expect(runtime.getService).toHaveBeenCalledWith(
+			CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+		);
 		expect(register).toHaveBeenCalledOnce();
 		expect(register.mock.calls[0]?.[0]?.platform).toBe("discord");
 	});
