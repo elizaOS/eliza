@@ -43,7 +43,8 @@ import {
 	isLocalInferenceUnavailableError,
 } from "../..";
 import { type Config, validateConfig } from "./environment";
-import { initCapacitorLlama } from "./loader";
+import { initCapacitorLlama, releaseAllCapacitorLlama } from "./loader";
+import { resolveMobileGpuAdmission } from "./memory-admission";
 import {
 	applyStructuredPlan,
 	extractToolCalls,
@@ -471,24 +472,66 @@ class LocalAIManager {
 
 		const spec = slot === "medium" ? MODEL_SPECS.medium : MODEL_SPECS.small;
 		const modelPath = slot === "medium" ? this.mediumModelPath : this.modelPath;
-		const ctx = await initCapacitorLlama({
-			model: modelPath,
-			n_ctx: spec.contextSize,
-			n_gpu_layers: 999,
-			// Gemma-aware RAM defaults (epic #9033): keep mmap on so the Gemma-4
-			// Per-Layer-Embeddings tensor pages from disk (never `--no-mmap`),
-			// and pin windowed SWA KV (`swa_full=false`, the dominant KV saving
-			// on Gemma's mostly-sliding-window attention). Both are the current
-			// effective defaults; setting them explicitly keeps a binding
-			// default flip from silently regressing Gemma RAM.
-			use_mmap: true,
-			swa_full: false,
-		});
+		// GPU-OOM memory admission (#11612): on constrained mobile
+		// (ELIZA_PLATFORM=ios|android) shrink n_ubatch/n_batch to 256 and
+		// compute n_gpu_layers against the jetsam working-set budget instead
+		// of hardcoding full offload. Fit math (iPhone 16 Pro Max, A18,
+		// 8 GiB): weights 4722 MiB + compute 1037→~260 MiB (n_ubatch
+		// 1024→256) + KV 36 MiB ≈ 5018 MiB < the ~5461 MiB (2/3 of physical
+		// RAM) working set — full offload retained. Desktop keeps binding
+		// defaults + n_gpu_layers 999. Details: memory-admission.ts.
+		const admission = await resolveMobileGpuAdmission(modelPath);
+		let ctx: CapacitorLlamaContext;
+		try {
+			ctx = await initCapacitorLlama({
+				model: modelPath,
+				n_ctx: spec.contextSize,
+				n_gpu_layers: admission ? admission.nGpuLayers : 999,
+				...(admission
+					? { n_batch: admission.nBatch, n_ubatch: admission.nUbatch }
+					: {}),
+				// Gemma-aware RAM defaults (epic #9033): keep mmap on so the Gemma-4
+				// Per-Layer-Embeddings tensor pages from disk (never `--no-mmap`),
+				// and pin windowed SWA KV (`swa_full=false`, the dominant KV saving
+				// on Gemma's mostly-sliding-window attention). Both are the current
+				// effective defaults; setting them explicitly keeps a binding
+				// default flip from silently regressing Gemma RAM.
+				use_mmap: true,
+				swa_full: false,
+			});
+		} catch (err) {
+			// Unload-on-failure (#11612): a failed/partial load must not leave
+			// wired GPU buffers mapped — that footprint alone gets the process
+			// jetsammed on the next allocation.
+			if (admission) await releaseAllCapacitorLlama();
+			throw err;
+		}
 		const entry: ContextEntry = { ctx, systemPrompt };
 		if (slot === "medium") this.mediumCtx = entry;
 		else this.smallCtx = entry;
 		this.activeModelConfig = spec;
 		return entry;
+	}
+
+	/**
+	 * Release a cached text context (unload-on-failure, #11612). A decode
+	 * failure on mobile (e.g. Metal ret=-3 GPU OOM) leaves multi-GiB wired
+	 * buffers mapped; keeping the dead handle resident guarantees a jetsam
+	 * kill on the next allocation. Drop the slot and release the native ctx.
+	 */
+	private async releaseSlot(slot: "small" | "medium"): Promise<void> {
+		const existing = slot === "medium" ? this.mediumCtx : this.smallCtx;
+		if (slot === "medium") this.mediumCtx = null;
+		else this.smallCtx = null;
+		if (!existing) return;
+		try {
+			await existing.ctx.release();
+		} catch (err) {
+			logger.warn(
+				{ err: err instanceof Error ? err.message : String(err) },
+				"[plugin-local-ai] Failed releasing context after generation failure",
+			);
+		}
 	}
 
 	async initialize(
@@ -553,8 +596,20 @@ class LocalAIManager {
 		};
 		const fullParams = applyStructuredPlan(baseParams, plan);
 
+		// Unload-on-failure (#11612): a failed decode must release the model
+		// instead of leaving it mapped (multi-GiB wired weights → jetsam).
+		const slot = modelType === ModelType.TEXT_LARGE ? "medium" : "small";
+		const runCompletion = async () => {
+			try {
+				return await entry.ctx.completion(fullParams);
+			} catch (err) {
+				await this.releaseSlot(slot);
+				throw err;
+			}
+		};
+
 		if (plan.kind === "tools") {
-			const result = await entry.ctx.completion(fullParams);
+			const result = await runCompletion();
 			const toolCalls = extractToolCalls(result);
 			const text = stripThinkTags(result.content || result.text);
 			return {
@@ -565,7 +620,7 @@ class LocalAIManager {
 		}
 
 		if (plan.kind === "schema" || plan.kind === "json_object") {
-			const result = await entry.ctx.completion(fullParams);
+			const result = await runCompletion();
 			const text = stripThinkTags(result.content || result.text);
 			return {
 				text,
@@ -591,11 +646,15 @@ class LocalAIManager {
 					typeof streamParams.onStreamChunk === "function"
 						? (delta) => streamParams.onStreamChunk?.(delta)
 						: undefined,
+				onError: () => {
+					// Unload-on-failure (#11612), streaming path.
+					void this.releaseSlot(slot);
+				},
 				postProcess: stripThinkTags,
 			});
 		}
 
-		const result = await entry.ctx.completion(fullParams);
+		const result = await runCompletion();
 		const text = stripThinkTags(result.content || result.text);
 		return {
 			text,

@@ -91,6 +91,8 @@ export interface StreamCapacitorPromptArgs {
 	estimateUsage: (prompt: string, fullText: string) => TokenUsage;
 	onChunk?: (delta: string) => void;
 	onComplete?: (info: { fullText: string; usage: TokenUsage }) => void;
+	/** Fired once when the underlying completion fails (e.g. GPU OOM, #11612). */
+	onError?: (err: unknown) => void;
 	postProcess?: (raw: string) => string;
 }
 
@@ -159,6 +161,7 @@ export function streamCapacitorPrompt(
 				return result;
 			} catch (err) {
 				promptError = err;
+				args.onError?.(err);
 				throw err;
 			} finally {
 				promptDone = true;

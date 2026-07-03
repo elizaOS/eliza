@@ -31,6 +31,8 @@ interface MobileCapacitorModule {
 	releaseAllLlama(): Promise<void>;
 	setContextLimit(limit: number): Promise<void>;
 	toggleNativeLog(enabled: boolean): Promise<void>;
+	/** GGUF metadata probe without loading the model (llama-cpp-capacitor). */
+	loadLlamaModelInfo?(model: string): Promise<object>;
 }
 
 let cachedMobileModule: MobileCapacitorModule | null = null;
@@ -92,6 +94,28 @@ export async function initCapacitorLlama(
 			"retired; desktop/server inference runs through the fused libelizainference " +
 			"engine (LocalInferenceEngine / desktopFusedFfiBackendRuntime), not this loader.",
 	);
+}
+
+/**
+ * Mobile-only: read GGUF metadata (layer count etc.) without loading the
+ * model. Returns `null` on desktop or when the binding lacks the probe —
+ * callers fall back to conservative defaults (memory-admission.ts).
+ */
+export async function loadCapacitorLlamaModelInfo(
+	model: string,
+): Promise<Record<string, unknown> | null> {
+	if (detectBackend() !== "mobile") return null;
+	try {
+		const mod = await loadMobileCapacitor();
+		if (typeof mod.loadLlamaModelInfo !== "function") return null;
+		return (await mod.loadLlamaModelInfo(model)) as Record<string, unknown>;
+	} catch (err) {
+		logger.debug(
+			{ err: err instanceof Error ? err.message : String(err) },
+			"[capacitor-llama] loadLlamaModelInfo unavailable",
+		);
+		return null;
+	}
 }
 
 /** Mobile-only: release every context. No-op on desktop. */
