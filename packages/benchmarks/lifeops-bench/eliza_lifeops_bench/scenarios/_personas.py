@@ -100,6 +100,129 @@ PERSONA_LIN_OPS = Persona(
     patience_turns=20,
 )
 
+# --- Issue #12186 target personas -------------------------------------------
+# The five persona axes the LifeOps benchmark must serve through one interface:
+# ADHD/executive-dysfunction, irregular-sleep/night-owl, high-travel/timezone,
+# high-comms-overwhelm, and overwhelmed/depressed/low-energy. Each carries a
+# faithful communication_style + traits grounded in the persona research
+# (issue #12186 plan section C) so the simulated-user side of a scenario reads
+# true to the axis and the difficulty is behavioral, not cosmetic.
+
+PERSONA_ARI_ADHD = Persona(
+    id="ari_adhd",
+    name="Ari Delgado",
+    traits=[
+        "distractible",
+        "time-blind",
+        "novelty-seeking",
+        "rejection-sensitive",
+    ],
+    background=(
+        "Software designer with ADHD. Executive dysfunction and time-blindness "
+        "mean tasks leave working memory the moment they leave the screen; needs "
+        "constant re-surfacing and low-friction task initiation, not willpower "
+        "cues. Habituates fast to repeated static reminders."
+    ),
+    communication_style=(
+        "jumps between topics mid-message, forgets details, drops half-finished "
+        "requests, reacts sharply to anything that reads like criticism, responds "
+        "well to gentle non-shaming framing"
+    ),
+    patience_turns=14,
+)
+
+PERSONA_NOA_NIGHTOWL = Persona(
+    id="noa_nightowl",
+    name="Noa Bergström",
+    traits=[
+        "night-owl",
+        "irregular-schedule",
+        "self-aware",
+        "anti-fixed-time",
+    ],
+    background=(
+        "Freelance illustrator with delayed sleep phase. Biological morning "
+        "lands in the early afternoon and shifts day to day, so fixed wall-clock "
+        "reminders are noise. Wants things done daily but relative to when she "
+        "actually wakes, not at a set hour."
+    ),
+    communication_style=(
+        "references wake time and energy dips instead of clock times, pushes back "
+        "on rigid schedules, asks for reminders anchored to 'when I get up' or "
+        "'sometime in the evening'"
+    ),
+    patience_turns=18,
+)
+
+PERSONA_TAO_TRAVEL = Persona(
+    id="tao_travel",
+    name="Tao Nguyen",
+    traits=[
+        "high-travel",
+        "timezone-juggling",
+        "jet-lagged",
+        "detail-oriented-when-rested",
+    ],
+    background=(
+        "Field engineer who flies across time zones most weeks. Cognitively "
+        "degraded on landing days and can't catch a wrong-timezone reminder "
+        "himself, so the assistant must own the 'what time is this in my current "
+        "zone' arithmetic and re-anchor commitments on arrival."
+    ),
+    communication_style=(
+        "mentions cities, flights, and landing times; often ambiguous about which "
+        "timezone a time is in; expects the assistant to resolve zone and DST "
+        "correctly without being told"
+    ),
+    patience_turns=16,
+)
+
+PERSONA_CAM_COMMS = Persona(
+    id="cam_comms",
+    name="Cam Whitfield",
+    traits=[
+        "high-comms-volume",
+        "interruption-averse",
+        "batch-preferring",
+        "commitment-tracking",
+    ],
+    background=(
+        "Account lead drowning in email, Slack, iMessage, and SMS — 100+ messages "
+        "a day, only a handful critical. The cost is interruption and dropped "
+        "follow-ups across channels. Wants batched triage of the critical few and "
+        "cross-channel thread tracking, not another per-message ping."
+    ),
+    communication_style=(
+        "forwards threads and asks for triage, references many contacts and "
+        "channels at once, resists being pinged while already heads-down, wants a "
+        "digest not a relay"
+    ),
+    patience_turns=15,
+)
+
+PERSONA_DEL_LOW = Persona(
+    id="del_low",
+    name="Del Ferreira",
+    traits=[
+        "overwhelmed",
+        "low-energy",
+        "avoidant",
+        "shame-sensitive",
+    ],
+    background=(
+        "Going through a depressive stretch; low capacity and high avoidance. "
+        "Nagging and guilt prompts backfire, streaks trigger all-or-nothing "
+        "collapse. Responds to tiny concrete valued next-actions, gentle "
+        "non-punishing framing, and proactive reassurance rather than being asked "
+        "to initiate."
+    ),
+    communication_style=(
+        "short, low-affect, sometimes says 'I can't' or 'not today', apologizes "
+        "for missing things, needs soft self-compassionate tone and no pressure"
+    ),
+    patience_turns=20,
+)
+
 ALL_PERSONAS: list[Persona] = [
     PERSONA_ALEX_ENG,
     PERSONA_RIA_PM,
@@ -111,4 +234,9 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_TARA_NIGHT,
     PERSONA_KAI_STUDENT,
     PERSONA_LIN_OPS,
+    PERSONA_ARI_ADHD,
+    PERSONA_NOA_NIGHTOWL,
+    PERSONA_TAO_TRAVEL,
+    PERSONA_CAM_COMMS,
+    PERSONA_DEL_LOW,
 ]
