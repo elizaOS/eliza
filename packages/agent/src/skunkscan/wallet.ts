@@ -3,13 +3,13 @@ import {
   getSolanaRecentSignatures,
   getSolanaTokenHoldings,
 } from "./helius";
+import { analyzeWalletActivity } from "./analyzers/activity";
+import { analyzeWalletRisk } from "./analyzers/risk";
 import {
   SupportedChain,
-  WalletActivitySummary,
   WalletBalance,
   WalletInvestigationResult,
   WalletRecentTransaction,
-  WalletRiskSummary,
   WalletTokenHolding,
 } from "./types";
 
@@ -51,63 +51,12 @@ export async function investigateWallet(
         : undefined,
     status: tx.err ? "failed" : "success",
   }));
-        const failedTransactionCount = recentTransactions.filter(
-  (tx) => tx.status === "failed",
-).length;
+       const activity = analyzeWalletActivity(recentTransactions);
 
-const lastActiveAt =
-  recentTransactions.length > 0 ? recentTransactions[0].blockTime : null;
-
-const activityLevel =
-  recentTransactions.length === 0
-    ? "none"
-    : recentTransactions.length <= 3
-      ? "low"
-      : recentTransactions.length <= 10
-        ? "medium"
-        : "high";
-
-const activity: WalletActivitySummary = {
-  recentTransactionCount: recentTransactions.length,
-  failedTransactionCount,
-  lastActiveAt,
-  activityLevel,
-};
-
-const riskReasons: string[] = [];
-let riskScore = 0;
-
-if (balance.sol === 0) {
-  riskScore += 5;
-  riskReasons.push("Wallet currently has zero SOL balance.");
-}
-
-if (failedTransactionCount > 0) {
-  riskScore += Math.min(failedTransactionCount * 10, 30);
-  riskReasons.push(
-    `${failedTransactionCount} failed transaction(s) found in the recent sample.`,
-  );
-}
-
-if (recentTransactions.length === 0) {
-  riskScore += 10;
-  riskReasons.push("No recent transaction activity found.");
-} else {
-  riskReasons.push("Wallet has recent transaction activity.");
-}
-
-if (riskReasons.length === 0) {
-  riskReasons.push("No obvious risk signals found in the current sample.");
-}
-
-const riskLevel =
-  riskScore >= 60 ? "high" : riskScore >= 25 ? "medium" : "low";
-
-const risk: WalletRiskSummary = {
-  score: riskScore,
-  level: riskLevel,
-  reasons: riskReasons,
-};
+const risk = analyzeWalletRisk(
+  balance.sol,
+  activity,
+);
 
         return {
           chain,
