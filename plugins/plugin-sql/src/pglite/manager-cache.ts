@@ -73,3 +73,24 @@ export function getActivePgliteManager<TManager extends ReusablePgliteManager>(
 
   return cache.pgLiteClientManager;
 }
+
+export function dropActivePgliteManager<TManager extends ReusablePgliteManager>(
+  cache: PgliteManagerCache<TManager>,
+  manager: TManager
+): void {
+  const activeKey = cache.activePgliteManagerKey;
+  if (activeKey && cache.pgLiteClientManagers?.get(activeKey) === manager) {
+    cache.pgLiteClientManagers.delete(activeKey);
+    delete cache.activePgliteManagerKey;
+  } else if (cache.pgLiteClientManagers) {
+    for (const [key, cachedManager] of cache.pgLiteClientManagers) {
+      if (cachedManager === manager) {
+        cache.pgLiteClientManagers.delete(key);
+      }
+    }
+  }
+
+  if (cache.pgLiteClientManager === manager) {
+    delete cache.pgLiteClientManager;
+  }
+}

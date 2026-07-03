@@ -31,6 +31,7 @@ import {
 } from "./pglite/manager";
 import {
   type ClosePgliteSingletonResult,
+  dropActivePgliteManager,
   getActivePgliteManager,
   getOrCreatePgliteManagerForAgent,
   type PgliteManagerCache,
@@ -323,7 +324,7 @@ export async function closePgliteSingleton(options?: {
     }
   }
 
-  delete globalSingletons.pgLiteClientManager;
+  dropActivePgliteManager(globalSingletons, manager);
   return { closed: true, timedOut, error };
 }
 

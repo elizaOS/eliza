@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { closePgliteSingleton, getPgliteSingletonCache } from "../../index.node";
+import { pgliteManagerCacheKey } from "../../pglite/manager-cache";
 
 /**
  * closePgliteSingleton() / getPgliteSingletonCache() are the public accessors
@@ -8,7 +9,13 @@ import { closePgliteSingleton, getPgliteSingletonCache } from "../../index.node"
  */
 describe("closePgliteSingleton", () => {
   afterEach(() => {
-    delete getPgliteSingletonCache().pgLiteClientManager;
+    const cache = getPgliteSingletonCache() as ReturnType<typeof getPgliteSingletonCache> & {
+      activePgliteManagerKey?: string;
+      pgLiteClientManagers?: Map<string, unknown>;
+    };
+    delete cache.pgLiteClientManager;
+    delete cache.activePgliteManagerKey;
+    cache.pgLiteClientManagers?.clear();
   });
 
   it("returns closed:false when no manager is present", async () => {
@@ -36,6 +43,28 @@ describe("closePgliteSingleton", () => {
     expect(result.timedOut).toBe(false);
     expect(result.error).toBeNull();
     expect(cache.pgLiteClientManager).toBeUndefined();
+  });
+
+  it("removes the active keyed manager from the per-agent cache", async () => {
+    const cache = getPgliteSingletonCache() as ReturnType<typeof getPgliteSingletonCache> & {
+      activePgliteManagerKey?: string;
+      pgLiteClientManagers?: Map<string, unknown>;
+    };
+    const manager = {
+      isShuttingDown: () => false,
+      close: async () => {},
+    };
+    const key = pgliteManagerCacheKey("/tmp/.elizadb", "agent-a");
+    cache.pgLiteClientManagers = new Map([[key, manager]]);
+    cache.pgLiteClientManager = manager;
+    cache.activePgliteManagerKey = key;
+
+    const result = await closePgliteSingleton();
+
+    expect(result.closed).toBe(true);
+    expect(cache.pgLiteClientManager).toBeUndefined();
+    expect(cache.activePgliteManagerKey).toBeUndefined();
+    expect(cache.pgLiteClientManagers.has(key)).toBe(false);
   });
 
   it("captures a close() error but still drops the manager", async () => {

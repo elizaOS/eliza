@@ -9,6 +9,7 @@ import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
 import {
   type ClosePgliteSingletonResult,
+  dropActivePgliteManager,
   getOrCreatePgliteManagerForAgent,
   type PgliteManagerCache,
   type PgliteSingletonCache,
@@ -82,7 +83,7 @@ export async function closePgliteSingleton(options?: {
     }
   }
 
-  delete globalSingletons.pgLiteClientManager;
+  dropActivePgliteManager(globalSingletons, manager);
   return { closed: true, timedOut, error };
 }
 
