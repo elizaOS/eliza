@@ -179,6 +179,13 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
+    # Scope the job to the same GitHub environment as migrate-db so its
+    # production-environment secrets — notably STEWARD_PLATFORM_KEYS (#11461) —
+    # are visible to the publish-secrets step. Without this the un-scoped job
+    # only saw repo secrets, so `publish_secret` skipped the key and a redeploy
+    # would silently recreate the #11461 tenant-isolation gap (#11937). Mirrors
+    # the proven migrate-db declaration exactly (same protection semantics).
+    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     # A production Worker deploy must never be cancelled mid-flight by a newer
     # main promote (#11640): the workflow-level group did not protect the
     # in-flight job, so rapid promotes cancelled every Worker deploy and prod
