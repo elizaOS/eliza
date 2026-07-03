@@ -1,0 +1,28 @@
+[gguf] 09:08:29 venv setup
+Activate with: source /Users/shawwalters/.cache/gpt55-venv/bin/activate
+ + typer==0.25.1
+ + typing-extensions==4.16.0
+ + urllib3==2.7.0
+[gguf] 09:08:35 convert HF->f16 gguf (vendored gemma-4 converter)
+        {{- '<|turn>model\n' -}}
+    {%- endif -%}
+{%- endif -%}
+WARNING:gguf.gguf_writer:Duplicated key name 'tokenizer.ggml.add_bos_token', overwriting it with new value True of type BOOL
+INFO:gguf.gguf_writer:Writing the following files:
+INFO:gguf.gguf_writer:/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/training/checkpoints/eliza1-2b-gpt55scenarios-apollo-1783053000/gguf/eliza-1-2b-gpt55.f16.gguf: n_tensors = 541, total_size = 9.3G
+Writing:   0%|          | 0.00/9.26G [00:00<?, ?byte/s]Writing:   9%|         | 805M/9.26G [00:00<00:07, 1.09Gbyte/s]Writing:  59%|    | 5.50G/9.26G [00:05<00:03, 1.02Gbyte/s]Writing:  61%|    | 5.61G/9.26G [00:05<00:04, 908Mbyte/s] Writing:  61%|   | 5.69G/9.26G [00:06<00:04, 831Mbyte/s]Writing:  62%|   | 5.74G/9.26G [00:06<00:04, 753Mbyte/s]Writing:  62%|   | 5.78G/9.26G [00:06<00:04, 734Mbyte/s]Writing:  63%|   | 5.83G/9.26G [00:06<00:05, 640Mbyte/s]Writing:  63%|   | 5.86G/9.26G [00:07<00:06, 557Mbyte/s]Writing:  64%|   | 5.90G/9.26G [00:07<00:06, 531Mbyte/s]Writing:  64%|   | 5.94G/9.26G [00:07<00:07, 442Mbyte/s]Writing:  65%|   | 5.97G/9.26G [00:07<00:07, 424Mbyte/s]Writing:  65%|   | 6.01G/9.26G [00:07<00:09, 358Mbyte/s]Writing:  65%|   | 6.06G/9.26G [00:08<00:08, 357Mbyte/s]Writing:  66%|   | 6.14G/9.26G [00:08<00:07, 414Mbyte/s]Writing:  67%|   | 6.19G/9.26G [00:08<00:09, 335Mbyte/s]Writing:  68%|   | 6.26G/9.26G [00:08<00:07, 409Mbyte/s]Writing:  68%|   | 6.32G/9.26G [00:08<00:09, 320Mbyte/s]Writing:  69%|   | 6.39G/9.26G [00:08<00:07, 387Mbyte/s]Writing:  70%|   | 6.44G/9.26G [00:09<00:08, 323Mbyte/s]Writing:  70%|   | 6.52G/9.26G [00:09<00:07, 387Mbyte/s]Writing:  71%|   | 6.57G/9.26G [00:09<00:08, 320Mbyte/s]Writing:  72%|  | 6.65G/9.26G [00:09<00:06, 396Mbyte/s]Writing:  72%|  | 6.71G/9.26G [00:09<00:08, 318Mbyte/s]Writing:  73%|  | 6.78G/9.26G [00:10<00:09, 267Mbyte/s]Writing:  74%|  | 6.86G/9.26G [00:10<00:07, 337Mbyte/s]Writing:  75%|  | 6.91G/9.26G [00:10<00:08, 288Mbyte/s]Writing:  75%|  | 6.99G/9.26G [00:10<00:06, 360Mbyte/s]Writing:  76%|  | 7.04G/9.26G [00:11<00:07, 298Mbyte/s]Writing:  77%|  | 7.11G/9.26G [00:11<00:05, 374Mbyte/s]Writing:  77%|  | 7.17G/9.26G [00:11<00:06, 302Mbyte/s]Writing:  78%|  | 7.24G/9.26G [00:11<00:05, 378Mbyte/s]Writing:  79%|  | 7.29G/9.26G [00:11<00:06, 302Mbyte/s]Writing:  80%|  | 7.37G/9.26G [00:11<00:05, 372Mbyte/s]Writing:  80%|  | 7.43G/9.26G [00:12<00:05, 306Mbyte/s]Writing:  81%|  | 7.51G/9.26G [00:12<00:04, 366Mbyte/s]Writing:  82%| | 7.56G/9.26G [00:12<00:05, 284Mbyte/s]Writing:  82%| | 7.64G/9.26G [00:12<00:04, 353Mbyte/s]Writing:  83%| | 7.69G/9.26G [00:13<00:05, 262Mbyte/s]Writing:  84%| | 7.76G/9.26G [00:13<00:04, 334Mbyte/s]Writing:  84%| | 7.82G/9.26G [00:13<00:05, 267Mbyte/s]Writing:  85%| | 7.89G/9.26G [00:13<00:04, 339Mbyte/s]Writing:  86%| | 7.94G/9.26G [00:13<00:04, 272Mbyte/s]Writing:  87%| | 8.02G/9.26G [00:14<00:03, 342Mbyte/s]Writing:  87%| | 8.08G/9.26G [00:14<00:04, 273Mbyte/s]Writing:  88%| | 8.16G/9.26G [00:14<00:04, 226Mbyte/s]Writing:  89%| | 8.23G/9.26G [00:14<00:03, 289Mbyte/s]Writing:  89%| | 8.28G/9.26G [00:15<00:04, 239Mbyte/s]Writing:  90%| | 8.36G/9.26G [00:15<00:02, 306Mbyte/s]Writing:  91%| | 8.41G/9.26G [00:15<00:03, 247Mbyte/s]Writing:  92%|| 8.49G/9.26G [00:15<00:02, 318Mbyte/s]Writing:  92%|| 8.54G/9.26G [00:16<00:02, 250Mbyte/s]Writing:  93%|| 8.61G/9.26G [00:16<00:02, 320Mbyte/s]Writing:  94%|| 8.67G/9.26G [00:16<00:02, 254Mbyte/s]Writing:  94%|| 8.74G/9.26G [00:16<00:01, 320Mbyte/s]Writing:  95%|| 8.79G/9.26G [00:17<00:01, 242Mbyte/s]Writing:  95%|| 8.82G/9.26G [00:17<00:01, 259Mbyte/s]Writing:  96%|| 8.87G/9.26G [00:17<00:01, 200Mbyte/s]Writing:  96%|| 8.91G/9.26G [00:17<00:01, 224Mbyte/s]Writing:  97%|| 8.95G/9.26G [00:18<00:01, 164Mbyte/s]Writing:  97%|| 8.98G/9.26G [00:18<00:01, 192Mbyte/s]Writing:  97%|| 9.02G/9.26G [00:18<00:01, 149Mbyte/s]Writing:  98%|| 9.06G/9.26G [00:18<00:01, 180Mbyte/s]Writing:  98%|| 9.09G/9.26G [00:18<00:01, 142Mbyte/s]Writing:  99%|| 9.13G/9.26G [00:19<00:00, 170Mbyte/s]Writing:  99%|| 9.16G/9.26G [00:19<00:00, 137Mbyte/s]Writing:  99%|| 9.20G/9.26G [00:19<00:00, 171Mbyte/s]Writing: 100%|| 9.23G/9.26G [00:19<00:00, 148Mbyte/s]Writing: 100%|| 9.26G/9.26G [00:19<00:00, 164Mbyte/s]Writing: 100%|| 9.26G/9.26G [00:19<00:00, 464Mbyte/s]
+INFO:hf-to-gguf:Model successfully exported to /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/training/checkpoints/eliza1-2b-gpt55scenarios-apollo-1783053000/gguf/eliza-1-2b-gpt55.f16.gguf
+[gguf] convert exit 0
+[gguf] 09:09:05 quantize q4_k_m
+
+main: quantize time = 12586.07 ms
+main:    total time = 12586.07 ms
+[gguf] 09:09:17 verify generation
+
+> 
+
+Exiting...
+[gguf] sizes:
+8.6G	/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/training/checkpoints/eliza1-2b-gpt55scenarios-apollo-1783053000/gguf/eliza-1-2b-gpt55.f16.gguf
+3.2G	/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/training/checkpoints/eliza1-2b-gpt55scenarios-apollo-1783053000/gguf/eliza-1-2b-gpt55.q4_k_m.gguf
+[gguf] DONE 09:29:51
