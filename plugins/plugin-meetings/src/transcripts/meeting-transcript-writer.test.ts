@@ -145,6 +145,85 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
   });
 });
 
+describe("MeetingTranscriptWriter — finalize edges", () => {
+  it("finalizes an empty meeting to status ready with 0 speakers and no segments", async () => {
+    const fake = makeFakeRuntime();
+    const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+    await writer.start(START_INPUT);
+    const final = await writer.finalize({
+      segments: [],
+      endReason: "left_alone_timeout",
+      participants: [],
+      audioWav: null,
+    });
+    expect(final.status).toBe("ready");
+    expect(final.segments).toHaveLength(0);
+    expect(final.speakerCount).toBe(0);
+    expect(final.durationMs).toBe(0);
+    // No transcript text → nothing to mirror into knowledge.
+    expect(fake.documents).toHaveLength(0);
+    expect(final.knowledgeDocumentId).toBeUndefined();
+    // Row still parses through the view reader.
+    const row = fake.memories.get(writer.transcriptId) as Memory;
+    expect(transcriptsViewReader(row)?.status).toBe("ready");
+  });
+
+  it("skips the media write when audioWav is null but writes it when present", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meetings-audiowav-"));
+    const prev = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = dir;
+    try {
+      const segs = [segment("s1", "Jill", "hi there", 0, 800)];
+
+      // audioWav null → no audioUrl, media dir stays empty.
+      const fakeA = makeFakeRuntime();
+      const writerA = new MeetingTranscriptWriter(fakeA.runtime, 0);
+      await writerA.start(START_INPUT);
+      const finalA = await writerA.finalize({
+        segments: segs,
+        endReason: "normal_completion",
+        participants: [],
+        audioWav: null,
+      });
+      expect(finalA.audioUrl).toBeUndefined();
+      expect(finalA.audioContentType).toBeUndefined();
+
+      // audioWav present → audioUrl set + content-addressed file on disk.
+      const fakeB = makeFakeRuntime();
+      const writerB = new MeetingTranscriptWriter(fakeB.runtime, 0);
+      await writerB.start(START_INPUT);
+      const wav = Buffer.from("RIFF-real-wav-payload-bytes");
+      const finalB = await writerB.finalize({
+        segments: segs,
+        endReason: "normal_completion",
+        participants: [],
+        audioWav: wav,
+      });
+      expect(finalB.audioUrl).toMatch(/^\/api\/media\/[0-9a-f]{64}\.wav$/);
+      expect(finalB.audioContentType).toBe("audio/wav");
+      const hash = finalB.audioUrl?.slice("/api/media/".length) as string;
+      expect(existsSync(join(dir, "media", hash))).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = prev;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a zero-length audioWav buffer as no audio", async () => {
+    const fake = makeFakeRuntime();
+    const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+    await writer.start(START_INPUT);
+    const final = await writer.finalize({
+      segments: [segment("s1", "Jill", "hi", 0, 500)],
+      endReason: "normal_completion",
+      participants: [],
+      audioWav: Buffer.alloc(0),
+    });
+    expect(final.audioUrl).toBeUndefined();
+  });
+});
+
 describe("MeetingTranscriptWriter — throttling", () => {
   beforeEach(() => {
     vi.useFakeTimers();

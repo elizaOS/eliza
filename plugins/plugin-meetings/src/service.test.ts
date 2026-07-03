@@ -249,6 +249,124 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect(session?.errorMessage).toBe("asr backend gone");
   });
 
+  it("keeps confirmedSegments when pipeline.finalize throws (fallback, not empty)", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service, pipelines } = makeService([adapter]);
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    await adapter.started;
+    // A confirmed segment arrived live, then finalize blows up: the writer must
+    // persist the fallback (already-confirmed) segments, not an empty transcript.
+    const s1 = segment("s1", "Speaker 1", "partial but real", 0, 1_000);
+    pipelines[0].emit({ confirmed: [s1], pending: [] });
+    pipelines[0].finalizeError = new Error("asr backend gone");
+    adapter.end("normal_completion");
+    await new Promise((r) => setTimeout(r, 10));
+
+    const session = service.getSession(dto.id as never);
+    expect(session?.status).toBe("failed");
+    const row = fake.memories.get(dto.transcriptId as string);
+    const transcript = row ? readTranscriptRow(row) : null;
+    expect(transcript?.segments).toHaveLength(1);
+    expect(transcript?.segments[0].text).toBe("partial but real");
+  });
+
+  it("fails the session when transcript finalize (row write) throws", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    await adapter.started;
+    // Make the finalize row-update fail (writer throws "row vanished").
+    (
+      fake.runtime as { updateMemory: (p: unknown) => Promise<boolean> }
+    ).updateMemory = async () => false;
+    adapter.end("normal_completion");
+    await new Promise((r) => setTimeout(r, 10));
+    const session = service.getSession(dto.id as never);
+    expect(session?.status).toBe("failed");
+    expect(session?.endReason).toBe("error");
+    expect(session?.errorMessage).toContain("vanished");
+  });
+
+  it("resets worldReady after a transient ensureWorld failure so a later join succeeds", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    let calls = 0;
+    (
+      fake.runtime as { ensureWorldExists: (w: unknown) => Promise<void> }
+    ).ensureWorldExists = async (world) => {
+      calls += 1;
+      if (calls === 1) throw new Error("db down");
+      fake.worlds.push(world as Record<string, unknown>);
+    };
+
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toThrow("db down");
+    expect(fake.worlds).toHaveLength(0);
+
+    // worldReady was reset on the rejection — a second join now succeeds.
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(dto.status).toBe("requested");
+    expect(fake.worlds).toHaveLength(1);
+    expect(calls).toBe(2);
+  });
+
+  it("stop() aborts active sessions and awaits their done promise", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { service } = makeService([adapter]);
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    const botSession = await adapter.started;
+    adapter.report("active");
+    expect(botSession.signal.aborted).toBe(false);
+
+    // The adapter resolves once it observes the abort (graceful leave).
+    botSession.signal.addEventListener("abort", () =>
+      adapter.end("requested_stop"),
+    );
+    await service.stop();
+    expect(botSession.signal.aborted).toBe(true);
+    // stop() awaited done → the session reached a terminal state.
+    const session = service.getSession(dto.id as never);
+    expect(["ended", "failed"]).toContain(session?.status);
+  });
+
+  it("runs concurrent joins of DIFFERENT meetings independently", async () => {
+    const meet = new ScriptedAdapter("google_meet");
+    const zoom = new ScriptedAdapter("zoom");
+    const { service, pipelines } = makeService([meet, zoom]);
+    const [a, b] = await Promise.all([
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+      service.requestJoin({
+        platform: "zoom",
+        meetingUrl: "https://zoom.us/j/1234567890",
+      }),
+    ]);
+    await Promise.all([meet.started, zoom.started]);
+    expect(a.id).not.toBe(b.id);
+    // Both sessions active + each got its own pipeline instance.
+    expect(service.listSessions({ active: true })).toHaveLength(2);
+    expect(pipelines).toHaveLength(2);
+
+    // Ending one leaves the other running.
+    meet.end("normal_completion");
+    await new Promise((r) => setTimeout(r, 10));
+    const active = service.listSessions({ active: true });
+    expect(active).toHaveLength(1);
+    expect(active[0].platform).toBe("zoom");
+  });
+
   it("lists sessions newest-first and filters active", async () => {
     const meet = new ScriptedAdapter("google_meet");
     const zoom = new ScriptedAdapter("zoom");
