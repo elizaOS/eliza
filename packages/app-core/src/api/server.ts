@@ -48,6 +48,7 @@ import {
   getConfiguredCompatAgentName,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
+import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {
@@ -683,6 +684,16 @@ async function handleCompatRouteInner(
   if (gate.mode === "remote") {
     if (await forwardRemoteCloudMutation(req, res)) return true;
   }
+
+  const authPolicyDecision = await enforceCompatRouteAuthPolicy(
+    req,
+    res,
+    state,
+    method,
+    url.pathname,
+  );
+  if (authPolicyDecision === "denied") return true;
+  if (authPolicyDecision === "unmanaged") return false;
 
   // Runtime mode introspection — UI shells hit this on boot for the
   // useRuntimeMode() hook.
