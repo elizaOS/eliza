@@ -65,6 +65,16 @@ interface PendingSettlementContext {
   parameters: Record<string, unknown>;
 }
 
+function redactProviderErrorMessage(message: string): string {
+  return message
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "sk-[REDACTED]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]")
+    .replace(
+      /\b(api[_-]?key|access[_-]?token|token|secret|authorization)=([^&\s]+)/gi,
+      "$1=[REDACTED]",
+    );
+}
+
 function providerFailureDetails(options: {
   provider: string;
   model: string;
@@ -94,7 +104,10 @@ function providerFailureDetails(options: {
         ? options.error
         : "";
   if (message.trim()) {
-    details.upstreamMessage = message.trim().slice(0, 500);
+    details.upstreamMessage = redactProviderErrorMessage(message.trim()).slice(
+      0,
+      500,
+    );
   }
   return details;
 }

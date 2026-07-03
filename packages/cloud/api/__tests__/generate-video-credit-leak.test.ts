@@ -246,10 +246,13 @@ describe("generate-video — pre-settle failure still refunds", () => {
   test("provider throws BEFORE settle: refunds and returns provider diagnostics", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
-    const providerError = Object.assign(new Error("fal upstream 503"), {
-      status: 503,
-      code: "FAL_UPSTREAM_UNAVAILABLE",
-    });
+    const providerError = Object.assign(
+      new Error("fal upstream 503 api_key=secret-token"),
+      {
+        status: 503,
+        code: "FAL_UPSTREAM_UNAVAILABLE",
+      },
+    );
     subscribe.mockRejectedValue(providerError);
 
     const res = await post();
@@ -266,7 +269,7 @@ describe("generate-video — pre-settle failure still refunds", () => {
         billingSource: "fal",
         upstreamStatus: 503,
         upstreamCode: "FAL_UPSTREAM_UNAVAILABLE",
-        upstreamMessage: "fal upstream 503",
+        upstreamMessage: "fal upstream 503 api_key=[REDACTED]",
       },
     });
     expect(generationsCreate).not.toHaveBeenCalled();
