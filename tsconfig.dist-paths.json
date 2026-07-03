@@ -120,6 +120,9 @@
       "@elizaos/core": [
         "./packages/core/dist/index.d.ts"
       ],
+      "@elizaos/import-conversations": [
+        "./packages/import-conversations/dist/index.d.ts"
+      ],
       "@elizaos/interrupt-bench": [
         "./packages/benchmarks/interrupt-bench/src/index.ts"
       ],
