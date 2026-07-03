@@ -108,6 +108,16 @@ export interface RecordedToolStage {
 	result: unknown;
 	success: boolean;
 	durationMs: number;
+	/**
+	 * The model-facing tool description the planner was shown for this action —
+	 * i.e. the exposed `ToolDefinition.description`, which is the action's
+	 * `routingHint` (its "use when / do NOT use when" guidance) prepended to the
+	 * compressed description. Captured so a trajectory reviewer or training
+	 * pipeline can see WHAT the action was for — and judge whether the planner
+	 * had enough to disambiguate it — directly from the execution record, without
+	 * cross-referencing the preceding planner stage's `model.tools`.
+	 */
+	description?: string;
 	error?: string;
 	/**
 	 * Captured action-handler input (the resolved params passed into the
@@ -641,6 +651,9 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 			lines.push(
 				`- tool: \`${stage.tool.name}\` ${stage.tool.success ? "ok" : "failed"}`,
 			);
+			if (stage.tool.description) {
+				lines.push(`- description: ${stage.tool.description}`);
+			}
 			lines.push(`- duration: ${formatDuration(stage.tool.durationMs)}`);
 			lines.push(
 				...markdownFence(
