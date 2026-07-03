@@ -195,6 +195,7 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
         id: "acct-1",
         organization_id: ORG_ID,
         platform: "meta",
+        status: "active",
       } as never),
     );
     // getCredentials is private + hits the secrets vault; stub it out.
@@ -322,6 +323,7 @@ describe("updateCampaign — budget DECREASE refunds only unused + is atomic (#1
         id: "acct-1",
         organization_id: ORG_ID,
         platform: "meta",
+        status: "active",
       } as never),
     );
     track(
