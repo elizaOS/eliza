@@ -518,6 +518,40 @@ describe("live routing regressions", () => {
 		).toEqual(["WEB_SEARCH"]);
 	});
 
+	it("fast-paths a direct shell ask to TERMINAL_SHELL in a lean-chat runtime (follow-up to #12021)", () => {
+		// PR #12021 renamed the terminal action SHELL -> TERMINAL_SHELL. In a
+		// lean-chat deployment (no plugin-coding-tools) TERMINAL_SHELL is the only
+		// shell action, so the SHELL_DIRECT_ACTIONS / WEAK_DIRECT_REPLY_OVERRIDE
+		// allowlists must recognise it — otherwise "run df -h on this VPS" silently
+		// falls through to the general planner instead of the direct shell path.
+		const leanChatActions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{
+				name: "TERMINAL_SHELL",
+				similes: ["RUN_IN_TERMINAL", "EXECUTE_COMMAND", "TERMINAL", "RUN_SHELL"],
+			},
+			{ name: "REPLY", similes: ["RESPOND"] },
+		];
+		const shellText = "run df -h on this VPS";
+
+		// Inference resolves the renamed terminal action (by canonical name — no
+		// coding-tools SHELL present to win on priority).
+		const directCandidateActions = inferDirectCurrentRequestCandidateActions(
+			leanChatActions,
+			shellText,
+		);
+		expect(directCandidateActions).toEqual(["TERMINAL_SHELL"]);
+
+		// And the preference gate promotes it: without TERMINAL_SHELL in the
+		// allowlists this returned false and the turn fell through to planning.
+		expect(
+			shouldPreferDirectCurrentCandidateActions({
+				candidateActions: ["REPLY", "TERMINAL_SHELL"],
+				currentMessageText: shellText,
+				directCandidateActions,
+			}),
+		).toBe(true);
+	});
+
 	it("promotes explicit reply to direct shell/search action aliases", () => {
 		expect(
 			shouldPromoteExplicitReplyToOwnedAction(

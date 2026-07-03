@@ -174,6 +174,7 @@ export function inferDirectCurrentRequestCandidateActions(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findAvailableActionName(actions, [
 			"SHELL",
+			"TERMINAL_SHELL",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",

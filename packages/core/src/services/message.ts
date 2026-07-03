@@ -4352,6 +4352,7 @@ const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
 		"TASKS",
 		"TASKS_SPAWN_AGENT",
 		"TERMINAL",
+		"TERMINAL_SHELL",
 		"WEB_FETCH",
 		"WEB_SEARCH",
 	].map(normalizeActionIdentifier),
@@ -4360,6 +4361,7 @@ const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
 const SHELL_DIRECT_ACTIONS = new Set(
 	[
 		"SHELL",
+		"TERMINAL_SHELL",
 		"RUN_IN_TERMINAL",
 		"RUN_COMMAND",
 		"EXECUTE_COMMAND",
@@ -4451,6 +4453,7 @@ function inferAckIntentCandidateActions(
 	if (looksLikeLocalShellRequest(actionText)) {
 		const shellAction = findAvailableActionName(actions, [
 			"SHELL",
+			"TERMINAL_SHELL",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",
