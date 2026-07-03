@@ -1,0 +1,109 @@
+ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
+Last Timestamp of Persistence Into Persistent Storage: 2026-07-03 02:56:20.474
+  package: ai.elizaos.app
+    Historical Process Exit for uid=10371
+        ApplicationExitInfo #0:
+          timestamp=2026-07-02 19:56:39.933 pid=5209 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+          importance=1000 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to from pid 5231 state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #1:
+          timestamp=2026-07-02 19:56:39.671 pid=3861 realUid=99066 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=13 (OTHER KILLS BY SYSTEM) subreason=17 (ISOLATED NOT NEEDED) status=0
+          importance=300 pss=0.00 rss=0.00 description=isolated not needed state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #2:
+          timestamp=2026-07-02 19:56:39.647 pid=3817 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=16 (PACKAGE UPDATED) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to installPackageLI state=72 bytes trace=null
+ anrInfo=null        ApplicationExitInfo #3:
+          timestamp=2026-07-02 19:50:11.283 pid=3730 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+          importance=1000 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to from pid 3756 state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #4:
+          timestamp=2026-07-02 19:50:10.938 pid=7869 realUid=99065 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=13 (OTHER KILLS BY SYSTEM) subreason=17 (ISOLATED NOT NEEDED) status=0
+          importance=300 pss=0.00 rss=204MB description=isolated not needed state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #5:
+          timestamp=2026-07-02 19:50:10.896 pid=7812 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=16 (PACKAGE UPDATED) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=369MB description=stop ai.elizaos.app due to installPackageLI state=72 bytes trace=null
+ anrInfo=null        ApplicationExitInfo #6:
+          timestamp=2026-07-02 18:07:06.078 pid=7307 realUid=99064 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=13 (OTHER KILLS BY SYSTEM) subreason=17 (ISOLATED NOT NEEDED) status=0
+          importance=300 pss=0.00 rss=0.00 description=isolated not needed state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #7:
+          timestamp=2026-07-02 18:07:06.056 pid=7258 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+          importance=100 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to from pid 7766 state=72 bytes trace=null
+ anrInfo=null        ApplicationExitInfo #8:
+          timestamp=2026-07-02 18:06:19.837 pid=6975 realUid=99063 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=13 (OTHER KILLS BY SYSTEM) subreason=17 (ISOLATED NOT NEEDED) status=0
+          importance=300 pss=0.00 rss=0.00 description=isolated not needed state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #9:
+          timestamp=2026-07-02 18:06:19.826 pid=6927 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+          importance=100 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to from pid 7232 state=72 bytes trace=null
+ anrInfo=null        ApplicationExitInfo #10:
+          timestamp=2026-07-02 18:06:01.114 pid=6682 realUid=99062 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=13 (OTHER KILLS BY SYSTEM) subreason=17 (ISOLATED NOT NEEDED) status=0
+          importance=300 pss=0.00 rss=0.00 description=isolated not needed state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #11:
+          timestamp=2026-07-02 18:06:01.099 pid=6635 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+          importance=100 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to from pid 6909 state=72 bytes trace=null
+ anrInfo=null        ApplicationExitInfo #12:
+          timestamp=2026-07-02 18:05:42.297 pid=497 realUid=99060 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=13 (OTHER KILLS BY SYSTEM) subreason=17 (ISOLATED NOT NEEDED) status=0
+          importance=100 pss=0.00 rss=0.00 description=isolated not needed state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #13:
+          timestamp=2026-07-02 18:05:42.291 pid=385 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+          importance=100 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to from pid 6589 state=72 bytes trace=null
+ anrInfo=null        ApplicationExitInfo #14:
+          timestamp=2026-07-02 17:49:08.670 pid=24299 realUid=99059 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=13 (OTHER KILLS BY SYSTEM) subreason=17 (ISOLATED NOT NEEDED) status=0
+          importance=300 pss=0.00 rss=0.00 description=isolated not needed state=empty trace=null
+ anrInfo=null        ApplicationExitInfo #15:
+          timestamp=2026-07-02 17:49:08.657 pid=24255 realUid=10371 packageUid=10371 definingUid=10371 user=0
+          process=ai.elizaos.app reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) status=0
+          importance=100 pss=0.00 rss=0.00 description=stop ai.elizaos.app due to from pid 32688 state=72 bytes trace=null
+ anrInfo=null    Historical Process Exit for uid=99017
+        ApplicationExitInfo #0:
+          timestamp=2026-03-13 13:11:56.924 pid=10597 realUid=99017 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=42MB description=null state=empty trace=null
+ anrInfo=null    Historical Process Exit for uid=99018
+        ApplicationExitInfo #0:
+          timestamp=2026-03-13 13:15:28.705 pid=17131 realUid=99018 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=49MB description=null state=empty trace=null
+ anrInfo=null    Historical Process Exit for uid=99021
+        ApplicationExitInfo #0:
+          timestamp=2026-03-13 13:48:13.777 pid=29370 realUid=99021 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=1 (EXIT_SELF) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=57MB description=null state=empty trace=null
+ anrInfo=null    Historical Process Exit for uid=99022
+        ApplicationExitInfo #0:
+          timestamp=2026-03-13 13:50:43.579 pid=2758 realUid=99022 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=37MB description=null state=empty trace=null
+ anrInfo=null    Historical Process Exit for uid=99023
+        ApplicationExitInfo #0:
+          timestamp=2026-03-13 13:54:02.106 pid=5817 realUid=99023 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=39MB description=null state=empty trace=null
+ anrInfo=null    Historical Process Exit for uid=99024
+        ApplicationExitInfo #0:
+          timestamp=2026-03-13 13:57:08.684 pid=11127 realUid=99024 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=36MB description=null state=empty trace=null
+ anrInfo=null    Historical Process Exit for uid=99026
+        ApplicationExitInfo #0:
+          timestamp=2026-03-13 14:02:45.036 pid=19222 realUid=99026 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=36MB description=null state=empty trace=null
+ anrInfo=null    Historical Process Exit for uid=99043
+        ApplicationExitInfo #0:
+          timestamp=2026-07-02 12:35:12.824 pid=28257 realUid=99043 packageUid=10371 definingUid=10151 user=0
+          process=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=0.00 rss=35MB description=null state=empty trace=null
+ anrInfo=null
