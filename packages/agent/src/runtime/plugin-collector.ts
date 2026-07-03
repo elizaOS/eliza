@@ -37,6 +37,7 @@ import {
   LEAN_CHAT_EXCLUDED_PLUGINS,
   LEAN_CHAT_PLUGINS,
   MOBILE_CORE_PLUGINS,
+  MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
@@ -740,10 +741,7 @@ export function collectPluginNames(
       ...MOBILE_VIEW_PLUGINS,
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
-      "@elizaos/plugin-anthropic",
-      "@elizaos/plugin-openai",
-      "@elizaos/plugin-ollama",
-      "@elizaos/plugin-elizacloud",
+      ...MOBILE_MODEL_PROVIDER_PLUGINS,
     ]);
     for (const pluginName of Array.from(pluginsToLoad)) {
       if (!mobileAllowed.has(pluginName)) {

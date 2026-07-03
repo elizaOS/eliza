@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
+import { MOBILE_MODEL_PROVIDER_PLUGINS } from "./core-plugins.ts";
 import { collectPluginNames } from "./plugin-collector.ts";
 
 const ENV_KEYS = [
@@ -35,6 +36,15 @@ afterEach(() => {
 });
 
 describe("collectPluginNames runtime mode provider policy", () => {
+  it("keeps the mobile model-provider allow-list in the shared core plugin contract", () => {
+    expect(MOBILE_MODEL_PROVIDER_PLUGINS).toEqual([
+      "@elizaos/plugin-anthropic",
+      "@elizaos/plugin-openai",
+      "@elizaos/plugin-ollama",
+      "@elizaos/plugin-elizacloud",
+    ]);
+  });
+
   it("cloud mode exposes only the cloud model provider surface", () => {
     process.env.OPENAI_API_KEY = "sk-test";
     process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
