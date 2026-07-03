@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	lintDescriptionCompressed,
-	MAX_DESCRIPTION_LENGTH,
-} from "../utils/description-compressed-lint";
+import { lintDescriptionCompressed } from "../utils/description-compressed-lint";
 
 describe("lintDescriptionCompressed", () => {
 	it("reports a violation for an empty string", () => {
@@ -24,24 +21,10 @@ describe("lintDescriptionCompressed", () => {
 		expect(result.violations).toEqual([]);
 	});
 
-	it("accepts a description at exactly the max length", () => {
-		const text = `Send msg ${"x".repeat(MAX_DESCRIPTION_LENGTH - 9)}`;
-		expect(text.length).toBe(MAX_DESCRIPTION_LENGTH);
-
+	it("does not cap description length (full text reaches the model)", () => {
+		const text = `Send a Slack DM ${"x".repeat(500)}`;
 		const result = lintDescriptionCompressed(text);
-		const lengthViolations = result.violations.filter((v) =>
-			v.startsWith("length:"),
-		);
-		expect(lengthViolations).toEqual([]);
-	});
-
-	it("flags a description longer than the max length", () => {
-		const text = "Send a msg ".repeat(20);
-		expect(text.length).toBeGreaterThan(MAX_DESCRIPTION_LENGTH);
-
-		const result = lintDescriptionCompressed(text);
-		expect(result.ok).toBe(false);
-		expect(result.violations.some((v) => v.startsWith("length:"))).toBe(true);
+		expect(result.violations.some((v) => v.startsWith("length:"))).toBe(false);
 	});
 
 	it("flags banned filler phrases regardless of casing", () => {
@@ -142,11 +125,10 @@ describe("lintDescriptionCompressed", () => {
 	});
 
 	it("returns multiple violations for a description that breaks several rules at once", () => {
-		const text = `This action will ${"x".repeat(MAX_DESCRIPTION_LENGTH)} messages configuration basically simply please use this action in order to reach the user and the agent currently.`;
+		const text = `This action will handle messages configuration basically simply please use this action in order to reach the user and the agent currently.`;
 		const result = lintDescriptionCompressed(text);
 		expect(result.ok).toBe(false);
 
-		const lengthHits = result.violations.filter((v) => v.startsWith("length:"));
 		const phraseHits = result.violations.filter((v) =>
 			v.startsWith("banned-phrase:"),
 		);
@@ -157,7 +139,6 @@ describe("lintDescriptionCompressed", () => {
 			v.startsWith("non-imperative:"),
 		);
 
-		expect(lengthHits.length).toBeGreaterThanOrEqual(1);
 		expect(phraseHits.length).toBeGreaterThanOrEqual(5);
 		expect(wordHits.length).toBeGreaterThanOrEqual(2);
 		expect(leadHits.length).toBe(1);

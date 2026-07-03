@@ -43,16 +43,12 @@ describe("prompt templates (src/index.ts)", () => {
     }
   });
 
-  it("compresses arbitrary descriptions into bounded single-line text", () => {
+  it("compresses arbitrary descriptions into single-line normalized text (no length cap)", () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 2_000 }), (description) => {
         const compressed = compressPromptDescription(description);
 
         assert.strictEqual(typeof compressed, "string");
-        assert.ok(
-          compressed.length <= 160,
-          `compressed description exceeded 160 chars: ${compressed.length}`,
-        );
         assert.ok(
           !/\s{2,}|\r|\n/.test(compressed),
           `compressed description should be single-line normalized text: ${JSON.stringify(
@@ -72,7 +68,6 @@ describe("prompt templates (src/index.ts)", () => {
     assert.match(compressed, /`npm run test`/);
     assert.match(compressed, /https:\/\/example\.com\/a\?b=c/);
     assert.match(compressed, /OPENAI_API_KEY/);
-    assert.ok(compressed.length <= 160);
   });
 
   it("exports at least one camelCaseTemplate constant", () => {
@@ -670,7 +665,7 @@ describe("specs directory", () => {
     }
   });
 
-  it("generated plugin action spec descriptions stay prompt-budget friendly", () => {
+  it("generated plugin action spec descriptions compress to non-empty single-line text", () => {
     const generated = readJsonFile(
       join(SPECS_DIR, "actions", "plugins.generated.json"),
     );
@@ -679,10 +674,6 @@ describe("specs directory", () => {
       assert.strictEqual(typeof action.description, "string");
       const compressed = compressPromptDescription(action.description);
       assert.ok(compressed.length > 0, `${action.name} should compress`);
-      assert.ok(
-        compressed.length <= 160,
-        `${action.name} compressed description should fit in prompt budget`,
-      );
       if (
         action.compressedDescription !== undefined &&
         action.descriptionCompressed !== undefined

@@ -1,5 +1,3 @@
-const MAX_DESCRIPTION_LENGTH = 160;
-
 const PROTECTED_PATTERNS = [
   /```[\s\S]*?```/g,
   /`[^`\n]+`/g,
@@ -111,34 +109,12 @@ function protectTechnicalSpans(value: string): {
   };
 }
 
-function truncateDescription(value: string): string {
-  if (value.length <= MAX_DESCRIPTION_LENGTH) {
-    return value;
-  }
-
-  const limit = MAX_DESCRIPTION_LENGTH - 3;
-  const tokens = value.match(/\S+\s*/g) ?? [value];
-  let out = "";
-
-  for (const token of tokens) {
-    const next = `${out}${token}`;
-    if (next.trimEnd().length > limit) {
-      break;
-    }
-    out = next;
-  }
-
-  const trimmed = (out || value.slice(0, limit))
-    .trimEnd()
-    .replace(/[\s,;:.!?-]+$/, "");
-
-  return `${trimmed}...`;
-}
-
 /**
  * Deterministic compact description text for model-facing action/provider docs.
  * Preserves code spans, URLs, paths, commands, env vars, and technical terms
- * while dropping common filler.
+ * while dropping common filler. The full text is preserved — there is no length
+ * cap or tail truncation, so disambiguation guidance written anywhere in a
+ * description always reaches the model intact.
  */
 export function compressPromptDescription(
   description: string | undefined,
@@ -175,7 +151,5 @@ export function compressPromptDescription(
     compact = compact.replace(pattern, replacement);
   }
 
-  compact = restore(normalizeWhitespace(compact));
-
-  return truncateDescription(compact);
+  return restore(normalizeWhitespace(compact));
 }
