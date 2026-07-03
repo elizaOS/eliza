@@ -37,7 +37,9 @@ import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
+import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
 import {
+  isWorkspacePluginSourceFallbackAllowed,
   type PluginResolutionPhase,
   resolvePlugins,
 } from "./plugin-resolver.ts";
@@ -256,7 +258,11 @@ async function loadRequiredPluginSql(): Promise<
       path.dirname(fileURLToPath(import.meta.url)),
       "../../../../plugins/plugin-sql/src/index.node.ts",
     );
-    if (!isPluginSqlResolutionError(err) || !existsSync(sourceEntry)) {
+    if (
+      !isWorkspacePluginSourceFallbackAllowed() ||
+      !isPluginSqlResolutionError(err) ||
+      !existsSync(sourceEntry)
+    ) {
       throw err;
     }
     logger.debug(
@@ -282,73 +288,30 @@ function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
   return null;
 }
 
-// Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
+// Literal-specifier importers so Bun.build inlines each optional plugin into
+// the mobile bundle live in optional-plugin-imports.generated.ts, code-generated
+// from OPTIONAL_STATIC_PLUGIN_PACKAGES (optional-plugins.ts). Adding a plugin to
+// the descriptor table is enough; optional-plugins.test.ts fails if it lacks a
+// generated importer. Plugins not in the map (e.g. desktop-only gitpathologist)
+// load through a bare dynamic import from a node_modules/desktop install.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
-    if (packageName === "@elizaos/plugin-agent-orchestrator") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-agent-orchestrator"
-      );
-    }
-    if (packageName === "@elizaos/plugin-task-coordinator") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-task-coordinator"
-      );
-    }
-    if (packageName === "@elizaos/plugin-app-control") {
-      const appControlPackageName = packageName;
-      return await import(/* @vite-ignore */ appControlPackageName);
-    }
-    if (packageName === "@elizaos/plugin-shell") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-shell");
-    }
-    if (packageName === "@elizaos/plugin-coding-tools") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-coding-tools");
-    }
-    if (packageName === "@elizaos/plugin-pty") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-pty");
-    }
-    if (packageName === "@elizaos/plugin-birdclaw") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-birdclaw");
-    }
-    if (packageName === "@elizaos/plugin-ollama") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
-    }
-    if (packageName === "@elizaos/plugin-elizacloud") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-elizacloud");
-    }
-    if (packageName === "@elizaos/plugin-commands") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-commands");
-    }
-    if (packageName === "@elizaos/plugin-video") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-video");
-    }
-    if (packageName === "@elizaos/plugin-vision") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-vision");
-    }
-    if (packageName === "@elizaos/plugin-background-runner") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-background-runner"
-      );
-    }
-    if (packageName === "@elizaos/plugin-anthropic") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");
-    }
-    if (packageName === "@elizaos/plugin-openai") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-openai");
-    }
+    const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
+    if (importer) return await importer();
     return await import(packageName);
   } catch {
-    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-    if (sourceEntry) {
-      try {
-        logger.debug(
-          `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
-        );
-        return await import(pathToFileURL(sourceEntry).href);
-      } catch {
-        // Fall through to the existing optional-plugin behavior: missing or
-        // unbuildable optional plugins are omitted from STATIC_ELIZA_PLUGINS.
+    if (isWorkspacePluginSourceFallbackAllowed()) {
+      const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
+      if (sourceEntry) {
+        try {
+          logger.debug(
+            `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
+          );
+          return await import(pathToFileURL(sourceEntry).href);
+        } catch {
+          // Missing or unbuildable optional plugins are omitted from
+          // STATIC_ELIZA_PLUGINS.
+        }
       }
     }
     return null;

@@ -539,6 +539,27 @@ function resolveWorkspaceRoots(): string[] {
   return uniquePaths([process.cwd()]);
 }
 
+/**
+ * Whether the runtime may fall back to importing a plugin's unbuilt workspace
+ * `src/` tree (bypassing package `exports`/`dist`) when normal resolution fails.
+ *
+ * Dev-only escape hatch: a production build must resolve plugins through the
+ * bundle or node_modules, never a sibling `src/` tree. Honors the existing
+ * `ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES` kill switch, refuses in a
+ * production runtime (mirrors crash-injection's production signal), and allows
+ * an explicit `ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC=1` override for production
+ * debugging.
+ */
+export function isWorkspacePluginSourceFallbackAllowed(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") return false;
+  const isProduction =
+    env.NODE_ENV === "production" || env.ELIZA_BUILD_VARIANT === "production";
+  if (isProduction) return env.ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC === "1";
+  return true;
+}
+
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;

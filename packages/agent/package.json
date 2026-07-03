@@ -33,6 +33,7 @@
     "dev": "bun --hot src/bin.ts",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
+    "gen:optional-plugin-imports": "bun run scripts/gen-optional-plugin-imports.ts",
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
