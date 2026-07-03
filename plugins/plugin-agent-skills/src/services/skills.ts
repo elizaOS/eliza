@@ -155,6 +155,8 @@ export interface AgentSkillsServiceConfig {
 // SERVICE
 // ============================================================
 
+export const AGENT_SKILLS_SERVICE_TYPE = "AGENT_SKILLS_SERVICE";
+
 // Note: LoadedSkill type is imported from ../types
 
 /**
@@ -168,7 +170,7 @@ export interface AgentSkillsServiceConfig {
  * - **Bundled skills**: Read-only skills from bundledSkillsDirs, shipped with app
  */
 export class AgentSkillsService extends Service {
-	static serviceType = "AGENT_SKILLS_SERVICE";
+	static serviceType = AGENT_SKILLS_SERVICE_TYPE;
 	capabilityDescription =
 		"Agent Skills - discover, load, and execute modular agent capabilities";
 

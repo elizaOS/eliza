@@ -50,6 +50,8 @@ type SkillTruncationMarker = NonNullable<
 	TrajectorySkillInvocationRecord["truncated"]
 >[number];
 
+export const USE_SKILL_ACTION_NAME = "USE_SKILL";
+
 const USE_SKILL_PARAMETERS: ActionParameter[] = [
 	{
 		name: "slug",
@@ -334,7 +336,7 @@ async function recordSkillInvocation(
 }
 
 export const useSkillAction: Action = {
-	name: "USE_SKILL",
+	name: USE_SKILL_ACTION_NAME,
 	contexts: ["automation", "knowledge", "connectors"],
 	contextGate: { anyOf: ["automation", "knowledge", "connectors"] },
 	roleGate: { minRole: "USER" },
