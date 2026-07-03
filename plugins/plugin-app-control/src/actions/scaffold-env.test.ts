@@ -1,6 +1,7 @@
 import {
 	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	rmSync,
 	writeFileSync,
@@ -11,6 +12,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	findCodingCliOnPath,
+	hasVendoredOpencodeShim,
 	preflightCodingDispatch,
 	resolvePluginScaffoldBaseDir,
 	resolveScaffoldTemplateDir,
@@ -35,6 +37,23 @@ function fakeCliDir(binary: string): string {
 	chmodSync(file, 0o755);
 	return dir;
 }
+
+/**
+ * A root that holds the orchestrator's vendored opencode shim
+ * (`plugins/plugin-agent-orchestrator/bin/opencode[.cmd]`), as the shim
+ * detector expects to find it.
+ */
+function fakeShimRoot(): string {
+	const root = tempDir("shim-root-");
+	const binDir = path.join(root, "plugins", "plugin-agent-orchestrator", "bin");
+	mkdirSync(binDir, { recursive: true });
+	const executable = process.platform === "win32" ? "opencode.cmd" : "opencode";
+	writeFileSync(path.join(binDir, executable), "#!/bin/sh\nexit 0\n");
+	return root;
+}
+
+/** Preflight option that disables the vendored-shim seam (packaged install). */
+const NO_SHIM = { shimRoots: [] as string[] } as const;
 
 const savedPath = process.env.PATH;
 const savedStateDir = process.env.ELIZA_STATE_DIR;
@@ -148,34 +167,88 @@ describe("preflightCodingDispatch", () => {
 		);
 	});
 
-	it("guides to CLI install + login when no coding CLI is on PATH", async () => {
+	it("guides to backend install + login when no backend is on PATH", async () => {
 		process.env.PATH = tempDir("empty-path-");
 		const result = await preflightCodingDispatch(
 			stubRuntime(["START_CODING_TASK"]),
+			NO_SHIM,
 		);
 		expect(result.ok).toBe(false);
-		expect(result.guidance.join(" ")).toContain("claude, codex, opencode");
+		// The "not found" message names the real backend set, including the
+		// orchestrator's DEFAULT `eliza-code-acp`.
+		expect(result.guidance.join(" ")).toContain(
+			"eliza-code-acp, pi-agent, claude, codex, opencode",
+		);
 		expect(result.guidance.join(" ")).toContain("log in");
 	});
 
 	it("reports both problems at once", async () => {
 		process.env.PATH = tempDir("empty-path-");
-		const result = await preflightCodingDispatch(stubRuntime([]));
+		const result = await preflightCodingDispatch(stubRuntime([]), NO_SHIM);
 		expect(result.ok).toBe(false);
 		expect(result.guidance).toHaveLength(2);
 	});
 
-	it("skips the CLI probe when a backend is explicitly configured", async () => {
+	it("treats the orchestrator DEFAULT backend (eliza-code-acp) as available with no config and no third-party CLI", async () => {
+		// The stock deployment case #11927 regressed: default backend on PATH,
+		// ELIZA_ACP_DEFAULT_AGENT unset, and none of claude/codex/opencode
+		// present. This must NOT block.
+		process.env.PATH = fakeCliDir("eliza-code-acp");
+		const result = await preflightCodingDispatch(
+			stubRuntime(["START_CODING_TASK"]),
+			NO_SHIM,
+		);
+		expect(result.ok).toBe(true);
+		expect(result.guidance).toEqual([]);
+	});
+
+	it("treats the native pi-agent backend on PATH as available", async () => {
+		process.env.PATH = fakeCliDir("pi-agent");
+		const result = await preflightCodingDispatch(
+			stubRuntime(["START_CODING_TASK"]),
+			NO_SHIM,
+		);
+		expect(result.ok).toBe(true);
+	});
+
+	it("treats the vendored opencode shim as an available backend on an empty PATH", async () => {
+		process.env.PATH = tempDir("empty-path-");
+		const shimRoot = fakeShimRoot();
+		const result = await preflightCodingDispatch(
+			stubRuntime(["START_CODING_TASK"]),
+			{ shimRoots: [shimRoot] },
+		);
+		expect(result.ok).toBe(true);
+	});
+
+	it("skips the local probe when a backend is explicitly configured", async () => {
 		process.env.PATH = tempDir("empty-path-");
 		for (const settings of [
 			{ ELIZA_ACP_DEFAULT_AGENT: "elizaos" },
-			{ ELIZA_ACP_DEFAULT_AGENT: "claude" },
+			{ ELIZA_DEFAULT_AGENT_TYPE: "codex" },
 			{ ELIZA_ACP_CLI: "/opt/custom/acpx" },
+			{ ELIZA_ELIZAOS_ACP_COMMAND: "/opt/eliza-code-acp" },
+			{ ELIZA_PI_AGENT_ACP_COMMAND: "/opt/pi-agent" },
 		]) {
 			const result = await preflightCodingDispatch(
 				stubRuntime(["START_CODING_TASK"], settings),
+				NO_SHIM,
 			);
 			expect(result.ok).toBe(true);
 		}
+	});
+});
+
+describe("hasVendoredOpencodeShim", () => {
+	it("finds the shim under a candidate root", () => {
+		expect(hasVendoredOpencodeShim([fakeShimRoot()])).toBe(true);
+	});
+
+	it("returns false when no candidate root holds the shim", () => {
+		expect(hasVendoredOpencodeShim([tempDir("no-shim-")])).toBe(false);
+	});
+
+	it("returns false for an empty root list", () => {
+		expect(hasVendoredOpencodeShim([])).toBe(false);
 	});
 });

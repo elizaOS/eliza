@@ -22,9 +22,10 @@
  *    a dead-end error text.
  */
 
-import { constants as fsConstants, promises as fs } from "node:fs";
+import { existsSync, promises as fs, constants as fsConstants } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { resolveStateDir } from "@elizaos/core";
 
@@ -40,8 +41,41 @@ const TEMPLATE_REPO_PARENTS = [
 /** Repo-root-relative dirs where new plugins land in a checkout. */
 const PLUGINS_DIR_CANDIDATES = ["eliza/plugins", "plugins"] as const;
 
-/** Coding CLIs the ACP layer can drive; probed on PATH by the preflight. */
-const CODING_CLI_BINARIES = ["claude", "codex", "opencode"] as const;
+/**
+ * Coding-backend binaries the ACP layer can drive, probed on PATH by the
+ * preflight. Mirrors the per-adapter binaries in `hasFrameworkBinary`
+ * (@elizaos/plugin-agent-orchestrator): the orchestrator's DEFAULT backend is
+ * `elizaos`, whose binary is `eliza-code-acp`; `pi-agent` is the native Pi
+ * backend; then the third-party CLIs claude / codex / opencode. Probing only
+ * the last three (the old behavior) falsely blocked stock deployments running
+ * on the default `elizaos` backend.
+ */
+const CODING_CLI_BINARIES = [
+	"eliza-code-acp",
+	"pi-agent",
+	"claude",
+	"codex",
+	"opencode",
+] as const;
+
+/**
+ * Env keys that declare a configured coding backend. The first three pin or
+ * alias the default agent type (`ELIZA_ACP_DEFAULT_AGENT` and its alias
+ * `ELIZA_DEFAULT_AGENT_TYPE`, plus the custom-CLI pin `ELIZA_ACP_CLI`); the
+ * last two point at a native ACP command for the elizaos / pi-agent adapters.
+ * When any is set the deployment has chosen a backend — possibly a
+ * managed/remote executor whose binary is not on THIS host's PATH — so the
+ * preflight trusts it and skips the local probe. Mirrors
+ * `configuredDefaultAgentType` + the env branches of `hasFrameworkBinary` in
+ * @elizaos/plugin-agent-orchestrator.
+ */
+const CONFIGURED_BACKEND_ENV_KEYS = [
+	"ELIZA_ACP_DEFAULT_AGENT",
+	"ELIZA_DEFAULT_AGENT_TYPE",
+	"ELIZA_ACP_CLI",
+	"ELIZA_ELIZAOS_ACP_COMMAND",
+	"ELIZA_PI_AGENT_ACP_COMMAND",
+] as const;
 
 export interface TemplateResolution {
 	/** Resolved template dir, or undefined when nothing was found. */
@@ -134,6 +168,52 @@ async function isExecutable(file: string): Promise<boolean> {
 	}
 }
 
+/**
+ * Roots searched for the orchestrator's vendored opencode shim: every ancestor
+ * of the cwd and of this module. Mirrors `candidateRoots` behind
+ * `resolveVendoredOpencodeShim` in @elizaos/plugin-agent-orchestrator.
+ */
+function vendoredOpencodeShimRoots(): string[] {
+	const roots = new Set<string>();
+	const walkUp = (start: string): void => {
+		let current = path.resolve(start);
+		while (!roots.has(current)) {
+			roots.add(current);
+			const next = path.dirname(current);
+			if (next === current) break;
+			current = next;
+		}
+	};
+	walkUp(process.cwd());
+	walkUp(path.dirname(fileURLToPath(import.meta.url)));
+	return [...roots];
+}
+
+/**
+ * Whether the orchestrator's vendored opencode shim is present on disk — a
+ * usable coding backend in a checkout even when no CLI is on PATH. Mirrors
+ * `resolveVendoredOpencodeShim` (@elizaos/plugin-agent-orchestrator), which
+ * looks for `plugins/plugin-agent-orchestrator/bin/opencode` under any ancestor
+ * of the cwd or module dir. The `roots` seam lets tests exercise the
+ * packaged-install case where no shim exists.
+ */
+export function hasVendoredOpencodeShim(
+	roots: string[] = vendoredOpencodeShimRoots(),
+): boolean {
+	const executable = process.platform === "win32" ? "opencode.cmd" : "opencode";
+	return roots.some((root) =>
+		existsSync(
+			path.join(
+				root,
+				"plugins",
+				"plugin-agent-orchestrator",
+				"bin",
+				executable,
+			),
+		),
+	);
+}
+
 /** Find the first known coding CLI present on PATH, if any. */
 export async function findCodingCliOnPath(): Promise<string | undefined> {
 	const dirs = (process.env.PATH ?? "")
@@ -163,6 +243,15 @@ export interface CodingDispatchPreflight {
 	guidance: string[];
 }
 
+export interface CodingDispatchPreflightOptions {
+	/**
+	 * Override the roots searched for the vendored opencode shim. Tests pass an
+	 * empty (or shim-free) list to exercise the packaged-install path where no
+	 * backend is present; production leaves it unset to walk the real tree.
+	 */
+	shimRoots?: string[];
+}
+
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 	const fromRuntime = runtime.getSetting?.(key);
 	const value =
@@ -182,6 +271,7 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
  */
 export async function preflightCodingDispatch(
 	runtime: IAgentRuntime,
+	options: CodingDispatchPreflightOptions = {},
 ): Promise<CodingDispatchPreflight> {
 	const guidance: string[] = [];
 
@@ -195,16 +285,24 @@ export async function preflightCodingDispatch(
 		);
 	}
 
-	// An explicit backend pin or custom ACP CLI declares a configured
-	// deployment (possibly a managed/remote executor whose CLI is not on THIS
-	// process's PATH) — trust it and skip the probe. The probe only guards the
-	// unconfigured default, where a local CLI is genuinely required.
-	const configured =
-		readSetting(runtime, "ELIZA_ACP_DEFAULT_AGENT") ??
-		readSetting(runtime, "ELIZA_ACP_CLI");
-	if (!configured && !(await findCodingCliOnPath())) {
+	// A coding backend is available when ANY of:
+	//  (a) a backend is explicitly configured — a pinned/aliased default agent,
+	//      a custom ACP CLI, or a native ACP command (possibly a managed/remote
+	//      executor whose binary is not on THIS process's PATH); trust it;
+	//  (b) one of the orchestrator's backend binaries — including the DEFAULT
+	//      `eliza-code-acp` — is on PATH; or
+	//  (c) the orchestrator's vendored opencode shim is present (checkout).
+	// Only when none of these hold is a local backend genuinely missing.
+	const configured = CONFIGURED_BACKEND_ENV_KEYS.some((key) =>
+		readSetting(runtime, key),
+	);
+	const backendAvailable =
+		configured ||
+		Boolean(await findCodingCliOnPath()) ||
+		hasVendoredOpencodeShim(options.shimRoots);
+	if (!backendAvailable) {
 		guidance.push(
-			`No coding-agent CLI was found on PATH (looked for ${CODING_CLI_BINARIES.join(", ")}). ` +
+			`No coding-agent backend was found on PATH (looked for ${CODING_CLI_BINARIES.join(", ")}). ` +
 				"Install one and sign in (e.g. `npm install -g @anthropic-ai/claude-code`, then run `claude` once to log in), " +
 				"or set ELIZA_ACP_DEFAULT_AGENT to a backend that is installed.",
 		);
