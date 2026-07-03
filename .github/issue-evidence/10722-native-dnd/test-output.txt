@@ -1,0 +1,18 @@
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > UploadZone — native file drop (handleDrop) > forwards a single dropped file to onFilesUpload with the zone's scope options 257ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > UploadZone — native file drop (handleDrop) > forwards every file when multiple are dropped at once 33ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > UploadZone — native file drop (handleDrop) > ignores a drop that carries no files (empty drop) 28ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > UploadZone — native file drop (handleDrop) > ignores a drop while an upload is already in flight 24ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > UploadZone — native file drop (handleDrop) > stops a zone drop from bubbling into an outer drop target (no double-upload) 23ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > UploadZone — native file drop (handleDrop) > carries the newly selected scope into the drop options 81ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > DocumentsView — root file drop drives the real upload path > uploads a dropped .txt file with its decoded content via uploadDocumentsBulk 70ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > DocumentsView — root file drop drives the real upload path > batches multiple dropped files into one bulk upload request 66ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > DocumentsView — root file drop drives the real upload path > rejects an unsupported file type without any upload request 33ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > DocumentsView — root file drop drives the real upload path > rejects a supported-but-empty file (zero bytes) without an upload 24ms
+ ✓ src/components/pages/documents-upload.dnd.test.tsx > DocumentsView — root file drop drives the real upload path > does nothing when a drop carries no files at all 24ms
+ ✓ src/components/pages/PluginsView.reorder.test.tsx > PluginsView — native drag-to-reorder > renders the three connector plugins in alphabetical order at rest 210ms
+ ✓ src/components/pages/PluginsView.reorder.test.tsx > PluginsView — native drag-to-reorder > reorders cards and persists the new order when a card is dropped ahead of another 52ms
+ ✓ src/components/pages/PluginsView.reorder.test.tsx > PluginsView — native drag-to-reorder > moves a card backward when dropped onto a later sibling 38ms
+ ✓ src/components/pages/PluginsView.reorder.test.tsx > PluginsView — native drag-to-reorder > does not reorder or persist when a card is dropped onto itself (no movement) 26ms
+ ✓ src/components/pages/PluginsView.reorder.test.tsx > PluginsView — native drag-to-reorder > survives a second reorder without duplicating or dropping any id 43ms
+ Test Files  2 passed (2)
+      Tests  16 passed (16)

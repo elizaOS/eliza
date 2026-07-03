@@ -86,7 +86,10 @@ export async function generateFalImage(request: ImageGenRequest): Promise<Genera
     throw new Error(getAiProviderConfigurationError());
   }
 
-  const response = await fetch(`https://fal.run/${request.model}`, {
+  // Overridable for deterministic tests (same convention as OPENROUTER_BASE_URL
+  // and the queue client's FAL_QUEUE_BASE_URL).
+  const baseUrl = (request.apiKeys.FAL_RUN_BASE_URL ?? "https://fal.run").replace(/\/+$/, "");
+  const response = await fetch(`${baseUrl}/${request.model}`, {
     method: "POST",
     headers: {
       Authorization: `Key ${apiKey}`,

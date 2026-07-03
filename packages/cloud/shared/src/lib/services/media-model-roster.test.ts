@@ -19,6 +19,7 @@ describe("media model roster", () => {
       "Luma",
       "Runway",
       "Stable Audio",
+      "ElevenLabs sound effects",
       "MMAudio",
       "Google Nano Banana image generation",
       "Google Imagen 4 direct",
@@ -53,7 +54,8 @@ describe("media model roster", () => {
         const isIndexed =
           (entry.surfaces.includes("image") && indexes.image.has(modelId)) ||
           (entry.surfaces.includes("video") && indexes.video.has(modelId)) ||
-          (entry.surfaces.includes("music") && indexes.music.has(modelId));
+          (entry.surfaces.includes("music") && indexes.music.has(modelId)) ||
+          (entry.surfaces.includes("sfx") && indexes.sfx.has(modelId));
         expect(isIndexed, `${entry.family}: ${modelId}`).toBe(true);
       }
     }
@@ -65,7 +67,7 @@ describe("media model roster", () => {
       MEDIA_MODEL_ROSTER.flatMap((entry) => [...(entry.wiredModelIds ?? [])]),
     );
 
-    for (const modelId of [...indexes.image, ...indexes.video, ...indexes.music]) {
+    for (const modelId of [...indexes.image, ...indexes.video, ...indexes.music, ...indexes.sfx]) {
       expect(wiredModelIds.has(modelId), modelId).toBe(true);
     }
   });

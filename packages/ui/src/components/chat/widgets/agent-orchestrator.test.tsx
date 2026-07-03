@@ -115,4 +115,47 @@ describe("OrchestratorActivityWidget (home slot)", () => {
     expect(widget.textContent).toContain("Alpha event");
     expect(widget.textContent).toContain("Beta event");
   });
+
+  it("home slot: applies the host-supplied spanClassName to its single root grid-item element (#11752)", () => {
+    const { container } = render(
+      <ActivityWidget
+        {...props({
+          slot: "home",
+          events: [event({ summary: "Working" })],
+          spanClassName: "col-span-2 row-span-1",
+        })}
+      />,
+    );
+
+    const root = container.firstElementChild;
+    expect(root).not.toBeNull();
+    expect(root?.className).toContain("col-span-2");
+    expect(root?.className).toContain("row-span-1");
+    expect(
+      root?.querySelector('[data-testid="chat-widget-events"]'),
+    ).not.toBeNull();
+  });
+
+  it("home slot: falls back to the default 2x1 span when no spanClassName is supplied (#11752)", () => {
+    const { container } = render(
+      <ActivityWidget
+        {...props({ slot: "home", events: [event({ summary: "Working" })] })}
+      />,
+    );
+    expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
+
+  it("chat-sidebar slot: does NOT wrap the section in a grid-span root (#11752)", () => {
+    const { container } = render(
+      <ActivityWidget
+        {...props({
+          slot: "chat-sidebar",
+          events: [event({ summary: "Working" })],
+        })}
+      />,
+    );
+    expect(container.firstElementChild?.className ?? "").not.toContain(
+      "col-span-2",
+    );
+  });
 });

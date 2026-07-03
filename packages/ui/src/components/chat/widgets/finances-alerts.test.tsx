@@ -240,4 +240,51 @@ describe("FinancesAlertsWidget (#9143)", () => {
     expect(screen.queryByTestId("chat-widget-finances-alerts")).toBeNull();
     expect(container.firstChild).toBeNull();
   });
+
+  it("applies the host-supplied spanClassName to its single root grid-item element (#11752)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        dashboard: dashboard(-42.5),
+        recurring: recurring([]),
+        sources: sources(true),
+      }),
+    );
+
+    const { container } = render(
+      <FinancesAlertsWidget
+        {...fetchProps}
+        spanClassName="col-span-2 row-span-1"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-finances-alerts")).toBeTruthy();
+    });
+    const root = container.firstElementChild;
+    expect(root).not.toBeNull();
+    expect(root?.className).toContain("col-span-2");
+    expect(root?.className).toContain("row-span-1");
+    expect(
+      root?.querySelector('[data-testid="chat-widget-finances-alerts"]'),
+    ).not.toBeNull();
+  });
+
+  it("falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        dashboard: dashboard(-42.5),
+        recurring: recurring([]),
+        sources: sources(true),
+      }),
+    );
+
+    const { container } = render(<FinancesAlertsWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-finances-alerts")).toBeTruthy();
+    });
+    expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
 });

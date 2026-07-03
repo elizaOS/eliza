@@ -434,6 +434,68 @@ try {
       `removed default tile ${id} is gone`,
     );
   }
+  // Home-grid geometry integrity (#11752). Every widget must apply its
+  // host-supplied grid-span classes to its root grid item; a widget that
+  // drops them collapses to a one-column (~85px) auto-placed cell whose
+  // icon+text flex content overflows the cell and paints over the neighboring
+  // card ("Overdr[icon]wn" collisions). Measure the real boxes: each grid
+  // item's painted content must fit its own cell, and no two items' painted
+  // content may intersect.
+  {
+    const TOLERANCE = 1; // px, subpixel rounding
+    const geometry = await mobile.evaluate(() => {
+      const host = document.querySelector('[data-testid="widget-host-home"]');
+      if (!host) return null;
+      return Array.from(host.children).map((el) => {
+        const rect = el.getBoundingClientRect();
+        // Painted-content box: the union of the item's own border box and every
+        // visible descendant box (overflowing flex children extend past it).
+        let { left, right, top, bottom } = rect;
+        for (const descendant of el.querySelectorAll("*")) {
+          const r = descendant.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          left = Math.min(left, r.left);
+          right = Math.max(right, r.right);
+          top = Math.min(top, r.top);
+          bottom = Math.max(bottom, r.bottom);
+        }
+        return {
+          testId:
+            el.getAttribute("data-testid") ||
+            el
+              .querySelector("[data-testid]")
+              ?.getAttribute("data-testid") ||
+            el.tagName.toLowerCase(),
+          overflowX: el.scrollWidth - el.clientWidth,
+          content: { left, right, top, bottom },
+        };
+      });
+    });
+    assert(geometry !== null, "home WidgetHost present for geometry probe");
+    assert(
+      (geometry ?? []).length > 1,
+      `home grid geometry probe sees multiple widgets (${geometry?.length ?? 0})`,
+    );
+    for (const item of geometry ?? []) {
+      assert(
+        item.overflowX <= TOLERANCE,
+        `home widget ${item.testId} content fits its grid cell (overflow ${item.overflowX}px)`,
+      );
+    }
+    const items = geometry ?? [];
+    for (let i = 0; i < items.length; i += 1) {
+      for (let j = i + 1; j < items.length; j += 1) {
+        const a = items[i].content;
+        const b = items[j].content;
+        const xOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const yOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        assert(
+          !(xOverlap > TOLERANCE && yOverlap > TOLERANCE),
+          `home widgets ${items[i].testId} and ${items[j].testId} do not overlap (x ${Math.round(xOverlap)}px, y ${Math.round(yOverlap)}px)`,
+        );
+      }
+    }
+  }
   await snap(mobile, "mobile-home");
 
   // Layout-stability lock (#9304): the home cards rank + self-hide; a ranking

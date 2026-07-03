@@ -51,7 +51,9 @@ describe("fused eliza-1 no-regression (C4)", () => {
 	it("the catalog tier under test really is a fused-eliza1 tier", () => {
 		expect(FUSED_TIER).toBeTruthy();
 		expect(FUSED_TIER.runtimeClass).toBe("fused-eliza1");
-		expect(FUSED_TIER.runtime?.mtp).toBeUndefined();
+		// 4b hosts the gemma4-assistant separate drafter (2026-07-02).
+		expect(FUSED_TIER.runtime?.mtp?.specType).toBe("draft-mtp");
+		expect(FUSED_TIER.runtime?.mtp?.drafterFile).toBe("mtp/drafter-4b.gguf");
 	});
 
 	it("decideBackend routes a fused Eliza-1 tier to the fused llama-cpp runtime", () => {
@@ -109,7 +111,7 @@ describe("fused eliza-1 no-regression (C4)", () => {
 		// kernel settings.
 		const forwarded = ffi.loaded[0];
 		expect(forwarded.catalog).toBe(FUSED_TIER);
-		expect(forwarded.catalog?.runtime?.mtp).toBeUndefined();
+		expect(forwarded.catalog?.runtime?.mtp?.specType).toBe("draft-mtp");
 		expect(forwarded.overrides?.bundleRoot).toBe(bundleRoot);
 		expect(forwarded.overrides?.draftModelPath).toBe(
 			`${bundleRoot}/text/eliza-1-4b-mtp.gguf`,

@@ -50,6 +50,7 @@ import type { Plugin } from "@elizaos/core";
 import { getAdCampaignAttributionAction } from "./actions/ad-attribution.js";
 import {
   duplicateAdCampaignAction,
+  exportAdCampaignReportAction,
   setAdCampaignDaypartingAction,
 } from "./actions/ad-campaigns.js";
 import {
@@ -150,6 +151,7 @@ export const cloudAppsPlugin: Plugin = {
     listAdSlotsAction,
     setAdCampaignDaypartingAction,
     duplicateAdCampaignAction,
+    exportAdCampaignReportAction,
     createInfluencerProfileAction,
     listInfluencersAction,
     bookInfluencerAction,

@@ -68,13 +68,18 @@ export const ELIZA_1_MTP_TIER_IDS = [
  * (arch `gemma4-assistant`, f16, embedding_length_out=1536; sha256
  * 0495d34e08d0…, manifest `files.mtp` + `lineage.drafter` + `evals.mtp`
  * populated — acceptance 0.84, speedup ~1.53x greedy on M4 Max Metal at
- * `--spec-draft-n-max 1`). The remaining tiers still only expose legacy
- * `dflash/` paths; add a tier here only once its `mtp/drafter-<tier>.gguf`
- * is actually hosted, so the runtime and downloader never advertise or
- * fetch missing MTP artifacts.
+ * `--spec-draft-n-max 1`). `bundles/4b/mtp/drafter-4b.gguf` hosts the
+ * drafter converted from `google/gemma-4-E4B-it-assistant` (arch
+ * `gemma4-assistant`, f16, embedding_length_out=2560; sha256 e4585e558a74…,
+ * manifest populated — acceptance 0.79, speedup ~1.33x greedy on M4 Max
+ * Metal at `--spec-draft-n-max 1`). The remaining tiers (9b/27b) still only
+ * expose legacy `dflash/` paths; add a tier here only once its
+ * `mtp/drafter-<tier>.gguf` is actually hosted, so the runtime and
+ * downloader never advertise or fetch missing MTP artifacts.
  */
 export const ELIZA_1_HOSTED_MTP_TIER_IDS = [
   "eliza-1-2b",
+  "eliza-1-4b",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 function hostedMtpDrafterAvailableForTier(id: Eliza1TierId): boolean {

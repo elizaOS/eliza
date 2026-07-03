@@ -66965,7 +66965,10 @@ Assistant:`;
   }
   var noopSetTab = () => void 0;
   var noopSetState = () => void 0;
-  function AppRunsWidget(_props) {
+  function AppRunsWidget({
+    slot,
+    spanClassName = "col-span-2 row-span-1"
+  }) {
     const {
       appRuns,
       setTab: appSetTab,
@@ -67077,7 +67080,7 @@ Assistant:`;
     if (shouldHideWidget) {
       return null;
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+    const section = /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
       WidgetSection,
       {
         title: t2("appsview.Running", { defaultValue: "Apps" }),
@@ -67209,11 +67212,16 @@ Assistant:`;
         ]
       }
     );
+    if (slot === "home") {
+      return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: section });
+    }
+    return section;
   }
   function OrchestratorActivityWidget({
     events,
     clearEvents,
-    slot
+    slot,
+    spanClassName = "col-span-2 row-span-1"
   }) {
     const {
       t: appT,
@@ -67242,7 +67250,7 @@ Assistant:`;
     }
     if (slot === "home") {
       const latest = events[0];
-      return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
         HomeWidgetCard,
         {
           icon: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Activity, {}),
@@ -67254,7 +67262,7 @@ Assistant:`;
           ariaLabel: `Activity: ${events.length} events, latest ${latest.summary}. Open tasks.`,
           onActivate: () => nav.openTab("tasks")
         }
-      );
+      ) });
     }
     return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
       WidgetSection,
@@ -67883,7 +67891,9 @@ Assistant:`;
       return bill.id === other.id && bill.amountMinor === other.amountMinor && bill.nextChargeAt === other.nextChargeAt;
     });
   }
-  function FinancesAlertsWidget(_props) {
+  function FinancesAlertsWidget({
+    spanClassName = "col-span-2 row-span-1"
+  }) {
     const [data, setData] = (0, import_react66.useState)(null);
     const nav = useWidgetNavigation();
     const authenticated = useIsAuthenticated();
@@ -67929,7 +67939,7 @@ Assistant:`;
     if (!overdrawn && !hasBillsDue) return null;
     if (overdrawn) {
       const amount = formatMinor(data.netBalanceMinor, data.currency);
-      return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
         HomeWidgetCard,
         {
           icon: /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(Wallet, {}),
@@ -67941,10 +67951,10 @@ Assistant:`;
           ariaLabel: `Bills: account overdrawn ${amount}. Open Finances.`,
           onActivate: () => nav.openView("/finances", "finances")
         }
-      );
+      ) });
     }
     const soonest = dueSoon[0];
-    return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
       HomeWidgetCard,
       {
         icon: /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(Wallet, {}),
@@ -67957,7 +67967,7 @@ Assistant:`;
         ariaLabel: `Bills: ${dueSoon.length} due this week, next ${soonest.label} ${dueInLabel(soonest.nextChargeAt, now2)}. Open Finances.`,
         onActivate: () => nav.openView("/finances", "finances")
       }
-    );
+    ) });
   }
   var FINANCES_HOME_WIDGET = {
     pluginId: "finances",
@@ -68308,7 +68318,9 @@ Assistant:`;
       return goal.id === other.id && goal.title === other.title && goal.status === other.status && goal.reviewState === other.reviewState;
     });
   }
-  function GoalsAttentionWidget(_props) {
+  function GoalsAttentionWidget({
+    spanClassName = "col-span-2 row-span-1"
+  }) {
     const [goals, setGoals] = (0, import_react68.useState)(null);
     const nav = useWidgetNavigation();
     const authenticated = useIsAuthenticated();
@@ -68336,7 +68348,7 @@ Assistant:`;
     if (goals == null || urgent == null) return null;
     const tone = urgent.reviewState === "at_risk" ? "danger" : "warn";
     const status = urgent.reviewState === "at_risk" ? "at risk" : "needs attention";
-    return /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
       HomeWidgetCard,
       {
         icon: /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(Target, {}),
@@ -68348,7 +68360,7 @@ Assistant:`;
         ariaLabel: `Goals: ${count3} need attention, top "${urgent.title}" ${status}. Open Goals.`,
         onActivate: () => nav.openView("/goals", "goals")
       }
-    );
+    ) });
   }
   var GOALS_HOME_WIDGET = {
     pluginId: "goals",
@@ -68433,7 +68445,9 @@ Assistant:`;
     if (a.latest === null || b.latest === null) return false;
     return a.latest.startedAt === b.latest.startedAt && a.latest.endedAt === b.latest.endedAt && a.latest.durationMin === b.latest.durationMin;
   }
-  function HealthSleepWidget(_props) {
+  function HealthSleepWidget({
+    spanClassName = "col-span-2 row-span-1"
+  }) {
     const [data, setData] = (0, import_react69.useState)(null);
     const nav = useWidgetNavigation();
     const authenticated = useIsAuthenticated();
@@ -68461,7 +68475,7 @@ Assistant:`;
     const duration3 = formatDuration(data.latest.durationMin);
     const badge = data.classification && isOffRhythm(data.classification) ? OFF_RHYTHM_LABELS[data.classification] : void 0;
     const ariaLabel = badge ? `Sleep: last ${duration3}, regularity ${badge.toLowerCase()}. Open Health.` : `Sleep: last ${duration3}. Open Health.`;
-    return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
       HomeWidgetCard,
       {
         icon: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Moon, {}),
@@ -68473,7 +68487,7 @@ Assistant:`;
         ariaLabel,
         onActivate: () => nav.openView("/health", "health")
       }
-    );
+    ) });
   }
   var HEALTH_HOME_WIDGET = {
     pluginId: "health",
@@ -68515,7 +68529,9 @@ Assistant:`;
       return thread.id === other.id && thread.sender === other.sender && thread.subject === other.subject && thread.important === other.important && thread.priorityScore === other.priorityScore;
     });
   }
-  function InboxUnreadWidget(_props) {
+  function InboxUnreadWidget({
+    spanClassName = "col-span-2 row-span-1"
+  }) {
     const [unread, setUnread] = (0, import_react70.useState)([]);
     const [loaded, setLoaded] = (0, import_react70.useState)(false);
     const nav = useWidgetNavigation();
@@ -68561,7 +68577,7 @@ Assistant:`;
     if (!loaded || top == null) return null;
     const datum = top.sender !== "Someone" ? top.sender : top.subject || top.sender;
     const tone = hasImportant ? "warn" : "default";
-    return /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
       HomeWidgetCard,
       {
         icon: /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(Inbox, {}),
@@ -68573,7 +68589,7 @@ Assistant:`;
         ariaLabel: `Inbox: ${unread.length} unread thread${unread.length === 1 ? "" : "s"} need a reply, top from ${datum}. Open Inbox.`,
         onActivate: () => nav.openView("/inbox", "inbox")
       }
-    );
+    ) });
   }
   var INBOX_HOME_WIDGET = {
     pluginId: "inbox",
@@ -69200,7 +69216,9 @@ Assistant:`;
       (oldest, item) => item.createdAt < oldest.createdAt ? item : oldest
     );
   }
-  function NeedsAttentionWidget(_props) {
+  function NeedsAttentionWidget({
+    spanClassName = "col-span-2 row-span-1"
+  }) {
     const { pending, loaded } = useApprovals();
     const now2 = useNow(REFRESH_INTERVAL_MS);
     const top = (0, import_react73.useMemo)(() => oldestPending(pending), [pending]);
@@ -69217,7 +69235,7 @@ Assistant:`;
     if (!loaded || top == null) return null;
     const count3 = pending.length;
     const stale = now2 - top.createdAt >= STALE_PENDING_AGE_MS;
-    return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
       HomeWidgetCard,
       {
         icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(CircleQuestionMark, {}),
@@ -69229,7 +69247,7 @@ Assistant:`;
         ariaLabel: `${count3} action${count3 === 1 ? "" : "s"} need your response, oldest: ${top.title}. Respond in chat.`,
         onActivate
       }
-    );
+    ) });
   }
   var NEEDS_ATTENTION_HOME_WIDGET = {
     pluginId: "needs-attention",
@@ -69292,23 +69310,29 @@ Assistant:`;
       const top = recent[0];
       const urgent = top.priority === "urgent";
       return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
-        HomeWidgetCard,
+        "div",
         {
-          icon: categoryIcon(top.category),
-          label: "Notifications",
-          value: top.title,
-          badge: unreadCount > 0 ? unreadCount : void 0,
-          tone: urgent ? "danger" : top.priority === "high" ? "warn" : "default",
-          testId: "widget-notifications",
-          ariaLabel: `Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`,
-          onActivate: () => {
-            if (!top.readAt) void markNotificationRead(top.id);
-            if (top.deepLink && isSafeDeepLink(top.deepLink)) {
-              navigateDeepLink(top.deepLink);
-            } else {
-              nav.openView("/inbox", "inbox");
+          className: `min-w-0 ${props.spanClassName ?? "col-span-2 row-span-1"}`,
+          children: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+            HomeWidgetCard,
+            {
+              icon: categoryIcon(top.category),
+              label: "Notifications",
+              value: top.title,
+              badge: unreadCount > 0 ? unreadCount : void 0,
+              tone: urgent ? "danger" : top.priority === "high" ? "warn" : "default",
+              testId: "widget-notifications",
+              ariaLabel: `Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`,
+              onActivate: () => {
+                if (!top.readAt) void markNotificationRead(top.id);
+                if (top.deepLink && isSafeDeepLink(top.deepLink)) {
+                  navigateDeepLink(top.deepLink);
+                } else {
+                  nav.openView("/inbox", "inbox");
+                }
+              }
             }
-          }
+          )
         }
       );
     }
@@ -69562,7 +69586,10 @@ Assistant:`;
       ] }) : null
     ] });
   }
-  function TodoSidebarWidget({ slot }) {
+  function TodoSidebarWidget({
+    slot,
+    spanClassName = "col-span-2 row-span-1"
+  }) {
     const { workbench, t: appT } = useAppSelectorShallow((s) => ({
       workbench: s.workbench,
       t: s.t
@@ -69627,7 +69654,7 @@ Assistant:`;
       onHome && hasUrgent ? HOME_SIGNAL_WEIGHTS.reminder : null
     );
     if (onHome && openTodos.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+    const section = /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
       WidgetSection,
       {
         title: t2("taskseventspanel.Todos", { defaultValue: "Todos" }),
@@ -69636,6 +69663,10 @@ Assistant:`;
         children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(TodoItemsContent, { todos, loading: todosLoading })
       }
     );
+    if (onHome) {
+      return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: `min-w-0 ${spanClassName}`, children: section });
+    }
+    return section;
   }
   var TODO_PLUGIN_WIDGETS = [
     {

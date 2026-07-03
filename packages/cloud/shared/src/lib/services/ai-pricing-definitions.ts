@@ -4,6 +4,7 @@ export type PricingProductFamily =
   | "image"
   | "video"
   | "music"
+  | "sfx"
   | "tts"
   | "stt"
   | "voice_clone";
@@ -175,6 +176,31 @@ export interface MusicSnapshotEntry {
   metadata?: Record<string, unknown>;
 }
 
+export interface SupportedSfxModelDefinition {
+  modelId: string;
+  provider: "fal" | "elevenlabs";
+  billingSource: "fal" | "elevenlabs";
+  label: string;
+  pageUrl: string;
+  defaultParameters: {
+    durationSeconds: number;
+    maxDurationSeconds: number;
+  };
+}
+
+export interface SfxSnapshotEntry {
+  modelId: string;
+  provider: "fal" | "elevenlabs";
+  billingSource: "fal" | "elevenlabs";
+  productFamily: "sfx";
+  chargeType: string;
+  unit: PricingChargeUnit;
+  unitPrice: number;
+  sourceUrl: string;
+  dimensions?: Record<string, string | number | boolean | null>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ElevenLabsSnapshotEntry {
   modelId: string;
   provider: "elevenlabs";
@@ -249,6 +275,25 @@ export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
     billingSource: "fal",
     label: "FLUX.1 Dev",
     sourceUrl: "https://fal.ai/models/fal-ai/flux/dev",
+    defaultDimensions: { image_size: "square_hd" },
+  },
+  // Roster additions (#10688): design/vector + typography-strong image models
+  // served through the existing fal image provider (same fal.run contract as
+  // FLUX). Snapshot-priced in ai-pricing/providers/fal.ts.
+  {
+    modelId: "fal-ai/recraft/v3/text-to-image",
+    provider: "fal",
+    billingSource: "fal",
+    label: "Recraft V3",
+    sourceUrl: "https://fal.ai/models/fal-ai/recraft/v3/text-to-image",
+    defaultDimensions: { image_size: "square_hd" },
+  },
+  {
+    modelId: "fal-ai/ideogram/v3",
+    provider: "fal",
+    billingSource: "fal",
+    label: "Ideogram V3",
+    sourceUrl: "https://fal.ai/models/fal-ai/ideogram/v3",
     defaultDimensions: { image_size: "square_hd" },
   },
 ] as const;
@@ -499,6 +544,62 @@ export const SUPPORTED_MUSIC_MODELS: SupportedMusicModelDefinition[] = [
   },
 ] as const;
 
+export const SUPPORTED_SFX_MODELS: SupportedSfxModelDefinition[] = [
+  {
+    modelId: "elevenlabs/sound_effects_v1",
+    provider: "elevenlabs",
+    billingSource: "elevenlabs",
+    label: "ElevenLabs Sound Effects",
+    pageUrl: "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert",
+    defaultParameters: {
+      durationSeconds: 5,
+      maxDurationSeconds: 30,
+    },
+  },
+  {
+    modelId: "fal-ai/stable-audio-25/text-to-audio",
+    provider: "fal",
+    billingSource: "fal",
+    label: "Stable Audio 2.5",
+    pageUrl: "https://fal.ai/models/fal-ai/stable-audio-25/text-to-audio",
+    defaultParameters: {
+      durationSeconds: 10,
+      maxDurationSeconds: 190,
+    },
+  },
+] as const;
+
+export const SFX_SNAPSHOT_PRICING: SfxSnapshotEntry[] = [
+  {
+    modelId: "elevenlabs/sound_effects_v1",
+    provider: "elevenlabs",
+    billingSource: "elevenlabs",
+    productFamily: "sfx",
+    chargeType: "generation",
+    unit: "request",
+    unitPrice: 0.08,
+    sourceUrl: "https://elevenlabs.io/pricing/api",
+    metadata: {
+      tier: "manual_override_recommended",
+      note: "ElevenLabs sound effects bill in plan credits (~100 credits per generation); override with account-specific effective cost before production.",
+    },
+  },
+  {
+    modelId: "fal-ai/stable-audio-25/text-to-audio",
+    provider: "fal",
+    billingSource: "fal",
+    productFamily: "sfx",
+    chargeType: "generation",
+    unit: "request",
+    unitPrice: 0.2,
+    sourceUrl: "https://fal.ai/models/fal-ai/stable-audio-25/text-to-audio",
+    metadata: {
+      tier: "manual_override_recommended",
+      note: "Fallback mirrors the current Fal model page price; override if account-specific Fal pricing differs.",
+    },
+  },
+] as const;
+
 export const MUSIC_SNAPSHOT_PRICING: MusicSnapshotEntry[] = [
   {
     modelId: "fal-ai/minimax-music/v2.6",
@@ -662,6 +763,7 @@ export const ELEVENLABS_SNAPSHOT_PRICING: ElevenLabsSnapshotEntry[] = [
 export const SUPPORTED_VIDEO_MODEL_IDS = SUPPORTED_VIDEO_MODELS.map((model) => model.modelId);
 export const SUPPORTED_IMAGE_MODEL_IDS = SUPPORTED_IMAGE_MODELS.map((model) => model.modelId);
 export const SUPPORTED_MUSIC_MODEL_IDS = SUPPORTED_MUSIC_MODELS.map((model) => model.modelId);
+export const SUPPORTED_SFX_MODEL_IDS = SUPPORTED_SFX_MODELS.map((model) => model.modelId);
 
 export function getSupportedVideoModelDefinition(modelId: string) {
   return SUPPORTED_VIDEO_MODELS.find((model) => model.modelId === modelId);
@@ -673,4 +775,8 @@ export function getSupportedImageModelDefinition(modelId: string) {
 
 export function getSupportedMusicModelDefinition(modelId: string) {
   return SUPPORTED_MUSIC_MODELS.find((model) => model.modelId === modelId);
+}
+
+export function getSupportedSfxModelDefinition(modelId: string) {
+  return SUPPORTED_SFX_MODELS.find((model) => model.modelId === modelId);
 }

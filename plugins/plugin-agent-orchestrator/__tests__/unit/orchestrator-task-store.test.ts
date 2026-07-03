@@ -545,6 +545,27 @@ class PgliteLikeRejectingAdapter extends FakeSqlAdapter {
   }
 }
 
+/**
+ * Emulates the pglite/postgres failure mode from #11778: the driver rejects the
+ * BARE full-table scan `SELECT document FROM orchestrator_tasks` (no WHERE) that
+ * the legacy `findSession` fallback used to emit — same driver-quirk family as
+ * #11641. It counts how many times that bare form is issued so a test can assert
+ * the fallback no longer emits it. Any query carrying a `WHERE` clause behaves
+ * normally, so the `search_text LIKE ?`-shaped fallback survives.
+ */
+class PgliteBareScanRejectingAdapter extends FakeSqlAdapter {
+  bareScanCount = 0;
+  override async all(sql: string, params: unknown[] = []): Promise<unknown[]> {
+    if (/^\s*SELECT document FROM orchestrator_tasks\s*$/i.test(sql)) {
+      this.bareScanCount++;
+      throw new Error(
+        `Failed query: ${sql}\nparams: ${JSON.stringify(params)}`,
+      );
+    }
+    return super.all(sql, params);
+  }
+}
+
 describe("RuntimeDbTaskStore", () => {
   it("resolves a session without a `document LIKE` query so pglite/postgres do not fail (#11641)", async () => {
     // On pglite the old `SELECT document FROM orchestrator_tasks WHERE document
@@ -616,6 +637,76 @@ describe("RuntimeDbTaskStore", () => {
     ).toBe(false);
     // Never the pglite-breaking document LIKE either.
     expect(seenSql.some((s) => /document LIKE/.test(s))).toBe(false);
+  });
+
+  it("resolves a legacy session via the fallback WITHOUT the bare full-table scan pglite rejects (#11778)", async () => {
+    // #11778: the legacy fallback issued a bare `SELECT document FROM
+    // orchestrator_tasks` (no WHERE) that pglite/postgres reject, killing the
+    // whole session's event-record path. The fallback must now route through
+    // the portable `WHERE search_text LIKE ?` shape and never emit the bare
+    // scan — even for a legacy row whose session id is NOT in `search_text`.
+    const adapter = new PgliteBareScanRejectingAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const { task } = await store.createTask(createInput({ title: "legacy" }));
+    await store.addSession(
+      sessionFor(task.id, { sessionId: "legacy-session" }),
+    );
+
+    // Simulate a pre-#11667 row: the session lives in the document but its id
+    // was never folded into search_text, so the indexed prefilter misses and
+    // the fallback path is exercised.
+    for (const row of adapter.rows.values()) {
+      row.search_text = "stale text without the session id";
+    }
+
+    const found = await store.findSession("legacy-session");
+    expect(found?.taskId).toBe(task.id);
+    expect(found?.session.sessionId).toBe("legacy-session");
+    // The bare full-table scan pglite rejects was never issued.
+    expect(adapter.bareScanCount).toBe(0);
+  });
+
+  it("returns null (never throws) when the fallback scan degrades, so session event-recording is not poisoned (#11778)", async () => {
+    // If a driver quirk still throws on the fallback query, `findSession` must
+    // degrade to a clean `null` rather than an exception. A throw here sits on
+    // the `onSessionEvent → resolveTaskId → findSession` hot path and makes
+    // OrchestratorTaskService suppress ALL further event records for the
+    // session, silently losing its telemetry (#11778's live symptom).
+    //
+    // Model the #11778 scenario precisely: the prefilter (session-id needle)
+    // runs fine; only the fallback scan (the always-true `%` needle, reached
+    // because the session id is not yet in search_text) degrades.
+    class FallbackScanRejectAdapter extends FakeSqlAdapter {
+      override async all(
+        sql: string,
+        params: unknown[] = [],
+      ): Promise<unknown[]> {
+        if (
+          sql.includes("search_text LIKE ?") &&
+          Array.isArray(params) &&
+          params[0] === "%"
+        ) {
+          throw new Error(
+            `Failed query: ${sql}\nparams: ${JSON.stringify(params)}`,
+          );
+        }
+        return super.all(sql, params);
+      }
+    }
+    const adapter = new FallbackScanRejectAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const { task } = await store.createTask(createInput({ title: "degraded" }));
+    await store.addSession(sessionFor(task.id, { sessionId: "sess-degraded" }));
+
+    // Force the fallback path: strip the session id from search_text so the
+    // prefilter misses and the (rejecting) fallback runs.
+    for (const row of adapter.rows.values()) {
+      row.search_text = "stale text without the session id";
+    }
+
+    // The fallback throws, but the caller sees null, not an exception —
+    // recording stays alive for subsequent events.
+    await expect(store.findSession("sess-degraded")).resolves.toBeNull();
   });
 
   it("round-trips tasks, sessions, and deletes through a SQL adapter", async () => {

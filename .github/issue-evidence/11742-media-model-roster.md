@@ -10,6 +10,10 @@
 
 - FAL Veo 3 model page: `https://fal.ai/models/fal-ai/veo3`
 - FAL Kling exploration page: `https://fal.ai/explore/kling`
+- FAL Recraft V3 model page: `https://fal.ai/models/fal-ai/recraft/v3/text-to-image`
+- FAL Ideogram V3 model page: `https://fal.ai/models/fal-ai/ideogram/v3`
+- FAL Stable Audio 2.5 model page: `https://fal.ai/models/fal-ai/stable-audio-25/text-to-audio`
+- ElevenLabs sound effects API page: `https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert`
 - FAL pricing page: `https://fal.ai/pricing`
 - Google Gemini API model roster: `https://ai.google.dev/gemini-api/docs/models`
 - Google DeepMind Imagen page: `https://deepmind.google/models/imagen/`
@@ -17,8 +21,8 @@
 
 ## Roster Decisions
 
-- Wired: FAL FLUX image, Atlas-hosted GPT Image 2 / Seedream / Google Nano Banana / Qwen image generation, FAL Veo video, FAL Kling video, FAL Hailuo video, FAL MiniMax Music, ElevenLabs Music, Suno-compatible music, and adjacent FAL Wan/PixVerse/Seedance video.
-- Deferred: Recraft, Ideogram, Luma, Runway, Stable Audio, MMAudio, direct Google Imagen 4, direct Google Veo, and direct Gemini Omni/media routes.
+- Wired: FAL FLUX/Recraft/Ideogram image, Atlas-hosted GPT Image 2 / Seedream / Google Nano Banana / Qwen image generation, FAL Veo/Kling/Hailuo/Wan/PixVerse/Seedance video, FAL MiniMax Music, ElevenLabs Music, Suno-compatible music, FAL Stable Audio SFX, and ElevenLabs sound effects.
+- Deferred: Luma, Runway, MMAudio, direct Google Imagen 4, direct Google Veo, and direct Gemini Omni/media routes.
 
 ## Validation
 

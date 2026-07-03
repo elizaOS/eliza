@@ -23,6 +23,7 @@ import {
   type BuyAppDomainInput,
   type BuyAppDomainResponse,
   type CampaignDaypartingResponse,
+  type CampaignPerformanceReportResponse,
   type ChatCompletionRequest,
   type ChatCompletionResponse,
   type CheckAppDomainInput,
@@ -50,6 +51,8 @@ import {
   type CreateAppResponse,
   type CreateBookingInput,
   type CreateBookingResponse,
+  type CreateCampaignReportShareInput,
+  type CreateCampaignReportShareResponse,
   type CreateContainerRequest,
   type CreateContainerResponse,
   type CreateCreditsCheckoutRequest,
@@ -81,6 +84,7 @@ import {
   type GenerateImageRequest,
   type GenerateImageResponse,
   type GetAppChargeResponse,
+  type GetCampaignPerformanceReportOptions,
   type GetX402PaymentRequestResponse,
   type HttpMethod,
   type JobStatus,
@@ -107,6 +111,7 @@ import {
   type ResponsesCreateRequest,
   type ResponsesCreateResponse,
   type RestoreAppBackupResponse,
+  type RevokeCampaignReportShareResponse,
   type SettleX402PaymentRequestResponse,
   type SnapshotListResponse,
   type SnapshotType,
@@ -1013,6 +1018,45 @@ export class ElizaCloudClient {
     return this.request<AdCampaignAttributionResponse>(
       "GET",
       `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/attribution`,
+    );
+  }
+
+  /** `GET /api/v1/advertising/campaigns/:id/report` — export server-computed campaign performance. */
+  getAdCampaignPerformanceReport(
+    campaignId: string,
+    options: GetCampaignPerformanceReportOptions = {},
+  ): Promise<CampaignPerformanceReportResponse> {
+    const query = new URLSearchParams();
+    if (options.format) query.set("format", options.format);
+    if (options.startDate) query.set("startDate", options.startDate);
+    if (options.endDate) query.set("endDate", options.endDate);
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return this.request<CampaignPerformanceReportResponse>(
+      "GET",
+      `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/report${suffix}`,
+    );
+  }
+
+  /** `POST /api/v1/advertising/campaigns/:id/report/share` — create a public report link. */
+  createAdCampaignReportShare(
+    campaignId: string,
+    input: CreateCampaignReportShareInput = {},
+  ): Promise<CreateCampaignReportShareResponse> {
+    return this.request<CreateCampaignReportShareResponse>(
+      "POST",
+      `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/report/share`,
+      { json: input },
+    );
+  }
+
+  /** `DELETE /api/v1/advertising/campaigns/:id/report/share/:shareId` — revoke a public report link. */
+  revokeAdCampaignReportShare(
+    campaignId: string,
+    shareId: string,
+  ): Promise<RevokeCampaignReportShareResponse> {
+    return this.request<RevokeCampaignReportShareResponse>(
+      "DELETE",
+      `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/report/share/${encodePathParam(shareId)}`,
     );
   }
 
