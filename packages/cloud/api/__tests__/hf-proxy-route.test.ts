@@ -28,6 +28,9 @@ import * as loggerActual from "@/lib/utils/logger";
 const requireUserOrApiKeyWithOrg =
   mock<(c: unknown) => Promise<{ id: string; organization_id: string }>>();
 
+const loggerInfo = mock<(...args: unknown[]) => void>();
+const loggerWarn = mock<(...args: unknown[]) => void>();
+
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   ...workersHonoAuthActual,
   requireUserOrApiKeyWithOrg,
@@ -37,8 +40,8 @@ mock.module("@/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
-    info: () => undefined,
-    warn: () => undefined,
+    info: loggerInfo,
+    warn: loggerWarn,
     error: () => undefined,
     debug: () => undefined,
   },
@@ -69,6 +72,8 @@ beforeEach(() => {
 
 afterEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
+  loggerInfo.mockReset();
+  loggerWarn.mockReset();
   globalThis.fetch = realFetch;
 });
 
@@ -113,6 +118,29 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("Only HuggingFace resolve paths are proxied.");
+  });
+
+  test("rejects a resolve path for a repo outside the curated catalog with 403", async () => {
+    // A well-formed resolve path, but for an arbitrary non-elizaos repo — the
+    // cloud HF_TOKEN must not be spent proxying it.
+    let fetchCalled = false;
+    globalThis.fetch = mock(async () => {
+      fetchCalled = true;
+      return new Response("SHOULD-NOT-REACH", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await app.fetch(
+      makeRequest("someuser/gated-model/resolve/main/weights.gguf"),
+      { HF_TOKEN: "hf-secret" },
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe(
+      "This HuggingFace repo is not available through the proxy.",
+    );
+    // Never reaches upstream HuggingFace for a disallowed repo.
+    expect(fetchCalled).toBe(false);
   });
 
   test("returns 503 when HF_TOKEN is not configured", async () => {
@@ -164,5 +192,22 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(await res.text()).toBe("GGUF-BYTES");
     expect(res.headers.get("content-length")).toBe("10");
     expect(res.headers.get("accept-ranges")).toBe("bytes");
+
+    // Cost observability: the proxied transfer is recorded with the repo, path,
+    // status, and byte count so an operator can attribute unmetered downloads.
+    const usageCall = loggerInfo.mock.calls.find(
+      (call) => call[0] === "[hf-proxy] proxied download",
+    );
+    expect(usageCall).toBeDefined();
+    const usagePayload = usageCall?.[1] as Record<string, unknown>;
+    expect(usagePayload).toMatchObject({
+      repo: "elizaos/eliza-1",
+      path: RESOLVE_PATH,
+      status: 200,
+      bytes: 10,
+    });
+    // Identity is attached (redacted) so usage is attributable.
+    expect(usagePayload.orgId).toBeDefined();
+    expect(usagePayload.userId).toBeDefined();
   });
 });

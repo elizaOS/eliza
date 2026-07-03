@@ -15,16 +15,41 @@
  * SECURITY: only paths containing a `/resolve/` segment on huggingface.co are
  * forwarded — the route never proxies an arbitrary host or path, and the
  * upstream host is fixed (no client-controlled hostname), so it cannot be used
- * as an open SSRF relay.
+ * as an open SSRF relay. The target repo is additionally scoped to the curated
+ * eliza-1 org (`ALLOWED_REPO_PREFIX`): the cloud's own `HF_TOKEN` may only be
+ * spent proxying the shipping catalog, never an arbitrary user-chosen repo.
  */
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
+import { logger, redact } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const HF_UPSTREAM_HOST = "https://huggingface.co";
+
+/**
+ * Only repos under this org may be proxied. The curated eliza-1 catalog lives at
+ * `elizaos/eliza-1` (see `ELIZA_1_HF_REPO` in
+ * `packages/shared/src/local-inference/catalog.ts`); scoping to the org prefix
+ * keeps the cloud's `HF_TOKEN` from being used to download arbitrary — including
+ * gated third-party — HuggingFace repos on the cloud's bandwidth/quota.
+ */
+const ALLOWED_REPO_PREFIX = "elizaos/";
+
+/**
+ * A HuggingFace resolve path is `<owner>/<repo>/resolve/<rev>/<file>`. Return the
+ * `<owner>/<repo>` slug, or `null` if the path is not a well-formed resolve path.
+ */
+function repoFromResolvePath(path: string): string | null {
+  const resolveIdx = path.indexOf("/resolve/");
+  if (resolveIdx <= 0) return null;
+  const repo = path.slice(0, resolveIdx);
+  // Require exactly `<owner>/<repo>` — reject empty segments.
+  const segments = repo.split("/");
+  if (segments.length !== 2 || segments.some((s) => s.length === 0)) return null;
+  return repo;
+}
 
 /** Response headers worth preserving for a resumable streaming download. */
 const PASSTHROUGH_RESPONSE_HEADERS = [
@@ -41,10 +66,11 @@ const app = new Hono<AppEnv>();
 
 app.get("/*", async (c) => {
   try {
-    // Auth: a real cloud session or org API key. We do not act on the user
-    // beyond requiring a valid linked account — the value is the cloud-side
-    // HF_TOKEN, not per-user scoping.
-    await requireUserOrApiKeyWithOrg(c);
+    // Auth: a real cloud session or org API key. We require a valid linked
+    // account and capture the identity for usage attribution below.
+    const account = await requireUserOrApiKeyWithOrg(c);
+    const userId = account.id;
+    const orgId = account.organization_id;
 
     const hfToken = c.env.HF_TOKEN?.trim();
     if (!hfToken) {
@@ -61,6 +87,22 @@ app.get("/*", async (c) => {
       return c.json(
         { error: "Only HuggingFace resolve paths are proxied." },
         400,
+      );
+    }
+
+    // Scope the cloud HF_TOKEN to the curated eliza-1 catalog. Any repo outside
+    // the allowed org is refused — the token must never be spent on arbitrary
+    // third-party downloads on the cloud's bandwidth/quota.
+    const repo = repoFromResolvePath(path);
+    if (!repo || !repo.startsWith(ALLOWED_REPO_PREFIX)) {
+      logger.warn("[hf-proxy] rejected out-of-catalog repo", {
+        repo: repo ?? "[unparseable]",
+        orgId: redact.orgId(orgId),
+        userId: redact.userId(userId),
+      });
+      return c.json(
+        { error: "This HuggingFace repo is not available through the proxy." },
+        403,
       );
     }
 
@@ -87,6 +129,19 @@ app.get("/*", async (c) => {
         status: upstreamResponse.status,
       });
     }
+
+    // Cost/usage observability: a single GGUF proxied here can be multiple GB on
+    // the cloud's bandwidth and HF quota. Record who pulled what and how large,
+    // so an operator has visibility into an otherwise-unmetered transfer.
+    const contentLength = upstreamResponse.headers.get("content-length");
+    logger.info("[hf-proxy] proxied download", {
+      repo,
+      path,
+      status: upstreamResponse.status,
+      bytes: contentLength ? Number(contentLength) : null,
+      orgId: redact.orgId(orgId),
+      userId: redact.userId(userId),
+    });
 
     const responseHeaders = new Headers();
     for (const name of PASSTHROUGH_RESPONSE_HEADERS) {
