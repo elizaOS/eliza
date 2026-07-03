@@ -622,21 +622,31 @@ export function BugReportModal() {
                 <div className="space-y-3">
                   {desktopRuntime ? (
                     <div className="flex flex-wrap gap-4 text-xs-tight text-muted">
-                      <label className="inline-flex items-center gap-2">
-                        <input
+                      <label
+                        htmlFor="bug-report-attach-logs"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <Input
+                          id="bug-report-attach-logs"
                           type="checkbox"
                           checked={attachLogs}
                           onChange={(e) => setAttachLogs(e.target.checked)}
+                          className="h-4 w-4 shrink-0 border-border p-0 accent-accent"
                         />
                         {t("bugreportmodal.attachLogs")}
                       </label>
-                      <label className="inline-flex items-center gap-2">
-                        <input
+                      <label
+                        htmlFor="bug-report-attach-system-info"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <Input
+                          id="bug-report-attach-system-info"
                           type="checkbox"
                           checked={attachSystemInfo}
                           onChange={(e) =>
                             setAttachSystemInfo(e.target.checked)
                           }
+                          className="h-4 w-4 shrink-0 border-border p-0 accent-accent"
                         />
                         {t("bugreportmodal.attachSystemInfo")}
                       </label>

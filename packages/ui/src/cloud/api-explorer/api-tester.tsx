@@ -786,7 +786,7 @@ export function ApiTester({
               <CardContent>
                 <div className="space-y-4">
                   <div className="border-2 border-dashed border-border/60 rounded-sm p-6 hover:border-primary/50 transition-colors">
-                    <input
+                    <Input
                       type="file"
                       accept="audio/*"
                       multiple

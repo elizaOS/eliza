@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../../components/ui/button";
 
 interface TxRequest {
   to?: string;
@@ -169,7 +170,8 @@ export function ElizaTransactionsSection({
           FILTER:
         </span>
         {STATUS_FILTERS.map((f) => (
-          <button
+          <Button
+            variant="ghost"
             key={f.value}
             type="button"
             onClick={() => setStatusFilter(f.value)}
@@ -180,7 +182,7 @@ export function ElizaTransactionsSection({
             }`}
           >
             {f.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -210,13 +212,14 @@ export function ElizaTransactionsSection({
         {!loading && error && (
           <div className="p-6 text-center space-y-2">
             <p className="font-mono text-xs text-red-400">{error}</p>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => fetchRecords(0, false)}
               className="font-mono text-[11px] text-white/50 hover:text-white transition-colors"
             >
               RETRY
-            </button>
+            </Button>
           </div>
         )}
 
@@ -316,7 +319,8 @@ export function ElizaTransactionsSection({
 
         {!loading && records.length < total && (
           <div className="p-3 bg-black/60 border-t border-white/5 text-center">
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={handleLoadMore}
               disabled={loadingMore}
@@ -337,7 +341,7 @@ export function ElizaTransactionsSection({
                   </span>
                 </>
               )}
-            </button>
+            </Button>
           </div>
         )}
       </div>

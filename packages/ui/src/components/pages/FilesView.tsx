@@ -136,14 +136,15 @@ function FileFacetButton({
   });
 
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
-      type="button"
       data-testid={`file-facet-${facet}`}
       aria-pressed={active}
       onClick={() => onSelect(facet)}
-      className={`min-h-11 rounded-full px-3 py-2 text-xs-tight font-semibold transition-colors ${
+      variant="ghost"
+      size="sm"
+      className={`rounded-full px-3 py-1 text-xs-tight font-semibold transition-colors ${
         active
           ? "bg-accent/15 text-accent"
           : "text-muted hover:bg-surface hover:text-txt"
@@ -151,7 +152,7 @@ function FileFacetButton({
     >
       {label}
       <span className="ml-1.5 text-muted/70">{count}</span>
-    </button>
+    </Button>
   );
 }
 

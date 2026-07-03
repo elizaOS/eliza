@@ -656,14 +656,15 @@ function FilterChipButton({
     onActivate: () => onSelect(filter),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={() => onSelect(filter)}
       aria-current={isActive ? "true" : undefined}
+      variant="ghost"
+      size="sm"
       // Borderless text tab (#10710): active reads as accent text on a faint
       // wash; the count renders as plain text and hides at zero.
-      className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
+      className={`h-auto gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
         isActive
           ? "bg-accent/10 text-accent"
           : "text-muted-strong hover:bg-bg-accent/40"
@@ -677,7 +678,7 @@ function FilterChipButton({
           {count}
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }
 
@@ -738,11 +739,11 @@ function FeedRowItem({
       ref={registerRef}
       className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40"
     >
-      <button
+      <Button
         ref={openAction.ref}
-        type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        variant="ghost"
+        className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 whitespace-normal rounded-none p-0 text-left font-normal hover:bg-transparent"
         {...openAction.agentProps}
       >
         <Icon className={`h-4 w-4 shrink-0 ${iconToneClass}`} aria-hidden />
@@ -796,21 +797,22 @@ function FeedRowItem({
             )}
           </div>
         </div>
-      </button>
+      </Button>
       {row.kind === "workflow" && (
-        <button
+        <Button
           ref={runAction.ref}
-          type="button"
           aria-label={t("automationsfeed.runWorkflowNow", {
             name: row.title,
             defaultValue: "Run {{name}} now",
           })}
           onClick={onRunNow}
-          className="rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
+          variant="ghost"
+          size="icon-sm"
+          className="h-7 w-7 rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
           {...runAction.agentProps}
         >
           <PlayCircle className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        </Button>
       )}
     </li>
   );

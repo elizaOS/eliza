@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../cloud-ui";
+import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { OrgMemberDto } from "./data/cloud-org-types";
 
@@ -230,12 +231,13 @@ export function MembersList({
                   {canRemove(member) && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <button
+                        <Button
+                          variant="ghost"
                           type="button"
                           className="p-2 hover:bg-white/5 transition-colors border border-white/10"
                         >
                           <UserMinus className="h-4 w-4 text-[#EB4335]" />
-                        </button>
+                        </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
                         <AlertDialogHeader>

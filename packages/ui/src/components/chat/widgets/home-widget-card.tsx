@@ -17,6 +17,7 @@ import { type ReactNode, useMemo } from "react";
 import { reportUserViewSwitch } from "../../../chat/useSlashCommandController";
 import { cn } from "../../../lib/utils";
 import { useAppSelectorShallow } from "../../../state";
+import { Button } from "../../ui/button";
 
 /**
  * Navigation for home widgets: tapping a card opens the relevant full surface.
@@ -97,8 +98,8 @@ export function HomeWidgetCard({
   onActivate,
 }: HomeWidgetCardProps): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       data-testid={testId}
       aria-label={ariaLabel}
       title={label}
@@ -107,8 +108,8 @@ export function HomeWidgetCard({
         // Chromeless (#10708): no border/background/rounded card — content sits
         // directly on the wallpaper. Neutral-resting hover affordance is an
         // opacity change (no background fill), per the neutral hover rule.
-        "group flex w-full items-center gap-3 px-3 py-2.5 text-left",
-        "transition-opacity hover:opacity-80",
+        "group h-auto w-full justify-start gap-3 whitespace-normal rounded-none bg-transparent px-3 py-2.5 text-left",
+        "transition-opacity hover:bg-transparent hover:opacity-80",
       )}
     >
       <span
@@ -165,6 +166,6 @@ export function HomeWidgetCard({
           {badge}
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../../components/ui/button";
 
 interface PolicyRule {
   id?: string;
@@ -80,13 +81,14 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
         <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0 mt-1" />
         <div>
           <p className="font-mono text-xs text-orange-400">{error}</p>
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={fetchPolicies}
             className="font-mono text-[11px] text-white/50 hover:text-white transition-colors mt-2"
           >
             RETRY
-          </button>
+          </Button>
         </div>
       </div>
     );

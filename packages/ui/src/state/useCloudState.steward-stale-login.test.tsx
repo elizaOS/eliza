@@ -68,12 +68,14 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
       browserUrl: "",
       error: DEVICE_CODE_SENTINEL,
     });
-    cloudLoginDirectSpy = vi.spyOn(client, "cloudLoginDirect").mockResolvedValue({
-      ok: false,
-      sessionId: "",
-      browserUrl: "",
-      error: DEVICE_CODE_SENTINEL,
-    });
+    cloudLoginDirectSpy = vi
+      .spyOn(client, "cloudLoginDirect")
+      .mockResolvedValue({
+        ok: false,
+        sessionId: "",
+        browserUrl: "",
+        error: DEVICE_CODE_SENTINEL,
+      });
     vi.spyOn(client, "getCloudStatus").mockResolvedValue({
       connected: false,
       enabled: false,

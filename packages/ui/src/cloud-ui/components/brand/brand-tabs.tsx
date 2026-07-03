@@ -7,6 +7,7 @@
 
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../lib/utils";
 
 const BrandTabs = TabsPrimitive.Root;
@@ -72,14 +73,15 @@ export function SimpleBrandTabs({
   return (
     <div className={cn("flex flex-wrap gap-0", className)}>
       {tabs.map((tab) => (
-        <button
+        <Button
+          variant="ghost"
           type="button"
           key={tab}
           onClick={() => onTabChange(tab)}
           className={cn("brand-tab", activeTab === tab && "brand-tab-active")}
         >
           {tab}
-        </button>
+        </Button>
       ))}
     </div>
   );

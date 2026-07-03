@@ -48,6 +48,7 @@ import {
   getToolCallEventDisplayState,
   getToolCallName,
 } from "../tool-events/ToolCallEventLog.helpers";
+import { Button } from "../ui/button";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
@@ -588,15 +589,16 @@ export function TrajectoryDetailView({
                   stage: activeStage.replace(/_/g, " "),
                 })}
               </span>
-              <button
+              <Button
                 ref={clearStageFilter.ref}
-                type="button"
                 onClick={() => setActiveStage(null)}
-                className="rounded-sm p-0.5 hover:bg-muted/10"
+                variant="ghost"
+                size="icon-sm"
+                className="h-5 w-5 rounded-sm p-0.5 hover:bg-muted/10"
                 {...clearStageFilter.agentProps}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             </div>
           ) : null}
         </PagePanel>

@@ -37,6 +37,7 @@ import {
   resolveEmbeddedViewerUrl,
   shouldUseEmbeddedAppViewer,
 } from "../apps/viewer-auth";
+import { Button } from "../ui/button";
 import { AppDetailsView } from "./AppDetailsView";
 import { appNeedsDetailsPage } from "./AppDetailsView.helpers";
 
@@ -199,11 +200,12 @@ function AppWindowPinButton({
     onActivate: () => onToggle(windowRecord),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       // Flat — interactive pill keeps its shape; the hover fill (not a
       // border) is the affordance.
+      variant="ghost"
+      size="sm"
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
       onClick={() => onToggle(windowRecord)}
       disabled={busy}
@@ -220,7 +222,7 @@ function AppWindowPinButton({
         <Pin className="h-3.5 w-3.5" aria-hidden="true" />
       )}
       {windowRecord.alwaysOnTop ? "Normal" : "On top"}
-    </button>
+    </Button>
   );
 }
 
@@ -241,15 +243,16 @@ function ActiveRunButton({
     onActivate: onOpen,
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       className="rounded-full bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
       onClick={onOpen}
       {...agentProps}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 

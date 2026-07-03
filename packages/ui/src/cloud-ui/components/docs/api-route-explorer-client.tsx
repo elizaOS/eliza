@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
 import { cn } from "../../lib/utils";
 import type { DiscoveredApiRouteDto, HttpMethod } from "../../types/cloud-api";
 
@@ -78,13 +80,14 @@ function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={handleCopy}
       className="absolute top-2 right-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-white/40 hover:text-white/80 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all"
     >
       {copied ? "Copied!" : "Copy"}
-    </button>
+    </Button>
   );
 }
 
@@ -187,8 +190,12 @@ export function ApiRouteExplorerClient({
                     Route Explorer
                   </span>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-white/50 select-none cursor-pointer hover:text-white/70 transition-colors">
-                  <input
+                <label
+                  htmlFor="api-route-explorer-show-all"
+                  className="flex items-center gap-2 text-xs text-white/50 select-none cursor-pointer hover:text-white/70 transition-colors"
+                >
+                  <Input
+                    id="api-route-explorer-show-all"
                     type="checkbox"
                     checked={showAll}
                     onChange={(e) => setShowAll(e.target.checked)}
@@ -214,7 +221,7 @@ export function ApiRouteExplorerClient({
                     d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                   />
                 </svg>
-                <input
+                <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search endpoints..."
@@ -257,7 +264,8 @@ export function ApiRouteExplorerClient({
                           r.meta?.name ??
                           r.path.replace("/api/v1/", "").replace(/\//g, " / ");
                         return (
-                          <button
+                          <Button
+                            variant="ghost"
                             key={key}
                             type="button"
                             onClick={() => setSelectedKey(key)}
@@ -303,7 +311,7 @@ export function ApiRouteExplorerClient({
                                 </div>
                               </div>
                             </div>
-                          </button>
+                          </Button>
                         );
                       })}
                     </div>

@@ -8,6 +8,7 @@
  */
 
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 interface WalletSectionTab {
   id: string;
@@ -78,22 +79,23 @@ export function WalletSectionNav({
       {WALLET_SECTION_TABS.map((tab) => {
         const isActive = tab.id === active;
         return (
-          <button
+          <Button
             key={tab.id}
-            type="button"
             aria-current={isActive ? "page" : undefined}
             onClick={() => {
               if (!isActive) navigate(tab.path);
             }}
+            variant="ghost"
+            size="sm"
             className={cn(
-              "min-h-11 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "h-auto rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
               isActive
                 ? "bg-accent/15 text-accent"
                 : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
             )}
           >
             {tab.label}
-          </button>
+          </Button>
         );
       })}
     </nav>

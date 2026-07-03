@@ -45,6 +45,8 @@ import { EndpointCard } from "../../cloud-ui/components/docs/endpoint-card";
 import { OpenApiViewer } from "../../cloud-ui/components/docs/openapi-viewer";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { cn } from "../../cloud-ui/lib/utils";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { api } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useRequireAuth } from "../lib/use-session-auth";
@@ -241,7 +243,8 @@ export function ApiExplorerSurface() {
           { value: "auth" as const, label: "Auth" },
           { value: "openapi" as const, label: "OpenAPI" },
         ].map((tab) => (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             key={tab.value}
             onClick={() => setActiveTab(tab.value)}
@@ -253,7 +256,7 @@ export function ApiExplorerSurface() {
             )}
           >
             {tab.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -261,14 +264,15 @@ export function ApiExplorerSurface() {
         (selectedEndpoint ? (
           <div className="min-w-0 space-y-3 sm:space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => setSelectedEndpoint(null)}
                 className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Back to endpoints
-              </button>
+              </Button>
               <div className="flex items-center gap-2 flex-wrap">
                 {selectedEndpoint.pricing && (
                   <div
@@ -325,7 +329,7 @@ export function ApiExplorerSurface() {
             <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:pb-0">
               <div className="relative min-w-[13rem] flex-1 sm:min-w-0 sm:flex-none">
                 <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 h-3.5 sm:h-4 w-3.5 sm:w-4 text-neutral-500" />
-                <input
+                <Input
                   type="text"
                   placeholder="Search..."
                   value={searchQuery}
@@ -333,13 +337,14 @@ export function ApiExplorerSurface() {
                   className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500     sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
                 />
                 {searchQuery && (
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => setSearchQuery("")}
                     className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white transition-colors"
                   >
                     <X className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -351,7 +356,8 @@ export function ApiExplorerSurface() {
                         (endpoint) => endpoint.category === category,
                       ).length;
                 return (
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     key={category}
                     onClick={() => {
@@ -376,7 +382,7 @@ export function ApiExplorerSurface() {
                     >
                       {count}
                     </span>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -461,7 +467,8 @@ export function ApiExplorerSurface() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={handleCopyJson}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#FF5800] text-white rounded-sm hover:bg-[#e54f00] transition-colors"
@@ -472,8 +479,9 @@ export function ApiExplorerSurface() {
                   <Copy className="h-3.5 w-3.5" />
                 )}
                 JSON
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={handleCopyYaml}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 text-white rounded-sm hover:bg-white/20 transition-colors"
@@ -484,7 +492,7 @@ export function ApiExplorerSurface() {
                   <Copy className="h-3.5 w-3.5" />
                 )}
                 YAML
-              </button>
+              </Button>
             </div>
           </div>
 

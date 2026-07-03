@@ -25,6 +25,8 @@ import {
   BackgroundImageError,
   fileToBackgroundDataUrl,
 } from "../pages/background-image";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 function ColorSwatch({
   preset,
@@ -44,14 +46,15 @@ function ColorSwatch({
     onActivate: () => onSelect(preset.color),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="icon-sm"
       onClick={() => onSelect(preset.color)}
       title={preset.label}
       aria-label={`Set background to ${preset.label}`}
       aria-pressed={selected}
-      className="relative h-12 w-12 shrink-0 rounded-full transition-transform hover:scale-105"
+      className="relative h-9 w-9 shrink-0 rounded-full p-0 transition-transform hover:scale-110"
       style={{ backgroundColor: preset.color }}
       {...agentProps}
     >
@@ -61,7 +64,7 @@ function ColorSwatch({
           aria-hidden
         />
       ) : null}
-    </button>
+    </Button>
   );
 }
 
@@ -214,61 +217,64 @@ export function BackgroundSettingsControls({
             onSelect={selectColor}
           />
         ))}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => colorInputRef.current?.click()}
           title="Custom color"
           aria-label="Pick a custom background color"
-          className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105"
+          className="relative h-9 w-9 shrink-0 rounded-full p-0 transition-transform hover:scale-110"
           style={{
             background:
               "conic-gradient(from 0deg, #ef5a1f, #f59e0b, #65a30d, #059669, #57534e, #e11d48, #dc2626, #ef5a1f)",
           }}
         >
           <Pipette className="h-4 w-4 text-white" aria-hidden />
-        </button>
-        <input
+        </Button>
+        <Input
           ref={colorInputRef}
           type="color"
           value={activeColor}
           onChange={(e) => selectColor(e.target.value)}
-          className="sr-only"
+          className="sr-only border-0 bg-transparent p-0"
           aria-label="Custom background color value"
           tabIndex={-1}
         />
       </div>
 
       <div className="flex items-center justify-center gap-3">
-        <button
+        <Button
           ref={uploadButton.ref}
-          type="button"
+          variant="ghost"
+          size="icon-lg"
           onClick={onUploadClick}
           title="Upload image"
           aria-label="Upload a background image"
-          className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent"
+          className="h-12 w-12 rounded-lg bg-transparent text-txt transition-colors hover:bg-bg-accent/45"
           {...uploadButton.agentProps}
         >
           <ImagePlus className="h-5 w-5" aria-hidden />
-        </button>
-        <input
+        </Button>
+        <Input
           ref={fileInputRef}
           type="file"
           accept="image/*"
           onChange={onFileChange}
-          className="sr-only"
+          className="sr-only border-0 bg-transparent p-0"
           aria-label="Background image file"
           tabIndex={-1}
         />
         {cloudAvailable ? (
-          <button
+          <Button
             ref={generateButton.ref}
-            type="button"
+            variant={promptOpen ? "default" : "secondary"}
+            size="icon-lg"
             onClick={() => setPromptOpen((open) => !open)}
             title="Generate image"
             aria-label="Generate a background image"
             aria-pressed={promptOpen}
             className={cn(
-              "flex h-12 w-12 items-center justify-center rounded-lg transition-colors",
+              "h-12 w-12 rounded-lg transition-colors",
               promptOpen
                 ? "bg-accent text-accent-foreground"
                 : "bg-bg-accent/70 text-txt hover:bg-bg-accent",
@@ -276,34 +282,36 @@ export function BackgroundSettingsControls({
             {...generateButton.agentProps}
           >
             <Sparkles className="h-5 w-5" aria-hidden />
-          </button>
+          </Button>
         ) : null}
         {canUndoBackground || canRedoBackground ? (
           <>
-            <button
+            <Button
               ref={undoButton.ref}
-              type="button"
+              variant="secondary"
+              size="icon-lg"
               onClick={() => undoBackgroundConfig()}
               disabled={!canUndoBackground}
               title="Undo"
               aria-label="Undo background change"
-              className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
+              className="h-12 w-12 rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
               {...undoButton.agentProps}
             >
               <Undo2 className="h-5 w-5" aria-hidden />
-            </button>
-            <button
+            </Button>
+            <Button
               ref={redoButton.ref}
-              type="button"
+              variant="secondary"
+              size="icon-lg"
               onClick={() => redoBackgroundConfig()}
               disabled={!canRedoBackground}
               title="Redo"
               aria-label="Redo background change"
-              className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
+              className="h-12 w-12 rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent disabled:opacity-50"
               {...redoButton.agentProps}
             >
               <Redo2 className="h-5 w-5" aria-hidden />
-            </button>
+            </Button>
           </>
         ) : null}
       </div>
@@ -319,30 +327,31 @@ export function BackgroundSettingsControls({
           <label htmlFor={promptInputId} className="sr-only">
             Describe a background
           </label>
-          <input
+          <Input
             id={promptInputId}
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Describe a background..."
             disabled={generating}
-            // biome-ignore lint/a11y/noAutofocus: focus the field the user just opened
             autoFocus
-            className="min-w-0 flex-1 rounded-lg border border-border/50 bg-bg/60 px-3 py-2 text-sm text-txt placeholder:text-muted"
+            className="min-w-0 flex-1 rounded-lg border-border/50 bg-bg/60 text-sm text-txt placeholder:text-muted"
           />
-          <button
+          <Button
             type="submit"
+            variant="default"
+            size="icon-sm"
             disabled={generating || prompt.trim().length === 0}
             title="Generate"
             aria-label="Generate background from prompt"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-50"
+            className="h-9 w-9 shrink-0 rounded-lg bg-accent text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-50"
           >
             {generating ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
             ) : (
               <ArrowUp className="h-4 w-4" aria-hidden />
             )}
-          </button>
+          </Button>
         </form>
       ) : null}
 

@@ -41,6 +41,7 @@ import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { DocumentViewer } from "./documents-detail";
 import {
@@ -129,15 +130,16 @@ function ScopeFilterChip({
     onActivate: () => onSelect(value),
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
-      type="button"
       aria-pressed={active}
       aria-current={active ? "page" : undefined}
       onClick={() => onSelect(value)}
+      variant="ghost"
+      size="sm"
       // Borderless text tab (#10710): active = accent text on a faint wash.
-      className={`inline-flex min-h-11 items-center gap-1 rounded-full px-3 py-2 text-2xs font-semibold transition-colors ${
+      className={`h-auto gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold transition-colors ${
         active
           ? "bg-accent/12 text-accent"
           : "text-muted hover:bg-bg-muted/30 hover:text-txt"
@@ -145,7 +147,7 @@ function ScopeFilterChip({
     >
       <Icon className="h-3 w-3" aria-hidden />
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -178,13 +180,13 @@ const SearchResultListItem = memo(function SearchResultListItem({
   });
 
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
       onClick={() => onSelect(documentId)}
-      type="button"
       aria-current={active ? "page" : undefined}
-      className={`group flex w-full items-start px-0 py-3 text-left transition-colors ${
+      variant="ghost"
+      className={`group flex h-auto w-full items-start justify-start whitespace-normal rounded-none px-0 py-3 text-left font-normal transition-colors ${
         active ? "bg-transparent" : "bg-transparent hover:bg-bg-hover"
       }`}
     >
@@ -204,7 +206,7 @@ const SearchResultListItem = memo(function SearchResultListItem({
           {result.text}
         </div>
       </div>
-    </button>
+    </Button>
   );
 });
 
@@ -255,10 +257,9 @@ const DocumentListItem = memo(function DocumentListItem({
         active ? "bg-transparent" : "bg-transparent hover:bg-bg-hover"
       }`}
     >
-      <button
+      <Button
         ref={ref}
         {...agentProps}
-        type="button"
         onClick={() => onSelect(doc.id)}
         aria-label={t("documentsview.OpenDocument", {
           defaultValue: "Open {{filename}}",
@@ -266,7 +267,8 @@ const DocumentListItem = memo(function DocumentListItem({
         })}
         aria-current={active ? "page" : undefined}
         title={doc.filename}
-        className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
+        variant="ghost"
+        className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 whitespace-normal rounded-none px-3.5 py-3 text-left font-normal hover:bg-transparent"
       >
         <FileText
           className={`h-4 w-4 shrink-0 ${active ? "text-accent" : "text-muted"}`}
@@ -306,7 +308,7 @@ const DocumentListItem = memo(function DocumentListItem({
             ) : null}
           </div>
         </div>
-      </button>
+      </Button>
       <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ">
         <ConfirmDeleteControl
           triggerClassName="h-7 rounded-sm border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
@@ -349,13 +351,14 @@ const CompactSearchChip = memo(function CompactSearchChip({
     onActivate: () => onSelect(id),
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
-      type="button"
       onClick={() => onSelect(id)}
+      variant="ghost"
+      size="sm"
       // Borderless selector pill (#10710): selection = accent text on a wash.
-      className={`inline-flex min-h-11 max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${
+      className={`h-auto max-w-[16rem] shrink-0 gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
         active
           ? "bg-accent/12 text-accent"
           : "text-muted hover:bg-bg-muted/30 hover:text-txt"
@@ -363,7 +366,7 @@ const CompactSearchChip = memo(function CompactSearchChip({
     >
       <FileSearch className="h-3.5 w-3.5" aria-hidden />
       <span className="truncate">{title}</span>
-    </button>
+    </Button>
   );
 });
 
@@ -386,13 +389,14 @@ function CompactDocChip({
     onActivate: () => onSelect(doc.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
-      type="button"
       onClick={() => onSelect(doc.id)}
+      variant="ghost"
+      size="sm"
       // Borderless selector pill (#10710): selection = accent text on a wash.
-      className={`inline-flex min-h-11 max-w-[16rem] shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${
+      className={`h-auto max-w-[16rem] shrink-0 gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
         active
           ? "bg-accent/12 text-accent"
           : "text-muted hover:bg-bg-muted/30 hover:text-txt"
@@ -400,7 +404,7 @@ function CompactDocChip({
     >
       <FileText className="h-3.5 w-3.5" aria-hidden />
       <span className="truncate">{doc.filename}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -1383,7 +1387,7 @@ export function DocumentsView({
       onDrop={handleRootDrop}
     >
       {!shouldRenderSelectorRail && fileInputId ? (
-        <input
+        <Input
           id={fileInputId}
           type="file"
           className="hidden"

@@ -268,12 +268,13 @@ export function InferenceEndpointPanel() {
                 </Button>
               </div>
 
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   setExpandedId(expandedId === endpoint.id ? null : endpoint.id)
                 }
-                className="text-xs text-accent hover:underline"
+                className="h-auto w-fit px-0 text-xs text-accent hover:bg-transparent hover:underline"
               >
                 {expandedId === endpoint.id
                   ? t("inferenceendpoint.hideStats", {
@@ -282,7 +283,7 @@ export function InferenceEndpointPanel() {
                   : t("inferenceendpoint.showStats", {
                       defaultValue: "Show stats",
                     })}
-              </button>
+              </Button>
 
               {expandedId === endpoint.id && (
                 <EndpointStats label={endpoint.label} />

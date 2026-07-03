@@ -92,9 +92,10 @@ function LongRunningHostBanner({ triggers }: { triggers: TriggerSummary[] }) {
       aria-live="polite"
       className="mb-3 text-xs"
       actions={
-        <button
-          type="button"
-          className="text-xs font-medium text-muted underline-offset-2 hover:text-txt hover:underline"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-auto px-0 py-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-txt hover:underline"
           onClick={() => {
             if (typeof sessionStorage !== "undefined") {
               sessionStorage.setItem(LONG_RUNNING_BANNER_DISMISS_KEY, "1");
@@ -103,7 +104,7 @@ function LongRunningHostBanner({ triggers }: { triggers: TriggerSummary[] }) {
           }}
         >
           Dismiss
-        </button>
+        </Button>
       }
     >
       <div className="flex flex-col gap-0.5">
@@ -827,9 +828,9 @@ function HeartbeatsLayout() {
       >
         <div className="flex min-h-0 flex-1 flex-col">
           {showDetailPane ? (
-            <button
-              type="button"
-              className="mb-3 flex items-center gap-2 py-2 text-base font-medium text-muted hover:text-txt md:hidden"
+            <Button
+              variant="ghost"
+              className="mb-3 flex h-auto items-center justify-start gap-2 px-0 py-2 text-base font-medium text-muted hover:bg-transparent hover:text-txt md:hidden"
               onClick={() => {
                 setSelectedTriggerId(null);
                 setEditorOpen(false);
@@ -839,7 +840,7 @@ function HeartbeatsLayout() {
               {t("common.back", {
                 defaultValue: "\u2190 Back",
               })}
-            </button>
+            </Button>
           ) : null}
 
           <ChatSearchHint

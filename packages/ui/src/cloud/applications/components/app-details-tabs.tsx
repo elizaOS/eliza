@@ -16,6 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
@@ -118,7 +119,8 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               key={tab.value}
               onClick={() => handleTabChange(tab.value)}
@@ -131,7 +133,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
             >
               <Icon className="h-4 w-4 hidden sm:block" />
               <span className="truncate">{tab.label}</span>
-            </button>
+            </Button>
           );
         })}
       </div>

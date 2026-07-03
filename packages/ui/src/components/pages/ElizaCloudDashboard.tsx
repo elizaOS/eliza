@@ -1002,13 +1002,13 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       <p className="mb-1 text-2xs font-semibold uppercase text-muted">
         Sign-in window did not open?
       </p>
-      <button
-        type="button"
-        className="block w-full break-all text-left text-xs text-accent underline-offset-2 hover:underline"
+      <Button
+        variant="ghost"
+        className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}
-      </button>
+      </Button>
     </div>
   );
 }

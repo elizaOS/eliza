@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../cloud-ui";
+import { Button } from "../../components/ui/button";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import type { InviteRole } from "./data/cloud-org-types";
 import {
@@ -143,14 +144,15 @@ export function InviteMemberDialog({
               <code className="flex-1 text-xs font-mono text-white break-all">
                 {inviteLink}
               </code>
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={handleCopyLink}
                 aria-label="Copy invite link"
                 className="p-2 hover:bg-white/5 transition-colors border border-white/10 flex-shrink-0"
               >
                 <Copy className="h-4 w-4 text-white/60" />
-              </button>
+              </Button>
             </div>
             <p className="text-xs font-mono text-white/40">
               The link contains no secrets — joining still requires signing in
@@ -261,14 +263,15 @@ export function InviteMemberDialog({
               </div>
 
               <DialogFooter className="gap-2 sm:gap-0 flex flex-col sm:flex-row">
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={handleClose}
                   disabled={isSubmitting}
                   className="px-4 py-2 text-white hover:bg-white/5 transition-colors disabled:opacity-50 order-2 sm:order-1"
                 >
                   Cancel
-                </button>
+                </Button>
                 <BrandButton
                   type="submit"
                   variant="primary"

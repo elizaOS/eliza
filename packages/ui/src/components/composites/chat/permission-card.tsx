@@ -256,14 +256,15 @@ export function PermissionCard({
             {resolvedFallbackLabel}
           </Button>
         ) : null}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={handleDismiss}
           data-testid="permission-card-dismiss"
-          className="ml-auto text-xs text-muted hover:text-txt-strong"
+          className="ml-auto h-auto px-0 text-xs text-muted hover:bg-transparent hover:text-txt-strong"
         >
           {labels.notNow ?? "Not now"}
-        </button>
+        </Button>
       </div>
     </section>
   );

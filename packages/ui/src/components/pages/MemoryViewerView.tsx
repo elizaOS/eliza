@@ -162,9 +162,9 @@ const MemoryCard = memo(function MemoryCard({
     memory.text || t("memoryviewer.empty.value", { defaultValue: "(empty)" });
 
   return (
-    <button
-      type="button"
-      className="w-full text-left rounded-sm px-3.5 py-3 transition-colors hover:bg-bg-hover"
+    <Button
+      variant="ghost"
+      className="h-auto w-full justify-start whitespace-normal rounded-sm px-3.5 py-3 text-left font-normal transition-colors hover:bg-bg-hover"
       onClick={() => onToggle(memory.id)}
       data-testid={`memory-card-${memory.id}`}
     >
@@ -219,7 +219,7 @@ const MemoryCard = memo(function MemoryCard({
           </div>
         </div>
       ) : null}
-    </button>
+    </Button>
   );
 });
 

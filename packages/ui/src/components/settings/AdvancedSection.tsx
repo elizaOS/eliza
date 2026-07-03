@@ -11,6 +11,7 @@ import {
 } from "../../state";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -29,6 +30,10 @@ function formatBackupSize(sizeBytes: number): string {
 
 function backupErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
+}
+
+function backupOptionInputId(fileName: string): string {
+  return `agent-backup-file-${fileName.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
 function BackupOptionList({
@@ -50,29 +55,34 @@ function BackupOptionList({
 
   return (
     <div className="overflow-hidden rounded-sm border border-line bg-bg">
-      {backups.map((backup) => (
-        <label
-          key={backup.fileName}
-          className="flex min-h-[3.25rem] cursor-pointer items-center gap-3 border-line border-t px-3 py-2 first:border-t-0"
-        >
-          <input
-            type="radio"
-            name="agent-backup-file"
-            className="h-4 w-4 shrink-0 accent-current"
-            checked={selectedFileName === backup.fileName}
-            onChange={() => onSelect(backup.fileName)}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-txt-strong">
-              {formatBackupDate(backup.createdAt)}
+      {backups.map((backup) => {
+        const inputId = backupOptionInputId(backup.fileName);
+        return (
+          <label
+            key={backup.fileName}
+            htmlFor={inputId}
+            className="flex min-h-[3.25rem] cursor-pointer items-center gap-3 border-line border-t px-3 py-2 first:border-t-0"
+          >
+            <Input
+              id={inputId}
+              type="radio"
+              name="agent-backup-file"
+              className="h-4 w-4 shrink-0 border-border p-0 accent-current"
+              checked={selectedFileName === backup.fileName}
+              onChange={() => onSelect(backup.fileName)}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-txt-strong">
+                {formatBackupDate(backup.createdAt)}
+              </span>
+              <span className="block truncate text-xs text-muted">
+                {formatBackupSize(backup.sizeBytes)} ·{" "}
+                {backup.stateSha256.slice(0, 12)}
+              </span>
             </span>
-            <span className="block truncate text-xs text-muted">
-              {formatBackupSize(backup.sizeBytes)} ·{" "}
-              {backup.stateSha256.slice(0, 12)}
-            </span>
-          </span>
-        </label>
-      ))}
+          </label>
+        );
+      })}
     </div>
   );
 }

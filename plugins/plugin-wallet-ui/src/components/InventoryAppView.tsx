@@ -1198,11 +1198,12 @@ function WalletRailAddress({
   });
 
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       className={cn(
-        "group inline-flex min-h-11 min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-left transition-colors",
+        "group inline-flex min-h-10 min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-left transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
         address ? "text-txt hover:text-accent" : "text-muted",
       )}
       onClick={handleCopy}
@@ -1245,7 +1246,7 @@ function WalletRailAddress({
       ) : (
         <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warn" />
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -1358,10 +1359,11 @@ function WalletRailRpcButton({
   });
 
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
-      className="inline-flex min-h-11 items-center gap-2 rounded-sm px-3 text-xs font-semibold text-txt transition-colors hover:text-accent"
+      className="inline-flex min-h-10 items-center gap-2 rounded-sm px-3 text-xs font-semibold text-txt transition-colors hover:text-accent [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:px-2"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
@@ -1369,7 +1371,7 @@ function WalletRailRpcButton({
     >
       <WalletProviderDots walletConfig={walletConfig} />
       RPC
-    </button>
+    </Button>
   );
 }
 
@@ -1387,19 +1389,19 @@ function WalletRailAccount({
   const evmReady = Boolean(walletConfig?.evmBalanceReady);
   const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="relative flex h-16 w-16 items-center justify-center">
-          <Wallet className="h-7 w-7 text-accent" />
+    <div className="space-y-3 [@media(orientation:landscape)_and_(max-height:520px)]:space-y-2">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="relative flex h-14 w-14 items-center justify-center [@media(orientation:landscape)_and_(max-height:520px)]:h-10 [@media(orientation:landscape)_and_(max-height:520px)]:w-10">
+          <Wallet className="h-6 w-6 text-accent [@media(orientation:landscape)_and_(max-height:520px)]:h-5 [@media(orientation:landscape)_and_(max-height:520px)]:w-5" />
         </div>
         <div className="min-w-0 flex-1 basis-64">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <div className="font-mono text-2xl font-semibold leading-none text-txt">
+            <div className="font-mono text-2xl font-semibold leading-none text-txt [@media(orientation:landscape)_and_(max-height:520px)]:text-xl">
               {formatUsd(portfolioValueUsd)}
             </div>
             <WalletChainCluster />
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:mt-1">
             <WalletConnectionChip label="EVM" ready={evmReady} />
             <WalletConnectionChip label="SOL" ready={solanaReady} />
           </div>
@@ -1434,11 +1436,12 @@ function WalletRailTabButton({
     description: `Show the ${tab.label} list`,
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       className={cn(
-        "inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors",
+        "inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
         active ? "text-txt" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(tab.id)}
@@ -1450,7 +1453,7 @@ function WalletRailTabButton({
     >
       <tab.icon className="h-3.5 w-3.5 shrink-0" />
       <span className="truncate">{tab.label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -1496,7 +1499,8 @@ function TokenRailRowImpl({
           {formatUsd(row.valueUsd)}
         </div>
         <div className="flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
-          <button
+          <Button
+            unstyled
             ref={hideRef}
             type="button"
             className="flex h-11 w-11 items-center justify-center rounded-sm text-muted transition-colors hover:text-danger"
@@ -1507,7 +1511,7 @@ function TokenRailRowImpl({
             {...hideAgentProps}
           >
             <EyeOff className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1700,14 +1704,17 @@ function WalletHoldingsSection({
     });
 
   return (
-    <section data-testid="wallets-sidebar" className="px-3 py-3 md:px-4">
+    <section
+      data-testid="wallets-sidebar"
+      className="px-3 py-2 md:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-1"
+    >
       <WalletRailAccount
         addresses={addresses}
         portfolioValueUsd={totalUsd}
         walletConfig={walletConfig}
         onOpenSettings={onOpenRpcSettings}
       />
-      <div className="mt-4 space-y-4">
+      <div className="mt-3 space-y-3 [@media(orientation:landscape)_and_(max-height:520px)]:mt-2 [@media(orientation:landscape)_and_(max-height:520px)]:space-y-2">
         {visibleRows.length > 0 ? (
           <AssetAllocationStrip rows={visibleRows} compact />
         ) : null}
@@ -1786,7 +1793,8 @@ function DashboardWindowButton({
     description: `Show profit and loss over the ${window} window`,
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       style={{ minWidth: 44 }}
@@ -1799,7 +1807,7 @@ function DashboardWindowButton({
       {...agentProps}
     >
       {window}
-    </button>
+    </Button>
   );
 }
 

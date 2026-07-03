@@ -7,6 +7,9 @@
 import { AlertCircle, CheckCircle2, Loader2, Vote } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { Button } from "../../../../components/ui/button";
+import { Input } from "../../../../components/ui/input";
+import { Textarea } from "../../../../components/ui/textarea";
 import { ApiError, api } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
@@ -202,13 +205,14 @@ export default function BallotPage() {
             void handleSubmit();
           }}
         >
-          <label className="block text-sm">
+          <label htmlFor="ballot-scoped-token" className="block text-sm">
             <span className="text-gray-700">
               {t("cloud.ballot.scopedToken", {
                 defaultValue: "Your scoped token",
               })}
             </span>
-            <input
+            <Input
+              id="ballot-scoped-token"
               type="text"
               value={scopedToken}
               onChange={(event) => setScopedToken(event.target.value)}
@@ -219,11 +223,12 @@ export default function BallotPage() {
               required
             />
           </label>
-          <label className="block text-sm">
+          <label htmlFor="ballot-vote" className="block text-sm">
             <span className="text-gray-700">
               {t("cloud.ballot.yourVote", { defaultValue: "Your vote" })}
             </span>
-            <textarea
+            <Textarea
+              id="ballot-vote"
               value={value}
               onChange={(event) => setValue(event.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -231,7 +236,8 @@ export default function BallotPage() {
               required
             />
           </label>
-          <button
+          <Button
+            variant="ghost"
             type="submit"
             disabled={isSubmitting || !scopedToken.trim() || !value.trim()}
             className="inline-flex items-center gap-2 rounded-md bg-[#FF5800] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
@@ -242,7 +248,7 @@ export default function BallotPage() {
               <CheckCircle2 className="h-4 w-4" />
             )}
             {t("cloud.ballot.submitVote", { defaultValue: "Submit vote" })}
-          </button>
+          </Button>
         </form>
       )}
 

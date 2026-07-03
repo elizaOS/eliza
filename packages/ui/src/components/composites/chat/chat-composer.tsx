@@ -511,7 +511,7 @@ export function ChatComposer({
             : `flex min-h-[40px] items-center gap-1 rounded-sm border px-1 py-1 ${inlineComposerSurfaceClass}`
         }
       >
-        <textarea
+        <Textarea
           ref={inlineMeasureRef}
           aria-hidden="true"
           className={inlineMeasureTextareaClass}

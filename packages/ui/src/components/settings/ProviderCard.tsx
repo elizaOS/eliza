@@ -2,6 +2,7 @@ import { CheckCircle2 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 export type ProviderStatusTone = "ok" | "warn" | "muted";
 export type ProviderCategory = "cloud" | "subscription" | "key" | "local";
@@ -54,16 +55,16 @@ export function ProviderCard({
   });
 
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
       aria-current={selected ? "true" : undefined}
       aria-label={`${label}, ${stateLabel}`}
       onClick={() => onSelect(id)}
       title={`${label} · ${stateLabel}`}
       {...agentProps}
       className={cn(
-        "inline-flex min-h-[2.25rem] max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors   ",
+        "min-h-[2.25rem] max-w-full gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors   ",
         selected
           ? "border-accent/50 bg-accent/12 text-accent"
           : current
@@ -93,6 +94,6 @@ export function ProviderCard({
           aria-hidden
         />
       )}
-    </button>
+    </Button>
   );
 }

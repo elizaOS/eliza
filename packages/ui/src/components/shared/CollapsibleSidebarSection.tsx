@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import * as React from "react";
+import { Button } from "../ui/button";
 
 export interface CollapsibleSidebarSectionProps {
   addLabel?: string;
@@ -47,13 +48,13 @@ export function CollapsibleSidebarSection({
       className="group/section space-y-0"
     >
       <div className="flex items-center gap-1 pr-1">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={() => onToggleCollapsed(sectionKey)}
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           data-testid={`${testIdPrefix}-toggle-${sectionKey}`}
-          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-medium text-muted transition-colors hover:text-txt"
+          className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-medium text-muted transition-colors hover:text-txt"
         >
           {icon ? (
             <span className="inline-flex shrink-0 items-center justify-center text-muted">
@@ -70,18 +71,19 @@ export function CollapsibleSidebarSection({
             aria-hidden
             className={`ml-0.5 h-3 w-3 shrink-0 text-muted${hoverHideClass}`}
           />
-        </button>
+        </Button>
         {onAdd ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onAdd}
             aria-label={addLabel ?? "Add"}
             title={addLabel}
             data-testid={`${testIdPrefix}-add-${sectionKey}`}
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt${hoverHideClass}`}
+            className={`h-6 w-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt${hoverHideClass}`}
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          </Button>
         ) : null}
       </div>
       {collapsed ? null : hasChildren ? (

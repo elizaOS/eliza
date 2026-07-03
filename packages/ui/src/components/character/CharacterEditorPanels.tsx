@@ -345,9 +345,10 @@ function StyleAddRow({
         className="h-9 min-w-0 flex-1 rounded-none border-0 border-b border-border/30 bg-transparent px-0 text-sm text-txt outline-none"
         {...inputAgentProps}
       />
-      <button
+      <Button
         ref={addRef}
-        type="button"
+        variant="ghost"
+        size="sm"
         className="inline-flex h-9 shrink-0 items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
         onClick={onAdd}
         disabled={!pendingValue.trim()}
@@ -359,7 +360,7 @@ function StyleAddRow({
         {t("charactereditor.AddStyleRuleShort", {
           defaultValue: "Add rule",
         })}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -571,9 +572,10 @@ function ConversationFooter({
     });
   return (
     <div className="mt-1 flex items-center justify-end gap-2">
-      <button
+      <Button
         ref={addTurnRef}
-        type="button"
+        variant="ghost"
+        size="sm"
         className="inline-flex h-8 items-center gap-2 rounded-sm px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70"
         onClick={onAddTurn}
         title={addTurnLabel}
@@ -582,10 +584,11 @@ function ConversationFooter({
       >
         <PlusIconSvg />
         {addTurnLabel}
-      </button>
-      <button
+      </Button>
+      <Button
         ref={removeRef}
-        type="button"
+        variant="ghost"
+        size="icon-sm"
         className={compactIconBtn}
         onClick={onRemove}
         title={t("charactereditor.RemoveExample", {
@@ -595,7 +598,7 @@ function ConversationFooter({
         {...removeAgentProps}
       >
         <TrashIconSvg />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -863,9 +866,10 @@ export function CharacterExamplesPanel({
             </div>
           )}
         </div>
-        <button
+        <Button
           ref={addConversationRef}
-          type="button"
+          variant="ghost"
+          size="sm"
           className="inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
           onClick={addConversation}
           title={addConversationLabel}
@@ -874,7 +878,7 @@ export function CharacterExamplesPanel({
         >
           <PlusIconSvg />
           {addConversationLabel}
-        </button>
+        </Button>
       </section>
 
       {/* Post Examples — flat, no card/border; whitespace separates posts. */}
@@ -954,9 +958,10 @@ export function CharacterExamplesPanel({
               })}
             </div>
           )}
-          <button
+          <Button
             ref={addPostRef}
-            type="button"
+            variant="ghost"
+            size="sm"
             className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
             onClick={addPost}
             title={addPostLabel}
@@ -965,7 +970,7 @@ export function CharacterExamplesPanel({
           >
             <PlusIconSvg />
             {addPostLabel}
-          </button>
+          </Button>
         </div>
       </section>
     </div>

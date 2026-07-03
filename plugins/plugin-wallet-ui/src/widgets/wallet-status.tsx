@@ -1,5 +1,9 @@
-import type { ChatSidebarWidgetProps } from "@elizaos/ui/components";
-import { EmptyWidgetState, WidgetSection } from "@elizaos/ui/components";
+import {
+  Button,
+  type ChatSidebarWidgetProps,
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -149,7 +153,8 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
   }
 
   return (
-    <button
+    <Button
+      unstyled
       type="button"
       onClick={onClick}
       aria-label={copied ? `${label} copied` : `Copy ${label}`}
@@ -161,7 +166,7 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
       ) : (
         <Copy className="h-3 w-3" aria-hidden />
       )}
-    </button>
+    </Button>
   );
 }
 

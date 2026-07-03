@@ -20,6 +20,7 @@ import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
+import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
 import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
 
@@ -304,23 +305,25 @@ function TileButton({
   );
   if (href) {
     return (
-      <a
-        href={href}
-        download={download}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={label}
-        title={label}
-        className={cls}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </a>
+      <Button asChild variant="ghost" size="icon-sm" className={cls}>
+        <a
+          href={href}
+          download={download}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={label}
+          title={label}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+        </a>
+      </Button>
     );
   }
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={label}
       title={label}
       className={cls}
@@ -330,7 +333,7 @@ function TileButton({
       }}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -348,10 +351,10 @@ function ImageTile({
   const label = attachmentLabel(att);
   return (
     <div className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-xl border border-white/12">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={onExpand}
-        className="block w-full cursor-zoom-in   "
+        className="block h-auto w-full cursor-zoom-in rounded-none bg-transparent p-0 hover:bg-transparent   "
         aria-label={`Expand image ${label}`}
       >
         <img
@@ -365,7 +368,7 @@ function ImageTile({
           // (mirrors the video branch + lightbox) so non-4:3 content isn't cropped.
           className="block aspect-[4/3] max-h-80 w-full object-contain"
         />
-      </button>
+      </Button>
       <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
         <span className="pointer-events-auto">
           <TileButton label="Expand image" onClick={onExpand}>
@@ -398,35 +401,42 @@ function FileTile({
   const label = attachmentLabel(att);
   const Icon = kind === "link" ? LinkIcon : FileText;
   return (
-    <a
-      href={src}
-      target="_blank"
-      rel="noreferrer"
-      download={kind === "link" ? undefined : downloadName(att, kind)}
+    <Button
+      asChild
+      variant="ghost"
       className={cn(
-        "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+        "h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
         "text-white/90 transition-colors hover:bg-white/[0.12]   ",
       )}
     >
-      <Icon className="h-5 w-5 shrink-0 text-white/70" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium">{label}</span>
-        {att.description?.trim() ? (
-          <span className="block truncate text-[11px] text-white/55">
-            {att.description.trim()}
+      <a
+        href={src}
+        target="_blank"
+        rel="noreferrer"
+        download={kind === "link" ? undefined : downloadName(att, kind)}
+      >
+        <Icon className="h-5 w-5 shrink-0 text-white/70" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium">
+            {label}
           </span>
+          {att.description?.trim() ? (
+            <span className="block truncate text-[11px] text-white/55">
+              {att.description.trim()}
+            </span>
+          ) : (
+            <span className="block text-[11px] uppercase tracking-wide text-white/45">
+              {kind === "link" ? "link" : kind}
+            </span>
+          )}
+        </span>
+        {kind === "link" ? (
+          <LinkIcon className="h-4 w-4 shrink-0 text-white/55" />
         ) : (
-          <span className="block text-[11px] uppercase tracking-wide text-white/45">
-            {kind === "link" ? "link" : kind}
-          </span>
+          <Download className="h-4 w-4 shrink-0 text-white/55" />
         )}
-      </span>
-      {kind === "link" ? (
-        <LinkIcon className="h-4 w-4 shrink-0 text-white/55" />
-      ) : (
-        <Download className="h-4 w-4 shrink-0 text-white/55" />
-      )}
-    </a>
+      </a>
+    </Button>
   );
 }
 
@@ -467,28 +477,33 @@ function PdfTile({
   if (!inlineable) {
     // data: / non-inlinable safe URL → download card, no iframe.
     return (
-      <a
-        href={src}
-        target="_blank"
-        rel="noreferrer"
-        download={downloadName(att, "pdf")}
-        data-testid="pdf-attachment-fallback"
+      <Button
+        asChild
+        variant="ghost"
         className={cn(
-          "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+          "h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
           "text-white/90 transition-colors hover:bg-white/[0.12]   ",
         )}
       >
-        <FileText className="h-5 w-5 shrink-0 text-white/70" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium">
-            {label}
+        <a
+          href={src}
+          target="_blank"
+          rel="noreferrer"
+          download={downloadName(att, "pdf")}
+          data-testid="pdf-attachment-fallback"
+        >
+          <FileText className="h-5 w-5 shrink-0 text-white/70" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-medium">
+              {label}
+            </span>
+            <span className="block text-[11px] uppercase tracking-wide text-white/45">
+              {t("messageattachments.pdfLabel")}
+            </span>
           </span>
-          <span className="block text-[11px] uppercase tracking-wide text-white/45">
-            {t("messageattachments.pdfLabel")}
-          </span>
-        </span>
-        <Download className="h-4 w-4 shrink-0 text-white/55" />
-      </a>
+          <Download className="h-4 w-4 shrink-0 text-white/55" />
+        </a>
+      </Button>
     );
   }
 
@@ -684,20 +699,25 @@ function Model3dTile({
         </span>
       </figcaption>
       {showFallbackBody ? (
-        <a
-          href={src}
-          target="_blank"
-          rel="noreferrer"
-          download={downloadName(att, "model3d")}
-          data-testid="model3d-attachment-fallback"
-          className="flex items-center gap-2.5 px-3 py-3 text-white/85 transition-colors hover:bg-white/[0.08]"
+        <Button
+          asChild
+          variant="ghost"
+          className="h-auto w-full justify-start gap-2.5 rounded-none px-3 py-3 text-white/85 transition-colors hover:bg-white/[0.08]"
         >
-          <Box className="h-5 w-5 shrink-0 text-white/60" />
-          <span className="min-w-0 flex-1 text-[12px] text-white/60">
-            {t("messageattachments.model3dDownloadToView")}
-          </span>
-          <Download className="h-4 w-4 shrink-0 text-white/55" />
-        </a>
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            download={downloadName(att, "model3d")}
+            data-testid="model3d-attachment-fallback"
+          >
+            <Box className="h-5 w-5 shrink-0 text-white/60" />
+            <span className="min-w-0 flex-1 text-[12px] text-white/60">
+              {t("messageattachments.model3dDownloadToView")}
+            </span>
+            <Download className="h-4 w-4 shrink-0 text-white/55" />
+          </a>
+        </Button>
       ) : (
         <div
           ref={mountRef}
@@ -736,28 +756,33 @@ function CodeTile({
   if (!text.trim()) {
     // No inline content available → download/open card (no fetch in v1).
     return (
-      <a
-        href={src}
-        target="_blank"
-        rel="noreferrer"
-        download={downloadName(att, "code")}
-        data-testid="code-attachment-fallback"
+      <Button
+        asChild
+        variant="ghost"
         className={cn(
-          "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+          "h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
           "text-white/90 transition-colors hover:bg-white/[0.12]   ",
         )}
       >
-        <Code2 className="h-5 w-5 shrink-0 text-white/70" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium">
-            {label}
+        <a
+          href={src}
+          target="_blank"
+          rel="noreferrer"
+          download={downloadName(att, "code")}
+          data-testid="code-attachment-fallback"
+        >
+          <Code2 className="h-5 w-5 shrink-0 text-white/70" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-medium">
+              {label}
+            </span>
+            <span className="block text-[11px] uppercase tracking-wide text-white/45">
+              {t("messageattachments.textLabel")}
+            </span>
           </span>
-          <span className="block text-[11px] uppercase tracking-wide text-white/45">
-            {t("messageattachments.textLabel")}
-          </span>
-        </span>
-        <Download className="h-4 w-4 shrink-0 text-white/55" />
-      </a>
+          <Download className="h-4 w-4 shrink-0 text-white/55" />
+        </a>
+      </Button>
     );
   }
 
@@ -836,12 +861,12 @@ function TranscriptTile({
 }): React.JSX.Element {
   const label = attachmentLabel(att);
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onOpen}
       data-testid="transcript-attachment"
       className={cn(
-        "group flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-left",
+        "group h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-left",
         "text-white/90 transition-colors hover:bg-white/[0.12]   ",
       )}
     >
@@ -853,7 +878,7 @@ function TranscriptTile({
         </span>
       </span>
       <Maximize2 className="h-4 w-4 shrink-0 text-white/55 transition-colors group-hover:text-white/80" />
-    </button>
+    </Button>
   );
 }
 
@@ -889,11 +914,11 @@ function Lightbox({
     >
       {/* Full-screen backdrop is a real button so click + keyboard both close;
           the image and controls sit above it as siblings. */}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         aria-label="Close preview"
         onClick={onClose}
-        className="absolute inset-0 cursor-zoom-out bg-black/85"
+        className="absolute inset-0 h-auto w-auto cursor-zoom-out rounded-none bg-black/85 p-0 hover:bg-black/85"
       />
       <img
         src={src}

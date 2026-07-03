@@ -14,6 +14,7 @@ import { memo, useCallback, useMemo, useState } from "react";
 import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
+import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
 import { useCloudT } from "../shell/CloudI18nProvider";
@@ -130,7 +131,8 @@ export function McpsView() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-white/10">
         {tabs.map((tabDef) => (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             key={tabDef.id}
             onClick={() => setTab(tabDef.id)}
@@ -142,7 +144,7 @@ export function McpsView() {
             )}
           >
             {tabDef.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -161,7 +163,8 @@ export function McpsView() {
         </div>
         <div className="flex flex-wrap gap-1.5">
           {categories.map((cat) => (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               key={cat}
               onClick={() => setCategory(cat)}
@@ -173,7 +176,7 @@ export function McpsView() {
               )}
             >
               {cat}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -261,7 +264,8 @@ const UserMcpCard = memo(function UserMcpCard({
 }) {
   const t = useCloudT();
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={() => onSelect(mcp.id)}
       className="text-left rounded-sm border border-white/10 bg-white/5 p-4 transition-colors hover:border-white/20 hover:bg-white/[0.07]"
@@ -298,7 +302,7 @@ const UserMcpCard = memo(function UserMcpCard({
           {t("cloud.mcps.viewDetails", { defaultValue: "View details" })}
         </span>
       </div>
-    </button>
+    </Button>
   );
 });
 

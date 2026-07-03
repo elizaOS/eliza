@@ -13,6 +13,7 @@ import { getElizaApiToken } from "../../../utils/eliza-globals";
 import { openEventSource } from "../../../utils/event-source";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
+import { Button } from "../../ui/button";
 import { useWidgetNavigation } from "./home-widget-card";
 
 const DEFAULT_SPAN = "col-span-4 row-span-2";
@@ -342,12 +343,12 @@ function ModelProgressCard({
   const fill =
     percent == null ? null : Math.max(0, Math.min(100, Math.round(percent)));
   return (
-    <button
-      type="button"
+    <Button
       data-testid="chat-widget-model-download"
       aria-label={ariaLabel}
       onClick={onActivate}
-      className="group flex h-full w-full flex-col justify-center gap-2.5 px-3 py-2.5 text-left transition-opacity hover:opacity-80"
+      variant="ghost"
+      className="group flex h-full w-full flex-col items-stretch justify-center gap-2.5 whitespace-normal px-3 py-2.5 text-left font-normal transition-opacity hover:opacity-80"
     >
       <span className="flex w-full items-center gap-3">
         <span
@@ -401,7 +402,7 @@ function ModelProgressCard({
           />
         ) : null}
       </span>
-    </button>
+    </Button>
   );
 }
 

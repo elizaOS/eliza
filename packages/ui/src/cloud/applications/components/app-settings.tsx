@@ -365,13 +365,14 @@ export function AppSettings({ app }: AppSettingsProps) {
                 className="bg-white/5 text-white/70 border-white/10 flex items-center gap-1 pr-1"
               >
                 {origin}
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={() => removeOrigin(origin)}
                   className="ml-1 p-0.5 hover:bg-white/10 rounded-sm transition-colors"
                 >
                   <X className="h-3 w-3" />
-                </button>
+                </Button>
               </Badge>
             ))}
           </div>

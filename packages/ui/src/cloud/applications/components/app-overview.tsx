@@ -39,6 +39,7 @@ import {
   AlertDialogTrigger,
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -299,7 +300,8 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 <code className="flex-1 bg-black/30 px-3 py-2 rounded-sm text-xs text-white/80 font-mono overflow-x-auto">
                   {displayApiKey}
                 </code>
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={() => copyToClipboard(displayApiKey, "API Key")}
                   className="p-2 bg-white/10 hover:bg-white/20 rounded-sm transition-colors shrink-0"
@@ -309,7 +311,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   ) : (
                     <Copy className="h-4 w-4 text-white/60" />
                   )}
-                </button>
+                </Button>
               </div>
               <p className="text-xs text-white/74">
                 {t("cloud.apps.overview.saveKeyHint", {
@@ -378,7 +380,8 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               defaultValue: "Deployment",
             })}
           </h3>
-          <button
+          <Button
+            variant="ghost"
             type="button"
             disabled={deploymentButtonDisabled}
             onClick={handleDeploy}
@@ -398,7 +401,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                     defaultValue: "Redeploy",
                   })
                 : t("cloud.apps.overview.deploy", { defaultValue: "Deploy" })}
-          </button>
+          </Button>
         </div>
         <p className="text-xs text-neutral-500">
           {deploymentInProgress || isPollingDeployment
@@ -426,7 +429,8 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             </h3>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   disabled={isRegenerating}
                   className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 transition-colors"
@@ -439,7 +443,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   {t("cloud.apps.overview.regenerate", {
                     defaultValue: "Regenerate",
                   })}
-                </button>
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
@@ -481,7 +485,8 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               </code>
               {displayApiKey && (
                 <>
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => setShowKey(!showKey)}
                     className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
@@ -491,8 +496,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                     ) : (
                       <Eye className="h-3.5 w-3.5 text-white/50" />
                     )}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => copyToClipboard(displayApiKey, "API Key")}
                     className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
@@ -502,7 +508,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                     ) : (
                       <Copy className="h-3.5 w-3.5 text-white/50" />
                     )}
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -603,7 +609,8 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               >
                 {monetizationEnabled ? "Enabled" : "Disabled"}
               </Badge>
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() =>
                   navigate(`/dashboard/apps/${app.id}?tab=monetization`)
@@ -611,7 +618,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 className="p-2 hover:bg-white/10 rounded-sm transition-colors"
               >
                 <ChevronRight className="h-4 w-4 text-neutral-400" />
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -624,13 +631,14 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             <Shield className="h-4 w-4 text-white/70" />
             Allowed Origins
           </h3>
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={() => navigate(`/dashboard/apps/${app.id}?tab=settings`)}
             className="text-xs text-neutral-400 hover:text-white transition-colors"
           >
             Edit
-          </button>
+          </Button>
         </div>
         <p className="text-xs text-neutral-500">
           API requests are only accepted from these domains

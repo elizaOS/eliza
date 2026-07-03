@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
@@ -268,7 +269,8 @@ export function ContainersEmptyState() {
             <code className="flex-1 font-mono text-sm text-neutral-300">
               {cmd}
             </code>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => handleCopy(cmd, index)}
               className="rounded-sm text-neutral-600 transition-colors hover:text-neutral-300"
@@ -279,7 +281,7 @@ export function ContainersEmptyState() {
               ) : (
                 <Copy className="h-4 w-4" />
               )}
-            </button>
+            </Button>
           </div>
         ))}
       </div>

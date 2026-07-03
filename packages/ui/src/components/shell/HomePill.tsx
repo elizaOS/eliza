@@ -3,6 +3,7 @@ import * as React from "react";
 import { useBranding } from "../../config/branding";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
@@ -33,8 +34,8 @@ export function HomePill({
   }, [isOpen, onOpen, onClose]);
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       disabled={!isInteractive}
       aria-label={isOpen ? `Close ${appName}` : `Open ${appName}`}
       aria-pressed={isOpen}
@@ -64,6 +65,6 @@ export function HomePill({
           phase === "summoned" && "bg-foreground/40",
         )}
       />
-    </button>
+    </Button>
   );
 }

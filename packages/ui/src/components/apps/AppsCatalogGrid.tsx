@@ -1,3 +1,4 @@
+import { Star } from "lucide-react";
 import {
   type MouseEvent,
   memo,
@@ -8,6 +9,7 @@ import {
 } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useAppSelector } from "../../state";
+import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { AppHero } from "./app-identity";
 import { getAppShortName, groupAppsForCatalog } from "./helpers";
@@ -309,12 +311,12 @@ const AppCard = memo(function AppCard({
         isActive ? "border-ok/45 " : "border-border/35 "
       }`}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
         title={displayName}
         aria-label={displayName}
-        className="block w-full text-left "
+        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent"
         onClick={() => onLaunch(app)}
       >
         <AppHero
@@ -351,17 +353,18 @@ const AppCard = memo(function AppCard({
             </div>
           </div>
         </div>
-      </button>
+      </Button>
       {isActive ? (
         <span
           title="Running"
           className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok "
         />
       ) : null}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-        className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
+        className={`absolute bottom-3 right-3 h-8 w-8 rounded-full p-0 text-white transition-all ${
           isFavorite
             ? "bg-black/70 text-warn"
             : "bg-black/70 text-white/70 hover:text-warn "
@@ -371,21 +374,12 @@ const AppCard = memo(function AppCard({
           onToggleFavorite(app.name);
         }}
       >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
+        <Star
+          className="h-3.5 w-3.5"
           fill={isFavorite ? "currentColor" : "none"}
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <title>Favorite</title>
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-      </button>
+          aria-hidden
+        />
+      </Button>
     </div>
   );
 });
@@ -449,13 +443,14 @@ export function AppsCatalogGrid({
         <div className="mb-4 flex flex-col gap-2 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
           {onRetry ? (
-            <button
-              type="button"
-              className="self-start rounded-full border border-danger/40 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] transition-colors hover:bg-danger/10 sm:self-auto"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto self-start rounded-full border border-danger/40 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-danger transition-colors hover:bg-danger/10 sm:self-auto"
               onClick={onRetry}
             >
               Retry
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}

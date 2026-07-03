@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import {
@@ -696,7 +697,8 @@ export function ElizaAgentsTable({
             <TableHeader>
               <TableRow className="bg-black/40 border-b border-white/10 hover:bg-black/40">
                 <TableHead className="w-[30%]">
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => handleSort("name")}
                     className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
@@ -705,10 +707,11 @@ export function ElizaAgentsTable({
                       defaultValue: "Agent",
                     })}
                     <ArrowUpDown className="h-3 w-3" />
-                  </button>
+                  </Button>
                 </TableHead>
                 <TableHead>
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => handleSort("status")}
                     className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
@@ -717,7 +720,7 @@ export function ElizaAgentsTable({
                       defaultValue: "Status",
                     })}
                     <ArrowUpDown className="h-3 w-3" />
-                  </button>
+                  </Button>
                 </TableHead>
                 <TableHead className="text-[11px] font-medium uppercase tracking-widest text-white/40">
                   {t("cloud.elizaAgentsTable.colRuntime", {
@@ -730,7 +733,8 @@ export function ElizaAgentsTable({
                   })}
                 </TableHead>
                 <TableHead>
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => handleSort("created")}
                     className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
@@ -739,7 +743,7 @@ export function ElizaAgentsTable({
                       defaultValue: "Created",
                     })}
                     <ArrowUpDown className="h-3 w-3" />
-                  </button>
+                  </Button>
                 </TableHead>
                 <TableHead className="text-right text-[11px] font-medium uppercase tracking-widest text-white/40">
                   {t("cloud.elizaAgentsTable.colActions", {
@@ -858,7 +862,8 @@ export function ElizaAgentsTable({
 
                       <TableCell>
                         {hasStandaloneWebUi ? (
-                          <button
+                          <Button
+                            variant="ghost"
                             type="button"
                             onClick={() => openWebUIWithPairing(sb.id)}
                             className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors bg-transparent border-0 p-0"
@@ -867,7 +872,7 @@ export function ElizaAgentsTable({
                             {t("cloud.elizaAgentsTable.open", {
                               defaultValue: "Open",
                             })}
-                          </button>
+                          </Button>
                         ) : (
                           <span className="text-xs text-white/20">
                             {displayStatus === "running" &&
@@ -917,13 +922,14 @@ export function ElizaAgentsTable({
                           {hasStandaloneWebUi && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button
+                                <Button
+                                  variant="ghost"
                                   type="button"
                                   onClick={() => openWebUIWithPairing(sb.id)}
                                   className="p-2 text-white/30 hover:text-white hover:bg-white/10 transition-colors"
                                 >
                                   <ExternalLink className="h-4 w-4" />
-                                </button>
+                                </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-neutral-900 border-white/10">
                                 {t("cloud.elizaAgentsTable.openWebUi", {
@@ -936,14 +942,15 @@ export function ElizaAgentsTable({
                           {canStart && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button
+                                <Button
+                                  variant="ghost"
                                   type="button"
                                   onClick={() => handleProvision(sb.id)}
                                   disabled={busy}
                                   className="p-2 text-white/30 hover:text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-30"
                                 >
                                   <Play className="h-4 w-4" />
-                                </button>
+                                </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-neutral-900 border-white/10">
                                 {t("cloud.elizaAgentsTable.resumeAgent", {
@@ -956,14 +963,15 @@ export function ElizaAgentsTable({
                           {canStop && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button
+                                <Button
+                                  variant="ghost"
                                   type="button"
                                   onClick={() => handleSuspend(sb.id)}
                                   disabled={busy}
                                   className="p-2 text-white/30 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-30"
                                 >
                                   <Pause className="h-4 w-4" />
-                                </button>
+                                </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-neutral-900 border-white/10">
                                 {t("cloud.elizaAgentsTable.suspendAgent", {
@@ -975,14 +983,15 @@ export function ElizaAgentsTable({
 
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button
+                              <Button
+                                variant="ghost"
                                 type="button"
                                 onClick={() => !busy && setDeleteId(sb.id)}
                                 disabled={isDeleting || busy}
                                 className="p-2 text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-30"
                               >
                                 <Trash2 className="h-4 w-4" />
-                              </button>
+                              </Button>
                             </TooltipTrigger>
                             <TooltipContent className="bg-neutral-900 border-white/10">
                               {t("cloud.elizaAgentsTable.deleteAgent", {
@@ -1105,7 +1114,8 @@ export function ElizaAgentsTable({
                     </a>
 
                     {hasStandaloneWebUi && (
-                      <button
+                      <Button
+                        variant="ghost"
                         type="button"
                         onClick={() => openWebUIWithPairing(sb.id)}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--brand-orange)] hover:bg-white/5 transition-colors"
@@ -1114,39 +1124,42 @@ export function ElizaAgentsTable({
                         {t("cloud.elizaAgentsTable.webUi", {
                           defaultValue: "Web UI",
                         })}
-                      </button>
+                      </Button>
                     )}
 
                     {canStart && (
-                      <button
+                      <Button
+                        variant="ghost"
                         type="button"
                         onClick={() => handleProvision(sb.id)}
                         disabled={busy}
                         className="py-2 px-3 text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-30"
                       >
                         <Play className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     )}
 
                     {canStop && (
-                      <button
+                      <Button
+                        variant="ghost"
                         type="button"
                         onClick={() => handleSuspend(sb.id)}
                         disabled={busy}
                         className="py-2 px-3 text-orange-400 hover:bg-white/5 transition-colors disabled:opacity-30"
                       >
                         <Pause className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     )}
 
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={() => !busy && setDeleteId(sb.id)}
                       disabled={isDeleting || busy}
                       className="py-2 px-3 text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-30"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
               );

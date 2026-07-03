@@ -1523,8 +1523,8 @@ describe("ContinuousChatOverlay", () => {
     const pill = screen.getByTestId("chat-pill");
     // Now the handle owns the gesture: it re-enables pointer events so the user
     // can grab/drag it open (verified by the flick-up recovery test below).
-    expect(pill.className).toContain("pointer-events-auto");
-    expect(pill.className).not.toContain("pointer-events-none");
+    expect(pill.classList.contains("pointer-events-auto")).toBe(true);
+    expect(pill.classList.contains("pointer-events-none")).toBe(false);
     expect(pill.getAttribute("aria-hidden")).toBeNull();
     // Restored to the tab order once it's the active handle — the symmetric half
     // of the collapsed assertion above (tabindex "-1" while NOT pilled). The

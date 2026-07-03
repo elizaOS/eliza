@@ -30,6 +30,7 @@ import {
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty-state";
+import { Input } from "../../../components/ui/input";
 import { ApiError } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
@@ -249,7 +250,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
             })}
           </p>
         </div>
-        <input
+        <Input
           ref={folderInputRef}
           type="file"
           className="hidden"
@@ -259,7 +260,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
           {...{ webkitdirectory: "" }}
           onChange={(e) => onFilesPicked(e.target.files)}
         />
-        <input
+        <Input
           ref={filesInputRef}
           type="file"
           className="hidden"
@@ -289,8 +290,12 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
               defaultValue: "Select files",
             })}
           </Button>
-          <label className="flex items-center gap-2 text-xs text-muted">
-            <input
+          <label
+            htmlFor="app-hosting-activate-on-publish"
+            className="flex items-center gap-2 text-xs text-muted"
+          >
+            <Input
+              id="app-hosting-activate-on-publish"
               type="checkbox"
               checked={activateOnPublish}
               disabled={isPublishing}

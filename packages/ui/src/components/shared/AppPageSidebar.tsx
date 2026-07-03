@@ -3,6 +3,7 @@ import * as React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { Sidebar } from "../composites/sidebar/sidebar-root";
 import type { SidebarProps } from "../composites/sidebar/sidebar-types";
+import { Button } from "../ui/button";
 
 const DEFAULT_PAGE_SIDEBAR_WIDTH = 240;
 const DEFAULT_PAGE_SIDEBAR_MIN_WIDTH = 200;
@@ -206,8 +207,9 @@ export const AppPageSidebar = React.forwardRef<
         )}
       >
         {collapsible ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => handleCollapsedChange(true)}
             aria-label={collapseButtonAriaLabel}
             data-testid={
@@ -215,10 +217,10 @@ export const AppPageSidebar = React.forwardRef<
                 ? `${testId}-collapse-inline`
                 : "page-sidebar-collapse-inline"
             }
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
+            className="h-6 w-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt"
           >
             <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          </Button>
         ) : null}
         {bottomAction}
       </div>

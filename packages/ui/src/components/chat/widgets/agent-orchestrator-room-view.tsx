@@ -17,6 +17,7 @@ import type {
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
 import type { TranslateFn } from "../../../types";
+import { Button } from "../../ui/button";
 import { fallbackTranslate } from "./agent-orchestrator-accounts-view";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 
@@ -213,15 +214,15 @@ function RoomCard({
   return (
     <div className="space-y-1.5 p-2" data-testid="orchestrator-room-card">
       {onSelectRoom ? (
-        <button
-          type="button"
+        <Button
           onClick={() => onSelectRoom(room.taskId)}
           aria-label={room.taskTitle}
           data-testid="orchestrator-room-open"
-          className="flex w-full items-center gap-1.5 rounded-sm text-left transition-colors hover:bg-bg-hover"
+          variant="ghost"
+          className="flex h-auto w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm px-0 py-0 text-left font-normal transition-colors hover:bg-bg-hover"
         >
           {header}
-        </button>
+        </Button>
       ) : (
         <div className="flex items-center gap-1.5">{header}</div>
       )}

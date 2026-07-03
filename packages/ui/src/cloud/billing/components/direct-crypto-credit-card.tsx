@@ -6,6 +6,11 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@elizaos/ui/cloud-ui";
 import { ConnectButton, useConnectModal } from "@rainbow-me/rainbowkit";
 import {
@@ -589,7 +594,8 @@ export function DirectCryptoCreditCard({
             className={`grid grid-cols-3 gap-2 rounded-xs border p-1 text-xs sm:gap-3 ${segmentClassName}`}
           >
             {enabledNetworks.map((item) => (
-              <button
+              <Button
+                variant="ghost"
                 key={item.network}
                 type="button"
                 onClick={() => setNetwork(item.network)}
@@ -600,27 +606,33 @@ export function DirectCryptoCreditCard({
                 }`}
               >
                 {NETWORK_LABELS[item.network]}
-              </button>
+              </Button>
             ))}
           </div>
         ) : null}
 
         {showTokenSelector ? (
-          <label className="block space-y-1">
+          <div className="block space-y-1">
             <span className={`text-xs ${mutedTextClassName}`}>Pay with</span>
-            <select
-              aria-label="Token"
+            <Select
               value={selectedToken?.symbol ?? ""}
-              onChange={(event) => setTokenSymbol(event.target.value)}
-              className={`block w-full min-h-10 rounded-xs border px-3 py-2 text-sm font-medium ${segmentClassName} ${infoValueClassName}`}
+              onValueChange={setTokenSymbol}
             >
-              {tokenOptions.map((option) => (
-                <option key={option.symbol} value={option.symbol}>
-                  {option.symbol === "U" ? "$U" : option.symbol}
-                </option>
-              ))}
-            </select>
-          </label>
+              <SelectTrigger
+                aria-label="Token"
+                className={`block w-full min-h-10 rounded-xs border px-3 py-2 text-sm font-medium ${segmentClassName} ${infoValueClassName}`}
+              >
+                <SelectValue placeholder="Token" />
+              </SelectTrigger>
+              <SelectContent>
+                {tokenOptions.map((option) => (
+                  <SelectItem key={option.symbol} value={option.symbol}>
+                    {option.symbol === "U" ? "$U" : option.symbol}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         ) : null}
 
         <div

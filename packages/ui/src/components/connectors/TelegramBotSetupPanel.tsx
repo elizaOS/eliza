@@ -3,6 +3,7 @@ import { client } from "../../api";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 type TelegramSetupStatus = "idle" | "validating" | "connected" | "error";
 
@@ -150,7 +151,7 @@ export function TelegramBotSetupPanel() {
         </ol>
 
         <div className="flex items-center gap-2">
-          <input
+          <Input
             type="password"
             value={token}
             onChange={(e) => {

@@ -17,6 +17,7 @@ import { getConfigInputClassName } from "../../config-ui/config-control-primitiv
 import { runValidation } from "../../config-ui/ui-renderer.helpers";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { Input } from "../../ui/input";
 import {
   Select,
   SelectContent,
@@ -185,7 +186,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
         return (
           <div key={field.name} className="flex flex-col gap-1 text-xs">
             <span className="font-semibold">{label}</span>
-            <input
+            <Input
               aria-label={label}
               className={getConfigInputClassName({
                 density: "compact",

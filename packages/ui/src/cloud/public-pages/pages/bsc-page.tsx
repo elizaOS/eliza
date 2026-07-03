@@ -114,7 +114,8 @@ export default function BscPromoPage() {
                   {[10, 25, 50, 100].map((preset) => {
                     const active = amountValue === preset;
                     return (
-                      <button
+                      <Button
+                        variant="ghost"
                         key={preset}
                         type="button"
                         onClick={() => setAmount(String(preset))}
@@ -126,7 +127,7 @@ export default function BscPromoPage() {
                         }`}
                       >
                         ${preset}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>

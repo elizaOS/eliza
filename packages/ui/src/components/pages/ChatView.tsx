@@ -69,6 +69,8 @@ import { ChatTranscript } from "../composites/chat/chat-transcript";
 import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { useConversationReset } from "../shell/use-conversation-reset";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { pickProblemSessionToAutoFocus } from "./ChatView.terminal-focus";
 import {
   useChatVoiceController,
@@ -790,7 +792,7 @@ export function ChatView({
               : t("chat.uncached", { defaultValue: "uncached" })}
         </div>
       ) : null}
-      <input
+      <Input
         ref={fileInputRef}
         type="file"
         accept={CHAT_UPLOAD_ACCEPT}
@@ -815,8 +817,9 @@ export function ChatView({
   // blue), matching nearby controls.
   const resetConversationButton =
     visibleMsgs.length > 0 ? (
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-sm"
         data-testid="chat-view-reset-button"
         aria-label="Reset conversation"
         title="Reset conversation"
@@ -824,7 +827,7 @@ export function ChatView({
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
       >
         <RotateCcw className="h-[18px] w-[18px]" aria-hidden />
-      </button>
+      </Button>
     ) : null;
 
   const composerNode = hideComposer ? null : isGameModal ? (

@@ -17,6 +17,7 @@ import {
 } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 export interface TranscriptBodyProps {
   transcript: Transcript;
@@ -57,18 +58,18 @@ const TranscriptWord = React.memo(function TranscriptWord({
 }: TranscriptWordProps): React.JSX.Element {
   return (
     <>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         data-testid={testId}
         data-active={isActive ? "true" : undefined}
         onClick={() => onSeek(startMs)}
         className={cn(
-          "rounded px-0.5 transition-colors hover:bg-bg-muted/40",
+          "h-auto rounded px-0.5 py-0 font-normal transition-colors hover:bg-bg-muted/40",
           isActive && "bg-accent/16 text-accent-fg",
         )}
       >
         {text}
-      </button>{" "}
+      </Button>{" "}
     </>
   );
 });
@@ -126,14 +127,14 @@ export function TranscriptBody({
                   />
                 ))
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
                   data-testid={`transcript-segment-text-${si}`}
                   onClick={() => handleSeek(seg.startMs)}
-                  className="text-left"
+                  className="h-auto whitespace-normal rounded-none bg-transparent p-0 text-left font-normal hover:bg-transparent"
                 >
                   {seg.text}
-                </button>
+                </Button>
               )}
             </p>
           </div>

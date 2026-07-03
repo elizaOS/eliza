@@ -124,15 +124,16 @@ export function FollowupsWidget({
           Selected: {chosenReply.label}
         </span>
       ) : (
-        <button
-          type="button"
+        <Button
           onClick={() => setDismissed(true)}
           aria-label="Dismiss suggestions"
           data-testid="followups-dismiss"
-          className="text-muted hover:text-txt"
+          variant="ghost"
+          size="icon-sm"
+          className="h-7 w-7 text-muted hover:text-txt"
         >
           <X className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        </Button>
       )}
     </fieldset>
   );

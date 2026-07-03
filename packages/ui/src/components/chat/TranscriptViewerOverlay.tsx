@@ -427,11 +427,11 @@ export function TranscriptViewerOverlay({
         paddingTop: "calc(var(--safe-area-top, 0px) + 1rem)",
       }}
     >
-      <button
-        type="button"
+      <Button
         aria-label="Close transcript"
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/85"
+        variant="ghost"
+        className="absolute inset-0 h-auto w-auto cursor-default rounded-none bg-black/85 hover:bg-black/85"
       />
       <div
         className={cn(
@@ -444,14 +444,15 @@ export function TranscriptViewerOverlay({
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
             {title}
           </h2>
-          <button
-            type="button"
+          <Button
             aria-label="Close"
             onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20"
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20"
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Body */}
@@ -474,22 +475,24 @@ export function TranscriptViewerOverlay({
               <div className="flex items-center gap-1 text-xs text-white/50">
                 <FileAudio className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span className="mr-1">Recording</span>
-                <button
-                  type="button"
+                <Button
                   onClick={handleDownloadAudio}
                   data-testid="transcript-save-audio"
-                  className="rounded px-1.5 py-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto rounded px-1.5 py-0.5 text-xs font-normal text-white/70 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   Download
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
                   onClick={() => void handleShareAudio()}
                   data-testid="transcript-share-audio"
-                  className="rounded px-1.5 py-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto rounded px-1.5 py-0.5 text-xs font-normal text-white/70 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   Share
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}

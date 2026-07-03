@@ -19,6 +19,7 @@ import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
 } from "../../utils/subscription-auth";
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { SettingsActionButton } from "./settings-agent-rows";
@@ -135,9 +136,10 @@ function SubscriptionTab({
     onActivate: onSelect,
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       onClick={onSelect}
       aria-label={label}
       className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
@@ -148,7 +150,7 @@ function SubscriptionTab({
       {...agentProps}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 

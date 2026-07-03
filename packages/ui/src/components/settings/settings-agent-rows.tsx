@@ -244,25 +244,25 @@ export function SettingsSegmentedRow({
         {options.map((option) => {
           const active = option.value === value;
           return (
-            // biome-ignore lint/a11y/useSemanticElements: a themed segmented button keeps its custom styling + agent-surface wiring; a native input[type=radio] would lose them.
-            <button
+            <Button
               key={option.value}
-              type="button"
               role="radio"
               aria-checked={active}
               data-value={option.value}
               data-active={active ? "true" : "false"}
               disabled={disabled}
               onClick={() => onValueChange(option.value)}
+              variant="ghost"
+              size="sm"
               className={cn(
-                "flex h-9 flex-1 items-center justify-center rounded-sm px-2 text-xs font-medium transition-colors    disabled:opacity-50",
+                "h-9 flex-1 rounded-sm px-2 text-xs font-medium transition-colors disabled:opacity-50",
                 active
                   ? "bg-card text-txt-strong"
                   : "text-muted hover:bg-card/60 hover:text-txt",
               )}
             >
               {option.label}
-            </button>
+            </Button>
           );
         })}
       </SettingsSegmentedGroup>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelector, useContentPack } from "../../state";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { SettingsInput } from "../ui/settings-controls";
 import { SettingsGroup } from "./settings-layout";
 
@@ -130,7 +131,7 @@ export function LoadContentPackForm() {
                   defaultValue: "From folder",
                 })}
               </Button>
-              <input
+              <Input
                 type="file"
                 ref={fileInputRef}
                 multiple

@@ -23,6 +23,7 @@ import {
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
 import { usePromptSuggestions } from "../../shell/usePromptSuggestions";
+import { Button } from "../../ui/button";
 
 const PLUGIN_ID = "welcome";
 const WIDGET_ID = "welcome.ftu";
@@ -82,25 +83,27 @@ function FtuWelcomeWidget({
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5">
         {suggestions.map((text) => (
-          <button
+          <Button
             key={text}
-            type="button"
             data-testid="ftu-welcome-chip"
             onClick={() => onChip(text)}
-            className="inline-flex min-h-11 items-center rounded-sm px-1 text-sm text-white/75 underline-offset-4 transition-colors hover:text-white hover:underline"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-0 py-0 text-sm font-normal text-white/75 underline-offset-4 transition-colors hover:bg-transparent hover:text-white hover:underline"
           >
             {text}
-          </button>
+          </Button>
         ))}
-        <button
-          type="button"
+        <Button
           data-testid="ftu-welcome-dismiss"
           aria-label="Dismiss welcome"
           onClick={() => dismissHomeWidget(WIDGET_KEY)}
-          className="inline-flex min-h-11 items-center rounded-sm px-1 text-sm text-white/60 transition-colors hover:text-white/80"
+          variant="ghost"
+          size="sm"
+          className="h-auto px-0 py-0 text-sm font-normal text-white/60 transition-colors hover:bg-transparent hover:text-white/80"
         >
           Dismiss
-        </button>
+        </Button>
       </div>
     </section>
   );

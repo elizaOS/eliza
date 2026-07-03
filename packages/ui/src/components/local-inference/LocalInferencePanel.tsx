@@ -353,9 +353,9 @@ export function LocalInferencePanel() {
         ).map(([id, label]) => {
           const active = tab === id;
           return (
-            <button
+            <Button
               key={id}
-              type="button"
+              variant="ghost"
               onClick={() => setTab(id)}
               className={`h-7 rounded-sm px-2.5 text-xs font-medium transition-colors ${
                 active ? "bg-card text-txt " : "text-muted hover:text-txt"
@@ -369,7 +369,7 @@ export function LocalInferencePanel() {
                   </span>
                 ) : null}
               </span>
-            </button>
+            </Button>
           );
         })}
       </nav>

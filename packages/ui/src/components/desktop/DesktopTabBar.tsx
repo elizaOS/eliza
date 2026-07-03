@@ -13,6 +13,7 @@ import { Plus, X } from "lucide-react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import type { DesktopTab } from "../../hooks/useDesktopTabs";
 import { navActiveClassHorizontal } from "../composites/sidebar/nav-active";
+import { Button } from "../ui/button";
 import { ViewIcon } from "../views/ViewIcon";
 
 export interface DesktopTabBarProps {
@@ -47,26 +48,27 @@ function TabButton({
       <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-accent/10 text-accent">
         <ViewIcon icon={tab.icon} label={tab.label} className="h-3 w-3" />
       </span>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         title={tab.label}
         onClick={onClick}
-        className="min-w-0 truncate leading-none    "
+        className="h-auto min-w-0 truncate rounded-none bg-transparent p-0 text-xs font-medium leading-none hover:bg-transparent"
       >
         {tab.label}
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
         title={`Close ${tab.label}`}
         onClick={(e) => {
           e.stopPropagation();
           onClose();
         }}
-        className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100     "
+        className="ml-0.5 h-5 w-5 shrink-0 rounded-sm p-0 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100"
         aria-label={`Close ${tab.label}`}
       >
         <X className="h-2.5 w-2.5" />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -100,15 +102,16 @@ export function DesktopTabBar({
           onClose={() => onTabClose(tab.viewId)}
         />
       ))}
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="icon-sm"
         title="Open Launcher"
         onClick={onOpenViewManager}
-        className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/40 text-muted transition-colors hover:border-border hover:text-txt"
+        className="ml-1 h-6 w-6 shrink-0 rounded-sm border border-border/40 bg-card/40 p-0 text-muted transition-colors hover:border-border hover:text-txt"
         aria-label="Open Launcher"
       >
         <Plus className="h-3 w-3" />
-      </button>
+      </Button>
     </div>
   );
 }

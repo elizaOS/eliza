@@ -507,16 +507,16 @@ function BrowserTabRow({
 
   return (
     <div className="group relative">
-      <button
+      <Button
         ref={activateRef}
         {...activateAgentProps}
-        type="button"
         role="tab"
         aria-selected={active}
         aria-current={active ? "page" : undefined}
         title={tab.url}
         onClick={onActivate}
-        className={`flex w-full min-w-0 items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors ${
+        variant="ghost"
+        className={`flex h-auto w-full min-w-0 items-start justify-start gap-1.5 whitespace-normal rounded-sm px-1.5 py-1 text-left font-normal transition-colors ${
           tabIsInternal ? "pr-1.5" : "pr-7"
         } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
       >
@@ -540,15 +540,16 @@ function BrowserTabRow({
             {description}
           </span>
         </span>
-      </button>
+      </Button>
       {tabIsInternal ? null : (
-        <button
+        <Button
           ref={closeRef}
           {...closeAgentProps}
-          type="button"
           aria-label={`${closeTabLabel} ${label}`}
           title={`${closeTabLabel}: ${label}`}
-          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger ${
+          variant="ghost"
+          size="icon-sm"
+          className={`absolute right-0 top-1/2 h-5 w-5 -translate-y-1/2 rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger ${
             active ? "opacity-100" : "opacity-0 group-hover:opacity-100 "
           }`}
           onClick={(event) => {
@@ -558,7 +559,7 @@ function BrowserTabRow({
           }}
         >
           <X className="h-3 w-3" />
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -2602,9 +2603,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+2rem)]">
+          <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+1rem)]">
             <ChatEmptyStateWithRecommendations
               icon={Globe}
+              className="flex-none gap-2 py-1 sm:gap-3 sm:py-2"
               recommendations={[
                 {
                   label: t("browserworkspace.RecOpenDocs", {
@@ -2644,7 +2646,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             {workspace.mode === "web" &&
             browserBridgeSupported &&
             !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="-mt-4 grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
+              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:-mt-10 sm:grid-cols-3">
                 <div className="text-center text-[11px] text-muted/70 sm:col-span-3">
                   {browserBridgeConnected
                     ? t("browserworkspace.BrowserBridgeConnected", {
@@ -2846,9 +2848,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               </span>
             ) : null}
             {selectedTabLiveViewUrl ? (
-              <button
-                type="button"
-                className="rounded-sm px-2 py-1 text-txt transition-colors hover:bg-card/60"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto rounded-sm px-2 py-1 text-txt transition-colors hover:bg-card/60"
                 onClick={() =>
                   void runBrowserWorkspaceAction(
                     "open:live-session",
@@ -2861,7 +2864,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                 {t("browserworkspace.OpenLiveSession", {
                   defaultValue: "Open live session",
                 })}
-              </button>
+              </Button>
             ) : null}
           </div>
 

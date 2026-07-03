@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Button } from "../../../../components/ui/button";
 import { ApiError, api } from "../../../lib/api-client";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
@@ -329,7 +330,8 @@ export default function AppChargePaymentPage() {
                 </p>
               </div>
             </div>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               aria-label={t("cloud.appCharge.refreshStatus", {
                 defaultValue: "Refresh status",
@@ -342,7 +344,7 @@ export default function AppChargePaymentPage() {
               className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/10 bg-white/5 text-white/55 transition hover:border-white/25 hover:text-white disabled:opacity-40"
             >
               <RotateCcw className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
 
           <div className="mt-10 flex flex-col items-center text-center">
@@ -390,7 +392,8 @@ export default function AppChargePaymentPage() {
           )}
 
           <div className="mt-8 grid grid-cols-2 gap-3">
-            <button
+            <Button
+              variant="ghost"
               type="button"
               aria-label={t("cloud.appCharge.payWithCard", {
                 defaultValue: "Pay with card",
@@ -411,8 +414,9 @@ export default function AppChargePaymentPage() {
               <span className="text-sm font-medium">
                 {t("cloud.appCharge.card", { defaultValue: "Card" })}
               </span>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               type="button"
               aria-label={t("cloud.appCharge.payWithCrypto", {
                 defaultValue: "Pay with crypto",
@@ -433,7 +437,7 @@ export default function AppChargePaymentPage() {
               <span className="text-sm font-medium">
                 {t("cloud.appCharge.crypto", { defaultValue: "Crypto" })}
               </span>
-            </button>
+            </Button>
           </div>
 
           <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/35">

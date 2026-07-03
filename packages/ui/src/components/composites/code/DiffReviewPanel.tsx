@@ -12,6 +12,7 @@
 import { useMemo, useState } from "react";
 import type { ChangeSetData } from "../../../api/client-types-cloud";
 import { cn } from "../../../lib/utils";
+import { Button } from "../../ui/button";
 
 export interface DiffReviewPanelProps {
   changeSet: ChangeSetData | undefined;
@@ -123,15 +124,15 @@ function FileSection({ file }: { file: FileDiff }) {
   );
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card/40">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-medium text-foreground hover:bg-muted/30"
+        className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-[13px] font-medium text-foreground hover:bg-muted/30"
         aria-expanded={open}
       >
         <span className="text-muted-foreground">{open ? "▾" : "▸"}</span>
         <span className="truncate font-mono">{file.path}</span>
-      </button>
+      </Button>
       {open ? (
         <div className="border-t border-border bg-background/40 px-3 py-2">
           {hasHunks ? (

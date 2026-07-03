@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 /**
  * Web/desktop `<` `>` edge buttons for a horizontal pager (#10717). Rendered
@@ -50,26 +51,30 @@ export function PagerEdgeButtons({
   return (
     <>
       {canPrev ? (
-        <button
-          type="button"
+        <Button
+          unstyled
+          variant="ghost"
+          size="icon"
           data-testid={`${prefix}pager-edge-prev`}
           aria-label={prevLabel}
           onClick={goPrev}
-          className={cn(edgeClass, "left-1")}
+          className={cn(edgeClass, "left-1 hover:bg-transparent")}
         >
           <ChevronLeft className="h-6 w-6" aria-hidden />
-        </button>
+        </Button>
       ) : null}
       {canNext ? (
-        <button
-          type="button"
+        <Button
+          unstyled
+          variant="ghost"
+          size="icon"
           data-testid={`${prefix}pager-edge-next`}
           aria-label={nextLabel}
           onClick={goNext}
-          className={cn(edgeClass, "right-1")}
+          className={cn(edgeClass, "right-1 hover:bg-transparent")}
         >
           <ChevronRight className="h-6 w-6" aria-hidden />
-        </button>
+        </Button>
       ) : null}
     </>
   );

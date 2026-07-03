@@ -35,6 +35,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { CodingAgentTaskThreadDetail } from "../../../api/client-types-cloud";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { Button } from "../../ui/button";
 import { findTaskRegions, type TaskRegion } from "../message-task-parser";
 import { registerInlineWidget } from "./inline-registry";
 
@@ -211,13 +212,13 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
       : formatCompactTokens(detail?.usage?.totalTokens ?? null);
 
   return (
-    <button
-      type="button"
+    <Button
       data-testid="task-widget"
       data-task-id={threadId}
       data-task-status={status}
       onClick={handleOpen}
-      className="my-2 flex w-full items-start gap-2 rounded-sm border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-bg-hover   "
+      variant="ghost"
+      className="my-2 flex h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-sm border border-border bg-card px-3 py-2 text-left font-normal transition-colors hover:bg-bg-hover"
     >
       <span
         className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
@@ -262,7 +263,7 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
           ) : null}
         </span>
       </span>
-    </button>
+    </Button>
   );
 }
 

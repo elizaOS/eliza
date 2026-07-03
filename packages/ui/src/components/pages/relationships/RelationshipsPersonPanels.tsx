@@ -43,6 +43,7 @@ import { formatDateTime, formatShortDate } from "../../../utils/format";
 import { PagePanel } from "../../composites/page-panel";
 import { MetaPill } from "../../composites/page-panel/page-panel-header";
 import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
 import { RelationshipsIdentityCluster } from "../RelationshipsIdentityCluster";
 import {
   profilePrimaryValue,
@@ -299,11 +300,11 @@ function OwnerNameEditor({
 
   if (!editing) {
     return (
-      <button
+      <Button
         ref={editTriggerButton.ref}
-        type="button"
         onClick={() => setEditing(true)}
-        className="group inline-flex items-center gap-2 rounded-sm text-left transition hover:bg-card/40"
+        variant="ghost"
+        className="group h-auto items-center gap-2 whitespace-normal rounded-sm px-0 py-0 text-left font-normal transition hover:bg-card/40"
         aria-label={t("relationships.owner.editAria", {
           defaultValue: "Edit owner name",
         })}
@@ -313,13 +314,13 @@ function OwnerNameEditor({
           {initialName}
         </span>
         <Pencil className="h-4 w-4 opacity-0 transition group-hover:opacity-60" />
-      </button>
+      </Button>
     );
   }
 
   return (
     <form onSubmit={submit} className="flex items-center gap-2">
-      <input
+      <Input
         ref={(node) => {
           inputRef.current = node;
           ownerNameInput.ref.current = node;
@@ -333,7 +334,7 @@ function OwnerNameEditor({
         }}
         disabled={saving}
         maxLength={60}
-        className="min-w-0 flex-1 rounded-sm border border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt outline-none "
+        className="min-w-0 flex-1 rounded-sm border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt"
         aria-label={t("relationships.owner.nameAria", {
           defaultValue: "Owner name",
         })}
@@ -1111,16 +1112,17 @@ function DocumentOpenButton({
     onActivate: onOpen,
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={onOpen}
-      className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
+      variant="ghost"
+      size="sm"
+      className="mt-2 h-auto gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
       {...agentProps}
     >
       <Link2 className="h-3 w-3" />
       {t("relationships.document.open", { defaultValue: "Open" })}
-    </button>
+    </Button>
   );
 }
 

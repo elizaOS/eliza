@@ -510,16 +510,17 @@ function AccessModeSection({
         )}
       </div>
       <div className="flex items-center justify-between gap-3">
-        <button
+        <Button
           ref={accessRefreshRef}
           {...accessRefreshAgentProps}
-          type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => void onRefresh()}
-          className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
+          className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
         >
           <RefreshCw className="h-3 w-3" />
           {t("security.refresh", { defaultValue: "Refresh" })}
-        </button>
+        </Button>
         <AdvancedToggle label="Advanced" />
       </div>
     </SectionShell>
@@ -640,16 +641,17 @@ function SessionsSection() {
           )}
 
           <div className="flex items-center justify-between pt-1">
-            <button
+            <Button
               ref={sessionsRefreshRef}
               {...sessionsRefreshAgentProps}
-              type="button"
+              variant="ghost"
+              size="sm"
               onClick={load}
-              className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
+              className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
             >
               <RefreshCw className="h-3 w-3" />
               {t("security.refresh", { defaultValue: "Refresh" })}
-            </button>
+            </Button>
 
             {state.sessions.filter((s) => !s.current).length > 1 && (
               <Button

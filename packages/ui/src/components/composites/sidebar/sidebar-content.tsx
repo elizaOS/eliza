@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { Button } from "../../ui/button";
 import { navActiveClassVertical } from "./nav-active";
 
 function assignRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {
@@ -191,9 +192,9 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     }
 
     return (
-      <button
+      <Button
         ref={(node) => assignRef(ref, node)}
-        type="button"
+        variant="ghost"
         data-sidebar-item
         className={sharedClassName}
         {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
@@ -246,12 +247,12 @@ export const SidebarItemButton = React.forwardRef<
   SidebarItemButtonProps
 >(function SidebarItemButton({ className, ...props }, ref) {
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
       data-sidebar-item-button
       className={cn(
-        "flex h-auto min-w-0 flex-1 self-stretch items-start gap-3 rounded-none p-0 text-left ",
+        "flex h-auto min-w-0 flex-1 self-stretch items-start justify-start gap-3 rounded-none p-0 text-left font-normal hover:bg-transparent",
         className,
       )}
       {...props}
@@ -330,12 +331,13 @@ export const SidebarRailItem = React.forwardRef<
   ref,
 ) {
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="icon-lg"
       data-sidebar-rail-item
       className={cn(
-        "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-border/24 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150    active:scale-[0.98]",
+        "relative h-11 w-11 shrink-0 rounded-sm border border-border/24 p-0 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 active:scale-[0.98]",
         active
           ? navActiveClassVertical
           : "bg-card text-muted-strong hover:border-border/38 hover:text-txt ",
@@ -354,7 +356,7 @@ export const SidebarRailItem = React.forwardRef<
           )}
         />
       ) : null}
-    </button>
+    </Button>
   );
 });
 
@@ -366,11 +368,11 @@ export function SidebarItemAction({
   ...props
 }: SidebarItemActionProps) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       data-sidebar-item-action
       className={cn(
-        "absolute right-1.5 top-1.5 rounded-sm bg-bg/80 px-1.5 py-0.5 text-2xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger",
+        "absolute right-1.5 top-1.5 h-auto rounded-sm bg-bg/80 px-1.5 py-0.5 text-2xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger",
         className,
       )}
       {...props}

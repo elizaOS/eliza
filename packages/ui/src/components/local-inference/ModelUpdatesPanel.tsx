@@ -31,6 +31,7 @@ import {
   useTranslation,
 } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 
 type TranslateFn = TranslationContextValue["t"];
 
@@ -306,16 +307,15 @@ function ToggleRow({
   onChange,
 }: ToggleRowProps) {
   return (
-    <label className="flex items-center gap-2">
-      <input
-        type="checkbox"
+    <div className="flex items-center gap-2">
+      <Checkbox
         checked={checked}
         disabled={disabled}
-        onChange={(e) => onChange(e.currentTarget.checked)}
+        onCheckedChange={(value) => onChange(value === true)}
       />
       <span>{label}</span>
       {hint ? <span className="text-muted-foreground">({hint})</span> : null}
-    </label>
+    </div>
   );
 }
 

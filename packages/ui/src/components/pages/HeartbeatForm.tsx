@@ -667,17 +667,18 @@ export function HeartbeatForm({
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {form.displayName.trim() && (
-            <button
+            <Button
               ref={saveTemplateButton.ref}
-              type="button"
-              className="text-xs font-medium text-muted transition-colors hover:text-accent underline-offset-2 hover:underline"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-0 py-0 text-xs font-medium text-muted underline-offset-2 transition-colors hover:bg-transparent hover:text-accent hover:underline"
               onClick={saveFormAsTemplate}
               {...saveTemplateButton.agentProps}
             >
               {t("heartbeatsview.SaveAsTemplate", {
                 defaultValue: "Save as template",
               })}
-            </button>
+            </Button>
           )}
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -830,11 +831,12 @@ function TriggerKindSection({
         {t("heartbeatform.runs", { defaultValue: "Runs" })}
       </FieldLabel>
       <div className="mt-1.5 flex gap-2">
-        <button
+        <Button
           ref={promptKindButton.ref}
-          type="button"
           aria-pressed={form.kind === "text"}
           onClick={() => setField("kind", "text")}
+          variant="ghost"
+          size="sm"
           className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "text"
               ? "border-accent bg-accent/10 text-accent"
@@ -843,12 +845,13 @@ function TriggerKindSection({
           {...promptKindButton.agentProps}
         >
           {t("heartbeatform.prompt", { defaultValue: "Prompt" })}
-        </button>
-        <button
+        </Button>
+        <Button
           ref={workflowKindButton.ref}
-          type="button"
           aria-pressed={form.kind === "workflow"}
           onClick={() => setField("kind", "workflow")}
+          variant="ghost"
+          size="sm"
           className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "workflow"
               ? "border-accent bg-accent/10 text-accent"
@@ -857,7 +860,7 @@ function TriggerKindSection({
           {...workflowKindButton.agentProps}
         >
           {t("heartbeatform.workflow", { defaultValue: "Workflow" })}
-        </button>
+        </Button>
       </div>
 
       {form.kind === "text" && (
@@ -883,15 +886,16 @@ function TriggerKindSection({
           (!workflowsLoading && workflows.length === 0) ? (
             <div role="status" className="text-sm text-muted">
               <p>{t("triggers.workflowUnavailable")}</p>
-              <button
+              <Button
                 ref={goToWorkflowsButton.ref}
-                type="button"
-                className="mt-2 text-xs font-medium text-accent underline-offset-2 hover:underline"
+                variant="ghost"
+                size="sm"
+                className="mt-2 h-auto px-0 py-0 text-xs font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
                 onClick={onGoToWorkflows}
                 {...goToWorkflowsButton.agentProps}
               >
                 {t("triggers.goToWorkflows")}
-              </button>
+              </Button>
             </div>
           ) : (
             <>

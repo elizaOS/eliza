@@ -10,12 +10,21 @@ import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { isVerifiedCuratedEliza1Download } from "../../services/local-inference/catalog-policy";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import {
   installedRuntimeClass,
   runtimeClassBadge,
   runtimeClassDescription,
   runtimeClassUnavailableReason,
 } from "./runtime-class-ui";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
+
+const AUTO_ASSIGNMENT_VALUE = "__auto__";
 
 interface SlotAssignmentsProps {
   installed: InstalledModel[];
@@ -130,7 +139,7 @@ export function SlotAssignments({
               ? runtimeClassUnavailableReason(selectedRuntimeClass)
               : null;
             return (
-              <label
+              <div
                 key={slot}
                 className="rounded-sm border border-border bg-card p-3 flex flex-col gap-1.5"
               >
@@ -148,24 +157,34 @@ export function SlotAssignments({
                 <span className="text-xs text-muted-foreground">
                   {description}
                 </span>
-                <select
-                  value={currentId}
+                <Select
+                  value={currentId || AUTO_ASSIGNMENT_VALUE}
                   disabled={busySlots.has(slot)}
-                  onChange={(e) =>
-                    void handleChange(slot, e.target.value || null)
+                  onValueChange={(value) =>
+                    void handleChange(
+                      slot,
+                      value === AUTO_ASSIGNMENT_VALUE ? null : value,
+                    )
                   }
-                  className="mt-1 rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm"
                 >
-                  <option value="">
-                    {t("slotassignments.auto", { defaultValue: "Auto" })}
-                  </option>
-                  {assignableInstalled.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.displayName} ·{" "}
-                      {runtimeClassBadge(installedRuntimeClass(m))}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    aria-label={label}
+                    className="mt-1 h-9 border-border bg-bg/50 text-sm"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTO_ASSIGNMENT_VALUE}>
+                      {t("slotassignments.auto", { defaultValue: "Auto" })}
+                    </SelectItem>
+                    {assignableInstalled.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.displayName} ·{" "}
+                        {runtimeClassBadge(installedRuntimeClass(m))}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {selectedUnavailableReason ? (
                   <span className="text-xs text-warn">
                     {selectedUnavailableReason}
@@ -176,7 +195,7 @@ export function SlotAssignments({
                     {slotErrors[slot]}
                   </span>
                 ) : null}
-              </label>
+              </div>
             );
           },
         )}

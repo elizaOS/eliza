@@ -7,6 +7,7 @@ import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
 import { StatusBadge } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt  sm:px-6";
@@ -342,14 +343,14 @@ export function ComputerUseApprovalOverlay() {
                             defaultValue: "Deny reason",
                           })}
                         </label>
-                        <textarea
+                        <Textarea
                           id="computer-use-deny-reason"
                           value={denyReason}
                           onChange={(event) =>
                             setDenyReason(event.target.value)
                           }
                           rows={4}
-                          className="w-full rounded-sm border border-border/60 bg-bg/50 px-3 py-2 text-sm text-txt outline-none"
+                          className="min-h-[96px] border-border/60 bg-bg/50 text-txt"
                           placeholder={t(
                             "computeruseapprovaloverlay.DenyReasonPlaceholder",
                             {

@@ -18,6 +18,7 @@ import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
 } from "../../../voice/voice-chat-types";
+import { Button } from "../../ui/button";
 
 export interface ChatVoiceStatusBarProps {
   status: VoiceContinuousStatus;
@@ -160,19 +161,20 @@ export function ChatVoiceStatusBar({
 
       {needsAudioUnlock ? (
         onUnlockAudio ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onUnlockAudio}
             data-testid="chat-voice-audio-unlock"
             className={cn(
-              "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 font-medium transition-colors",
+              "h-auto gap-1 rounded-sm border px-2 py-0.5 font-medium transition-colors",
               "border-warn/40 bg-warn/10 text-warn hover:bg-warn/20",
               "    ",
             )}
           >
             <VolumeX className="h-3 w-3" aria-hidden="true" />
             <span>Tap to enable sound</span>
-          </button>
+          </Button>
         ) : (
           <span
             className="inline-flex items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"

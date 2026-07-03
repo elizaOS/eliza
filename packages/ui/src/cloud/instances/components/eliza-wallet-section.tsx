@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useT } from "../lib/i18n";
@@ -70,7 +71,8 @@ function CopyButton({ text }: { text: string }) {
     }
   }, [text, markCopied]);
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={handleCopy}
       title={t("cloud.elizaWallet.copy", { defaultValue: "Copy" })}
@@ -107,7 +109,7 @@ function CopyButton({ text }: { text: string }) {
           />
         </svg>
       )}
-    </button>
+    </Button>
   );
 }
 

@@ -160,10 +160,10 @@ function NotificationRow({
         unread && "border-white/15 bg-white/[0.11]",
       )}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={handleOpen}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-2xl px-3 py-2.5 text-left"
+        className="h-auto min-w-0 flex-1 justify-start gap-3 whitespace-normal rounded-2xl bg-transparent px-3 py-2.5 text-left hover:bg-transparent"
       >
         <span
           className={cn(
@@ -195,9 +195,10 @@ function NotificationRow({
             {formatRelativeTime(notification.createdAt)}
           </span>
         </span>
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-label="Dismiss notification"
         onClick={handleRemove}
         // Visible at rest (dimmed): on touch there is no hover, and an
@@ -208,10 +209,10 @@ function NotificationRow({
         // coarse pointer the hit target grows to the 44px `touch` token (the
         // house `pointer-coarse:min-*-touch` convention) so it isn't a
         // sub-target tap zone on the phone sheet.
-        className="absolute right-1.5 top-2.5 flex shrink-0 items-center justify-center rounded-full p-1 text-white/60 opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-white/10 hover:text-white group-hover:opacity-100"
+        className="absolute right-1.5 top-2.5 h-auto w-auto shrink-0 rounded-full p-1 text-white/60 opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-white/10 hover:text-white group-hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </Button>
     </li>
   );
 }
@@ -269,12 +270,13 @@ function FilterChip({
   onSelect: () => void;
 }): ReactNode {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="sm"
       aria-pressed={active}
       onClick={onSelect}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+        "h-auto shrink-0 gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
         active
           ? "bg-accent text-accent-foreground hover:bg-accent-hover"
           : "text-white/70 hover:bg-white/10 hover:text-white",
@@ -282,7 +284,7 @@ function FilterChip({
     >
       {icon}
       <span>{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -655,21 +657,22 @@ export function NotificationCenter({
                 ["time", "Recent"],
               ] as const
             ).map(([mode, label]) => (
-              <button
+              <Button
                 key={mode}
-                type="button"
+                variant="ghost"
+                size="sm"
                 data-testid={`notif-sort-${mode}`}
                 aria-pressed={sortMode === mode}
                 onClick={() => setSortMode(mode)}
                 className={cn(
-                  "rounded-sm px-2 py-0.5 text-2xs font-medium transition-colors",
+                  "h-auto rounded-sm px-2 py-0.5 text-2xs font-medium transition-colors",
                   sortMode === mode
                     ? "bg-accent/15 text-accent"
                     : "text-white/60 hover:text-white",
                 )}
               >
                 {label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -735,8 +738,8 @@ export function NotificationCenter({
     if (!open && !dragging && dragPx <= 0 && !exiting) return null;
     return overlayPortal(
       <>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           aria-label="Dismiss notifications"
           data-testid="notification-sheet-backdrop"
           data-above-shell-overlay
@@ -752,7 +755,7 @@ export function NotificationCenter({
             transition: revealTransition,
             pointerEvents: open ? "auto" : "none",
           }}
-          className="fixed inset-0 bg-black/55"
+          className="fixed inset-0 h-auto w-auto rounded-none bg-black/55 p-0 hover:bg-black/55"
         />
         <div
           ref={dialogRef}
@@ -787,15 +790,15 @@ export function NotificationCenter({
           {/* The bottom grabber is a real dismiss control: tapping it closes the
               sheet. Binding a pull-up gesture to the whole sheet would fight the
               list's own vertical scroll, so this is a plain click target. */}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             aria-label="Dismiss notifications"
             data-testid="notification-sheet-grabber"
             onClick={() => onOpenChange?.(false)}
-            className="flex shrink-0 justify-center py-2"
+            className="h-auto shrink-0 rounded-none bg-transparent py-2 hover:bg-transparent"
           >
             <span className="h-1 w-9 rounded-full bg-white/40" aria-hidden />
-          </button>
+          </Button>
         </div>
       </>,
     );
@@ -811,8 +814,8 @@ export function NotificationCenter({
     if (!open && !exiting) return null;
     return overlayPortal(
       <>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           aria-label="Dismiss notifications"
           data-testid="notification-panel-backdrop"
           data-above-shell-overlay
@@ -822,7 +825,7 @@ export function NotificationCenter({
           tabIndex={-1}
           onClick={() => onOpenChange?.(false)}
           style={{ zIndex: Z_NOTIFICATION_BACKDROP }}
-          className="fixed inset-0"
+          className="fixed inset-0 h-auto w-auto rounded-none bg-transparent p-0 hover:bg-transparent"
         />
         <div
           ref={dialogRef}
@@ -858,15 +861,16 @@ export function NotificationCenter({
   return (
     <Popover open={bellOpen} onOpenChange={setBellOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label={
             hasUnread
               ? `Notifications (${unreadCount} unread)`
               : "Notifications"
           }
           className={cn(
-            "relative inline-flex h-9 w-9 items-center justify-center rounded-sm text-muted-strong transition-colors hover:bg-surface hover:text-txt",
+            "relative h-9 w-9 rounded-sm text-muted-strong transition-colors hover:bg-surface hover:text-txt",
             className,
           )}
         >
@@ -879,7 +883,7 @@ export function NotificationCenter({
             /* Unread = one dot; the exact count lives in the aria-label. */
             <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent" />
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"

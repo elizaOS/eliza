@@ -55,6 +55,8 @@ import {
 } from "../apps/per-app-config";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { useRegistryCatalog } from "../apps/useRegistryCatalog";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 interface AppDetailsViewProps {
   slug: string;
@@ -327,11 +329,12 @@ function WidgetRow({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
+          <Button
             ref={previewButton.ref}
-            type="button"
             onClick={onTogglePreview}
             /* Flat — borderless pill; hover fill is the affordance. */
+            variant="ghost"
+            size="sm"
             className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:bg-surface hover:text-foreground"
             {...previewButton.agentProps}
           >
@@ -340,14 +343,18 @@ function WidgetRow({
               : t("appdetails.preview", {
                   defaultValue: "Preview",
                 })}
-          </button>
-          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs">
-            <input
+          </Button>
+          <label
+            htmlFor={`app-widget-visible-${widgetKey}`}
+            className="inline-flex cursor-pointer items-center gap-1.5 text-xs"
+          >
+            <Input
+              id={`app-widget-visible-${widgetKey}`}
               ref={showToggle.ref}
               type="checkbox"
               checked={visible}
               onChange={(event) => onToggleVisible(event.currentTarget.checked)}
-              className="h-3.5 w-3.5 accent-accent"
+              className="h-3.5 w-3.5 border-border p-0 accent-accent"
               {...showToggle.agentProps}
             />
             <span className="text-muted">
@@ -773,16 +780,15 @@ export function AppDetailsView({
                   })}
             </p>
           </div>
-          <button
+          <Button
             ref={launchButton.ref}
-            type="button"
             onClick={handleLaunch}
             disabled={launching}
             title={t("appdetails.launchTitle", {
               name: resolved.info.displayName ?? resolved.info.name,
               defaultValue: "Launch {{name}}",
             })}
-            className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="max-w-full gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             {...launchButton.agentProps}
           >
             <Rocket className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -791,7 +797,7 @@ export function AppDetailsView({
                 ? t("appdetails.launching", { defaultValue: "Launching..." })
                 : t("appdetails.launch", { defaultValue: "Launch" })}
             </span>
-          </button>
+          </Button>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -869,13 +875,17 @@ export function AppDetailsView({
               defaultValue: "Launch Destination",
             })}
           </legend>
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
+          <label
+            htmlFor="app-details-launch-mode-window"
+            className="flex cursor-pointer items-center gap-2 text-sm"
+          >
+            <Input
+              id="app-details-launch-mode-window"
               ref={launchModeWindowRadio.ref}
               type="radio"
               checked={config.launchMode === "window"}
               onChange={() => updateConfig({ launchMode: "window" })}
-              className="h-3.5 w-3.5 accent-accent"
+              className="h-3.5 w-3.5 border-border p-0 accent-accent"
               {...launchModeWindowRadio.agentProps}
             />
             <span>
@@ -885,19 +895,21 @@ export function AppDetailsView({
             </span>
           </label>
           <label
+            htmlFor="app-details-launch-mode-inline"
             className={`flex items-center gap-2 text-sm ${
               supportsInlineMode
                 ? "cursor-pointer"
                 : "cursor-not-allowed opacity-50"
             }`}
           >
-            <input
+            <Input
+              id="app-details-launch-mode-inline"
               ref={launchModeInlineRadio.ref}
               type="radio"
               checked={config.launchMode === "inline"}
               disabled={!supportsInlineMode}
               onChange={() => updateConfig({ launchMode: "inline" })}
-              className="h-3.5 w-3.5 accent-accent"
+              className="h-3.5 w-3.5 border-border p-0 accent-accent"
               {...launchModeInlineRadio.agentProps}
             />
             <span>
@@ -911,13 +923,15 @@ export function AppDetailsView({
         </fieldset>
 
         <label
+          htmlFor="app-details-always-on-top"
           className={`inline-flex items-center gap-2 self-start text-xs ${
             config.launchMode === "window"
               ? "cursor-pointer"
               : "cursor-not-allowed opacity-50"
           }`}
         >
-          <input
+          <Input
+            id="app-details-always-on-top"
             ref={alwaysOnTopToggle.ref}
             type="checkbox"
             checked={config.alwaysOnTop}
@@ -925,7 +939,7 @@ export function AppDetailsView({
             onChange={(event) =>
               updateConfig({ alwaysOnTop: event.currentTarget.checked })
             }
-            className="h-3.5 w-3.5 accent-accent"
+            className="h-3.5 w-3.5 border-border p-0 accent-accent"
             {...alwaysOnTopToggle.agentProps}
           />
           {config.alwaysOnTop ? (

@@ -38,6 +38,7 @@ import type * as React from "react";
 import { memo, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 
 export interface AgentCardData {
@@ -368,7 +369,8 @@ function AgentCardInner({
         )}
       >
         <div className="group relative overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
-          <button
+          <Button
+            variant="ghost"
             type="button"
             aria-label={`${openCardLabel}: ${agent.name}`}
             className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
@@ -450,7 +452,8 @@ function AgentCardInner({
 
             {/* Remove button for saved agents */}
             {!isOwned && (
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={handleRemoveSaved}
                 className={removeSavedClassName}
@@ -459,7 +462,7 @@ function AgentCardInner({
                 })}
               >
                 <X className="h-4 w-4 text-white/70 hover:text-red-500" />
-              </button>
+              </Button>
             )}
 
             {/* Dropdown Menu */}
@@ -612,7 +615,8 @@ function AgentCardInner({
       )}
     >
       <div className="group relative aspect-square w-full overflow-hidden rounded-sm">
-        <button
+        <Button
+          variant="ghost"
           type="button"
           aria-label={`${openCardLabel}: ${agent.name}`}
           className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
@@ -677,7 +681,8 @@ function AgentCardInner({
 
         {/* Remove button for saved agents */}
         {!isOwned && (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={handleRemoveSaved}
             className="pointer-events-auto absolute top-3 right-12 z-20 hidden items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-red-500/50 transition-colors group-hover:flex"
@@ -686,7 +691,7 @@ function AgentCardInner({
             })}
           >
             <X className="h-4 w-4 text-white" />
-          </button>
+          </Button>
         )}
 
         {/* Dropdown Menu */}

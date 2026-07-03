@@ -10,6 +10,8 @@ import type { Transcript } from "@elizaos/shared/transcripts";
 import { Pause, Play } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { TranscriptBody } from "./TranscriptBody";
 import { useAudioElement } from "./useAudioElement";
 
@@ -45,20 +47,21 @@ export function TranscriptPlayer({
 
       {audioUrl ? (
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             data-testid="transcript-play"
             aria-label={audio.playing ? "pause" : "play"}
             onClick={audio.toggle}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent/12 text-accent-fg transition-colors hover:bg-accent/20"
+            className="h-10 w-10 shrink-0 rounded-full bg-accent/12 text-accent-fg transition-colors hover:bg-accent/20"
           >
             {audio.playing ? (
               <Pause className="h-5 w-5" aria-hidden />
             ) : (
               <Play className="h-5 w-5 translate-x-px" aria-hidden />
             )}
-          </button>
-          <input
+          </Button>
+          <Input
             type="range"
             data-testid="transcript-scrub"
             aria-label="seek"
@@ -66,7 +69,7 @@ export function TranscriptPlayer({
             max={Math.max(1, durationMs)}
             value={Math.min(audio.currentMs, durationMs)}
             onChange={(e) => audio.seekMs(Number(e.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-accent"
+            className="h-1 flex-1 cursor-pointer border-0 bg-transparent p-0 accent-accent"
           />
           <span className="shrink-0 tabular-nums text-xs text-muted">
             {formatMs(audio.currentMs)} / {formatMs(durationMs)}

@@ -9,6 +9,7 @@
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Button } from "../../../../components/ui/button";
 import { ApiError, api } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
@@ -244,7 +245,8 @@ export default function PaymentRequestPage() {
           )}
 
           <div className="mt-8">
-            <button
+            <Button
+              variant="ghost"
               type="button"
               disabled={!canPay || isPaying}
               onClick={beginCheckout}
@@ -265,7 +267,7 @@ export default function PaymentRequestPage() {
                       defaultValue: "Pay with {{provider}}",
                     })}
               </span>
-            </button>
+            </Button>
           </div>
 
           <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/35">

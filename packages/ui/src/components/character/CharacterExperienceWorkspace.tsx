@@ -430,12 +430,12 @@ function ExperienceGraphNode({
     onActivate: () => onSelectExperience(experience.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
       aria-label={`Select experience: ${nodeLabel}`}
       data-testid={`experience-graph-node-${experience.id}`}
-      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125"
+      className="absolute h-auto -translate-x-1/2 -translate-y-1/2 rounded-full p-0 outline-none transition duration-200 hover:scale-125"
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,
@@ -459,7 +459,7 @@ function ExperienceGraphNode({
           outlineOffset: "2px",
         }}
       />
-    </button>
+    </Button>
   );
 }
 
@@ -561,11 +561,11 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
     onActivate: () => onSelect(experience.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
       data-testid={`experience-row-${experience.id}`}
-      className={`flex min-w-0 flex-col items-start gap-2 px-4 py-4 text-left transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
+      className={`h-auto w-full min-w-0 flex-col items-start justify-start gap-2 rounded-none px-4 py-4 text-left font-normal transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
@@ -591,7 +591,7 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
           <span>· {reviewReasons.join(", ")}</span>
         ) : null}
       </div>
-    </button>
+    </Button>
   );
 });
 
@@ -612,16 +612,16 @@ function RelatedExperienceButton({
     onActivate: () => onSelect(experience.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
-      className="block w-full rounded-sm px-3 py-2 text-left hover:bg-bg-muted/20"
+      variant="ghost"
+      className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left font-normal hover:bg-bg-muted/20"
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
       <span className="font-mono text-xs text-muted">{experience.id}</span>
       <span className="ml-2">{title}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -874,9 +874,10 @@ export function CharacterExperienceWorkspace({
           {...reviewAgentProps}
         >
           {REVIEW_FILTERS.map((option) => (
-            <button
+            <Button
               key={option.value}
-              type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setReviewFilter(option.value)}
               className={`h-8 rounded-full px-3 text-xs font-medium transition-colors ${
                 reviewFilter === option.value
@@ -885,7 +886,7 @@ export function CharacterExperienceWorkspace({
               }`}
             >
               {option.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

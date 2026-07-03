@@ -792,15 +792,16 @@ export function CharacterHubView({
         <WidgetHost slot="character" className="mb-4" />
         {isSubPage ? (
           <div className="mb-5 flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => navigateToSection("overview")}
-              className="inline-flex min-h-11 items-center gap-1 rounded-sm px-2 text-sm text-muted transition-colors hover:text-txt"
+              className="h-auto gap-1 px-0 py-0 text-sm font-normal text-muted transition-colors hover:bg-transparent hover:text-txt"
               aria-label="Back to Character hub"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />
               Character
-            </button>
+            </Button>
             <span className="text-lg font-semibold text-txt">
               {activeSectionLabel}
             </span>

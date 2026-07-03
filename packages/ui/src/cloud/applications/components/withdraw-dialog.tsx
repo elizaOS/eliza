@@ -156,13 +156,14 @@ export function WithdrawDialog({
                   <span className="text-neutral-500">
                     Minimum: ${payoutThreshold.toFixed(2)}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() => setAmount(withdrawableBalance.toFixed(2))}
                     className="text-white/60 hover:text-white transition-colors"
                   >
                     Withdraw All
-                  </button>
+                  </Button>
                 </div>
               </div>
 

@@ -28,6 +28,8 @@ import {
   type TranslationContextValue,
   useTranslation,
 } from "../../state/TranslationContext.hooks";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import {
   setupBodyTextShadowStyle,
   setupDescriptionClass,
@@ -257,7 +259,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
           }
         >
           {({ describedBy, invalid }) => (
-            <input
+            <Input
               ref={inputRef}
               id={fieldId}
               type="password"
@@ -326,15 +328,17 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         {/* Escape hatch: without a valid token this screen is otherwise a hard
             dead end (no back/cancel). Let the user abandon bootstrap and start
             over on a local agent instead of being trapped. */}
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => startFreshFirstRunReload()}
-          className="text-sm underline underline-offset-2 text-[var(--first-run-text-muted)] transition-opacity hover:opacity-80"
+          className="h-auto bg-transparent p-0 text-sm text-[var(--first-run-text-muted)] underline underline-offset-2 transition-opacity hover:bg-transparent hover:opacity-80"
         >
           {t("bootstrapstep.startOver", { defaultValue: "Start over" })}
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
+          variant="default"
           disabled={isSubmitting || !token.trim()}
           className={setupPrimaryActionClass}
           style={setupPrimaryActionTextShadowStyle}
@@ -342,7 +346,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
           {isSubmitting
             ? t("bootstrapstep.verifying", { defaultValue: "Verifying…" })
             : t("bootstrapstep.activate", { defaultValue: "Activate" })}
-        </button>
+        </Button>
       </div>
     </form>
   );

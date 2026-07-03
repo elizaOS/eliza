@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { client } from "../../../api";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import type { WidgetProps } from "../../../widgets/types";
+import { Button } from "../../ui/button";
 import { useWidgetNavigation } from "./home-widget-card";
 import {
   type PricedHolding,
@@ -97,14 +98,14 @@ export function WalletBalanceWidget(
   if (!holdings || holdings.length === 0) return null;
 
   return (
-    <button
-      type="button"
+    <Button
       data-testid="chat-widget-wallet-prices"
       aria-label={`Wallet prices: ${holdings
         .map((h) => `${h.symbol} ${formatPrice(h.priceUsd)}`)
         .join(", ")}. Open wallet.`}
       onClick={() => nav.openView("/wallet", "wallet")}
-      className={`${spanClassName} group flex w-full flex-col gap-1 px-3 py-2.5 text-left transition-opacity hover:opacity-80`}
+      variant="ghost"
+      className={`${spanClassName} group flex h-auto w-full flex-col items-stretch gap-1 whitespace-normal px-3 py-2.5 text-left font-normal transition-opacity hover:opacity-80`}
     >
       <span className="flex items-center gap-2 text-xs text-white/70 [&>svg]:h-3.5 [&>svg]:w-3.5">
         <Wallet />
@@ -136,6 +137,6 @@ export function WalletBalanceWidget(
           </span>
         );
       })}
-    </button>
+    </Button>
   );
 }

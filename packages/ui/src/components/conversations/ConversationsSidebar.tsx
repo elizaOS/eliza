@@ -31,6 +31,7 @@ import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
+import { Button } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -882,17 +883,17 @@ export function ConversationsSidebar({
                   />
                 </div>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   data-testid="conversations-search-messages"
                   onClick={() => setMessageSearchOpen(true)}
-                  className="flex w-full items-center gap-2 rounded-lg border border-border/60 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  className="h-auto w-full justify-start gap-2 rounded-lg border-border/60 px-2.5 py-1.5 text-sm font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                 >
                   <Search className="h-3.5 w-3.5" />
                   {t("conversations.searchMessages", {
                     defaultValue: "Search messages",
                   })}
-                </button>
+                </Button>
               )}
               <CollapsibleChannelSection
                 sectionKey={messagesSection.key}

@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 /**
  * Settings layout vocabulary.
@@ -214,14 +215,14 @@ export function SettingsRow({
   // mobile settings hub read denser in the app visual audit.
   if (onClick) {
     return (
-      <button
+      <Button
         ref={buttonRef}
-        type="button"
+        variant="ghost"
         onClick={onClick}
         disabled={disabled}
         aria-current={active ? "true" : undefined}
         className={cn(
-          "group flex w-full min-h-[3rem] items-center rounded-lg px-2 py-2.5 text-left transition-colors",
+          "group flex w-full min-h-[3rem] items-center justify-start whitespace-normal rounded-lg px-2 py-2.5 text-left transition-colors",
           "hover:bg-surface/70    ",
           active && "bg-accent/10 hover:bg-accent/12",
           disabled && "cursor-not-allowed opacity-50",
@@ -239,7 +240,7 @@ export function SettingsRow({
           trailing={trailing}
           chevron={chevron ?? true}
         />
-      </button>
+      </Button>
     );
   }
 

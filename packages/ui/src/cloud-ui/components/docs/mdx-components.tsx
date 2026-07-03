@@ -1,4 +1,10 @@
-import { Children, isValidElement, type ReactNode, useState } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
+import {
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Tabs as UiTabs,
+} from "../../../components/ui/tabs";
 
 export type CalloutType = "info" | "warning" | "error" | "default";
 
@@ -65,26 +71,44 @@ export function Tabs({
   items: ReactNode[];
   children: ReactNode;
 }) {
-  const [active, setActive] = useState(0);
   const panels = Children.toArray(children).filter(isValidElement);
+  const tabs = items.map((label, index) => ({
+    label,
+    panel: panels[index] ?? null,
+    value: `tab-${index}`,
+  }));
+  const defaultValue = tabs[0]?.value;
+
+  if (!defaultValue) {
+    return <div className="docs-tabs" />;
+  }
+
   return (
-    <div className="docs-tabs">
-      <div className="docs-tabs-list" role="tablist">
-        {items.map((label, i) => (
-          <button
-            key={`tab-${String(label)}`}
-            type="button"
-            role="tab"
-            aria-selected={i === active}
-            className={`docs-tab-trigger${i === active ? " active" : ""}`}
-            onClick={() => setActive(i)}
+    <UiTabs
+      defaultValue={defaultValue}
+      className="docs-tabs flex flex-col gap-3"
+    >
+      <TabsList className="docs-tabs-list h-auto flex-wrap justify-start gap-2 bg-transparent p-0">
+        {tabs.map((tab) => (
+          <TabsTrigger
+            key={tab.value}
+            value={tab.value}
+            className="docs-tab-trigger h-auto rounded-sm border border-border px-3 py-1 text-sm data-[state=active]:bg-bg data-[state=active]:text-txt"
           >
-            {label}
-          </button>
+            {tab.label}
+          </TabsTrigger>
         ))}
-      </div>
-      <div className="docs-tabs-content">{panels[active] ?? null}</div>
-    </div>
+      </TabsList>
+      {tabs.map((tab) => (
+        <TabsContent
+          key={tab.value}
+          value={tab.value}
+          className="docs-tabs-content mt-0"
+        >
+          {tab.panel}
+        </TabsContent>
+      ))}
+    </UiTabs>
   );
 }
 Tabs.Tab = TabsTab;

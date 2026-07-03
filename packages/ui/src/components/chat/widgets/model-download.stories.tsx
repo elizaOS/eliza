@@ -1,4 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
+import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
@@ -82,6 +83,21 @@ function withHub(snapshot: ModelHubSnapshot): Decorator {
   return (Story) => {
     const originalFetch = window.fetch;
     const originalEventSource = window.EventSource;
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: {
+        id: "story-owner",
+        displayName: "Story Owner",
+        kind: "owner",
+      },
+      session: { id: "story-session", kind: "local", expiresAt: null },
+      access: {
+        mode: "local",
+        passwordConfigured: false,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
     // On-device native-IPC fallback: no EventSource → the widget drives off the
     // single hub fetch. Undefining it keeps the story render deterministic.
     (window as { EventSource?: unknown }).EventSource = undefined;
@@ -106,6 +122,7 @@ function withHub(snapshot: ModelHubSnapshot): Decorator {
     setTimeout(() => {
       window.fetch = originalFetch;
       (window as { EventSource?: unknown }).EventSource = originalEventSource;
+      __setAuthStatusForTests({ phase: "loading" });
     }, 4_000);
     return (
       <MockAppProvider value={{ plugins: [], conversations: [] }}>

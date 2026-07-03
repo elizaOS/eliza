@@ -17,6 +17,16 @@
  */
 
 import type { CSSProperties, ReactNode } from "react";
+import { Button as UiButton } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import { Textarea } from "../components/ui/textarea";
 import { useSpatialContext } from "./context.ts";
 import type {
   SpatialAgentMeta,
@@ -41,6 +51,7 @@ import { resolvePadding } from "./ir.ts";
 
 /** Brand key carried on a primitive's component function. */
 export const SPATIAL_KIND = Symbol.for("elizaos.spatial.kind");
+const EMPTY_SPATIAL_SELECT_VALUE = "__eliza_spatial_empty__";
 
 export type SpatialKind =
   | "box"
@@ -525,8 +536,8 @@ export const Button = brand<ButtonProps>("button", function Button(props) {
     ...commonFlexStyle(spec, cell),
   };
   return (
-    <button
-      type="button"
+    <UiButton
+      variant="ghost"
       data-spatial-kind="button"
       disabled={spec.disabled}
       style={css}
@@ -539,7 +550,7 @@ export const Button = brand<ButtonProps>("button", function Button(props) {
       {...agentDataProps(spec.agent)}
     >
       {label}
-    </button>
+    </UiButton>
   );
 });
 
@@ -575,7 +586,7 @@ export const Field = brand<FieldProps>("field", function Field(props) {
     <div data-spatial-kind="field" style={wrap}>
       {spec.label ? <span style={labelCss}>{spec.label}</span> : null}
       {spec.kind === "textarea" ? (
-        <textarea
+        <Textarea
           style={inputCss}
           placeholder={spec.placeholder}
           defaultValue={spec.value}
@@ -584,21 +595,31 @@ export const Field = brand<FieldProps>("field", function Field(props) {
           {...agentDataProps(spec.agent)}
         />
       ) : spec.kind === "select" ? (
-        <select
-          style={inputCss}
-          defaultValue={spec.value}
+        <Select
+          defaultValue={
+            spec.value === "" ? EMPTY_SPATIAL_SELECT_VALUE : spec.value
+          }
           disabled={spec.disabled}
-          onChange={(e) => props.onChange?.(e.target.value)}
-          {...agentDataProps(spec.agent)}
+          onValueChange={(value) =>
+            props.onChange?.(value === EMPTY_SPATIAL_SELECT_VALUE ? "" : value)
+          }
         >
-          {(spec.options ?? []).map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger style={inputCss} {...agentDataProps(spec.agent)}>
+            <SelectValue placeholder={spec.placeholder ?? ""} />
+          </SelectTrigger>
+          <SelectContent>
+            {(spec.options ?? []).map((opt) => (
+              <SelectItem
+                key={opt}
+                value={opt === "" ? EMPTY_SPATIAL_SELECT_VALUE : opt}
+              >
+                {opt}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
-        <input
+        <Input
           type={
             spec.kind === "password"
               ? "password"

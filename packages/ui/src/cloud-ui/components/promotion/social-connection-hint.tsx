@@ -113,14 +113,15 @@ export function SocialConnectionHint({
       {/* Discord Connection Hint */}
       {showDiscordHint && (
         <BrandCard className="p-4 border-[#5865F2]/30 bg-[#5865F2]/5 relative">
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={handleDismissDiscord}
             className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
             aria-label="Dismiss Discord hint"
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
           <div className="flex items-start gap-4 pr-8">
             <div className="p-3 rounded-sm bg-[#5865F2]/20 shrink-0">
               <DiscordIcon className="h-6 w-6 text-[#5865F2]" />
@@ -158,14 +159,15 @@ export function SocialConnectionHint({
       {/* Telegram Connection Hint */}
       {showTelegramHint && (
         <BrandCard className="p-4 border-[#0088cc]/30 bg-[#0088cc]/5 relative">
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={handleDismissTelegram}
             className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
             aria-label="Dismiss Telegram hint"
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
           <div className="flex items-start gap-4 pr-8">
             <div className="p-3 rounded-sm bg-[#0088cc]/20 shrink-0">
               <MessageSquare className="h-6 w-6 text-[#0088cc]" />

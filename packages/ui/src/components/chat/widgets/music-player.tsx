@@ -4,6 +4,7 @@ import { fetchWithCsrf } from "../../../api/csrf-client";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { resolveApiUrl } from "../../../utils/asset-url";
+import { Button } from "../../ui/button";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";
 
@@ -153,32 +154,34 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
       icon={<Music className="h-3.5 w-3.5" />}
       testId="chat-widget-music-player"
       action={
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => void pollOnce()}
           aria-label="Refresh music player"
-          className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
+          className="h-5 w-5 rounded-sm bg-transparent p-0 text-muted transition-colors hover:bg-transparent hover:text-txt"
         >
           <RefreshCw className="h-3 w-3" aria-hidden />
-        </button>
+        </Button>
       }
     >
       <div className="flex flex-col gap-2 pt-0.5">
         {isPlaying ? (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={togglePlayback}
               aria-label={audioPaused ? "Play music" : "Pause music"}
               title={audioPaused ? "Play" : "Pause"}
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
+              className="h-7 w-7 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:bg-transparent hover:text-txt"
             >
               {audioPaused ? (
                 <Play className="h-3.5 w-3.5" aria-hidden />
               ) : (
                 <Pause className="h-3.5 w-3.5" aria-hidden />
               )}
-            </button>
+            </Button>
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                 player.isPaused ? "bg-warn" : "bg-ok"

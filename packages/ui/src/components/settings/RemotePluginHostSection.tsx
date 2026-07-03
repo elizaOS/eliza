@@ -496,16 +496,17 @@ export function RemotePluginHostSection() {
           storeRoot || error ? (
             <>
               {storeRoot ? (
-                <button
+                <Button
                   ref={revealStoreRef}
-                  type="button"
+                  variant="ghost"
+                  size="sm"
                   className="flex items-center gap-1.5 text-muted/80 hover:text-txt"
                   onClick={() => void desktopOpenPath(storeRoot)}
                   {...revealStoreAgentProps}
                 >
                   <code className="truncate">{storeRoot}</code>
                   <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                </button>
+                </Button>
               ) : null}
               {error ? <span className="text-warn">{error}</span> : null}
             </>

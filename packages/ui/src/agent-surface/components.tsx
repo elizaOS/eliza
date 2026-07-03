@@ -5,12 +5,9 @@
  * markup — these cover the common control + tag cases.
  */
 
-import type {
-  ButtonHTMLAttributes,
-  ComponentType,
-  InputHTMLAttributes,
-  ReactNode,
-} from "react";
+import type { ComponentType, ReactNode } from "react";
+import { Button, type ButtonProps } from "../components/ui/button";
+import { Input, type InputProps } from "../components/ui/input";
 import { cn } from "../lib/utils";
 import type { AgentElementRole } from "./types";
 import { useAgentElement } from "./useAgentElement";
@@ -20,8 +17,7 @@ type IconComponent = ComponentType<{
   "aria-hidden"?: boolean;
 }>;
 
-export interface AgentButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface AgentButtonProps extends ButtonProps {
   /** Stable agent id, unique within the view. */
   agentId: string;
   /** Label the agent uses to target this button (defaults to text children). */
@@ -54,13 +50,13 @@ export function AgentButton({
     description: agentDescription,
   });
   return (
-    <button ref={ref} type="button" {...agentProps} {...rest}>
+    <Button ref={ref} {...agentProps} {...rest}>
       {children}
-    </button>
+    </Button>
   );
 }
 
-export interface AgentInputProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface AgentInputProps extends InputProps {
   agentId: string;
   agentLabel: string;
   agentRole?: Extract<AgentElementRole, "text-input" | "number-input">;
@@ -86,7 +82,7 @@ export function AgentInput({
     group: agentGroup,
     description: agentDescription,
   });
-  return <input ref={ref} aria-label={agentLabel} {...agentProps} {...rest} />;
+  return <Input ref={ref} aria-label={agentLabel} {...agentProps} {...rest} />;
 }
 
 const TONE_CLASSES: Record<string, string> = {

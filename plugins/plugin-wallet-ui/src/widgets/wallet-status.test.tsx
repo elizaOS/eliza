@@ -44,6 +44,13 @@ const appHooks = vi.hoisted(() => {
 
 vi.mock("@elizaos/ui", () => ({
   // Transparent passthroughs that surface the props the widget relies on.
+  Button: ({
+    children,
+    unstyled: _unstyled,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    unstyled?: boolean;
+  }) => React.createElement("button", { type: "button", ...props }, children),
   WidgetSection: ({
     title,
     testId,

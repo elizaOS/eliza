@@ -26,6 +26,7 @@ import {
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
+import { Button } from "../ui/button";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
@@ -142,13 +143,14 @@ function SettingsNavItem({
   }
 
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       onClick={() => onSelect(section.id)}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+        "h-auto w-full justify-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
         active ? "font-medium text-accent" : "text-txt hover:bg-surface",
       )}
       {...agentProps}
@@ -162,7 +164,7 @@ function SettingsNavItem({
       />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {chip ? <Chip>{chip}</Chip> : null}
-    </button>
+    </Button>
   );
 }
 
@@ -175,16 +177,17 @@ function SectionBackButton({ onBack }: { onBack: () => void }) {
     onActivate: onBack,
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       onClick={onBack}
-      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-accent"
+      className="h-9 gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-accent"
       {...agentProps}
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
       Settings
-    </button>
+    </Button>
   );
 }
 
@@ -284,13 +287,14 @@ function SettingsSectionFallback({
       <p className="text-xs-tight text-muted max-w-prose break-words">
         {error.message}
       </p>
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onRetry}
-        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
+        className="mt-1 h-9 rounded-md border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
-      </button>
+      </Button>
     </div>
   );
 }

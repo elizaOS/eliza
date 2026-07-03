@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { fetchWithCsrf } from "../../api/csrf-client";
+import { Button } from "../ui/button";
 
 interface TerminalPluginViewProps {
   id: string;
@@ -219,12 +220,13 @@ export function TerminalPluginView({
             }}
           >
             {resolvedCommands.map((command, index) => (
-              <button
+              <Button
                 key={command}
-                type="button"
+                variant="ghost"
                 data-terminal-command={command}
                 aria-label={`Run ${command}`}
                 title={`Run ${command} (${index + 1})`}
+                className="h-auto whitespace-normal rounded-none p-0 text-left font-normal hover:bg-transparent"
                 style={commandButtonStyle}
                 onClick={() => {
                   void runCommand(command);
@@ -241,7 +243,7 @@ export function TerminalPluginView({
                 <span style={{ color: "#7890a4", marginLeft: "auto" }}>
                   {index + 1}
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
           {endpoints.length > 0 && (

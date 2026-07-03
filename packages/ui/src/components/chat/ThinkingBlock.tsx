@@ -1,4 +1,5 @@
 import { type ReactElement, useState } from "react";
+import { Button } from "../ui/button";
 
 /**
  * Collapsed-by-default "Thinking" disclosure that renders an assistant turn's
@@ -21,11 +22,11 @@ export function ThinkingBlock({
   }
   return (
     <div className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        className="flex w-full items-center gap-1.5 bg-accent/10 px-3 py-1 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-accent/20"
+        className="h-auto w-full justify-start gap-1.5 rounded-none bg-accent/10 px-3 py-1 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-accent/20"
       >
         <span
           aria-hidden="true"
@@ -34,7 +35,7 @@ export function ThinkingBlock({
           ›
         </span>
         Thinking
-      </button>
+      </Button>
       {open ? (
         <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words opacity-80 m-0 overflow-x-auto">
           {trimmed}

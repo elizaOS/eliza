@@ -100,14 +100,15 @@ function ScopeButton({
     onActivate: () => onSelect(value),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       aria-pressed={active}
       title={t(titleKey, { defaultValue: defaultTitle })}
       onClick={() => onSelect(value)}
       disabled={uploading}
-      className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-2xs font-semibold transition-colors ${
+      variant="ghost"
+      size="sm"
+      className={`h-7 gap-1.5 rounded-full border px-2 text-2xs font-semibold transition-colors ${
         active
           ? "border-accent/45 bg-accent/12 text-accent-fg"
           : "border-border/30 bg-bg-muted/20 text-muted hover:border-border/55 hover:text-txt"
@@ -116,7 +117,7 @@ function ScopeButton({
     >
       <Icon className="h-3 w-3" aria-hidden />
       {t(labelKey, { defaultValue: defaultLabel })}
-    </button>
+    </Button>
   );
 }
 
@@ -310,7 +311,7 @@ export function UploadZone({
       onDrop={handleDrop}
       aria-label={t("aria.documentsUpload")}
     >
-      <input
+      <Input
         id={fileInputId}
         ref={fileInputRef}
         type="file"

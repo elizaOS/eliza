@@ -1,6 +1,21 @@
 import * as React from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
+import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../components/ui/tabs";
 import { cn } from "../lib/utils";
 import { routeElizaGenUiAction } from "./actions";
 import {
@@ -17,6 +32,7 @@ import type {
 import { validateElizaGenUiSpec } from "./validator";
 
 type ButtonVariant = React.ComponentProps<typeof Button>["variant"];
+const EMPTY_SELECT_VALUE = "__eliza_genui_empty__";
 
 function stringProp(
   component: ElizaGenUiComponent,
@@ -155,28 +171,42 @@ function renderChoicePicker(
       context,
     );
   };
+  const selectedValue = stringProp(component, "value");
   return (
-    <select
-      aria-label={stringProp(component, "label") ?? component.id}
-      className="rounded-sm border border-border bg-bg px-3 py-2"
+    <Select
       disabled={booleanProp(component, "disabled")}
-      defaultValue={stringProp(component, "value")}
-      onChange={(eventArg) => reportChoice(eventArg.target.value)}
+      defaultValue={selectedValue === "" ? EMPTY_SELECT_VALUE : selectedValue}
+      onValueChange={(value) =>
+        reportChoice(value === EMPTY_SELECT_VALUE ? "" : value)
+      }
     >
-      {options.map((option) => {
-        const record =
-          option && typeof option === "object" && !Array.isArray(option)
-            ? (option as Record<string, ElizaGenUiJsonValue>)
-            : null;
-        const label = typeof record?.label === "string" ? record.label : "";
-        const value = typeof record?.value === "string" ? record.value : label;
-        return (
-          <option key={value || label || JSON.stringify(option)} value={value}>
-            {label}
-          </option>
-        );
-      })}
-    </select>
+      <SelectTrigger
+        aria-label={stringProp(component, "label") ?? component.id}
+        className="rounded-sm border border-border bg-bg px-3 py-2"
+      >
+        <SelectValue placeholder={stringProp(component, "label") ?? "Select"} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => {
+          const record =
+            option && typeof option === "object" && !Array.isArray(option)
+              ? (option as Record<string, ElizaGenUiJsonValue>)
+              : null;
+          const label = typeof record?.label === "string" ? record.label : "";
+          const value =
+            typeof record?.value === "string" ? record.value : label;
+          const itemValue = value === "" ? EMPTY_SELECT_VALUE : value;
+          return (
+            <SelectItem
+              key={value || label || JSON.stringify(option)}
+              value={itemValue}
+            >
+              {label}
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -187,43 +217,55 @@ function renderTabs(
 ): React.ReactNode {
   const rawItems = component.tabItems;
   const items = Array.isArray(rawItems) ? rawItems : [];
+  const tabs = items.map((item, index) => {
+    const record =
+      item && typeof item === "object" && !Array.isArray(item)
+        ? (item as Record<string, ElizaGenUiJsonValue>)
+        : null;
+    const title = typeof record?.title === "string" ? record.title : "";
+    const child = typeof record?.child === "string" ? record.child : "";
+    const fallback = `tab-${index}`;
+    return {
+      key: child || title || JSON.stringify(item) || fallback,
+      value: child || title || fallback,
+      title,
+      child,
+    };
+  });
+  const defaultValue = tabs[0]?.value;
+
+  if (!defaultValue) {
+    return (
+      <div
+        className="flex flex-col gap-3"
+        data-eliza-genui-tabs={component.id}
+      />
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-3" data-eliza-genui-tabs={component.id}>
-      <div className="flex flex-wrap gap-2" role="tablist">
-        {items.map((item) => {
-          const record =
-            item && typeof item === "object" && !Array.isArray(item)
-              ? (item as Record<string, ElizaGenUiJsonValue>)
-              : null;
-          const title = typeof record?.title === "string" ? record.title : "";
-          const child = typeof record?.child === "string" ? record.child : "";
-          return (
-            <button
-              key={child || title || JSON.stringify(item)}
-              type="button"
-              className="rounded-sm border border-border px-3 py-1 text-sm"
-              role="tab"
-            >
-              {title}
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex flex-col gap-3">
-        {items.map((item) => {
-          const record =
-            item && typeof item === "object" && !Array.isArray(item)
-              ? (item as Record<string, ElizaGenUiJsonValue>)
-              : null;
-          const child = typeof record?.child === "string" ? record.child : "";
-          return (
-            <div key={child || JSON.stringify(item)} role="tabpanel">
-              {context.renderComponent(child, [...stack, component.id])}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <Tabs
+      defaultValue={defaultValue}
+      className="flex flex-col gap-3"
+      data-eliza-genui-tabs={component.id}
+    >
+      <TabsList className="h-auto flex-wrap justify-start gap-2 bg-transparent p-0">
+        {tabs.map((item) => (
+          <TabsTrigger
+            key={item.key}
+            value={item.value}
+            className="h-auto rounded-sm border border-border px-3 py-1 text-sm data-[state=active]:bg-bg data-[state=active]:text-txt"
+          >
+            {item.title}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {tabs.map((item) => (
+        <TabsContent key={item.key} value={item.value} className="mt-0">
+          {context.renderComponent(item.child, [...stack, component.id])}
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }
 
@@ -296,7 +338,7 @@ function renderPrimitiveComponent(
     }
     case "TextField":
       return (
-        <input
+        <Input
           aria-label={stringProp(component, "label") ?? component.id}
           className="rounded-sm border border-border bg-bg px-3 py-2"
           disabled={booleanProp(component, "disabled")}
@@ -308,17 +350,15 @@ function renderPrimitiveComponent(
       );
     case "CheckBox":
       return (
-        <input
+        <Checkbox
           aria-label={stringProp(component, "label") ?? component.id}
           checked={booleanProp(component, "checked") ?? false}
           disabled={booleanProp(component, "disabled")}
-          readOnly
-          type="checkbox"
         />
       );
     case "Slider":
       return (
-        <input
+        <Input
           aria-label={stringProp(component, "label") ?? component.id}
           disabled={booleanProp(component, "disabled")}
           max={numberProp(component, "maxValue")}
@@ -326,11 +366,12 @@ function renderPrimitiveComponent(
           readOnly
           type="range"
           value={numberProp(component, "value") ?? 0}
+          className="h-6 w-full p-0"
         />
       );
     case "DateTimeInput":
       return (
-        <input
+        <Input
           aria-label={stringProp(component, "label") ?? component.id}
           disabled={booleanProp(component, "disabled")}
           readOnly

@@ -23,6 +23,7 @@ import type {
 } from "../../api/client-types-chat";
 import { useAppSelector } from "../../state";
 import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
+import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
@@ -313,13 +314,14 @@ function ParamValue({ value }: { value: unknown }) {
           <pre className="inline font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
             {value.slice(0, PARAM_TRUNCATE_LENGTH)}…
           </pre>
-          <button
-            type="button"
-            className="ml-1 text-xs text-accent hover:underline"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-1 h-auto px-0 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline"
             onClick={() => setExpanded(true)}
           >
             {t("workflowGraph.nodeDrawer.showMore")}
-          </button>
+          </Button>
         </span>
       );
     }
@@ -329,13 +331,14 @@ function ParamValue({ value }: { value: unknown }) {
           <pre className="inline font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
             {value}
           </pre>
-          <button
-            type="button"
-            className="ml-1 text-xs text-accent hover:underline"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-1 h-auto px-0 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline"
             onClick={() => setExpanded(false)}
           >
             {t("workflowGraph.nodeDrawer.showLess")}
-          </button>
+          </Button>
         </span>
       );
     }
@@ -354,13 +357,14 @@ function ParamValue({ value }: { value: unknown }) {
           <pre className="inline font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
             {json.slice(0, PARAM_TRUNCATE_LENGTH)}…
           </pre>
-          <button
-            type="button"
-            className="ml-1 text-xs text-accent hover:underline"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-1 h-auto px-0 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline"
             onClick={() => setExpanded(true)}
           >
             {t("workflowGraph.nodeDrawer.showMore")}
-          </button>
+          </Button>
         </span>
       );
     }
@@ -370,13 +374,14 @@ function ParamValue({ value }: { value: unknown }) {
           <pre className="font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
             {json}
           </pre>
-          <button
-            type="button"
-            className="ml-1 text-xs text-accent hover:underline"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-1 h-auto px-0 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline"
             onClick={() => setExpanded(false)}
           >
             {t("workflowGraph.nodeDrawer.showLess")}
-          </button>
+          </Button>
         </span>
       );
     }
@@ -461,16 +466,17 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
             </span>
           </div>
         </div>
-        <button
+        <Button
           ref={closeButtonRef}
-          type="button"
           aria-label={t("workflowGraph.closeDrawer")}
           tabIndex={isOpen ? 0 : -1}
-          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors"
+          variant="ghost"
+          size="icon-sm"
+          className="h-6 w-6 shrink-0 rounded-sm text-muted transition-colors hover:text-txt"
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
 
       {/* Scrollable body — only meaningful content when open */}
@@ -725,15 +731,16 @@ export function WorkflowGraphViewer({
               {resolvedEmptyStateHelpText}
             </p>
             {onEmptyStateAction && (
-              <button
+              <Button
                 ref={emptyStateActionButton.ref}
-                type="button"
-                className="mt-1 rounded-sm bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
+                variant="ghost"
+                size="sm"
+                className="mt-1 h-auto rounded-sm bg-bg/40 px-3 py-1.5 text-xs text-txt transition-colors hover:bg-bg/70"
                 onClick={onEmptyStateAction}
                 {...emptyStateActionButton.agentProps}
               >
                 {resolvedEmptyStateActionLabel}
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -791,14 +798,15 @@ export function WorkflowGraphViewer({
 
         {/* Full-screen toggle button — shift left when drawer is open */}
         {hasNodes && !isGenerating && (
-          <button
+          <Button
             ref={fullScreenButton.ref}
-            type="button"
             aria-label={t("workflowGraph.fullScreen", {
               defaultValue: "Full screen",
             })}
+            variant="ghost"
+            size="icon-sm"
             className={[
-              "absolute top-3 z-20 flex h-7 w-7 items-center justify-center",
+              "absolute top-3 z-20 h-7 w-7",
               "rounded-sm bg-bg/80 text-muted hover:text-txt transition-all duration-200",
               selectedNode ? "right-[calc(18rem_+_0.75rem)]" : "right-3",
             ].join(" ")}
@@ -806,7 +814,7 @@ export function WorkflowGraphViewer({
             {...fullScreenButton.agentProps}
           >
             <Maximize2 className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         )}
 
         {/* Node detail drawer — embedded mode */}
@@ -831,16 +839,17 @@ export function WorkflowGraphViewer({
               {workflow?.name ??
                 t("workflowGraph.title", { defaultValue: "Workflow Graph" })}
             </DialogTitle>
-            <button
+            <Button
               ref={fullScreenCloseButton.ref}
-              type="button"
               aria-label={t("workflowGraph.close", { defaultValue: "Close" })}
-              className="flex h-7 w-7 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors"
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 rounded-sm text-muted transition-colors hover:text-txt"
               onClick={() => setFullScreen(false)}
               {...fullScreenCloseButton.agentProps}
             >
               <X className="h-4 w-4" />
-            </button>
+            </Button>
           </DialogHeader>
           {/* Graph + drawer share a relative container so the drawer overlays the graph */}
           <div

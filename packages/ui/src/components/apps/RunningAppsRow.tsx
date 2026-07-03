@@ -1,6 +1,7 @@
 import { Square } from "lucide-react";
 import { type MouseEvent, memo, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
+import { Button } from "../ui/button";
 import { AppHero, type AppIdentitySource } from "./app-identity";
 import { getRunAttentionReasons } from "./run-attention";
 
@@ -52,11 +53,11 @@ const RunningAppCard = memo(function RunningAppCard({
       data-testid={`running-app-card-${run.runId}`}
       className="group relative overflow-hidden rounded-sm border border-accent/35 bg-card/72 transition-all hover:border-accent/55  "
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         aria-label={`Open ${run.displayName}`}
         aria-busy={isBusy || undefined}
-        className="block w-full text-left "
+        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent"
         onClick={() => onOpenRun(run)}
       >
         <AppHero
@@ -70,7 +71,7 @@ const RunningAppCard = memo(function RunningAppCard({
             </div>
           </div>
         </div>
-      </button>
+      </Button>
 
       <span
         title={needsAttention ? attentionReasons[0] : run.health.state}
@@ -87,12 +88,13 @@ const RunningAppCard = memo(function RunningAppCard({
       ) : null}
 
       {onStopRun ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           data-testid={`running-app-stop-${run.runId}`}
           aria-label={`Stop ${run.displayName}`}
           disabled={isStopping}
-          className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white/90 transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute bottom-3 right-3 h-8 w-8 rounded-full bg-black/70 p-0 text-white/90 transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
             onStopRun(run);
@@ -103,7 +105,7 @@ const RunningAppCard = memo(function RunningAppCard({
           ) : (
             <Square className="h-3.5 w-3.5" aria-hidden />
           )}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

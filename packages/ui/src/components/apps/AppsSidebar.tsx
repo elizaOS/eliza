@@ -6,6 +6,7 @@ import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
 import type { AppIdentitySource } from "./app-identity";
 import { getAppCategoryIcon } from "./app-identity.helpers";
 import {
@@ -301,11 +302,11 @@ function AppsSidebarAppButtonInner<TPayload>({
   }, [onSelect, payload]);
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={handleClick}
       aria-current={selected ? "page" : undefined}
-      className={`group flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors ${
+      className={`group flex h-auto w-full min-w-0 justify-start gap-2 rounded-sm px-2 py-1 text-left font-normal transition-colors ${
         selected ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50"
       }`}
     >
@@ -324,7 +325,7 @@ function AppsSidebarAppButtonInner<TPayload>({
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok "
         />
       ) : null}
-    </button>
+    </Button>
   );
 }
 

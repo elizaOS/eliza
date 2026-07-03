@@ -1,4 +1,5 @@
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
 import {
   type CockpitModeBadge,
@@ -63,14 +64,14 @@ export function CockpitModePicker({
         const isActive = option.id === selectedId;
         return (
           <div key={option.id} className="flex flex-col gap-2">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               aria-pressed={isActive}
               disabled={disabled}
               data-testid={`cockpit-mode-${option.id}`}
               onClick={() => select(option.toConfig)}
               className={cn(
-                "flex items-center justify-between gap-3 rounded-md border px-3.5 py-2.5 text-left transition-colors",
+                "h-auto w-full justify-between gap-3 rounded-md border px-3.5 py-2.5 text-left transition-colors",
                 isActive
                   ? "border-accent bg-accent-subtle"
                   : "border-border hover:bg-bg-hover",
@@ -93,7 +94,7 @@ export function CockpitModePicker({
               >
                 {BADGE_LABEL[option.badge]}
               </span>
-            </button>
+            </Button>
 
             {isActive && option.id === "eliza-cloud" ? (
               <SegmentedControl<ElizaCloudTier>

@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ElizaClient } from "../../api/client-base";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { Button } from "../../components/ui/button";
 import { isAndroid } from "../../platform/init";
 import {
   EXPECTED_PHRASE,
@@ -136,8 +137,7 @@ export function VoiceSelfTestShell() {
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <button
-          type="button"
+        <Button
           data-testid="voice-selftest-run"
           disabled={running}
           onClick={() => void run("wav-direct")}
@@ -152,9 +152,8 @@ export function VoiceSelfTestShell() {
           }}
         >
           {running ? "Running…" : "Run self-test"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           data-testid="voice-selftest-run-mic"
           disabled={running}
           onClick={() => void run("mic-capture")}
@@ -168,7 +167,7 @@ export function VoiceSelfTestShell() {
           }}
         >
           Run with mic capture
-        </button>
+        </Button>
       </div>
 
       <div

@@ -32,6 +32,7 @@ import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
+import { Input } from "../ui/input";
 import { AccountConnectBlock } from "./AccountConnectBlock";
 import { MessageAttachments } from "./MessageAttachments";
 import {
@@ -698,6 +699,7 @@ export function SensitiveRequestBlock({
         <form className="space-y-3" onSubmit={handleSubmit}>
           {fields.map((field) => {
             const label = field.label ?? field.name;
+            const inputId = `sensitive-request-${field.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
             const isUpload = field.input === "image" || field.input === "file";
             if (isUpload) {
               const accept =
@@ -708,12 +710,17 @@ export function SensitiveRequestBlock({
                     : undefined;
               const hasValue = Boolean(values[field.name]);
               return (
-                <label key={field.name} className="block text-xs space-y-1">
+                <label
+                  key={field.name}
+                  htmlFor={inputId}
+                  className="block text-xs space-y-1"
+                >
                   <span className="font-medium">{label}</span>
-                  <input
+                  <Input
+                    id={inputId}
                     aria-label={label}
                     data-testid={`sensitive-request-file-${field.name}`}
-                    className="w-full border border-border bg-bg px-2 py-1.5 text-sm"
+                    className="border-border bg-bg px-2 py-1.5 text-sm"
                     type="file"
                     accept={accept}
                     // Mobile: prefer the rear camera for image capture (2FA QR/seed).
@@ -757,11 +764,16 @@ export function SensitiveRequestBlock({
               );
             }
             return (
-              <label key={field.name} className="block text-xs space-y-1">
+              <label
+                key={field.name}
+                htmlFor={inputId}
+                className="block text-xs space-y-1"
+              >
                 <span className="font-medium">{label}</span>
-                <input
+                <Input
+                  id={inputId}
                   aria-label={label}
-                  className="w-full border border-border bg-bg px-2 py-1.5 text-sm"
+                  className="border-border bg-bg px-2 py-1.5 text-sm"
                   type={field.input === "secret" ? "password" : "text"}
                   value={values[field.name] ?? ""}
                   onChange={(event) => {

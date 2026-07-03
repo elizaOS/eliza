@@ -16,6 +16,7 @@ import type * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { ChatEmptyStateWithRecommendations } from "../composites/chat";
+import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { TranscriptPlayer } from "./TranscriptPlayer";
 
@@ -80,15 +81,15 @@ function TranscriptRow({
   });
 
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
-      type="button"
+      variant="ghost"
       data-testid={`transcript-row-${summary.id}`}
       data-active={active ? "true" : undefined}
       onClick={() => onSelect(summary.id)}
       className={cn(
-        "w-full rounded-sm px-3 py-2 text-left text-txt transition-colors",
+        "h-auto w-full justify-start rounded-sm px-3 py-2 text-left font-normal text-txt transition-colors",
         active ? "bg-bg-muted/30" : "hover:bg-bg-muted/20",
       )}
     >
@@ -115,7 +116,7 @@ function TranscriptRow({
           {summary.preview}
         </div>
       ) : null}
-    </button>
+    </Button>
   );
 }
 

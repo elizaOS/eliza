@@ -219,9 +219,9 @@ export function AccountRequiredCard({
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <UserRound className="h-3.5 w-3.5 shrink-0 text-muted" />
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 text-left disabled:cursor-default"
+                  <Button
+                    variant="ghost"
+                    className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-left font-normal disabled:cursor-default"
                     disabled={!onSelectAccount}
                     onClick={() => onSelectAccount?.(account.id)}
                   >
@@ -240,7 +240,7 @@ export function AccountRequiredCard({
                         </span>
                       ) : null}
                     </span>
-                  </button>
+                  </Button>
                   {canReconnect && onReconnectAccount ? (
                     <Button
                       type="button"

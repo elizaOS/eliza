@@ -20,6 +20,7 @@ import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { client } from "../../api";
+import { Button } from "../../components/ui/button";
 import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
@@ -149,13 +150,14 @@ export default function JoinPage(): React.JSX.Element {
                   defaultValue: "Something went wrong. Try again.",
                 })}
             </p>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={handleRetry}
               className="bg-[#FF5800] px-6 py-2.5 font-semibold text-white transition-colors hover:bg-[#e54f00]"
             >
               {t("cloud.join.retry", { defaultValue: "Try again" })}
-            </button>
+            </Button>
           </div>
         ) : (
           <div

@@ -78,13 +78,16 @@ import {
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
+import { MessageAttachments } from "../chat/MessageAttachments";
+import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { findFollowupsRegions } from "../chat/message-followups-parser";
 import { findFormRegions } from "../chat/message-form-parser";
-import { MessageAttachments } from "../chat/MessageAttachments";
-import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import {
   measureSafeAreaInsetTop,
   resolveChatPanelLayout,
@@ -322,8 +325,9 @@ function SoftButton({
   testId?: string;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-lg"
       data-testid={testId}
       aria-label={label}
       aria-pressed={active}
@@ -341,7 +345,7 @@ function SoftButton({
         // Hover and active express through icon color alone — neutral resting →
         // neutral hover, accent for active — never a background/border, never
         // blue.
-        "grid h-11 w-11 shrink-0 place-items-center bg-transparent transition-colors",
+        "grid h-11 w-11 shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
         active ? "text-accent" : "text-white/75 hover:text-white",
         disabled && "opacity-40",
       )}
@@ -351,7 +355,7 @@ function SoftButton({
       ) : glyph ? (
         <Glyph d={glyph} className="h-[30px] w-[30px]" />
       ) : null}
-    </button>
+    </Button>
   );
 }
 
@@ -374,8 +378,9 @@ function HeaderButton({
   testId?: string;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-sm"
       data-testid={testId}
       aria-label={label}
       aria-pressed={active}
@@ -386,7 +391,7 @@ function HeaderButton({
         // Icon-only, same borderless language as SoftButton: no capsule, no
         // background — the glyph alone carries the control. Neutral resting →
         // neutral hover; active expresses as the accent color, never a fill.
-        "grid h-9 w-9 shrink-0 place-items-center bg-transparent transition-colors",
+        "grid h-9 w-9 shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
         disabled
           ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
             "cursor-default text-white/35"
@@ -396,7 +401,7 @@ function HeaderButton({
       )}
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
-    </button>
+    </Button>
   );
 }
 
@@ -561,8 +566,8 @@ function PillHandle({
   pilled: boolean;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       data-testid="chat-pill"
       aria-label="open chat"
       // No onClick: the pull-gesture binding is the single tap authority (a tap
@@ -583,7 +588,7 @@ function PillHandle({
       className={cn(
         // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
         // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
-        "flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
+        "h-auto w-auto cursor-grab touch-none select-none items-end rounded-none bg-transparent px-16 pb-1.5 pt-10 hover:bg-transparent active:cursor-grabbing",
         // Interactive only while pilled. When NOT pilled the (faded) handle must
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
@@ -607,7 +612,7 @@ function PillHandle({
             : "bg-white/45",
         )}
       />
-    </button>
+    </Button>
   );
 }
 
@@ -854,14 +859,15 @@ export function BootStatusIndicator({
             />
             <span>{agentName} is taking longer than usual to wake…</span>
             {onOpenSettings ? (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={onOpenSettings}
                 data-testid="chat-boot-open-settings"
-                className="pointer-events-auto ml-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[12px] text-white/90 transition-colors hover:border-white/35 hover:bg-white/20"
+                className="pointer-events-auto ml-1 h-auto rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[12px] text-white/90 transition-colors hover:border-white/35 hover:bg-white/20"
               >
                 Open settings
-              </button>
+              </Button>
             ) : null}
           </>
         ) : (
@@ -973,8 +979,9 @@ function ThreadLineActionButton({
   testId?: string;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={label}
       title={label}
       data-testid={testId}
@@ -983,14 +990,14 @@ function ThreadLineActionButton({
         onClick();
       }}
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+        "h-7 w-7 rounded-full p-0 transition-colors",
         active
           ? "bg-[rgb(255,88,0)]/25 text-white"
           : "bg-white/10 text-white/80 hover:bg-white/20",
       )}
     >
       {icon}
-    </button>
+    </Button>
   );
 }
 
@@ -1019,7 +1026,7 @@ function ThreadLineEditor({
   }, []);
   return (
     <div className="flex flex-col gap-2">
-      <textarea
+      <Textarea
         ref={ref}
         aria-label="Edit message"
         data-testid="thread-line-edit-input"
@@ -1039,25 +1046,28 @@ function ThreadLineEditor({
           }
         }}
         rows={Math.min(6, Math.max(1, value.split("\n").length))}
-        className="w-full resize-none rounded-lg bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
+        className="min-h-0 w-full resize-none rounded-lg border-0 bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
       />
       <div className="flex items-center justify-end gap-1.5">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           data-testid="thread-line-edit-cancel"
           onClick={onCancel}
-          className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+          className="h-auto rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="default"
+          size="sm"
           data-testid="thread-line-edit-save"
           onClick={onSave}
-          className="rounded-full bg-[rgb(255,88,0)] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]"
+          className="h-auto rounded-full bg-[rgb(255,88,0)] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]"
         >
           Send
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1318,14 +1328,15 @@ const ThreadLine = React.memo(function ThreadLine({
           <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]">
             {message.content}
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             data-testid="chat-no-provider-settings"
             onClick={() => onOpenSettings?.()}
-            className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25   "
+            className="h-auto rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25   "
           >
             Open Settings
-          </button>
+          </Button>
         </div>
       </motion.div>
     );
@@ -1381,8 +1392,9 @@ const ThreadLine = React.memo(function ThreadLine({
             </span>
             <div className="flex items-center gap-1">
               {onAcceptSuggestion ? (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   data-testid="thread-line-suggestion-accept"
                   title="Do it"
                   aria-label="Do it"
@@ -1390,14 +1402,15 @@ const ThreadLine = React.memo(function ThreadLine({
                     e.stopPropagation();
                     onAcceptSuggestion(message);
                   }}
-                  className="rounded-full bg-white/10 px-2.5 py-0.5 text-[12px] font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
+                  className="h-auto rounded-full bg-white/10 px-2.5 py-0.5 text-[12px] font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
                 >
                   Do it
-                </button>
+                </Button>
               ) : null}
               {onDismissSuggestion ? (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   data-testid="thread-line-suggestion-dismiss"
                   title="Dismiss suggestion"
                   aria-label="Dismiss suggestion"
@@ -1405,10 +1418,10 @@ const ThreadLine = React.memo(function ThreadLine({
                     e.stopPropagation();
                     onDismissSuggestion(message.id);
                   }}
-                  className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
+                  className="h-6 w-6 rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+                </Button>
               ) : null}
             </div>
           </div>
@@ -1580,19 +1593,20 @@ const ThreadLine = React.memo(function ThreadLine({
             Always visible on the failed turn (not gated behind the reveal row)
             so a stalled turn isn't a dead end the user has to retype. */}
         {canRetry ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             data-testid="thread-line-retry"
             aria-label="Retry"
             onClick={(e) => {
               e.stopPropagation();
               onRetry?.(message.id);
             }}
-            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+            className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden />
             Retry
-          </button>
+          </Button>
         ) : null}
       </div>
     </motion.div>
@@ -4244,12 +4258,13 @@ export function ContinuousChatOverlay({
           aria-live="polite"
           className="pointer-events-none relative mb-2 flex w-full justify-center"
         >
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={unlockAudio}
             data-testid="overlay-voice-audio-unlock"
             className={cn(
-              "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+              "pointer-events-auto h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
               "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
               "  ",
               FLOAT_SHADOW,
@@ -4257,7 +4272,7 @@ export function ContinuousChatOverlay({
           >
             <Glyph d={SPEAKER_MUTED_GLYPH} />
             <span>Tap to enable sound</span>
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -4294,21 +4309,22 @@ export function ContinuousChatOverlay({
           data-testid="chat-suggestions"
         >
           {suggestions.map((s, i) => (
-            <button
+            <Button
               key={s}
-              type="button"
+              variant="ghost"
+              size="sm"
               data-testid={`chat-suggestion-${i}`}
               aria-label={s}
               onClick={() => pickSuggestion(s)}
               className={cn(
-                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
+                "h-auto max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
                 "text-[12px] text-white/80 transition-colors",
                 "hover:border-white/30 hover:bg-white/15 hover:text-white",
                 "  ",
               )}
             >
               {s}
-            </button>
+            </Button>
           ))}
         </motion.fieldset>
       ) : null}
@@ -4730,17 +4746,18 @@ export function ContinuousChatOverlay({
                     {pendingImages.map((img, i) => {
                       const kind = chatUploadKind(img.mimeType);
                       const removeButton = (
-                        <button
-                          type="button"
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label={`remove ${img.name}`}
                           onClick={() => removeImage(i)}
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
+                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 p-0 text-xs text-white/90 transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
                         >
                           ×
-                        </button>
+                        </Button>
                       );
                       const tileKey = `${img.name}-${img.mimeType}-${img.data.length}`;
                       if (kind === "image") {
@@ -4790,7 +4807,7 @@ export function ContinuousChatOverlay({
                 ) : null}
               </div>
             ) : null}
-            <input
+            <Input
               ref={fileInputRef}
               type="file"
               accept={CHAT_UPLOAD_ACCEPT}
@@ -4850,7 +4867,7 @@ export function ContinuousChatOverlay({
                 onClick={() => fileInputRef.current?.click()}
                 testId="chat-composer-attach"
               />
-              <textarea
+              <Textarea
                 ref={inputRef}
                 rows={1}
                 value={draft}

@@ -790,14 +790,14 @@ export function WakeWordSection({
             {postTriggerGap.toFixed(2)}s
           </span>
         </div>
-        <input
+        <Input
           ref={gapRef}
           type="range"
           min={0.1}
           max={2.0}
           step={0.05}
           value={postTriggerGap}
-          className="w-full accent-accent"
+          className="h-auto border-0 bg-transparent p-0 accent-accent"
           aria-label={t("voiceconfigview.PostTriggerGap", {
             defaultValue: "Post-trigger gap",
           })}

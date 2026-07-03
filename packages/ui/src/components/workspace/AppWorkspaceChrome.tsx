@@ -7,6 +7,7 @@ import {
   type WorkspaceMobileSidebarControls,
   WorkspaceMobileSidebarControlsContext,
 } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
+import { Button } from "../ui/button";
 
 const WORKSPACE_MOBILE_MEDIA_QUERY = "(max-width: 819px)";
 
@@ -32,21 +33,22 @@ function MobileWorkspaceSidebarSwitcher({
       className="flex shrink-0 items-center border-b border-border/35 bg-bg/92 px-2 py-1.5"
       data-testid="app-workspace-mobile-pane-switcher"
     >
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="icon-sm"
         aria-label={sidebarOpen ? "Hide left sidebar" : "Show left sidebar"}
         aria-pressed={sidebarOpen}
         title={sidebarOpen ? "Hide left sidebar" : "Show left sidebar"}
         data-testid="app-workspace-mobile-pane-left"
         onClick={sidebarOpen ? onCloseSidebar : onSidebar}
-        className="inline-flex h-11 w-11 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted transition-colors hover:text-txt    "
+        className="h-9 w-9 rounded-sm border border-border/40 bg-card/80 text-muted transition-colors hover:text-txt"
       >
         {sidebarOpen ? (
           <PanelLeftClose className="h-4 w-4" aria-hidden />
         ) : (
           <PanelLeftOpen className="h-4 w-4" aria-hidden />
         )}
-      </button>
+      </Button>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Input } from "../ui/input";
 import { GlassIconButton } from "./glass-composer";
 import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
 import type { ShellMessage } from "./shell-state";
@@ -111,7 +112,7 @@ export function ChatSurface({
       {/* Refractive-glass composer: a well-defined glass bar (no plain top
           border) holding the input and the matching mic + send buttons. */}
       <div className={cn("m-2", GLASS_COMPOSER_CLASS)}>
-        <input
+        <Input
           type="text"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

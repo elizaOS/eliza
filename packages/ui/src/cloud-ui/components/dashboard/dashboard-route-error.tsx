@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Button } from "../../../components/ui/button";
 
 /**
  * Dashboard route error fallback. Used with a React error boundary around
@@ -28,13 +29,14 @@ export function DashboardRouteError({ message }: { message: string }) {
         <p className="text-sm text-white/50 max-w-md">{message}</p>
       </div>
       <div className="flex gap-3">
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => window.location.reload()}
           className="rounded-sm px-4 py-2 text-sm border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
         >
           Try again
-        </button>
+        </Button>
         <Link
           to="/dashboard/agents"
           className="rounded-sm px-4 py-2 text-sm border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 transition-colors"

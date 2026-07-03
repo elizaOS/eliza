@@ -58,12 +58,33 @@ export function WithAuthenticatedSession({
 function SeededHomeWidgetData({ children }: { children: React.ReactNode }) {
   const restoreFetch = useRef<(() => void) | null>(null);
   useState(() => {
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: {
+        id: "story-owner",
+        displayName: "Story Owner",
+        kind: "owner",
+      },
+      session: { id: "story-session", kind: "local", expiresAt: null },
+      access: {
+        mode: "local",
+        passwordConfigured: false,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
     seedHomeWidgetAppStore();
     seedHomeWidgetNotifications();
     restoreFetch.current = installHomeWidgetFetchMock();
     return null;
   });
-  useEffect(() => () => restoreFetch.current?.(), []);
+  useEffect(
+    () => () => {
+      restoreFetch.current?.();
+      __setAuthStatusForTests({ phase: "loading" });
+    },
+    [],
+  );
   return <>{children}</>;
 }
 

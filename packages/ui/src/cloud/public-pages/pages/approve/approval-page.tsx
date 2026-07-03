@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Button } from "../../../../components/ui/button";
+import { Textarea } from "../../../../components/ui/textarea";
 import { ApiError, api } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
@@ -335,7 +337,7 @@ export default function ApprovalPage() {
           >
             {t("cloud.approval.signature", { defaultValue: "Signature" })}
           </label>
-          <textarea
+          <Textarea
             id="approval-signature"
             value={signature}
             onChange={(event) => setSignature(event.target.value)}
@@ -357,7 +359,8 @@ export default function ApprovalPage() {
             <p className="text-sm text-red-600">{submitError}</p>
           ) : null}
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={handleApprove}
               disabled={submitting || signature.trim().length === 0}
@@ -365,15 +368,16 @@ export default function ApprovalPage() {
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {t("cloud.approval.approve", { defaultValue: "Approve" })}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               type="button"
               onClick={handleDeny}
               disabled={submitting || signature.trim().length === 0}
               className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
             >
               {t("cloud.approval.deny", { defaultValue: "Deny" })}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

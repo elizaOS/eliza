@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
 export interface EditableAccountLabelProps {
@@ -82,15 +83,15 @@ export function EditableAccountLabel({
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={() => {
         if (!disabled) setEditing(true);
       }}
       disabled={disabled}
       title={editTitle}
       className={cn(
-        "group inline-flex min-w-0 items-center gap-1 truncate rounded-sm text-sm font-medium text-txt hover:text-accent disabled:cursor-not-allowed disabled:hover:text-txt",
+        "group h-auto min-w-0 gap-1 truncate rounded-sm bg-transparent p-0 text-sm font-medium text-txt hover:bg-transparent hover:text-accent disabled:cursor-not-allowed disabled:hover:text-txt",
         className,
       )}
     >
@@ -99,6 +100,6 @@ export function EditableAccountLabel({
         className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
         aria-hidden
       />
-    </button>
+    </Button>
   );
 }

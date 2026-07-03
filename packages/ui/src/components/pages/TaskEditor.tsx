@@ -25,6 +25,13 @@ import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { Input } from "../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 
@@ -104,7 +111,7 @@ export function TaskEditor({
     getValue: () => cron,
     onFill: (value) => setCron(value),
   });
-  const eventField = useAgentElement<HTMLSelectElement>({
+  const eventField = useAgentElement<HTMLButtonElement>({
     id: "task-event",
     role: "select",
     label: t("taskeditor.eventLabel", { defaultValue: "Trigger event" }),
@@ -272,20 +279,23 @@ export function TaskEditor({
         )}
 
         {scheduleKind === "event" && availableEvents.length > 0 && (
-          <select
-            ref={eventField.ref}
-            value={eventName}
-            onChange={(e) => setEventName(e.target.value)}
-            className="w-full rounded-sm border border-border/40 bg-bg px-3 py-2 text-sm text-txt"
-            data-testid="task-editor-event"
-            {...eventField.agentProps}
-          >
-            {availableEvents.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.label}
-              </option>
-            ))}
-          </select>
+          <Select value={eventName} onValueChange={setEventName}>
+            <SelectTrigger
+              ref={eventField.ref}
+              className="w-full rounded-sm border-border/40 bg-bg text-sm text-txt"
+              data-testid="task-editor-event"
+              {...eventField.agentProps}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableEvents.map((event) => (
+                <SelectItem key={event.id} value={event.id}>
+                  {event.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </fieldset>
 
@@ -356,7 +366,7 @@ function ScheduleRadio({
             : "border-border/40 text-muted-strong hover:border-border"
       }`}
     >
-      <input
+      <Input
         ref={ref}
         id={id}
         type="radio"
@@ -395,10 +405,11 @@ function CronPresetButton({
     onActivate: () => onSelect(expression),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={() => onSelect(expression)}
+      variant="ghost"
+      size="sm"
       className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
         active
           ? "border-accent bg-accent/10 text-accent"
@@ -407,6 +418,6 @@ function CronPresetButton({
       {...agentProps}
     >
       {label}
-    </button>
+    </Button>
   );
 }

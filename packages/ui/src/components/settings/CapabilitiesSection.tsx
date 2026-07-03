@@ -10,10 +10,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
-import { Button } from "../ui/button";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import {
@@ -40,6 +38,8 @@ const PROACTIVE_CHATTINESS_VALUES: readonly ProactiveChattiness[] = [
   "subtle",
   "chatty",
 ];
+
+type CapabilityConnectMode = "endpoint" | "cloud";
 
 /** Default when no value is persisted (mirrors the gate's `subtle` default). */
 const DEFAULT_PROACTIVE_CHATTINESS: ProactiveChattiness = "subtle";
@@ -122,9 +122,8 @@ export function CapabilitiesSection() {
   >(null);
   const [autoTrainingLoading, setAutoTrainingLoading] = useState(true);
   const [autoTrainingSaving, setAutoTrainingSaving] = useState(false);
-  const [capabilityConnectMode, setCapabilityConnectMode] = useState<
-    "endpoint" | "cloud"
-  >("endpoint");
+  const [capabilityConnectMode, setCapabilityConnectMode] =
+    useState<CapabilityConnectMode>("endpoint");
   const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
     "direct" | "e2b" | "home-machine" | "mobile-companion" | "desktop-companion"
   >("direct");
@@ -516,39 +515,44 @@ export function CapabilitiesSection() {
               ) : undefined
             }
           >
-            <SettingsRow
+            <SettingsSegmentedRow
+              agentId="cap-mode"
+              group="capability-router"
               label={t("capabilities.connectionModeLabel", {
                 defaultValue: "Connection",
               })}
-              stacked
-            >
-              <div
-                className="flex gap-2"
-                role="tablist"
-                aria-label={t("capabilities.connectionModeAria", {
-                  defaultValue: "Capability router connection mode",
-                })}
-              >
-                <CapabilityModeButton
-                  agentId="cap-mode-endpoint"
-                  icon={PlugZap}
-                  label={t("capabilities.mode.endpoint", {
-                    defaultValue: "Endpoint",
-                  })}
-                  selected={capabilityConnectMode === "endpoint"}
-                  onSelect={() => setCapabilityConnectMode("endpoint")}
-                />
-                <CapabilityModeButton
-                  agentId="cap-mode-cloud"
-                  icon={Cloud}
-                  label={t("capabilities.mode.cloud", {
-                    defaultValue: "Cloud",
-                  })}
-                  selected={capabilityConnectMode === "cloud"}
-                  onSelect={() => setCapabilityConnectMode("cloud")}
-                />
-              </div>
-            </SettingsRow>
+              agentLabel={t("capabilities.connectionModeAria", {
+                defaultValue: "Capability router connection mode",
+              })}
+              value={capabilityConnectMode}
+              onValueChange={(value) =>
+                setCapabilityConnectMode(value as CapabilityConnectMode)
+              }
+              options={[
+                {
+                  value: "endpoint",
+                  label: (
+                    <span className="inline-flex items-center gap-1.5">
+                      <PlugZap className="h-4 w-4" aria-hidden />
+                      {t("capabilities.mode.endpoint", {
+                        defaultValue: "Endpoint",
+                      })}
+                    </span>
+                  ),
+                },
+                {
+                  value: "cloud",
+                  label: (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Cloud className="h-4 w-4" aria-hidden />
+                      {t("capabilities.mode.cloud", {
+                        defaultValue: "Cloud",
+                      })}
+                    </span>
+                  ),
+                },
+              ]}
+            />
 
             {capabilityConnectMode === "cloud" ? (
               <>
@@ -763,43 +767,6 @@ export function CapabilitiesSection() {
         </form>
       ) : null}
     </SettingsStack>
-  );
-}
-
-function CapabilityModeButton({
-  agentId,
-  icon: Icon,
-  label,
-  selected,
-  onSelect,
-}: {
-  agentId: string;
-  icon: typeof PlugZap;
-  label: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: agentId,
-    role: "tab",
-    label,
-    group: "capability-router",
-    status: selected ? "active" : "inactive",
-    onActivate: onSelect,
-  });
-  return (
-    <Button
-      ref={ref}
-      type="button"
-      variant={selected ? "default" : "outline"}
-      className="h-11 flex-1 gap-1.5 rounded-md px-3 text-sm"
-      aria-pressed={selected}
-      onClick={onSelect}
-      {...agentProps}
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-      {label}
-    </Button>
   );
 }
 

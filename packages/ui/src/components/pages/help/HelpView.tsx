@@ -98,13 +98,13 @@ function HelpEntryItem({
 
   return (
     <li data-testid={`help-entry-${entry.id}`}>
-      <button
+      <Button
         ref={ref}
         {...agentProps}
-        type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-txt/[0.04]"
+        variant="ghost"
+        className="flex h-auto w-full items-center justify-between gap-3 whitespace-normal rounded-lg px-4 py-3 text-left font-normal transition-colors hover:bg-txt/[0.04]"
       >
         <span className="text-[14px] font-medium text-txt-strong">
           {entry.question}
@@ -116,7 +116,7 @@ function HelpEntryItem({
         >
           ›
         </span>
-      </button>
+      </Button>
       {open && (
         <div className="px-4 pb-4">
           <p className="text-[13px] leading-relaxed text-txt/75">

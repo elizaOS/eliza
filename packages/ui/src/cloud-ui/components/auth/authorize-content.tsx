@@ -9,6 +9,7 @@ import {
   buildStewardOAuthRedirectUri,
   resolveStewardOAuthTenantId,
 } from "../../../cloud/public-pages/lib/steward-oauth-url";
+import { Button } from "../../../components/ui/button";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
@@ -581,7 +582,8 @@ function SignedOutActions({
             <div className="stwd-login__oauth">
               {enabledOAuthProviders.map(
                 ({ id, label, buttonClassName, spinnerClassName, Icon }) => (
-                  <button
+                  <Button
+                    variant="ghost"
                     className={`stwd-login__btn ${buttonClassName}`}
                     disabled={oauthLoadingProvider !== null}
                     key={id}
@@ -596,7 +598,7 @@ function SignedOutActions({
                       <Icon size={18} />
                     )}
                     <span>{label}</span>
-                  </button>
+                  </Button>
                 ),
               )}
             </div>
@@ -620,12 +622,13 @@ function SignedOutActions({
 
 function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={onCancel}
       className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white"
     >
       Cancel
-    </button>
+    </Button>
   );
 }

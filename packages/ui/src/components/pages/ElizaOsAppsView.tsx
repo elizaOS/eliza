@@ -378,11 +378,12 @@ function PhonePanelTabButton({
     onActivate: () => onSelect(item.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={() => onSelect(item.id)}
       aria-current={isActive ? "page" : undefined}
+      variant="ghost"
+      size="sm"
       className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors ${
         isActive
           ? "bg-accent text-accent-foreground"
@@ -392,7 +393,7 @@ function PhonePanelTabButton({
     >
       {item.icon}
       <span>{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -411,15 +412,15 @@ function DialpadButton({
     onActivate: () => onPress(digit),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={() => onPress(digit)}
-      className="aspect-[1.6] rounded-sm bg-surface text-lg font-semibold text-txt transition-colors hover:bg-bg-hover"
+      variant="ghost"
+      className="h-auto aspect-[1.6] rounded-sm bg-surface text-lg font-semibold text-txt transition-colors hover:bg-bg-hover"
       {...agentProps}
     >
       {digit}
-    </button>
+    </Button>
   );
 }
 
@@ -442,11 +443,11 @@ const RecentCallButton = memo(function RecentCallButton({
   const summary =
     call.agentSummary || call.agentTranscript || call.transcription;
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={handleSelect}
-      className="rounded-sm p-3 text-left text-sm transition-colors hover:bg-surface"
+      variant="ghost"
+      className="h-auto justify-start whitespace-normal rounded-sm p-3 text-left text-sm font-normal transition-colors hover:bg-surface"
       {...agentProps}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -467,7 +468,7 @@ const RecentCallButton = memo(function RecentCallButton({
       {summary ? (
         <div className="mt-2 line-clamp-2 text-xs text-muted">{summary}</div>
       ) : null}
-    </button>
+    </Button>
   );
 });
 
@@ -1088,7 +1089,7 @@ export function PhonePageView() {
           })}
         >
           <div className="grid gap-3">
-            <input
+            <Input
               ref={fileInputRef}
               type="file"
               accept=".vcf,text/vcard,text/x-vcard"

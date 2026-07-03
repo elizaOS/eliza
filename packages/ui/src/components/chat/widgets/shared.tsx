@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Button } from "../../ui/button";
 
 export function WidgetSection({
   title,
@@ -30,13 +31,14 @@ export function WidgetSection({
     <section data-testid={testId} className="space-y-0.5">
       <div className="flex items-center justify-between gap-2 pr-1">
         {onTitleClick ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onTitleClick}
-            className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-sm bg-transparent px-0.5 py-1 text-left transition-colors hover:text-txt"
+            className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm bg-transparent px-0.5 py-1 text-left transition-colors hover:bg-transparent hover:text-txt"
           >
             {titleContent}
-          </button>
+          </Button>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-1.5 px-0.5 py-1">
             {titleContent}
