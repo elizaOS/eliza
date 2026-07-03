@@ -1,3 +1,5 @@
+import { getAmbientSingleton } from "./ambient-context";
+
 export interface ElizaCuratedAppDefinition {
 	slug: string;
 	canonicalName: string;
@@ -13,16 +15,9 @@ const ELIZA_CURATED_APP_REGISTRY_KEY = Symbol.for(
 );
 
 function getCuratedAppRegistryStore(): CuratedAppRegistryStore {
-	const globalObject = globalThis as Record<PropertyKey, unknown>;
-	const existing = globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] as
-		| CuratedAppRegistryStore
-		| null
-		| undefined;
-	if (existing) return existing;
-
-	const created: CuratedAppRegistryStore = { entries: [] };
-	globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] = created;
-	return created;
+	return getAmbientSingleton(ELIZA_CURATED_APP_REGISTRY_KEY, () => ({
+		entries: [],
+	}));
 }
 
 /**

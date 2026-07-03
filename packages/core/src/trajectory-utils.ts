@@ -1,3 +1,4 @@
+import { getAmbientSingleton } from "./ambient-context.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 import {
 	CONTEXT_OBJECT_TRAJECTORY_VERSION,
@@ -1030,18 +1031,11 @@ const TRAJECTORY_SOURCE_REGISTRY_KEY = Symbol.for(
 	"elizaos.trajectorySourceRegistry",
 );
 
-type GlobalWithTrajectorySourceRegistry = typeof globalThis & {
-	[TRAJECTORY_SOURCE_REGISTRY_KEY]?: Map<string, TrajectorySourceMeta>;
-};
-
 function getRegistry(): Map<string, TrajectorySourceMeta> {
-	const g = globalThis as GlobalWithTrajectorySourceRegistry;
-	let registry = g[TRAJECTORY_SOURCE_REGISTRY_KEY];
-	if (!registry) {
-		registry = new Map<string, TrajectorySourceMeta>();
-		g[TRAJECTORY_SOURCE_REGISTRY_KEY] = registry;
-	}
-	return registry;
+	return getAmbientSingleton(
+		TRAJECTORY_SOURCE_REGISTRY_KEY,
+		() => new Map<string, TrajectorySourceMeta>(),
+	);
 }
 
 export function registerTrajectorySource(

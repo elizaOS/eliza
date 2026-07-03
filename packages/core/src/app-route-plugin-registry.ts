@@ -1,3 +1,4 @@
+import { getAmbientSingleton } from "./ambient-context";
 import { logger } from "./logger";
 import type { Plugin, Route } from "./types/plugin";
 
@@ -60,20 +61,9 @@ const APP_ROUTE_PLUGIN_REGISTRY_KEY = Symbol.for(
 );
 
 function getRegistryStore(): AppRoutePluginRegistryStore {
-	const globalObject = globalThis as Record<PropertyKey, unknown>;
-	const existing = globalObject[APP_ROUTE_PLUGIN_REGISTRY_KEY] as
-		| AppRoutePluginRegistryStore
-		| null
-		| undefined;
-	if (existing) {
-		return existing;
-	}
-
-	const created: AppRoutePluginRegistryStore = {
+	return getAmbientSingleton(APP_ROUTE_PLUGIN_REGISTRY_KEY, () => ({
 		entries: new Map<string, AppRoutePluginRegistryEntry>(),
-	};
-	globalObject[APP_ROUTE_PLUGIN_REGISTRY_KEY] = created;
-	return created;
+	}));
 }
 
 export function registerAppRoutePluginLoader(
