@@ -4686,6 +4686,24 @@ export async function startEliza(
     }
   };
 
+  // Register the hosted-app run reader as a runtime service so the session gate
+  // can query it via getService instead of statically importing the plugin
+  // (which inverted the host→plugin dependency direction). Dynamic import keeps
+  // the plugin out of the agent's static module graph; absence is non-fatal and
+  // the gate treats it as "no active runs".
+  const registerAppSessionService = async (): Promise<void> => {
+    try {
+      const { AppSessionService } = await import(
+        /* @vite-ignore */ "@elizaos/plugin-app-manager"
+      );
+      await runtime.registerService(AppSessionService);
+    } catch (err) {
+      logger.debug(
+        `[eliza] AppSessionService registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
   const registerRemoteCodingRunner = async (): Promise<void> => {
     if (isBundledMobileRuntime()) return;
     if (!shouldLoadRemoteCodingRunnerForBoot(runtime)) return;
@@ -5138,6 +5156,8 @@ export async function startEliza(
   const initializeRuntimeServices = async (): Promise<void> => {
     await registerConnectorSetupService();
     bootTimer.lap("svc:connector-setup");
+    await registerAppSessionService();
+    bootTimer.lap("svc:app-session");
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 

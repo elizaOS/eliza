@@ -27,3 +27,4 @@ export {
   resolveLegacyAppRunStoreFilePath,
   writeAppRunStore,
 } from "./services/app-run-store.ts";
+export { AppSessionService } from "./services/app-session-service.ts";

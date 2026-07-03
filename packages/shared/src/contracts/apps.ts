@@ -299,6 +299,24 @@ export interface AppRunActionResult {
   run?: AppRunSummary | null;
 }
 
+/**
+ * Runtime service type under which `@elizaos/plugin-app-manager` registers its
+ * app-run reader. Consumers (e.g. the agent's hosted-app session gate) query
+ * `runtime.getService(APP_SESSION_SERVICE_TYPE)` instead of statically importing
+ * the plugin, keeping the host→plugin dependency direction correct.
+ */
+export const APP_SESSION_SERVICE_TYPE = "app-session";
+
+/**
+ * Contract for the app-session runtime service. Exposes the current AppManager
+ * run snapshot so gate logic can decide whether a hosted app is active without
+ * reaching into the plugin's on-disk store directly.
+ */
+export interface AppSessionServiceLike {
+  /** Current AppManager run snapshot (unfiltered; callers apply status logic). */
+  getRuns(): AppRunSummary[];
+}
+
 export type AppLaunchDiagnosticSeverity = "info" | "warning" | "error";
 
 export interface AppLaunchDiagnostic {

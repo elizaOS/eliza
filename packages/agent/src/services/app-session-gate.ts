@@ -3,8 +3,17 @@
  * is active (AppManager run and/or overlay heartbeat for local overlay apps).
  */
 
-import type { Action, Plugin, Provider } from "@elizaos/core";
-import { readAppRunStore } from "@elizaos/plugin-app-manager";
+import type {
+  Action,
+  IAgentRuntime,
+  Plugin,
+  Provider,
+  Service,
+} from "@elizaos/core";
+import {
+  APP_SESSION_SERVICE_TYPE,
+  type AppSessionServiceLike,
+} from "@elizaos/shared";
 import { isOverlayAppPresenceActive } from "./overlay-app-presence.ts";
 
 const STOPPED_STATUSES = new Set(["stopped", "offline", "error", "failed"]);
@@ -13,14 +22,28 @@ function isRunStatusActive(status: string): boolean {
   return !STOPPED_STATUSES.has(status.trim().toLowerCase());
 }
 
-/** True when an AppManager run exists for this canonical app name and is not stopped. */
+/**
+ * True when an AppManager run exists for this canonical app name and is not
+ * stopped. Reads runs from the `@elizaos/plugin-app-manager` AppSessionService
+ * registered on the runtime; if the service is absent (plugin not loaded) it
+ * fails open to "no active runs" rather than importing the plugin statically.
+ */
 export function hasActiveAppRunForCanonicalName(
+  runtime: IAgentRuntime,
   appCanonicalName: string,
 ): boolean {
-  const runs = readAppRunStore();
-  return runs.some(
-    (run) => run.appName === appCanonicalName && isRunStatusActive(run.status),
+  const service = runtime.getService<Service & AppSessionServiceLike>(
+    APP_SESSION_SERVICE_TYPE,
   );
+  if (!service) {
+    return false;
+  }
+  return service
+    .getRuns()
+    .some(
+      (run) =>
+        run.appName === appCanonicalName && isRunStatusActive(run.status),
+    );
 }
 
 /**
@@ -28,9 +51,10 @@ export function hasActiveAppRunForCanonicalName(
  * or a recent dashboard heartbeat for an overlay app (e.g. companion).
  */
 export function isHostedAppActiveForAgentActions(
+  runtime: IAgentRuntime,
   appCanonicalName: string,
 ): boolean {
-  if (hasActiveAppRunForCanonicalName(appCanonicalName)) {
+  if (hasActiveAppRunForCanonicalName(runtime, appCanonicalName)) {
     return true;
   }
   return isOverlayAppPresenceActive(appCanonicalName);
@@ -46,7 +70,7 @@ function gateActions(
     return {
       ...action,
       validate: async (runtime, message, state) => {
-        if (!isHostedAppActiveForAgentActions(appCanonicalName)) {
+        if (!isHostedAppActiveForAgentActions(runtime, appCanonicalName)) {
           return false;
         }
         if (prevValidate) {
@@ -68,7 +92,7 @@ function gateProviders(
     return {
       ...provider,
       get: async (runtime, message, state) => {
-        if (!isHostedAppActiveForAgentActions(appCanonicalName)) {
+        if (!isHostedAppActiveForAgentActions(runtime, appCanonicalName)) {
           return {
             text: "",
             data: { available: false, appSessionInactive: true },
