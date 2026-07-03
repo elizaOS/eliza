@@ -297,7 +297,7 @@ export async function billUsage(
   const affiliate = await resolveBillableAffiliate(context);
   const affiliateEarnings = affiliate ? preAffiliateTotalCost * affiliate.markupPercent : 0;
 
-  if (affiliateEarnings > 0) {
+  if (affiliate && affiliateEarnings > 0) {
     inputCost += inputCost * affiliate.markupPercent;
     outputCost += outputCost * affiliate.markupPercent;
     totalCost += affiliateEarnings;
