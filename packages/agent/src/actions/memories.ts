@@ -6,7 +6,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { ChannelType, logger, ModelType, stringToUuid } from "@elizaos/core";
+import { MemoryType as CoreMemoryType, logger, ModelType } from "@elizaos/core";
 
 const MEMORY_OPS = ["create", "search", "update", "delete"] as const;
 type MemoryOp = (typeof MEMORY_OPS)[number];
@@ -82,8 +82,16 @@ function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
   };
 }
 
+/**
+ * Confidence for facts the user explicitly asked to store. Higher than the
+ * reflection extractor's 0.7 — "remember this" is a direct instruction, not
+ * an inferred claim.
+ */
+const EXPLICIT_MEMORY_CONFIDENCE = 0.95;
+
 async function doCreate(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const text = typeof params.text === "string" ? params.text.trim() : "";
@@ -100,37 +108,36 @@ async function doCreate(
     : [];
 
   const agentId = runtime.agentId as UUID;
-  const roomId = stringToUuid(
-    `${runtime.character.name ?? "eliza"}-manual-memories-room`,
-  ) as UUID;
   const memoryId = crypto.randomUUID() as UUID;
   const createdAt = Date.now();
 
-  const content: Record<string, unknown> = { text, source: "MEMORY" };
-  if (kind) content.kind = kind;
-  if (tags.length > 0) content.tags = tags;
-
-  await runtime
-    .ensureRoomExists({
-      id: roomId,
-      agentId,
-      name: "manual-memories",
-      source: "agent",
-      type: ChannelType.DM,
-      worldId: stringToUuid(`${agentId}-manual-memories-world`) as UUID,
-    })
-    .catch(() => undefined);
-
+  // Persist where the recall read path looks. The FACTS provider — the only
+  // default-on read path for user facts — scans the `facts` table scoped to
+  // the conversation room and the speaker's entity ids. The previous write
+  // (agent-scoped `memories` table in a synthetic manual-memories room) was
+  // invisible to it, so the agent acked "I'll remember" and then denied
+  // knowing the fact on the next turn.
   await runtime.createMemory(
     {
       id: memoryId,
-      entityId: agentId,
+      entityId: message.entityId ?? agentId,
       agentId,
-      roomId,
-      content,
+      roomId: message.roomId,
+      content: { text, source: "MEMORY" },
+      metadata: {
+        type: CoreMemoryType.CUSTOM,
+        source: "MEMORY",
+        kind: "durable",
+        category: kind ?? "user_note",
+        confidence: EXPLICIT_MEMORY_CONFIDENCE,
+        keywords: tags,
+        verificationStatus: "self_reported",
+        lastConfirmedAt: new Date(createdAt).toISOString(),
+      },
       createdAt,
     } as Memory,
-    "memories",
+    "facts",
+    true,
   );
 
   return {
@@ -332,7 +339,7 @@ export const memoryAction: Action = {
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
-    _message,
+    message,
     _state,
     options,
   ): Promise<ActionResult> => {
@@ -348,7 +355,7 @@ export const memoryAction: Action = {
     try {
       switch (op) {
         case "create":
-          return await doCreate(runtime, params);
+          return await doCreate(runtime, message, params);
         case "search":
           return await doSearch(runtime, params);
         case "update":
