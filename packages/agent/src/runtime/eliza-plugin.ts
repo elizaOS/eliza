@@ -6,14 +6,18 @@
  * Memory search/get actions are superseded by the todos plugin.
  */
 
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
+import type {
+  CommandRegistryService,
+  IAgentRuntime,
+  Plugin,
+  ServiceClass,
+} from "@elizaos/core";
 import {
   AgentEventService,
   logger,
   NotificationService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
@@ -154,69 +158,52 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // sweep orphaned files daily. The serving route is declared below.
       registerMediaPipelineHook(runtime);
       registerMediaGcTask(runtime);
-      const registerSkillsAsCommands = async () => {
-        try {
-          const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
-          if (!isAgentSkillsService(skillsService)) return false;
+      const registerSkillsAsCommands = () => {
+        const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
+        if (!isAgentSkillsService(skillsService)) return false;
 
-          const skills = skillsService.getLoadedSkills();
-          if (skills.length === 0) return false;
+        const skills = skillsService.getLoadedSkills();
+        if (skills.length === 0) return false;
 
-          let registerCommand: (command: CommandDefinition) => void;
-          let initForRuntime: (agentId: string) => void;
-          try {
-            const cmds = await import(
-              /* @vite-ignore */ "@elizaos/plugin-commands"
-            );
-            registerCommand = cmds.registerCommand;
-            initForRuntime = cmds.initForRuntime;
-          } catch {
-            return false;
-          }
+        // Commands are contributed through the runtime service registered by
+        // the commands plugin — no import edge into it, and the service
+        // appends without resetting commands other plugins registered.
+        const commands =
+          runtime.getService<CommandRegistryService>("commands");
+        if (!commands) return false;
 
-          initForRuntime(runtime.agentId);
-
-          let registered = 0;
-          for (const skill of skills) {
-            const slug = skill.slug.toLowerCase();
-            try {
-              registerCommand({
-                key: `skill-${slug}`,
-                description: skill.description.substring(0, 80),
-                textAliases: [`/${slug}`],
-                scope: "both",
-                category: "skills",
-                acceptsArgs: true,
-                args: [
-                  {
-                    name: "input",
-                    description: "Task or question for this skill",
-                    captureRemaining: true,
-                  },
-                ],
-              });
-              registered++;
-            } catch {
-              // Command may already be registered by another source.
-            }
-          }
-
-          if (registered > 0) {
-            logger.info(
-              `[eliza] Registered ${registered} skills as slash commands`,
-            );
-          }
-          return true;
-        } catch {
-          return false;
+        let registered = 0;
+        for (const skill of skills) {
+          const slug = skill.slug.toLowerCase();
+          commands.register({
+            key: `skill-${slug}`,
+            description: skill.description.substring(0, 80),
+            textAliases: [`/${slug}`],
+            scope: "both",
+            category: "skills",
+            acceptsArgs: true,
+            args: [
+              {
+                name: "input",
+                description: "Task or question for this skill",
+                captureRemaining: true,
+              },
+            ],
+          });
+          registered++;
         }
+
+        if (registered > 0) {
+          logger.info(
+            `[eliza] Registered ${registered} skills as slash commands`,
+          );
+        }
+        return true;
       };
 
-      void registerSkillsAsCommands().then((registered) => {
-        if (!registered) {
-          setTimeout(() => void registerSkillsAsCommands(), 5000);
-        }
-      });
+      if (!registerSkillsAsCommands()) {
+        setTimeout(() => registerSkillsAsCommands(), 5000);
+      }
     },
 
     providers: [

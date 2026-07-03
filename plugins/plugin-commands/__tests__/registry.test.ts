@@ -3,9 +3,11 @@ import {
 	findCommandByAlias,
 	findCommandByKey,
 	getCommandsByCategory,
+	getCommandsForRuntime,
 	getEnabledCommands,
 	initForRuntime,
 	registerCommand,
+	registerCommandForRuntime,
 	resetCommands,
 	startsWithCommand,
 	unregisterCommand,
@@ -86,5 +88,33 @@ describe("disabled commands + categories", () => {
 		const status = getCommandsByCategory("status");
 		expect(status.length).toBeGreaterThan(0);
 		expect(status.every((c) => c.category === "status")).toBe(true);
+	});
+});
+
+describe("per-runtime registration + clobber fix (item #12091-15)", () => {
+	const agentId = "clobber-agent";
+
+	it("registerCommandForRuntime targets the runtime store without a global useRuntime", () => {
+		initForRuntime(agentId);
+		registerCommandForRuntime(agentId, custom);
+		const keys = getCommandsForRuntime(agentId).map((c) => c.key);
+		expect(keys).toContain("frobnicate");
+		// Defaults are still present alongside the custom registration.
+		expect(keys).toContain("help");
+	});
+
+	it("initForRuntime re-seeds defaults but PRESERVES custom registrations", () => {
+		initForRuntime(agentId);
+		registerCommandForRuntime(agentId, custom);
+		expect(
+			getCommandsForRuntime(agentId).some((c) => c.key === "frobnicate"),
+		).toBe(true);
+
+		// A second init (previously reset the store to DEFAULT_COMMANDS, clobbering
+		// commands other plugins registered earlier) must keep the custom command.
+		initForRuntime(agentId);
+		const keys = getCommandsForRuntime(agentId).map((c) => c.key);
+		expect(keys).toContain("frobnicate");
+		expect(keys).toContain("help");
 	});
 });

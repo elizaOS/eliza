@@ -2,125 +2,32 @@
  * Command system types
  */
 
-import type { HandlerCallback, Memory } from "@elizaos/core";
+import type {
+	CommandArgSource,
+	CommandCategory,
+	CommandDefinition,
+	CommandScope,
+	CommandSurface,
+	CommandTarget,
+	HandlerCallback,
+	Memory,
+} from "@elizaos/core";
 
-export type CommandScope = "text" | "native" | "both";
-export type CommandCategory =
-	| "session"
-	| "options"
-	| "status"
-	| "management"
-	| "media"
-	| "tools"
-	| "docks"
-	| "skills";
-
-/**
- * The surfaces a command is offered on. Omitted/undefined on a definition means
- * "all surfaces" (the default). `serializeCommand(cmd, surface)` filters on this.
- */
-export type CommandSurface = "gui" | "tui" | "discord" | "telegram";
-
-/**
- * A live source a client resolves an argument's choices from at render time
- * (the registry can't enumerate models/views/skills/providers statically). The
- * definition tags the source; the client fetches the concrete values.
- */
-export type CommandArgSource =
-	| "models"
-	| "views"
-	| "settings-sections"
-	| "skills"
-	| "providers";
-
-/**
- * Client-only behaviors the in-app surfaces (GUI/TUI) run directly, with no
- * agent round-trip and no remote surface. Connectors filter `client` targets
- * out (a Discord/Telegram user has nothing to clear or full-screen).
- */
-export type ClientCommandAction =
-	| "clear-chat"
-	| "new-conversation"
-	| "toggle-fullscreen"
-	| "open-command-palette"
-	| "show-commands"
-	| "toggle-transcription";
-
-/**
- * Where a command executes — the single discriminant every surface routes on:
- *   - `agent`    → the command runs through the agent (a deterministic command
- *                  action handles it; `action` names that handler when known).
- *   - `navigate` → opens a destination in the Eliza app; `path` is the in-app
- *                  deep link, `tab`/`viewId`/`section` are routing hints.
- *   - `client`   → a GUI/TUI-only behavior with no remote surface.
- */
-export type CommandTarget =
-	| { kind: "agent"; action?: string }
-	| {
-			kind: "navigate";
-			path: string;
-			tab?: string;
-			viewId?: string;
-			section?: string;
-	  }
-	| { kind: "client"; clientAction: ClientCommandAction };
-
-export interface CommandArgDefinition {
-	name: string;
-	description: string;
-	required?: boolean;
-	choices?: string[] | ((ctx: CommandArgChoiceContext) => string[]);
-	/**
-	 * A live choice source the client resolves at render time. Carried through
-	 * serialization so the client knows to fetch models/views/skills/etc. for
-	 * this arg instead of relying on static `choices`.
-	 */
-	dynamicChoices?: CommandArgSource;
-	captureRemaining?: boolean;
-}
-
-export interface CommandArgChoiceContext {
-	provider?: string;
-	model?: string;
-	config?: Record<string, unknown>;
-}
-
-export interface CommandDefinition {
-	key: string;
-	nativeName?: string;
-	description: string;
-	textAliases: string[];
-	scope: CommandScope;
-	category?: CommandCategory;
-	acceptsArgs?: boolean;
-	args?: CommandArgDefinition[];
-	argsParsing?: "none" | "positional";
-	requiresAuth?: boolean;
-	requiresElevated?: boolean;
-	enabled?: boolean;
-	/**
-	 * Where this command executes. Omitted = `{ kind: "agent" }` (the default):
-	 * a deterministic command action handles it through the agent. Navigation /
-	 * client commands set this explicitly so every surface routes them the same.
-	 */
-	target?: CommandTarget;
-	/**
-	 * The surfaces this command is offered on. Omitted/undefined = all surfaces
-	 * (the default). `serializeCommand(cmd, surface)` filters on this so the
-	 * `?surface=` catalog query returns only what that surface should render.
-	 */
-	surfaces?: CommandSurface[];
-	/** Optional icon hint (lucide name) for menu rendering. */
-	icon?: string;
-	/**
-	 * View ids for which this command is *view-dependent*: it is only surfaced in
-	 * the command catalog while one of these views is the active (foreground)
-	 * surface. Omitted/undefined = globally available (the default). A non-empty
-	 * list scopes the command to those views — e.g. a `/calendar add` command that
-	 * only makes sense while the calendar view is open. (#8798)
-	 */
-	views?: string[];
-}
+// The canonical command contract lives in @elizaos/core so hosts and other
+// plugins can register/read commands through the runtime service without
+// importing this plugin. Re-exported here for existing intra-package and
+// downstream `@elizaos/plugin-commands` consumers.
+export type {
+	ClientCommandAction,
+	CommandArgChoiceContext,
+	CommandArgDefinition,
+	CommandArgSource,
+	CommandCategory,
+	CommandDefinition,
+	CommandScope,
+	CommandSurface,
+	CommandTarget,
+} from "@elizaos/core";
 
 /**
  * Wire-safe argument shape produced by `serializeCommand`. Mirrors the client

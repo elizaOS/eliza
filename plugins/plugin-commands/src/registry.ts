@@ -343,13 +343,34 @@ const fallbackStore: CommandStore = {
 /** Currently active store (set during init, reset on test teardown) */
 let activeStore: CommandStore = fallbackStore;
 
+const DEFAULT_COMMAND_KEYS: ReadonlySet<string> = new Set(
+	DEFAULT_COMMANDS.map((c) => c.key),
+);
+
 /**
- * Initialize an isolated command store for a specific runtime.
+ * Initialize (or re-seed) the isolated command store for a specific runtime.
  * Called from plugin init() to prevent cross-agent contamination.
+ *
+ * Re-seeds the built-in defaults but PRESERVES any custom (non-default)
+ * commands already registered for this runtime — e.g. commands contributed by
+ * other plugins that initialized before this one. Without this, a second
+ * `initForRuntime` call would reset the store to `DEFAULT_COMMANDS` and clobber
+ * those registrations.
  */
 export function initForRuntime(agentId: string): void {
+	const defaults = DEFAULT_COMMANDS.map((c) => ({ ...c }));
+	const existing = runtimeStores.get(agentId);
+	if (existing) {
+		const customs = existing.commands.filter(
+			(c) => !DEFAULT_COMMAND_KEYS.has(c.key),
+		);
+		existing.commands = [...defaults, ...customs];
+		existing.aliasMap = null;
+		activeStore = existing;
+		return;
+	}
 	const store: CommandStore = {
-		commands: DEFAULT_COMMANDS.map((c) => ({ ...c })),
+		commands: defaults,
 		aliasMap: null,
 	};
 	runtimeStores.set(agentId, store);
@@ -517,6 +538,30 @@ function getAliasMapForStore(
 		}
 	}
 	return store.aliasMap;
+}
+
+/**
+ * Register (or replace, by `key`) a command directly on a specific runtime's
+ * store — creating the store from defaults if it does not exist yet. Unlike
+ * the active-store `registerCommand`, this targets the runtime explicitly and
+ * never resets existing registrations, so callers (e.g. the runtime service)
+ * can contribute commands without racing the module-level `activeStore`.
+ */
+export function registerCommandForRuntime(
+	agentId: string,
+	command: CommandDefinition,
+): void {
+	let store = runtimeStores.get(agentId);
+	if (!store) {
+		store = {
+			commands: DEFAULT_COMMANDS.map((c) => ({ ...c })),
+			aliasMap: null,
+		};
+		runtimeStores.set(agentId, store);
+	}
+	store.commands = store.commands.filter((c) => c.key !== command.key);
+	store.commands.push(command);
+	store.aliasMap = null;
 }
 
 export function getCommandsForRuntime(

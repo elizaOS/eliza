@@ -11,6 +11,9 @@ export * from "./access-context";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";
+// Chat-command contract (CommandDefinition + CommandRegistryService); the
+// concrete registry lives in @elizaos/plugin-commands and re-exports these.
+export * from "./commands";
 export * from "./components";
 // Connector setup HTTP-route contract (distinct from ./setup onboarding wizard)
 export * from "./connector-setup";
