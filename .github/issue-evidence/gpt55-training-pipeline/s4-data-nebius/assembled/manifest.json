@@ -1,25 +1,28 @@
 {
-  "generatedAt": "2026-07-03T00:59:13.554Z",
-  "passingItems": 149,
+  "generatedAt": "2026-07-03T02:10:43.445Z",
+  "passingItems": 208,
   "gepaFlips": 0,
-  "extractedRows": 1403,
+  "extractedRows": 1607,
   "degenerateDropped": 0,
   "dedupDropped": 3,
-  "kept": 1400,
+  "kept": 1604,
   "byFamily": {
-    "scenario": 1363,
-    "benchmark": 40
+    "scenario": 1511,
+    "benchmark": 96
   },
   "taskTypeCounts": {
-    "should_respond": 932,
-    "action_planner": 286,
-    "evaluation": 110,
-    "morning_brief": 72
+    "should_respond": 1012,
+    "action_planner": 344,
+    "evaluation": 158,
+    "morning_brief": 72,
+    "goal_verification": 2,
+    "screentime_recap": 4,
+    "inbox_triage": 12
   },
   "splitCounts": {
-    "train": 1283,
-    "val": 55,
-    "test": 62
+    "train": 1463,
+    "val": 67,
+    "test": 74
   },
   "seed": "eliza1-gpt55-scenarios",
   "valRatio": 0.05,

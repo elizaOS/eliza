@@ -155,7 +155,7 @@ function resolveConfig(role: "eval" | "training"): ResolvedClientConfig {
 }
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-const MAX_CHAT_ATTEMPTS = 5;
+const MAX_CHAT_ATTEMPTS = 8;
 
 /**
  * POST the chat-completions request, retrying transient failures (429 + 5xx +
@@ -170,6 +170,7 @@ async function fetchChatWithRetry(
   body: Record<string, unknown>,
 ): Promise<Response> {
   let lastError: unknown;
+  let lastStatus = 0;
   for (let attempt = 1; attempt <= MAX_CHAT_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
@@ -183,16 +184,23 @@ async function fetchChatWithRetry(
       if (response.ok || !RETRYABLE_STATUS.has(response.status)) {
         return response;
       }
+      lastStatus = response.status;
       lastError = new Error(
         `[${config.role}-model] cerebras transient ${response.status}`,
       );
       // Drain the body so the socket can be reused before we retry.
       await response.text().catch(() => undefined);
     } catch (err) {
+      lastStatus = 0;
       lastError = err;
     }
     if (attempt < MAX_CHAT_ATTEMPTS) {
-      const backoffMs = Math.min(8000, 400 * 2 ** (attempt - 1));
+      // A 429 token-per-minute quota only clears when the 60s TPM window rolls
+      // over, so back off long enough to survive it rather than hammering with
+      // sub-8s retries that keep tripping the same limit. Other transients
+      // (5xx / network) keep the fast exponential schedule.
+      const cap = lastStatus === 429 ? 65_000 : 8_000;
+      const backoffMs = Math.min(cap, 400 * 2 ** (attempt - 1));
       await new Promise((r) => setTimeout(r, backoffMs));
     }
   }
