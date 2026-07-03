@@ -1,0 +1,39 @@
+[
+  {
+    "taskId": "st_mr591jv4_i379y933",
+    "kind": "reminder",
+    "promptInstructions": "Reminder (W8B11792-mr591jomemu): drink a glass of water — issue #11792 live proof.",
+    "trigger": {
+      "kind": "once",
+      "atIso": "2026-07-03T18:11:22.774Z"
+    },
+    "priority": "medium",
+    "output": {
+      "destination": "in_app_card"
+    },
+    "idempotencyKey": "W8B11792-mr591jomemu",
+    "respectsGlobalPause": false,
+    "state": {
+      "status": "fired",
+      "firedAt": "2026-07-03T18:12:36.975Z",
+      "followupCount": 0,
+      "lastDecisionLog": "fired"
+    },
+    "source": "user_chat",
+    "createdBy": "w8b-e2e",
+    "ownerVisible": true,
+    "metadata": {
+      "slot": "W8B11792-mr591jomemu drink water",
+      "recordKey": "W8B11792-mr591jomemu",
+      "createdAtIso": "2026-07-03T18:10:53.179Z",
+      "escalationCursor": {
+        "stepIndex": -1,
+        "lastDispatchedAt": "2026-07-03T18:12:36.975Z"
+      },
+      "lastDispatchResult": {
+        "ok": true,
+        "messageId": "in_app:st_mr591jv4_i379y933:2026-07-03T18:12:36.975Z"
+      }
+    }
+  }
+]

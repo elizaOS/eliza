@@ -75,6 +75,20 @@ const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES = [
   "todos",
   "wallet-ui",
 ] as const;
+// Extra optional plugin entry ids (comma-separated, e.g. "personal-assistant")
+// seeded as `{ enabled: true }` into the live-stack eliza.json alongside the
+// default view set. Opt-in via ELIZA_UI_SMOKE_PLUGIN_ENTRIES: specs that need a
+// plugin outside the default view set set it alongside ELIZA_UI_SMOKE_LIVE_STACK=1
+// (e.g. the scheduled-reminder live spec enables @elizaos/plugin-personal-assistant
+// so the LifeOps scheduler tick drives the ScheduledTask runner and its in_app
+// notification dispatch). The plugin must already be resolvable/built. Ignored by
+// the stub stack.
+const LIVE_STACK_EXTRA_PLUGIN_ENTRIES: readonly string[] = (
+  process.env.ELIZA_UI_SMOKE_PLUGIN_ENTRIES ?? ""
+)
+  .split(",")
+  .map((entry) => entry.trim())
+  .filter((entry) => entry.length > 0);
 const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_PACKAGES: ReadonlyArray<{
   id: (typeof LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES)[number];
   dir: string;
@@ -877,10 +891,10 @@ async function seedLiveStackConfig(stateDir: string): Promise<void> {
         logging: { level: "error" },
         plugins: {
           entries: Object.fromEntries(
-            LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES.map((pluginId) => [
-              pluginId,
-              { enabled: true },
-            ]),
+            [
+              ...LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES,
+              ...LIVE_STACK_EXTRA_PLUGIN_ENTRIES,
+            ].map((pluginId) => [pluginId, { enabled: true }]),
           ),
         },
       },

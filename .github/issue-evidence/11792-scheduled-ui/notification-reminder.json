@@ -1,0 +1,20 @@
+[
+  {
+    "id": "f2c0d2f0-ed86-4ad7-85f5-fe683e7c5855",
+    "title": "Reminder",
+    "body": "Reminder (W8B11792-mr591jomemu): drink a glass of water — issue #11792 live proof.",
+    "category": "reminder",
+    "priority": "normal",
+    "source": "lifeops",
+    "deepLink": "/chat",
+    "groupKey": "lifeops:st_mr591jv4_i379y933",
+    "data": {
+      "taskId": "st_mr591jv4_i379y933",
+      "firedAtIso": "2026-07-03T18:12:36.975Z",
+      "channelKey": "in_app"
+    },
+    "createdAt": 1783102357530,
+    "readAt": null,
+    "agentId": "b850bc30-45f8-0041-a00a-83df46d8555d"
+  }
+]
