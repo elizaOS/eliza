@@ -13,7 +13,9 @@ export type SecureStoreSecretKind =
   | "wallet.evm_private_key"
   | "wallet.solana_private_key"
   | "steward.api_url"
+  | "steward.tenant_id"
   | "steward.agent_id"
+  | "steward.api_key"
   | "steward.agent_token";
 
 export type SecureStoreUnavailableReason =
