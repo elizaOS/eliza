@@ -1,0 +1,11 @@
+[speaker-isolation] lib=/private/tmp/llama-cpp-11377/build-fused/bin/libelizainference.dylib
+[speaker-isolation] diarizer=/private/tmp/artifacts-11377/pyannote-segmentation-3.0-ifgo-epoch2.gguf
+[speaker-isolation] speaker-encoder=/Users/shawwalters/.eliza/local-inference/models/voice/speaker-encoder/wespeaker-resnet34-lm.gguf
+[speaker-isolation] timeline: 8 turns, 40.0s, speakers A/B
+[speaker-isolation] encoder attribution: 6/6 correct (acc 1.000, intra 0.162, inter 0.980, margin 0.818)
+[speaker-isolation] mfcc attributor (#9427): best-mapping accuracy 0.500 (1 clusters)
+[speaker-isolation] diarizer DER 0.211 (missed 7300ms, falseAlarm 0ms, confusion 0ms / ref 34650ms; dropped-short 273ms)
+[speaker-isolation] overlap probe: localSpeakerCount=2 hasOverlap=true
+[speaker-isolation] report: /private/tmp/eliza-11377/plugins/plugin-local-inference/voice-bench-output/speaker-isolation.json
+[speaker-isolation] report: /private/tmp/eliza-11377/plugins/plugin-local-inference/voice-bench-output/speaker-isolation.md
+[speaker-isolation] PASS (accuracy ≥ 0.8, margin > 0, DER ≤ 0.6)

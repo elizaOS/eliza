@@ -603,6 +603,18 @@ export async function createRealVoiceWorkbenchRuntimeFromEnv(
 		"diarizer GGUF",
 		firstExisting(
 			nonEmpty(env.ELIZA_DIARIZ_GGUF),
+			// epoch-2 IFGO bake first (#11377) — the IFGO fused reader rejects
+			// the legacy epoch-less IOFC artifact below.
+			path.join(bundle, "diariz", "pyannote-segmentation-3.0-ifgo-epoch2.gguf"),
+			path.join(
+				bundle,
+				"diarizer",
+				"pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+			),
+			path.join(
+				bundle,
+				"voice/diarizer/pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+			),
 			path.join(bundle, "diariz", "pyannote-segmentation-3.0.gguf"),
 			path.join(bundle, "diarizer", "pyannote-segmentation-3.0.gguf"),
 			path.join(bundle, "voice/diarizer/pyannote-segmentation-3.0.gguf"),
