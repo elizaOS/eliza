@@ -18,12 +18,11 @@ import {
   type StewardPkcePair,
   storeStewardPkceVerifier,
 } from "@elizaos/shared/steward-session-client";
+import {
+  configuredStewardTenantId,
+  DEFAULT_STEWARD_TENANT_ID,
+} from "../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../shell/steward-url";
-
-const DEFAULT_STEWARD_TENANT_ID =
-  (typeof process !== "undefined"
-    ? process.env.NEXT_PUBLIC_STEWARD_TENANT_ID
-    : undefined) || "elizacloud";
 
 export type { StewardOAuthProvider, StewardPkcePair };
 
@@ -45,7 +44,9 @@ export function buildStewardOAuthRedirectUri(origin: string): string {
 }
 
 export function resolveStewardOAuthTenantId(tenantId?: string | null): string {
-  return tenantId?.trim() || DEFAULT_STEWARD_TENANT_ID;
+  return (
+    tenantId?.trim() || configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID)
+  );
 }
 
 export function buildStewardOAuthAuthorizeUrl(

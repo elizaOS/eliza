@@ -14,6 +14,10 @@
 import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { isPlaceholderValue, readStoredToken } from "./StewardProviderShared";
+import {
+  configuredStewardTenantId,
+  DEFAULT_STEWARD_TENANT_ID,
+} from "./steward-config";
 import { resolveBrowserStewardApiUrl } from "./steward-url";
 
 export {
@@ -153,10 +157,7 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
   const playwrightTestAuthEnabled = isPlaywrightTestAuthEnabled();
 
   const apiUrl = resolveBrowserStewardApiUrl();
-  const tenantId =
-    typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_STEWARD_TENANT_ID
-      : undefined;
+  const tenantId = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
   const hasValidUrl = !isPlaceholderValue(apiUrl);
 
   useEffect(() => {

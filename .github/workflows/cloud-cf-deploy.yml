@@ -727,6 +727,9 @@ jobs:
           VITE_ELIZA_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
           # Staging uses a separate Steward tenant (`elizacloud-staging`) so its
           # `magicLinkBaseUrl` redirects email callbacks back to staging.elizacloud.ai.
+          # The SPA reads the VITE_* key; keep NEXT_PUBLIC_* for legacy/shared
+          # callers that still run outside Vite's client env exposure.
+          VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           # Deployment-env signal baked into the SPA bundle. Read by isomorphic
           # cloud-shared code (e.g. agent flavor catalog) to branch on env.
@@ -1078,6 +1081,9 @@ jobs:
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
           # Steward tenant pin (same tenant as the console; one identity across
           # the .elizacloud.ai cookie zone).
+          # The SPA reads the VITE_* key; keep NEXT_PUBLIC_* for legacy/shared
+          # callers that still run outside Vite's client env exposure.
+          VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
