@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -433,7 +434,14 @@ export async function fetchOllamaModels(
       urlStr = `http://${urlStr}`;
     }
     // @duplicate-component-audit-allow: Ollama tags is a model catalog lookup, not generation.
-    const res = await fetch(`${urlStr}/api/tags`);
+    // Cap the probe: Ollama defaults to localhost:11434, which does not exist on
+    // most devices (and on mobile the connect stalls on the OS TCP timeout for
+    // ~15s). This runs on the API-server startup path, so an unbounded fetch
+    // there blocked the whole boot/`server.listen` for ~15s (#11903). A short
+    // AbortSignal keeps a missing Ollama a fast, cheap "no models".
+    const res = await fetch(`${urlStr}/api/tags`, {
+      signal: AbortSignal.timeout(2_000),
+    });
     if (!res.ok) return [];
     const data = (await res.json()) as { models?: Array<{ name: string }> };
     return (data.models ?? []).map((m) => ({
@@ -703,6 +711,13 @@ export async function getOrFetchProvider(
     baseUrl =
       process.env.NEARAI_BASE_URL?.trim() || "https://cloud-api.near.ai/v1";
   }
+
+  // Ollama is a desktop localhost server (default :11434). No phone runs it, and
+  // on Android the connect to a dead localhost port blocks ~15s on the OS TCP
+  // timeout — AbortSignal.timeout does not interrupt bun's connect there — which,
+  // because provider caches warm on the API-server startup path, stalled the
+  // entire boot/`server.listen` for ~15s (#11903). Skip the probe on mobile.
+  if (providerId === "ollama" && isMobilePlatform()) return [];
 
   // Skip remote providers that need an API key when none is configured
   const keylessProviders = new Set([

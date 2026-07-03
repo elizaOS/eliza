@@ -4196,18 +4196,28 @@ export async function startApiServer(opts?: {
     isMobilePlatform() ||
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
   ) {
-    void getOptionalPluginApi<{
-      attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<void>;
-    }>("capacitor")
-      .then(({ attachMobileDeviceBridgeToServer }) =>
-        attachMobileDeviceBridgeToServer(server),
-      )
-      .catch((err: unknown) => {
-        logger.warn(
-          "[eliza-api] Failed to attach mobile device bridge:",
-          err instanceof Error ? err.message : String(err),
-        );
-      });
+    // Defer to a macrotask: resolving @elizaos/plugin-capacitor-bridge (and its
+    // device-bridge attach) measured ~15s of blocking on the mobile bundle and
+    // — because it sat on the synchronous pre-`server.listen` path — held the
+    // whole API bind (and the boot screen) hostage for that entire time (#11903).
+    // The bridge only needs to attach a WS upgrade handler to the server object,
+    // which works fine once the server is already listening.
+    setImmediate(() => {
+      void getOptionalPluginApi<{
+        attachMobileDeviceBridgeToServer: (
+          server: http.Server,
+        ) => Promise<void>;
+      }>("capacitor")
+        .then(({ attachMobileDeviceBridgeToServer }) =>
+          attachMobileDeviceBridgeToServer(server),
+        )
+        .catch((err: unknown) => {
+          logger.warn(
+            "[eliza-api] Failed to attach mobile device bridge:",
+            err instanceof Error ? err.message : String(err),
+          );
+        });
+    });
   }
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
