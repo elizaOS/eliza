@@ -35,6 +35,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "test": "vitest run",
+    "test:scenarios": "SCENARIO_USE_LLM_PROXY=1 bun --conditions=eliza-source ../../packages/scenario-runner/bin/eliza-scenarios run test/scenarios --lane pr-deterministic",
+    "test:e2e": "bun src/__e2e__/headless-capture-e2e.ts",
     "typecheck": "tsgo --noEmit",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo"
   },
