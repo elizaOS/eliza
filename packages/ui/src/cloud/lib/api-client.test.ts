@@ -36,7 +36,7 @@ function makeJwt(payload: Record<string, unknown>): string {
 
 const STEWARD_TOKEN = makeJwt({
   userId: "u1",
-  exp: Math.floor(Date.now() / 1000) + 600,
+  exp: 4_102_444_800,
 });
 
 function setElectrobun(active: boolean): void {
