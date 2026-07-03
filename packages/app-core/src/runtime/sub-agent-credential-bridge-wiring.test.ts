@@ -4,6 +4,11 @@ import type {
   SubAgentCredentialBridge,
   SubAgentCredentialScope,
 } from "@elizaos/core";
+import {
+  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.ts";
 
@@ -27,8 +32,8 @@ function makeFakeRuntime(opts: { seedAcp: boolean }): {
   const registeredPlugins: Array<{ name?: string }> = [];
   if (opts.seedAcp) {
     // A parent runtime has the orchestrator's subprocess service registered.
-    classes.set("ACP_SUBPROCESS_SERVICE", {
-      serviceType: "ACP_SUBPROCESS_SERVICE",
+    classes.set(SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE, {
+      serviceType: SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
       start: async () => ({}) as Service,
     });
   }
@@ -62,9 +67,9 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
 
     const adapter = runtime.getService<
       Service & { requestCredentials: unknown }
-    >("SubAgentCredentialBridgeAdapter");
+    >(SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE);
     const bridge = runtime.getService<Service & SubAgentCredentialBridge>(
-      "SubAgentCredentialBridge",
+      SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
     );
     expect(adapter).not.toBeNull();
     expect(bridge).not.toBeNull();
@@ -82,7 +87,7 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
     await registerSubAgentCredentialBridge(runtime);
 
     const bridge = runtime.getService<Service & SubAgentCredentialBridge>(
-      "SubAgentCredentialBridge",
+      SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
     );
     const adapter = runtime.getService<
       Service & {
@@ -92,7 +97,7 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
           scopedToken: string;
         }) => Promise<{ status: string; value?: string }>;
       }
-    >("SubAgentCredentialBridgeAdapter");
+    >(SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE);
 
     if (!bridge || !adapter) throw new Error("bridge not registered on parent");
 
@@ -136,8 +141,10 @@ describe("registerSubAgentCredentialBridge — sandboxed child runtime", () => {
     await registerSubAgentCredentialBridge(runtime);
 
     expect(registerSpy).not.toHaveBeenCalled();
-    expect(runtime.getService("SubAgentCredentialBridgeAdapter")).toBeNull();
-    expect(runtime.getService("SubAgentCredentialBridge")).toBeNull();
+    expect(
+      runtime.getService(SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE),
+    ).toBeNull();
+    expect(runtime.getService(SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE)).toBeNull();
     expect(registeredPlugins).toHaveLength(0);
   });
 });

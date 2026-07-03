@@ -24,8 +24,12 @@ import {
   createSensitiveRequestDispatchRegistry,
   type IAgentRuntime,
   logger,
+  SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
   type SensitiveRequestDispatchRegistry,
   Service,
+  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   subAgentCredentialsPlugin,
 } from "@elizaos/core";
 import {
@@ -33,12 +37,7 @@ import {
   createSubAgentCredentialBridgeAdapter,
 } from "../services/credential-tunnel-service.js";
 
-/** Orchestrator subprocess service — the parent-capability gate. */
-const ACP_SUBPROCESS_SERVICE = "ACP_SUBPROCESS_SERVICE";
-const BRIDGE_ADAPTER_SERVICE = "SubAgentCredentialBridgeAdapter";
-const BRIDGE_SERVICE = "SubAgentCredentialBridge";
 const BRIDGE_ACTIONS_MARKER_SERVICE = "SubAgentCredentialBridgeActions";
-const DISPATCH_REGISTRY_SERVICE = "SensitiveRequestDispatchRegistry";
 
 function isDispatchRegistry(
   value: unknown,
@@ -87,14 +86,17 @@ export async function registerSubAgentCredentialBridge(
   runtime: AgentRuntime,
 ): Promise<void> {
   // Parent gate: only runtimes that can host coding sub-agents.
-  if (!runtime.hasService(ACP_SUBPROCESS_SERVICE)) return;
+  if (!runtime.hasService(SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE))
+    return;
 
   // Idempotent for service registration. In the normal app-core boot tail,
   // registerSubAgentCredentialBridgeAdapter runs first and installs these
   // services from the sensitive-request registry. This wiring step still owns
   // action-plugin registration below, so do not return early here.
-  if (!runtime.hasService(BRIDGE_ADAPTER_SERVICE)) {
-    const maybeDispatch = runtime.getService(DISPATCH_REGISTRY_SERVICE);
+  if (!runtime.hasService(SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE)) {
+    const maybeDispatch = runtime.getService(
+      SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
+    );
     const dispatch = isDispatchRegistry(maybeDispatch)
       ? maybeDispatch
       : createSensitiveRequestDispatchRegistry();
@@ -106,13 +108,13 @@ export async function registerSubAgentCredentialBridge(
 
     await registerSingletonRuntimeService(
       runtime,
-      BRIDGE_ADAPTER_SERVICE,
+      SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
       adapter,
       "Sub-agent credential bridge adapter: scoped one-shot credential tunneling for coding sub-agents.",
     );
     await registerSingletonRuntimeService(
       runtime,
-      BRIDGE_SERVICE,
+      SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
       adapter,
       "Sub-agent credential bridge: declare a one-shot scope and tunnel a credential to a child session.",
     );

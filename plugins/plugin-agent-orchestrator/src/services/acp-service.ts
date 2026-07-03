@@ -4,7 +4,11 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
+  type IAgentRuntime,
+  Service,
+} from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -233,8 +237,12 @@ export function isDeniedSubAgentEnvKey(key: string): boolean {
   return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+export const ACP_SUBPROCESS_SERVICE_TYPE =
+  CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE ??
+  "ACP_SUBPROCESS_SERVICE";
+
 export class AcpService extends Service {
-  static serviceType = "ACP_SUBPROCESS_SERVICE";
+  static serviceType = ACP_SUBPROCESS_SERVICE_TYPE;
 
   // Process-wide registry of live AcpService instances. The SIGTERM/SIGINT
   // listener is registered exactly ONCE per Node process and fans out to

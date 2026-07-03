@@ -12,7 +12,11 @@
  * - `instruct_dm_only` — text-only "no link / no form" fallback.
  */
 
-import { logger, type SensitiveRequestDeliveryAdapter } from "@elizaos/core";
+import {
+  logger,
+  SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
+  type SensitiveRequestDeliveryAdapter,
+} from "@elizaos/core";
 import { cloudLinkSensitiveRequestAdapter } from "./cloud-link-adapter";
 import { instructDmOnlySensitiveRequestAdapter } from "./instruct-dm-only-adapter";
 import { ownerAppInlineSensitiveRequestAdapter } from "./owner-app-inline-adapter";
@@ -54,7 +58,7 @@ function isRegistry(value: unknown): value is RegistryLike {
 export function registerCoreSensitiveRequestAdapters(runtime: unknown): void {
   const registry = (
     runtime as { getService?: (n: string) => unknown }
-  ).getService?.("SensitiveRequestDispatchRegistry");
+  ).getService?.(SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE);
   if (!isRegistry(registry)) {
     logger.debug(
       "[sensitive-requests] dispatch registry service not present; skipping adapter registration",

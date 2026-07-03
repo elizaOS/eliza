@@ -11,6 +11,8 @@
 export const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE = "SubAgentCredentialBridge";
 export const SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE =
 	"SubAgentCredentialBridgeAdapter";
+export const SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE =
+	"ACP_SUBPROCESS_SERVICE";
 export const SUB_AGENT_CHILD_DECISION_BUS_SERVICE = "SubAgentChildDecisionBus";
 export const SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE =
 	"SubAgentChildResultsClient";

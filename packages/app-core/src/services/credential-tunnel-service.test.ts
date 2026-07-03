@@ -1,5 +1,6 @@
 import {
   createSensitiveRequestDispatchRegistry,
+  SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
   type SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -323,7 +324,7 @@ describe("credential-tunnel-service", () => {
       agentId: "agent-runtime-1",
       services,
       getService: vi.fn((name: string) =>
-        name === "SensitiveRequestDispatchRegistry" ? dispatch : null,
+        name === SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE ? dispatch : null,
       ),
     };
 
