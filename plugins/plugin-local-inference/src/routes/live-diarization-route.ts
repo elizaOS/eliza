@@ -20,6 +20,14 @@
  *     removes the agent's echo before VAD/attribution (#9455/#9583). Send
  *     `reset: true` when playback stops / on barge-in.
  *   GET  /api/voice/audio-frames/status → LiveDiarizationStatus (device evidence)
+ *   POST /api/voice/aec-capture         body: { arm?: boolean, disarm?: boolean,
+ *                                               maxSeconds?: number }
+ *                                       → { ok, capture: AecCaptureStatus }
+ *   GET  /api/voice/aec-capture         → { ok, capture: AecCaptureSnapshot }
+ *     Bounded on-device AEC evidence window (#11373): while armed, the session
+ *     buffers every ingested mic frame (near) plus the delay-0 far-end
+ *     reference at its timestamp, so real device ERLE / double-talk
+ *     measurements can replay the exact production canceller offline.
  *
  * Auth follows the compat pattern: trusted-loopback OR the compat API token.
  * The WebView reaches this over 127.0.0.1 (trusted local), matching the rest of
@@ -156,6 +164,44 @@ export async function handleLiveDiarizationRoute(
 			framesDropped: status.framesDropped,
 			turnsObserved: status.turnsObserved,
 		});
+		return true;
+	}
+
+	if (url.pathname === "/api/voice/aec-capture" && method === "POST") {
+		if (!ensureCompatApiAuthorized(req, res)) return true;
+		const current = getSession(state);
+		if (!current) {
+			sendJsonError(res, 503, "Runtime not ready");
+			return true;
+		}
+		const body = await readCompatJsonBody(req, res);
+		if (!body) return true;
+		if (body.arm !== true && body.disarm !== true) {
+			sendJsonError(
+				res,
+				400,
+				"Expected { arm?: true, disarm?: true, maxSeconds?: number }",
+			);
+			return true;
+		}
+		const capture =
+			body.disarm === true
+				? current.disarmAecCapture()
+				: current.armAecCapture(
+						typeof body.maxSeconds === "number" ? body.maxSeconds : undefined,
+					);
+		sendJson(res, 200, { ok: true, capture });
+		return true;
+	}
+
+	if (url.pathname === "/api/voice/aec-capture" && method === "GET") {
+		if (!ensureCompatApiAuthorized(req, res)) return true;
+		const current = getSession(state);
+		if (!current) {
+			sendJsonError(res, 503, "Runtime not ready");
+			return true;
+		}
+		sendJson(res, 200, { ok: true, capture: current.aecCaptureSnapshot() });
 		return true;
 	}
 

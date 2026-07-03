@@ -410,4 +410,108 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(handled).toBe(true);
 		expect(res.statusCode).toBe(400);
 	});
+
+	describe("AEC evidence capture routes (#11373)", () => {
+		it("arms, reports status, and snapshots the near/far window", async () => {
+			// Arm — like playback push, arming needs no model build.
+			const armRes = new FakeRes();
+			await handleLiveDiarizationRoute(
+				makeReq({
+					method: "POST",
+					url: "/api/voice/aec-capture",
+					body: { arm: true, maxSeconds: 5 },
+				}),
+				armRes as unknown as http.ServerResponse,
+				runtimeState(),
+			);
+			expect(armRes.statusCode).toBe(200);
+			expect(armRes.json()).toMatchObject({
+				ok: true,
+				capture: { armed: true, sampleCount: 0, maxSamples: 80_000 },
+			});
+
+			const getRes = new FakeRes();
+			const handled = await handleLiveDiarizationRoute(
+				makeReq({ method: "GET", url: "/api/voice/aec-capture" }),
+				getRes as unknown as http.ServerResponse,
+				runtimeState(),
+			);
+			expect(handled).toBe(true);
+			expect(getRes.statusCode).toBe(200);
+			const snapshot = (
+				getRes.json() as {
+					capture: {
+						armed: boolean;
+						sampleRate: number;
+						nearPcm16: string;
+						farPcm16: string;
+						echoDelaySamples: number;
+					};
+				}
+			).capture;
+			expect(snapshot.armed).toBe(true);
+			expect(snapshot.sampleRate).toBe(16_000);
+			expect(snapshot.nearPcm16).toBe("");
+			expect(snapshot.farPcm16).toBe("");
+			expect(typeof snapshot.echoDelaySamples).toBe("number");
+		});
+
+		it("disarms via { disarm: true }", async () => {
+			const armRes = new FakeRes();
+			await handleLiveDiarizationRoute(
+				makeReq({
+					method: "POST",
+					url: "/api/voice/aec-capture",
+					body: { arm: true },
+				}),
+				armRes as unknown as http.ServerResponse,
+				runtimeState(),
+			);
+			const disarmRes = new FakeRes();
+			await handleLiveDiarizationRoute(
+				makeReq({
+					method: "POST",
+					url: "/api/voice/aec-capture",
+					body: { disarm: true },
+				}),
+				disarmRes as unknown as http.ServerResponse,
+				runtimeState(),
+			);
+			expect(disarmRes.statusCode).toBe(200);
+			expect(disarmRes.json()).toMatchObject({
+				ok: true,
+				capture: { armed: false },
+			});
+		});
+
+		it("rejects a body with neither arm nor disarm with 400", async () => {
+			const res = new FakeRes();
+			const handled = await handleLiveDiarizationRoute(
+				makeReq({
+					method: "POST",
+					url: "/api/voice/aec-capture",
+					body: { maxSeconds: 5 },
+				}),
+				res as unknown as http.ServerResponse,
+				runtimeState(),
+			);
+			expect(handled).toBe(true);
+			expect(res.statusCode).toBe(400);
+		});
+
+		it("rejects a non-loopback caller with 401", async () => {
+			const res = new FakeRes();
+			await handleLiveDiarizationRoute(
+				makeReq({
+					method: "GET",
+					url: "/api/voice/aec-capture",
+					remoteAddress: "203.0.113.7",
+					host: "203.0.113.7:31337",
+				}),
+				res as unknown as http.ServerResponse,
+				runtimeState(),
+			);
+			expect(res.statusCode).toBe(401);
+		});
+	});
 });

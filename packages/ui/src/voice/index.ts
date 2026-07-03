@@ -1,4 +1,11 @@
 export {
+  type AecLoopControl,
+  type AecLoopResult,
+  type AecLoopRunOptions,
+  installAecLoopHarness,
+  parseAecLoopHash,
+} from "./aec-loop-harness";
+export {
   type DiarizationPumpControl,
   installDiarizationPumpHarness,
 } from "./audio-frame-diarization-harness";

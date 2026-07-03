@@ -1704,6 +1704,11 @@ function handleDeepLink(url: string): void {
     case "contacts":
       setHashRoute("contacts", parsed.searchParams);
       break;
+    case "aec-loop":
+      // On-device AEC acoustic-loop evidence harness (#11373): the hash route
+      // is consumed by installAecLoopHarness's hashchange watcher.
+      setHashRoute("aec-loop", parsed.searchParams);
+      break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
       if (gatewayUrl) {
@@ -2716,6 +2721,11 @@ async function main(): Promise<void> {
     // fetch bridge is installed so `/api/...` routes resolve to the agent.
     initScreenCaptureBridge();
     initOcrBridge();
+    // On-device AEC acoustic-loop evidence harness (#11373): exposes
+    // window.__aecLoop and the tap-free `elizaos://aec-loop?...` trigger so
+    // the real speaker→mic echo loop can be driven + captured on hardware.
+    const { installAecLoopHarness } = await import("@elizaos/ui/voice");
+    installAecLoopHarness();
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
@@ -2730,10 +2740,16 @@ async function main(): Promise<void> {
     // voice classifiers running IN the bionic app process via the ElizaVoice
     // host, replacing the musl bun-agent transport) so both can be driven +
     // read on-device via CDP.
-    const { installDiarizationPumpHarness, installJniVoiceHarness } =
-      await import("@elizaos/ui/voice");
+    const {
+      installAecLoopHarness,
+      installDiarizationPumpHarness,
+      installJniVoiceHarness,
+    } = await import("@elizaos/ui/voice");
     installDiarizationPumpHarness();
     installJniVoiceHarness();
+    // On-device AEC acoustic-loop evidence harness (#11373): window.__aecLoop
+    // plus the `elizaos://aec-loop?...` tap-free trigger.
+    installAecLoopHarness();
   }
   // Desktop fused on-device wake (#10351): forward native libwakeword fires from
   // the agent process to the renderer's `eliza:fused-wake` bridge so the

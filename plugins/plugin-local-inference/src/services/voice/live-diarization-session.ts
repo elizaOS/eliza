@@ -192,6 +192,53 @@ export function buildLiveDiarizationConsumerDeps({
 
 const AUDIO_FRAME_SAMPLE_RATE = 16_000;
 
+/** Bounded AEC evidence capture (#11373): hard cap so an armed capture can
+ * never grow past ~3.8 MB per stream (60 s of Float32 @16 kHz). */
+const AEC_CAPTURE_MAX_SECONDS = 60;
+/** Default capture window when the caller does not pass `maxSeconds`. */
+const AEC_CAPTURE_DEFAULT_SECONDS = 20;
+
+/** Arm/disarm + progress view of the AEC evidence capture. */
+export interface AecCaptureStatus {
+	armed: boolean;
+	/** Near-end samples captured so far (@16 kHz). */
+	sampleCount: number;
+	/** Capture stops appending once this many samples are buffered. */
+	maxSamples: number;
+	/** Mic-clock timestamp (ms) of the first captured frame, null before any. */
+	startTimestampMs: number | null;
+}
+
+/** The captured near/far evidence window (#11373 device-evidence read). */
+export interface AecCaptureSnapshot extends AecCaptureStatus {
+	sampleRate: number;
+	/** Raw near-end mic PCM as ingested (pre-AEC), base64 LE-s16 @16 kHz. */
+	nearPcm16: string;
+	/** Far-end playback reference read at delay 0 for the same mic-clock
+	 * timestamps, base64 LE-s16 @16 kHz. Offline replay applies the delay. */
+	farPcm16: string;
+	/** Delay state the live canceller applied during this window. */
+	echoDelaySamples: number;
+	echoDelayConfidence: number;
+	echoDelayCalibrated: boolean;
+}
+
+/** Encode Float32 PCM chunks as base64 LE-s16 (the wire format). */
+function encodePcm16Base64(chunks: Float32Array[]): string {
+	let total = 0;
+	for (const c of chunks) total += c.length;
+	const bytes = Buffer.alloc(total * 2);
+	let offset = 0;
+	for (const chunk of chunks) {
+		for (let i = 0; i < chunk.length; i++) {
+			const v = Math.max(-1, Math.min(1, chunk[i]));
+			bytes.writeInt16LE(Math.round(v * 32767), (offset + i) * 2);
+		}
+		offset += chunk.length;
+	}
+	return bytes.toString("base64");
+}
+
 /** Echo-delay self-calibration (#9583/#9586). */
 /** Accumulate this many playback-active samples before estimating the delay
  * (~0.75 s @16 kHz — enough correlated echo for a stable cross-correlation). */
@@ -324,6 +371,16 @@ export class LiveDiarizationSession {
 	private calNear: Float32Array[] = [];
 	private calFar: Float32Array[] = [];
 	private calSampleCount = 0;
+	/** Bounded AEC evidence capture (#11373): while armed, every ingested mic
+	 * frame (near) and the delay-0 far-end reference at its timestamp are
+	 * buffered so real on-device ERLE/double-talk measurements can replay the
+	 * exact production canceller offline. Off by default; hard sample cap. */
+	private aecCaptureArmed = false;
+	private aecCaptureMaxSamples = 0;
+	private aecCaptureNear: Float32Array[] = [];
+	private aecCaptureFar: Float32Array[] = [];
+	private aecCaptureSamples = 0;
+	private aecCaptureStartTimestampMs: number | null = null;
 
 	constructor(
 		private readonly runtime: RuntimeEventSink,
@@ -549,6 +606,77 @@ export class LiveDiarizationSession {
 	}
 
 	/**
+	 * Arm the bounded AEC evidence capture (#11373). Restarts any previous
+	 * window. `maxSeconds` is clamped to [1, {@link AEC_CAPTURE_MAX_SECONDS}].
+	 */
+	armAecCapture(maxSeconds?: number): AecCaptureStatus {
+		const seconds = Math.min(
+			AEC_CAPTURE_MAX_SECONDS,
+			Math.max(1, maxSeconds ?? AEC_CAPTURE_DEFAULT_SECONDS),
+		);
+		this.aecCaptureArmed = true;
+		this.aecCaptureMaxSamples = Math.round(seconds * AUDIO_FRAME_SAMPLE_RATE);
+		this.aecCaptureNear = [];
+		this.aecCaptureFar = [];
+		this.aecCaptureSamples = 0;
+		this.aecCaptureStartTimestampMs = null;
+		return this.aecCaptureStatus();
+	}
+
+	/** Stop appending to the capture window; the buffered window stays readable
+	 * via {@link aecCaptureSnapshot} until the next {@link armAecCapture}. */
+	disarmAecCapture(): AecCaptureStatus {
+		this.aecCaptureArmed = false;
+		return this.aecCaptureStatus();
+	}
+
+	aecCaptureStatus(): AecCaptureStatus {
+		return {
+			armed: this.aecCaptureArmed,
+			sampleCount: this.aecCaptureSamples,
+			maxSamples: this.aecCaptureMaxSamples,
+			startTimestampMs: this.aecCaptureStartTimestampMs,
+		};
+	}
+
+	/** The captured near/far window plus the delay state the live canceller
+	 * applied while it was recorded. */
+	aecCaptureSnapshot(): AecCaptureSnapshot {
+		return {
+			...this.aecCaptureStatus(),
+			sampleRate: AUDIO_FRAME_SAMPLE_RATE,
+			nearPcm16: encodePcm16Base64(this.aecCaptureNear),
+			farPcm16: encodePcm16Base64(this.aecCaptureFar),
+			echoDelaySamples: this.echoDelaySamples,
+			echoDelayConfidence: this.echoDelayConfidence,
+			echoDelayCalibrated: this.echoDelayCalibrated,
+		};
+	}
+
+	/**
+	 * Append one ingested mic frame (near) and the delay-0 far-end reference at
+	 * its timestamp to the armed capture window. Public so the seam is
+	 * unit-testable without the fused FFI (mirrors
+	 * {@link observeForDelayCalibration}).
+	 */
+	captureAecFrame(nearPcm: Float32Array, timestampMs: number): void {
+		if (!this.aecCaptureArmed || nearPcm.length === 0) return;
+		if (this.aecCaptureSamples >= this.aecCaptureMaxSamples) {
+			this.aecCaptureArmed = false;
+			return;
+		}
+		if (this.aecCaptureStartTimestampMs === null) {
+			this.aecCaptureStartTimestampMs = timestampMs;
+		}
+		// Delay 0 on purpose: offline replay measures/applies the delay itself,
+		// so the capture must not bake in the value under measurement.
+		const far = this.echoBuffer.referenceAt(timestampMs, nearPcm.length, 0);
+		this.aecCaptureNear.push(nearPcm.slice());
+		this.aecCaptureFar.push(far);
+		this.aecCaptureSamples += nearPcm.length;
+	}
+
+	/**
 	 * Feed a batch of agent-playback (far-end) frames for echo cancellation. The
 	 * device captures the agent's TTS output in the SAME base64 LE-s16 16 kHz
 	 * mono wire format as the mic and POSTs it in real time as it renders; we
@@ -582,12 +710,13 @@ export class LiveDiarizationSession {
 		if (!this.consumer) return;
 		for (const frame of frames) {
 			this.framesReceived += 1;
-			if (!this.echoDelayCalibrated) {
+			if (!this.echoDelayCalibrated || this.aecCaptureArmed) {
 				try {
-					this.observeForDelayCalibration(
-						decodeAudioFramePcm(frame),
-						frame.timestamp,
-					);
+					const near = decodeAudioFramePcm(frame);
+					if (!this.echoDelayCalibrated) {
+						this.observeForDelayCalibration(near, frame.timestamp);
+					}
+					this.captureAecFrame(near, frame.timestamp);
 				} catch {
 					// Let AudioFrameConsumer own decode-error accounting below.
 				}
