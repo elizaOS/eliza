@@ -15,11 +15,13 @@ import os from "node:os";
 import path from "node:path";
 import {
   getElizaNamespace,
+  getSubscriptionAuthProvider,
   logger,
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
 import type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
+import { ensureBuiltinSubscriptionAuthProviders } from "../subscription-auth/builtin-providers.ts";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -244,26 +246,6 @@ export async function getAccessToken(
   });
 }
 
-/** Shape of `~/.codex/auth.json` (Codex CLI); fields vary by CLI version. */
-interface CodexCliAuthJson {
-  auth_mode?: string;
-  OPENAI_API_KEY?: string;
-  tokens?: {
-    access_token?: string;
-    refresh_token?: string;
-  };
-}
-
-function parseCodexCliAuthJson(raw: string): CodexCliAuthJson | null {
-  try {
-    const data = JSON.parse(raw) as CodexCliAuthJson;
-    if (!data || typeof data !== "object") return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
 function readConfiguredAnthropicSetupToken(): string | null {
   const namespace = getElizaNamespace();
   const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
@@ -278,22 +260,6 @@ function readConfiguredAnthropicSetupToken(): string | null {
     return typeof token === "string" && token.trim() ? token.trim() : null;
   } catch {
     return null;
-  }
-}
-
-function hasCodexCliSubscriptionAuth(): boolean {
-  const authPath = path.join(os.homedir(), ".codex", "auth.json");
-  try {
-    const data = parseCodexCliAuthJson(fs.readFileSync(authPath, "utf-8"));
-    if (!data) return false;
-    if (data.tokens?.access_token?.trim()) return true;
-    return Boolean(
-      data.OPENAI_API_KEY?.trim() &&
-        data.auth_mode?.trim() &&
-        data.auth_mode.trim().toLowerCase() !== "api-key",
-    );
-  } catch {
-    return false;
   }
 }
 
@@ -340,21 +306,24 @@ function subscriptionStatusMetadata(
   };
 }
 
-function hasCommandOnPath(commandName: string): boolean {
-  const command = process.platform === "win32" ? "where" : "command -v";
-  try {
-    execSync(`${command} ${commandName}`, {
-      encoding: "utf8",
-      timeout: 1500,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return true;
-  } catch {
-    return false;
-  }
+/**
+ * Whether a vendor's registered subscription-auth descriptor discovers a
+ * *configured* external credential right now (a CLI login on disk, a tool on
+ * PATH). Used for the availability notices in
+ * {@link applySubscriptionCredentialsLocal}.
+ */
+function hasConfiguredExternalCredential(
+  provider: SubscriptionProvider,
+): boolean {
+  const discovered =
+    getSubscriptionAuthProvider(provider)?.detectExternalCredentials?.();
+  if (discovered == null) return false;
+  const rows = Array.isArray(discovered) ? discovered : [discovered];
+  return rows.some((row) => row.configured);
 }
 
 export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
+  ensureBuiltinSubscriptionAuthProviders();
   const rows: SubscriptionAccountStatus[] = [];
 
   for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
@@ -419,44 +388,28 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
       }
     }
 
-    if (provider === "openai-codex" && hasCodexCliSubscriptionAuth()) {
-      rows.push({
-        ...metadata,
-        provider,
-        accountId: "codex-cli",
-        label: "Codex CLI",
-        configured: true,
-        valid: true,
-        expiresAt: null,
-        source: "codex-cli",
-      });
-    }
-
-    if (provider === "gemini-cli") {
-      const geminiCliDetected = hasCommandOnPath("gemini");
-      rows.push({
-        ...metadata,
-        provider,
-        accountId: "gemini-cli",
-        label: "Gemini CLI",
-        configured: geminiCliDetected,
-        valid: geminiCliDetected,
-        expiresAt: null,
-        source: geminiCliDetected ? "gemini-cli" : null,
-      });
-    }
-
-    if (provider === "deepseek-coding") {
-      rows.push({
-        ...metadata,
-        provider,
-        accountId: "deepseek-coding",
-        label: "DeepSeek Coding Plan",
-        configured: false,
-        valid: false,
-        expiresAt: null,
-        source: "unavailable",
-      });
+    // Credentials this vendor manages outside eliza's own account store (a
+    // Codex/Gemini CLI login, an unavailable-provider notice) are contributed
+    // by the vendor's registered subscription-auth descriptor, so host `auth/`
+    // no longer branches per vendor.
+    const discovered =
+      getSubscriptionAuthProvider(provider)?.detectExternalCredentials?.();
+    if (discovered != null) {
+      const discoveredRows = Array.isArray(discovered)
+        ? discovered
+        : [discovered];
+      for (const row of discoveredRows) {
+        rows.push({
+          ...metadata,
+          provider,
+          accountId: row.accountId,
+          label: row.label,
+          configured: row.configured,
+          valid: row.valid,
+          expiresAt: row.expiresAt,
+          source: row.source as SubscriptionCredentialSource,
+        });
+      }
     }
   }
 
@@ -644,6 +597,8 @@ export function applySubscriptionCredentialsLocal(
     return;
   }
 
+  ensureBuiltinSubscriptionAuthProviders();
+
   // ── Anthropic subscription ──────────────────────────────────────────
   //
   // Anthropic subscription tokens (sk-ant-oat*) are restricted to the
@@ -679,16 +634,19 @@ export function applySubscriptionCredentialsLocal(
         "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
     );
   } else {
-    if (hasCodexCliSubscriptionAuth()) {
+    if (hasConfiguredExternalCredential("openai-codex")) {
       logger.info(
-        "[auth] OpenAI Codex CLI auth detected in ~/.codex/auth.json — available for Codex CLI-backed coding/model providers. " +
+        "[auth] OpenAI Codex CLI auth detected — available for Codex CLI-backed coding/model providers. " +
           "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
       );
     }
   }
 
   const geminiAccounts = listProviderAccounts("gemini-cli");
-  if (geminiAccounts.length > 0 || hasCommandOnPath("gemini")) {
+  if (
+    geminiAccounts.length > 0 ||
+    hasConfiguredExternalCredential("gemini-cli")
+  ) {
     logger.info(
       "[auth] Gemini CLI subscription surface detected/configured — available only through Gemini CLI task agents. " +
         "Not applied to GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.",

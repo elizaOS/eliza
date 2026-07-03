@@ -74,6 +74,7 @@ export * from "./features/advanced-memory";
 export * from "./features/basic-capabilities/index";
 export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
+export * from "./features/subscription-auth/index.ts";
 export type {
 	DraftRecord,
 	DraftRequest,

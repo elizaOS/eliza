@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  registerSubscriptionAuthProvider,
+  resetSubscriptionAuthProviders,
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listAccounts, loadAccount, saveAccount } from "./account-storage";
 import {
   applySubscriptionCredentials,
@@ -297,6 +301,85 @@ describe("applySubscriptionCredentials", () => {
     expect(refreshMock).toHaveBeenCalledTimes(2);
     expect(refreshMock).toHaveBeenCalledWith("personal");
     expect(refreshMock).toHaveBeenCalledWith("work");
+  });
+});
+
+describe("getSubscriptionStatus drains the subscription-auth registry", () => {
+  beforeEach(() => {
+    resetSubscriptionAuthProviders();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    resetSubscriptionAuthProviders();
+    for (const dir of tempHomes.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces a Codex CLI login discovered via the built-in descriptor", () => {
+    const home = useTempElizaHome();
+    const codexDir = path.join(home, ".codex");
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(codexDir, "auth.json"),
+      JSON.stringify({ tokens: { access_token: "chatgpt-oauth-token" } }),
+      { mode: 0o600 },
+    );
+
+    const codexRows = getSubscriptionStatus().filter(
+      (row) => row.provider === "openai-codex",
+    );
+    expect(codexRows).toHaveLength(1);
+    expect(codexRows[0]).toMatchObject({
+      accountId: "codex-cli",
+      label: "Codex CLI",
+      source: "codex-cli",
+      configured: true,
+      valid: true,
+      expiresAt: null,
+    });
+    // The row still carries the vendor metadata the host attaches generically.
+    expect(codexRows[0]?.allowedClient).toBe(
+      "Codex CLI / Codex-backed provider",
+    );
+  });
+
+  it("omits the Codex row when no ~/.codex/auth.json login exists", () => {
+    useTempElizaHome();
+    const codexRows = getSubscriptionStatus().filter(
+      (row) => row.provider === "openai-codex",
+    );
+    expect(codexRows).toHaveLength(0);
+  });
+
+  it("surfaces a credential from a plugin-registered descriptor override", () => {
+    useTempElizaHome();
+    // Seed the built-ins (as a host entry point would), then let a plugin
+    // register its own descriptor for a vendor the host never hard-codes.
+    getSubscriptionStatus();
+    registerSubscriptionAuthProvider({
+      id: "zai-coding",
+      detectExternalCredentials: () => ({
+        accountId: "zai-plugin-cli",
+        label: "z.ai Coding (plugin)",
+        source: "coding-plan-key",
+        configured: true,
+        valid: true,
+        expiresAt: null,
+      }),
+    });
+
+    const zaiRows = getSubscriptionStatus().filter(
+      (row) => row.provider === "zai-coding",
+    );
+    expect(zaiRows).toHaveLength(1);
+    expect(zaiRows[0]).toMatchObject({
+      accountId: "zai-plugin-cli",
+      source: "coding-plan-key",
+      configured: true,
+    });
   });
 });
 
