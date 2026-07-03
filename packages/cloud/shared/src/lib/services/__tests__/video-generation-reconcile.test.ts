@@ -420,27 +420,99 @@ describe("deadline + unknown-state behavior", () => {
   );
 });
 
-describe("stranded-reservation sweep interplay — never mint", () => {
+async function settlementState(id: string): Promise<string | null> {
+  const res = await dbWrite.execute(
+    `SELECT metadata->>'settlement_state' AS settlement_state FROM generations WHERE id = '${id}';`,
+  );
+  return (res.rows[0] as { settlement_state: string | null }).settlement_state;
+}
+
+describe("stranded-reservation sweep interplay — compensating refund, never double (#11942)", () => {
   test(
-    "generic sweep settles first; the video sweep must not create a second movement",
+    "generic sweep charged first; a verified failure still refunds exactly once, honestly",
     async () => {
       const { generationId, reservationTransactionId } = await createTimedOutGeneration();
 
       // The #11493 backstop fires (e.g. this cron was down for >2h): the hold
-      // settles at the estimated cost.
+      // settles at the estimated (full) cost while the terminal state is still
+      // unknown — the org is charged the full video price.
       const sweepStats = await creditsService.sweepStaleReservations({ graceMs: 0 });
       expect(sweepStats.settled).toBeGreaterThanOrEqual(1);
       expect(await getReservationSettledAt(reservationTransactionId)).not.toBeNull();
       expect(await getBalance()).toBeCloseTo(START_BALANCE - COST, 6);
 
-      // Video sweep later verifies a terminal failure — the settled_at claim
-      // blocks its refund: no second movement, no minted credit.
+      // Video sweep later VERIFIES the render died upstream. reconcile() can no
+      // longer move the refund on the settled row, so the sweep issues the
+      // compensating refund under the shared `recon:<txid>:refund` key: the org
+      // is made whole and the ledger honestly reflects the refund.
       jobStatusImpl = async () => ({ state: "failed", error: "render exploded" });
+      const stats = await runSweep();
+      expect(stats).toMatchObject({ scanned: 1, refunded: 1, charged: 0 });
+
+      expect(await getBalance()).toBeCloseTo(START_BALANCE, 6);
+      expect(await refundRowsForReservation(reservationTransactionId)).toHaveLength(1);
+      const row = await getGenerationRow(generationId);
+      expect(row.status).toBe("failed");
+      expect(await settlementState(generationId)).toBe("refunded");
+
+      // Crash between compensating refund and row update, plus a concurrent
+      // double-poll: the shared key blocks any second movement.
+      await dbWrite.execute(
+        `UPDATE generations SET status = 'pending' WHERE id = '${generationId}';`,
+      );
+      await Promise.all([runSweep(), runSweep()]);
+      expect(await getBalance()).toBeCloseTo(START_BALANCE, 6);
+      expect(await refundRowsForReservation(reservationTransactionId)).toHaveLength(1);
+      expect((await getGenerationRow(generationId)).status).toBe("failed");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "generic sweep charged first; a deadline-expired job refunds once too",
+    async () => {
+      const { generationId, reservationTransactionId } = await createTimedOutGeneration({
+        ageMs: 2 * 60 * 60 * 1000,
+      });
+
+      const sweepStats = await creditsService.sweepStaleReservations({ graceMs: 0 });
+      expect(sweepStats.settled).toBeGreaterThanOrEqual(1);
+      expect(await getBalance()).toBeCloseTo(START_BALANCE - COST, 6);
+
+      // Still non-terminal upstream, but past the reconcile deadline: presumed
+      // dead. The refund-once promise must hold regardless of the stale sweep.
+      jobStatusImpl = async () => ({ state: "pending" });
+      const stats = await runSweep();
+      expect(stats).toMatchObject({ scanned: 1, expired: 1, refunded: 0, charged: 0 });
+
+      expect(await getBalance()).toBeCloseTo(START_BALANCE, 6);
+      expect(await refundRowsForReservation(reservationTransactionId)).toHaveLength(1);
+      expect(await settlementState(generationId)).toBe("refunded_expired");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "generic sweep charged first; a late upstream success is NOT refunded",
+    async () => {
+      const { generationId, reservationTransactionId } = await createTimedOutGeneration();
+
+      const sweepStats = await creditsService.sweepStaleReservations({ graceMs: 0 });
+      expect(sweepStats.settled).toBeGreaterThanOrEqual(1);
+      expect(await getBalance()).toBeCloseTo(START_BALANCE - COST, 6);
+
+      // The render actually completed upstream (fal billed us): the full charge
+      // the stale sweep took is correct — the compensating-refund path must NOT
+      // fire on success.
+      jobStatusImpl = async () => ({
+        state: "succeeded",
+        result: { requestId: JOB_ID, video: { url: "https://fal.media/late.mp4" } },
+      });
       await runSweep();
 
       expect(await getBalance()).toBeCloseTo(START_BALANCE - COST, 6);
       expect(await refundRowsForReservation(reservationTransactionId)).toHaveLength(0);
-      expect((await getGenerationRow(generationId)).status).toBe("failed");
+      expect((await getGenerationRow(generationId)).status).toBe("completed");
     },
     PGLITE_TIMEOUT,
   );
