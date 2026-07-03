@@ -35,7 +35,6 @@ import {
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
   isSubscriptionProvider,
-  type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import {
   type AnthropicAccountPoolBridge,
