@@ -1,12 +1,25 @@
 import type * as React from "react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { ShaderConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
 import { ImageBackground } from "./ImageBackground";
-import { ProgrammableShaderBackground } from "./ProgrammableShaderBackground";
 import { ShaderBackground } from "./ShaderBackground";
 import { useBackgroundApplyChannel } from "./useBackgroundApplyChannel";
+
+// three.js (~1.5 MB raw / ~320 KB brotli) is only needed for the opt-in GLSL
+// programmable-background mode — never for the default plain/preset shader that
+// every session paints at boot. A static import here pulled the whole
+// `vendor-three` chunk onto the first-paint (eager) graph because `AppBackground`
+// mounts at the shell root and is statically imported by `App.tsx`. Loading it
+// lazily keeps three off the boot path; it loads only when a user actually
+// selects a GLSL shader, and the plain `ShaderBackground` (same color) paints as
+// the Suspense fallback so the swap is seamless.
+const ProgrammableShaderBackground = lazy(() =>
+  import("./ProgrammableShaderBackground").then((m) => ({
+    default: m.ProgrammableShaderBackground,
+  })),
+);
 
 export interface AppBackgroundProps {
   /** Render the visual wallpaper layer. The background event channel stays mounted. */
@@ -29,12 +42,14 @@ function GlslBackground({
   const [failed, setFailed] = useState(false);
   if (failed) return <ShaderBackground color={color} />;
   return (
-    <ProgrammableShaderBackground
-      source={shader.source}
-      uniforms={shader.uniforms}
-      color={color}
-      onFallback={() => setFailed(true)}
-    />
+    <Suspense fallback={<ShaderBackground color={color} />}>
+      <ProgrammableShaderBackground
+        source={shader.source}
+        uniforms={shader.uniforms}
+        color={color}
+        onFallback={() => setFailed(true)}
+      />
+    </Suspense>
   );
 }
 
