@@ -913,6 +913,75 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
+  it("does NOT synthesize a `stopped` for a session handed off to a successor (#11711)", async () => {
+    // The router's verify-retry / state-lost-respawn / account-failover paths
+    // re-dispatch a fresh session and tear down the old one — its teardown
+    // `stopped` is plumbing, not a user-facing terminal. The router stamps
+    // `handedOffToSuccessorSessionId` on the old session before teardown, so
+    // synthesis must skip it: the successor session posts the real completion.
+    // Without this, one task yielded one post per lineage generation (3 for a
+    // 2-retry lineage).
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+        handedOffToSuccessorSessionId: "sess-retry-2",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-handed-off", "stopped", {});
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
+  it("STILL synthesizes a genuine user `stopped` (no handoff marker) — the #11689 invariant", async () => {
+    // A real cancel / no-output stop carries NO handoff marker, so it must NOT
+    // be swallowed by the #11711 skip — synthesis stays its only poster.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-user-stop", "stopped", {});
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      stopped: 1,
+      tasks: [{ sessionId: "sess-user-stop", status: "stopped" }],
+    });
+    await coordinator.stop();
+  });
+
   it("STILL fires swarm-complete for a custom-validator task_complete on a router-origin active session", async () => {
     // The app-verification / custom-validator result is synthesized by the
     // coordinator (dispatchCustomValidatorResult); the router never receives or

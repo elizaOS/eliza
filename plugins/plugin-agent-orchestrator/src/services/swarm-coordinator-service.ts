@@ -154,6 +154,14 @@ const STREAMING_SESSION_EVENTS = new Set(["message", "reasoning", "plan"]);
 // inject, so the coordinator stays the sole poster for stop/cancel/no-output.
 const ROUTER_OWNED_TERMINAL_EVENTS = new Set(["task_complete", "error"]);
 
+// Metadata key the sub-agent-router stamps on a session it hands off to a
+// successor (verify-retry / state-lost respawn / account failover) before
+// tearing it down. That teardown `stopped` is handoff plumbing, not a
+// user-facing terminal — the successor session posts the real completion, so
+// synthesis must not post the old one (#11711). Matching local literal (no
+// import from sub-agent-router — see the ROUTER_ORIGIN_UUID_RE note).
+const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+
 const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -840,6 +848,19 @@ export class SwarmCoordinatorService extends Service {
       sessionMeta = { metadata: {} };
     }
     const meta = sessionMeta.metadata;
+
+    // Handoff teardown (#11711): a session the router handed off to a successor
+    // (verify-retry, state-lost respawn, or account failover) is torn down with
+    // a `stopped` terminal that is plumbing, not a user-facing end state — the
+    // successor session posts the real completion. The router stamps the old
+    // session with `handedOffToSuccessorSessionId` before teardown; skip its
+    // terminal so one task yields ONE completion, not one per lineage
+    // generation. A genuine user stop carries no marker and still synthesizes
+    // (the #11689 invariant). Do NOT claim the dedupe slot — the successor's
+    // terminal must remain free to post.
+    if (readString(meta, HANDED_OFF_SUCCESSOR_META_KEY)) {
+      return;
+    }
 
     // Ownership rule (issue elizaOS/eliza#11634): the sub-agent-router owns the
     // completion→chat post for origin-routed sessions — it is origin-aware,

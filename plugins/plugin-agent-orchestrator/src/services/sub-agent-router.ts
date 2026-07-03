@@ -53,6 +53,14 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
+// Metadata key the router stamps on a session it hands off to a successor
+// (verify-retry, state-lost respawn, or account failover) before that session
+// is torn down. Its teardown `stopped` is handoff plumbing, not a user-facing
+// terminal — swarm-synthesis reads this key to skip posting it, so one task
+// yields one completion, not one per lineage generation (#11711). The value is
+// the successor's sessionId (for traceability); presence is what matters. Kept
+// as a matching local literal in swarm-coordinator-service.ts (no cross-import).
+const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
 const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
 const AGENT_COORDINATION = "AGENT_COORDINATION";
 const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
@@ -1554,6 +1562,9 @@ export class SubAgentRouter extends Service {
         sessionId: session.id,
         retrySessionId: result.sessionId,
       });
+      // Same handoff stamp as verify-retry (#11711): the old session's teardown
+      // `stopped` is plumbing, not a user-facing completion — the respawn posts.
+      await this.markSessionHandedOff(session.id, result.sessionId);
       return true;
     } catch (err) {
       this.log(
@@ -1600,6 +1611,31 @@ export class SubAgentRouter extends Service {
    * lineage of retries shares one budget. Mirrors the APP-create
    * verification-retry pattern.
    */
+  /**
+   * Stamp `handedOffToSuccessorSessionId` on a session the router is about to
+   * tear down after handing its work to a fresh successor (#11711), so
+   * swarm-synthesis skips the teardown `stopped` — the successor posts the real
+   * completion. Best-effort and NEVER throws: a missed stamp only risks the
+   * prior duplicate-post behavior, so it must not fail the handoff itself (the
+   * ACP transport may lack `updateSessionMetadata` in some stub/test contexts).
+   */
+  private async markSessionHandedOff(
+    oldSessionId: string,
+    successorSessionId: string,
+  ): Promise<void> {
+    const service =
+      this.acp ??
+      (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
+    if (typeof service?.updateSessionMetadata !== "function") return;
+    try {
+      await service.updateSessionMetadata(oldSessionId, {
+        [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
+      });
+    } catch {
+      // best-effort — see doc comment
+    }
+  }
+
   private async retryIncompleteBuild(
     session: SessionInfo,
     dead: DeadUrl[],
@@ -1694,6 +1730,11 @@ Do not report done until every referenced URL in the final page resolves without
         maxRetries,
         deadCount: dead.length,
       });
+      // Mark the old session as handed off BEFORE its teardown `stopped` fires
+      // so synthesis treats that stop as plumbing, not a second completion
+      // (#11711). Best-effort: a missed stamp only risks the prior duplicate
+      // post, never a dropped genuine terminal.
+      await this.markSessionHandedOff(session.id, result.sessionId);
       return true;
     } catch (err) {
       this.log(
