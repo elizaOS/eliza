@@ -1,0 +1,139 @@
+{
+  "issue": 11373,
+  "label": "pixel6a-echo-only",
+  "input": "/home/shaw/eliza-worktrees/11373-aec-android/.github/issue-evidence/11373-aec-android/aec-loop-result-echo-only.json",
+  "sourceUsed": "agent aec-capture snapshot (production session buffers)",
+  "sampleRateHz": 16000,
+  "frameSamples": 320,
+  "nearSeconds": 22.08,
+  "nearRms": 0.07490371687913618,
+  "farRms": 0.09615198654920513,
+  "tag": "echo-only",
+  "deviceStatusBefore": {
+    "ready": false,
+    "libs": {
+      "fusedInference": "/data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so"
+    },
+    "models": {
+      "dir": "/data/data/ai.elizaos.app/files/.eliza/models/voice"
+    },
+    "framesReceived": 0,
+    "framesDropped": 0,
+    "turnsObserved": 0,
+    "aec": {
+      "echoReferenceWired": false,
+      "playbackFramesReceived": 0,
+      "playbackSamplesReceived": 0,
+      "lastPlaybackFrameAt": null,
+      "echoDelaySamples": 0,
+      "echoDelayConfidence": 0
+    },
+    "recentTurns": [],
+    "error": "[ffi-bindings] Failed to open libelizainference at /data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so: Failed to open library \"/data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so\": Error relocating /data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so: __register_atfork: symbol not found"
+  },
+  "deviceStatusAfter": {
+    "ready": false,
+    "libs": {
+      "fusedInference": "/data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so"
+    },
+    "models": {
+      "dir": "/data/data/ai.elizaos.app/files/.eliza/models/voice"
+    },
+    "framesReceived": 1104,
+    "framesDropped": 0,
+    "turnsObserved": 0,
+    "aec": {
+      "echoReferenceWired": true,
+      "playbackFramesReceived": 1109,
+      "playbackSamplesReceived": 354880,
+      "lastPlaybackFrameAt": 1783078846736,
+      "echoDelaySamples": 4765,
+      "echoDelayConfidence": 0.32733513907116424
+    },
+    "recentTurns": [],
+    "error": "[ffi-bindings] Failed to open libelizainference at /data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so: Failed to open library \"/data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so\": Error relocating /data/app/~~3J7t6KEV2QFDMvoso50ssQ==/ai.elizaos.app-gY_FWclR9M8Wdg6G82MXTw==/lib/arm64/libelizainference.so: __register_atfork: symbol not found"
+  },
+  "deviceTrackSettings": {
+    "autoGainControl": false,
+    "channelCount": 1,
+    "deviceId": "default",
+    "echoCancellation": false,
+    "groupId": "2398c7f9de6e5a5b1d29677c896c9c55dbbdc338dc54c10d22d6e457a144ac98",
+    "latency": 0.02,
+    "noiseSuppression": false,
+    "sampleRate": 48000,
+    "sampleSize": 16,
+    "voiceIsolation": false
+  },
+  "deviceContextSampleRate": 48000,
+  "offlineDelayEstimate": {
+    "lagSamples": 6217,
+    "lagMs": 388.5625,
+    "confidence": 0.32018434708703686
+  },
+  "deviceDelaySelfCalibration": {
+    "echoDelaySamples": 4765,
+    "echoDelayConfidence": 0.32733513907116424,
+    "echoDelayCalibrated": true
+  },
+  "delaySamplesUsed": 4765,
+  "erle": {
+    "aecOffBaselineDb": 0,
+    "linear": {
+      "erleOverallDb": -21.122558861526617,
+      "erleConvergedHalfDb": -5.872129007180462,
+      "perSecondErleDb": [
+        0,
+        -23.2654494873071,
+        -28.83126557850595,
+        -26.36537693677166,
+        -28.174665110965083,
+        -15.645385367938921,
+        -26.866570024893473,
+        -19.74207936250067,
+        -18.917553181382466,
+        -16.33869968601968,
+        -12.515879341448313,
+        -13.69937413169151,
+        -8.565183034285173,
+        -3.5952122282930183,
+        -8.597946064034403,
+        -4.021466724414358,
+        -6.023543166577609,
+        -1.4109439757908917,
+        -1.5547755470431843,
+        -0.8198169158432923,
+        -1.7383775018953826
+      ],
+      "framesCancelled": 802,
+      "framesPassthrough": 302
+    },
+    "residualSuppression": {
+      "erleOverallDb": -20.34665075677043,
+      "erleConvergedHalfDb": -5.512232767656474,
+      "perSecondErleDb": [
+        0,
+        -23.2654494873071,
+        -27.727300728804206,
+        -25.929842957085555,
+        -27.908574558078143,
+        -14.910695036270837,
+        -26.37725578046968,
+        -19.32859791363512,
+        -18.227344395024435,
+        -16.07987840865128,
+        -11.855909923879755,
+        -13.36403610504173,
+        -8.33100134015129,
+        -2.05939783098872,
+        -8.45075622066387,
+        -3.307967936534487,
+        -5.786705110691473,
+        -0.8629753196806544,
+        -0.9952983657478269,
+        -0.23205113608404046,
+        -1.2713697034542237
+      ]
+    }
+  }
+}
