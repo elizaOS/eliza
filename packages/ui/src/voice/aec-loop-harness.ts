@@ -45,6 +45,15 @@ const RESULT_FILENAME = "eliza-aec-loop-result.json";
 export interface AecLoopRunOptions {
   /** Text synthesized by the on-device TTS and played from the speaker. */
   ttsText?: string;
+  /**
+   * Far-end audio URL played instead of on-device TTS. For devices where the
+   * local TTS engine is not provisioned (no eliza-1 bundle staged): the loop's
+   * subject — the production /api/voice/* transport, the AEC, and the real
+   * device speaker→mic acoustics — is unchanged; only the speech source
+   * differs. The URL must be reachable from the device WebView (e.g. an
+   * `adb reverse` host server).
+   */
+  audioUrl?: string;
   /** Agent-side capture window ceiling in seconds (default 30). */
   maxSeconds?: number;
   /** Extra mic tail after TTS playback ends, ms (default 2000). */
@@ -344,14 +353,22 @@ async function runAecLoop(
     micTap.connect(micMute);
     micMute.connect(ctx.destination);
 
-    log("fetch TTS");
-    const ttsRes = await fetch(resolveApiUrl("/api/tts/local-inference"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: ttsText }),
-    });
-    if (!ttsRes.ok) throw new Error(`tts -> ${ttsRes.status}`);
-    const ttsBytes = await ttsRes.arrayBuffer();
+    let ttsBytes: ArrayBuffer;
+    if (options.audioUrl) {
+      log(`fetch far-end audio from ${options.audioUrl}`);
+      const audioRes = await fetch(options.audioUrl);
+      if (!audioRes.ok) throw new Error(`audioUrl -> ${audioRes.status}`);
+      ttsBytes = await audioRes.arrayBuffer();
+    } else {
+      log("fetch TTS");
+      const ttsRes = await fetch(resolveApiUrl("/api/tts/local-inference"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: ttsText }),
+      });
+      if (!ttsRes.ok) throw new Error(`tts -> ${ttsRes.status}`);
+      ttsBytes = await ttsRes.arrayBuffer();
+    }
     const ttsBuffer = await ctx.decodeAudioData(ttsBytes.slice(0));
     log(`tts decoded ${ttsBuffer.duration.toFixed(2)}s @${ttsBuffer.sampleRate}`);
 
@@ -493,6 +510,8 @@ export function parseAecLoopHash(hash: string): AecLoopRunOptions | null {
   const options: AecLoopRunOptions = {};
   const text = params.get("text");
   if (text) options.ttsText = text;
+  const audioUrl = params.get("audioUrl");
+  if (audioUrl) options.audioUrl = audioUrl;
   const tag = params.get("tag");
   if (tag) options.tag = tag;
   const readNumber = (name: string, min: number): number | null => {
