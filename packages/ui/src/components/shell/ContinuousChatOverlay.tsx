@@ -75,6 +75,9 @@ import {
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
+import { findChoiceRegions } from "../chat/message-choice-parser";
+import { findFollowupsRegions } from "../chat/message-followups-parser";
+import { findFormRegions } from "../chat/message-form-parser";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
@@ -909,6 +912,24 @@ function isNestedInteractiveTarget(
 }
 
 /**
+ * True when an assistant turn's content carries an inline interactive widget
+ * (a `[CHOICE:…]` / `[FORM:…]` / `[FOLLOWUPS:…]` block — e.g. every first-run
+ * onboarding turn). Such a bubble must NOT be wrapped in the tap-to-reveal
+ * `role="button"` container: WebKit exposes an ARIA button as an ATOMIC AX leaf
+ * (its aria-label becomes the node's name and all descendants are dropped), so
+ * the wrapper silently removes the choice buttons + text from the native
+ * accessibility tree — invisible to VoiceOver AND to XCUITest. The parser
+ * helpers reset their own regex lastIndex, so repeated calls are safe.
+ */
+function messageHasInteractiveWidget(content: string): boolean {
+  return (
+    findChoiceRegions(content).length > 0 ||
+    findFormRegions(content).length > 0 ||
+    findFollowupsRegions(content).length > 0
+  );
+}
+
+/**
  * True while there's a live (non-collapsed) text selection. The
  * conversation-swipe binding lives on the transcript surface, which contains
  * the selectable message bubbles — so a MOUSE drag to highlight bubble text
@@ -1156,6 +1177,14 @@ const ThreadLine = React.memo(function ThreadLine({
   const canEdit =
     isUser && !!onEdit && trimmed.length > 0 && !message.id.startsWith("temp-");
   const hasActions = canRowCopy || canSpeak || canEdit;
+  // An assistant turn that carries an inline choice/form/followups widget (every
+  // first-run onboarding turn) must stay a plain container — never the
+  // tap-to-reveal `role="button"` bubble, which WebKit collapses into a single
+  // atomic AX node and thereby hides the choice buttons from VoiceOver + XCUITest.
+  const hasInteractiveWidget = React.useMemo(
+    () => isAssistant && messageHasInteractiveWidget(message.content),
+    [isAssistant, message.content],
+  );
 
   // A recoverable assistant failure (the agent was rate-limited or the provider
   // stalled / the stream was interrupted) gets a one-tap Retry that re-sends the
@@ -1176,7 +1205,7 @@ const ThreadLine = React.memo(function ThreadLine({
     if (sel && sel.toString().trim().length > 0) return;
     setRevealed((v) => !v);
   }, [hasActions, editing]);
-  const bubbleInteractive = hasActions && !editing;
+  const bubbleInteractive = hasActions && !editing && !hasInteractiveWidget;
   const handleBubbleClick = React.useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!bubbleInteractive) return;
@@ -4023,6 +4052,26 @@ export function ContinuousChatOverlay({
             ? "full"
             : "half";
 
+  // Onboarding-state probe: the newest first-run CHOICE turn's step id + option
+  // values, surfaced as sr-only static AX text (mirrors chat-detent-probe /
+  // home-launcher-page-probe) so an on-device XCUITest can observe and drive
+  // first-run deterministically even where the WKWebView AX tree is imperfect.
+  const firstRunProbe = React.useMemo(() => {
+    if (!firstRunOpen) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const region = findChoiceRegions(messages[i].content).find(
+        (r) => r.scope === "first-run" || r.scope.startsWith("first-run"),
+      );
+      if (region) {
+        return {
+          step: region.id,
+          choices: region.options.map((o) => o.value).join(","),
+        };
+      }
+    }
+    return null;
+  }, [firstRunOpen, messages]);
+
   return (
     <div
       ref={overlayRef}
@@ -4272,6 +4321,11 @@ export function ContinuousChatOverlay({
           <span className="sr-only" data-testid="chat-detent-probe">
             {`chat-detent:${detentLabel}`}
           </span>
+          {firstRunProbe ? (
+            <span className="sr-only" data-testid="onboarding-state-probe">
+              {`onboarding-step:${firstRunProbe.step} onboarding-choices:${firstRunProbe.choices}`}
+            </span>
+          ) : null}
           {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass
               and goes fully inert while pilled (opacity 0 + `inert` removes it
               from pointer, tab order, and the a11y tree) so it can't be reached

@@ -275,6 +275,59 @@ describe("ContinuousChatOverlay first-run gating", () => {
     );
   });
 
+  it("does NOT wrap a first-run CHOICE turn in a role=button bubble (keeps the choices in the AX tree for VoiceOver + on-device automation)", () => {
+    seedAppStoreWithActionSpy();
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:greeting",
+          role: "assistant",
+          content: RUNTIME_CHOICE_MESSAGE,
+          createdAt: 1,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+
+    // The tap-to-reveal bubble wrapper (a role=button with a "message actions"
+    // label) collapses its subtree into a single atomic AX node in WKWebView,
+    // hiding the choices. A choice-bearing turn must therefore NOT render it.
+    expect(
+      screen.queryByRole("button", { name: /message actions/i }),
+    ).toBeNull();
+    // The choice buttons stay individually present + focusable (not tabIndex -1).
+    const cloud = screen.getByTestId("choice-__first_run__:runtime:cloud");
+    expect(cloud.closest('[role="button"]')).toBeNull();
+    expect(cloud.getAttribute("tabindex")).not.toBe("-1");
+  });
+
+  it("exposes the sr-only onboarding-state probe with the current step + choice ids while onboarding is open", () => {
+    seedAppStoreWithActionSpy();
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:greeting",
+          role: "assistant",
+          content: RUNTIME_CHOICE_MESSAGE,
+          createdAt: 1,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={controller} firstRunOpen />,
+    );
+    const probe = screen.getByTestId("onboarding-state-probe");
+    expect(probe.textContent).toContain("onboarding-step:runtime");
+    expect(probe.textContent).toContain("__first_run__:runtime:cloud");
+    expect(probe.textContent).toContain("__first_run__:runtime:remote");
+
+    // Once onboarding completes the probe is gone.
+    rerender(
+      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+    );
+    expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
+  });
+
   it("auto-collapses exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
     const controller = makeController();
     const { rerender } = render(
