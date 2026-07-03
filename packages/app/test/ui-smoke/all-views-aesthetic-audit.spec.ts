@@ -223,7 +223,7 @@ const SYSTEM_VIEW_METRIC_BUDGETS: Record<
   "builtin-chat": viewportBudgets(
     budget(520, 34, 0.34),
     budget(560, 36, 0.28),
-    budget(240, 24, 0.48),
+    budget(240, 24, 0.46),
     budget(360, 28, 0.42),
   ),
   "builtin-phone": viewportBudgets(
@@ -500,6 +500,12 @@ async function collectAestheticDensityMetrics(
         },
       },
     );
+    const isInsideGlobalOverlay = (element: Element): boolean =>
+      Boolean(
+        element.closest(
+          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']",
+        ),
+      );
 
     for (
       let textNode = walker.nextNode();
@@ -522,6 +528,7 @@ async function collectAestheticDensityMetrics(
     let borderDividerCount = 0;
     const nodes = Array.from(document.querySelectorAll("*")).slice(0, 4000);
     for (const node of nodes) {
+      if (isInsideGlobalOverlay(node)) continue;
       if (!visibleElement(node)) continue;
       const style = getComputedStyle(node);
       const rects = Array.from(node.getClientRects()).filter(

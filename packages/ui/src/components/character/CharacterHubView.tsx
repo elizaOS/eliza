@@ -432,11 +432,9 @@ export function CharacterHubView({
         section: "experience",
         title: "Experience",
         body: recentExperience ? (
-          <span className="line-clamp-2 text-xs italic text-muted">
-            {recentExperience.learning ||
-              recentExperience.result ||
-              recentExperience.context ||
-              recentExperience.type}
+          <span className="text-xs font-medium text-muted">
+            {experienceRecords.length} experience
+            {experienceRecords.length === 1 ? "" : "s"}
           </span>
         ) : (
           <EmptyCta>Teach Eliza in chat</EmptyCta>
