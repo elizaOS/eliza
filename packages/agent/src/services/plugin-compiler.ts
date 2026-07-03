@@ -213,7 +213,8 @@ async function transpileWithTypeScript(
 ): Promise<string> {
   let ts: typeof import("typescript");
   try {
-    ts = await import("typescript");
+    const moduleSpecifier = ["type", "script"].join("");
+    ts = await import(/* @vite-ignore */ moduleSpecifier);
   } catch (error) {
     throw new Error(
       "PluginCompiler.compile: esbuild is unavailable and neither Bun.Transpiler nor TypeScript is available",

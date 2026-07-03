@@ -4,10 +4,58 @@
  */
 
 import type { Action, Plugin, Provider } from "@elizaos/core";
-import { readAppRunStore } from "@elizaos/plugin-app-manager";
+import * as fs from "node:fs";
+import path from "node:path";
+import { resolveStateDir } from "../config/paths.ts";
 import { isOverlayAppPresenceActive } from "./overlay-app-presence.ts";
 
 const STOPPED_STATUSES = new Set(["stopped", "offline", "error", "failed"]);
+
+type AppRunActivitySnapshot = {
+  appName: string;
+  status: string;
+};
+
+function readAppRunActivitySnapshots(): AppRunActivitySnapshot[] {
+  const stateDir = resolveStateDir();
+  const candidates = [
+    path.join(stateDir, "apps", "runs.v2.json"),
+    path.join(stateDir, "apps", "runs.v1.json"),
+  ];
+
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+        runs?: unknown;
+      };
+      if (!Array.isArray(parsed.runs)) continue;
+      return parsed.runs
+        .map((run): AppRunActivitySnapshot | null => {
+          if (!run || typeof run !== "object") return null;
+          const record = run as Record<string, unknown>;
+          if (
+            typeof record.appName !== "string" ||
+            typeof record.status !== "string"
+          ) {
+            return null;
+          }
+          return { appName: record.appName, status: record.status };
+        })
+        .filter((run): run is AppRunActivitySnapshot => run !== null);
+    } catch (err) {
+      const corruptPath = `${filePath}.corrupt-${Date.now()}.json`;
+      try {
+        fs.renameSync(filePath, corruptPath);
+      } catch {
+        // If the corrupt file cannot be moved, treat it as no active runs.
+      }
+      return [];
+    }
+  }
+
+  return [];
+}
 
 function isRunStatusActive(status: string): boolean {
   return !STOPPED_STATUSES.has(status.trim().toLowerCase());
@@ -17,7 +65,7 @@ function isRunStatusActive(status: string): boolean {
 export function hasActiveAppRunForCanonicalName(
   appCanonicalName: string,
 ): boolean {
-  const runs = readAppRunStore();
+  const runs = readAppRunActivitySnapshots();
   return runs.some(
     (run) => run.appName === appCanonicalName && isRunStatusActive(run.status),
   );
