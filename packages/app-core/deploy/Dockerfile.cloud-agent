@@ -18,6 +18,10 @@ FROM node:24-bookworm-slim AS entrypoint-build
 WORKDIR /build
 COPY eliza/packages/app-core/deploy/cloud-agent-entrypoint.ts ./cloud-agent-entrypoint.ts
 COPY eliza/packages/app-core/deploy/cloud-agent-shared.ts ./cloud-agent-shared.ts
+# cloud-agent-shared.ts imports this via ../../shared/... in the repo layout.
+# The builder copies TS files into /build, so mirror that relative path here for
+# esbuild's resolver without adding a runtime dependency on @elizaos/shared.
+COPY eliza/packages/shared/src/restart-exit-code.json /shared/src/restart-exit-code.json
 RUN npx --yes esbuild@0.28.1 cloud-agent-entrypoint.ts \
       --bundle --platform=node --format=esm --target=node24 \
       --external:@elizaos/* --external:node:* \

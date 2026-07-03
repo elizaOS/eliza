@@ -1,3 +1,4 @@
+import { RESTART_EXIT_CODE as SHARED_RESTART_EXIT_CODE } from "@elizaos/shared/restart";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   armCrashInjection,
@@ -85,6 +86,10 @@ describe("resolveCrashInjectionConfig — production safety gate", () => {
 });
 
 describe("maybeInjectFault", () => {
+  it("re-exports the shared restart exit code", () => {
+    expect(RESTART_EXIT_CODE).toBe(SHARED_RESTART_EXIT_CODE);
+  });
+
   it("is a no-op when disarmed", () => {
     armCrashInjection({});
     expect(isCrashInjectionArmed()).toBe(false);

@@ -8,12 +8,14 @@
  *
  * @module restart
  */
+import restartExitCodeDefinition from "./restart-exit-code.json" with {
+  type: "json",
+};
 
 /**
  * Special exit code that tells the CLI runner to restart the process.
- * Must stay in sync with `RESTART_EXIT_CODE` in `eliza/packages/app-core/scripts/run-node.mjs`.
  */
-export const RESTART_EXIT_CODE = 75;
+export const RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 
 /**
  * A function invoked when a restart is requested.

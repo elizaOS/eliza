@@ -4,31 +4,35 @@
  * Drives the *actual* runner — not a reimplementation — with `ELIZA_ENTRY_FILE`
  * pointed at a tiny fake child, in a temp cwd whose `dist/.buildstamp` makes the
  * staleness check skip the rebuild. The fake child exits with the real restart
- * exit code (75) a controlled number of times, so we assert the genuine
- * exit-75 → relaunch loop and the rapid-restart abort guard end to end, using
- * real OS processes and real exit codes.
+ * exit code a controlled number of times, so we assert the genuine restart
+ * relaunch loop and the rapid-restart abort guard end to end, using real OS
+ * processes and real exit codes.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+  type: "json",
+};
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_NODE = path.join(SCRIPT_DIR, "run-node.mjs");
+const RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 
-// A child that records each spawn and exits 75 (request restart) until it has
-// been started FAKE_CHILD_RESTART_UNTIL times, then exits 0 (clean).
+// A child that records each spawn and exits with the shared restart code until
+// it has been started FAKE_CHILD_RESTART_UNTIL times, then exits 0 (clean).
 const FAKE_CHILD = `import fs from "node:fs";
 const counterFile = process.env.FAKE_CHILD_COUNTER;
+const restartExitCode = Number(process.env.RESTART_EXIT_CODE);
 const restartUntil = Number(process.env.FAKE_CHILD_RESTART_UNTIL ?? "0");
 let count = 0;
 try { count = Number(fs.readFileSync(counterFile, "utf8").trim()) || 0; } catch {}
 count += 1;
 fs.writeFileSync(counterFile, String(count));
-process.exit(count <= restartUntil ? 75 : 0);
+process.exit(count <= restartUntil ? restartExitCode : 0);
 `;
 
 let workDir;
@@ -64,6 +68,7 @@ function runSupervisor(restartUntil) {
         ELIZA_RUNNER_LOG: "1",
         FAKE_CHILD_COUNTER: counterFile,
         FAKE_CHILD_RESTART_UNTIL: String(restartUntil),
+        RESTART_EXIT_CODE: String(RESTART_EXIT_CODE),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -86,8 +91,8 @@ function runSupervisor(restartUntil) {
 }
 
 describe("run-node.mjs supervisor (real processes)", () => {
-  it("relaunches a child that exits with code 75, then exits cleanly", async () => {
-    // Child requests a restart twice (exit 75), then exits 0 on the 3rd launch.
+  it("relaunches a child that exits with the restart code, then exits cleanly", async () => {
+    // Child requests a restart twice, then exits 0 on the 3rd launch.
     const { code, spawnCount, stderr } = await runSupervisor(2);
     expect(spawnCount).toBe(3); // initial + 2 relaunches
     expect(code).toBe(0); // clean exit after the child stops requesting restarts
@@ -95,7 +100,7 @@ describe("run-node.mjs supervisor (real processes)", () => {
   }, 30_000);
 
   it("aborts a crash loop after MAX_RESTARTS_IN_WINDOW restarts", async () => {
-    // Child always exits 75 → the guard must abort instead of spinning forever.
+    // Child always requests restart; the guard must abort instead of spinning forever.
     const { code, spawnCount, stderr } = await runSupervisor(
       Number.MAX_SAFE_INTEGER,
     );

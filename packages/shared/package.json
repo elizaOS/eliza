@@ -103,6 +103,16 @@
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js"
     },
+    "./restart": {
+      "types": "./dist/restart.d.ts",
+      "eliza-source": {
+        "types": "./src/restart.ts",
+        "import": "./src/restart.ts",
+        "default": "./src/restart.ts"
+      },
+      "import": "./dist/restart.js",
+      "default": "./dist/restart.js"
+    },
     "./brand": {
       "types": "./dist/brand/index.d.ts",
       "import": "./dist/brand/index.js",
