@@ -39,6 +39,7 @@ import type {
 } from "./client-types";
 import { ApiError } from "./client-types";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
+import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import {
   iosInProcessAgentTransportForUrl,
   isIosInProcessLocalAgentBase,
@@ -952,6 +953,7 @@ export class ElizaClient {
     return (
       (await androidNativeAgentTransportForUrl(requestUrl)) ??
       (await iosInProcessAgentTransportForUrl(requestUrl)) ??
+      (await desktopLocalAgentTransportForUrl(requestUrl)) ??
       desktopHttpTransportForUrl(requestUrl) ??
       nativeCloudHttpTransportForUrl(requestUrl) ??
       this.requestTransport

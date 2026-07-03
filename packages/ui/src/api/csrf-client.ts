@@ -19,6 +19,7 @@ import { resolveApiUrl } from "../utils/asset-url";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
+import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
@@ -81,6 +82,7 @@ export async function fetchWithCsrf(
   const transport =
     (await androidNativeAgentTransportForUrl(url)) ??
     (await iosInProcessAgentTransportForUrl(url)) ??
+    (await desktopLocalAgentTransportForUrl(url)) ??
     desktopHttpTransportForUrl(url) ??
     nativeCloudHttpTransportForUrl(url) ??
     fetchAgentTransport;
