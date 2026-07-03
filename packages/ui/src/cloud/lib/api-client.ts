@@ -29,6 +29,7 @@ import { getElizaApiToken } from "@elizaos/shared";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
+import { decodeJwtPayload } from "./jwt";
 
 // The single Eliza Cloud API host the native/Electrobun transport is allowed to
 // reach cross-origin. Kept deliberately narrow: only this exact host relaxes the
@@ -155,6 +156,28 @@ function readStewardToken(): string | null {
   }
 }
 
+function clearStoredStewardTokenIfCurrent(token: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem(STEWARD_TOKEN_KEY) === token) {
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    }
+  } catch {
+    // ignore storage/event failures; the fallback token path can still proceed.
+  }
+}
+
+function readLiveNativeStewardToken(token: string): string | null {
+  const claims = decodeJwtPayload(token);
+  const expMs = typeof claims?.exp === "number" ? claims.exp * 1000 : null;
+  if (!claims || expMs === null || expMs <= Date.now()) {
+    clearStoredStewardTokenIfCurrent(token);
+    return null;
+  }
+  return token;
+}
+
 /**
  * Resolve the Cloud bearer for the auth header. The Steward session JWT stays
  * first (canonical, unchanged). On native/Electrobun ONLY, fall back to the
@@ -171,7 +194,11 @@ function readStewardToken(): string | null {
  */
 function readCloudBearerToken(): string | null {
   const stewardToken = readStewardToken()?.trim();
-  if (stewardToken) return stewardToken;
+  if (stewardToken) {
+    if (!isNativeCloudRuntime()) return stewardToken;
+    const liveToken = readLiveNativeStewardToken(stewardToken);
+    if (liveToken) return liveToken;
+  }
   if (!isNativeCloudRuntime()) return null;
   const globalToken = (globalThis as Record<string, unknown>)
     .__ELIZA_CLOUD_AUTH_TOKEN__;
