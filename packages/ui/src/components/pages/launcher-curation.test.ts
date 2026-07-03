@@ -324,6 +324,8 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("skills", { builtin: true }),
     entry("plugins", { viewKind: "system" }),
     entry("plugins-page", { viewKind: "system" }),
+    // Training UI — declared release, forced developer by curation.
+    entry("fine-tuning"),
   ];
 
   it("produces the exact off-fork ONE-page layout (developer on → tools after apps)", () => {
@@ -355,11 +357,12 @@ describe("curateLauncherPages — full realistic view set", () => {
         "logs",
         "skills",
         "plugins",
+        "fine-tuning",
       ],
     ]);
   });
 
-  it("hides the developer tools in the default (production) profile — apps only", () => {
+  it("hides the developer tools AND the forced-preview surfaces in the default (production) profile", () => {
     expect(
       ids(
         curateLauncherPages(REAL_VIEWS, {
@@ -378,12 +381,41 @@ describe("curateLauncherPages — full realistic view set", () => {
         "character",
         "documents",
         "transcripts",
-        "relationships",
         "memories",
-        "feed",
-        "stream",
       ],
     ]);
+  });
+
+  it("forces feed/stream/relationships to preview and fine-tuning to developer regardless of declared kind", () => {
+    // Preview on, developer off: the preview surfaces come back, the training
+    // UI stays hidden (it is developer, not preview).
+    const previewOnly = ids(
+      curateLauncherPages(REAL_VIEWS, {
+        isAosp: false,
+        enabledKinds: { developer: false, preview: true },
+        cloudActive: true,
+      }),
+    ).flat();
+    for (const id of ["feed", "stream", "relationships"]) {
+      expect(previewOnly).toContain(id);
+    }
+    expect(previewOnly).not.toContain("fine-tuning");
+    expect(previewOnly).not.toContain("trajectories");
+
+    // Developer on, preview off: the training UI shows with the dev tools, the
+    // preview surfaces stay hidden — even though feed/relationships are
+    // DECLARED system in the fixture.
+    const developerOnly = ids(
+      curateLauncherPages(REAL_VIEWS, {
+        isAosp: false,
+        enabledKinds: { developer: true, preview: false },
+        cloudActive: true,
+      }),
+    ).flat();
+    expect(developerOnly).toContain("fine-tuning");
+    for (const id of ["feed", "stream", "relationships"]) {
+      expect(developerOnly).not.toContain(id);
+    }
   });
 
   it("appends the native-OS tiles to the single page on the AOSP fork", () => {

@@ -1,5 +1,5 @@
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3
 
 
  Test Files  3 passed (3)
@@ -9,7 +9,7 @@
 
 --- integration lane: lifeops-inbox-triage ---
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3
 
 
  Test Files  1 passed (1)

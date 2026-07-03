@@ -2,7 +2,7 @@
 	"schemaVersion": 1,
 	"generatedAt": "2026-07-02T21:20:33.914Z",
 	"host": "darwin-arm64",
-	"lib": "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib",
+	"lib": "/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp/build-desktop-metal/bin/libelizainference.dylib",
 	"diarizGguf": "/private/tmp/fix-11377-scratch/pyannote-segmentation-3.0-fresh-ifgo.gguf",
 	"speakerGguf": "/Users/shawwalters/.eliza/local-inference/models/voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
 	"thresholds": {

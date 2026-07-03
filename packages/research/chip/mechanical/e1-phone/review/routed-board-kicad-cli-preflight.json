@@ -3,7 +3,7 @@
   "claim_boundary": "Local tool preflight for routed-board DRC/ERC generation. This is environment evidence only and does not grant release credit.",
   "tool": "kicad-cli",
   "available": true,
-  "resolved_path": "/home/shaw/milady/eliza/packages/research/chip/tools/bin/kicad-cli",
+  "resolved_path": "/home/shaw/eliza/eliza/packages/research/chip/tools/bin/kicad-cli",
   "local_kicad_config_home": "mechanical/e1-phone/review/local-kicad-cli/config",
   "local_kicad_fp_lib_table": "mechanical/e1-phone/review/local-kicad-cli/config/9.0/fp-lib-table",
   "local_kicad_fp_lib_table_sha256": "4cc067ea82c3df5b4c9d02b2a73a04156c8bab9fd16028180fe9123331d902d6",

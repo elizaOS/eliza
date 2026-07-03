@@ -1,11 +1,11 @@
 {
-  "asset_root": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets",
+  "asset_root": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets",
   "groups": {
     "head_face": {
       "source_meshes": [
         {
           "file": "head_yaw_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/head_yaw_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/head_yaw_link.STL",
           "vertices": 44581,
           "faces": 68969,
           "watertight": false,
@@ -19,7 +19,7 @@
         },
         {
           "file": "head_pitch_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/head_pitch_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/head_pitch_link.STL",
           "vertices": 2783,
           "faces": 5580,
           "watertight": false,
@@ -39,7 +39,7 @@
       "source_meshes": [
         {
           "file": "waist_yaw_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/waist_yaw_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/waist_yaw_link.STL",
           "vertices": 21752,
           "faces": 41656,
           "watertight": false,
@@ -50,7 +50,7 @@
         },
         {
           "file": "waist_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/waist_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/waist_roll_link.STL",
           "vertices": 3673,
           "faces": 7330,
           "watertight": false,
@@ -61,7 +61,7 @@
         },
         {
           "file": "torso_collision.stl",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/torso_collision.stl",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/torso_collision.stl",
           "vertices": 2067,
           "faces": 4130,
           "watertight": true,
@@ -81,7 +81,7 @@
       "source_meshes": [
         {
           "file": "pelvis_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/pelvis_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/pelvis_link.STL",
           "vertices": 18794,
           "faces": 38231,
           "watertight": false,
@@ -101,7 +101,7 @@
       "source_meshes": [
         {
           "file": "left_shoulder_pitch_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_pitch_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_pitch_link.STL",
           "vertices": 4197,
           "faces": 8400,
           "watertight": false,
@@ -115,7 +115,7 @@
         },
         {
           "file": "left_shoulder_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_roll_link.STL",
           "vertices": 5423,
           "faces": 10856,
           "watertight": false,
@@ -129,7 +129,7 @@
         },
         {
           "file": "left_shoulder_yaw_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_yaw_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_yaw_link.STL",
           "vertices": 6502,
           "faces": 12990,
           "watertight": false,
@@ -149,7 +149,7 @@
       "source_meshes": [
         {
           "file": "right_shoulder_pitch_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_pitch_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_pitch_link.STL",
           "vertices": 4192,
           "faces": 8390,
           "watertight": false,
@@ -163,7 +163,7 @@
         },
         {
           "file": "right_shoulder_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_roll_link.STL",
           "vertices": 5369,
           "faces": 10699,
           "watertight": false,
@@ -177,7 +177,7 @@
         },
         {
           "file": "right_shoulder_yaw_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_yaw_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_yaw_link.STL",
           "vertices": 6555,
           "faces": 12954,
           "watertight": false,
@@ -197,7 +197,7 @@
       "source_meshes": [
         {
           "file": "left_elbow_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_elbow_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_elbow_link.STL",
           "vertices": 3765,
           "faces": 7466,
           "watertight": false,
@@ -211,7 +211,7 @@
         },
         {
           "file": "left_wrist_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_wrist_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_wrist_roll_link.STL",
           "vertices": 8826,
           "faces": 17618,
           "watertight": false,
@@ -231,7 +231,7 @@
       "source_meshes": [
         {
           "file": "right_elbow_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_elbow_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_elbow_link.STL",
           "vertices": 3650,
           "faces": 7216,
           "watertight": false,
@@ -245,7 +245,7 @@
         },
         {
           "file": "right_wrist_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_wrist_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_wrist_roll_link.STL",
           "vertices": 8832,
           "faces": 17634,
           "watertight": false,
@@ -265,7 +265,7 @@
       "source_meshes": [
         {
           "file": "left_hip_pitch_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_pitch_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_pitch_link.STL",
           "vertices": 5386,
           "faces": 10760,
           "watertight": false,
@@ -279,7 +279,7 @@
         },
         {
           "file": "left_hip_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_roll_link.STL",
           "vertices": 4959,
           "faces": 9930,
           "watertight": true,
@@ -293,7 +293,7 @@
         },
         {
           "file": "left_hip_yaw_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_yaw_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_yaw_link.STL",
           "vertices": 8799,
           "faces": 17460,
           "watertight": false,
@@ -313,7 +313,7 @@
       "source_meshes": [
         {
           "file": "right_hip_pitch_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_pitch_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_pitch_link.STL",
           "vertices": 5403,
           "faces": 10790,
           "watertight": false,
@@ -327,7 +327,7 @@
         },
         {
           "file": "right_hip_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_roll_link.STL",
           "vertices": 4983,
           "faces": 9976,
           "watertight": false,
@@ -341,7 +341,7 @@
         },
         {
           "file": "right_hip_yaw_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_yaw_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_yaw_link.STL",
           "vertices": 8685,
           "faces": 17286,
           "watertight": true,
@@ -361,7 +361,7 @@
       "source_meshes": [
         {
           "file": "left_knee_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_knee_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_knee_link.STL",
           "vertices": 9000,
           "faces": 17972,
           "watertight": true,
@@ -375,7 +375,7 @@
         },
         {
           "file": "left_knee_collision.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_knee_collision.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_knee_collision.STL",
           "vertices": 634,
           "faces": 1264,
           "watertight": true,
@@ -395,7 +395,7 @@
       "source_meshes": [
         {
           "file": "right_knee_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_knee_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_knee_link.STL",
           "vertices": 9013,
           "faces": 17998,
           "watertight": true,
@@ -409,7 +409,7 @@
         },
         {
           "file": "right_knee_collision.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_knee_collision.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_knee_collision.STL",
           "vertices": 638,
           "faces": 1272,
           "watertight": true,
@@ -429,7 +429,7 @@
       "source_meshes": [
         {
           "file": "left_ankle_pitch_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_pitch_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_pitch_link.STL",
           "vertices": 300,
           "faces": 600,
           "watertight": true,
@@ -440,7 +440,7 @@
         },
         {
           "file": "left_ankle_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_roll_link.STL",
           "vertices": 8764,
           "faces": 17520,
           "watertight": true,
@@ -454,7 +454,7 @@
         },
         {
           "file": "left_ankle_A_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_A_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_A_link.STL",
           "vertices": 315,
           "faces": 626,
           "watertight": true,
@@ -465,7 +465,7 @@
         },
         {
           "file": "left_ankle_B_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_B_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_B_link.STL",
           "vertices": 315,
           "faces": 626,
           "watertight": true,
@@ -476,7 +476,7 @@
         },
         {
           "file": "left_ankle_A_rod_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_A_rod_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_A_rod_link.STL",
           "vertices": 1109,
           "faces": 2218,
           "watertight": true,
@@ -490,7 +490,7 @@
         },
         {
           "file": "left_ankle_B_rod_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_B_rod_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_B_rod_link.STL",
           "vertices": 1109,
           "faces": 2218,
           "watertight": true,
@@ -510,7 +510,7 @@
       "source_meshes": [
         {
           "file": "right_ankle_pitch_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_pitch_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_pitch_link.STL",
           "vertices": 300,
           "faces": 600,
           "watertight": true,
@@ -521,7 +521,7 @@
         },
         {
           "file": "right_ankle_roll_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_roll_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_roll_link.STL",
           "vertices": 8749,
           "faces": 17490,
           "watertight": true,
@@ -535,7 +535,7 @@
         },
         {
           "file": "right_ankle_A_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_A_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_A_link.STL",
           "vertices": 315,
           "faces": 626,
           "watertight": true,
@@ -546,7 +546,7 @@
         },
         {
           "file": "right_ankle_B_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_B_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_B_link.STL",
           "vertices": 315,
           "faces": 626,
           "watertight": true,
@@ -557,7 +557,7 @@
         },
         {
           "file": "right_ankle_A_rod_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_A_rod_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_A_rod_link.STL",
           "vertices": 1109,
           "faces": 2218,
           "watertight": true,
@@ -571,7 +571,7 @@
         },
         {
           "file": "right_ankle_B_rod_link.STL",
-          "path": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_B_rod_link.STL",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_B_rod_link.STL",
           "vertices": 1109,
           "faces": 2218,
           "watertight": true,

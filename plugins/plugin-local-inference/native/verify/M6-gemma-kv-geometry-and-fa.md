@@ -85,11 +85,18 @@ no garbage) — see the GPU section of the M7 report. FA on Vulkan also *helps
 prefill* (gemma-4-E2B pp512 1353→1546 t/s, +14%; decode flat within noise on the
 no-coopmat path).
 
-**Still unverified:** CUDA (toolkit-blocked on this host — sm_120 needs CUDA
-13.x) and Metal (needs Apple Silicon). On those, re-run
-`llama-bench -m gemma-4-E2B … -ngl 99 -fa 1 -v` and confirm no `padding V cache`
-line. Given CPU + Vulkan both engage cleanly, CUDA/Metal are expected to as well,
-but that is not yet evidence.
+**Metal: RESOLVED (2026-07-02, Apple M4 Max, pin `58c0391eb`).** FA AUTO
+engages for **both** Gemma head dims on Metal:
+`llama-bench -m eliza-1-2b(gemma4 E2B Q8_0) -ngl 99 -fa 1 -v` reports
+`flash_attn = enabled`, compiles `kernel_flash_attn_ext_f16_dk512_dv512` +
+`dk256_dv256` pipelines, and prints **zero** `padding V cache` lines (the same
+run with `-fa 0` prints 4). pp512 2828.6 / tg128 89.7 t/s (fa1) vs 2690 / 86.5
+(fa0). Logs: `.github/issue-evidence/11391-kernel-verify/`.
+
+**Still unverified:** CUDA only (toolkit-blocked on the Linux host — sm_120
+needs CUDA 13.x; no NVIDIA part on the Mac). Re-run
+`llama-bench -m gemma-4-E2B … -ngl 99 -fa 1 -v` there and confirm no
+`padding V cache` line (→ #11734).
 
 ## 4. 8/8 kernel verify matrix — status for the Gemma geometry
 
@@ -98,8 +105,8 @@ but that is not yet evidence.
 | CPU | head_dim=128 (Qwen-shaped) | **`reference-test` clean** (turbo3/turbo4/turbo3_tcq/qjl/polar/polar_qjl all finite, fused-attn + TBQ V-cache parity OK); Gemma forward proven via llama-bench (text) + FA engages for 512. Fixtures still head_dim=128 → Gemma-geometry re-gen pending. |
 | Vulkan-desktop (RTX 5080) | head_dim=128 | **8/8 kernel verify PASS on the 5080** — `make vulkan-verify` → turbo3/turbo4/turbo3_tcq/qjl/polar (incl. pre-Hadamard + both residual modes) all PASS, max diff ≤ 7.6e-6, Vulkan api 1.4.329 (§8 gate satisfied for the shipped kernels). **Gemma forward also PROVEN on GPU** — gemma-4-E2B/E4B + gemma3n run via Vulkan (pp512 1486 / tg128 123 for E2B, 26×/8× over CPU), FA engages for 512, output correct. Built with the NDK glslc (no coopmat → scalar path). Fixtures still head_dim=128 → Gemma-geometry re-gen pending. |
 | CUDA | head_dim=128 | **blocked** — sm_120 needs CUDA 13.x (not installed); GPU not enumerable by the CUDA runtime on this host (NVML sees it, CUDA runtime doesn't). |
-| Vulkan-Mali (Android) | — | FA off by policy (race); QJL/Polar is the on-device attention path (#8848) — but it is head_dim=128 → re-param needed before it applies to Gemma. |
-| Metal | — | needs Apple Silicon. |
+| Vulkan-Mali (Android) | — | FA off by policy (race); QJL/Polar is the on-device attention path (#8848) — but it is head_dim=128 → re-param needed before it applies to Gemma. Device 8/8 hardware-gated → #11734. |
+| Metal | head_dim=128 | **8/8 PASS on Apple M4 Max (2026-07-02, pin `58c0391eb`)** — `metal-verify` + `metal-verify-shipped` + `-fused` + `-multiblock` + `dispatch-smoke` 9/9 graph routes; MoltenVK `vulkan-verify` also 8/8 on the same host. FA engages for both Gemma dims (see §3). Per-backend decisions: [`M6-per-backend-kernel-decisions.md`](M6-per-backend-kernel-decisions.md). |
 
 **The 8/8 *kernel-parity* matrix cannot be honestly closed for Gemma yet:** the
 parity fixtures are head_dim=128 and must be regenerated against Gemma-geometry
@@ -109,9 +116,9 @@ remain hardware/toolkit-blocked on this host.
 
 ## 5. M6 work remaining (owners)
 
-- **[done on CPU + Vulkan]** FA-engage check for the 512 global dim — confirmed
-  on CPU and desktop-Vulkan (RTX 5080). Remaining: CUDA (toolkit-blocked) + Metal
-  (needs Apple Silicon).
+- **[done on CPU + Vulkan + Metal]** FA-engage check for the 512 global dim —
+  confirmed on CPU, desktop-Vulkan (RTX 5080), and Metal (M4 Max, 2026-07-02).
+  Remaining: CUDA (toolkit-blocked → #11734).
 - **[needs GPU + fixture re-gen]** Regenerate kernel-parity fixtures at Gemma
   dual dims (512/256) and re-run the 8/8 matrix per buildable backend.
 - **[M1/M2 agent — `src/services/` is dirty]** Wire the Gemma-aware RAM defaults

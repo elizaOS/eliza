@@ -143,6 +143,167 @@ final class BootCaptureUITests: XCTestCase {
         )
     }
 
+    /// Drive one REAL chat exchange end-to-end on the device: tap the
+    /// composer, type a prompt, press Return (the composer's Enter-to-send
+    /// path in ChatSurface/glass-composer), then watch the screen for an
+    /// assistant reply, attaching a screenshot filmstrip the whole time.
+    ///
+    /// Preconditions skip (same philosophy as testComposerAcceptsTypedText);
+    /// the hard assertions are that the send actually left the composer (its
+    /// AX value no longer holds the prompt) and that the app survived the
+    /// reply wait. Reply arrival is detected as any NEW static-text label
+    /// (absent before the send, not the prompt echo, ≥ 12 chars) and is
+    /// recorded in the final screenshot name + a `reply-text` attachment —
+    /// on local-inference devices this reply leg is the entire point of the
+    /// run (issue #11612 on-device generation).
+    ///
+    /// Knobs (TEST_RUNNER_ env):
+    ///   ELIZA_BOOT_TIMEOUT_SECONDS              boot budget (default 180)
+    ///   ELIZA_SEND_PROMPT                       prompt (default below)
+    ///   ELIZA_REPLY_TIMEOUT_SECONDS             reply budget (default 300)
+    ///   ELIZA_REPLY_SCREENSHOT_INTERVAL_SECONDS filmstrip cadence (default 15)
+    func testComposerSendsPromptAndWaitsForReply() throws {
+        let env = ProcessInfo.processInfo.environment
+        let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
+        let prompt = env["ELIZA_SEND_PROMPT"] ?? "Hello, introduce yourself briefly."
+        let replyTimeout = Double(env["ELIZA_REPLY_TIMEOUT_SECONDS"] ?? "") ?? 300
+        let shotInterval = max(1, Double(env["ELIZA_REPLY_SCREENSHOT_INTERVAL_SECONDS"] ?? "") ?? 15)
+
+        let app = XCUIApplication()
+        launchWithRetry(app)
+
+        let bootDeadline = Date().addingTimeInterval(bootTimeout)
+        var reachedHome = false
+        while Date() < bootDeadline {
+            if app.state == .notRunning { break }
+            if let terminal = classifyBootState(of: app) {
+                reachedHome = terminal == .home
+                break
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        attachScreenshot(named: "send-000-home")
+        guard reachedHome else {
+            throw XCTSkip("boot did not reach home — send not attempted")
+        }
+
+        // Wait out the local model warm-up (the "Loading Eliza…" chip) so the
+        // send lands on a ready agent — same detector as
+        // GestureSemanticsUITests.waitForAgentReady. On a device where the
+        // warm-up never completes the timeout expires and the send proceeds
+        // anyway; the filmstrip records what the user would see.
+        let agentReadyTimeout = Double(env["ELIZA_AGENT_READY_TIMEOUT_SECONDS"] ?? "") ?? 240
+        if agentReadyTimeout > 0 {
+            let loadingChips = app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Loading Eliza'"))
+            let warmDeadline = Date().addingTimeInterval(agentReadyTimeout)
+            while Date() < warmDeadline {
+                if loadingChips.count == 0 { break }
+                Thread.sleep(forTimeInterval: 5.0)
+            }
+            attachScreenshot(named: "send-005-after-warmup-wait")
+        }
+
+        let webView = app.webViews.firstMatch
+        let candidates: [XCUIElement] = [
+            webView.textViews.firstMatch,
+            webView.textFields.firstMatch,
+            app.textViews.firstMatch,
+            app.textFields.firstMatch,
+        ]
+        guard
+            let composer = candidates.first(where: {
+                $0.waitForExistence(timeout: 10) && $0.isHittable
+            })
+        else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("no hittable composer text element in the AX tree")
+        }
+
+        // Baseline of visible static-text labels BEFORE the send, so the
+        // reply detector only fires on genuinely new content.
+        var baseline = Set<String>()
+        for text in app.staticTexts.allElementsBoundByIndex.prefix(80) {
+            baseline.insert(text.label)
+        }
+
+        composer.tap()
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 10) else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("keyboard never appeared after tapping the composer")
+        }
+        composer.typeText(prompt)
+        attachScreenshot(named: "send-010-typed-prompt")
+
+        // Submit by tapping the composer's send control. The iOS keyboard's
+        // Return does NOT reach the web textarea as an Enter keydown (see
+        // GestureSemanticsUITests.ensureUserMessage), and the control carries
+        // aria-pressed so AX may expose it as a switch — match by label
+        // across element types.
+        let sendButton = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'send'")
+        ).firstMatch
+        guard sendButton.waitForExistence(timeout: 5), sendButton.isHittable else {
+            attachScreenshot(named: "send-015-no-send-button")
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("no hittable send control after typing the prompt")
+        }
+        sendButton.tap()
+        Thread.sleep(forTimeInterval: 2.0)
+        attachScreenshot(named: "send-020-after-send-tap")
+
+        // Hard assertion: the tap actually submitted — the composer must no
+        // longer be holding the full prompt.
+        let residual = (composer.exists ? (composer.value as? String) : nil) ?? ""
+        XCTAssertFalse(
+            residual.contains(prompt),
+            "tapped the send control but the composer still holds the prompt ('\(residual)') — the send never fired."
+        )
+
+        let start = Date()
+        let deadline = start.addingTimeInterval(replyTimeout)
+        var replyLabel: String? = nil
+        var nextShot = start.addingTimeInterval(shotInterval)
+        let promptPrefix = String(prompt.prefix(24))
+        while Date() < deadline {
+            if app.state == .notRunning { break }
+            for text in app.staticTexts.allElementsBoundByIndex.prefix(120) {
+                let label = text.label
+                if label.count >= 12,
+                   !baseline.contains(label),
+                   !label.contains(promptPrefix) {
+                    replyLabel = label
+                    break
+                }
+            }
+            if replyLabel != nil { break }
+            Thread.sleep(forTimeInterval: 2.0)
+            if Date() >= nextShot {
+                let seconds = Int(Date().timeIntervalSince(start).rounded())
+                attachScreenshot(named: String(format: "send-wait-%03ds", seconds))
+                nextShot = Date().addingTimeInterval(shotInterval)
+            }
+        }
+
+        let outcome = app.state == .notRunning
+            ? "app-terminated"
+            : (replyLabel != nil ? "reply" : "no-reply-timeout")
+        attachScreenshot(named: "send-final-\(outcome)")
+        if app.state != .notRunning {
+            attachAccessibilitySnapshot(of: app)
+        }
+        if let replyLabel {
+            let attachment = XCTAttachment(string: replyLabel)
+            attachment.name = "reply-text"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        XCTAssertNotEqual(
+            outcome, "app-terminated",
+            "the app died while waiting for the reply — see the send-wait filmstrip."
+        )
+    }
+
     /// `XCUIApplication.launch()` can race an in-flight app (re)install —
     /// FrontBoard force-quits the fresh pid (exit code 0xfbfbfbfb) and the
     /// session is left driving a dead app. Wait for foreground and relaunch a

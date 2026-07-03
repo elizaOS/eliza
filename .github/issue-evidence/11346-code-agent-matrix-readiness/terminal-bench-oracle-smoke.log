@@ -9,9 +9,9 @@ DEBUG: Server is ready!
 2026-07-02 14:59:47,023 - elizaos_terminal_bench.environment - INFO - Started container ed223a336685 with image elizaos-tbench/analyze-access-logs:latest
 2026-07-02 15:00:05,329 - elizaos_terminal_bench.environment - INFO - Stopped and removed container ed223a336685
 2026-07-02 15:00:05,332 - elizaos_terminal_bench.runner - INFO -   ✅ PASS | Commands: 1 | Time: 455ms
-2026-07-02 15:00:05,333 - elizaos_terminal_bench.runner - INFO - JSON report saved to /tmp/claude-1000/-home-shaw-milady-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle/terminal-bench-20260702_150005.json
-2026-07-02 15:00:05,333 - elizaos_terminal_bench.runner - INFO - Markdown report saved to /tmp/claude-1000/-home-shaw-milady-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle/terminal-bench-20260702_150005.md
-2026-07-02 15:00:05,335 - elizaos_terminal_bench.runner - INFO - Session logs saved to /tmp/claude-1000/-home-shaw-milady-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle/sessions-20260702_150005
+2026-07-02 15:00:05,333 - elizaos_terminal_bench.runner - INFO - JSON report saved to /tmp/claude-1000/-home-shaw-eliza-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle/terminal-bench-20260702_150005.json
+2026-07-02 15:00:05,333 - elizaos_terminal_bench.runner - INFO - Markdown report saved to /tmp/claude-1000/-home-shaw-eliza-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle/terminal-bench-20260702_150005.md
+2026-07-02 15:00:05,335 - elizaos_terminal_bench.runner - INFO - Session logs saved to /tmp/claude-1000/-home-shaw-eliza-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle/sessions-20260702_150005
 2026-07-02 15:00:05,335 - elizaos_terminal_bench.runner - INFO -
 ==================================================
 2026-07-02 15:00:05,335 - elizaos_terminal_bench.runner - INFO - Terminal-Bench Evaluation Complete
@@ -27,7 +27,7 @@ Accuracy: 100.0%
 Passed: 1/1
 Total Time: 21.5s
 
-Results saved to: /tmp/claude-1000/-home-shaw-milady-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle
+Results saved to: /tmp/claude-1000/-home-shaw-eliza-eliza/dacea517-46bb-4986-a926-61b458860cb5/scratchpad/tb-oracle
 2026-07-02 15:00:05,335 - eliza_adapter.server_manager - INFO - Stopping eliza benchmark server (pid=2039273) ...
 2026-07-02 15:00:10,335 - eliza_adapter.server_manager - WARNING - Server did not exit gracefully, killing...
 --- Server STDOUT (/tmp/eliza-bench-server-49887-cjrm42jl.stdout.log) ---

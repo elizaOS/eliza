@@ -22,7 +22,7 @@ app-create GitHub repo default.
 
 Base commit: `426a1676f4 fix(cloud): proof-of-control wallet provisioning; revert #10382 org-scoped RPC regression (#10279) (#10438)`
 
-Commands run from `/home/shaw/milady/eliza-issue-10450-xappid`:
+Commands run from `/home/shaw/eliza/eliza-issue-10450-xappid`:
 
 ```bash
 bun run install:light

@@ -33,7 +33,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest-permissionResult_matchesRealMicrophoneGrantAndSpeechRecognizerAvailability.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest-permissionResult_matchesRealMicrophoneGrantAndSpeechRecognizerAvailability.txt"
     }
   }
   output_artifact {
@@ -42,7 +42,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
     }
   }
   output_artifact {
@@ -51,7 +51,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
     }
   }
   output_artifact {
@@ -60,7 +60,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
     }
   }
 }
@@ -89,7 +89,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest-deviceTypeName_labelsKnownMicrophoneTypes.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest-deviceTypeName_labelsKnownMicrophoneTypes.txt"
     }
   }
   output_artifact {
@@ -98,7 +98,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
     }
   }
   output_artifact {
@@ -107,7 +107,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
     }
   }
   output_artifact {
@@ -116,7 +116,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
     }
   }
 }
@@ -145,7 +145,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest-audioDevices_returnsRealAndroidInputsOrDefaultFallback.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest-audioDevices_returnsRealAndroidInputsOrDefaultFallback.txt"
     }
   }
   output_artifact {
@@ -154,7 +154,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
     }
   }
   output_artifact {
@@ -163,7 +163,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
     }
   }
   output_artifact {
@@ -172,7 +172,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
     }
   }
 }
@@ -201,7 +201,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-fromJSObject_readsEveryProvidedField.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-fromJSObject_readsEveryProvidedField.txt"
     }
   }
   output_artifact {
@@ -210,7 +210,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
     }
   }
   output_artifact {
@@ -219,7 +219,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
     }
   }
   output_artifact {
@@ -228,7 +228,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
     }
   }
 }
@@ -257,7 +257,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-fromJSObject_appliesDefaultsForEveryMissingField.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-fromJSObject_appliesDefaultsForEveryMissingField.txt"
     }
   }
   output_artifact {
@@ -266,7 +266,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
     }
   }
   output_artifact {
@@ -275,7 +275,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
     }
   }
   output_artifact {
@@ -284,7 +284,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
     }
   }
 }
@@ -313,7 +313,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-toJSObject_roundTripsBackThroughFromJSObject.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-toJSObject_roundTripsBackThroughFromJSObject.txt"
     }
   }
   output_artifact {
@@ -322,7 +322,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
     }
   }
   output_artifact {
@@ -331,7 +331,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
     }
   }
   output_artifact {
@@ -340,7 +340,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
     }
   }
 }
@@ -369,7 +369,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-speechSegment_endIsStartPlusDuration.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest-speechSegment_endIsStartPlusDuration.txt"
     }
   }
   output_artifact {
@@ -378,7 +378,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
     }
   }
   output_artifact {
@@ -387,7 +387,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
     }
   }
   output_artifact {
@@ -396,7 +396,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
     }
   }
 }
@@ -406,7 +406,7 @@ output_artifact {
     namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
   }
   source_path {
-    path: "/home/shaw/milady/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/testlog/test-results.log"
+    path: "/home/shaw/eliza/eliza-wt-9967-network-policy/plugins/plugin-native-swabble/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/testlog/test-results.log"
   }
   type: TEST_DATA
   mime_type: "text/plain"

@@ -1523,7 +1523,28 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     hasSyncedPublic &&
     fs.existsSync(targetAssets) &&
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
-  if (hasSyncedPublic && !sameTree) {
+  // STALE-MIRROR GUARD: with the unified tree (android.path =
+  // ../app-core/platforms/android, #8387) cap sync writes the fresh
+  // capacitor.plugins.json straight into androidDir — but a leftover legacy
+  // appDir/android tree (with its own assets/public) makes hasSyncedPublic
+  // true and !sameTree, so this mirror used to STOMP the freshly synced
+  // manifest with a months-old copy. That silently dropped every
+  // newer native plugin (ML Kit OCR, ScreenCapture, mobile-agent-bridge, …)
+  // from auto-registration: "not implemented on android" at runtime
+  // (verified live on emulator-5554). Only mirror when the synced manifest is
+  // at least as fresh as the target's.
+  const syncedManifest = path.join(syncedAssets, "capacitor.plugins.json");
+  const targetManifest = path.join(targetAssets, "capacitor.plugins.json");
+  const syncedIsStale =
+    fs.existsSync(syncedManifest) &&
+    fs.existsSync(targetManifest) &&
+    fs.statSync(syncedManifest).mtimeMs < fs.statSync(targetManifest).mtimeMs;
+  if (syncedIsStale && !sameTree) {
+    console.log(
+      `[mobile-build] Skipping Capacitor web-payload mirror: ${path.relative(repoRoot, syncedAssets)} is a stale legacy tree (its capacitor.plugins.json is older than the freshly synced ${path.relative(repoRoot, targetManifest)}).`,
+    );
+  }
+  if (hasSyncedPublic && !sameTree && !syncedIsStale) {
     fs.mkdirSync(targetAssets, { recursive: true });
     rmRecursive(targetPublic);
     fs.cpSync(syncedPublic, targetPublic, { recursive: true });
@@ -2771,8 +2792,8 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       // template tree (platforms/android): a whitelabel build
       // (ELIZA_ANDROID_USE_APP_DIR) reads that template READ-ONLY, and writing
       // the brand package back into it corrupts the elizaOS checkout's
-      // ai/elizaos/app sources (the recurring "package ai.milady.app does not
-      // exist" pollution that breaks the next elizaOS build). srcJava resolves
+      // ai/elizaos/app sources (the recurring "custom package does not exist"
+      // pollution that breaks the next elizaOS build). srcJava resolves
       // to templateJava for a whitelabel build, so this guard is what keeps the
       // two brands' source trees separate.
       const srcInOwnAndroidDir = path

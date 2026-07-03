@@ -23,14 +23,14 @@ single `~/.codex` login. Each home lives at:
 ```
 
 `<stateDir>` = `$ELIZA_HOME` (or the resolved per-user state dir, default
-`~/.local/state/milady`). To materialize a home, authenticate the account in the
+`~/.local/state/eliza`). To materialize a home, authenticate the account in the
 elizaOS runtime (Codex OAuth / ChatGPT login). The benchmark side does **no**
 OAuth — it only points `CODEX_HOME` at homes that already exist.
 
 Verify what is materialized:
 
 ```bash
-ls "${ELIZA_HOME:-$HOME/.local/state/milady}/auth/_codex-home/"
+ls "${ELIZA_HOME:-$HOME/.local/state/eliza}/auth/_codex-home/"
 # one directory per accountId, each containing auth.json
 ```
 

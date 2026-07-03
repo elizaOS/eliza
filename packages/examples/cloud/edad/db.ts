@@ -57,12 +57,12 @@ export async function initDb(): Promise<void> {
 }
 
 /**
- * Stable per-user key derived from the signed-in user's token. We persist
- * history per user WITHOUT ever storing the token itself (one-way sha256).
+ * Stable per-user key derived from the Cloud user id. We still hash it so the
+ * app does not need to store raw identity values in its chat-history table.
  */
-export function userRef(userToken: string): string {
+export function userRef(userId: string): string {
   return new Bun.CryptoHasher("sha256")
-    .update(userToken)
+    .update(userId)
     .digest("hex")
     .slice(0, 32);
 }

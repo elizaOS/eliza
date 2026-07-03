@@ -11,7 +11,7 @@ at::
         config.toml    # pinned model
 
 where ``<stateDir>`` is ``$ELIZA_HOME`` (or the resolved per-user state dir,
-default ``~/.local/state/milady``). This module is the **offline-testable**
+default ``~/.local/state/eliza``). This module is the **offline-testable**
 counterpart the benchmark runner needs: given the ``--accounts`` flag value, it
 enumerates the materialized homes and yields the ``CODEX_HOME`` to point each
 run at, round-robining turns across accounts. It performs **no** network, no
@@ -32,14 +32,14 @@ def default_state_dir() -> Path:
 
     Mirrors the TS ``resolveStateDir`` precedence closely enough for the
     benchmark runner: explicit ``ELIZA_HOME`` wins, then the documented state
-    dir overrides (``MILADY_STATE_DIR`` / ``ELIZA_STATE_DIR``), then the default
-    ``~/.local/state/milady``.
+    dir overrides (``ELIZA_STATE_DIR`` / ``ELIZA_STATE_DIR``), then the default
+    ``~/.local/state/eliza``.
     """
-    for env_name in ("ELIZA_HOME", "MILADY_STATE_DIR", "ELIZA_STATE_DIR"):
+    for env_name in ("ELIZA_HOME", "ELIZA_STATE_DIR", "ELIZA_STATE_DIR"):
         value = os.environ.get(env_name, "").strip()
         if value:
             return Path(value).expanduser()
-    return Path.home() / ".local" / "state" / "milady"
+    return Path.home() / ".local" / "state" / "eliza"
 
 
 def codex_homes_root(state_dir: Path | None = None) -> Path:

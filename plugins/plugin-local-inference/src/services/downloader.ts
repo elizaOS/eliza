@@ -232,7 +232,7 @@ function bundleStagingFilename(modelId: string, filePath: string): string {
 	return stagingFilename(`${modelId}__${safePath}`);
 }
 
-function bundleTargetPath(root: string, filePath: string): string {
+export function bundleTargetPath(root: string, filePath: string): string {
 	if (
 		!filePath ||
 		path.isAbsolute(filePath) ||
@@ -251,7 +251,7 @@ function bundleTargetPath(root: string, filePath: string): string {
 	return target;
 }
 
-function parseBundleManifestOrThrow(
+export function parseBundleManifestOrThrow(
 	input: unknown,
 	catalogEntry: CatalogModel,
 ): Eliza1Manifest {
@@ -272,7 +272,7 @@ function parseBundleManifestOrThrow(
 	return manifest;
 }
 
-function collectBundleFiles(
+export function collectBundleFiles(
 	manifest: Eliza1Manifest,
 ): Array<{ kind: BundleFileKind; entry: Eliza1FileEntry }> {
 	const seen = new Map<

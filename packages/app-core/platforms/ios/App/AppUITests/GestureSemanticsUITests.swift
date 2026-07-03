@@ -17,7 +17,9 @@ import XCTest
 ///     drag on the home↔launcher rail must snap back; a slow drag past the 50%
 ///     point must commit the page (velocity deliberately killed with a
 ///     hold-before-release, so this exercises the DISTANCE rule, not the flick
-///     escape hatch); the launcher's edge-swipe-right must return home.
+///     escape hatch). BOTH directions follow the same rules: the launcher's
+///     right-swipe back home is rail-owned and 1:1 (the reduced edge-swipe
+///     threshold is gone), so a sub-threshold right drag snaps back too.
 ///   - `testMessageEditAffordanceRevealsViaTouch` — tap a user message bubble →
 ///     the action row's Edit affordance appears; tap Edit → the inline editor
 ///     opens prefilled with the message text.
@@ -138,16 +140,33 @@ final class GestureSemanticsUITests: XCTestCase {
                 + "launcher, but the rail reads '\(committed ?? "nil")'"
         )
 
-        // Edge-swipe back: on the launcher a right drag commits home on the
-        // shorter edge-swipe threshold.
-        slowHorizontalDrag(in: app, fromX: 0.20, toX: 0.65, y: 0.55)
+        // Sub-threshold RIGHT drag: the back-to-home direction follows the
+        // SAME 50% distance rule as forward paging (the old reduced
+        // edge-swipe threshold is gone — the rail owns the gesture 1:1 in
+        // both directions), so a slow ~28%-width right drag must snap back.
+        slowHorizontalDrag(in: app, fromX: 0.20, toX: 0.48, y: 0.55)
+        Thread.sleep(forTimeInterval: 1.5)
+        let afterSubThresholdBack = markerValue(Self.pagePrefix, in: app)
+        attachScreenshot(named: "pager-30-after-sub-threshold-right-drag")
+        XCTAssertEqual(
+            afterSubThresholdBack, "launcher",
+            "a slow ~28%-width right drag released below the 50% threshold "
+                + "must snap back to the launcher (symmetric rules — no reduced "
+                + "edge threshold), but the rail reads "
+                + "'\(afterSubThresholdBack ?? "nil")'"
+        )
+
+        // Past-threshold RIGHT drag commits launcher → home, tracked 1:1 by
+        // the outer rail (the fix for 'swipe right only moves half way and
+        // doesn't track my thumb').
+        slowHorizontalDrag(in: app, fromX: 0.15, toX: 0.80, y: 0.55)
         let backHome = waitForMarker(
             Self.pagePrefix, toEqual: "home", timeout: 5, in: app)
-        attachScreenshot(named: "pager-30-after-edge-swipe-right")
+        attachScreenshot(named: "pager-40-after-past-threshold-right-drag")
         XCTAssertEqual(
             backHome, "home",
-            "the launcher's edge-swipe-right must return to the home page, "
-                + "but the rail reads '\(backHome ?? "nil")'"
+            "a slow right drag past the 50% point must return the rail to the "
+                + "home page, but the rail reads '\(backHome ?? "nil")'"
         )
     }
 
@@ -274,7 +293,10 @@ final class GestureSemanticsUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if app.state == .notRunning { break }
-            if markerValue(Self.detentPrefix, in: app) != nil { return }
+            if markerValue(Self.detentPrefix, in: app) != nil {
+                completeFirstRunIfPresent(in: app)
+                return
+            }
             Thread.sleep(forTimeInterval: 1.0)
         }
         attachScreenshot(named: "boot-no-detent-probe")
@@ -298,6 +320,62 @@ final class GestureSemanticsUITests: XCTestCase {
             "boot did not reach an interactive renderer within \(Int(timeout))s "
                 + "— boot coverage lives in BootCaptureUITests"
         )
+    }
+
+    /// A fresh install boots into the first-run placement question ("where
+    /// should your agent run?"), which pins the chat sheet open and locks the
+    /// composer — every gesture precondition then skips. Choosing "On this
+    /// device" is the REAL user path for this device lane (the local-agent
+    /// mode the phone runs everywhere else); after the choice the onboarding
+    /// lock clears and the sheet/rail become gesture-testable while the model
+    /// downloads in the background. Bounded and screenshot-documented; if the
+    /// lock never clears the gesture tests still skip honestly downstream.
+    private func completeFirstRunIfPresent(in app: XCUIApplication) {
+        // The placement modal mounts AFTER the detent probe appears (the boot
+        // conductor settles first), so poll a generous window rather than a
+        // single short existence check.
+        let onDevice = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == 'On this device'")
+        ).firstMatch
+        var found = false
+        let mountDeadline = Date().addingTimeInterval(20)
+        while Date() < mountDeadline {
+            if onDevice.exists, onDevice.isHittable {
+                found = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        guard found else { return }
+        attachScreenshot(named: "firstrun-00-placement-choice")
+        onDevice.tap()
+
+        // The composer lock is AX-visible as the "Tap a highlighted option"
+        // hint; wait (bounded) for it to clear. A fresh container has to
+        // download + load the local model before the lock clears, so honor the
+        // agent-ready budget when no first-run-specific one is set.
+        let env = ProcessInfo.processInfo.environment
+        let timeout =
+            Double(env["ELIZA_FIRSTRUN_TIMEOUT_SECONDS"] ?? "")
+            ?? Double(env["ELIZA_AGENT_READY_TIMEOUT_SECONDS"] ?? "")
+            ?? 240
+        let hint = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'highlighted option'")
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastShot = Date.distantPast
+        while Date() < deadline {
+            if !hint.exists {
+                attachScreenshot(named: "firstrun-20-lock-cleared")
+                return
+            }
+            if Date().timeIntervalSince(lastShot) > 60 {
+                attachScreenshot(named: "firstrun-10-waiting-for-lock-clear")
+                lastShot = Date()
+            }
+            Thread.sleep(forTimeInterval: 2.0)
+        }
+        attachScreenshot(named: "firstrun-30-lock-never-cleared")
     }
 
     // MARK: - Probe markers

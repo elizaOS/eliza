@@ -22,7 +22,7 @@
     "textVoiceOnlyTiers": []
   },
   "smokeConfig": {
-    "image": "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/test/fixtures/sample-scene.png",
+    "image": "/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-vision/test/fixtures/sample-scene.png",
     "ctxSize": 2048,
     "batchSize": 2048,
     "nPredict": 16,

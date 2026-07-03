@@ -102,21 +102,31 @@ export class CloudFilesService {
       },
     });
 
-    return await this.repository.create({
-      id: objectId,
-      organization_id: input.organizationId,
-      user_id: input.userId ?? null,
-      api_key_id: input.apiKeyId ?? null,
-      source: "upload",
-      kind: kindFromMime(mimeType),
-      filename,
-      mime_type: mimeType,
-      size_bytes: BigInt(bytes.byteLength),
-      sha256,
-      storage_key: key,
-      storage_url: publicUrlForR2Key(env, key),
-      metadata: input.metadata ?? {},
-    });
+    try {
+      return await this.repository.create({
+        id: objectId,
+        organization_id: input.organizationId,
+        user_id: input.userId ?? null,
+        api_key_id: input.apiKeyId ?? null,
+        source: "upload",
+        kind: kindFromMime(mimeType),
+        filename,
+        mime_type: mimeType,
+        size_bytes: BigInt(bytes.byteLength),
+        sha256,
+        storage_key: key,
+        storage_url: publicUrlForR2Key(env, key),
+        metadata: input.metadata ?? {},
+      });
+    } catch (error) {
+      await env.BLOB.delete(key).catch((deleteError) => {
+        logger.warn("[CloudFiles] Failed to clean up object after metadata insert failure", {
+          storageKey: key,
+          error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+        });
+      });
+      throw error;
+    }
   }
 
   async recordGenerated(input: RecordGeneratedCloudFileInput): Promise<CloudFile> {

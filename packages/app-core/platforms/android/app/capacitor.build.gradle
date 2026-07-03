@@ -15,12 +15,14 @@ dependencies {
     implementation project(':capacitor-barcode-scanner')
     implementation project(':capacitor-browser')
     implementation project(':capacitor-device')
+    implementation project(':capacitor-filesystem')
     implementation project(':capacitor-haptics')
     implementation project(':capacitor-keyboard')
     implementation project(':capacitor-local-notifications')
     implementation project(':capacitor-network')
     implementation project(':capacitor-preferences')
     implementation project(':capacitor-push-notifications')
+    implementation project(':capacitor-share')
     implementation project(':capacitor-status-bar')
     implementation project(':elizaos-capacitor-agent')
     implementation project(':elizaos-capacitor-appblocker')
@@ -40,7 +42,6 @@ dependencies {
     implementation project(':elizaos-capacitor-talkmode')
     implementation project(':elizaos-capacitor-websiteblocker')
     implementation project(':elizaos-capacitor-wifi')
-    implementation project(':llama-cpp-capacitor')
 
 }
 

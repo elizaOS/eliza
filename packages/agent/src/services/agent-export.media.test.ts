@@ -69,7 +69,7 @@ describe("media-store read/write round-trip", () => {
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "media-store-test-"));
     process.env.ELIZA_STATE_DIR = dir;
-    process.env.MILADY_STATE_DIR = dir;
+    process.env.ELIZA_STATE_DIR = dir;
   });
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -119,7 +119,7 @@ describe("restoreMedia content-integrity gate (#9963)", () => {
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "restore-media-test-"));
     process.env.ELIZA_STATE_DIR = dir;
-    process.env.MILADY_STATE_DIR = dir;
+    process.env.ELIZA_STATE_DIR = dir;
   });
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });

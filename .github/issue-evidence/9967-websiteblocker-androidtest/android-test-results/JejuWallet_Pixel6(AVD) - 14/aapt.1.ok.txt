@@ -1,5 +1,5 @@
-EXECUTING: /home/shaw/Android/Sdk/build-tools/35.0.0/aapt dump badging /home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-websiteblocker-debug-androidTest.apk
-CURRENT_WORKING_DIRECTORY: /home/shaw/milady/eliza-wt-9967-websiteblocker
+EXECUTING: /home/shaw/Android/Sdk/build-tools/35.0.0/aapt dump badging /home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-websiteblocker-debug-androidTest.apk
+CURRENT_WORKING_DIRECTORY: /home/shaw/eliza/eliza-wt-9967-websiteblocker
 START_TIME: 2026-06-30 01:34:56.000
 START_TIME-NANOS: 2026-06-30 01:34:56.000822886
 ENVIRONMENT:

@@ -124,7 +124,7 @@ ai.eliza.plugins.location.LocationFixReaderInstrumentedTest > awaitNextLocation_
 
 Finished 6 tests on eliza-viewtest(AVD) - 14
 
-[Incubating] Problems report is available at: file:///home/shaw/milady/eliza-pr-10437-location/packages/app-core/platforms/android/build/reports/problems/problems-report.html
+[Incubating] Problems report is available at: file:///home/shaw/eliza/eliza-pr-10437-location/packages/app-core/platforms/android/build/reports/problems/problems-report.html
 
 Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
 

@@ -35,7 +35,7 @@
 03-11 04:02:29.055 I/ActivityManager( 1676): Killing 12776:ai.eliza.plugins.mobileagentbridge.test/u0a343 (adj 0): stop ai.eliza.plugins.mobileagentbridge.test due to finished inst
 03-11 04:02:29.105 V/ActivityManager( 1676): Got obituary of 12776:ai.eliza.plugins.mobileagentbridge.test
 03-11 04:02:29.469 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.mobileagentbridge.test appid=10343 user=-1: deletePackageX
-03-11 04:02:29.470 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{5a1053c ai.eliza.plugins.mobileagentbridge.test/10343} BLOCKED
+03-11 04:02:29.470 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{5a1053c ai.eliza.plugins.mobileagentbridge.test/10343} BLOCKED
 03-11 04:02:29.470 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{5a1053c ai.eliza.plugins.mobileagentbridge.test/10343} BLOCKED
 03-11 04:02:29.470 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{5a1053c ai.eliza.plugins.mobileagentbridge.test/10343} BLOCKED
 03-11 04:02:29.578 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.eliza.plugins.mobileagentbridge.test from 0

@@ -119,7 +119,11 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
   const local = page.getByTestId("choice-__first_run__:runtime:local");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible();
-  // The old runtime:other ("Bring your own keys") chip was removed in #11509.
+  // Remote (connect to an existing agent) is the third location chip.
+  await expect(
+    page.getByTestId("choice-__first_run__:runtime:remote"),
+  ).toBeVisible();
+  // The old runtime:other ("Bring your own keys") chip stays removed (#11509).
   await expect(
     page.getByTestId("choice-__first_run__:runtime:other"),
   ).toHaveCount(0);

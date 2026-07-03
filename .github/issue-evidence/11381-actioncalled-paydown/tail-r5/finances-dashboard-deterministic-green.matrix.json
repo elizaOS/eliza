@@ -189,9 +189,9 @@
   "flakyPassedCount": 0,
   "totalCostUsd": 0,
   "artifactPaths": {
-    "runDir": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances",
-    "matrixJson": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances/matrix.json",
-    "viewerIndex": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances/viewer/index.html",
-    "viewerData": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances/viewer/data.js"
+    "runDir": "/tmp/claude-1000/-home-shaw-eliza-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances",
+    "matrixJson": "/tmp/claude-1000/-home-shaw-eliza-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances/matrix.json",
+    "viewerIndex": "/tmp/claude-1000/-home-shaw-eliza-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances/viewer/index.html",
+    "viewerData": "/tmp/claude-1000/-home-shaw-eliza-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances/viewer/data.js"
   }
 }

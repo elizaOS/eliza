@@ -14,7 +14,7 @@
       "sourceOfTruth": "Runtime-ready means a built llama.cpp fork graph route selects the shipped Vulkan kernel and a numeric smoke test passes on Android. SPIR-V compilation and pipeline symbols are not enough.",
       "status": "runtime-ready",
       "runtimeReady": true,
-      "generatedFrom": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/verify/hardware-results/android-vulkan-graph-smoke-20260513T021457Z.log",
+      "generatedFrom": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/verify/hardware-results/android-vulkan-graph-smoke-20260513T021457Z.log",
       "target": "android-arm64-vulkan",
       "device": {
         "serial": "27051JEGR10034",
@@ -236,7 +236,7 @@
       "device": "Intel(R) Graphics (LNL) — Intel open-source Mesa ANV driver, Vulkan KHR cooperative matrix",
       "atCommit": "97b25892212d14d46bbe9b8310289d0c863611e2",
       "smokeTarget": "vulkan-dispatch-smoke",
-      "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/milady/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
+      "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
       "evidenceDate": "2026-05-15",
       "kernels": {
         "fused_attn_qjl_tbq": {
@@ -245,7 +245,7 @@
           "runtimeReady": true,
           "graphOp": "GGML_OP_FUSED_ATTN_QJL_TBQ",
           "smokeTarget": "vulkan-dispatch-smoke",
-          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/milady/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
+          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
           "smokeOutputs": 512,
           "maxDiff": 4.47e-8,
           "graphRoutes": [
@@ -259,7 +259,7 @@
           "runtimeReady": true,
           "graphOp": "GGML_OP_ATTN_SCORE_POLAR",
           "smokeTarget": "vulkan-dispatch-smoke",
-          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/milady/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
+          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
           "smokeOutputs": 64,
           "maxDiff": 0.000001907,
           "graphRoutes": [
@@ -274,7 +274,7 @@
           "runtimeReady": true,
           "graphOp": "GGML_OP_ATTN_SCORE_QJL",
           "smokeTarget": "vulkan-dispatch-smoke",
-          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/milady/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
+          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
           "smokeOutputs": 32,
           "maxDiff": 2.682e-7,
           "graphRoutes": [
@@ -288,7 +288,7 @@
           "runtimeReady": true,
           "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
           "smokeTarget": "vulkan-dispatch-smoke",
-          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/milady/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
+          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
           "smokeOutputs": 32,
           "maxDiff": 9.537e-7,
           "graphRoutes": [
@@ -302,7 +302,7 @@
           "runtimeReady": true,
           "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
           "smokeTarget": "vulkan-dispatch-smoke",
-          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/milady/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
+          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
           "smokeOutputs": 32,
           "maxDiff": 7.153e-7,
           "graphRoutes": [
@@ -316,7 +316,7 @@
           "runtimeReady": true,
           "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
           "smokeTarget": "vulkan-dispatch-smoke",
-          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/milady/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
+          "smokeCommand": "ELIZA_MTP_TARGET=linux-x64-vulkan-fused ELIZA_MTP_LLAMA_DIR=/home/nubs/Git/iqlabs/eliza-labs-backup/eliza/eliza/plugins/plugin-local-inference/native/llama.cpp ELIZA_STATE_DIR=/home/nubs/.eliza ELIZA_MTP_TARGET_OUT_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused ELIZA_MTP_VULKAN_BIN_DIR=/home/nubs/.eliza/local-inference/bin/mtp/linux-x64-vulkan-fused make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
           "smokeOutputs": 32,
           "maxDiff": 4.768e-7,
           "graphRoutes": [

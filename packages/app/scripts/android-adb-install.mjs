@@ -84,7 +84,7 @@ function readAppId() {
 
 /**
  * The package name baked INTO the APK. We assert it matches the expected appId
- * before installing — otherwise a wrong-brand build (e.g. an `ai.milady.app` APK
+ * before installing — otherwise a wrong-brand build (for example, a custom app APK
  * produced when the repoRoot resolved to the wrapper) silently installs a
  * different package and never touches the one we think we're updating. Prefer
  * aapt; fall back to scanning the (binary) AndroidManifest for the package id.
@@ -191,9 +191,9 @@ if (!apkPath || !fs.existsSync(apkPath)) {
 const appId = readAppId();
 
 // Guard against installing the wrong brand/package: the APK's own package id must
-// match the appId we expect. Catches the `ai.milady.app`-built-while-expecting-
-// `ai.elizaos.app` (or vice-versa) trap, where `install -r` "succeeds" by writing
-// a different package and the app we're testing is never updated.
+// match the appId we expect. Catches the custom-package-built-while-expecting-
+// `ai.elizaos.app` trap, where `install -r` "succeeds" by writing a different
+// package and the app we're testing is never updated.
 const apkPackage = readApkPackage(apkPath);
 if (apkPackage && apkPackage !== appId) {
   fail(

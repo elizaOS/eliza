@@ -93,7 +93,7 @@ Two distinct data-plane node shapes share the `eliza-core-` prefix:
   extra capacity on demand.
 
 The legacy data-plane core names are **retired** (migration 0132,
-`0132_legacy_milady_cores_disable.sql`, disabled them and cross-env cleanup
+`0132_legacy_eliza_cores_disable.sql`, disabled them and cross-env cleanup
 removed the rows); they are not part of the live topology.
 
 ## Multi-project layout

@@ -6,7 +6,7 @@ Device: `emulator-5556`
 
 Attached physical device: Pixel 6a `27051JEGR10034` was connected, but Android reported `showing=true`, `inputRestricted=true`, and `mDreamingLockscreen=true`; it could not be used for an interactive WebView lifecycle capture without unlocking the secure keyguard.
 
-APK: `/home/shaw/milady/eliza-wt-pr-10641-pixel/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk`
+APK: `/home/shaw/eliza/eliza-wt-pr-10641-pixel/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk`
 
 Host backend: `http://127.0.0.1:31337/api/health` returned `ready:true`.
 
@@ -15,7 +15,7 @@ Branch/base at capture: `fix/9943-android-sleep-wake` on `origin/develop` `ee666
 Build and install:
 
 ```bash
-ELIZA_MOBILE_REPO_ROOT=/home/shaw/milady/eliza-wt-pr-10641-pixel \
+ELIZA_MOBILE_REPO_ROOT=/home/shaw/eliza/eliza-wt-pr-10641-pixel \
 ELIZA_WEBVIEW_DEBUG=1 \
 ELIZA_BUN_RISCV64_OPTIONAL=1 \
 node packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug

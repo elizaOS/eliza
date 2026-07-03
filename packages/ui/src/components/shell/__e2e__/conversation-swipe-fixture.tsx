@@ -23,6 +23,7 @@ import { createRoot } from "react-dom/client";
 import type { Conversation } from "../../../api/client-types-chat";
 import { MockAppProvider } from "../../../storybook/mock-providers";
 import { readViewInteractions } from "../../../view-telemetry";
+import { goHome } from "../../../state/shell-surface-store";
 import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
 import { buildConversationNav } from "../conversation-nav";
 import { HomeLauncherSurface } from "../HomeLauncherSurface";
@@ -87,11 +88,7 @@ function BackgroundHome(): React.JSX.Element {
   );
 }
 
-function BackgroundLauncher({
-  onNavigateHomeFromEdge,
-}: {
-  onNavigateHomeFromEdge?: () => void;
-}): React.JSX.Element {
+function BackgroundLauncher(): React.JSX.Element {
   return (
     <div
       data-testid="background-launcher-content"
@@ -108,7 +105,7 @@ function BackgroundLauncher({
       <button
         type="button"
         data-testid="background-launcher-home-button"
-        onClick={onNavigateHomeFromEdge}
+        onClick={goHome}
         style={{
           marginTop: 20,
           border: "1px solid rgba(255,255,255,0.35)",

@@ -197,6 +197,11 @@ const DENY_ENV_PATTERNS = [
   // including through customCredentials. Registry push uses the dedicated
   // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
   /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT)$/i,
+  // OpenCode's spawn config is runtime-built (buildOpencodeAcpEnv overwrites it
+  // AFTER this filter runs). A caller- or host-supplied value would let the
+  // spawner inject arbitrary provider config into the child, so it is denied at
+  // both intake paths.
+  /^OPENCODE_CONFIG_CONTENT$/i,
 ];
 
 /**
@@ -2723,7 +2728,6 @@ export function shouldForwardEnv(key: string): boolean {
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
       "OPENCODE_MODEL",
-      "OPENCODE_CONFIG_CONTENT",
       "OPENCODE_DISABLE_AUTOUPDATE",
       "OPENCODE_DISABLE_TERMINAL_TITLE",
       "CODEX_HOME",

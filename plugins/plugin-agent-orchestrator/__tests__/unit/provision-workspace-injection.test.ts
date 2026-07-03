@@ -16,7 +16,7 @@ import { CodingWorkspaceService } from "../../src/services/workspace-service.js"
 // `git-workspace-service` clones public repos through a shell (`promisify(exec)`),
 // so an ungated repo / branch reaches `git clone … ${value} …` verbatim.
 //
-// The assertions are twofold: (1) provisionWorkspace throws at the Milady boundary
+// The assertions are twofold: (1) provisionWorkspace throws at the local boundary
 // BEFORE the dependency's `provision()` (which owns every git/shell spawn) is
 // reached, and (2) the injected `touch <sentinel>` command never runs. Because the
 // injection cases let `provision()` call through, deleting either gate would let

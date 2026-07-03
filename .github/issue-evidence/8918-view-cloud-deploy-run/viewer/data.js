@@ -2,9 +2,9 @@ window.SCENARIO_RUN_DATA = {
   schema: "eliza_scenario_run_viewer_v1",
   generatedAt: "2026-06-23T14:25:08.038Z",
   runDir:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8918-view-cloud-deploy-run",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8918-view-cloud-deploy-run",
   matrixPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/matrix.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/matrix.json",
   nativeJsonlPath: null,
   nativeManifestPath: null,
   report: {
@@ -319,17 +319,17 @@ window.SCENARIO_RUN_DATA = {
     totalCostUsd: 0,
     artifactPaths: {
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8918-view-cloud-deploy-run",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8918-view-cloud-deploy-run",
       matrixJson:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/matrix.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/matrix.json",
       viewerIndex:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/viewer/index.html",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/viewer/index.html",
       viewerData:
-        "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/viewer/data.js",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/viewer/data.js",
     },
   },
   trajectories: {
-    root: "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/trajectories",
+    root: "/Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/8918-view-cloud-deploy-run/trajectories",
     files: [],
     summaries: [],
   },

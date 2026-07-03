@@ -129,6 +129,22 @@ test("container-unavailable (503) refunds (#11637)", async () => {
   expect(refundCredits).toHaveBeenCalledTimes(1);
 });
 
+test("container lookup failure (502) refunds after upfront debit (#11637)", async () => {
+  getById.mockResolvedValue({
+    id: "test-mcp",
+    name: "Container MCP",
+    status: "live",
+    credits_per_request: "5",
+    endpoint_type: "container",
+    container_id: "c1",
+    organization_id: "org1",
+  });
+  containersGetById.mockRejectedValue(new Error("container DB down"));
+  const res = await post();
+  expect(res.status).toBe(502);
+  expect(refundCredits).toHaveBeenCalledTimes(1);
+});
+
 test("invalid JSON body (400) refunds after the upfront debit (#11637)", async () => {
   const res = await post("{not json");
   expect(res.status).toBe(400);
@@ -140,6 +156,20 @@ test("non-ok upstream status refunds (existing behavior preserved)", async () =>
   safeFetch.mockResolvedValue(new Response("upstream error", { status: 500 }));
   const res = await post();
   expect(res.status).toBe(500);
+  expect(refundCredits).toHaveBeenCalledTimes(1);
+});
+
+test("upstream response body read failure refunds before usage is recorded", async () => {
+  safeFetch.mockResolvedValue({
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: async () => {
+      throw new Error("body stream failed");
+    },
+  } as unknown as Response);
+  const res = await post();
+  expect(res.status).toBe(502);
   expect(refundCredits).toHaveBeenCalledTimes(1);
 });
 

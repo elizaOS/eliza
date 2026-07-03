@@ -17,6 +17,9 @@ project(':capacitor-browser').projectDir = new File('../../../../node_modules/.b
 include ':capacitor-device'
 project(':capacitor-device').projectDir = new File('../../../../node_modules/.bun/@capacitor+device@8.0.2+1b808583819c2ac6/node_modules/@capacitor/device/android')
 
+include ':capacitor-filesystem'
+project(':capacitor-filesystem').projectDir = new File('../../../../node_modules/.bun/@capacitor+filesystem@8.1.2+1b808583819c2ac6/node_modules/@capacitor/filesystem/android')
+
 include ':capacitor-haptics'
 project(':capacitor-haptics').projectDir = new File('../../../../node_modules/.bun/@capacitor+haptics@8.0.2+1b808583819c2ac6/node_modules/@capacitor/haptics/android')
 
@@ -34,6 +37,9 @@ project(':capacitor-preferences').projectDir = new File('../../../../node_module
 
 include ':capacitor-push-notifications'
 project(':capacitor-push-notifications').projectDir = new File('../../../../node_modules/.bun/@capacitor+push-notifications@8.0.3+1b808583819c2ac6/node_modules/@capacitor/push-notifications/android')
+
+include ':capacitor-share'
+project(':capacitor-share').projectDir = new File('../../../../node_modules/.bun/@capacitor+share@8.0.1+1b808583819c2ac6/node_modules/@capacitor/share/android')
 
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../../../../node_modules/.bun/@capacitor+status-bar@8.0.2+1b808583819c2ac6/node_modules/@capacitor/status-bar/android')
@@ -92,7 +98,5 @@ project(':elizaos-capacitor-websiteblocker').projectDir = new File('../../../../
 include ':elizaos-capacitor-wifi'
 project(':elizaos-capacitor-wifi').projectDir = new File('../../../../plugins/plugin-native-wifi/android')
 
-include ':llama-cpp-capacitor'
-project(':llama-cpp-capacitor').projectDir = new File('../../../../node_modules/.bun/llama-cpp-capacitor@0.1.5+1b808583819c2ac6/node_modules/llama-cpp-capacitor/android')
 include ':elizaos-capacitor-bun-runtime'
 project(':elizaos-capacitor-bun-runtime').projectDir = new File('../../../../plugins/plugin-native-bun-runtime/android')

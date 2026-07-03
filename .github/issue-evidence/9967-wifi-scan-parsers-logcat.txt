@@ -5,7 +5,7 @@
 03-11 03:26:44.575 D/LauncherAppsCallbackImpl( 8018): onPackageAdded triggered for packageName=ai.eliza.plugins.wifi.test, user=UserHandle{0}
 03-11 03:26:44.595 D/BaseIconCache( 8018): Default icon returned for ai.eliza.plugins.wifi.test
 03-11 03:26:44.621 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.wifi.test appid=10331 user=0: start instr
-03-11 03:26:44.633 I/AppsFilter( 1676): interaction: PackageSetting{693399f ai.milady.milady/10323} -> PackageSetting{b7a10d9 ai.eliza.plugins.wifi.test/10331} BLOCKED
+03-11 03:26:44.633 I/AppsFilter( 1676): interaction: PackageSetting{693399f ai.elizaos.app/10323} -> PackageSetting{b7a10d9 ai.eliza.plugins.wifi.test/10331} BLOCKED
 03-11 03:26:44.633 I/AppsFilter( 1676): interaction: PackageSetting{b865eb5 app.eliza/10324} -> PackageSetting{b7a10d9 ai.eliza.plugins.wifi.test/10331} BLOCKED
 03-11 03:26:44.633 I/AppsFilter( 1676): interaction: PackageSetting{e0fa94a com.google.android.microdroid.empty_payload/10404} -> PackageSetting{b7a10d9 ai.eliza.plugins.wifi.test/10331} BLOCKED
 03-11 03:26:44.650 I/ActivityManager( 1676): Start proc 8828:ai.eliza.plugins.wifi.test/u0a331 for added application ai.eliza.plugins.wifi.test
@@ -34,7 +34,7 @@
 03-11 03:26:46.046 I/ActivityManager( 1676): Killing 8828:ai.eliza.plugins.wifi.test/u0a331 (adj 0): stop ai.eliza.plugins.wifi.test due to finished inst
 03-11 03:26:46.095 V/ActivityManager( 1676): Got obituary of 8828:ai.eliza.plugins.wifi.test
 03-11 03:26:46.445 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.wifi.test appid=10331 user=-1: deletePackageX
-03-11 03:26:46.445 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{a3d9d21 ai.eliza.plugins.wifi.test/10331} BLOCKED
+03-11 03:26:46.445 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{a3d9d21 ai.eliza.plugins.wifi.test/10331} BLOCKED
 03-11 03:26:46.445 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{a3d9d21 ai.eliza.plugins.wifi.test/10331} BLOCKED
 03-11 03:26:46.445 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{a3d9d21 ai.eliza.plugins.wifi.test/10331} BLOCKED
 03-11 03:26:46.552 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.eliza.plugins.wifi.test from 0

@@ -10,8 +10,8 @@ dyld`_dyld_start:
 Target 0: (App) stopped.
 Executable binary set to "/Users/shawwalters/Library/Developer/CoreSimulator/Devices/39F890C2-072D-4BFE-9144-5327AF30B10A/data/Containers/Bundle/Application/71561B6C-5BA3-4B58-95AE-D3855FE37E47/App.app/App".
 Architecture set to: arm64-apple-ios-simulator.
-(lldb) command source -s 0 '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/nsmapget.lldb'
-Executing commands in '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/nsmapget.lldb'.
+(lldb) command source -s 0 '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/nsmapget.lldb'
+Executing commands in '/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/nsmapget.lldb'.
 (lldb) br set -n NSMapGet -c '$x0 == 0'
 Breakpoint 1: no locations (pending).
 WARNING:  Unable to resolve breakpoint to any actual locations.

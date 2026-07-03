@@ -35,7 +35,7 @@
       "sha256": "79b4c31894c25ea964df29272d6aae7e2e7ded6d451893d40b46570d173082ab"
     },
     "project_front_png": {
-      "path": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
+      "path": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
       "exists": true,
       "width": 1024,
       "height": 1536,
@@ -43,7 +43,7 @@
       "sha256": "4519b7bd3acef1551383d3171cc68dae7e183ec76d0f444c28416a6f249064d0"
     },
     "project_front_glb": {
-      "path": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
+      "path": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
       "exists": true,
       "mesh_count": 1,
       "vertices": 299410,

@@ -33,7 +33,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-readyHealthBodyAcceptsOnlyRunningRuntime.txt"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-readyHealthBodyAcceptsOnlyRunningRuntime.txt"
     }
   }
   output_artifact {
@@ -42,7 +42,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -51,7 +51,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -60,7 +60,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -89,7 +89,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-okProbeClearsStrikesAndResetsBackoff.txt"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-okProbeClearsStrikesAndResetsBackoff.txt"
     }
   }
   output_artifact {
@@ -98,7 +98,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -107,7 +107,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -116,7 +116,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -145,7 +145,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-restartPolicyUsesBoundedExponentialBackoff.txt"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-restartPolicyUsesBoundedExponentialBackoff.txt"
     }
   }
   output_artifact {
@@ -154,7 +154,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -163,7 +163,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -172,7 +172,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -201,7 +201,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-deadProbeRestartsOnlyAfterConfiguredStrikeThreshold.txt"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-deadProbeRestartsOnlyAfterConfiguredStrikeThreshold.txt"
     }
   }
   output_artifact {
@@ -210,7 +210,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -219,7 +219,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -228,7 +228,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -257,7 +257,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-busyProbePreservesExistingStrikeCounter.txt"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest-busyProbePreservesExistingStrikeCounter.txt"
     }
   }
   output_artifact {
@@ -266,7 +266,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -275,7 +275,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -284,7 +284,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -294,7 +294,7 @@ output_artifact {
     namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
   }
   source_path {
-    path: "/home/shaw/milady/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/testlog/test-results.log"
+    path: "/home/shaw/eliza/eliza-wt-10197-watchdog-policy/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/testlog/test-results.log"
   }
   type: TEST_DATA
   mime_type: "text/plain"

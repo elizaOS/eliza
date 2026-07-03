@@ -231,10 +231,14 @@ export interface SensitiveRequestFormField {
  * authorization URL in a popup; the actual token never flows through the
  * chat message stream. `fields` is unused for OAuth; the relevant fields are
  * `provider`, `scopes`, and `authorizationUrl`.
+ * `kind: "remote_connect"` — render the same per-field text/secret form as
+ * `secret`, but on submit dispatch the hardened `CONNECT_EVENT` (point the app
+ * at a remote agent) instead of writing the values to the secret store. Used
+ * by first-run to collect a remote agent's URL + access token inline.
  */
 export interface SensitiveRequestForm {
   type: "sensitive_request_form";
-  kind: "secret" | "oauth";
+  kind: "secret" | "oauth" | "remote_connect";
   mode: SensitiveRequestDelivery["mode"];
   fields: SensitiveRequestFormField[];
   submitLabel?: string;

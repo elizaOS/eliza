@@ -6,7 +6,7 @@
   },
   "libPath": "/home/shaw/.local/state/eliza/local-inference/lib/libelizainference.so",
   "asrBundle": {
-    "dir": "/home/shaw/.local/state/milady/asr-bundle",
+    "dir": "/home/shaw/.local/state/eliza/asr-bundle",
     "model": 804749248,
     "mmproj": 214392480
   },

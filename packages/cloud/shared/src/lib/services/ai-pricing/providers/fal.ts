@@ -12,6 +12,7 @@ import { getCachedExternalEntries } from "../cache";
 import { aiEntryToPrepared } from "../dimensions";
 import { fetchText, stripHtml } from "../fetch";
 import { EXTERNAL_CACHE_TTL_MS, type PreparedPricingEntry } from "../types";
+import { buildSfxSnapshotEntries } from "./sfx";
 import { buildMusicSnapshotEntries } from "./suno";
 
 function extractFalPricingParagraph(html: string): string {
@@ -78,6 +79,8 @@ export function buildFalImageSnapshotEntries(): PreparedPricingEntry[] {
   const priceByModel: Record<string, number> = {
     "fal-ai/flux/schnell": 0.003,
     "fal-ai/flux/dev": 0.025,
+    "fal-ai/recraft/v3/text-to-image": 0.04,
+    "fal-ai/ideogram/v3": 0.06,
   };
 
   return SUPPORTED_IMAGE_MODELS.filter((model) => model.billingSource === "fal").flatMap(
@@ -366,6 +369,7 @@ export async function fetchFalCatalogEntries(): Promise<PreparedPricingEntry[]> 
       ...entryArrays.flat(),
       ...buildFalImageSnapshotEntries(),
       ...buildMusicSnapshotEntries("fal", "fal_model_page"),
+      ...buildSfxSnapshotEntries("fal", "fal_model_page"),
     ];
   });
 }
