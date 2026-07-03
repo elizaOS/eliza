@@ -1933,6 +1933,9 @@ export function ContinuousChatOverlay({
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
+  // The transcript's inner content wrapper — measured to size the onboarding
+  // sheet to its content (grow-from-the-bottom) instead of a tall empty panel.
+  const threadContentRef = React.useRef<HTMLDivElement>(null);
   const layoutShiftIntentTimerRef = React.useRef<number | null>(null);
   const markLayoutShiftIntent = React.useCallback(() => {
     const overlay = overlayRef.current;
@@ -2992,6 +2995,32 @@ export function ContinuousChatOverlay({
     if (was) goToDetent("collapsed");
   }, [firstRunOpen, goToDetent]);
 
+  // Onboarding grows from the BOTTOM: size the sheet to its content (capped at
+  // full) via the freeH rest-height seam, so the greeting + choice widget sit
+  // just above the composer instead of floating under a tall empty panel. Drags
+  // are gated while onboarding, so nothing fights freeH; on completion
+  // goToDetent("collapsed") clears it and collapses smoothly. `data-detent`
+  // still reports "full" (the pinned-open contract) even when visually shorter.
+  // jsdom has no layout (offsetHeight 0), so this no-ops there — the unit tests
+  // keep the full-height pin.
+  React.useLayoutEffect(() => {
+    if (!firstRunOpen || typeof ResizeObserver === "undefined") return;
+    const content = threadContentRef.current;
+    if (!content) return;
+    const measure = () => {
+      const h = content.offsetHeight;
+      if (h <= 0) return; // not laid out (jsdom) — leave the full-height pin
+      const next = Math.min(h + 28, panelMaxH);
+      setFreeH((prev) =>
+        prev != null && Math.abs(prev - next) < 2 ? prev : next,
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [firstRunOpen, panelMaxH]);
+
   const openFromGrabber = React.useCallback(() => {
     if (hasRevealableThread) {
       preFocusCollapsedRef.current = false;
@@ -3978,13 +4007,18 @@ export function ContinuousChatOverlay({
     ? "pill"
     : !sheetOpen
       ? "collapsed"
-      : freeH != null
-        ? Math.min(freeH, panelMaxH) >= openH - 1
-          ? "full"
-          : "half"
-        : expanded
-          ? "full"
-          : "half";
+      : // Onboarding is a pinned-open sheet even when sized to its content
+        // (freeH); keep reporting "full" so the undismissable-onboarding
+        // contract (unit + on-device gesture suites) stays honest.
+        firstRunOpen
+        ? "full"
+        : freeH != null
+          ? Math.min(freeH, panelMaxH) >= openH - 1
+            ? "full"
+            : "half"
+          : expanded
+            ? "full"
+            : "half";
 
   return (
     <div
@@ -4449,8 +4483,13 @@ export function ContinuousChatOverlay({
                     />
                   ) : null}
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
-                  until the thread overflows, then it scrolls. */}
-                  <div className="mt-auto flex flex-col pb-3 pt-1">
+                  until the thread overflows, then it scrolls. The ref measures
+                  this content so onboarding can size the sheet to it (grow from
+                  the bottom). */}
+                  <div
+                    ref={threadContentRef}
+                    className="mt-auto flex flex-col pb-3 pt-1"
+                  >
                     {hasTopics
                       ? // Topic-grouped transcript: each cluster collapses via a
                         // gesture on its header (no visible buttons).
@@ -4750,7 +4789,7 @@ export function ContinuousChatOverlay({
                 disabled={firstRunOpen}
                 placeholder={
                   firstRunOpen
-                    ? "Tap a highlighted option above to continue"
+                    ? "Pick an option to continue"
                     : booting
                       ? `Ask ${agentName} — waking up…`
                       : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)

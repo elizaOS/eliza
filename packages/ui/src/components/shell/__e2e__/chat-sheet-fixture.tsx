@@ -75,6 +75,22 @@ const params =
     ? new URLSearchParams(location.search)
     : new URLSearchParams();
 const startEmpty = params.has("empty");
+// `?firstrun` pins the sheet at FULL and freezes the composer (in-chat
+// onboarding). `?few` seeds only a couple of short messages so the bottom-anchor
+// behavior (few messages sit near the composer, first fades into the top edge)
+// is visible instead of a long scrolling transcript.
+const firstRun = params.has("firstrun");
+const fewMessages = params.has("few") || firstRun;
+const FEW_SEED: ShellMessage[] = [
+  {
+    id: "f1",
+    role: "assistant",
+    content:
+      "Hey — I'm your assistant. Want a quick two-minute tour, or should we jump straight in?",
+    createdAt: 1,
+  },
+  { id: "f2", role: "user", content: "let's do the tour", createdAt: 2 },
+];
 // `?streaming` seeds an EMPTY in-flight assistant turn + responding, so its
 // bubble shows the breathing dots anchored where the streamed text fills in.
 const streaming = params.has("streaming");
@@ -114,12 +130,14 @@ function Harness(): React.JSX.Element {
   const [messages, setMessages] = React.useState<ShellMessage[]>(
     startEmpty
       ? []
-      : streaming
-        ? [
-            ...SEED,
-            { id: "m-inflight", role: "assistant", content: "", createdAt: 13 },
-          ]
-        : SEED_WITH_FAILURE,
+      : fewMessages
+        ? FEW_SEED
+        : streaming
+          ? [
+              ...SEED,
+              { id: "m-inflight", role: "assistant", content: "", createdAt: 13 },
+            ]
+          : SEED_WITH_FAILURE,
   );
   const [phase, setPhase] =
     React.useState<ShellController["phase"]>(initialPhase);
@@ -361,7 +379,7 @@ function Harness(): React.JSX.Element {
           ))}
         </div>
       </div>
-      <ContinuousChatOverlay controller={controller} />
+      <ContinuousChatOverlay controller={controller} firstRunOpen={firstRun} />
     </div>
   );
 }
