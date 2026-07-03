@@ -8,12 +8,12 @@
 
 export * from "./access-context";
 export * from "./access-control/filter";
+// Export all core modules
+export * from "./account-pool-bridge";
 export * from "./actions";
 export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
-// Export all core modules
-export * from "./account-pool-bridge";
 export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";

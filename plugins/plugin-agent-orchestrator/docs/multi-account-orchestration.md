@@ -40,7 +40,7 @@ bridge**.
 ## Hitlist
 
 ### P0 — Keystone: account selection on spawn (round-robin / least-used)
-- [x] `coding-account-bridge.ts` (app-core): install `Symbol.for("eliza.account-pool.coding-agent.v1")` bridge — `select(agentType)`, `markRateLimited`, `markNeedsReauth`, `recordUsage`, `describe()`.
+- [x] `coding-account-bridge.ts` (app-core): install the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge — `select(agentType)`, `markRateLimited`, `markNeedsReauth`, `recordUsage`, `describe()`.
 - [x] Per-agent credential injection: claude → `CLAUDE_CODE_OAUTH_TOKEN`; codex → per-account `CODEX_HOME/auth.json` + minimal `config.toml`; opencode → `CEREBRAS_API_KEY` (pooled Cerebras); direct API providers → their env key.
 - [x] Wire into `AcpService.spawnSession`: select before transport branch, merge `envPatch` into `customCredentials`, stamp `session.metadata.account*`, surface on `SpawnResult.metadata`.
 - [x] `buildEnv`: when `CLAUDE_CODE_OAUTH_TOKEN` is injected for claude, drop `ANTHROPIC_API_KEY` so the selected subscription wins.
