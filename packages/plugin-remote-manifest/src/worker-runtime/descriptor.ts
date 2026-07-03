@@ -109,6 +109,7 @@ export type WorkerPluginShape = {
     name?: string;
     path: string;
     public?: boolean;
+    publicReason?: string;
     isMultipart?: boolean;
     routeHandler?: AnyHandler;
   }>;

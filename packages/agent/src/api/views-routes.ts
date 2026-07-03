@@ -41,6 +41,10 @@ import {
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
 import {
+  parseHostExternalSpecifiers,
+  rewriteHostExternalImports,
+} from "./dynamic-view-host-external.mjs";
+import {
   PendingRequestMap,
   type ViewInteractResult,
 } from "./pending-request-map.ts";
@@ -126,94 +130,6 @@ function contentTypeForViewAsset(assetPath: string): string {
     default:
       return "application/octet-stream";
   }
-}
-
-function convertNamedImportsToDestructuring(namedImports: string): string {
-  return namedImports
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => part.replace(/\s+as\s+/u, ": "))
-    .join(", ");
-}
-
-function buildHostExternalImportReplacement(
-  importClause: string,
-  specifier: string,
-  index: number,
-): string {
-  const moduleVar = `__eliza_dynamic_view_host_external_${index}`;
-  const lines = [
-    `const ${moduleVar} = await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(specifier)});`,
-  ];
-  const trimmed = importClause.trim();
-  if (trimmed.startsWith("* as ")) {
-    lines.push(`const ${trimmed.slice("* as ".length).trim()} = ${moduleVar};`);
-    return lines.join("\n");
-  }
-
-  const namedMatch = trimmed.match(/^\{([\s\S]*)\}$/u);
-  if (namedMatch) {
-    lines.push(
-      `const { ${convertNamedImportsToDestructuring(namedMatch[1])} } = ${moduleVar};`,
-    );
-    return lines.join("\n");
-  }
-
-  const defaultAndNamedMatch = trimmed.match(/^([^,]+),\s*\{([\s\S]*)\}$/u);
-  if (defaultAndNamedMatch) {
-    lines.push(
-      `const ${defaultAndNamedMatch[1].trim()} = ${moduleVar}.default ?? ${moduleVar};`,
-    );
-    lines.push(
-      `const { ${convertNamedImportsToDestructuring(defaultAndNamedMatch[2])} } = ${moduleVar};`,
-    );
-    return lines.join("\n");
-  }
-
-  lines.push(`const ${trimmed} = ${moduleVar}.default ?? ${moduleVar};`);
-  return lines.join("\n");
-}
-
-function rewriteHostExternalImports(
-  source: string,
-  specifiers: readonly string[],
-): string {
-  if (specifiers.length === 0) return source;
-  const specifierPattern = specifiers
-    .map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
-    .join("|");
-  const fromImportPattern = new RegExp(
-    `import\\s+([^;]*?)\\s+from\\s+["'](${specifierPattern})["'];?`,
-    "gu",
-  );
-  const sideEffectPattern = new RegExp(
-    `import\\s+["'](${specifierPattern})["'];?`,
-    "gu",
-  );
-  let replacementIndex = 0;
-
-  return source
-    .replace(fromImportPattern, (_match, importClause, specifier) =>
-      buildHostExternalImportReplacement(
-        String(importClause),
-        String(specifier),
-        replacementIndex++,
-      ),
-    )
-    .replace(
-      sideEffectPattern,
-      (_match, specifier) =>
-        `await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(String(specifier))});`,
-    );
-}
-
-function parseHostExternalSpecifiers(url: URL): string[] {
-  if (url.searchParams.get("hostExternalRuntime") !== "1") return [];
-  return (url.searchParams.get("hostExternalSpecifiers") ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 /**
