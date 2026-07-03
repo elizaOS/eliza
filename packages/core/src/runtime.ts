@@ -35,6 +35,7 @@ import {
 	maybeReroute,
 	resolveChain,
 } from "./runtime/action-model-routing";
+import { getActionRolePolicyWarnings } from "./runtime/action-role-policy";
 import {
 	getActionRoutingContext,
 	runWithActionRoutingContext,
@@ -2386,6 +2387,30 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		await Promise.all(pluginRegistrationPromises);
+		for (const warning of getActionRolePolicyWarnings(this.actions)) {
+			if (warning.type === "unmatched") {
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						action: warning.actionName,
+						policyRole: warning.policyRole,
+					},
+					"[AgentRuntime] ACTION_ROLE_POLICY entry does not match a registered action name",
+				);
+				continue;
+			}
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					action: warning.actionName,
+					policyRole: warning.policyRole,
+					declaredRole: warning.declaredRole,
+				},
+				"[AgentRuntime] ACTION_ROLE_POLICY entry lowers the action's declared role gate",
+			);
+		}
 
 		const allowNoDatabase =
 			options?.allowNoDatabase === true ||
