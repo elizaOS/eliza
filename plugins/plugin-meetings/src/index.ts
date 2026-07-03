@@ -34,6 +34,7 @@ import { MeetingService } from "./service.js";
 import type { MeetingPlatformAdapter } from "./types.js";
 
 export { MeetingEventEmitter } from "./events.js";
+export { createMeetingTranscriptionPipeline } from "./pipeline/index.js";
 export { meetingsRoutes } from "./routes/meetings-routes.js";
 export {
   MeetingJoinError,
