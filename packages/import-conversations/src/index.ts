@@ -10,6 +10,7 @@
  * against.
  */
 
+export * from "./adapters/index.ts";
 export * from "./core/index.ts";
 export type { ChatGptParseOptions } from "./parsers/chatgpt.ts";
 export {

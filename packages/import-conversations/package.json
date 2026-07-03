@@ -52,6 +52,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./adapters/document-service": {
+      "types": "./dist/adapters/document-service.d.ts",
+      "eliza-source": {
+        "types": "./src/adapters/document-service.ts",
+        "import": "./src/adapters/document-service.ts",
+        "default": "./src/adapters/document-service.ts"
+      },
+      "import": "./dist/adapters/document-service.js",
+      "default": "./dist/adapters/document-service.js"
+    },
     "./parsers/claude": {
       "types": "./dist/parsers/claude.d.ts",
       "eliza-source": {
