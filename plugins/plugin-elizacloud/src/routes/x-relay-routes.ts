@@ -5,92 +5,41 @@
  * stay credential-light while Cloud handles billing and provider access.
  *
  * The relay is intentionally thin: auth + proxy + 402 preservation only.
+ *
+ * Registered on the Eliza Cloud plugin route surface (see plugin.ts) alongside
+ * the billing and relay-status handlers. The request body is read through the
+ * shared cache-aware `readRequestBody` helper so the raw payload survives the
+ * runtime plugin route system's JSON body pre-parse (`attachJsonBodyIfPresent`).
  */
 
 import type http from "node:http";
-import { type Service, sendJsonError } from "@elizaos/core";
-import { normalizeCloudSiteUrl, sendJson } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
-import type { CloudProxyConfigLike } from "../types/config-like.ts";
-
-interface XRelayRuntime {
-  getService(serviceType: string): Service | null;
-  getSetting?: (key: string) => unknown;
-  character?: {
-    secrets?: Record<string, unknown>;
-  } | null;
-  cloud?: ElizaConfig["cloud"];
-}
+import {
+  type IAgentRuntime,
+  type Service,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/core";
+import {
+  isCloudAuthApiKeyService,
+  normalizeCloudApiKey,
+} from "../cloud/auth-service-types.js";
+import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
+import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
+import { validateCloudBaseUrl } from "../cloud/validate-url.js";
+import type { CloudProxyConfigLike } from "../lib/config-like";
 
 export interface XRelayRouteState {
   config: CloudProxyConfigLike;
-  runtime?: XRelayRuntime | null;
+  runtime?: IAgentRuntime | null;
 }
 
 const PROXY_TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 1_048_576;
 const X_RELAY_PATH_RE = /^\/api\/cloud\/x(\/.*)$/;
 
-interface CloudHelperModule {
-  isCloudAuthApiKeyService: (
-    value: Service | null | undefined,
-  ) => value is Service & {
-    isAuthenticated: () => boolean;
-    getApiKey?: () => string | undefined;
-  };
-  normalizeCloudApiKey: (value: string | null | undefined) => string | null;
-  resolveCloudApiKey: (
-    config: ElizaConfig,
-    runtime?: XRelayRuntime | null,
-  ) => string | null;
-  validateCloudBaseUrl: (
-    baseUrl: string,
-  ) => Promise<string | null> | string | null;
-}
-
-let cloudHelpersPromise: Promise<CloudHelperModule> | null = null;
-
-interface CloudAuthApiKeyService {
-  isAuthenticated: () => boolean;
-  getApiKey?: () => string | undefined;
-}
-
-function getCloudHelpers(): Promise<CloudHelperModule> {
-  if (!cloudHelpersPromise) {
-    cloudHelpersPromise = import(
-      "@elizaos/plugin-elizacloud"
-    ) as Promise<CloudHelperModule>;
-  }
-  return cloudHelpersPromise;
-}
-
-function _isCloudAuthApiKeyService(
-  value: Service | null | undefined,
-): value is Service & CloudAuthApiKeyService {
-  return (
-    value != null &&
-    typeof (value as Partial<CloudAuthApiKeyService>).isAuthenticated ===
-      "function"
-  );
-}
-
-function _normalizeCloudApiKey(
-  value: string | null | undefined,
-): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return null;
-  return trimmed;
-}
-
-async function resolveProxyApiKey(
-  state: XRelayRouteState,
-): Promise<string | null> {
-  const cloudAuth = state.runtime
-    ? state.runtime.getService("CLOUD_AUTH")
-    : null;
-  const { isCloudAuthApiKeyService, normalizeCloudApiKey, resolveCloudApiKey } =
-    await getCloudHelpers();
+function resolveProxyApiKey(state: XRelayRouteState): string | null {
+  const cloudAuth = state.runtime?.getService<Service>("CLOUD_AUTH");
   const runtimeApiKey =
     isCloudAuthApiKeyService(cloudAuth) && cloudAuth.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
@@ -112,27 +61,6 @@ function buildAuthHeaders(
     headers["X-Service-Key"] = serviceKey;
   }
   return headers;
-}
-
-function readBody(req: http.IncomingMessage): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error("Request body too large"));
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on("end", () =>
-      resolve(
-        chunks.length > 0 ? Buffer.concat(chunks).toString("utf-8") : undefined,
-      ),
-    );
-    req.on("error", reject);
-  });
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -166,7 +94,7 @@ export async function handleXRelayRoute(
     return true;
   }
 
-  const apiKey = await resolveProxyApiKey(state);
+  const apiKey = resolveProxyApiKey(state);
   if (!apiKey) {
     sendJsonError(
       res,
@@ -177,7 +105,6 @@ export async function handleXRelayRoute(
   }
 
   const baseUrl = normalizeCloudSiteUrl(state.config.cloud?.baseUrl);
-  const { validateCloudBaseUrl } = await getCloudHelpers();
   const urlError = await validateCloudBaseUrl(baseUrl);
   if (urlError) {
     sendJsonError(res, urlError, 502);
@@ -186,8 +113,9 @@ export async function handleXRelayRoute(
 
   let body: string | undefined;
   if (method === "POST") {
+    let rawBody: string | null;
     try {
-      body = await readBody(req);
+      rawBody = await readRequestBody(req, { maxBytes: MAX_BODY_BYTES });
     } catch (error) {
       sendJsonError(
         res,
@@ -196,6 +124,7 @@ export async function handleXRelayRoute(
       );
       return true;
     }
+    body = rawBody && rawBody.length > 0 ? rawBody : undefined;
   }
 
   const fullUrl = new URL(req.url ?? pathname, "http://localhost");

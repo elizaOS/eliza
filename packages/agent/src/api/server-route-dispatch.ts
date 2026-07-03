@@ -9,7 +9,6 @@ import { handleNotificationRoute } from "./notification-routes.ts";
 import { handlePushTokenRoute } from "./push-token-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
-import { handleXRelayRoute } from "./x-relay-routes.ts";
 
 // Lazy memoized loaders — previously these were module-scope `await import`,
 // which forced @elizaos/plugin-computeruse and @elizaos/plugin-elizacloud to
@@ -192,11 +191,10 @@ export async function handleCloudAndCoreRouteGroup({
     return false;
   }
 
-  const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
-    config: state.config,
-    runtime: state.runtime,
-  });
-  if (xRelayHandled) return true;
+  // Note: `/api/cloud/x/*` (X relay) is served by @elizaos/plugin-elizacloud's
+  // route surface (elizaCloudRoutePlugin) via the runtime plugin route system,
+  // not here. None of the handlers below match `/api/cloud/x/*`, so it falls
+  // through to `tryHandleRuntimePluginRoute`.
 
   const cloudRoutes = await getCloudRoutesPlugin();
   const billingHandled = await cloudRoutes.handleCloudBillingRoute(
