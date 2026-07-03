@@ -16,28 +16,11 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import type { Tab } from "../navigation";
+import { resetUiRegistryHostForTests } from "../registry-host";
 import { useNavigationPathSync } from "./useAppProviderEffects";
 
-const REGISTRY_KEY = Symbol.for("elizaos.app-core.app-shell-page-registry");
-
-interface RegistryStoreShape {
-  entries: Map<string, unknown>;
-  version: number;
-  listeners: Set<() => void>;
-}
-
-function clearTestRegistration(id: string): void {
-  const store = (globalThis as Record<PropertyKey, unknown>)[REGISTRY_KEY] as
-    | RegistryStoreShape
-    | undefined;
-  if (!store) return;
-  if (!store.entries.delete(id)) return;
-  store.version += 1;
-  for (const listener of store.listeners) listener();
-}
-
 afterEach(() => {
-  clearTestRegistration("smartglasses.tui");
+  resetUiRegistryHostForTests();
   window.history.replaceState(null, "", "/");
 });
 

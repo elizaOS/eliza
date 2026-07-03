@@ -1,6 +1,7 @@
 import type { ViewKind } from "@elizaos/core";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, LazyExoticComponent } from "react";
+import { getUiRegistryStore } from "../../registry-host";
 import type { SettingsSectionGroup } from "./settings-section-meta";
 
 /**
@@ -8,9 +9,9 @@ import type { SettingsSectionGroup } from "./settings-section-meta";
  *
  * Built-in sections (`settings-sections.ts`) and host apps / plugins both
  * contribute through {@link registerSettingsSection}; the Settings view renders
- * whatever {@link listSettingsSections} returns. The store is keyed on a global
- * symbol — mirroring `app-shell-registry` — so every bundle in the process
- * shares one registry even across module-identity splits.
+ * whatever {@link listSettingsSections} returns. The store comes from the
+ * shared UI registry host, so sibling registries use the same injected storage
+ * source instead of maintaining per-registry global slots.
  *
  * This is what makes settings modular: an app adds a section with one
  * `registerSettingsSection(...)` call at boot, no edits to the view.
@@ -82,23 +83,13 @@ interface SettingsSectionRegistryStore {
   seq: number;
 }
 
-function registryKey(): symbol {
-  return Symbol.for("elizaos.ui.settings-section-registry");
-}
+const SETTINGS_SECTION_REGISTRY_STORE = "settings-sections";
 
 function getStore(): SettingsSectionRegistryStore {
-  const globalObject = globalThis as Record<PropertyKey, unknown>;
-  const key = registryKey();
-  const existing = globalObject[key] as
-    | SettingsSectionRegistryStore
-    | undefined;
-  if (existing) return existing;
-  const created: SettingsSectionRegistryStore = {
+  return getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
     entries: new Map<string, SettingsSectionDef>(),
     seq: 0,
-  };
-  globalObject[key] = created;
-  return created;
+  }));
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Cog } from "lucide-react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { resetUiRegistryHostForTests } from "../../registry-host";
 import {
   getSettingsSection,
   listSettingsSections,
@@ -27,6 +28,10 @@ function makeSection(
 }
 
 describe("settings-section-registry", () => {
+  beforeEach(() => {
+    resetUiRegistryHostForTests();
+  });
+
   it("registers a section and lists it back (apps can add settings)", () => {
     registerSettingsSection(makeSection("test-plugin-section"));
     const ids = listSettingsSections().map((s) => s.id);

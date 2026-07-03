@@ -1,29 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
+import { resetUiRegistryHostForTests } from "../registry-host";
 import { tabFromPath } from "./index";
 
-const REGISTRY_KEY = Symbol.for("elizaos.app-core.app-shell-page-registry");
-
-interface RegistryStoreShape {
-  entries: Map<string, unknown>;
-  version: number;
-  listeners: Set<() => void>;
-}
-
-function clearTestRegistration(id: string): void {
-  const store = (globalThis as Record<PropertyKey, unknown>)[REGISTRY_KEY] as
-    | RegistryStoreShape
-    | undefined;
-  if (!store) return;
-  if (!store.entries.delete(id)) return;
-  store.version += 1;
-  for (const listener of store.listeners) listener();
-}
+beforeEach(() => {
+  resetUiRegistryHostForTests();
+});
 
 afterEach(() => {
-  clearTestRegistration("test.wallet.inventory");
-  clearTestRegistration("test.phone-companion");
-  clearTestRegistration("test.unaffiliated");
+  resetUiRegistryHostForTests();
 });
 
 describe("navigation tabFromPath", () => {
