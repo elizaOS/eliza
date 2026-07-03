@@ -40,5 +40,35 @@
         "maxBatteryDrainPct": null
       }
     }
+  },
+  "measuredBaselines": {
+    "_comment": "REAL on-device captures, documented for reference (issue #11352). NOT consumed by the budget gate: the runner (run-workbench.mjs) reads only `deviceClasses.*` + `leakGrowthMbThreshold`, so nothing here can fail a PR. These are single-run, thermally-throttled captures — recorded per BASELINE.md discipline but intentionally NOT promoted into the gating `deviceClasses` budgets (which stay null) until multi-run stability on a quiet, cool device lands. Only keys with a genuine measurement are present; TTFT/battery/thermal/prefill are omitted because they were not honestly captured (power draw is power-meter-gated). Memory values are MB from `adb shell dumpsys meminfo <pkg>` (PSS/RSS); `glMtrackMb` is the GL mtrack line = Vulkan model weights resident in GPU memory. Throughput is decode tokens/sec from the bionic Vulkan host (GENERATE_STREAM), plus llama-bench on the same libs.",
+    "android-phone": {
+      "eliza-1-2b": {
+        "device": "Google Pixel 6a (Tensor GS101, Mali-G78 MP20, Android 16, ~5.7 GB usable RAM)",
+        "model": "eliza-1-2b Q4 (1.2 GB GGUF) via the bionic Vulkan host",
+        "capturedAt": "2026-07-02",
+        "runs": 1,
+        "stableForGating": false,
+        "memoryMb": {
+          "idle": { "totalPss": 2500, "totalRss": 2390, "glMtrack": 2250, "swapPss": 195 },
+          "chatActive": { "totalPss": 2600, "totalRss": 2460, "glMtrack": 2250, "swapPss": 217 },
+          "deltaActiveMinusIdle": { "totalPss": 100, "totalRss": 70 }
+        },
+        "decodeTokensPerSecond": { "warm": 4.8, "cold": 3.1 },
+        "llamaBenchTokensPerSecond": { "pp32": 2.60, "tg32": 6.85 },
+        "notMeasured": {
+          "ttftMs": "single-run only; distribution not captured",
+          "prefillTokensPerSecond": "not isolated in this capture",
+          "batteryDrainPct": "power-meter gated (idle / chat / voice / background)",
+          "thermalTimeline": "physical thermal-log capture pending"
+        },
+        "findings": [
+          "The eliza-1-2b E2B variant (4.9 GB) tripped lowmemorykiller on the 5.7 GB device; Q4 (1.2 GB) is the 6a-class tier.",
+          "Memory is dominated by resident weights: GL mtrack holds ~2.25 GB constant idle→active; per-turn delta is only ~100 MB PSS / ~70 MB RSS.",
+          "Measured idle total RSS (2390 MB) already exceeds the provisional `maxSteadyRssMb` cap (2300 MB) for this class — another reason not to naively promote provisional ceilings to a gate before multi-run baselines exist."
+        ]
+      }
+    }
   }
 }

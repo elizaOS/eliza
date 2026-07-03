@@ -36,14 +36,24 @@ ceiling sits deliberately close to flag tiers that approach it.
 
 ## Measured baselines
 
-_None yet — populate as device runs land._
+First real device capture landed for `android-phone` / `eliza-1-2b` (Pixel 6a,
+issue #11352). It is a **single, thermally-throttled run** — recorded here and
+in `budgets.json → measuredBaselines` (a non-gating block), but deliberately
+**not** promoted into the gating `deviceClasses` budgets (which stay `null`)
+until ≥3 stable runs on a quiet, cool device land. Full method + gaps:
+`.github/issue-evidence/11352-pixel6a-baseline/README.md`.
 
-| Device class   | Tier           | Workload        | decode tok/s (p50) | prefill tok/s (p50) | TTFT (p90) | peak RSS | battery drain | commit |
-| -------------- | -------------- | --------------- | ------------------ | ------------------- | ---------- | -------- | ------------- | ------ |
-| ios-phone      | eliza-1-2b     | single-turn     | —                  | —                   | —          | —        | —             | —      |
-| ios-phone      | eliza-1-2b     | sustained-chat  | —                  | —                   | —          | —        | —             | —      |
-| android-phone  | eliza-1-2b     | single-turn     | —                  | —                   | —          | —        | —             | —      |
-| android-phone  | eliza-1-2b     | sustained-chat  | —                  | —                   | —          | —        | —             | —      |
+| Device class   | Tier           | Workload        | decode tok/s        | prefill tok/s | TTFT | peak RSS (chat) | steady RSS (idle) | battery drain | commit |
+| -------------- | -------------- | --------------- | ------------------- | ------------- | ---- | --------------- | ----------------- | ------------- | ------ |
+| ios-phone      | eliza-1-2b     | single-turn     | —                   | —             | —    | —               | —                 | —             | —      |
+| ios-phone      | eliza-1-2b     | sustained-chat  | —                   | —             | —    | —               | —                 | —             | —      |
+| android-phone  | eliza-1-2b     | single-turn     | 4.8 warm / 3.1 cold | not isolated  | —    | 2600 MB PSS     | 2500 MB PSS       | —             | #11352 |
+| android-phone  | eliza-1-2b     | sustained-chat  | 4.8 warm            | not isolated  | —    | 2600 MB PSS     | 2500 MB PSS       | —             | #11352 |
+
+Pixel 6a / eliza-1-2b Q4 (1.2 GB GGUF), bionic Vulkan host. Memory dominated by
+resident weights (GL mtrack ~2.25 GB constant); per-turn delta only ~100 MB PSS
+/ ~70 MB RSS. llama-bench on the same libs: pp32 2.60 t/s, tg32 6.85 t/s. TTFT,
+prefill, battery, and thermal remain uncaptured (see the evidence README).
 
 ## Notes / known gaps
 
