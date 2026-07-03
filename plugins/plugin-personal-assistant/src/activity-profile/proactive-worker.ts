@@ -44,6 +44,7 @@ import {
   resolveOwnerEntityId,
 } from "./service.js";
 import type { ActivityProfile } from "./types.js";
+import { learnRhythmWindows } from "./window-learning-writer.js";
 
 export const PROACTIVE_TASK_NAME = "PROACTIVE_AGENT" as const;
 export const PROACTIVE_TASK_TAGS = ["queue", "repeat", "proactive"] as const;
@@ -183,6 +184,19 @@ export async function executeProactiveTask(
       activityProfile: profile,
     },
   });
+
+  // Close the observe→learn→schedule loop: fold the freshly-computed
+  // wake/sleep rhythm into OwnerFacts.morningWindow / eveningWindow so
+  // during_window triggers and wake/bedtime anchors track the user's real
+  // rhythm. User-set windows are never clobbered; the write is idempotent.
+  await learnRhythmWindows(
+    runtime,
+    {
+      typicalWakeHour: profile.typicalWakeHour,
+      typicalSleepHour: profile.typicalSleepHour,
+    },
+    now,
+  );
 
   return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
 }
