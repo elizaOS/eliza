@@ -35,7 +35,7 @@ import {
   buildManagedDiscordSettingsReturnUrl,
   resolveManagedDiscordAgentChoice,
 } from "./cloud-dashboard-utils";
-import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { PluginConfigForm } from "./PluginConfigForm";
 import {
   getPluginResourceLinks,
   pluginResourceLinkLabel,
@@ -1173,19 +1173,11 @@ function ConnectorPluginCard({
 
         {showPluginConfig ? (
           <div className="space-y-4">
-            {plugin.id === "telegram" ? (
-              <TelegramPluginConfig
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={handleParamChange}
-              />
-            ) : (
-              <PluginConfigForm
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={handleParamChange}
-              />
-            )}
+            <PluginConfigForm
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={handleParamChange}
+            />
             {connectorSetupPanel}
           </div>
         ) : supportsConnectorSetupPanel ? (

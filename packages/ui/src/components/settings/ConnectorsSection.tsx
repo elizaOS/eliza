@@ -30,10 +30,7 @@ import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
 import { getBrandIcon } from "../conversations/brand-icons";
-import {
-  PluginConfigForm,
-  TelegramPluginConfig,
-} from "../pages/PluginConfigForm";
+import { PluginConfigForm } from "../pages/PluginConfigForm";
 import {
   ALWAYS_ON_PLUGIN_IDS,
   iconImageSource,
@@ -189,19 +186,11 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
 
       {showPluginConfig ? (
         <div className="space-y-3">
-          {plugin.id === "telegram" ? (
-            <TelegramPluginConfig
-              plugin={plugin}
-              pluginConfigs={pluginConfigs}
-              onParamChange={handleParamChange}
-            />
-          ) : (
-            <PluginConfigForm
-              plugin={plugin}
-              pluginConfigs={pluginConfigs}
-              onParamChange={handleParamChange}
-            />
-          )}
+          <PluginConfigForm
+            plugin={plugin}
+            pluginConfigs={pluginConfigs}
+            onParamChange={handleParamChange}
+          />
           {/* Co-render the live setup/status panel (e.g. Telegram bot-token
               validation + identity) directly under the env-config form, matching
               the canonical /connectors surface (plugin-view-connectors.tsx) where

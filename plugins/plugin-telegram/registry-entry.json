@@ -47,6 +47,19 @@
       "advanced": false
     }
   },
+  "configUiHints": {
+    "TELEGRAM_ALLOWED_CHATS": {
+      "modeToggle": {
+        "kind": "mode-toggle-with-hidden-field",
+        "enabledLabel": "Allow all chats",
+        "disabledLabel": "Allow only specific chats",
+        "enabledHelp": "Bot will respond in any chat",
+        "disabledHelp": "Bot will only respond in listed chat IDs",
+        "hiddenValue": "",
+        "restoreValue": "[]"
+      }
+    }
+  },
   "render": {
     "visible": true,
     "pinTo": [],

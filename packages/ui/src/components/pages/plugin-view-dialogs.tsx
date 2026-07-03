@@ -5,7 +5,7 @@ import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { AdminDialog } from "../ui/admin-dialog";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
-import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { PluginConfigForm } from "./PluginConfigForm";
 import {
   iconImageSource,
   resolveIcon,
@@ -220,19 +220,11 @@ export function PluginSettingsDialog({
           )}
 
           <div className="px-5 py-3">
-            {plugin.id === "telegram" ? (
-              <TelegramPluginConfig
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={onParamChange}
-              />
-            ) : (
-              <PluginConfigForm
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={onParamChange}
-              />
-            )}
+            <PluginConfigForm
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={onParamChange}
+            />
             <ConnectorSetupPanel pluginId={plugin.id} />
           </div>
         </AdminDialog.BodyScroll>

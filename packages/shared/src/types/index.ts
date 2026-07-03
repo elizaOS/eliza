@@ -428,6 +428,16 @@ export type ConfigUiHint = {
   maxItems?: number;
   /** Plugin-provided custom React component name. */
   component?: string;
+  /** Render a toggle that hides this backing field when enabled. */
+  modeToggle?: {
+    kind: "mode-toggle-with-hidden-field";
+    enabledLabel: string;
+    disabledLabel: string;
+    enabledHelp?: string;
+    disabledHelp?: string;
+    hiddenValue?: string;
+    restoreValue?: string;
+  };
 };
 
 /**

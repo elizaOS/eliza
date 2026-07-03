@@ -133,9 +133,6 @@ export const ALWAYS_ON_PLUGIN_IDS = new Set([
   "computeruse",
 ]);
 
-/** Keys to hide when Telegram "Allow all chats" mode is active. */
-export const TELEGRAM_ALLOW_ALL_HIDDEN = new Set(["TELEGRAM_ALLOWED_CHATS"]);
-
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
 /** Detect advanced / debug parameters that should be collapsed by default. */
