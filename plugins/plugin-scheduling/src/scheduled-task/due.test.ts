@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isCompletionTimeoutDue,
   isScheduledTaskDue,
+  markWindowFireIfNeeded,
   pendingPromptRoomIdForTask,
 } from "./due.js";
 import type { ScheduledTask } from "./types.js";
@@ -213,6 +214,153 @@ describe("owner_local cron tz resolution", () => {
       due: true,
       reason: "cron_due",
       occurrenceAtIso: "2026-05-10T09:00:00.000Z",
+    });
+  });
+});
+
+describe("during_window night wrap-around — no double-fire across midnight (#12030)", () => {
+  // Night runs 22:00–06:00, split into two segments both named "night":
+  // [22:00, 24:00) and [00:00, 06:00). It is ONE occurrence per night.
+  const NIGHT_FACTS = {
+    timezone: "UTC",
+    morningWindow: { start: "06:00", end: "11:00" },
+    eveningWindow: { start: "18:00", end: "22:00" },
+  };
+  const nightTask = (overrides: Partial<ScheduledTask> = {}): ScheduledTask =>
+    task({
+      trigger: { kind: "during_window", windowKey: "night" },
+      ...overrides,
+    });
+
+  it("blocks the after-midnight tick with the key the pre-midnight fire stamped", async () => {
+    const preMidnight = nightTask();
+    const first = await isScheduledTaskDue(preMidnight, {
+      now: new Date("2026-05-10T23:00:00.000Z"),
+      ownerFacts: NIGHT_FACTS,
+    });
+    expect(first).toMatchObject({ due: true, reason: "window_due" });
+
+    // The tick persists this occurrence key with the fire.
+    const stamped = markWindowFireIfNeeded(preMidnight, {
+      now: new Date("2026-05-10T23:00:00.000Z"),
+      ownerFacts: NIGHT_FACTS,
+    });
+    expect(stamped?.lastWindowFireKey).toBe("2026-05-10:night:night");
+
+    // 00:30 the next calendar day is still the SAME night — before the fix its
+    // key rolled to `2026-05-11:night:night` and it fired a second time.
+    const afterMidnight = await isScheduledTaskDue(
+      nightTask({
+        metadata: { lastWindowFireKey: stamped?.lastWindowFireKey as string },
+      }),
+      {
+        now: new Date("2026-05-11T00:30:00.000Z"),
+        ownerFacts: NIGHT_FACTS,
+      },
+    );
+    expect(afterMidnight).toMatchObject({
+      due: false,
+      reason: "window_already_fired",
+    });
+  });
+
+  it("blocks the after-midnight tick via the firedAt backstop (no lastWindowFireKey yet)", async () => {
+    const decision = await isScheduledTaskDue(
+      nightTask({
+        state: {
+          status: "fired",
+          followupCount: 0,
+          firedAt: "2026-05-10T23:00:00.000Z",
+        },
+      }),
+      {
+        now: new Date("2026-05-11T00:30:00.000Z"),
+        ownerFacts: NIGHT_FACTS,
+      },
+    );
+    expect(decision).toMatchObject({
+      due: false,
+      reason: "window_already_fired",
+    });
+  });
+
+  it("still fires once when the task is created after midnight (pre-midnight segment never fired)", async () => {
+    const created = nightTask();
+    const decision = await isScheduledTaskDue(created, {
+      now: new Date("2026-05-11T02:00:00.000Z"),
+      ownerFacts: NIGHT_FACTS,
+    });
+    expect(decision).toMatchObject({ due: true, reason: "window_due" });
+
+    // ...and after it stamps, a later same-night tick is blocked.
+    const stamped = markWindowFireIfNeeded(created, {
+      now: new Date("2026-05-11T02:00:00.000Z"),
+      ownerFacts: NIGHT_FACTS,
+    });
+    expect(stamped?.lastWindowFireKey).toBe("2026-05-10:night:night");
+    const later = await isScheduledTaskDue(
+      nightTask({
+        metadata: { lastWindowFireKey: stamped?.lastWindowFireKey as string },
+      }),
+      {
+        now: new Date("2026-05-11T02:30:00.000Z"),
+        ownerFacts: NIGHT_FACTS,
+      },
+    );
+    expect(later).toMatchObject({
+      due: false,
+      reason: "window_already_fired",
+    });
+  });
+
+  it("fires again on a genuinely new night", async () => {
+    const decision = await isScheduledTaskDue(
+      nightTask({
+        metadata: { lastWindowFireKey: "2026-05-10:night:night" },
+      }),
+      {
+        now: new Date("2026-05-11T22:30:00.000Z"),
+        ownerFacts: NIGHT_FACTS,
+      },
+    );
+    expect(decision).toMatchObject({ due: true, reason: "window_due" });
+  });
+
+  it("keeps morning and night independent for morning_or_night", async () => {
+    // Fired this morning — the night half of the same window still fires.
+    const nightAfterMorning = await isScheduledTaskDue(
+      task({
+        trigger: { kind: "during_window", windowKey: "morning_or_night" },
+        metadata: {
+          lastWindowFireKey: "2026-05-10:morning_or_night:morning",
+        },
+      }),
+      {
+        now: new Date("2026-05-10T23:00:00.000Z"),
+        ownerFacts: NIGHT_FACTS,
+      },
+    );
+    expect(nightAfterMorning).toMatchObject({
+      due: true,
+      reason: "window_due",
+    });
+
+    // But the night's after-midnight tail does NOT re-fire.
+    const nightTail = await isScheduledTaskDue(
+      task({
+        trigger: { kind: "during_window", windowKey: "morning_or_night" },
+        metadata: {
+          lastWindowFireKey: "2026-05-10:morning_or_night:night",
+        },
+      }),
+      {
+        now: new Date("2026-05-11T00:30:00.000Z"),
+        ownerFacts: NIGHT_FACTS,
+      },
+    );
+    expect(nightTail).toMatchObject({
+      due: false,
+      reason: "window_already_fired",
     });
   });
 });
