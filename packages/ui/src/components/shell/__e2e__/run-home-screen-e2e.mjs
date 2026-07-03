@@ -795,8 +795,8 @@ try {
 
   // ── ONE page of views. Developer tools are NOT a separate swipeable page any
   // more: when Developer Mode is on they sit on the SAME single page after the
-  // apps (this fixture enables developer mode, so they render). There is no
-  // page 2 and no inter-page view paging to swipe to.
+  // apps (this fixture enables developer mode, so they render). The launcher is
+  // one scrolling page window — there is no inter-page view paging to swipe to.
   for (const id of [
     "trajectories",
     "database",
@@ -807,10 +807,10 @@ try {
   ]) {
     assert(
       (await mobile
-        .getByTestId("launcher-page-0")
+        .getByTestId("launcher-page-window")
         .getByTestId(`launcher-tile-${id}`)
         .count()) === 1,
-      `developer tool "${id}" renders on the single launcher page (page 0)`,
+      `developer tool "${id}" renders on the single launcher page`,
     );
   }
   assert(

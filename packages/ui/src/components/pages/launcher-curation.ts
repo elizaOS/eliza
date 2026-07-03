@@ -109,12 +109,6 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // Wallet sub-views — reached from inside the Wallet app, not the launcher.
   "hyperliquid",
   "polymarket",
-  // Legacy alias for the relationships/contact-graph surface: `rolodex` is a
-  // routable tab (TAB_PATHS "/rolodex") with a launcher tile but NO directViews
-  // branch in renderStaticViewRouterTab, so tapping it lands on the
-  // ViewUnavailableFallback (bounces the user back to the launcher). The real
-  // contact surface is `relationships`; hide this dead alias.
-  "rolodex",
 ]);
 
 /**
@@ -228,17 +222,18 @@ function comparator(indexes: Array<Map<string, number>>) {
 }
 
 /**
- * Curate raw launcher entries into a SINGLE page of tiles. Entries are deduped
- * by canonical id; hidden/removed apps are dropped; native-OS tiles are
- * AOSP-gated; developer + preview views (including the curated developer TOOLS)
- * are hidden unless their kind is enabled. Ordering: curated apps first, then
- * developer tools (when shown), then AOSP tiles, then any other loaded app
- * alphabetically. Returns `[page]`, or `[]` when nothing is visible.
+ * Curate raw launcher entries into the ordered list of tiles the launcher's
+ * single scrolling page renders. Entries are deduped by canonical id;
+ * hidden/removed apps are dropped; native-OS tiles are AOSP-gated; developer +
+ * preview views (including the curated developer TOOLS) are hidden unless their
+ * kind is enabled. Ordering: curated apps first, then developer tools (when
+ * shown), then AOSP tiles, then any other loaded app alphabetically. Returns
+ * `[]` when nothing is visible.
  */
 export function curateLauncherPages(
   entries: ViewEntry[],
   { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
-): ViewEntry[][] {
+): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
@@ -284,5 +279,5 @@ export function curateLauncherPages(
   // One combined order: curated apps, then developer tools, then AOSP tiles,
   // then uncurated apps alphabetically (the comparator falls through to label).
   page.sort(comparator([APPS_INDEX, DEVELOPER_INDEX, AOSP_INDEX]));
-  return page.length > 0 ? [page] : [];
+  return page;
 }

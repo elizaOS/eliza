@@ -1,15 +1,14 @@
 /**
  * Launcher — iOS-like app/view launcher.
  *
- * Renders the curated view tiles as names-only icons on a single page (the home
- * dashboard is the adjacent page on the rail). Tap launches. The launcher is
- * READ-ONLY: page composition + visibility are owned by `curateLauncherPages`
- * (system + release always; developer + preview gated by their Settings
- * toggles), so there is no reorder, no edit mode, and no persisted free-form
- * layout. The launcher's own pager only pages its own grid (when curation packs
- * more than one page); the outer home↔launcher rail owns home navigation in
- * both directions — the pointer-claim registry inside useHorizontalPager
- * arbitrates so exactly one pager tracks any given finger.
+ * Renders the curated view tiles as names-only icons on a single scrolling page
+ * (the home dashboard is the adjacent page on the rail). Tap launches. The
+ * launcher is READ-ONLY: composition + visibility are owned by
+ * `curateLauncherPages` (system + release always; developer + preview gated by
+ * their Settings toggles), so there is no reorder, no edit mode, and no
+ * persisted free-form layout. A grid taller than the viewport scrolls
+ * vertically; the outer home↔launcher rail owns horizontal navigation in both
+ * directions (there is no inner grid pager to arbitrate against).
  *
  * Renders no background of its own — the shared root `AppBackground` shows
  * through, matching the home screen. Tiles, labels, and the skeleton use a FIXED
@@ -17,40 +16,17 @@
  * over the ambient field) rather than light/dark theme tokens.
  */
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { useHorizontalPager } from "../../hooks/useHorizontalPager";
+import { memo, useCallback } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import { emitViewInteraction } from "../../view-telemetry";
-import { PagerEdgeButtons } from "../shell/PagerEdgeButtons";
 import { Button } from "../ui/button";
 import { ViewTileImage } from "../views/ViewTileImage";
 
 export interface LauncherProps {
   entries: ViewEntry[];
-  /**
-   * Curated pages as ordered id lists (already deduped + visibility-filtered by
-   * `curateLauncherPages`). Normally a single page; each group renders as its
-   * own page and never merges into the next. Omitted → one page of every entry
-   * (the standalone/story default).
-   */
-  pageGroups?: string[][];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
-  /**
-   * Controlled active page index (owned by the shell-surface store via
-   * LauncherSurface); local state otherwise so the component stays usable
-   * standalone (stories / isolated tests).
-   */
-  page?: number;
-  onPageChange?: (page: number) => void;
-  /** Fires with the rendered page count whenever it changes. */
-  onPageCountChange?: (count: number) => void;
-  /**
-   * Render the inner per-page dots. Off when an outer surface owns the single
-   * unified indicator. Defaults to true for standalone usage.
-   */
-  showPageDots?: boolean;
   className?: string;
 }
 
@@ -133,56 +109,10 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
 
 export function Launcher({
   entries,
-  pageGroups,
   loading = false,
   onLaunch,
-  page: pageProp,
-  onPageChange,
-  onPageCountChange,
-  showPageDots = true,
   className,
 }: LauncherProps) {
-  const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
-
-  // Active page index is CONTROLLED when the shell-surface store supplies it
-  // (via LauncherSurface), local otherwise (stories / isolated tests).
-  const pageControlled = pageProp !== undefined;
-  const [localPage, setLocalPage] = useState(0);
-  const activePage = pageProp ?? localPage;
-  const setActivePage = useCallback(
-    (next: number) => {
-      if (pageControlled) onPageChange?.(next);
-      else setLocalPage(next);
-    },
-    [pageControlled, onPageChange],
-  );
-
-  // Each curated group is one page; drop ids with no live entry, drop empty
-  // pages. Never chunk — the launcher is a single scrolling page of views. When
-  // no groups are supplied (standalone / stories), default to one page of every
-  // entry in catalog order.
-  const groups = useMemo(
-    () => pageGroups ?? [entries.map((e) => e.id)],
-    [pageGroups, entries],
-  );
-  const pages = useMemo(() => {
-    const filtered = groups
-      .map((group) => group.filter((id) => byId.has(id)))
-      .filter((group) => group.length > 0);
-    return filtered.length > 0 ? filtered : [[]];
-  }, [groups, byId]);
-
-  // Keep the LOCAL active page index in range when the page count shrinks.
-  useEffect(() => {
-    if (pageControlled) return;
-    setLocalPage((p) => Math.min(p, pages.length - 1));
-  }, [pages.length, pageControlled]);
-
-  useEffect(() => {
-    onPageCountChange?.(pages.length);
-  }, [pages.length, onPageCountChange]);
-  const clampedPage = Math.min(activePage, pages.length - 1);
-
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
       emitViewInteraction({
@@ -195,23 +125,7 @@ export function Launcher({
     [onLaunch],
   );
 
-  // The launcher pager exists only to page its own grid; with a single curated
-  // page it stands down entirely and the outer home↔launcher rail owns every
-  // horizontal gesture (including the right-swipe back home, which then tracks
-  // the finger 1:1 instead of rubber-banding here).
-  const pager = useHorizontalPager({
-    page: clampedPage,
-    pageCount: pages.length,
-    enabled: pages.length > 1,
-    onPageChange: (nextPage) => {
-      setActivePage(nextPage);
-      emitViewInteraction({
-        source: "launcher",
-        action: "page-swipe",
-        count: nextPage,
-      });
-    },
-  });
+  const showSkeleton = loading && entries.length === 0;
 
   return (
     <div
@@ -219,105 +133,31 @@ export function Launcher({
       data-testid="launcher"
     >
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Single scrolling page — the outer home↔launcher rail owns every
+            horizontal gesture, so this container takes no pointer handlers and
+            only scrolls vertically when the grid overflows. */}
         <div
-          ref={pager.viewportRef}
           data-testid="launcher-page-window"
-          className="relative flex min-h-0 flex-1 overflow-hidden touch-pan-y"
-          style={{ touchAction: "pan-y" }}
-          onPointerDown={pager.handlers.onPointerDown}
-          onPointerMove={pager.handlers.onPointerMove}
-          onPointerUp={pager.handlers.onPointerUp}
-          onPointerCancel={pager.handlers.onPointerCancel}
-          onLostPointerCapture={pager.handlers.onLostPointerCapture}
-          // Swallow the click a committed swipe-back synthesizes so it can't
-          // also tap-launch the tile under the finger.
-          onClickCapture={pager.handlers.onClickCapture}
+          className="relative flex min-h-0 flex-1 items-start justify-center overflow-y-auto touch-pan-y px-6 pt-2 pb-8"
         >
-          <div
-            ref={pager.railRef}
-            data-testid="launcher-page-rail"
-            className="flex h-full min-h-0 w-full"
-          >
-            {loading && entries.length === 0 ? (
-              <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
-                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
-                  {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
-                    <div
-                      key={id}
-                      className="flex flex-col items-center gap-1.5 opacity-60"
-                    >
-                      <div className="h-16 w-16 rounded-2xl bg-white/15" />
-                      <div className="h-2.5 w-12 rounded-full bg-white/25" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              pages.map((pageIds, pageIndex) => {
-                const active = pageIndex === clampedPage;
-                return (
+          <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
+            {showSkeleton
+              ? ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                   <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: page index is the page identity.
-                    key={`launcher-page-${pageIndex}`}
-                    data-testid={`launcher-page-${pageIndex}`}
-                    aria-hidden={!active}
-                    inert={!active || undefined}
-                    style={{ touchAction: "pan-y" }}
-                    className={cn(
-                      "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
-                      !active && "pointer-events-none",
-                    )}
+                    key={id}
+                    className="flex flex-col items-center gap-1.5 opacity-60"
                   >
-                    <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
-                      {pageIds.map((id) => {
-                        const entry = byId.get(id);
-                        if (!entry) return null;
-                        return (
-                          <div key={id} className="flex justify-center">
-                            <IconTile entry={entry} onLaunch={handleLaunch} />
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <div className="h-16 w-16 rounded-2xl bg-white/15" />
+                    <div className="h-2.5 w-12 rounded-full bg-white/25" />
                   </div>
-                );
-              })
-            )}
+                ))
+              : entries.map((entry) => (
+                  <div key={entry.id} className="flex justify-center">
+                    <IconTile entry={entry} onLaunch={handleLaunch} />
+                  </div>
+                ))}
           </div>
         </div>
-
-        {/* Web/desktop `< >` edge buttons (hidden on touch). Self-hide at the
-            first/last page — with a single curated page they render nothing. */}
-        <PagerEdgeButtons
-          idPrefix="launcher"
-          canPrev={pager.canPrev}
-          canNext={pager.canNext}
-          goPrev={pager.goPrev}
-          goNext={pager.goNext}
-          prevLabel="Previous page"
-          nextLabel="Next page"
-        />
-
-        {/* Page dots — standalone usage only; a single page renders none. */}
-        {showPageDots && pages.length > 1 ? (
-          <div className="flex items-center justify-center gap-2 pb-3">
-            {pages.map((pageIds, index) => (
-              <Button
-                // biome-ignore lint/suspicious/noArrayIndexKey: pages have no stable id; index is the page identity.
-                key={`dot-${index}-${pageIds[0] ?? "empty"}`}
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Page ${index + 1}`}
-                aria-current={index === clampedPage}
-                onClick={() => setActivePage(index)}
-                className={cn(
-                  "h-2 w-2 rounded-full p-0 transition-colors hover:bg-border",
-                  index === clampedPage ? "bg-accent" : "bg-border",
-                )}
-              />
-            ))}
-          </div>
-        ) : null}
       </div>
     </div>
   );

@@ -169,12 +169,12 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
     editAffordances === 0,
     `${name}: read-only launcher renders no edit/pin/delete affordances (${editAffordances})`,
   );
-  // Single page: page-0 exists, page-1 does not (no inter-page view paging).
-  const firstPage = await page.getByTestId("launcher-page-0").count();
-  const secondPage = await page.getByTestId("launcher-page-1").count();
+  // Single scrolling page: one page window, no inter-page view paging.
+  const pageWindow = await page.getByTestId("launcher-page-window").count();
+  const legacyPage1 = await page.getByTestId("launcher-page-1").count();
   assert(
-    firstPage === 1 && secondPage === 0,
-    `${name}: exactly one launcher page (page-0=${firstPage}, page-1=${secondPage})`,
+    pageWindow === 1 && legacyPage1 === 0,
+    `${name}: single launcher page window (window=${pageWindow}, legacy-page-1=${legacyPage1})`,
   );
   await snap(page, `${name}-rest`);
   await page.close();

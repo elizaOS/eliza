@@ -5,13 +5,7 @@ import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { isAospShellEnabled } from "../../navigation";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useAppSelectorShallow } from "../../state";
-import {
-  setLauncherPage,
-  setLauncherPageCount,
-  useShellSurface,
-} from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
-import { recordRecentViewId } from "../../view-recents";
 import { Launcher } from "./Launcher";
 import { curateLauncherPages } from "./launcher-curation";
 import { startTutorial } from "./tutorial/tutorial-controller";
@@ -25,9 +19,6 @@ export const LauncherSurface = React.memo(
     }));
     const activeModality = React.useMemo(() => getActiveViewModality(), []);
     const isAosp = React.useMemo(() => isAospShellEnabled(), []);
-    // Page index comes from the single shell-surface store, so the launcher, the
-    // rail, and its one indicator can never disagree.
-    const { launcherPage } = useShellSurface();
 
     // The launcher renders the loaded views for the active modality; the curation
     // layer owns removal, dedup, AOSP-gating, and developer/preview visibility.
@@ -39,7 +30,7 @@ export const LauncherSurface = React.memo(
       [activeModality, views],
     );
 
-    const pages = React.useMemo(
+    const entries = React.useMemo<ViewEntry[]>(
       () =>
         curateLauncherPages(modalEntries, {
           isAosp,
@@ -49,18 +40,7 @@ export const LauncherSurface = React.memo(
       [modalEntries, isAosp, enabledKinds, elizaCloudConnected],
     );
 
-    const entries = React.useMemo<ViewEntry[]>(() => pages.flat(), [pages]);
-    const pageGroups = React.useMemo(
-      () => pages.map((page) => page.map((entry) => entry.id)),
-      [pages],
-    );
-    const entryById = React.useMemo(
-      () => new Map(entries.map((entry) => [entry.id, entry])),
-      [entries],
-    );
-
     const handleLaunch = React.useCallback((entry: ViewEntry) => {
-      recordRecentViewId(entry.id);
       // The Tutorial tile skips the TutorialView splash: start the interactive
       // tour directly and land on the chat home so it overlays the real chat.
       const isTutorial = entry.id === "tutorial";
@@ -87,16 +67,7 @@ export const LauncherSurface = React.memo(
 
     return (
       <div className="absolute inset-0 flex min-h-0 flex-col px-0 pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]">
-        <Launcher
-          entries={entries}
-          pageGroups={pageGroups}
-          loading={loading}
-          onLaunch={(entry) => handleLaunch(entryById.get(entry.id) ?? entry)}
-          page={launcherPage}
-          onPageChange={setLauncherPage}
-          onPageCountChange={setLauncherPageCount}
-          showPageDots={false}
-        />
+        <Launcher entries={entries} loading={loading} onLaunch={handleLaunch} />
       </div>
     );
   },

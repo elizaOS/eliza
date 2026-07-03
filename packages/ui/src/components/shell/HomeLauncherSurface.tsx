@@ -1,20 +1,18 @@
 import * as React from "react";
 import { useHorizontalPager } from "../../hooks/useHorizontalPager";
-import { cn } from "../../lib/utils";
 import {
   goHome,
   goLauncher,
+  type HomeLauncherPage,
   setShellSurfacePage,
   useShellSurface,
 } from "../../state/shell-surface-store";
-import type { HomeLauncherPage } from "./home-launcher-events";
 import { PagerEdgeButtons } from "./PagerEdgeButtons";
 
 export interface HomeLauncherSurfaceProps {
   home: React.ReactNode;
   launcher: React.ReactNode;
   initialPage?: HomeLauncherPage;
-  className?: string;
 }
 
 /**
@@ -30,9 +28,8 @@ export function HomeLauncherSurface({
   home,
   launcher,
   initialPage = "home",
-  className,
 }: HomeLauncherSurfaceProps): React.JSX.Element {
-  const { page, launcherPage } = useShellSurface();
+  const { page } = useShellSurface();
 
   // The mounting route decides which half shows first. Re-runs only when the
   // route actually changes `initialPage`, so an in-session swipe is never
@@ -41,16 +38,10 @@ export function HomeLauncherSurface({
     setShellSurfacePage(initialPage);
   }, [initialPage]);
 
-  // The rail owns the horizontal gesture on BOTH halves, so a swipe right on
-  // the launcher tracks the finger 1:1 (home slides in live, iOS-style) instead
-  // of the old damped edge-rubber-band + fixed-rate settle. Exactly one pager
-  // still tracks any given finger: the pointer-claim registry inside
-  // useHorizontalPager arbitrates against the inner Launcher grid pager — when
-  // the grid can page in the drag direction the innermost pager claims the
-  // pointer and the rail stands down; at the grid's first page a right drag is
-  // unclaimable by the grid, so the rail claims it and paints the back-to-home
-  // travel with the finger.
-  const railButtonsEnabled = page === "home" || launcherPage === 0;
+  // The rail owns the single horizontal gesture on BOTH halves — the Launcher
+  // is a single scrolling page with no inner pager, so a swipe right on the
+  // launcher tracks the finger 1:1 (home slides in live, iOS-style) instead of
+  // the old damped edge-rubber-band + fixed-rate settle.
   const pager = useHorizontalPager<HTMLElement>({
     page: page === "launcher" ? 1 : 0,
     pageCount: 2,
@@ -77,10 +68,7 @@ export function HomeLauncherSurface({
       // horizontal drag must pan the rail, never text-select the tile labels /
       // widget text underneath. (Vertical scroll of the home widget list is
       // untouched.)
-      className={cn(
-        "absolute inset-0 z-[1] select-none overflow-hidden",
-        className,
-      )}
+      className="absolute inset-0 z-[1] select-none overflow-hidden"
     >
       {/* AX-tree mirror of data-page: the native gesture e2e suites (XCUITest)
           observe web state only through the accessibility tree, where data
@@ -134,21 +122,19 @@ export function HomeLauncherSurface({
         </div>
       </div>
       {/* Web/desktop `< >` edge buttons for the home↔launcher rail (hidden on
-          touch). Shown where a rail move is meaningful: right → launcher on the
-          home half, left → home on the launcher's first page. These drive
-          goPrev/goNext directly, so they work even where the rail no longer
-          tracks touch swipes (launcher page 0). */}
-      {railButtonsEnabled ? (
-        <PagerEdgeButtons
-          idPrefix="rail"
-          canPrev={pager.canPrev}
-          canNext={pager.canNext}
-          goPrev={pager.goPrev}
-          goNext={pager.goNext}
-          prevLabel="Home"
-          nextLabel="Launcher"
-        />
-      ) : null}
+          touch). PagerEdgeButtons self-hides each chevron at the rail's
+          first/last page, so the `>` (Launcher) hides on the launcher half and
+          the `<` (Home) hides on the home half. These drive goPrev/goNext
+          directly, so paging works even where touch swipes don't apply. */}
+      <PagerEdgeButtons
+        idPrefix="rail"
+        canPrev={pager.canPrev}
+        canNext={pager.canNext}
+        goPrev={pager.goPrev}
+        goNext={pager.goNext}
+        prevLabel="Home"
+        nextLabel="Launcher"
+      />
     </section>
   );
 }

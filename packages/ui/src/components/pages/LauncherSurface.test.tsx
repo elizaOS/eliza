@@ -93,14 +93,14 @@ describe("LauncherSurface", () => {
   it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
     render(<LauncherSurface />);
 
-    // No dock: chat/settings tile on the apps page alongside everything else.
+    // No dock: chat/settings tile on the single page alongside everything else.
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
 
-    const appsPage = within(screen.getByTestId("launcher-page-0"));
-    expect(appsPage.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(appsPage.getByTestId("launcher-tile-settings")).toBeTruthy();
-    expect(appsPage.getByTestId("launcher-tile-wallet")).toBeTruthy();
-    expect(appsPage.getByTestId("launcher-tile-browser")).toBeTruthy();
+    const page = within(screen.getByTestId("launcher-page-window"));
+    expect(page.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(page.getByTestId("launcher-tile-settings")).toBeTruthy();
+    expect(page.getByTestId("launcher-tile-wallet")).toBeTruthy();
+    expect(page.getByTestId("launcher-tile-browser")).toBeTruthy();
 
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
@@ -126,8 +126,8 @@ describe("LauncherSurface", () => {
     // beforeEach enables developer mode. One page — no second launcher page.
     render(<LauncherSurface />);
     expect(screen.queryByTestId("launcher-page-1")).toBeNull();
-    const appsPage = within(screen.getByTestId("launcher-page-0"));
-    expect(appsPage.getByTestId("launcher-tile-trajectories")).toBeTruthy();
+    const page = within(screen.getByTestId("launcher-page-window"));
+    expect(page.getByTestId("launcher-tile-trajectories")).toBeTruthy();
   });
 
   it("hides developer tools when Developer Mode is off (default)", () => {

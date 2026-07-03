@@ -341,7 +341,6 @@ function Harness(): React.JSX.Element {
     // Views; `?tab=settings` disables Settings. Unset → all three are enabled.
     currentTab: params.get("tab") ?? undefined,
     navigateHome: () => console.log("[fixture] navigateHome"),
-    navigateToViews: () => console.log("[fixture] navigateToViews"),
     clearConversation: () => console.log("[fixture] clearConversation"),
     stop: () => {
       console.log("[fixture] stop");

@@ -7,8 +7,8 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
-import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 
 function LauncherProbe() {
   return <div data-testid="launcher-probe">launcher</div>;
@@ -79,7 +79,7 @@ describe("HomeLauncherSurface", () => {
     ).toBe("launcher");
   });
 
-  it("accepts navigation events and a right flick on the launcher half rides the rail home", () => {
+  it("accepts store navigation and a right flick on the launcher half rides the rail home", () => {
     render(
       <HomeLauncherSurface
         home={<div>home</div>}
@@ -87,7 +87,7 @@ describe("HomeLauncherSurface", () => {
       />,
     );
 
-    act(() => dispatchHomeLauncherNavigation("launcher"));
+    act(() => goLauncher());
     expect(
       screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
     ).toBe("launcher");
@@ -199,9 +199,9 @@ describe("HomeLauncherSurface", () => {
     expect(next.getAttribute("aria-label")).toBe("Launcher");
     expect((next as HTMLButtonElement).disabled).toBe(false);
 
-    // Navigate to the launcher via the store event (same intent the shell
-    // dispatches): the button unmounts entirely.
-    act(() => dispatchHomeLauncherNavigation("launcher"));
+    // Navigate to the launcher via the store (the same intent the shell
+    // controller drives): the button unmounts entirely.
+    act(() => goLauncher());
     expect(screen.queryByTestId("rail-pager-edge-next")).toBeNull();
     // The way BACK (left "Home" chevron) is offered instead.
     expect(
@@ -209,7 +209,7 @@ describe("HomeLauncherSurface", () => {
     ).toBe("Home");
 
     // Navigate away again: the Launcher button re-appears.
-    act(() => dispatchHomeLauncherNavigation("home"));
+    act(() => goHome());
     expect(screen.queryByTestId("rail-pager-edge-next")).not.toBeNull();
   });
 
