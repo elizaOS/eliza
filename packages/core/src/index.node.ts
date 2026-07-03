@@ -373,7 +373,6 @@ export { formatError } from "./utils/format-error";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
 // Export Node-specific utilities
-export * from "./utils/plugin-loader";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";
