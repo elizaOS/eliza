@@ -2,7 +2,7 @@
 $ bun run --cwd packages/core test src/runtime/__tests__/message-handler.test.ts src/runtime/__tests__/message-handler-bogus-candidates.test.ts
 $ node ../scripts/run-vitest.mjs run src/runtime/__tests__/message-handler.test.ts src/runtime/__tests__/message-handler-bogus-candidates.test.ts
 
- RUN  v4.1.5 /home/shaw/milady/eliza-issue-10424/packages/core
+ RUN  v4.1.5 /home/shaw/eliza/eliza-issue-10424/packages/core
 
 
  Test Files  2 passed (2)

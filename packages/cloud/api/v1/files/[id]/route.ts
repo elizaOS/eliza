@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -11,6 +12,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
+
+const fileIdSchema = z.string().uuid();
 
 function toClientFile(
   file: NonNullable<Awaited<ReturnType<typeof cloudFilesService.get>>>,
@@ -34,10 +37,8 @@ function toClientFile(
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const file = await cloudFilesService.get(
-      user.organization_id,
-      c.req.param("id")!,
-    );
+    const fileId = fileIdSchema.parse(c.req.param("id"));
+    const file = await cloudFilesService.get(user.organization_id, fileId);
     if (!file) return jsonError(c, 404, "File not found", "resource_not_found");
     return c.json({ success: true, file: toClientFile(file) });
   } catch (error) {
@@ -48,10 +49,11 @@ app.get("/", async (c) => {
 app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    const fileId = fileIdSchema.parse(c.req.param("id"));
     const deleted = await cloudFilesService.delete(
       c.env,
       user.organization_id,
-      c.req.param("id")!,
+      fileId,
     );
     if (!deleted)
       return jsonError(c, 404, "File not found", "resource_not_found");

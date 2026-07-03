@@ -6,7 +6,7 @@
 03-11 04:14:41.367 I/btw     (22041): Handling installed or updated package: ai.eliza.plugins.swabble.test
 03-11 04:14:41.367 I/clo     (22041): Attempting to classify package: ai.eliza.plugins.swabble.test using model: bll_1
 03-11 04:14:41.454 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.swabble.test appid=10349 user=0: start instr
-03-11 04:14:41.484 I/AppsFilter( 1676): interaction: PackageSetting{c23a2e3 ai.milady.milady/10323} -> PackageSetting{b5358bf ai.eliza.plugins.swabble.test/10349} BLOCKED
+03-11 04:14:41.484 I/AppsFilter( 1676): interaction: PackageSetting{c23a2e3 ai.elizaos.app/10323} -> PackageSetting{b5358bf ai.eliza.plugins.swabble.test/10349} BLOCKED
 03-11 04:14:41.484 I/AppsFilter( 1676): interaction: PackageSetting{81c7399 app.eliza/10324} -> PackageSetting{b5358bf ai.eliza.plugins.swabble.test/10349} BLOCKED
 03-11 04:14:41.484 I/AppsFilter( 1676): interaction: PackageSetting{ac065e com.google.android.microdroid.empty_payload/10404} -> PackageSetting{b5358bf ai.eliza.plugins.swabble.test/10349} BLOCKED
 03-11 04:14:41.513 I/ActivityManager( 1676): Start proc 14536:ai.eliza.plugins.swabble.test/u0a349 for added application ai.eliza.plugins.swabble.test
@@ -33,7 +33,7 @@
 03-11 04:14:43.150 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.swabble.test appid=10349 user=0: finished inst
 03-11 04:14:43.151 I/ActivityManager( 1676): Killing 14536:ai.eliza.plugins.swabble.test/u0a349 (adj 0): stop ai.eliza.plugins.swabble.test due to finished inst
 03-11 04:14:43.179 V/ActivityManager( 1676): Got obituary of 14536:ai.eliza.plugins.swabble.test
-03-11 04:14:43.528 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{25e25ef ai.eliza.plugins.swabble.test/10349} BLOCKED
+03-11 04:14:43.528 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{25e25ef ai.eliza.plugins.swabble.test/10349} BLOCKED
 03-11 04:14:43.529 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{25e25ef ai.eliza.plugins.swabble.test/10349} BLOCKED
 03-11 04:14:43.529 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{25e25ef ai.eliza.plugins.swabble.test/10349} BLOCKED
 03-11 04:14:43.529 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.swabble.test appid=10349 user=-1: deletePackageX

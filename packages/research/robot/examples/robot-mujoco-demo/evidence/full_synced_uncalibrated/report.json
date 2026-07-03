@@ -1,5 +1,5 @@
 {
-  "checkpoint": "/home/shaw/milady/eliza/packages/research/robot/checkpoints/text_conditioned_v2",
+  "checkpoint": "/home/shaw/eliza/eliza/packages/research/robot/checkpoints/text_conditioned_v2",
   "calibration": "/nonexistent",
   "host": "192.168.1.218:9090",
   "policy_hz": 8.0,

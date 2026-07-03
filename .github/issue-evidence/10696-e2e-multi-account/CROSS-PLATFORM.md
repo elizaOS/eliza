@@ -24,9 +24,9 @@ environment walls that need the operator's interactive machine:
   after building `@elizaos/plugin-pty` + `packages/shared` dist (the renderer
   vite build was failing on those), `bun run dev:desktop`
   (`ELIZA_DESKTOP_RENDERER_BUILD=skip`) launched the native **Electrobun**
-  window (`Milady-dev.app`), connected to the seeded multi-account backend
+  window (`Eliza-dev.app`), connected to the seeded multi-account backend
   (remote-backend mode) — see `macos-desktop-app-run.log` and the running
-  `Milady-dev.app/.../main.js` process. Both `screencapture` AND Electrobun's
+  `Eliza-dev.app/.../main.js` process. Both `screencapture` AND Electrobun's
   own `/api/dev/cursor-screenshot` return **black** because macOS **Screen
   Recording** permission is required for any OS-level capture and cannot be
   granted from an automation context (it needs a user click in System Settings

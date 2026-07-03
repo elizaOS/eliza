@@ -100,7 +100,7 @@ for (const definition of CHARACTER_DEFINITIONS) {
 }
 
 // The first/default character ("eliza") is the app's default agent. A
-// white-label app rebrands that default to its own app name (e.g. "Milady")
+// white-label app rebrands that default to its own app name
 // via setDefaultAgentName(), set once at boot from app.config.ts. Only the
 // default preset is renamed — the other named personas (Chen, Jin, …) keep
 // their identities. The character bio/system use {{name}}, so the rename
@@ -170,7 +170,7 @@ export function resolveStylePresetByName(
     return undefined;
   }
   const normalized = normalizeCharacterLanguage(language);
-  // The rebranded default agent ("Milady") is the "eliza" preset renamed, so a
+  // The rebranded default agent is the "eliza" preset renamed, so a
   // lookup by the override name must resolve to it (the by-name map only knows
   // the original "eliza" key).
   const lookupName =

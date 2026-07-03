@@ -2,7 +2,7 @@
 // frame packing, known ground truth (delay=1088, gain=0.1, -40dB noise).
 import path from "node:path";
 import { readFileSync } from "node:fs";
-const ROOT = "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3";
+const ROOT = "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3";
 const VOICE = path.join(ROOT, "plugins/plugin-local-inference/src/services/voice");
 const { EchoReferenceBuffer } = await import(path.join(VOICE, "echo-reference-buffer.ts"));
 const { NlmsEchoCanceller } = await import(path.join(VOICE, "nlms-echo-canceller.ts"));

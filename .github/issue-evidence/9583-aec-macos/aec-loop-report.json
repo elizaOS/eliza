@@ -21,7 +21,7 @@
         "fusedInference": "/Users/shawwalters/.local/state/eliza/local-inference/lib/libelizainference.dylib"
       },
       "models": {
-        "dir": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/voice-bundle"
+        "dir": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/voice-bundle"
       },
       "framesReceived": 0,
       "framesDropped": 0,
@@ -39,7 +39,7 @@
         "fusedInference": "/Users/shawwalters/.local/state/eliza/local-inference/lib/libelizainference.dylib"
       },
       "models": {
-        "dir": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/voice-bundle"
+        "dir": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/voice-bundle"
       },
       "framesReceived": 1100,
       "framesDropped": 0,

@@ -18,7 +18,7 @@ product/auth policy decision before implementation.
 
 Base commit: `8e5d7797f0 test(screencapture): extract + device-test the recording config resolver (#9967) (#10453)`
 
-Commands run from `/home/shaw/milady/eliza-issue-10450`:
+Commands run from `/home/shaw/eliza/eliza-issue-10450`:
 
 ```bash
 bun run install:light

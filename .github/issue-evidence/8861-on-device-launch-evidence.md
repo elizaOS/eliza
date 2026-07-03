@@ -3,7 +3,7 @@
 Device: **MoonCycles — iPhone 16 Pro Max (iPhone17,2), iOS 18.7.8, developer mode enabled.**
 (Also installed on Shaw's iPhone 15 Pro, iOS 26.5.)
 
-`ai.elizaos.app` and `ai.milady.milady` are **installed on the physical device**
+`ai.elizaos.app` and `ai.elizaos.app` are **installed on the physical device**
 (`xcrun devicectl device info apps`). Launched live via
 `xcrun devicectl device process launch ai.elizaos.app` — SpringBoard activated
 the scene (full OpenApplication transition, maximized portrait), confirmed in

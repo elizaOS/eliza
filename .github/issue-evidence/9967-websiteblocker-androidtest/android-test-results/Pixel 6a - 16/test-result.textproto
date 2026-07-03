@@ -33,7 +33,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-showcaseActivityRendersPersistedPolicy.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-showcaseActivityRendersPersistedPolicy.txt"
     }
   }
   output_artifact {
@@ -42,7 +42,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -51,7 +51,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -60,7 +60,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -89,7 +89,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-dnsCodecParsesQueryAndBuildsBlockedUdpResponseOnDevice.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-dnsCodecParsesQueryAndBuildsBlockedUdpResponseOnDevice.txt"
     }
   }
   output_artifact {
@@ -98,7 +98,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -107,7 +107,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -116,7 +116,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -145,7 +145,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-elapsedBlockExpiresAndClearsDeviceState.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-elapsedBlockExpiresAndClearsDeviceState.txt"
     }
   }
   output_artifact {
@@ -154,7 +154,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -163,7 +163,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -172,7 +172,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -201,7 +201,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-saveLoadAndBlockDecisionUseDeviceSharedPreferences.txt"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/logcat-ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest-saveLoadAndBlockDecisionUseDeviceSharedPreferences.txt"
     }
   }
   output_artifact {
@@ -210,7 +210,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -219,7 +219,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/meminfo"
     }
   }
   output_artifact {
@@ -228,7 +228,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
+      path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/cpuinfo"
     }
   }
 }
@@ -238,7 +238,7 @@ output_artifact {
     namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
   }
   source_path {
-    path: "/home/shaw/milady/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/testlog/test-results.log"
+    path: "/home/shaw/eliza/eliza-wt-9967-websiteblocker/plugins/plugin-native-websiteblocker/android/build/outputs/androidTest-results/connected/debug/Pixel 6a - 16/testlog/test-results.log"
   }
   type: TEST_DATA
   mime_type: "text/plain"

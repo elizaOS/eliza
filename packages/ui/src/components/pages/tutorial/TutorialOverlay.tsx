@@ -61,7 +61,7 @@ export function TutorialOverlay(): React.ReactElement | null {
   const tab = useAppSelector((s) => s.tab);
   const setTab = useAppSelector((s) => s.setTab);
   const controller = useShellControllerContext();
-  // Brand the tour copy ("Meet Milady", "Hi, I'm Milady") with the app name.
+  // Brand the tour copy ("Meet My App", "Hi, I'm My App") with the app name.
   const { appName } = useBranding();
   const steps = React.useMemo(() => buildTutorialSteps(appName), [appName]);
 

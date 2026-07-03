@@ -22,7 +22,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_stand_up.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_stand_up.mp4",
       "error": null
     },
     {
@@ -39,7 +39,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_sit_down.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_sit_down.mp4",
       "error": null
     },
     {
@@ -56,7 +56,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_walk_forward.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_walk_forward.mp4",
       "error": null
     },
     {
@@ -73,7 +73,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_walk_backward.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_walk_backward.mp4",
       "error": null
     },
     {
@@ -90,7 +90,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_sidestep_left.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_sidestep_left.mp4",
       "error": null
     },
     {
@@ -107,7 +107,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_sidestep_right.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_sidestep_right.mp4",
       "error": null
     },
     {
@@ -124,7 +124,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_turn_left.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_turn_left.mp4",
       "error": null
     },
     {
@@ -141,7 +141,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_turn_right.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_turn_right.mp4",
       "error": null
     },
     {
@@ -158,7 +158,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_turn_around.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_turn_around.mp4",
       "error": null
     },
     {
@@ -175,7 +175,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_look_up.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_look_up.mp4",
       "error": null
     },
     {
@@ -192,7 +192,7 @@
       "vlm_passed": null,
       "vlm_confidence": null,
       "vlm_critique": "",
-      "video_path": "/home/shaw/milady/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_look_down.mp4",
+      "video_path": "/home/shaw/eliza/eliza/packages/research/robot/examples/robot-mujoco-demo/evidence/CURRICULUM_EVAL/task_look_down.mp4",
       "error": null
     }
   ]

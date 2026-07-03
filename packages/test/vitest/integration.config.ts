@@ -74,7 +74,7 @@ const discordSubpathAliases: ModuleAlias[] = existsSync(discordScraperSource)
     ]
   : [];
 // Include/exclude globs are cwd-relative, but the eliza workspace sits at
-// `eliza/` in the nested milady layout and at the repo root in a flat eliza
+// `eliza/` in the nested eliza layout and at the repo root in a flat eliza
 // checkout (#11047). Derive the prefix instead of hardcoding `eliza/` so the
 // lane finds its test files in both layouts (a hardcoded prefix made every
 // plugins/*/test/**/*.integration.test.ts glob dead in flat checkouts).

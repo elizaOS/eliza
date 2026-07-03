@@ -12,7 +12,7 @@ import { PagerEdgeButtons } from "./PagerEdgeButtons";
 
 export interface HomeLauncherSurfaceProps {
   home: React.ReactNode;
-  launcher: React.ReactElement<{ onNavigateHomeFromEdge?: () => void }>;
+  launcher: React.ReactNode;
   initialPage?: HomeLauncherPage;
   className?: string;
 }
@@ -41,22 +41,19 @@ export function HomeLauncherSurface({
     setShellSurfacePage(initialPage);
   }, [initialPage]);
 
-  // ONE pager owns the touch gesture per surface — the fix for the "two swipe
-  // actions stacked on top of each other". The rail owns the gesture on the HOME
-  // half (swipe left → launcher); on the launcher the read-only Launcher owns the
-  // swipe-right-back-to-home (its `onEdgeSwipeRight` → goHome), so the rail stands
-  // its gesture down there and the two never track the same finger.
-  const railGestureEnabled = page === "home";
-  // The desktop `< >` rail buttons stay available wherever a rail move is
-  // meaningful. They route through goPrev/goNext, which work regardless of the
-  // gesture gate, so desktop keeps a click-to-home affordance on the launcher
-  // (single page → launcherPage is 0) even though the rail no longer tracks touch
-  // there. Hidden on touch anyway.
+  // The rail owns the horizontal gesture on BOTH halves, so a swipe right on
+  // the launcher tracks the finger 1:1 (home slides in live, iOS-style) instead
+  // of the old damped edge-rubber-band + fixed-rate settle. Exactly one pager
+  // still tracks any given finger: the pointer-claim registry inside
+  // useHorizontalPager arbitrates against the inner Launcher grid pager — when
+  // the grid can page in the drag direction the innermost pager claims the
+  // pointer and the rail stands down; at the grid's first page a right drag is
+  // unclaimable by the grid, so the rail claims it and paints the back-to-home
+  // travel with the finger.
   const railButtonsEnabled = page === "home" || launcherPage === 0;
   const pager = useHorizontalPager<HTMLElement>({
     page: page === "launcher" ? 1 : 0,
     pageCount: 2,
-    enabled: railGestureEnabled,
     // The hook arms + swallows the committed-swipe click itself (handlers.
     // onClickCapture, attached on both halves below), so this stays a plain
     // navigation intent — no local click-suppression bookkeeping.
@@ -133,9 +130,7 @@ export function HomeLauncherSurface({
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
           onClickCapture={pager.handlers.onClickCapture}
         >
-          {React.cloneElement(launcher, {
-            onNavigateHomeFromEdge: goHome,
-          })}
+          {launcher}
         </div>
       </div>
       {/* Web/desktop `< >` edge buttons for the home↔launcher rail (hidden on

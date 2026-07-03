@@ -1,8 +1,8 @@
-SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Removing directory '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc'.
-SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Removing directory '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove'.
-SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove/src/axi_lite_protocol.sv'.
-SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/milady/eliza/packages/research/chip/rtl/dma/e1_dma.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove/src/e1_dma.sv'.
-SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/properties/dma_axil_bind.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove/src/dma_axil_bind.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_bmc'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove/src/axi_lite_protocol.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/eliza/eliza/packages/research/chip/rtl/dma/e1_dma.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove/src/e1_dma.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/properties/dma_axil_bind.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_dma_axil_prove/src/dma_axil_bind.sv'.
 SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0: smtbmc bitwuzla
 SBY 18:38:11 [verify/formal/e1_dma_axil_prove] base: starting process "cd verify/formal/e1_dma_axil_prove/src; yosys -ql ../model/design.log ../model/design.ys"
 SBY 18:38:11 [verify/formal/e1_dma_axil_prove] base: finished (returncode=0)

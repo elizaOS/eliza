@@ -2,7 +2,7 @@ upstream:       https://github.com/jonirajala/kokoro_training
 commit:         f7815b9ebfe41e6d084e73c386e4dbd8042ae6e3
 commit_date:    2025-11-15 09:22:29 +0200
 vendored_at:    2026-05-14
-vendored_by:    milady/eliza N1-kokoro-vendor agent (Voice Wave 2)
+vendored_by:    eliza/eliza N1-kokoro-vendor agent (Voice Wave 2)
 license:        no LICENSE file declared in upstream repo as of vendoring SHA
                 see LICENSE.upstream for details and the conservative interpretation
                 we apply to this vendor copy

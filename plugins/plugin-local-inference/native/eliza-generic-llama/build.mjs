@@ -28,7 +28,7 @@ const BIN = path.join(BUILD, "bin");
 
 const stateDir =
   process.env.ELIZA_STATE_DIR ||
-  process.env.MILADY_STATE_DIR ||
+  process.env.ELIZA_STATE_DIR ||
   path.join(homedir(), ".local", "state", "eliza");
 const STAGE = path.join(stateDir, "local-inference", "lib", "generic-llama");
 

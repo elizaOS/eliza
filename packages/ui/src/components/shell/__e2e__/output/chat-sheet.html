@@ -15665,12 +15665,15 @@
           definition
         ])
       );
-      CHARACTER_DEFINITION_BY_AVATAR_INDEX = new Map(
-        CHARACTER_DEFINITIONS.map((definition) => [
-          definition.avatarIndex,
-          definition
-        ])
-      );
+      CHARACTER_DEFINITION_BY_AVATAR_INDEX = /* @__PURE__ */ new Map();
+      for (const definition of CHARACTER_DEFINITIONS) {
+        if (!CHARACTER_DEFINITION_BY_AVATAR_INDEX.has(definition.avatarIndex)) {
+          CHARACTER_DEFINITION_BY_AVATAR_INDEX.set(
+            definition.avatarIndex,
+            definition
+          );
+        }
+      }
       STYLE_PRESETS = STYLE_PRESET_CACHE[DEFAULT_CHARACTER_LANGUAGE];
       CHARACTER_PRESETS = STYLE_PRESETS.map((preset) => ({
         id: preset.id,
@@ -15748,7 +15751,7 @@
     }
   });
 
-  // packages/shared/src/cli/parse-duration.ts
+  // packages/shared/src/cli/parse-duration.js
   function parseDurationMs(raw2, opts) {
     const trimmed = String(raw2).trim().toLowerCase();
     if (!trimmed) {
@@ -15767,7 +15770,7 @@
     return Math.round(value * multiplier);
   }
   var init_parse_duration = __esm({
-    "packages/shared/src/cli/parse-duration.ts"() {
+    "packages/shared/src/cli/parse-duration.js"() {
       "use strict";
     }
   });
@@ -34862,14 +34865,21 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const runtime = {
       preferredBackend: "llama-cpp",
       optimizations: {
-        parallel: 4,
+        // Gemma-aware RAM defaults (epic #9033). Eliza-1 is Gemma-4-based and
+        // hits llama.cpp/#21690: the server KV context-checkpoint ring grows
+        // unbounded on Gemma (a handful of ~16K-prompt turns filled ~64 GB in
+        // the upstream repro). The on-device Eliza-1 runtime is single-user, so
+        // pin single-slot decode (`-np 1`) and bound the checkpoint ring to 1 —
+        // this is pure config, not a kernel change, and only touches the
+        // Gemma-4 Eliza-1 tiers built here (never other models).
+        parallel: 1,
         flashAttention: true,
         requiresKernel,
         // OpenVINO is the right backend for ASR/Whisper on Intel hosts but
         // never for autoregressive text. The text path uses optimized
         // llama.cpp kernels plus native MTP heads.
         unsupportedKernels: ["openvino"],
-        ctxCheckpoints: 4,
+        ctxCheckpoints: 1,
         ctxCheckpointInterval: 4096
       }
     };
@@ -34999,7 +35009,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       _ELIZA_1_VISION_TIER_ID_SET = new Set(
         ELIZA_1_VISION_TIER_IDS
       );
-      ELIZA_1_HOSTED_MTP_TIER_IDS = [];
+      ELIZA_1_HOSTED_MTP_TIER_IDS = [
+        "eliza-1-2b"
+      ];
       ELIZA_1_ON_DEVICE_TIER_IDS = [
         "eliza-1-2b",
         "eliza-1-4b"
@@ -36690,7 +36702,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   });
 
   // packages/ui/src/events/index.ts
-  var TUTORIAL_CHAT_CONTROL_EVENT, CHAT_PREFILL_EVENT;
+  var TUTORIAL_CHAT_CONTROL_EVENT, CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT;
   var init_events3 = __esm({
     "packages/ui/src/events/index.ts"() {
       "use strict";
@@ -36700,6 +36712,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       init_view_event_types();
       TUTORIAL_CHAT_CONTROL_EVENT = "eliza:tutorial:chat-control";
       CHAT_PREFILL_EVENT = "eliza:chat:prefill";
+      ELIZA_BACK_INTENT_EVENT = "eliza:back-intent";
     }
   });
 
@@ -41031,6 +41044,67 @@ Assistant:`;
   });
 
   // packages/ui/src/api/ios-local-agent-transport.ts
+  function resolveBootTraceBridge() {
+    if (agentPluginForBootTrace !== void 0) {
+      return agentPluginForBootTrace;
+    }
+    try {
+      const capacitor = Capacitor;
+      if (!isNativeIos2() || capacitor.isPluginAvailable?.("Agent") !== true) {
+        agentPluginForBootTrace = null;
+        return null;
+      }
+      agentPluginForBootTrace = registerPlugin("Agent");
+    } catch {
+      agentPluginForBootTrace = null;
+    }
+    return agentPluginForBootTrace;
+  }
+  function appendIosBootTrace(stage, detail = {}) {
+    const bridge = resolveBootTraceBridge();
+    if (!bridge || bootTraceDisabled) return;
+    if (bootTraceEntryCount >= IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION) return;
+    bootTraceEntryCount += 1;
+    let safeDetail;
+    try {
+      safeDetail = JSON.parse(
+        JSON.stringify({
+          sinceLaunchMs: Date.now() - bootTraceLaunchedAtMs,
+          ...detail
+        })
+      );
+    } catch {
+      return;
+    }
+    bridge.appendBootTrace({ stage, detail: safeDetail }).then(() => {
+      bootTraceConsecutiveFailures = 0;
+    }).catch((error52) => {
+      const message = error52 instanceof Error ? error52.message : String(error52 ?? "");
+      bootTraceConsecutiveFailures += 1;
+      if (/not implemented|is not available|method not found/i.test(message) || bootTraceConsecutiveFailures >= BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES) {
+        bootTraceDisabled = true;
+      }
+    });
+  }
+  function recordIosNativeAgentBootPhase(phase, error52) {
+    const now2 = Date.now();
+    iosAgentBootProgress = {
+      phase,
+      startedAt: phase === "starting" ? now2 : iosAgentBootProgress.startedAt ?? now2,
+      lastHeartbeatAt: now2,
+      lastError: error52 ?? (phase === "error" ? iosAgentBootProgress.lastError : null)
+    };
+    appendIosBootTrace("agent-boot-phase", {
+      phase,
+      ...error52 ? { error: error52 } : {}
+    });
+  }
+  function recordIosNativeAgentBootHeartbeat() {
+    iosAgentBootProgress = {
+      ...iosAgentBootProgress,
+      lastHeartbeatAt: Date.now()
+    };
+  }
   function isPrimedFullBunRuntime(value) {
     return !!value && typeof value === "object" && value.kind === "primed";
   }
@@ -41231,9 +41305,20 @@ Assistant:`;
   }
   async function getFullBunRuntime() {
     const strict = shouldRequireFullBunRuntime();
+    const pluginAvailable = isFullBunRuntimePluginAvailable();
+    if (!tracedEngineAcquire && isNativeIos2()) {
+      tracedEngineAcquire = true;
+      appendIosBootTrace("engine-acquire", {
+        copy: "ui",
+        strict,
+        builtIn: isFullBunRuntimeBuiltIn(),
+        pluginAvailable,
+        runtimeMode: readRuntimeMode()
+      });
+    }
     if (!isNativeIos2() && !strict) return null;
     if (!strict && !isFullBunRuntimeBuiltIn()) return null;
-    if (!isFullBunRuntimePluginAvailable()) {
+    if (!pluginAvailable) {
       if (strict) {
         throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
       }
@@ -41244,11 +41329,18 @@ Assistant:`;
     }
     fullBunRuntime ??= (async () => {
       try {
-        const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
+        const runtime = await importFullBunRuntimePlugin();
         const currentStatus = await runtime.getStatus().catch(() => null);
         if (currentStatus?.ready && currentStatus.engine === "bun") {
+          recordIosNativeAgentBootPhase("ready");
+          appendIosBootTrace("engine-adopted-running", {
+            engine: currentStatus.engine
+          });
           return runtime;
         }
+        recordIosNativeAgentBootPhase("starting");
+        appendIosBootTrace("engine-start-requested", { copy: "ui" });
+        const startRequestedAt = Date.now();
         const started = await runtime.start({
           engine: "bun",
           argv: IOS_FULL_BUN_ARGV,
@@ -41263,8 +41355,15 @@ Assistant:`;
             `runtime status was ready=${String(status.ready)} engine=${status.engine ?? "unknown"}`
           );
         }
+        recordIosNativeAgentBootPhase("ready");
+        appendIosBootTrace("engine-start-ok", {
+          durationMs: Date.now() - startRequestedAt,
+          engine: status.engine
+        });
         return runtime;
       } catch (error52) {
+        const message = error52 instanceof Error ? error52.message : String(error52);
+        recordIosNativeAgentBootPhase("error", message);
         if (strict) {
           throw fullBunStartupError("startup failed", error52);
         }
@@ -41284,13 +41383,20 @@ Assistant:`;
     }
   }
   async function importFullBunRuntimePlugin() {
+    appendIosBootTrace("engine-import-start", { copy: "ui" });
     let mod = null;
     try {
       mod = await Promise.resolve().then(() => (init_src2(), src_exports));
     } catch {
       mod = null;
     }
-    return mod?.ElizaBunRuntime ?? registerPlugin("ElizaBunRuntime");
+    appendIosBootTrace("engine-import-done", {
+      copy: "ui",
+      viaModule: Boolean(mod?.ElizaBunRuntime)
+    });
+    return wrapFullBunRuntime(
+      mod?.ElizaBunRuntime ?? registerPlugin("ElizaBunRuntime")
+    );
   }
   async function tryFullBunNativeRequest(options2) {
     const runtime = await getFullBunRuntime();
@@ -41309,6 +41415,7 @@ Assistant:`;
     if (!result) {
       throw new Error("Full Bun iOS bridge returned an invalid HTTP response");
     }
+    recordIosNativeAgentBootHeartbeat();
     return result;
   }
   async function requestToNativeBridgeOptions(request, context) {
@@ -41348,6 +41455,14 @@ Assistant:`;
     );
   }
   async function handleIosLocalAgentNativeRequest(options2) {
+    if (tracedNativeRequests < 3) {
+      tracedNativeRequests += 1;
+      appendIosBootTrace("native-request", {
+        copy: "ui",
+        n: tracedNativeRequests,
+        path: options2.path?.slice(0, 120) ?? null
+      });
+    }
     const path3 = options2.path?.trim();
     if (!path3 || !isSafeLocalPath(path3)) {
       throw new Error(
@@ -41471,7 +41586,7 @@ Assistant:`;
     );
     return transport;
   }
-  var import_meta, transport, globalRequestHandlerInstalled, globalFetchBridgeInstalled, originalFetch, fullBunRuntime, IOS_LOCAL_AGENT_IPC_BASE2, IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE, IOS_FULL_BUN_ARGV, IOS_FULL_BUN_ENV;
+  var import_meta, transport, globalRequestHandlerInstalled, globalFetchBridgeInstalled, originalFetch, fullBunRuntime, IOS_LOCAL_AGENT_IPC_BASE2, IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE, IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION, agentPluginForBootTrace, bootTraceDisabled, bootTraceConsecutiveFailures, bootTraceEntryCount, bootTraceLaunchedAtMs, BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES, iosAgentBootProgress, IOS_FULL_BUN_ARGV, IOS_FULL_BUN_ENV, tracedEngineAcquire, tracedNativeRequests;
   var init_ios_local_agent_transport = __esm({
     "packages/ui/src/api/ios-local-agent-transport.ts"() {
       "use strict";
@@ -41489,6 +41604,18 @@ Assistant:`;
       fullBunRuntime = null;
       IOS_LOCAL_AGENT_IPC_BASE2 = "eliza-local-agent://ipc";
       IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE = "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
+      IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION = 400;
+      bootTraceDisabled = false;
+      bootTraceConsecutiveFailures = 0;
+      bootTraceEntryCount = 0;
+      bootTraceLaunchedAtMs = Date.now();
+      BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES = 3;
+      iosAgentBootProgress = {
+        phase: "idle",
+        startedAt: null,
+        lastHeartbeatAt: null,
+        lastError: null
+      };
       IOS_FULL_BUN_ARGV = [
         "bun",
         "--no-install",
@@ -41512,6 +41639,8 @@ Assistant:`;
         ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
         LOG_LEVEL: "error"
       };
+      tracedEngineAcquire = false;
+      tracedNativeRequests = 0;
     }
   });
 
@@ -43266,6 +43395,12 @@ Assistant:`;
         getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL
       );
     }
+    if (typeof window !== "undefined") {
+      const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+        window.location.hostname.toLowerCase()
+      );
+      if (byHost) return byHost;
+    }
     return null;
   }
   function getCloudAuthToken(client2) {
@@ -43800,6 +43935,50 @@ Assistant:`;
     if (!url2) return false;
     return /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url2.trim());
   }
+  async function waitForCloudAgentRunning(client2, options2) {
+    const { agentId, onProgress } = options2;
+    const pollIntervalMs = Math.max(
+      50,
+      options2.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS
+    );
+    const timeoutMs = Math.max(
+      pollIntervalMs,
+      options2.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS
+    );
+    const startedAt2 = Date.now();
+    onProgress?.(
+      "starting",
+      "Starting your agent \u2014 a cold boot can take a few minutes..."
+    );
+    await client2.resumeCloudCompatAgent(agentId).catch(() => null);
+    let lastStatus = "unknown";
+    for (; ; ) {
+      const detail = await client2.getCloudCompatAgent(agentId).catch(() => null);
+      const agent = detail?.success ? detail.data : null;
+      if (agent) {
+        lastStatus = agent.status || "unknown";
+        if (lastStatus === "running") return agent;
+        if (CLOUD_AGENT_FAILED_STATUSES.has(lastStatus)) {
+          throw new Error(
+            agent.error_message ? `Your cloud agent failed to start: ${agent.error_message}` : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again."
+          );
+        }
+      }
+      const elapsedMs = Date.now() - startedAt2;
+      if (elapsedMs + pollIntervalMs > timeoutMs) {
+        throw new Error(
+          `Your cloud agent is still "${lastStatus}" after ${Math.round(
+            elapsedMs / 1e3
+          )}s. It may still be booting \u2014 try again in a minute.`
+        );
+      }
+      onProgress?.(
+        "starting",
+        `Starting your agent (${lastStatus}) \u2014 ${Math.round(elapsedMs / 1e3)}s elapsed...`
+      );
+      await new Promise((r2) => setTimeout(r2, pollIntervalMs));
+    }
+  }
   function pickPreferredCloudAgent(agents, preferAgentId) {
     if (!agents.length) return null;
     if (preferAgentId) {
@@ -43811,7 +43990,7 @@ Assistant:`;
     );
     return byNewest.find((a) => a.status === "running") ?? byNewest[0] ?? null;
   }
-  var AGENT_TRANSFER_MIN_PASSWORD_LENGTH2, DEFAULT_DIRECT_CLOUD_BASE_URL, DEFAULT_DIRECT_CLOUD_API_BASE_URL, STAGING_DIRECT_CLOUD_BASE_URL, STAGING_DIRECT_CLOUD_API_BASE_URL, DIRECT_CLOUD_HTTP_TIMEOUT_MS, DIRECT_ELIZA_CLOUD_API_BY_HOST, DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST;
+  var AGENT_TRANSFER_MIN_PASSWORD_LENGTH2, DEFAULT_DIRECT_CLOUD_BASE_URL, DEFAULT_DIRECT_CLOUD_API_BASE_URL, STAGING_DIRECT_CLOUD_BASE_URL, STAGING_DIRECT_CLOUD_API_BASE_URL, DIRECT_CLOUD_HTTP_TIMEOUT_MS, DIRECT_ELIZA_CLOUD_API_BY_HOST, DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST, CLOUD_AGENT_WAKE_POLL_INTERVAL_MS, CLOUD_AGENT_WAKE_TIMEOUT_MS, CLOUD_AGENT_FAILED_STATUSES;
   var init_client_cloud = __esm({
     "packages/ui/src/api/client-cloud.ts"() {
       "use strict";
@@ -43832,8 +44011,10 @@ Assistant:`;
         ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
         ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
         ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+        ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
         ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-        ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL]
+        ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+        ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL]
       ]);
       DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = /* @__PURE__ */ new Map([
         ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
@@ -44821,6 +45002,9 @@ Assistant:`;
         }
         throw new Error("Provisioning timed out after 2 minutes");
       };
+      CLOUD_AGENT_WAKE_POLL_INTERVAL_MS = 5e3;
+      CLOUD_AGENT_WAKE_TIMEOUT_MS = 6 * 6e4;
+      CLOUD_AGENT_FAILED_STATUSES = /* @__PURE__ */ new Set(["error", "failed"]);
       ElizaClient.prototype.selectOrProvisionCloudAgent = async function(options2) {
         const {
           cloudApiBase,
@@ -44850,18 +45034,34 @@ Assistant:`;
           }
           const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
           if (chosen) {
-            const apiBase2 = resolveCloudAgentApiBase({
+            let agent = chosen;
+            const initialBase = resolveCloudAgentApiBase({
               bridgeUrl: chosen.bridge_url,
               webUiUrl: chosen.web_ui_url ?? chosen.webUiUrl,
               agentId: chosen.agent_id,
               cloudApiBase: resolvedCloudApiBase
             });
+            const isDedicated = !isDirectCloudSharedAgentBase(initialBase) && Boolean(chosen.web_ui_url ?? chosen.webUiUrl ?? chosen.bridge_url);
+            if (isDedicated && agent.status !== "running") {
+              agent = await waitForCloudAgentRunning(this, {
+                agentId: chosen.agent_id,
+                ...typeof options2.wakePollIntervalMs === "number" ? { pollIntervalMs: options2.wakePollIntervalMs } : {},
+                ...typeof options2.wakeTimeoutMs === "number" ? { timeoutMs: options2.wakeTimeoutMs } : {},
+                ...onProgress ? { onProgress } : {}
+              });
+            }
+            const apiBase2 = resolveCloudAgentApiBase({
+              bridgeUrl: agent.bridge_url,
+              webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
+              agentId: agent.agent_id,
+              cloudApiBase: resolvedCloudApiBase
+            });
             onProgress?.("ready", "Connected to your agent");
             return {
-              agentId: chosen.agent_id,
-              agentName: chosen.agent_name,
+              agentId: agent.agent_id,
+              agentName: agent.agent_name,
               apiBase: apiBase2,
-              bridgeUrl: chosen.bridge_url,
+              bridgeUrl: agent.bridge_url,
               created: false
             };
           }
@@ -45358,7 +45558,22 @@ Assistant:`;
     appendExperienceCollectionParams(params2, options2);
     return params2;
   }
-  var import_meta2, WEBSITE_BLOCKING_PERMISSION_ID, SETTINGS_MUTATION_TIMEOUT_MS, DESKTOP_STATUS_RPC_TIMEOUT_MS;
+  function chunkPtyInput(data, maxLength = MAX_PTY_INPUT_CHUNK_LENGTH) {
+    if (data.length <= maxLength) return [data];
+    const chunks = [];
+    let start = 0;
+    while (start < data.length) {
+      let end = Math.min(start + maxLength, data.length);
+      if (end < data.length && end - start > 1) {
+        const boundary = data.charCodeAt(end - 1);
+        if (boundary >= 55296 && boundary <= 56319) end -= 1;
+      }
+      chunks.push(data.slice(start, end));
+      start = end;
+    }
+    return chunks;
+  }
+  var import_meta2, WEBSITE_BLOCKING_PERMISSION_ID, SETTINGS_MUTATION_TIMEOUT_MS, DESKTOP_STATUS_RPC_TIMEOUT_MS, MAX_PTY_INPUT_CHUNK_LENGTH;
   var init_client_agent = __esm({
     "packages/ui/src/api/client-agent.ts"() {
       "use strict";
@@ -47203,8 +47418,11 @@ Assistant:`;
       ElizaClient.prototype.unsubscribePtyOutput = function(sessionId) {
         this.sendWsMessage({ type: "pty-unsubscribe", sessionId });
       };
+      MAX_PTY_INPUT_CHUNK_LENGTH = 4096;
       ElizaClient.prototype.sendPtyInput = function(sessionId, data) {
-        this.sendWsMessage({ type: "pty-input", sessionId, data });
+        for (const chunk of chunkPtyInput(data)) {
+          this.sendWsMessage({ type: "pty-input", sessionId, data: chunk });
+        }
       };
       ElizaClient.prototype.resizePty = function(sessionId, cols, rows) {
         this.sendWsMessage({ type: "pty-resize", sessionId, cols, rows });
@@ -97590,6 +97808,41 @@ void main() {
     "cloud.apiKeys.regenerateFailed": "Failed to regenerate API key",
     "cloud.apiKeys.regenerateTitle": "Regenerate API Key",
     "cloud.apiKeys.tryAgain": "Please try again.",
+    "cloud.appHosting.activate": "Activate",
+    "cloud.appHosting.activateConfirm": "Make live",
+    "cloud.appHosting.activateConfirmDescription": "The current live version is replaced immediately on all app domains. It stays available for rollback.",
+    "cloud.appHosting.activateConfirmTitle": "Make version {{version}} live?",
+    "cloud.appHosting.activateFailed": "Failed to activate deployment",
+    "cloud.appHosting.activateImmediately": "Activate immediately",
+    "cloud.appHosting.activateSuccess": "Version {{version}} is now live",
+    "cloud.appHosting.cancel": "Cancel",
+    "cloud.appHosting.delete": "Delete",
+    "cloud.appHosting.deleteConfirmDescription": "The deployment and its stored files are removed permanently.",
+    "cloud.appHosting.deleteConfirmTitle": "Delete version {{version}}?",
+    "cloud.appHosting.deleteFailed": "Failed to delete deployment",
+    "cloud.appHosting.deleteSuccess": "Version {{version}} deleted",
+    "cloud.appHosting.deploymentMeta": "{{count}} files \xB7 {{size}}",
+    "cloud.appHosting.emptyDescription": "Publish your first version to serve this app's frontend from Cloud",
+    "cloud.appHosting.emptyTitle": "No deployments yet",
+    "cloud.appHosting.errorEmpty": "Select at least one file",
+    "cloud.appHosting.errorFileTooLarge": "A file exceeds the 10 MB per-file limit",
+    "cloud.appHosting.errorTooLarge": "Bundle exceeds the 25 MB total limit",
+    "cloud.appHosting.errorTooManyFiles": "Bundle exceeds the 2000-file limit",
+    "cloud.appHosting.loadFailed": "Failed to load deployments",
+    "cloud.appHosting.preview": "Preview",
+    "cloud.appHosting.publish": "Publish",
+    "cloud.appHosting.publishDescription": "Upload a built static site (index.html entrypoint). Cloud serves it on your app domains.",
+    "cloud.appHosting.publishFailed": "Failed to publish deployment",
+    "cloud.appHosting.publishSuccess": "Version {{version}} published",
+    "cloud.appHosting.publishTitle": "Publish a new version",
+    "cloud.appHosting.refresh": "Refresh",
+    "cloud.appHosting.retry": "Retry",
+    "cloud.appHosting.rollback": "Roll back",
+    "cloud.appHosting.selectFiles": "Select files",
+    "cloud.appHosting.selectFolder": "Select folder",
+    "cloud.appHosting.selectionSummary": "{{count}} files \xB7 {{size}}",
+    "cloud.appHosting.statusLive": "live",
+    "cloud.appHosting.versionsTitle": "Versions",
     "cloud.approve.button.approve": "Approve",
     "cloud.approve.button.deny": "Deny",
     "cloud.approve.error.denyFailed": "Failed to deny approval",
@@ -97683,6 +97936,7 @@ void main() {
     "cloud.apps.tab.analytics": "Analytics",
     "cloud.apps.tab.domains": "Domains",
     "cloud.apps.tab.earnings": "Earnings",
+    "cloud.apps.tab.hosting": "Hosting",
     "cloud.apps.tab.monetize": "Monetize",
     "cloud.apps.tab.overview": "Overview",
     "cloud.apps.tab.promote": "Promote",
@@ -104480,50 +104734,54 @@ void main() {
   var __iconNode4 = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
   var ChevronDown = createLucideIcon("chevron-down", __iconNode4);
 
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/chevron-right.mjs
+  var __iconNode5 = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
+  var ChevronRight = createLucideIcon("chevron-right", __iconNode5);
+
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/chevron-up.mjs
-  var __iconNode5 = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
-  var ChevronUp = createLucideIcon("chevron-up", __iconNode5);
+  var __iconNode6 = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+  var ChevronUp = createLucideIcon("chevron-up", __iconNode6);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/clock-3.mjs
-  var __iconNode6 = [
+  var __iconNode7 = [
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
     ["path", { d: "M12 6v6h4", key: "135r8i" }]
   ];
-  var Clock3 = createLucideIcon("clock-3", __iconNode6);
+  var Clock3 = createLucideIcon("clock-3", __iconNode7);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/code-xml.mjs
-  var __iconNode7 = [
+  var __iconNode8 = [
     ["path", { d: "m18 16 4-4-4-4", key: "1inbqp" }],
     ["path", { d: "m6 8-4 4 4 4", key: "15zrgr" }],
     ["path", { d: "m14.5 4-5 16", key: "e7oirm" }]
   ];
-  var CodeXml = createLucideIcon("code-xml", __iconNode7);
+  var CodeXml = createLucideIcon("code-xml", __iconNode8);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/copy.mjs
-  var __iconNode8 = [
+  var __iconNode9 = [
     ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
     ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
   ];
-  var Copy = createLucideIcon("copy", __iconNode8);
+  var Copy = createLucideIcon("copy", __iconNode9);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/download.mjs
-  var __iconNode9 = [
+  var __iconNode10 = [
     ["path", { d: "M12 15V3", key: "m9g1x1" }],
     ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
     ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
   ];
-  var Download = createLucideIcon("download", __iconNode9);
+  var Download = createLucideIcon("download", __iconNode10);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/external-link.mjs
-  var __iconNode10 = [
+  var __iconNode11 = [
     ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
     ["path", { d: "M10 14 21 3", key: "gplh6r" }],
     ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
   ];
-  var ExternalLink = createLucideIcon("external-link", __iconNode10);
+  var ExternalLink = createLucideIcon("external-link", __iconNode11);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/file-headphone.mjs
-  var __iconNode11 = [
+  var __iconNode12 = [
     [
       "path",
       {
@@ -104540,10 +104798,10 @@ void main() {
       }
     ]
   ];
-  var FileHeadphone = createLucideIcon("file-headphone", __iconNode11);
+  var FileHeadphone = createLucideIcon("file-headphone", __iconNode12);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/file-text.mjs
-  var __iconNode12 = [
+  var __iconNode13 = [
     [
       "path",
       {
@@ -104556,10 +104814,10 @@ void main() {
     ["path", { d: "M16 13H8", key: "t4e002" }],
     ["path", { d: "M16 17H8", key: "z1uh3a" }]
   ];
-  var FileText = createLucideIcon("file-text", __iconNode12);
+  var FileText = createLucideIcon("file-text", __iconNode13);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/film.mjs
-  var __iconNode13 = [
+  var __iconNode14 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
     ["path", { d: "M7 3v18", key: "bbkbws" }],
     ["path", { d: "M3 7.5h4", key: "zfgn84" }],
@@ -104569,10 +104827,10 @@ void main() {
     ["path", { d: "M17 7.5h4", key: "myr1c1" }],
     ["path", { d: "M17 16.5h4", key: "go4c1d" }]
   ];
-  var Film = createLucideIcon("film", __iconNode13);
+  var Film = createLucideIcon("film", __iconNode14);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/headphones.mjs
-  var __iconNode14 = [
+  var __iconNode15 = [
     [
       "path",
       {
@@ -104581,39 +104839,39 @@ void main() {
       }
     ]
   ];
-  var Headphones = createLucideIcon("headphones", __iconNode14);
+  var Headphones = createLucideIcon("headphones", __iconNode15);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/layout-grid.mjs
-  var __iconNode15 = [
+  var __iconNode16 = [
     ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
     ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1", key: "6d4xhi" }],
     ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1", key: "nxv5o0" }],
     ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }]
   ];
-  var LayoutGrid = createLucideIcon("layout-grid", __iconNode15);
+  var LayoutGrid = createLucideIcon("layout-grid", __iconNode16);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/link.mjs
-  var __iconNode16 = [
+  var __iconNode17 = [
     ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", key: "1cjeqo" }],
     ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71", key: "19qd67" }]
   ];
-  var Link = createLucideIcon("link", __iconNode16);
+  var Link = createLucideIcon("link", __iconNode17);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/loader-circle.mjs
-  var __iconNode17 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-  var LoaderCircle = createLucideIcon("loader-circle", __iconNode17);
+  var __iconNode18 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+  var LoaderCircle = createLucideIcon("loader-circle", __iconNode18);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/maximize-2.mjs
-  var __iconNode18 = [
+  var __iconNode19 = [
     ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
     ["path", { d: "m21 3-7 7", key: "1l2asr" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M9 21H3v-6", key: "wtvkvv" }]
   ];
-  var Maximize2 = createLucideIcon("maximize-2", __iconNode18);
+  var Maximize2 = createLucideIcon("maximize-2", __iconNode19);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/message-square.mjs
-  var __iconNode19 = [
+  var __iconNode20 = [
     [
       "path",
       {
@@ -104622,43 +104880,43 @@ void main() {
       }
     ]
   ];
-  var MessageSquare = createLucideIcon("message-square", __iconNode19);
+  var MessageSquare = createLucideIcon("message-square", __iconNode20);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mic.mjs
-  var __iconNode20 = [
+  var __iconNode21 = [
     ["path", { d: "M12 19v3", key: "npa21l" }],
     ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
     ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
   ];
-  var Mic = createLucideIcon("mic", __iconNode20);
+  var Mic = createLucideIcon("mic", __iconNode21);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
-  var __iconNode21 = [
+  var __iconNode22 = [
     ["path", { d: "m14 10 7-7", key: "oa77jy" }],
     ["path", { d: "M20 10h-6V4", key: "mjg0md" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M4 14h6v6", key: "rmj7iw" }]
   ];
-  var Minimize2 = createLucideIcon("minimize-2", __iconNode21);
+  var Minimize2 = createLucideIcon("minimize-2", __iconNode22);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/monitor.mjs
-  var __iconNode22 = [
+  var __iconNode23 = [
     ["rect", { width: "20", height: "14", x: "2", y: "3", rx: "2", key: "48i651" }],
     ["line", { x1: "8", x2: "16", y1: "21", y2: "21", key: "1svkeh" }],
     ["line", { x1: "12", x2: "12", y1: "17", y2: "21", key: "vw1qmm" }]
   ];
-  var Monitor = createLucideIcon("monitor", __iconNode22);
+  var Monitor = createLucideIcon("monitor", __iconNode23);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/music.mjs
-  var __iconNode23 = [
+  var __iconNode24 = [
     ["path", { d: "M9 18V5l12-2v13", key: "1jmyc2" }],
     ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
     ["circle", { cx: "18", cy: "16", r: "3", key: "1hluhg" }]
   ];
-  var Music = createLucideIcon("music", __iconNode23);
+  var Music = createLucideIcon("music", __iconNode24);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/pencil.mjs
-  var __iconNode24 = [
+  var __iconNode25 = [
     [
       "path",
       {
@@ -104668,10 +104926,10 @@ void main() {
     ],
     ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
   ];
-  var Pencil = createLucideIcon("pencil", __iconNode24);
+  var Pencil = createLucideIcon("pencil", __iconNode25);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/phone.mjs
-  var __iconNode25 = [
+  var __iconNode26 = [
     [
       "path",
       {
@@ -104680,27 +104938,27 @@ void main() {
       }
     ]
   ];
-  var Phone = createLucideIcon("phone", __iconNode25);
+  var Phone = createLucideIcon("phone", __iconNode26);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/radio.mjs
-  var __iconNode26 = [
+  var __iconNode27 = [
     ["path", { d: "M16.247 7.761a6 6 0 0 1 0 8.478", key: "1fwjs5" }],
     ["path", { d: "M19.075 4.933a10 10 0 0 1 0 14.134", key: "ehdyv1" }],
     ["path", { d: "M4.925 19.067a10 10 0 0 1 0-14.134", key: "1q22gi" }],
     ["path", { d: "M7.753 16.239a6 6 0 0 1 0-8.478", key: "r2q7qm" }],
     ["circle", { cx: "12", cy: "12", r: "2", key: "1c9p78" }]
   ];
-  var Radio = createLucideIcon("radio", __iconNode26);
+  var Radio = createLucideIcon("radio", __iconNode27);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/rotate-ccw.mjs
-  var __iconNode27 = [
+  var __iconNode28 = [
     ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
     ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
   ];
-  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode27);
+  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode28);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/scroll-text.mjs
-  var __iconNode28 = [
+  var __iconNode29 = [
     ["path", { d: "M15 12h-5", key: "r7krc0" }],
     ["path", { d: "M15 8h-5", key: "1khuty" }],
     ["path", { d: "M19 17V5a2 2 0 0 0-2-2H4", key: "zz82l3" }],
@@ -104712,10 +104970,10 @@ void main() {
       }
     ]
   ];
-  var ScrollText = createLucideIcon("scroll-text", __iconNode28);
+  var ScrollText = createLucideIcon("scroll-text", __iconNode29);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/send-horizontal.mjs
-  var __iconNode29 = [
+  var __iconNode30 = [
     [
       "path",
       {
@@ -104725,10 +104983,10 @@ void main() {
     ],
     ["path", { d: "M6 12h16", key: "s4cdu5" }]
   ];
-  var SendHorizontal = createLucideIcon("send-horizontal", __iconNode29);
+  var SendHorizontal = createLucideIcon("send-horizontal", __iconNode30);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode30 = [
+  var __iconNode31 = [
     [
       "path",
       {
@@ -104738,50 +104996,50 @@ void main() {
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode30);
+  var Settings = createLucideIcon("settings", __iconNode31);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/share-2.mjs
-  var __iconNode31 = [
+  var __iconNode32 = [
     ["circle", { cx: "18", cy: "5", r: "3", key: "gq8acd" }],
     ["circle", { cx: "6", cy: "12", r: "3", key: "w7nqdw" }],
     ["circle", { cx: "18", cy: "19", r: "3", key: "1xt0gg" }],
     ["line", { x1: "8.59", x2: "15.42", y1: "13.51", y2: "17.49", key: "47mynk" }],
     ["line", { x1: "15.41", x2: "8.59", y1: "6.51", y2: "10.49", key: "1n3mei" }]
   ];
-  var Share2 = createLucideIcon("share-2", __iconNode31);
+  var Share2 = createLucideIcon("share-2", __iconNode32);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/square.mjs
-  var __iconNode32 = [
+  var __iconNode33 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
   ];
-  var Square = createLucideIcon("square", __iconNode32);
+  var Square = createLucideIcon("square", __iconNode33);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/trash-2.mjs
-  var __iconNode33 = [
+  var __iconNode34 = [
     ["path", { d: "M10 11v6", key: "nco0om" }],
     ["path", { d: "M14 11v6", key: "outv1u" }],
     ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
     ["path", { d: "M3 6h18", key: "d0wm0j" }],
     ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
   ];
-  var Trash2 = createLucideIcon("trash-2", __iconNode33);
+  var Trash2 = createLucideIcon("trash-2", __iconNode34);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/undo-2.mjs
-  var __iconNode34 = [
+  var __iconNode35 = [
     ["path", { d: "M9 14 4 9l5-5", key: "102s5s" }],
     ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11", key: "f3b9sd" }]
   ];
-  var Undo2 = createLucideIcon("undo-2", __iconNode34);
+  var Undo2 = createLucideIcon("undo-2", __iconNode35);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/user-round.mjs
-  var __iconNode35 = [
+  var __iconNode36 = [
     ["circle", { cx: "12", cy: "8", r: "5", key: "1hypcn" }],
     ["path", { d: "M20 21a8 8 0 0 0-16 0", key: "rfgkzh" }]
   ];
-  var UserRound = createLucideIcon("user-round", __iconNode35);
+  var UserRound = createLucideIcon("user-round", __iconNode36);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/volume-2.mjs
-  var __iconNode36 = [
+  var __iconNode37 = [
     [
       "path",
       {
@@ -104792,10 +105050,10 @@ void main() {
     ["path", { d: "M16 9a5 5 0 0 1 0 6", key: "1q6k2b" }],
     ["path", { d: "M19.364 18.364a9 9 0 0 0 0-12.728", key: "ijwkga" }]
   ];
-  var Volume2 = createLucideIcon("volume-2", __iconNode36);
+  var Volume2 = createLucideIcon("volume-2", __iconNode37);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/wallet.mjs
-  var __iconNode37 = [
+  var __iconNode38 = [
     [
       "path",
       {
@@ -104805,14 +105063,14 @@ void main() {
     ],
     ["path", { d: "M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4", key: "xoc0q4" }]
   ];
-  var Wallet = createLucideIcon("wallet", __iconNode37);
+  var Wallet = createLucideIcon("wallet", __iconNode38);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/x.mjs
-  var __iconNode38 = [
+  var __iconNode39 = [
     ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
     ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
   ];
-  var X = createLucideIcon("x", __iconNode38);
+  var X = createLucideIcon("x", __iconNode39);
 
   // node_modules/.bun/framer-motion@12.42.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
@@ -117901,6 +118159,83 @@ void main() {
     );
   }
 
+  // packages/ui/src/state/ChatComposerContext.hooks.ts
+  var import_react38 = __toESM(require_react(), 1);
+  var DEFAULT_COMPOSER = {
+    chatInput: "",
+    chatSending: false,
+    chatPendingImages: [],
+    setChatInput: () => {
+    },
+    setChatPendingImages: () => {
+    }
+  };
+  var ChatComposerCtx = (0, import_react38.createContext)(DEFAULT_COMPOSER);
+  var ChatInputRefCtx = (0, import_react38.createContext)(null);
+  function useChatComposer() {
+    return (0, import_react38.useContext)(ChatComposerCtx);
+  }
+  var CHAT_DRAFT_STORAGE_PREFIX = "eliza:chat:draft:";
+  var CHAT_DRAFT_DEBOUNCE_MS = 500;
+  function chatDraftStorageKey(conversationId) {
+    return `${CHAT_DRAFT_STORAGE_PREFIX}${conversationId}`;
+  }
+  function readChatDraft(conversationId) {
+    if (!conversationId) return null;
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage.getItem(chatDraftStorageKey(conversationId));
+    } catch {
+      return null;
+    }
+  }
+  function writeChatDraft(conversationId, draft) {
+    if (!conversationId) return;
+    if (typeof window === "undefined") return;
+    const key = chatDraftStorageKey(conversationId);
+    try {
+      if (draft.length > 0) {
+        window.localStorage.setItem(key, draft);
+      } else {
+        window.localStorage.removeItem(key);
+      }
+    } catch {
+    }
+  }
+  function clearChatDraft(conversationId) {
+    if (!conversationId) return;
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem(chatDraftStorageKey(conversationId));
+    } catch {
+    }
+  }
+  function useChatComposerDraftPersistence({
+    activeConversationId,
+    chatInput,
+    setChatInput
+  }) {
+    const lastRestoredRef = (0, import_react38.useRef)(null);
+    (0, import_react38.useEffect)(() => {
+      lastRestoredRef.current = activeConversationId;
+      if (!activeConversationId) return;
+      const saved = readChatDraft(activeConversationId);
+      if (saved !== null) {
+        setChatInput(saved);
+      }
+    }, [activeConversationId, setChatInput]);
+    (0, import_react38.useEffect)(() => {
+      if (!activeConversationId) return;
+      if (lastRestoredRef.current !== activeConversationId) return;
+      const timer = setTimeout(() => {
+        writeChatDraft(activeConversationId, chatInput);
+      }, CHAT_DRAFT_DEBOUNCE_MS);
+      return () => {
+        clearTimeout(timer);
+      };
+    }, [activeConversationId, chatInput]);
+  }
+
   // packages/ui/src/state/shell-surface-store.ts
   var React4 = __toESM(require_react(), 1);
 
@@ -117911,8 +118246,7 @@ void main() {
   var INITIAL_STATE = {
     page: "home",
     launcherPage: 0,
-    launcherPageCount: 1,
-    launcherEditing: false
+    launcherPageCount: 1
   };
   function normalize(next) {
     const pageCount = Math.max(1, Math.floor(next.launcherPageCount));
@@ -117920,8 +118254,7 @@ void main() {
       return {
         page: next.page,
         launcherPage: 0,
-        launcherPageCount: pageCount,
-        launcherEditing: false
+        launcherPageCount: pageCount
       };
     }
     const launcherPage = Math.min(
@@ -117931,12 +118264,11 @@ void main() {
     return {
       page: "launcher",
       launcherPage,
-      launcherPageCount: pageCount,
-      launcherEditing: next.launcherEditing
+      launcherPageCount: pageCount
     };
   }
   function statesEqual(a, b) {
-    return a.page === b.page && a.launcherPage === b.launcherPage && a.launcherPageCount === b.launcherPageCount && a.launcherEditing === b.launcherEditing;
+    return a.page === b.page && a.launcherPage === b.launcherPage && a.launcherPageCount === b.launcherPageCount;
   }
   function store2() {
     const g = globalThis;
@@ -119552,9 +119884,9 @@ void main() {
   }
 
   // node_modules/.bun/use-callback-ref@1.3.3+b2e33729a97476bf/node_modules/use-callback-ref/dist/es2015/useRef.js
-  var import_react38 = __toESM(require_react());
+  var import_react39 = __toESM(require_react());
   function useCallbackRef2(initialValue, callback) {
-    var ref = (0, import_react38.useState)(function() {
+    var ref = (0, import_react39.useState)(function() {
       return {
         // value
         value: initialValue,
@@ -120816,9 +121148,9 @@ void main() {
   var React37 = __toESM(require_react(), 1);
 
   // packages/ui/src/config/boot-config-react.hooks.ts
-  var import_react39 = __toESM(require_react(), 1);
+  var import_react40 = __toESM(require_react(), 1);
   init_boot_config_store2();
-  var AppBootContext = (0, import_react39.createContext)(DEFAULT_BOOT_CONFIG);
+  var AppBootContext = (0, import_react40.createContext)(DEFAULT_BOOT_CONFIG);
 
   // packages/ui/src/state/AppContext.tsx
   init_boot_config_store2();
@@ -124404,23 +124736,7 @@ void main() {
 
   // packages/ui/src/platform/platform-guards.ts
   init_dist();
-
-  // packages/ui/src/state/ChatComposerContext.hooks.ts
-  var import_react40 = __toESM(require_react(), 1);
-  var DEFAULT_COMPOSER = {
-    chatInput: "",
-    chatSending: false,
-    chatPendingImages: [],
-    setChatInput: () => {
-    },
-    setChatPendingImages: () => {
-    }
-  };
-  var ChatComposerCtx = (0, import_react40.createContext)(DEFAULT_COMPOSER);
-  var ChatInputRefCtx = (0, import_react40.createContext)(null);
-  function useChatComposer() {
-    return (0, import_react40.useContext)(ChatComposerCtx);
-  }
+  init_electrobun_runtime();
 
   // packages/ui/src/state/ChatTurnStatusContext.hooks.ts
   var import_react41 = __toESM(require_react(), 1);
@@ -124454,6 +124770,9 @@ void main() {
   init_native_cloud_http_transport();
   init_request_timeout();
   init_transport();
+
+  // packages/ui/src/state/persistence.ts
+  init_ios_local_agent_transport();
 
   // packages/ui/src/backgrounds/shader-schema.ts
   var UNIFORM_SCHEMA = {
@@ -124614,6 +124933,8 @@ void main() {
 
   // packages/ui/src/state/startup-phase-restore.ts
   init_api2();
+  init_client_cloud();
+  init_boot_config2();
   init_mobile_runtime_mode();
 
   // packages/ui/src/platform/browser-launch.ts
@@ -125266,6 +125587,7 @@ void main() {
   // packages/ui/src/state/useAppShellState.ts
   var import_react47 = __toESM(require_react(), 1);
   init_api2();
+  init_events3();
 
   // packages/ui/src/state/useCharacterState.ts
   var import_react48 = __toESM(require_react(), 1);
@@ -125595,6 +125917,7 @@ void main() {
   init_api2();
 
   // packages/ui/src/state/startup-phase-poll.ts
+  init_mobile_runtime_mode();
   init_cloud_agent_base();
 
   // packages/ui/src/state/startup-phase-runtime.ts
@@ -136162,6 +136485,12 @@ ${text}`;
     const l = label.toLowerCase();
     return v === "cancel" || v === "no" || v === "none" || l === "cancel";
   }
+  function isFirstRunScope(scope) {
+    return scope === "first-run" || scope.startsWith("first-run");
+  }
+  function isRecommended(label) {
+    return /\(recommended\)/i.test(label);
+  }
   function ChoiceWidget({
     id: id3,
     scope,
@@ -136188,10 +136517,11 @@ ${text}`;
       onChoose(value);
     }, [customText, onChoose, selected]);
     if (options2.length === 0 && !allowCustom) return null;
+    const firstRun = isFirstRunScope(scope);
     return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
       "fieldset",
       {
-        className: "my-2 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0",
+        className: firstRun ? "my-2 flex min-w-0 flex-col items-stretch gap-2 border-0 p-0" : "my-2 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0",
         "aria-label": `Choose ${scope}`,
         "data-choice-id": id3,
         "data-choice-scope": scope,
@@ -136199,6 +136529,38 @@ ${text}`;
           options2.map((option) => {
             const cancel = isCancelLike(option.value, option.label);
             const isSelected = selected?.value === option.value;
+            if (firstRun) {
+              const recommended = isRecommended(option.label);
+              const variant2 = recommended ? "default" : "secondary";
+              return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
+                Button,
+                {
+                  type: "button",
+                  variant: variant2,
+                  size: "default",
+                  disabled: selected !== null,
+                  "aria-label": option.label,
+                  "aria-pressed": isSelected,
+                  "data-testid": `choice-${option.value}`,
+                  className: "h-11 w-full justify-between px-4 text-sm font-medium disabled:opacity-40 aria-disabled:opacity-40",
+                  onClick: () => handleChoose(option),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("span", { className: "inline-flex items-center gap-2", children: [
+                      isSelected ? /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Check, { className: "h-4 w-4 shrink-0", "aria-hidden": true }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { children: option.label })
+                    ] }),
+                    !isSelected ? /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+                      ChevronRight,
+                      {
+                        className: "h-4 w-4 shrink-0 opacity-70",
+                        "aria-hidden": true
+                      }
+                    ) : null
+                  ]
+                },
+                option.value
+              );
+            }
             const variant = cancel ? "ghost" : "outline";
             return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
               Button,
@@ -137537,9 +137899,9 @@ ${text}`;
                 "data-active": index2 === state.activeIndex ? "true" : void 0,
                 onMouseEnter: () => state.setActiveIndex(index2),
                 onPointerDown: (e) => {
-                  e.preventDefault();
-                  onPick(index2);
+                  if (e.pointerType !== "touch") e.preventDefault();
                 },
+                onClick: () => onPick(index2),
                 className: cn(
                   "flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors",
                   index2 === state.activeIndex ? "bg-white/15" : "hover:bg-white/8"
@@ -137587,7 +137949,7 @@ ${text}`;
   var MAX_RENDERED_SHELL_MESSAGES = 80;
   function selectVisibleShellMessages(messages, phase, max2 = MAX_RENDERED_SHELL_MESSAGES) {
     const kept = messages.filter(
-      (m2) => m2.content.trim() || (m2.attachments?.length ?? 0) > 0 || m2.secretRequest !== void 0 || m2.role === "assistant" && phase === "responding"
+      (m2) => m2.content.trim() || (m2.attachments?.length ?? 0) > 0 || m2.secretRequest !== void 0 || m2.failureKind !== void 0 || m2.role === "assistant" && phase === "responding"
     );
     return max2 > 0 && kept.length > max2 ? kept.slice(-max2) : [...kept];
   }
@@ -138330,7 +138692,9 @@ ${text}`;
               // together. The bar paints at full opacity — a prior regression pinned
               // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
               "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
-              glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45"
+              // Pulse while the mic is hot / a reply is speaking: the warm bar
+              // breathes instead of sitting static, the "audio is on" cue.
+              glow ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none" : "bg-white/45"
             )
           }
         )
@@ -138379,7 +138743,9 @@ ${text}`;
               // The bar paints at full opacity — a prior regression pinned it to
               // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
               "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
-              glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45"
+              // Same pulse as the SheetGrabber bar: while audio is on and the chat
+              // is collapsed to the pill, the pill itself pulses.
+              glow ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none" : "bg-white/45"
             )
           }
         )
@@ -138588,6 +138954,7 @@ ${text}`;
         "textarea",
         {
           ref,
+          "aria-label": "Edit message",
           "data-testid": "thread-line-edit-input",
           value,
           onChange: (e) => onChange(e.target.value),
@@ -138636,6 +139003,7 @@ ${text}`;
     onCopy,
     onSpeak,
     onEdit,
+    onRetry,
     speaking,
     onOpenSettings,
     turnStatus,
@@ -138707,6 +139075,7 @@ ${text}`;
     const canSpeak = isAssistant && !!onSpeak && trimmed.length > 0;
     const canEdit = isUser && !!onEdit && trimmed.length > 0 && !message.id.startsWith("temp-");
     const hasActions = canRowCopy || canSpeak || canEdit;
+    const canRetry = isAssistant && !!onRetry && (message.failureKind === "rate_limited" || message.failureKind === "provider_issue");
     const toggleRevealed = React61.useCallback(() => {
       if (!hasActions || editing) return;
       const sel = typeof window !== "undefined" ? window.getSelection() : null;
@@ -138963,6 +139332,23 @@ ${text}`;
                     ) : null
                   ]
                 }
+              ) : null,
+              canRetry ? /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
+                "button",
+                {
+                  type: "button",
+                  "data-testid": "thread-line-retry",
+                  "aria-label": "Retry",
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    onRetry?.(message.id);
+                  },
+                  className: "flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20",
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(RotateCcw, { className: "h-3.5 w-3.5", "aria-hidden": true }),
+                    "Retry"
+                  ]
+                }
               ) : null
             ]
           }
@@ -138994,7 +139380,6 @@ ${text}`;
       setDictationSink,
       setTranscriptSessionSink,
       setComposerHasDraft,
-      transcript,
       needsAudioUnlock,
       unlockAudio,
       openSettings,
@@ -139002,7 +139387,6 @@ ${text}`;
       currentTab,
       clearConversation,
       stop,
-      modelStatus,
       speak,
       stopSpeaking,
       speaking
@@ -139065,17 +139449,58 @@ ${text}`;
       },
       [send]
     );
+    const messagesRef = React61.useRef(messages);
+    messagesRef.current = messages;
+    const handleRetry = React61.useCallback(
+      (assistantId) => {
+        const list = messagesRef.current;
+        const assistantIdx = list.findIndex(
+          (m2) => m2.id === assistantId && m2.role === "assistant"
+        );
+        if (assistantIdx < 0) return;
+        for (let i = assistantIdx - 1; i >= 0; i -= 1) {
+          if (list[i].role === "user") {
+            const retryText = list[i].content.trim();
+            if (retryText) send(retryText);
+            return;
+          }
+        }
+      },
+      [send]
+    );
     const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
     const reduce = useReducedMotion() ?? false;
     const [draft, setDraft] = React61.useState("");
+    const activeConversationId = conversationNav.activeId;
+    const [persistedConversationId, setPersistedConversationId] = React61.useState(activeConversationId);
+    const draftRef = React61.useRef(draft);
+    draftRef.current = draft;
+    React61.useLayoutEffect(() => {
+      if (persistedConversationId === activeConversationId) return;
+      if (persistedConversationId !== null) {
+        writeChatDraft(persistedConversationId, draftRef.current);
+        if (activeConversationId !== null) {
+          setDraft(readChatDraft(activeConversationId) ?? "");
+        }
+      }
+      setPersistedConversationId(activeConversationId);
+    }, [activeConversationId, persistedConversationId]);
+    useChatComposerDraftPersistence({
+      activeConversationId: persistedConversationId,
+      chatInput: draft,
+      setChatInput: setDraft
+    });
+    const activeConversationIdRef = React61.useRef(activeConversationId);
+    activeConversationIdRef.current = activeConversationId;
     const viewChatBinding = useViewChatBinding();
     const [slashDismissed, setSlashDismissed] = React61.useState(false);
     const [mode, setMode] = React61.useState(
       firstRunOpen ? "full" : "input"
     );
-    const pilled = mode === "pill";
-    const sheetOpen = mode === "half" || mode === "full";
-    const expanded = mode === "full";
+    const effectiveMode = firstRunOpen ? "full" : mode;
+    const pilled = effectiveMode === "pill";
+    const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
+    const expanded = effectiveMode === "full";
     const [freeH, setFreeH] = React61.useState(null);
     const [maximized, setMaximized] = React61.useState(false);
     const preFocusCollapsedRef = React61.useRef(true);
@@ -139180,8 +139605,30 @@ ${text}`;
         overlayRef.current?.removeAttribute(LAYOUT_SHIFT_INTENT_ATTR);
       }, 180);
     }, []);
+    React61.useEffect(() => {
+      if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
+        return;
+      }
+      const panel = panelRef.current;
+      const root2 = document.documentElement;
+      if (sheetOpen) return;
+      if (!panel) return;
+      const publish = () => {
+        const h = panel.getBoundingClientRect().height;
+        if (h > 0)
+          root2.style.setProperty(
+            "--eliza-continuous-chat-clearance",
+            `${Math.ceil(h)}px`
+          );
+      };
+      publish();
+      const ro = new ResizeObserver(publish);
+      ro.observe(panel);
+      return () => ro.disconnect();
+    }, [sheetOpen]);
     const contentRef = React61.useRef(null);
     const suppressExpandOnFocusRef = React61.useRef(false);
+    const pendingExpandOnRevealRef = React61.useRef(false);
     const focusThreadRef = React61.useRef(false);
     const visibleMessages = React61.useMemo(
       () => selectVisibleShellMessages(messages, phase),
@@ -139252,6 +139699,7 @@ ${text}`;
             onCopy: handleCopyMessage,
             onSpeak: handleSpeakMessage,
             onEdit: handleEditResend,
+            onRetry: handleRetry,
             speaking: speaking && playingMessageId === m2.id,
             onOpenSettings: openSettings,
             turnStatus: isInFlight ? turnStatus : void 0,
@@ -139266,6 +139714,7 @@ ${text}`;
         handleCopyMessage,
         handleSpeakMessage,
         handleEditResend,
+        handleRetry,
         speaking,
         playingMessageId,
         openSettings,
@@ -139342,6 +139791,7 @@ ${text}`;
         const trimmed = text.trim();
         if (!trimmed && images.length === 0 || !canSend) return;
         if (firstRunOpen) return;
+        clearChatDraft(activeConversationIdRef.current);
         if (trimmed && images.length === 0 && viewChatBinding?.onSubmit?.(trimmed)) {
           setDraft("");
           setSlashDismissed(false);
@@ -139370,6 +139820,7 @@ ${text}`;
       (text) => {
         if (!canSend) return;
         setDraft("");
+        clearChatDraft(activeConversationIdRef.current);
         send(text);
         setFreeH(null);
         setMode((m2) => m2 === "half" || m2 === "full" ? m2 : "half");
@@ -139815,11 +140266,23 @@ ${text}`;
       });
     }, [currentTab]);
     const expand = React61.useCallback(() => {
-      if (!hasRevealableThread) return;
+      if (!hasRevealableThread) {
+        pendingExpandOnRevealRef.current = true;
+        return;
+      }
+      pendingExpandOnRevealRef.current = false;
       preFocusCollapsedRef.current = !sheetOpen;
       setFreeH(null);
       setMode((m2) => m2 === "half" || m2 === "full" ? m2 : "half");
     }, [hasRevealableThread, sheetOpen]);
+    React61.useEffect(() => {
+      if (!hasRevealableThread || !pendingExpandOnRevealRef.current) return;
+      pendingExpandOnRevealRef.current = false;
+      if (typeof document === "undefined" || document.activeElement !== inputRef.current) {
+        return;
+      }
+      expand();
+    }, [hasRevealableThread, expand]);
     React61.useEffect(() => {
       if (typeof window === "undefined") return void 0;
       const onControl = (event) => {
@@ -139949,15 +140412,15 @@ ${text}`;
             audioBase64: wavBytesToBase64(audioWav),
             audioContentType: "audio/wav"
           } : {}
-        }).then(({ transcript: transcript2 }) => {
+        }).then(({ transcript }) => {
           if (!text) return;
           setPendingImages(
             (prev) => prev.map(
               (a) => a.name === attachmentName && a.mimeType === "text/markdown" && !a.transcriptId ? {
                 ...a,
-                transcriptId: transcript2.id,
+                transcriptId: transcript.id,
                 data: textToBase64(
-                  withTranscriptMarker(transcript2.id, text)
+                  withTranscriptMarker(transcript.id, text)
                 )
               } : a
             )
@@ -140147,7 +140610,7 @@ ${text}`;
       const onKey = (e) => {
         if (e.key === "Escape") {
           if (document.querySelector(
-            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]'
+            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="notification-panel"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]'
           )) {
             return;
           }
@@ -140158,6 +140621,23 @@ ${text}`;
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
     }, [sheetOpen, collapse]);
+    React61.useEffect(() => {
+      if (typeof window === "undefined") return void 0;
+      const onBackIntent = (event) => {
+        const detail = event.detail;
+        if (!detail || detail.handled) return;
+        if (!sheetOpen || firstRunOpen) return;
+        if (document.querySelector(
+          '[data-testid="notification-sheet"], [data-testid="notification-panel"]'
+        )) {
+          return;
+        }
+        detail.handled = true;
+        collapse();
+      };
+      window.addEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+      return () => window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+    }, [sheetOpen, firstRunOpen, collapse]);
     React61.useLayoutEffect(() => {
       const el = inputRef.current;
       if (!el) return;
@@ -140362,6 +140842,7 @@ ${text}`;
         }
       }
     });
+    const detentLabel = pilled ? "pill" : !sheetOpen ? "collapsed" : freeH != null ? Math.min(freeH, panelMaxH) >= openH - 1 ? "full" : "half" : expanded ? "full" : "half";
     return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
       "div",
       {
@@ -140398,22 +140879,6 @@ ${text}`;
               }
             }
           ),
-          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
-            "div",
-            {
-              role: "status",
-              "aria-live": "polite",
-              "aria-atomic": "true",
-              className: cn(
-                "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
-                FLOAT_SHADOW2
-              ),
-              children: [
-                transcript,
-                /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
-              ]
-            }
-          ) : null,
           needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
             "div",
             {
@@ -140435,37 +140900,6 @@ ${text}`;
                   children: [
                     /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
                     /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { children: "Tap to enable sound" })
-                  ]
-                }
-              )
-            }
-          ) : null,
-          modelStatus.kind === "downloading" || modelStatus.kind === "loading" ? /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
-            "div",
-            {
-              role: "status",
-              "aria-live": "polite",
-              "aria-atomic": "true",
-              "data-testid": "overlay-model-download-status",
-              className: "pointer-events-none relative mb-2 flex w-full justify-center",
-              children: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
-                "span",
-                {
-                  className: cn(
-                    "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85",
-                    FLOAT_SHADOW2
-                  ),
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(LoaderCircle, { className: "h-3.5 w-3.5 animate-spin text-[#FF5800]" }),
-                    modelStatus.kind === "downloading" ? /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("span", { children: [
-                      "Downloading ",
-                      modelStatus.modelName ?? "local model",
-                      typeof modelStatus.percent === "number" ? ` \u2014 ${Math.round(modelStatus.percent)}%` : "\u2026"
-                    ] }) : /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("span", { children: [
-                      "Loading ",
-                      modelStatus.modelName ?? "local model",
-                      "\u2026"
-                    ] })
                   ]
                 }
               )
@@ -140526,7 +140960,7 @@ ${text}`;
                     "aria-label": "Chat composer",
                     "data-testid": "chat-sheet",
                     "data-variant": sheetOpen ? "open" : "closed",
-                    "data-detent": pilled ? "pill" : !sheetOpen ? "collapsed" : freeH != null ? Math.min(freeH, panelMaxH) >= openH - 1 ? "full" : "half" : expanded ? "full" : "half",
+                    "data-detent": detentLabel,
                     "data-maximized": fullBleed ? "true" : void 0,
                     "data-revealed": threadPresented ? "true" : "false",
                     "data-chat-state": chatState,
@@ -140590,6 +141024,7 @@ ${text}`;
                           }
                         }
                       ),
+                      /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: "sr-only", "data-testid": "chat-detent-probe", children: `chat-detent:${detentLabel}` }),
                       /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
                         motion2.div,
                         {
@@ -140694,7 +141129,7 @@ ${text}`;
                                     "div",
                                     {
                                       "data-testid": "chat-transcribing-badge",
-                                      className: "pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[var(--brand-orange,#ff6a00)]/15 px-2.5 py-0.5 text-[11px] font-medium text-[var(--brand-orange,#ff6a00)]",
+                                      className: "pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-medium text-accent",
                                       children: "Transcribing \u2014 say \u201Cexit transcription mode\u201D to stop"
                                     }
                                   ) : null,
@@ -140751,7 +141186,7 @@ ${text}`;
                                         {
                                           "data-testid": "chat-thread-loading",
                                           className: "pointer-events-none absolute inset-0 grid place-items-center",
-                                          children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(LoaderCircle, { className: "h-6 w-6 animate-spin text-[#FF5800]" })
+                                          children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(LoaderCircle, { className: "h-6 w-6 animate-spin text-accent" })
                                         }
                                       ) : null,
                                       hasTopics ? /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
@@ -141006,12 +141441,12 @@ ${text}`;
                                         }
                                       },
                                       disabled: firstRunOpen,
-                                      placeholder: firstRunOpen ? "Choose an option to continue" : booting ? `Ask ${agentName} \u2014 waking up\u2026` : viewChatBinding?.placeholder ?? `Ask ${agentName}`,
+                                      placeholder: firstRunOpen ? "Tap a highlighted option above to continue" : booting ? `Ask ${agentName} \u2014 waking up\u2026` : viewChatBinding?.placeholder ?? `Ask ${agentName}`,
                                       "aria-label": "message",
                                       "data-testid": "chat-composer-textarea",
                                       "aria-describedby": booting ? "cc-booting-hint" : void 0,
                                       ...comboboxAria,
-                                      className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                                      className: `max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${firstRunOpen ? "placeholder:text-white/70" : "placeholder:text-white/45"}`
                                     }
                                   ),
                                   /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
@@ -141484,6 +141919,7 @@ lucide-react/dist/esm/icons/arrow-right.mjs:
 lucide-react/dist/esm/icons/box.mjs:
 lucide-react/dist/esm/icons/check.mjs:
 lucide-react/dist/esm/icons/chevron-down.mjs:
+lucide-react/dist/esm/icons/chevron-right.mjs:
 lucide-react/dist/esm/icons/chevron-up.mjs:
 lucide-react/dist/esm/icons/clock-3.mjs:
 lucide-react/dist/esm/icons/code-xml.mjs:

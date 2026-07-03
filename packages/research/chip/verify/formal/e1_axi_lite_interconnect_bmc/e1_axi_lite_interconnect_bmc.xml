@@ -8,10 +8,10 @@
 </properties>
 <testcase classname="bmc" name="build execution" time="0">
 </testcase>
-<system-out>SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Removing directory '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc'.
-SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc/src/axi_lite_protocol.sv'.
-SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc/src/e1_axi_lite_interconnect.sv'.
-SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc/src/e1_axi_lite_interconnect_bind.sv'.
+<system-out>SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc'.
+SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc/src/axi_lite_protocol.sv'.
+SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc/src/e1_axi_lite_interconnect.sv'.
+SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_axi_lite_interconnect_bmc/src/e1_axi_lite_interconnect_bind.sv'.
 SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] engine_0: smtbmc bitwuzla
 SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] base: starting process &quot;cd verify/formal/e1_axi_lite_interconnect_bmc/src; yosys -ql ../model/design.log ../model/design.ys&quot;
 SBY 18:37:56 [verify/formal/e1_axi_lite_interconnect_bmc] base: Warning: Replacing memory \wr_fifo with list of registers. See e1_axi_lite_interconnect.sv:742

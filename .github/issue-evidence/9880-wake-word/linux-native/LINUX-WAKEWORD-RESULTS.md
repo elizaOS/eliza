@@ -9,7 +9,7 @@ runtime in `packages/native/plugins/wakeword-cpp`, on real TTS speech, on this h
 - **Runtime:** `packages/native/plugins/wakeword-cpp`, `libwakeword.a`,
   `wakeword_active_backend() == "native-cpu"` (pure scalar fp32 C; no SIMD, no ggml link).
 - **Head:** wake-word **v0.3.0** GGUFs staged at
-  `~/.local/state/milady/local-inference/wake/hey-eliza.{melspec,embedding,classifier}.gguf`.
+  `~/.local/state/eliza/local-inference/wake/hey-eliza.{melspec,embedding,classifier}.gguf`.
   All three sha256 **match the catalog** (`packages/shared/src/local-inference/voice-models.ts`,
   HF `elizaos/eliza-1@c544bb4c`); classifier metadata reads `wakeword.phrase="hey eliza"`,
   `upstream_commit=368c03716d…` (openWakeWord v0.5.1). This is the genuine trained
@@ -78,7 +78,7 @@ errors. "hey jarvis" (run=7) is the closest competitor and the natural hardest n
 ```bash
 bash 9880-linux-wakeword/reproduce.sh
 # or, directly against the staged GGUFs:
-WAKE=~/.local/state/milady/local-inference/wake
+WAKE=~/.local/state/eliza/local-inference/wake
 wakeword-build/wakeword_score_raw \
   "$WAKE/hey-eliza.melspec.gguf" "$WAKE/hey-eliza.embedding.gguf" \
   "$WAKE/hey-eliza.classifier.gguf" 9880-linux-wakeword/audio/pos_hey_eliza.f32

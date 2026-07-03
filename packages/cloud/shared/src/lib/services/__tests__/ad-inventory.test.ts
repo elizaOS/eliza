@@ -25,6 +25,7 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
+import { adSlotsRepository } from "../../../db/repositories/ad-slots";
 import { adAccounts } from "../../../db/schemas/ad-accounts";
 import { adCampaigns } from "../../../db/schemas/ad-campaigns";
 import { adCreatives } from "../../../db/schemas/ad-creatives";
@@ -85,6 +86,7 @@ async function seedPublisher() {
 async function seedAdvertiserCampaign(
   opts: {
     status?: string;
+    accountStatus?: "active" | "pending" | "suspended" | "disconnected";
     allocated?: string;
     spent?: string;
     dayparting?: {
@@ -109,6 +111,7 @@ async function seedAdvertiserCampaign(
       platform: "meta",
       external_account_id: uniq("acct"),
       account_name: "Adv Account",
+      status: opts.accountStatus ?? "active",
     })
     .returning();
   const [campaign] = await dbWrite
@@ -137,7 +140,12 @@ async function seedAdvertiserCampaign(
       destination_url: "https://advertiser.example.com",
     })
     .returning();
-  return { orgId: org.id, campaignId: campaign.id, creativeId: creative.id };
+  return {
+    orgId: org.id,
+    accountId: account.id,
+    campaignId: campaign.id,
+    creativeId: creative.id,
+  };
 }
 
 async function creatorBalance(userId: string): Promise<number> {
@@ -253,6 +261,61 @@ describe("Ad Inventory / SSP (#10687)", () => {
     expect(await creatorBalance(pub.userId)).toBe(0);
   });
 
+  test("no eligible ad when the campaign account is suspended", async () => {
+    if (!pgliteReady) return;
+    const pub = await seedPublisher();
+    await seedAdvertiserCampaign({ accountStatus: "suspended" });
+    const slot = await service.createSlot({
+      appId: pub.appId,
+      organizationId: pub.orgId,
+      name: "S",
+      format: "banner",
+      floorCpm: 20,
+    });
+
+    expect(await service.serveAd(slot)).toBeNull();
+    expect(await creatorBalance(pub.userId)).toBe(0);
+  });
+
+  test("serve debit gate re-checks account status after candidate selection", async () => {
+    if (!pgliteReady) return;
+    const pub = await seedPublisher();
+    const adv = await seedAdvertiserCampaign();
+    const slot = await service.createSlot({
+      appId: pub.appId,
+      organizationId: pub.orgId,
+      name: "Race",
+      format: "banner",
+      floorCpm: 20,
+    });
+
+    await dbWrite
+      .update(adAccounts)
+      .set({ status: "suspended" })
+      .where(eq(adAccounts.id, adv.accountId));
+
+    const event = await adSlotsRepository.recordServe({
+      slotId: slot.id,
+      campaignId: adv.campaignId,
+      creativeId: adv.creativeId,
+      impressionId: uniq("impression"),
+      price: 0.02,
+      publisherRevenue: 0.014,
+    });
+
+    expect(event).toBeNull();
+    const campaign = await dbWrite.query.adCampaigns.findFirst({
+      where: eq(adCampaigns.id, adv.campaignId),
+    });
+    expect(Number(campaign?.credits_spent)).toBe(0);
+    expect(campaign?.total_impressions).toBe(0);
+    const events = await dbWrite
+      .select()
+      .from(adSlotEvents)
+      .where(eq(adSlotEvents.slot_id, slot.id));
+    expect(events).toHaveLength(0);
+  });
+
   test("serve does not overspend a campaign whose remaining budget is below the impression price", async () => {
     if (!pgliteReady) return;
     const pub = await seedPublisher();
@@ -295,6 +358,7 @@ describe("Ad Inventory / SSP (#10687)", () => {
         platform: "meta",
         external_account_id: uniq("acct"),
         account_name: "Self",
+        status: "active",
       })
       .returning();
     await dbWrite.insert(adCampaigns).values({

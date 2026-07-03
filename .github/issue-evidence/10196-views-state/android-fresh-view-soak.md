@@ -5,7 +5,7 @@ Issue: #10196
 Command:
 
 ```bash
-ELIZA_MOBILE_REPO_ROOT=/home/shaw/milady/eliza-wt-10196-view-runtime-soak \
+ELIZA_MOBILE_REPO_ROOT=/home/shaw/eliza/eliza-wt-10196-view-runtime-soak \
 ELIZA_WEBVIEW_DEBUG=1 \
 ELIZA_BUN_RISCV64_OPTIONAL=1 \
 ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 \

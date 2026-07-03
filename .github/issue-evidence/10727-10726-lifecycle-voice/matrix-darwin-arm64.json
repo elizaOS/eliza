@@ -69,15 +69,15 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
-        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
         "componentFile": {
           "status": "present",
           "detail": "component file present (4967494592 bytes)",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
           "sizeBytes": 4967494592
         }
       },
@@ -120,7 +120,7 @@
         "installed": {
           "status": "pass",
           "detail": "bundle is installed locally",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
         },
         "loadsAndRunsOnDevice": {
           "status": "fail",
@@ -172,15 +172,15 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
-        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf",
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf",
         "componentFile": {
           "status": "missing",
           "detail": "component file is missing from the installed bundle",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf"
         }
       },
       "bundle": {
@@ -222,7 +222,7 @@
         "installed": {
           "status": "fail",
           "detail": "component file is missing from the installed bundle",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0.gguf"
         },
         "loadsAndRunsOnDevice": {
           "status": "fail",
@@ -274,15 +274,15 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
-        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/asr/mmproj-audio-2b-bf16.gguf",
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/asr/mmproj-audio-2b-bf16.gguf",
         "componentFile": {
           "status": "present",
           "detail": "component file present (986833376 bytes)",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/asr/mmproj-audio-2b-bf16.gguf",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/asr/mmproj-audio-2b-bf16.gguf",
           "sizeBytes": 986833376
         }
       },
@@ -325,7 +325,7 @@
         "installed": {
           "status": "pass",
           "detail": "bundle is installed locally",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
         },
         "loadsAndRunsOnDevice": {
           "status": "fail",
@@ -376,15 +376,15 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
-        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.gguf",
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.gguf",
         "componentFile": {
           "status": "present",
           "detail": "component file present (620736 bytes)",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.gguf",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.gguf",
           "sizeBytes": 620736
         }
       },
@@ -427,7 +427,7 @@
         "installed": {
           "status": "pass",
           "detail": "bundle is installed locally",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
         },
         "loadsAndRunsOnDevice": {
           "status": "fail",
@@ -482,9 +482,9 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
         "componentPath": null,
         "componentFile": null
@@ -572,15 +572,15 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
-        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vision/mmproj-2b.gguf",
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vision/mmproj-2b.gguf",
         "componentFile": {
           "status": "present",
           "detail": "component file present (557367776 bytes)",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vision/mmproj-2b.gguf",
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/vision/mmproj-2b.gguf",
           "sizeBytes": 557367776
         }
       },
@@ -623,7 +623,7 @@
         "installed": {
           "status": "pass",
           "detail": "bundle is installed locally",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
         },
         "loadsAndRunsOnDevice": {
           "status": "fail",
@@ -674,15 +674,15 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
-        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm",
+        "componentPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm",
         "componentFile": {
           "status": "missing",
           "detail": "component file is missing from the installed bundle",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm"
         }
       },
       "bundle": {
@@ -724,7 +724,7 @@
         "installed": {
           "status": "fail",
           "detail": "component file is missing from the installed bundle",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b.litertlm"
         },
         "loadsAndRunsOnDevice": {
           "status": "fail",
@@ -781,9 +781,9 @@
       "local": {
         "installed": true,
         "assignedSlots": [],
-        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
-        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
-        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+        "modelPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
+        "bundleRoot": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle",
+        "manifestPath": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/eliza-1.manifest.json",
         "bundleVerifiedAt": null,
         "componentPath": null,
         "componentFile": null
@@ -823,7 +823,7 @@
         "installed": {
           "status": "pass",
           "detail": "bundle is installed locally",
-          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
+          "path": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/eliza-state/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf"
         },
         "loadsAndRunsOnDevice": {
           "status": "fail",

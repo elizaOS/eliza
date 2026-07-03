@@ -78,6 +78,27 @@ describe("CloudFilesService", () => {
     expect(result.metadata).toEqual({ folder: "campaigns" });
   });
 
+  test("removes uploaded bytes if metadata creation fails", async () => {
+    const repository = makeRepository();
+    repository.create.mockRejectedValueOnce(new Error("insert failed"));
+    const env = makeEnv();
+    const service = new CloudFilesService(repository as never);
+
+    const file = new File(["hello"], "hello.png", { type: "image/png" });
+    await expect(
+      service.upload(env as never, {
+        organizationId: ORG,
+        userId: USER,
+        file,
+      }),
+    ).rejects.toThrow("insert failed");
+
+    const putKey = env.BLOB.put.mock.calls[0]?.[0];
+    expect(putKey).toBeTruthy();
+    expect(env.BLOB.delete).toHaveBeenCalledWith(putKey);
+    expect(env.objects.size).toBe(0);
+  });
+
   test("soft delete removes the object after the last active reference", async () => {
     const repository = makeRepository();
     const env = makeEnv();

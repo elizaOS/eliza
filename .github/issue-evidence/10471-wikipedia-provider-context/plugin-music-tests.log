@@ -1,6 +1,6 @@
 $ vitest run
 
- RUN  v4.1.5 /home/shaw/milady/eliza-pr10589/plugins/plugin-music
+ RUN  v4.1.5 /home/shaw/eliza/eliza-pr10589/plugins/plugin-music
 
 
  Test Files  9 passed (9)

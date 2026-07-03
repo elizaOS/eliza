@@ -882,16 +882,16 @@
 03-11 01:23:10.172 26597 26597 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 89001138, pluginId: ElizaSystem, methodName: getDeviceSettings
 03-11 01:23:10.172 26597 26597 V Capacitor: callback: 89001138, pluginId: ElizaSystem, methodName: getDeviceSettings, methodData: {}
 03-11 01:23:10.172 26597 26679 D CompatChangeReporter: Compat change id reported: 303742236; UID 10144; state: ENABLED
-03-11 01:23:10.173  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.milady.milady/10323} BLOCKED
+03-11 01:23:10.173  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.elizaos.app/10323} BLOCKED
 03-11 01:23:10.173  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{f86b171 com.google.android.apps.nexuslauncher/10204} BLOCKED
-03-11 01:23:10.176  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.milady.milady/10323} BLOCKED
+03-11 01:23:10.176  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.elizaos.app/10323} BLOCKED
 03-11 01:23:10.176  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{45fa1c9 com.google.android.apps.messaging/10138} BLOCKED
-03-11 01:23:10.177  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.milady.milady/10323} BLOCKED
+03-11 01:23:10.177  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.elizaos.app/10323} BLOCKED
 03-11 01:23:10.177  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{45fa1c9 com.google.android.apps.messaging/10138} BLOCKED
-03-11 01:23:10.177  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.milady.milady/10323} BLOCKED
+03-11 01:23:10.177  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.elizaos.app/10323} BLOCKED
 03-11 01:23:10.177  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{45fa1c9 com.google.android.apps.messaging/10138} BLOCKED
 03-11 01:23:10.178  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{f1fced com.whatsapp/10233} BLOCKED
-03-11 01:23:10.178  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.milady.milady/10323} BLOCKED
+03-11 01:23:10.178  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{8105d0e ai.elizaos.app/10323} BLOCKED
 03-11 01:23:10.178  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{45fa1c9 com.google.android.apps.messaging/10138} BLOCKED
 03-11 01:23:10.178  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{45fa1c9 com.google.android.apps.messaging/10138} BLOCKED
 03-11 01:23:10.178  1676  5176 I AppsFilter: interaction: PackageSetting{de1188 ai.elizaos.app/10144} -> PackageSetting{45fa1c9 com.google.android.apps.messaging/10138} BLOCKED

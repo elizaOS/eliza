@@ -1,10 +1,10 @@
 arch=riscv64
 bun_source=
-bun_riscv64_zip=/home/shaw/milady/eliza/packages/os/linux/elizaos/../../../app-core/scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip
-riscv64_musl_runtime=/home/shaw/milady/eliza/packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime
+bun_riscv64_zip=/home/shaw/eliza/eliza/packages/os/linux/elizaos/../../../app-core/scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip
+riscv64_musl_runtime=/home/shaw/eliza/eliza/packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime
 riscv64_icu_data=
 bun_source_url=
 bun_source_sha256=
 bun_staged_sha256=3da9dabdb7919e415eff9336c7e0aa8b75df0825c961f9802f7703a9bb114779
 bun_file=Zip archive data, at least v1.0 to extract, compression method=store
-agent_bundle=/home/shaw/milady/eliza/packages/agent/dist-mobile/agent-bundle.js
+agent_bundle=/home/shaw/eliza/eliza/packages/agent/dist-mobile/agent-bundle.js

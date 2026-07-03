@@ -12,7 +12,7 @@ Device:
 Commands run:
 
 ```bash
-ELIZA_MOBILE_REPO_ROOT=/home/shaw/milady/eliza-local-integration \
+ELIZA_MOBILE_REPO_ROOT=/home/shaw/eliza/eliza-local-integration \
 ELIZA_WEBVIEW_DEBUG=1 \
 ELIZA_BUN_RISCV64_OPTIONAL=1 \
 ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 \

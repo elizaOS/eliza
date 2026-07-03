@@ -21,6 +21,7 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   logger,
+  ModelType,
   type Setting,
   saltWorldSettings,
   unsaltWorldSettings,
@@ -74,6 +75,18 @@ const CODING_BACKEND_ALIASES: Record<string, string> = {
   "openai-codex": "codex",
 };
 const DIFFICULTY_TAGS = ["simple", "moderate", "hard"] as const;
+const BRAIN_MODEL_KEYS = [
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_MEGA,
+  ModelType.RESPONSE_HANDLER,
+  ModelType.ACTION_PLANNER,
+  ModelType.TEXT_REASONING_SMALL,
+  ModelType.TEXT_REASONING_LARGE,
+  ModelType.TEXT_COMPLETION,
+] as const;
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -580,7 +593,7 @@ function parseCodingAxisObject(parsed: unknown): CodingAxisRouting {
     const allow = coding.allow.filter(
       (v): v is string => typeof v === "string",
     );
-    if (allow.length > 0) out.allow = allow;
+    out.allow = allow;
   }
   return out;
 }
@@ -602,6 +615,19 @@ export function readBackendRouting(config: {
   return parseCodingAxisObject(parsed);
 }
 
+export function hasLoadedTextProvider(
+  runtime: IAgentRuntime,
+  provider: string,
+): boolean {
+  const models = (runtime as { models?: unknown }).models;
+  if (!(models instanceof Map)) return false;
+  return BRAIN_MODEL_KEYS.some((key) =>
+    (models.get(key) as Array<{ provider?: unknown }> | undefined)?.some(
+      (handler) => handler.provider === provider,
+    ),
+  );
+}
+
 /**
  * The EFFECTIVE coding routing the orchestrator actually uses — its resolver
  * reads `character.settings.routing.coding` first, then the
@@ -616,11 +642,15 @@ function readEffectiveCodingRouting(
   const fromCharacter = parseCodingAxisObject(
     runtime.character?.settings?.routing,
   );
-  if (fromCharacter.default || fromCharacter.byTag || fromCharacter.allow) {
+  if (
+    fromCharacter.default ||
+    fromCharacter.byTag ||
+    fromCharacter.allow !== undefined
+  ) {
     return { routing: fromCharacter, source: "character" };
   }
   const fromEnv = readBackendRouting(config);
-  if (fromEnv.default || fromEnv.byTag || fromEnv.allow) {
+  if (fromEnv.default || fromEnv.byTag || fromEnv.allow !== undefined) {
     return { routing: fromEnv, source: "env" };
   }
   return { routing: {}, source: "none" };
@@ -667,11 +697,18 @@ function handleSetBackend(
   const axis = axisRaw === "brain" ? "brain" : "coding";
 
   if (axis === "brain") {
-    const provider = trimToString(params.backend, 64);
+    const provider = trimToString(params.backend, 64)?.toLowerCase();
     if (!provider) {
       return fail(
         "SETTINGS_BACKEND_INVALID",
         "set_backend for the brain needs a `backend` provider id (e.g. anthropic, openai, cerebras).",
+      );
+    }
+    if (!hasLoadedTextProvider(runtime, provider)) {
+      return fail(
+        "SETTINGS_BACKEND_UNAVAILABLE",
+        `Cannot set chat brain to \`${provider}\`: no loaded text-generation handler is registered for that provider.`,
+        { provider },
       );
     }
     const config = loadElizaConfig() as { env?: Record<string, unknown> };
@@ -703,6 +740,18 @@ function handleSetBackend(
   // Start from the EFFECTIVE routing (character first, else env) so we mutate
   // whatever currently wins and preserve any operator allow lock-list.
   const { routing: coding } = readEffectiveCodingRouting(runtime, config);
+  if (coding.allow !== undefined) {
+    const allowed = coding.allow
+      .map((value) => normalizeCodingBackend(value))
+      .filter((value): value is string => Boolean(value));
+    if (!allowed.includes(backend)) {
+      return fail(
+        "SETTINGS_BACKEND_DISALLOWED",
+        `Cannot route coding tasks to \`${backend}\`: it is outside the configured coding backend allow-list.`,
+        { backend, allow: allowed },
+      );
+    }
+  }
   if (tag) {
     coding.byTag = { ...(coding.byTag ?? {}), [tag]: backend };
   } else {

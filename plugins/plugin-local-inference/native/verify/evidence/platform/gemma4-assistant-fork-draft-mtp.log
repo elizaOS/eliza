@@ -1,5 +1,5 @@
 # gemma4-assistant arch ported into the elizaOS llama.cpp fork — draft-mtp on Apple M4 Max Metal, 2026-06-23
-# Fork branch feat/gemma4-assistant-arch (elizaOS/llama.cpp PR #32), HEAD 2323fa863; milady gitlink bump = eliza PR #9268.
+# Fork branch feat/gemma4-assistant-arch (elizaOS/llama.cpp PR #32), HEAD 2323fa863; eliza gitlink bump = eliza PR #9268.
 # Drafter: amaranus/Gemma-4-E2B-it-qat-assistant-MTP-Q8_0 (gemma4-assistant arch). Target: eliza-1 gemma-4-E2B (Q8_0).
 # llama-cli -m <target> -md <amaranus> -ngl 99 -ngld 99 -fa on --spec-type draft-mtp --spec-draft-n-max 2
 

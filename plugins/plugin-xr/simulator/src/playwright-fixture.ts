@@ -288,6 +288,14 @@ export class XREmulatorPage {
     );
   }
 
+  /** Pinch-grab the panel a hand is aimed at and drag it by a world delta; returns new position. */
+  async dragHand(handedness: Handedness, delta: Vec3): Promise<Vec3 | null> {
+    return this.page.evaluate(
+      ({ h, d }) => window.__XREmulator.dragHand(h, d),
+      { h: handedness, d: delta },
+    );
+  }
+
   // ── Capture ──────────────────────────────────────────────────────────────
 
   /** Write a PNG screenshot of the page into the artifact dir. */

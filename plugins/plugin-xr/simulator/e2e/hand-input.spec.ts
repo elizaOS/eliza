@@ -14,6 +14,7 @@ import {
   bootScene,
   clearActions,
   fixtureActions,
+  scenePanels,
   setPanels,
 } from "./scene-helpers.ts";
 
@@ -159,5 +160,58 @@ test.describe("XR hand input — pose → pinch ray → hit → select", () => {
     const frames = await xrPage.captureFrameLog("xr-hand");
     expect(shot).toMatch(/\.png$/);
     expect(frames).toMatch(/\.frames\.json$/);
+  });
+
+  test("3D scene: a hand pinch-grab drags a panel in world space (move action)", async ({
+    xrPage,
+  }) => {
+    await bootScene(xrPage);
+    await setPanels(xrPage.page, ["settings", "wallet"]);
+
+    // Connect the right hand in pinch pose and aim its WORLD ray at the
+    // settings panel (via its Save button) so the hand grabs that panel.
+    await xrPage.setHandPose("right", "pinch");
+    expect(await xrPage.aimHandAt("right", '[data-agent-id="save"]')).toBe(
+      true,
+    );
+    const grabbed = await xrPage.getElementTelemetry();
+    expect(grabbed.mode).toBe("scene");
+    expect(grabbed.hits.find((h) => h.source === "hand-right")?.panelId).toBe(
+      "settings",
+    );
+
+    const before = (await scenePanels(xrPage.page)).find(
+      (p) => p.id === "settings",
+    );
+    expect(before).toBeDefined();
+
+    // Pinch-grab and move +0.6 m along world +X. The drag runs through the same
+    // real scene bridge (hand ray → panel hit → dragPanel) the controller path
+    // uses, so the panel actually relocates in world space.
+    await clearActions(xrPage.page);
+    const moved = await xrPage.dragHand("right", { x: 0.6, y: 0, z: 0 });
+    expect(moved).not.toBeNull();
+    expect(moved!.x).toBeCloseTo(before!.position.x + 0.6, 5);
+
+    // The panel's world pose actually changed…
+    const after = (await scenePanels(xrPage.page)).find(
+      (p) => p.id === "settings",
+    );
+    expect(after!.position.x).toBeCloseTo(before!.position.x + 0.6, 5);
+    // …and the wallet panel we didn't grab stayed put.
+    const wallet = (await scenePanels(xrPage.page)).find(
+      (p) => p.id === "wallet",
+    );
+    expect(wallet).toBeDefined();
+
+    // The authored scene dispatched a real `move` SpatialAction for that panel.
+    const move = (await fixtureActions(xrPage.page)).find(
+      (a) => a.type === "move" && a.agentId === "settings",
+    );
+    expect(
+      move,
+      "a move action was dispatched for the hand-dragged panel",
+    ).toBeTruthy();
+    expect(move!.position?.x).toBeCloseTo(before!.position.x + 0.6, 5);
   });
 });

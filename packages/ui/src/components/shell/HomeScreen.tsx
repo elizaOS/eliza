@@ -142,7 +142,7 @@ export interface HomeScreenProps {
    * Optional host-provided header content rendered at the top of the home
    * screen (e.g. a brand wallet widget). The framework intentionally ships no
    * default clock to keep the home minimal; this host-override slot stays so a
-   * host app (e.g. milady's MoonCycles wallet) can opt back into a header
+   * host app can opt back into a header
    * without the framework providing one.
    */
   clockAccessory?: React.ReactNode;

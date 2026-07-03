@@ -187,10 +187,9 @@ function executablePath(...candidates) {
 }
 
 function appId() {
-  // White-label builds (e.g. the Milady app shell at apps/app, bundle id
-  // ai.milady.milady) install under a different bundle id than the eliza
-  // package config. Allow targeting the installed app explicitly so the smoke
-  // can validate whichever shell was actually built.
+  // White-label builds install under a different bundle id than the eliza
+  // package config. Allow targeting the installed app explicitly so the smoke can
+  // validate whichever shell was actually built.
   if (process.env.ELIZA_SMOKE_APP_ID) return process.env.ELIZA_SMOKE_APP_ID;
   const config = fs.readFileSync(appConfigPath, "utf8");
   return config.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "app.eliza";

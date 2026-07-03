@@ -253,5 +253,5 @@ F4 revert (composerHasDraft gate re-added to transcription loop): 1 failed — '
 ✓ no uncaught page errors (0)
 ✓ no error-level console messages (0)
 ✓ fixture logged a voice interaction (mic tap → hands-free / recording)
-Screenshots (55) written to /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-interaction-epic/packages/ui/src/components/shell/__e2e__/output
+Screenshots (55) written to /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-interaction-epic/packages/ui/src/components/shell/__e2e__/output
 CHAT-SHEET E2E PASSED

@@ -64,8 +64,12 @@ export function buildTriggerMetadata(params: {
   const timing = resolveTriggerTiming(params.trigger, params.nowMs);
   if (!timing) return null;
 
+  const existingMetadata = params.existingMetadata
+    ? { ...params.existingMetadata }
+    : {};
+
   return {
-    ...(params.existingMetadata ?? {}),
+    ...existingMetadata,
     blocking: true,
     updatedAt: timing.updatedAt,
     updateInterval: timing.updateIntervalMs,

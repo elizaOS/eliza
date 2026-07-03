@@ -2,9 +2,9 @@ window.SCENARIO_RUN_DATA = {
   schema: "eliza_scenario_run_viewer_v1",
   generatedAt: "2026-06-24T20:14:31.064Z",
   runDir:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run",
   matrixPath:
-    "/Users/shawwalters/eliza-workspace/milady/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/matrix.json",
+    "/Users/shawwalters/eliza-workspace/eliza/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/matrix.json",
   nativeJsonlPath: null,
   nativeManifestPath: null,
   report: {
@@ -914,17 +914,17 @@ window.SCENARIO_RUN_DATA = {
     totalCostUsd: 0,
     artifactPaths: {
       runDir:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run",
       matrixJson:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/matrix.json",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/matrix.json",
       viewerIndex:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/viewer/index.html",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/viewer/index.html",
       viewerData:
-        "/Users/shawwalters/eliza-workspace/milady/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/viewer/data.js",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/viewer/data.js",
     },
   },
   trajectories: {
-    root: "/Users/shawwalters/eliza-workspace/milady/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/trajectories",
+    root: "/Users/shawwalters/eliza-workspace/eliza/eliza-9145-finish-push/.github/issue-evidence/9478-views-crud-lifecycle-run/trajectories",
     files: [],
     summaries: [],
   },

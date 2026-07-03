@@ -5,8 +5,8 @@
     "surface_area": "cm^2",
     "bbox": "mm unless key suffix is _m"
   },
-  "robot_source_model": "/home/shaw/milady/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
-  "step_root": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step",
+  "robot_source_model": "/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
+  "step_root": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step",
   "configured_source_subassemblies": [
     "central_chest_bridge_trim",
     "face_plate_details",
@@ -226,7 +226,7 @@
           "local_bbox_mm": [24.0, 28.0, 16.0],
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
           "step_solid_exported": true
         },
         {
@@ -249,7 +249,7 @@
           "local_bbox_mm": [136.0, 48.0, 6.0],
           "solid_volume_cm3": 27.0409,
           "surface_area_cm2": 108.6916,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
           "step_solid_exported": true
         },
         {
@@ -272,7 +272,7 @@
           "local_bbox_mm": [6.4, 6.4, 5.0],
           "solid_volume_cm3": 0.1322,
           "surface_area_cm2": 1.3597,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
           "step_solid_exported": true
         },
         {
@@ -295,7 +295,7 @@
           "local_bbox_mm": [192.0, 40.0, 14.0],
           "solid_volume_cm3": 9.4564,
           "surface_area_cm2": 144.6626,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
           "step_solid_exported": true
         },
         {
@@ -318,7 +318,7 @@
           "local_bbox_mm": [24.0, 28.0, 16.0],
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
           "step_solid_exported": true
         },
         {
@@ -341,7 +341,7 @@
           "local_bbox_mm": [148.0, 52.0, 7.0],
           "solid_volume_cm3": 36.9567,
           "surface_area_cm2": 129.1631,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
           "step_solid_exported": true
         },
         {
@@ -364,7 +364,7 @@
           "local_bbox_mm": [13.0, 13.0, 8.0],
           "solid_volume_cm3": 0.9043,
           "surface_area_cm2": 5.0014,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
           "step_solid_exported": true
         },
         {
@@ -387,7 +387,7 @@
           "local_bbox_mm": [172.0, 36.0, 12.0],
           "solid_volume_cm3": 6.2611,
           "surface_area_cm2": 114.4031,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -606,7 +606,7 @@
           "local_bbox_mm": [4.4, 8.4, 64.0],
           "solid_volume_cm3": 1.2818,
           "surface_area_cm2": 11.1755,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -632,7 +632,7 @@
           "local_bbox_mm": [36.0, 10.0, 156.0],
           "solid_volume_cm3": 32.4979,
           "surface_area_cm2": 107.6378,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
           "step_solid_exported": true
         },
         {
@@ -655,7 +655,7 @@
           "local_bbox_mm": [8.0, 1.6, 90.0],
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
           "step_solid_exported": true
         },
         {
@@ -678,7 +678,7 @@
           "local_bbox_mm": [16.0, 34.0, 120.0],
           "solid_volume_cm3": 42.3845,
           "surface_area_cm2": 94.2949,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -705,7 +705,7 @@
           "local_bbox_mm": [44.0, 28.0, 58.0],
           "solid_volume_cm3": 41.7893,
           "surface_area_cm2": 67.9537,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
           "step_solid_exported": true
         },
         {
@@ -728,7 +728,7 @@
           "local_bbox_mm": [26.0, 7.0, 76.0],
           "solid_volume_cm3": 9.0272,
           "surface_area_cm2": 41.245,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
           "step_solid_exported": true
         },
         {
@@ -751,7 +751,7 @@
           "local_bbox_mm": [10.0, 19.0, 120.0],
           "solid_volume_cm3": 13.0029,
           "surface_area_cm2": 49.1981,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -777,7 +777,7 @@
           "local_bbox_mm": [23.0, 4.4, 100.0],
           "solid_volume_cm3": 5.999,
           "surface_area_cm2": 42.689,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
           "step_solid_exported": true
         },
         {
@@ -800,7 +800,7 @@
           "local_bbox_mm": [8.0, 1.6, 90.0],
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
           "step_solid_exported": true
         },
         {
@@ -823,7 +823,7 @@
           "local_bbox_mm": [8.4, 10.4, 80.0],
           "solid_volume_cm3": 4.4926,
           "surface_area_cm2": 22.3074,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -850,7 +850,7 @@
           "local_bbox_mm": [36.0, 20.0, 40.0],
           "solid_volume_cm3": 16.6656,
           "surface_area_cm2": 37.0,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
           "step_solid_exported": true
         },
         {
@@ -873,7 +873,7 @@
           "local_bbox_mm": [14.0, 3.6, 48.0],
           "solid_volume_cm3": 1.5112,
           "surface_area_cm2": 13.3786,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -1111,7 +1111,7 @@
           "local_bbox_mm": [4.8, 18.0, 60.0],
           "solid_volume_cm3": 3.4208,
           "surface_area_cm2": 22.3156,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
           "step_solid_exported": true
         },
         {
@@ -1138,7 +1138,7 @@
           "local_bbox_mm": [6.0, 112.0, 10.0],
           "solid_volume_cm3": 6.72,
           "surface_area_cm2": 37.04,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
           "step_solid_exported": true
         },
         {
@@ -1165,7 +1165,7 @@
           "local_bbox_mm": [6.0, 84.0, 10.0],
           "solid_volume_cm3": 5.04,
           "surface_area_cm2": 28.08,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
           "step_solid_exported": true
         },
         {
@@ -1188,7 +1188,7 @@
           "local_bbox_mm": [12.4, 114.0, 12.4],
           "solid_volume_cm3": 11.6326,
           "surface_area_cm2": 42.4994,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
           "step_solid_exported": true
         },
         {
@@ -1211,7 +1211,7 @@
           "local_bbox_mm": [10.0, 156.0, 14.0],
           "solid_volume_cm3": 21.84,
           "surface_area_cm2": 77.68,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
           "step_solid_exported": true
         },
         {
@@ -1234,7 +1234,7 @@
           "local_bbox_mm": [10.0, 116.0, 22.0],
           "solid_volume_cm3": 25.52,
           "surface_area_cm2": 78.64,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
           "step_solid_exported": true
         },
         {
@@ -1257,7 +1257,7 @@
           "local_bbox_mm": [6.0, 120.0, 12.0],
           "solid_volume_cm3": 8.64,
           "surface_area_cm2": 44.64,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
           "step_solid_exported": true
         },
         {
@@ -1280,7 +1280,7 @@
           "local_bbox_mm": [14.0, 132.0, 14.0],
           "solid_volume_cm3": 16.9869,
           "surface_area_cm2": 55.1588,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
           "step_solid_exported": true
         },
         {
@@ -1303,7 +1303,7 @@
           "local_bbox_mm": [11.6, 36.0, 80.0],
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
           "step_solid_exported": true
         },
         {
@@ -1326,7 +1326,7 @@
           "local_bbox_mm": [5.0, 32.0, 128.0],
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -1349,7 +1349,7 @@
           "local_bbox_mm": [5.0, 8.0, 48.0],
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
           "step_solid_exported": true
         },
         {
@@ -1372,7 +1372,7 @@
           "local_bbox_mm": [3.6, 22.0, 40.0],
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -1395,7 +1395,7 @@
           "local_bbox_mm": [40.0, 30.0, 56.0],
           "solid_volume_cm3": 42.8627,
           "surface_area_cm2": 68.194,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
           "step_solid_exported": true
         },
         {
@@ -1418,7 +1418,7 @@
           "local_bbox_mm": [6.8, 28.0, 56.0],
           "solid_volume_cm3": 6.8241,
           "surface_area_cm2": 31.9316,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
           "step_solid_exported": true
         },
         {
@@ -1441,7 +1441,7 @@
           "local_bbox_mm": [86.0, 94.0, 100.0],
           "solid_volume_cm3": 500.3121,
           "surface_area_cm2": 330.5254,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
           "step_solid_exported": true
         },
         {
@@ -1464,7 +1464,7 @@
           "local_bbox_mm": [28.0, 28.0, 108.0],
           "solid_volume_cm3": 49.1697,
           "surface_area_cm2": 87.8592,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
           "step_solid_exported": true
         },
         {
@@ -1487,7 +1487,7 @@
           "local_bbox_mm": [23.0, 76.0, 216.0],
           "solid_volume_cm3": 255.0962,
           "surface_area_cm2": 352.5854,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
           "step_solid_exported": true
         },
         {
@@ -1510,7 +1510,7 @@
           "local_bbox_mm": [6.0, 8.0, 160.0],
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
           "step_solid_exported": true
         },
         {
@@ -1533,7 +1533,7 @@
           "local_bbox_mm": [6.0, 8.0, 160.0],
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
           "step_solid_exported": true
         },
         {
@@ -1556,7 +1556,7 @@
           "local_bbox_mm": [20.0, 90.0, 20.0],
           "solid_volume_cm3": 22.9308,
           "surface_area_cm2": 54.9172,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
           "step_solid_exported": true
         },
         {
@@ -1579,7 +1579,7 @@
           "local_bbox_mm": [8.0, 24.0, 184.0],
           "solid_volume_cm3": 35.328,
           "surface_area_cm2": 121.6,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
           "step_solid_exported": true
         },
         {
@@ -1602,7 +1602,7 @@
           "local_bbox_mm": [11.6, 36.0, 80.0],
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
           "step_solid_exported": true
         },
         {
@@ -1625,7 +1625,7 @@
           "local_bbox_mm": [5.0, 32.0, 128.0],
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -1648,7 +1648,7 @@
           "local_bbox_mm": [5.0, 8.0, 48.0],
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
           "step_solid_exported": true
         },
         {
@@ -1671,7 +1671,7 @@
           "local_bbox_mm": [3.6, 22.0, 40.0],
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -1694,7 +1694,7 @@
           "local_bbox_mm": [28.0, 20.0, 48.0],
           "solid_volume_cm3": 17.3172,
           "surface_area_cm2": 38.9244,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
           "step_solid_exported": true
         },
         {
@@ -1721,7 +1721,7 @@
           "local_bbox_mm": [50.0, 44.0, 82.0],
           "solid_volume_cm3": 113.539,
           "surface_area_cm2": 130.4338,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
           "step_solid_exported": true
         },
         {
@@ -1744,7 +1744,7 @@
           "local_bbox_mm": [126.0, 156.0, 240.0],
           "solid_volume_cm3": 2427.6828,
           "surface_area_cm2": 988.1641,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -2015,7 +2015,7 @@
           "local_bbox_mm": [52.0, 6.0, 10.0],
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
           "step_solid_exported": true
         },
         {
@@ -2038,7 +2038,7 @@
           "local_bbox_mm": [52.0, 3.0, 8.4],
           "solid_volume_cm3": 0.302,
           "surface_area_cm2": 9.0567,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -2061,7 +2061,7 @@
           "local_bbox_mm": [54.0, 28.0, 48.0],
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
           "step_solid_exported": true
         },
         {
@@ -2087,7 +2087,7 @@
           "local_bbox_mm": [68.0, 80.0, 94.0],
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
           "step_solid_exported": true
         },
         {
@@ -2113,7 +2113,7 @@
           "local_bbox_mm": [8.0, 14.0, 14.0],
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
           "step_solid_exported": true
         },
         {
@@ -2136,7 +2136,7 @@
           "local_bbox_mm": [8.0, 15.0, 44.0],
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -2159,7 +2159,7 @@
           "local_bbox_mm": [16.0, 5.2, 68.0],
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -2182,7 +2182,7 @@
           "local_bbox_mm": [52.0, 38.0, 96.0],
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
           "step_solid_exported": true
         },
         {
@@ -2205,7 +2205,7 @@
           "local_bbox_mm": [2.944, 13.524, 13.524],
           "solid_volume_cm3": 0.1132,
           "surface_area_cm2": 2.6346,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
           "step_solid_exported": true
         },
         {
@@ -2228,7 +2228,7 @@
           "local_bbox_mm": [52.0, 6.0, 10.0],
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
           "step_solid_exported": true
         },
         {
@@ -2251,7 +2251,7 @@
           "local_bbox_mm": [56.0, 4.0, 10.0],
           "solid_volume_cm3": 0.617,
           "surface_area_cm2": 11.9502,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -2274,7 +2274,7 @@
           "local_bbox_mm": [54.0, 28.0, 48.0],
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
           "step_solid_exported": true
         },
         {
@@ -2300,7 +2300,7 @@
           "local_bbox_mm": [68.0, 80.0, 94.0],
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
           "step_solid_exported": true
         },
         {
@@ -2326,7 +2326,7 @@
           "local_bbox_mm": [8.0, 14.0, 14.0],
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
           "step_solid_exported": true
         },
         {
@@ -2349,7 +2349,7 @@
           "local_bbox_mm": [8.0, 15.0, 44.0],
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -2372,7 +2372,7 @@
           "local_bbox_mm": [16.0, 5.2, 68.0],
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -2395,7 +2395,7 @@
           "local_bbox_mm": [52.0, 38.0, 96.0],
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
           "step_solid_exported": true
         },
         {
@@ -2418,7 +2418,7 @@
           "local_bbox_mm": [3.312, 16.608, 16.608],
           "solid_volume_cm3": 0.2001,
           "surface_area_cm2": 3.7449,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
           "step_solid_exported": true
         }
       ],
@@ -2602,7 +2602,7 @@
           "local_bbox_mm": [15.38, 90.322, 129.696],
           "solid_volume_cm3": 112.5088,
           "surface_area_cm2": 231.5642,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
           "step_solid_exported": true
         },
         {
@@ -2629,7 +2629,7 @@
           "local_bbox_mm": [60.0, 50.0, 112.0],
           "solid_volume_cm3": 210.922,
           "surface_area_cm2": 202.8735,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
           "step_solid_exported": true
         },
         {
@@ -2652,7 +2652,7 @@
           "local_bbox_mm": [0.699, 22.771, 6.4],
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
           "step_solid_exported": true
         },
         {
@@ -2675,7 +2675,7 @@
           "local_bbox_mm": [0.399, 27.565, 4.2],
           "solid_volume_cm3": 0.0242,
           "surface_area_cm2": 1.8447,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
           "step_solid_exported": true
         },
         {
@@ -2698,7 +2698,7 @@
           "local_bbox_mm": [0.699, 22.771, 6.4],
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
           "step_solid_exported": true
         }
       ],
@@ -2876,7 +2876,7 @@
           "local_bbox_mm": [12.4, 114.0, 12.4],
           "solid_volume_cm3": 11.6326,
           "surface_area_cm2": 42.4994,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
           "step_solid_exported": true
         },
         {
@@ -2899,7 +2899,7 @@
           "local_bbox_mm": [10.0, 156.0, 14.0],
           "solid_volume_cm3": 21.84,
           "surface_area_cm2": 77.68,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
           "step_solid_exported": true
         },
         {
@@ -2922,7 +2922,7 @@
           "local_bbox_mm": [10.0, 116.0, 22.0],
           "solid_volume_cm3": 25.52,
           "surface_area_cm2": 78.64,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
           "step_solid_exported": true
         },
         {
@@ -2945,7 +2945,7 @@
           "local_bbox_mm": [6.0, 120.0, 12.0],
           "solid_volume_cm3": 8.64,
           "surface_area_cm2": 44.64,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
           "step_solid_exported": true
         },
         {
@@ -2968,7 +2968,7 @@
           "local_bbox_mm": [14.0, 132.0, 14.0],
           "solid_volume_cm3": 16.9869,
           "surface_area_cm2": 55.1588,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -3136,7 +3136,7 @@
           "local_bbox_mm": [15.38, 90.322, 129.696],
           "solid_volume_cm3": 112.5088,
           "surface_area_cm2": 231.5642,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
           "step_solid_exported": true
         },
         {
@@ -3159,7 +3159,7 @@
           "local_bbox_mm": [0.699, 22.771, 6.4],
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
           "step_solid_exported": true
         },
         {
@@ -3182,7 +3182,7 @@
           "local_bbox_mm": [0.399, 27.565, 4.2],
           "solid_volume_cm3": 0.0242,
           "surface_area_cm2": 1.8447,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
           "step_solid_exported": true
         },
         {
@@ -3205,7 +3205,7 @@
           "local_bbox_mm": [0.699, 22.771, 6.4],
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
           "step_solid_exported": true
         }
       ],
@@ -3319,7 +3319,7 @@
           "local_bbox_mm": [6.8, 28.0, 56.0],
           "solid_volume_cm3": 6.8241,
           "surface_area_cm2": 31.9316,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
           "step_solid_exported": true
         },
         {
@@ -3342,7 +3342,7 @@
           "local_bbox_mm": [86.0, 94.0, 100.0],
           "solid_volume_cm3": 500.3121,
           "surface_area_cm2": 330.5254,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
           "step_solid_exported": true
         },
         {
@@ -3365,7 +3365,7 @@
           "local_bbox_mm": [28.0, 28.0, 108.0],
           "solid_volume_cm3": 49.1697,
           "surface_area_cm2": 87.8592,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
           "step_solid_exported": true
         }
       ],
@@ -3523,7 +3523,7 @@
           "local_bbox_mm": [11.6, 36.0, 80.0],
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
           "step_solid_exported": true
         },
         {
@@ -3546,7 +3546,7 @@
           "local_bbox_mm": [5.0, 32.0, 128.0],
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -3569,7 +3569,7 @@
           "local_bbox_mm": [5.0, 8.0, 48.0],
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
           "step_solid_exported": true
         }
       ],
@@ -3697,7 +3697,7 @@
           "local_bbox_mm": [24.0, 28.0, 16.0],
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
           "step_solid_exported": true
         },
         {
@@ -3720,7 +3720,7 @@
           "local_bbox_mm": [136.0, 48.0, 6.0],
           "solid_volume_cm3": 27.0409,
           "surface_area_cm2": 108.6916,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
           "step_solid_exported": true
         },
         {
@@ -3743,7 +3743,7 @@
           "local_bbox_mm": [6.4, 6.4, 5.0],
           "solid_volume_cm3": 0.1322,
           "surface_area_cm2": 1.3597,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
           "step_solid_exported": true
         },
         {
@@ -3766,7 +3766,7 @@
           "local_bbox_mm": [192.0, 40.0, 14.0],
           "solid_volume_cm3": 9.4564,
           "surface_area_cm2": 144.6626,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -3926,7 +3926,7 @@
           "local_bbox_mm": [52.0, 6.0, 10.0],
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
           "step_solid_exported": true
         },
         {
@@ -3949,7 +3949,7 @@
           "local_bbox_mm": [52.0, 3.0, 8.4],
           "solid_volume_cm3": 0.302,
           "surface_area_cm2": 9.0567,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -3972,7 +3972,7 @@
           "local_bbox_mm": [54.0, 28.0, 48.0],
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -4063,7 +4063,7 @@
           "local_bbox_mm": [3.6, 22.0, 40.0],
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
           "step_solid_exported": true
         }
       ],
@@ -4180,7 +4180,7 @@
           "local_bbox_mm": [16.0, 34.0, 120.0],
           "solid_volume_cm3": 42.3845,
           "surface_area_cm2": 94.2949,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -4207,7 +4207,7 @@
           "local_bbox_mm": [44.0, 28.0, 58.0],
           "solid_volume_cm3": 41.7893,
           "surface_area_cm2": 67.9537,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
           "step_solid_exported": true
         },
         {
@@ -4230,7 +4230,7 @@
           "local_bbox_mm": [26.0, 7.0, 76.0],
           "solid_volume_cm3": 9.0272,
           "surface_area_cm2": 41.245,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -4352,7 +4352,7 @@
           "local_bbox_mm": [4.4, 8.4, 64.0],
           "solid_volume_cm3": 1.2818,
           "surface_area_cm2": 11.1755,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -4378,7 +4378,7 @@
           "local_bbox_mm": [36.0, 10.0, 156.0],
           "solid_volume_cm3": 32.4979,
           "surface_area_cm2": 107.6378,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
           "step_solid_exported": true
         },
         {
@@ -4401,7 +4401,7 @@
           "local_bbox_mm": [8.0, 1.6, 90.0],
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -4492,7 +4492,7 @@
           "local_bbox_mm": [40.0, 30.0, 56.0],
           "solid_volume_cm3": 42.8627,
           "surface_area_cm2": 68.194,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
           "step_solid_exported": true
         }
       ],
@@ -4607,7 +4607,7 @@
           "local_bbox_mm": [68.0, 80.0, 94.0],
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
           "step_solid_exported": true
         },
         {
@@ -4633,7 +4633,7 @@
           "local_bbox_mm": [8.0, 14.0, 14.0],
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
           "step_solid_exported": true
         }
       ],
@@ -4795,7 +4795,7 @@
           "local_bbox_mm": [8.0, 15.0, 44.0],
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -4818,7 +4818,7 @@
           "local_bbox_mm": [16.0, 5.2, 68.0],
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -4841,7 +4841,7 @@
           "local_bbox_mm": [52.0, 38.0, 96.0],
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -4932,7 +4932,7 @@
           "local_bbox_mm": [2.944, 13.524, 13.524],
           "solid_volume_cm3": 0.1132,
           "surface_area_cm2": 2.6346,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
           "step_solid_exported": true
         }
       ],
@@ -5054,7 +5054,7 @@
           "local_bbox_mm": [60.0, 50.0, 112.0],
           "solid_volume_cm3": 210.922,
           "surface_area_cm2": 202.8735,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
           "step_solid_exported": true
         }
       ],
@@ -5160,7 +5160,7 @@
           "local_bbox_mm": [20.0, 90.0, 20.0],
           "solid_volume_cm3": 22.9308,
           "surface_area_cm2": 54.9172,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -5292,7 +5292,7 @@
           "local_bbox_mm": [23.0, 76.0, 216.0],
           "solid_volume_cm3": 255.0962,
           "surface_area_cm2": 352.5854,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
           "step_solid_exported": true
         },
         {
@@ -5315,7 +5315,7 @@
           "local_bbox_mm": [6.0, 8.0, 160.0],
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
           "step_solid_exported": true
         },
         {
@@ -5338,7 +5338,7 @@
           "local_bbox_mm": [6.0, 8.0, 160.0],
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
           "step_solid_exported": true
         },
         {
@@ -5361,7 +5361,7 @@
           "local_bbox_mm": [8.0, 24.0, 184.0],
           "solid_volume_cm3": 35.328,
           "surface_area_cm2": 121.6,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
           "step_solid_exported": true
         }
       ],
@@ -5519,7 +5519,7 @@
           "local_bbox_mm": [11.6, 36.0, 80.0],
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
           "step_solid_exported": true
         },
         {
@@ -5542,7 +5542,7 @@
           "local_bbox_mm": [5.0, 32.0, 128.0],
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -5565,7 +5565,7 @@
           "local_bbox_mm": [5.0, 8.0, 48.0],
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
           "step_solid_exported": true
         }
       ],
@@ -5721,7 +5721,7 @@
           "local_bbox_mm": [24.0, 28.0, 16.0],
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
           "step_solid_exported": true
         },
         {
@@ -5744,7 +5744,7 @@
           "local_bbox_mm": [148.0, 52.0, 7.0],
           "solid_volume_cm3": 36.9567,
           "surface_area_cm2": 129.1631,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
           "step_solid_exported": true
         },
         {
@@ -5767,7 +5767,7 @@
           "local_bbox_mm": [13.0, 13.0, 8.0],
           "solid_volume_cm3": 0.9043,
           "surface_area_cm2": 5.0014,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
           "step_solid_exported": true
         },
         {
@@ -5790,7 +5790,7 @@
           "local_bbox_mm": [172.0, 36.0, 12.0],
           "solid_volume_cm3": 6.2611,
           "surface_area_cm2": 114.4031,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -5950,7 +5950,7 @@
           "local_bbox_mm": [52.0, 6.0, 10.0],
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
           "step_solid_exported": true
         },
         {
@@ -5973,7 +5973,7 @@
           "local_bbox_mm": [56.0, 4.0, 10.0],
           "solid_volume_cm3": 0.617,
           "surface_area_cm2": 11.9502,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -5996,7 +5996,7 @@
           "local_bbox_mm": [54.0, 28.0, 48.0],
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -6087,7 +6087,7 @@
           "local_bbox_mm": [3.6, 22.0, 40.0],
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
           "step_solid_exported": true
         }
       ],
@@ -6204,7 +6204,7 @@
           "local_bbox_mm": [8.4, 10.4, 80.0],
           "solid_volume_cm3": 4.4926,
           "surface_area_cm2": 22.3074,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -6231,7 +6231,7 @@
           "local_bbox_mm": [36.0, 20.0, 40.0],
           "solid_volume_cm3": 16.6656,
           "surface_area_cm2": 37.0,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
           "step_solid_exported": true
         },
         {
@@ -6254,7 +6254,7 @@
           "local_bbox_mm": [14.0, 3.6, 48.0],
           "solid_volume_cm3": 1.5112,
           "surface_area_cm2": 13.3786,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -6397,7 +6397,7 @@
           "local_bbox_mm": [10.0, 19.0, 120.0],
           "solid_volume_cm3": 13.0029,
           "surface_area_cm2": 49.1981,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -6423,7 +6423,7 @@
           "local_bbox_mm": [23.0, 4.4, 100.0],
           "solid_volume_cm3": 5.999,
           "surface_area_cm2": 42.689,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
           "step_solid_exported": true
         },
         {
@@ -6446,7 +6446,7 @@
           "local_bbox_mm": [8.0, 1.6, 90.0],
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -6552,7 +6552,7 @@
           "local_bbox_mm": [28.0, 20.0, 48.0],
           "solid_volume_cm3": 17.3172,
           "surface_area_cm2": 38.9244,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
           "step_solid_exported": true
         }
       ],
@@ -6667,7 +6667,7 @@
           "local_bbox_mm": [68.0, 80.0, 94.0],
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
           "step_solid_exported": true
         },
         {
@@ -6693,7 +6693,7 @@
           "local_bbox_mm": [8.0, 14.0, 14.0],
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
           "step_solid_exported": true
         }
       ],
@@ -6841,7 +6841,7 @@
           "local_bbox_mm": [8.0, 15.0, 44.0],
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -6864,7 +6864,7 @@
           "local_bbox_mm": [16.0, 5.2, 68.0],
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -6887,7 +6887,7 @@
           "local_bbox_mm": [52.0, 38.0, 96.0],
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -6978,7 +6978,7 @@
           "local_bbox_mm": [3.312, 16.608, 16.608],
           "solid_volume_cm3": 0.2001,
           "surface_area_cm2": 3.7449,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
           "step_solid_exported": true
         }
       ],
@@ -7084,7 +7084,7 @@
           "local_bbox_mm": [126.0, 156.0, 240.0],
           "solid_volume_cm3": 2427.6828,
           "surface_area_cm2": 988.1641,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -7205,7 +7205,7 @@
           "local_bbox_mm": [4.8, 18.0, 60.0],
           "solid_volume_cm3": 3.4208,
           "surface_area_cm2": 22.3156,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
           "step_solid_exported": true
         },
         {
@@ -7232,7 +7232,7 @@
           "local_bbox_mm": [6.0, 112.0, 10.0],
           "solid_volume_cm3": 6.72,
           "surface_area_cm2": 37.04,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
           "step_solid_exported": true
         },
         {
@@ -7259,7 +7259,7 @@
           "local_bbox_mm": [6.0, 84.0, 10.0],
           "solid_volume_cm3": 5.04,
           "surface_area_cm2": 28.08,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
           "step_solid_exported": true
         },
         {
@@ -7286,7 +7286,7 @@
           "local_bbox_mm": [50.0, 44.0, 82.0],
           "solid_volume_cm3": 113.539,
           "surface_area_cm2": 130.4338,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
           "step_solid_exported": true
         }
       ],
@@ -7342,7 +7342,7 @@
           "sha256": "79b4c31894c25ea964df29272d6aae7e2e7ded6d451893d40b46570d173082ab"
         },
         "project_front_png": {
-          "path": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
           "exists": true,
           "width": 1024,
           "height": 1536,
@@ -7350,7 +7350,7 @@
           "sha256": "4519b7bd3acef1551383d3171cc68dae7e183ec76d0f444c28416a6f249064d0"
         },
         "project_front_glb": {
-          "path": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
+          "path": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
           "exists": true,
           "mesh_count": 1,
           "vertices": 299410,
@@ -7603,7 +7603,7 @@
           "local_bbox_mm": [12.4, 114.0, 12.4],
           "solid_volume_cm3": 11.6326,
           "surface_area_cm2": 42.4994,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
           "step_solid_exported": true
         },
         {
@@ -7626,7 +7626,7 @@
           "local_bbox_mm": [10.0, 156.0, 14.0],
           "solid_volume_cm3": 21.84,
           "surface_area_cm2": 77.68,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
           "step_solid_exported": true
         },
         {
@@ -7649,7 +7649,7 @@
           "local_bbox_mm": [10.0, 116.0, 22.0],
           "solid_volume_cm3": 25.52,
           "surface_area_cm2": 78.64,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
           "step_solid_exported": true
         },
         {
@@ -7672,7 +7672,7 @@
           "local_bbox_mm": [6.0, 120.0, 12.0],
           "solid_volume_cm3": 8.64,
           "surface_area_cm2": 44.64,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
           "step_solid_exported": true
         },
         {
@@ -7695,7 +7695,7 @@
           "local_bbox_mm": [14.0, 132.0, 14.0],
           "solid_volume_cm3": 16.9869,
           "surface_area_cm2": 55.1588,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -7863,7 +7863,7 @@
           "local_bbox_mm": [15.38, 90.322, 129.696],
           "solid_volume_cm3": 112.5088,
           "surface_area_cm2": 231.5642,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
           "step_solid_exported": true
         },
         {
@@ -7886,7 +7886,7 @@
           "local_bbox_mm": [0.699, 22.771, 6.4],
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
           "step_solid_exported": true
         },
         {
@@ -7909,7 +7909,7 @@
           "local_bbox_mm": [0.399, 27.565, 4.2],
           "solid_volume_cm3": 0.0242,
           "surface_area_cm2": 1.8447,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
           "step_solid_exported": true
         },
         {
@@ -7932,7 +7932,7 @@
           "local_bbox_mm": [0.699, 22.771, 6.4],
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
           "step_solid_exported": true
         }
       ],
@@ -8046,7 +8046,7 @@
           "local_bbox_mm": [6.8, 28.0, 56.0],
           "solid_volume_cm3": 6.8241,
           "surface_area_cm2": 31.9316,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
           "step_solid_exported": true
         },
         {
@@ -8069,7 +8069,7 @@
           "local_bbox_mm": [86.0, 94.0, 100.0],
           "solid_volume_cm3": 500.3121,
           "surface_area_cm2": 330.5254,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
           "step_solid_exported": true
         },
         {
@@ -8092,7 +8092,7 @@
           "local_bbox_mm": [28.0, 28.0, 108.0],
           "solid_volume_cm3": 49.1697,
           "surface_area_cm2": 87.8592,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
           "step_solid_exported": true
         }
       ],
@@ -8250,7 +8250,7 @@
           "local_bbox_mm": [11.6, 36.0, 80.0],
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
           "step_solid_exported": true
         },
         {
@@ -8273,7 +8273,7 @@
           "local_bbox_mm": [5.0, 32.0, 128.0],
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -8296,7 +8296,7 @@
           "local_bbox_mm": [5.0, 8.0, 48.0],
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
           "step_solid_exported": true
         }
       ],
@@ -8424,7 +8424,7 @@
           "local_bbox_mm": [24.0, 28.0, 16.0],
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
           "step_solid_exported": true
         },
         {
@@ -8447,7 +8447,7 @@
           "local_bbox_mm": [136.0, 48.0, 6.0],
           "solid_volume_cm3": 27.0409,
           "surface_area_cm2": 108.6916,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
           "step_solid_exported": true
         },
         {
@@ -8470,7 +8470,7 @@
           "local_bbox_mm": [6.4, 6.4, 5.0],
           "solid_volume_cm3": 0.1322,
           "surface_area_cm2": 1.3597,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
           "step_solid_exported": true
         },
         {
@@ -8493,7 +8493,7 @@
           "local_bbox_mm": [192.0, 40.0, 14.0],
           "solid_volume_cm3": 9.4564,
           "surface_area_cm2": 144.6626,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -8653,7 +8653,7 @@
           "local_bbox_mm": [52.0, 6.0, 10.0],
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
           "step_solid_exported": true
         },
         {
@@ -8676,7 +8676,7 @@
           "local_bbox_mm": [52.0, 3.0, 8.4],
           "solid_volume_cm3": 0.302,
           "surface_area_cm2": 9.0567,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -8699,7 +8699,7 @@
           "local_bbox_mm": [54.0, 28.0, 48.0],
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -8790,7 +8790,7 @@
           "local_bbox_mm": [3.6, 22.0, 40.0],
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
           "step_solid_exported": true
         }
       ],
@@ -8907,7 +8907,7 @@
           "local_bbox_mm": [16.0, 34.0, 120.0],
           "solid_volume_cm3": 42.3845,
           "surface_area_cm2": 94.2949,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -8934,7 +8934,7 @@
           "local_bbox_mm": [44.0, 28.0, 58.0],
           "solid_volume_cm3": 41.7893,
           "surface_area_cm2": 67.9537,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
           "step_solid_exported": true
         },
         {
@@ -8957,7 +8957,7 @@
           "local_bbox_mm": [26.0, 7.0, 76.0],
           "solid_volume_cm3": 9.0272,
           "surface_area_cm2": 41.245,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -9079,7 +9079,7 @@
           "local_bbox_mm": [4.4, 8.4, 64.0],
           "solid_volume_cm3": 1.2818,
           "surface_area_cm2": 11.1755,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -9105,7 +9105,7 @@
           "local_bbox_mm": [36.0, 10.0, 156.0],
           "solid_volume_cm3": 32.4979,
           "surface_area_cm2": 107.6378,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
           "step_solid_exported": true
         },
         {
@@ -9128,7 +9128,7 @@
           "local_bbox_mm": [8.0, 1.6, 90.0],
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -9219,7 +9219,7 @@
           "local_bbox_mm": [40.0, 30.0, 56.0],
           "solid_volume_cm3": 42.8627,
           "surface_area_cm2": 68.194,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
           "step_solid_exported": true
         }
       ],
@@ -9334,7 +9334,7 @@
           "local_bbox_mm": [68.0, 80.0, 94.0],
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
           "step_solid_exported": true
         },
         {
@@ -9360,7 +9360,7 @@
           "local_bbox_mm": [8.0, 14.0, 14.0],
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
           "step_solid_exported": true
         }
       ],
@@ -9522,7 +9522,7 @@
           "local_bbox_mm": [8.0, 15.0, 44.0],
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -9545,7 +9545,7 @@
           "local_bbox_mm": [16.0, 5.2, 68.0],
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -9568,7 +9568,7 @@
           "local_bbox_mm": [52.0, 38.0, 96.0],
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -9659,7 +9659,7 @@
           "local_bbox_mm": [2.944, 13.524, 13.524],
           "solid_volume_cm3": 0.1132,
           "surface_area_cm2": 2.6346,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
           "step_solid_exported": true
         }
       ],
@@ -9781,7 +9781,7 @@
           "local_bbox_mm": [60.0, 50.0, 112.0],
           "solid_volume_cm3": 210.922,
           "surface_area_cm2": 202.8735,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
           "step_solid_exported": true
         }
       ],
@@ -9887,7 +9887,7 @@
           "local_bbox_mm": [20.0, 90.0, 20.0],
           "solid_volume_cm3": 22.9308,
           "surface_area_cm2": 54.9172,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -10019,7 +10019,7 @@
           "local_bbox_mm": [23.0, 76.0, 216.0],
           "solid_volume_cm3": 255.0962,
           "surface_area_cm2": 352.5854,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
           "step_solid_exported": true
         },
         {
@@ -10042,7 +10042,7 @@
           "local_bbox_mm": [6.0, 8.0, 160.0],
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
           "step_solid_exported": true
         },
         {
@@ -10065,7 +10065,7 @@
           "local_bbox_mm": [6.0, 8.0, 160.0],
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
           "step_solid_exported": true
         },
         {
@@ -10088,7 +10088,7 @@
           "local_bbox_mm": [8.0, 24.0, 184.0],
           "solid_volume_cm3": 35.328,
           "surface_area_cm2": 121.6,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
           "step_solid_exported": true
         }
       ],
@@ -10246,7 +10246,7 @@
           "local_bbox_mm": [11.6, 36.0, 80.0],
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
           "step_solid_exported": true
         },
         {
@@ -10269,7 +10269,7 @@
           "local_bbox_mm": [5.0, 32.0, 128.0],
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
           "step_solid_exported": true
         },
         {
@@ -10292,7 +10292,7 @@
           "local_bbox_mm": [5.0, 8.0, 48.0],
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
           "step_solid_exported": true
         }
       ],
@@ -10448,7 +10448,7 @@
           "local_bbox_mm": [24.0, 28.0, 16.0],
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
           "step_solid_exported": true
         },
         {
@@ -10471,7 +10471,7 @@
           "local_bbox_mm": [148.0, 52.0, 7.0],
           "solid_volume_cm3": 36.9567,
           "surface_area_cm2": 129.1631,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
           "step_solid_exported": true
         },
         {
@@ -10494,7 +10494,7 @@
           "local_bbox_mm": [13.0, 13.0, 8.0],
           "solid_volume_cm3": 0.9043,
           "surface_area_cm2": 5.0014,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
           "step_solid_exported": true
         },
         {
@@ -10517,7 +10517,7 @@
           "local_bbox_mm": [172.0, 36.0, 12.0],
           "solid_volume_cm3": 6.2611,
           "surface_area_cm2": 114.4031,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -10677,7 +10677,7 @@
           "local_bbox_mm": [52.0, 6.0, 10.0],
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
           "step_solid_exported": true
         },
         {
@@ -10700,7 +10700,7 @@
           "local_bbox_mm": [56.0, 4.0, 10.0],
           "solid_volume_cm3": 0.617,
           "surface_area_cm2": 11.9502,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -10723,7 +10723,7 @@
           "local_bbox_mm": [54.0, 28.0, 48.0],
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -10814,7 +10814,7 @@
           "local_bbox_mm": [3.6, 22.0, 40.0],
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
           "step_solid_exported": true
         }
       ],
@@ -10931,7 +10931,7 @@
           "local_bbox_mm": [8.4, 10.4, 80.0],
           "solid_volume_cm3": 4.4926,
           "surface_area_cm2": 22.3074,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -10958,7 +10958,7 @@
           "local_bbox_mm": [36.0, 20.0, 40.0],
           "solid_volume_cm3": 16.6656,
           "surface_area_cm2": 37.0,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
           "step_solid_exported": true
         },
         {
@@ -10981,7 +10981,7 @@
           "local_bbox_mm": [14.0, 3.6, 48.0],
           "solid_volume_cm3": 1.5112,
           "surface_area_cm2": 13.3786,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -11124,7 +11124,7 @@
           "local_bbox_mm": [10.0, 19.0, 120.0],
           "solid_volume_cm3": 13.0029,
           "surface_area_cm2": 49.1981,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -11150,7 +11150,7 @@
           "local_bbox_mm": [23.0, 4.4, 100.0],
           "solid_volume_cm3": 5.999,
           "surface_area_cm2": 42.689,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
           "step_solid_exported": true
         },
         {
@@ -11173,7 +11173,7 @@
           "local_bbox_mm": [8.0, 1.6, 90.0],
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
           "step_solid_exported": true
         }
       ],
@@ -11279,7 +11279,7 @@
           "local_bbox_mm": [28.0, 20.0, 48.0],
           "solid_volume_cm3": 17.3172,
           "surface_area_cm2": 38.9244,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
           "step_solid_exported": true
         }
       ],
@@ -11394,7 +11394,7 @@
           "local_bbox_mm": [68.0, 80.0, 94.0],
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
           "step_solid_exported": true
         },
         {
@@ -11420,7 +11420,7 @@
           "local_bbox_mm": [8.0, 14.0, 14.0],
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
           "step_solid_exported": true
         }
       ],
@@ -11568,7 +11568,7 @@
           "local_bbox_mm": [8.0, 15.0, 44.0],
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
           "step_solid_exported": true
         },
         {
@@ -11591,7 +11591,7 @@
           "local_bbox_mm": [16.0, 5.2, 68.0],
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
           "step_solid_exported": true
         },
         {
@@ -11614,7 +11614,7 @@
           "local_bbox_mm": [52.0, 38.0, 96.0],
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -11705,7 +11705,7 @@
           "local_bbox_mm": [3.312, 16.608, 16.608],
           "solid_volume_cm3": 0.2001,
           "surface_area_cm2": 3.7449,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
           "step_solid_exported": true
         }
       ],
@@ -11811,7 +11811,7 @@
           "local_bbox_mm": [126.0, 156.0, 240.0],
           "solid_volume_cm3": 2427.6828,
           "surface_area_cm2": 988.1641,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
           "step_solid_exported": true
         }
       ],
@@ -11932,7 +11932,7 @@
           "local_bbox_mm": [4.8, 18.0, 60.0],
           "solid_volume_cm3": 3.4208,
           "surface_area_cm2": 22.3156,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
           "step_solid_exported": true
         },
         {
@@ -11959,7 +11959,7 @@
           "local_bbox_mm": [6.0, 112.0, 10.0],
           "solid_volume_cm3": 6.72,
           "surface_area_cm2": 37.04,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
           "step_solid_exported": true
         },
         {
@@ -11986,7 +11986,7 @@
           "local_bbox_mm": [6.0, 84.0, 10.0],
           "solid_volume_cm3": 5.04,
           "surface_area_cm2": 28.08,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
           "step_solid_exported": true
         },
         {
@@ -12013,7 +12013,7 @@
           "local_bbox_mm": [50.0, 44.0, 82.0],
           "solid_volume_cm3": 113.539,
           "surface_area_cm2": 130.4338,
-          "step": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
+          "step": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
           "step_solid_exported": true
         }
       ],

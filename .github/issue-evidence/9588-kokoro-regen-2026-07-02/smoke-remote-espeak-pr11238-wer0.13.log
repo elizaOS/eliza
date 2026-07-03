@@ -6,7 +6,7 @@
  Info       [KokoroFfiRuntime] loaded Eliza-1 voice af_bella from /home/shaw/eliza-worktrees/kokoro-src/kokoro-model-remote/voices/af_bella.bin
 [kokoro-real-smoke] synthesized 91200 samples @ 24000Hz (3.80s), TTFA=113529ms
 [kokoro-real-smoke] envelope-cv 1.250 (speech ≫0.4, noise ≈0)
-llama_model_loader: loaded meta data with 29 key-value pairs and 311 tensors from /home/shaw/.local/state/milady/asr-bundle/asr/eliza-1-asr.gguf (version GGUF V3 (latest))
+llama_model_loader: loaded meta data with 29 key-value pairs and 311 tensors from /home/shaw/.local/state/eliza/asr-bundle/asr/eliza-1-asr.gguf (version GGUF V3 (latest))
 llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
 llama_model_loader: - kv   0:                       general.architecture str              = qwen3vl
 llama_model_loader: - kv   1:                               general.type str              = model
@@ -906,7 +906,7 @@ load_hparams: audio_hop_len:      160
 
 load_hparams: model size:         204.44 MiB
 load_hparams: metadata size:      0.12 MiB
-load_tensors: loaded 302 tensors from /home/shaw/.local/state/milady/asr-bundle/asr/eliza-1-asr-mmproj.gguf
+load_tensors: loaded 302 tensors from /home/shaw/.local/state/eliza/asr-bundle/asr/eliza-1-asr-mmproj.gguf
 warmup: warmup with audio size = 3000
 alloc_compute_meta:        CPU compute buffer size =   554.43 MiB
 alloc_compute_meta: graph splits = 1, nodes = 623

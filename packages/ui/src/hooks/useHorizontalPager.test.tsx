@@ -30,23 +30,17 @@ function Harness({
   initialPage = 0,
   pageCount = 3,
   onPageChange,
-  edgeSwipeRightEnabled = false,
-  onEdgeSwipeRight,
   onRailClick,
 }: {
   initialPage?: number;
   pageCount?: number;
   onPageChange?: (page: number) => void;
-  edgeSwipeRightEnabled?: boolean;
-  onEdgeSwipeRight?: () => void;
   onRailClick?: () => void;
 }): React.JSX.Element {
   const [page, setPage] = React.useState(initialPage);
   const pager = useHorizontalPager({
     page,
     pageCount,
-    edgeSwipeRightEnabled,
-    onEdgeSwipeRight,
     onPageChange: (next) => {
       onPageChange?.(next);
       setPage(next);
@@ -486,7 +480,7 @@ describe("useHorizontalPager — release-velocity flick", () => {
   });
 });
 
-describe("useHorizontalPager — edge-swipe-home reduced threshold", () => {
+describe("useHorizontalPager — right drag at the first page", () => {
   const opts = {
     pointerId: 8,
     pointerType: "touch",
@@ -494,45 +488,57 @@ describe("useHorizontalPager — edge-swipe-home reduced threshold", () => {
     clientY: 300,
   } as const;
 
-  function slowRightDrag(rail: HTMLElement, px: number) {
+  it("rubber-bands (damped) and never commits — there is no edge-swipe commit", () => {
+    runAnimationFramesImmediately();
+    const onChange = vi.fn();
+    const { getByTestId } = render(
+      <Harness initialPage={0} onPageChange={onChange} />,
+    );
+    const rail = getByTestId("rail");
     act(() => {
       clock = 1000;
       fireEvent.pointerDown(rail, { ...opts, clientX: 100 });
-      fireEvent.pointerMove(rail, { ...opts, clientX: 100 + 20 });
+      fireEvent.pointerMove(rail, { ...opts, clientX: 120 });
       // Slow: 500ms elapsed so neither average nor release velocity flicks.
       clock = 1500;
-      fireEvent.pointerMove(rail, { ...opts, clientX: 100 + px });
-      clock = 1520;
-      fireEvent.pointerUp(rail, { ...opts, clientX: 100 + px });
+      fireEvent.pointerMove(rail, { ...opts, clientX: 300 });
     });
-  }
-
-  it("fires onEdgeSwipeRight for a short (~70px) slow right drag at page 0 when enabled", () => {
-    const onEdge = vi.fn();
-    const { getByTestId } = render(
-      <Harness
-        initialPage={0}
-        edgeSwipeRightEnabled
-        onEdgeSwipeRight={onEdge}
-      />,
-    );
-    // 70px is far under the 50% (512px) inter-page floor, but the damped
-    // edge-swipe-home commits at the 64px MIN threshold.
-    slowRightDrag(getByTestId("rail"), 70);
-    expect(onEdge).toHaveBeenCalledTimes(1);
+    // The rail paints the damped edge resistance (200px · 0.35 = 70px), not a
+    // 1:1 pan — page 0 has nothing to its left.
+    expect(rail.style.transform).toContain("70px");
+    act(() => {
+      clock = 1520;
+      fireEvent.pointerUp(rail, { ...opts, clientX: 300 });
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    // Settles back to the resting page-0 offset.
+    expect(rail.style.transform).toContain("translate3d(0px,0,0)");
   });
 
-  it("does not fire onEdgeSwipeRight when edge-swipe is disabled", () => {
-    const onEdge = vi.fn();
+  it("a right drag at page > 0 pages BACK with 1:1 tracking (the launcher back-swipe path)", () => {
+    runAnimationFramesImmediately();
+    const onChange = vi.fn();
     const { getByTestId } = render(
-      <Harness
-        initialPage={0}
-        edgeSwipeRightEnabled={false}
-        onEdgeSwipeRight={onEdge}
-      />,
+      <Harness initialPage={1} onPageChange={onChange} />,
     );
-    slowRightDrag(getByTestId("rail"), 70);
-    expect(onEdge).not.toHaveBeenCalled();
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...opts, clientX: 100 });
+      fireEvent.pointerMove(rail, { ...opts, clientX: 120 });
+      clock = 1200;
+      fireEvent.pointerMove(rail, { ...opts, clientX: 250 });
+    });
+    // 1:1: the rail sits at the page-1 offset plus the raw 150px drag —
+    // no damping on a movable direction. jsdom width fallback is 1024.
+    expect(rail.style.transform).toContain("translate3d(-874px,0,0)");
+    act(() => {
+      // Fast finish → flick-commit back to page 0.
+      clock = 1220;
+      fireEvent.pointerMove(rail, { ...opts, clientX: 320 });
+      fireEvent.pointerUp(rail, { ...opts, clientX: 320 });
+    });
+    expect(onChange).toHaveBeenCalledWith(0);
   });
 });
 

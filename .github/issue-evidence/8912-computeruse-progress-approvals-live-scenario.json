@@ -209,11 +209,11 @@
   "flakyPassedCount": 0,
   "totalCostUsd": 0,
   "artifactPaths": {
-    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
-    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/matrix.json",
-    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/index.html",
-    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/data.js",
-    "nativeJsonl": "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
-    "nativeManifest": "/Users/shawwalters/eliza-workspace/milady/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json"
+    "runDir": "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-run/viewer/data.js",
+    "nativeJsonl": "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.jsonl",
+    "nativeManifest": "/Users/shawwalters/eliza-workspace/eliza/eliza-8887/.github/issue-evidence/8912-computeruse-progress-approvals-live-native.manifest.json"
   }
 }

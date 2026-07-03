@@ -26,7 +26,7 @@ single `~/.codex` login. The layout (written by
 ```
 
 where `<stateDir>` is `$ELIZA_HOME` (or the resolved per-user state dir,
-default `~/.local/state/milady`). This adapter's `codex_adapter.accounts`
+default `~/.local/state/eliza`). This adapter's `codex_adapter.accounts`
 enumerates those homes and round-robins turns across the selected set — it does
 **no** OAuth and no network; materializing the homes is the TS runtime's job.
 

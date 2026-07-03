@@ -47,7 +47,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
 ];
 
 /** Developer tools, in display order. Shown on the same launcher page after the
- *  apps, only when Developer Mode is on. */
+ *  apps, only when Developer Mode is on. `fine-tuning` (model training) is a
+ *  developer surface, not an everyday app — it hides with the rest of the set. */
 export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "trajectories",
   "database",
@@ -55,7 +56,20 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "logs",
   "skills",
   "plugins",
+  "fine-tuning",
 ];
+
+/**
+ * Early-stage surfaces forced to `preview` kind for the launcher regardless of
+ * how their views are declared: hidden from the default grid, shown only when
+ * the Preview toggle is on. Keeps the out-of-the-box launcher to the everyday
+ * core (feed/stream/relationships are not there yet).
+ */
+export const LAUNCHER_PREVIEW_IDS: ReadonlySet<string> = new Set([
+  "feed",
+  "stream",
+  "relationships",
+]);
 
 /**
  * Native-OS surfaces that only belong on the AOSP ElizaOS fork. Appended to the
@@ -149,14 +163,15 @@ const AOSP_INDEX = new Map(LAUNCHER_AOSP_ONLY_IDS.map((id, i) => [id, i]));
 
 /**
  * Effective view-kind for launcher visibility. A curated developer TOOL
- * (DEVELOPER_INDEX) is developer-kind regardless of how its view happens to be
- * declared, so the whole dev-tool set hides together when Developer Mode is off;
- * everything else follows its own declared kind.
+ * (DEVELOPER_INDEX) is developer-kind and a curated preview surface
+ * (LAUNCHER_PREVIEW_IDS) is preview-kind regardless of how each view happens to
+ * be declared, so each set hides together under its Settings toggle; everything
+ * else follows its own declared kind.
  */
 function launcherViewKind(canonicalId: string, entry: ViewEntry) {
-  return DEVELOPER_INDEX.has(canonicalId)
-    ? "developer"
-    : resolveViewKind(entry);
+  if (DEVELOPER_INDEX.has(canonicalId)) return "developer";
+  if (LAUNCHER_PREVIEW_IDS.has(canonicalId)) return "preview";
+  return resolveViewKind(entry);
 }
 
 /**

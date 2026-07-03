@@ -42,7 +42,7 @@
   "schema_version": 1,
   "source": {
     "git_revision": "6cee511d9a7d2f9763f60ed5306fde6efeaf189e",
-    "repository_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/os/linux/vm"
+    "repository_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/os/linux/vm"
   },
   "version": "dev"
 }

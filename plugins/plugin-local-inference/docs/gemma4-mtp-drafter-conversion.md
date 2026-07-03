@@ -128,13 +128,13 @@ remaining gap is the trained drafter artifact.
 DFlash drafter is a **distilled student** (`distill_dflash_drafter.py`), and
 distillation is *"fail-closed on a missing `--target-checkpoint`"* — there is no
 SFT'd target text checkpoint in the repo, and production runs on an **H200**.
-The milady `dflash-draft` GGUF arch (`src/models/dflash-draft.cpp`,
+The eliza `dflash-draft` GGUF arch (`src/models/dflash-draft.cpp`,
 `xxxm1r0xxx/gemma-4-dflash-draft` is its config stub with no weights) computes
 K/V from the token stream and cross-attends to the target hidden via
 `dflash_fc`/`wk`/`wv` — a **different architecture** from the Google LiteRT
 extraction (`SeatownSin/...`, which has only `q_proj`/`o_proj` per block and
 fuses token+activation in one `pre_proj`), so the extraction's weights cannot be
-loaded into the milady arch. Producing a loadable drafter therefore requires
+loaded into the eliza arch. Producing a loadable drafter therefore requires
 either (a) running `distill_dflash_drafter.py` against an SFT'd Gemma-4 target on
 an H200, or (b) the **EAGLE3 head** path (`LLM_ARCH_EAGLE3` in the fork;
 develop's manifest schema already accepts an `eagle3` block referencing
@@ -157,7 +157,7 @@ ships with `google/gemma-4-E2B-it-assistant`, converted to GGUF:
 | LiteRT mirrors | `metricspace/gemma4-E2B-it-litert-128k-mtp`, `MichaelWelsch/gemma-4-E2B-it-litert-community-128k-mtp` |
 | Base | `google/gemma-4-E2B-it-assistant`, apache-2.0 |
 | Arch | `gemma4-assistant`: 4-block drafter, `embedding_length 256`, head_count 4 / kv 1, `key_length 512`(global)/`256`(swa), SWA window 512, pattern `[T,T,T,F]`, `nextn_predict_layers 4`, `embedding_length_out 1536` (the E2B hidden). Tokenizer `gemma4`, vocab 262144 — **matches gemma-4-E2B**. |
-| Tensors | per block `attn_norm / attn_q(+q_norm) / attn_output / ffn_{norm,gate,up,down} / post_attention_norm / post_ffw_norm / layer_output_scale`; top-level `token_embd`, `output_norm`, `nextn.pre_projection [3072,256]`, `nextn.post_projection [256,1536]`. (Q+O attention only; distinct from milady `dflash-draft`, which uses `wk`/`wv` + `dflash_fc`.) |
+| Tensors | per block `attn_norm / attn_q(+q_norm) / attn_output / ffn_{norm,gate,up,down} / post_attention_norm / post_ffw_norm / layer_output_scale`; top-level `token_embd`, `output_norm`, `nextn.pre_projection [3072,256]`, `nextn.post_projection [256,1536]`. (Q+O attention only; distinct from eliza `dflash-draft`, which uses `wk`/`wv` + `dflash_fc`.) |
 
 **Current fork status.** The original gap was fork arch support: older
 `v1.2.0-eliza` builds did not recognize `gemma4-assistant`, so the drafter needed

@@ -7,7 +7,7 @@ import { users } from "./users";
 /**
  * Ad platform type.
  */
-export type AdPlatform = "meta" | "google" | "tiktok";
+export type AdPlatform = "meta" | "google" | "tiktok" | "linkedin";
 
 /**
  * Ad account status.
@@ -50,7 +50,7 @@ export const adAccounts = pgTable(
     // Token expiration tracking
     token_expires_at: timestamp("token_expires_at"),
 
-    status: text("status").$type<AdAccountStatus>().notNull().default("active"),
+    status: text("status").$type<AdAccountStatus>().notNull().default("pending"),
 
     // Platform-specific metadata
     metadata: jsonb("metadata")
@@ -65,6 +65,8 @@ export const adAccounts = pgTable(
         timezone?: string;
         // TikTok-specific
         advertiser_id?: string;
+        // LinkedIn-specific
+        organization_urn?: string;
         // Common
         permissions?: string[];
         last_sync_at?: string;

@@ -495,6 +495,17 @@ export async function applyRestoredConnection(args: {
     return;
   }
 
+  if (isMobileLocalActiveServer(restoredActiveServer)) {
+    // Bundled mobile on-device agent (`eliza-local-agent://ipc`): a native
+    // Capacitor IPC identity, not a network host — no socket dial, no bearer
+    // token. Route the client at the IPC base; the full-Bun engine starts
+    // lazily on the first /api request through the iOS/Android local-agent
+    // transport. Without this branch the remote-host SECURITY backstop below
+    // dropped the record on every cold launch (see canRestoreActiveServer).
+    clientRef.setBaseUrl(restoredActiveServer.apiBase ?? null);
+    return;
+  }
+
   const reconciled = reconcilePersistedApiBaseWithLive(
     restoredActiveServer.apiBase,
   );
@@ -540,6 +551,18 @@ export function canRestoreActiveServer(args: {
   isDesktop: boolean;
 }): boolean {
   if (args.server.apiBase) {
+    // The bundled mobile on-device agent (`eliza-local-agent://ipc`) is a
+    // native Capacitor IPC identity, not a network host — restoring it never
+    // dials a socket or attaches a bearer token to a remote, so the
+    // http/https remote-host trust gate below must not drop it. Without this
+    // branch every iOS/Android local-mode cold launch cleared the saved
+    // server AND `eliza:first-run-complete`, bouncing the user back into
+    // onboarding and never starting the on-device engine.
+    // reconcileMobileRestoredActiveServer has already validated the persisted
+    // runtime mode for this record before restore reaches this gate.
+    if (isMobileLocalActiveServer(args.server)) {
+      return true;
+    }
     // A "remote" record with an untrusted apiBase host must not be restored —
     // restoring it would dial an attacker-chosen server with the persisted
     // bearer token. Untrusted → not restorable → the caller clears it and falls

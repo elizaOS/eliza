@@ -515,7 +515,11 @@ function SheetGrabber({
           // together. The bar paints at full opacity — a prior regression pinned
           // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
           "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
-          glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
+          // Pulse while the mic is hot / a reply is speaking: the warm bar
+          // breathes instead of sitting static, the "audio is on" cue.
+          glow
+            ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none"
+            : "bg-white/45",
         )}
       />
     </motion.button>
@@ -584,7 +588,11 @@ function PillHandle({
           // The bar paints at full opacity — a prior regression pinned it to
           // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
           "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
-          glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
+          // Same pulse as the SheetGrabber bar: while audio is on and the chat
+          // is collapsed to the pill, the pill itself pulses.
+          glow
+            ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none"
+            : "bg-white/45",
         )}
       />
     </button>
@@ -813,6 +821,7 @@ export function BootStatusIndicator({
       aria-live="polite"
       aria-atomic="true"
       data-testid="chat-boot-status"
+      data-aesthetic-audit-ignore-text-density="true"
       data-slow={slow ? "true" : undefined}
       className="pointer-events-none relative mb-2 flex w-full justify-center"
     >
@@ -1546,7 +1555,6 @@ export function ContinuousChatOverlay({
     setDictationSink,
     setTranscriptSessionSink,
     setComposerHasDraft,
-    transcript,
     needsAudioUnlock,
     unlockAudio,
     openSettings,
@@ -1554,7 +1562,6 @@ export function ContinuousChatOverlay({
     currentTab,
     clearConversation,
     stop,
-    modelStatus,
     speak,
     stopSpeaking,
     speaking,
@@ -4029,24 +4036,10 @@ export function ContinuousChatOverlay({
         }}
       />
 
-      {/* Live interim transcript while listening. There's no "Listening…" text
-          cue — the input bar (or collapsed pill) glows with the speech glow to
-          confirm the mic is hot. Once the recognizer streams partials in, the
-          words appear here above the composer (replaced as more are heard). */}
-      {recording && transcript ? (
-        <div
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          className={cn(
-            "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
-            FLOAT_SHADOW,
-          )}
-        >
-          {transcript}
-          <span aria-hidden="true">…</span>
-        </div>
-      ) : null}
+      {/* No live interim transcript is shown above the composer while
+          listening — the spoken words land as the sent message when the turn
+          completes. The mic being hot is confirmed by the pulsing speech glow
+          on the input bar / grabber / collapsed pill instead of text. */}
 
       {/* Audio-unlock prompt. When autoplay policy blocks the first spoken
           reply, the ambient overlay would otherwise go silent with no recourse
@@ -4075,39 +4068,10 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
-      {/* Local model download/load status. Picking on-device inference drops the
-          user straight into chat (the download runs in the background), so this
-          non-blocking strip is the only place they see why a first reply is
-          slow. Send is NOT gated — the server holds the turn until the model is
-          ready — but the wait is now explained rather than silent. */}
-      {modelStatus.kind === "downloading" || modelStatus.kind === "loading" ? (
-        <div
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          data-testid="overlay-model-download-status"
-          className="pointer-events-none relative mb-2 flex w-full justify-center"
-        >
-          <span
-            className={cn(
-              "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85",
-              FLOAT_SHADOW,
-            )}
-          >
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
-            {modelStatus.kind === "downloading" ? (
-              <span>
-                Downloading {modelStatus.modelName ?? "local model"}
-                {typeof modelStatus.percent === "number"
-                  ? ` — ${Math.round(modelStatus.percent)}%`
-                  : "…"}
-              </span>
-            ) : (
-              <span>Loading {modelStatus.modelName ?? "local model"}…</span>
-            )}
-          </span>
-        </div>
-      ) : null}
+      {/* Local model download/load status renders as the home-grid
+          model-download widget only — no floating pill above the composer (the
+          double status read as clutter). Send stays ungated; the server holds
+          the turn until the model is ready. */}
 
       {/* Cold-start boot feedback — sibling of the model-download banner above.
           See BootStatusIndicator; `showBootBanner` is the grace-gated flag. */}

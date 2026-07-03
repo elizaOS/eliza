@@ -2,7 +2,7 @@ $ tsup && tsc --project tsconfig.build.json
 CLI Building entry: src/account-auth-service.ts, src/index.ts
 CLI Using tsconfig: tsconfig.build.json
 CLI tsup v8.5.1
-CLI Using tsup config: /home/shaw/milady/eliza-wt-8902-task-board-status-driver/plugins/plugin-telegram/tsup.config.ts
+CLI Using tsup config: /home/shaw/eliza/eliza-wt-8902-task-board-status-driver/plugins/plugin-telegram/tsup.config.ts
 CLI Target: esnext
 CLI Cleaning output folder
 ESM Build start

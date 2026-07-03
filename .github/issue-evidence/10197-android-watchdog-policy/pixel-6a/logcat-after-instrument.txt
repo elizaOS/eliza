@@ -86,7 +86,7 @@
 03-11 04:51:10.393  1676 14496 W ProcessStats: Tracking association SourceState{ba8193b com.google.android.googlequicksearchbox:interactor/10139 BFgs #150797} whose proc state 4 is better than process ProcessState{d3ff94f com.google.android.googlequicksearchbox:search/10139 pkg=com.google.android.googlequicksearchbox} proc state 14 (3 skipped)
 03-11 04:51:10.394  1676 14496 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@3e71e86a does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
 03-11 04:51:10.394  1676 14496 D CompatChangeReporter: Compat change id reported: 151861875; UID 10367; state: ENABLED
-03-11 04:51:10.395  1676 14496 I AppsFilter: interaction: PackageSetting{9bb7036 ai.milady.milady/10323} -> PackageSetting{df0b6c7 ai.elizaos.app/10367} BLOCKED
+03-11 04:51:10.395  1676 14496 I AppsFilter: interaction: PackageSetting{9bb7036 ai.elizaos.app/10323} -> PackageSetting{df0b6c7 ai.elizaos.app/10367} BLOCKED
 03-11 04:51:10.395  1676 14496 I AppsFilter: interaction: PackageSetting{16998a4 app.eliza/10324} -> PackageSetting{df0b6c7 ai.elizaos.app/10367} BLOCKED
 03-11 04:51:10.395  1676 14496 I AppsFilter: interaction: PackageSetting{950260d com.google.android.microdroid.empty_payload/10404} -> PackageSetting{df0b6c7 ai.elizaos.app/10367} BLOCKED
 03-11 04:51:10.396  1676  2043 D BackgroundInstallControlService: Package event received: 0
