@@ -17,6 +17,7 @@ import { creditsService } from "../credits";
 import { secretsService } from "../secrets";
 import { googleAdsProvider } from "./providers/google";
 import { metaAdsProvider } from "./providers/meta";
+import { redditAdsProvider } from "./providers/reddit";
 import { tiktokAdsProvider } from "./providers/tiktok";
 import { DaypartingScheduleSchema } from "./schemas";
 import type {
@@ -52,6 +53,7 @@ const providers: Record<AdPlatform, AdProvider | null> = {
   meta: metaAdsProvider,
   google: googleAdsProvider,
   tiktok: tiktokAdsProvider,
+  reddit: redditAdsProvider,
 };
 
 class AdvertisingService {
