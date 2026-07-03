@@ -35,7 +35,7 @@ export {
 } from "./auth/auth-context.js";
 export { tokenMatches } from "./auth/tokens.js";
 
-interface CompatStateLike {
+export interface CompatStateLike {
   current:
     | (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null })
     | null;
@@ -369,7 +369,7 @@ export function ensureAuthSessionOrBootstrap(
  * Fails closed: any path that is not a recognised owner principal resolves to
  * `"NONE"` (rank 0).
  */
-export function resolveBoundaryRole(
+function resolveBoundaryRole(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   env: NodeJS.ProcessEnv = process.env,
 ): RoleGateRole {
@@ -377,11 +377,17 @@ export function resolveBoundaryRole(
     return "OWNER";
   }
 
-  const expectedToken = resolveApiToken(env);
-  if (expectedToken) {
-    const provided = getProvidedApiToken(req);
-    if (provided && tokenMatches(expectedToken, provided)) {
-      return "OWNER";
+  // #12087 Item 29: a presented API token only elevates a remote caller to OWNER
+  // when ELIZA_REQUIRE_LOCAL_AUTH=1, matching the async ensureRouteMinRole DB
+  // path. Without that flag the sync helper would grant OWNER for a bare token
+  // while the async path would not — the two boundary paths now agree.
+  if (env.ELIZA_REQUIRE_LOCAL_AUTH === "1") {
+    const expectedToken = resolveApiToken(env);
+    if (expectedToken) {
+      const provided = getProvidedApiToken(req);
+      if (provided && tokenMatches(expectedToken, provided)) {
+        return "OWNER";
+      }
     }
   }
 
@@ -394,8 +400,12 @@ export function resolveBoundaryRole(
  * This is a pure predicate (no response side effects) so it composes with any
  * gating strategy. It fails closed: an unrecognised caller resolves to `"NONE"`
  * (rank 0), which only satisfies a `"NONE"` minimum.
+ *
+ * @internal #12087 Item 29: module-internal. Routes must use the async,
+ * DB-aware {@link ensureRouteMinRole}; this coarse sync helper backs only the
+ * tokenless branch of {@link ensureCompatSensitiveRouteAuthorized}.
  */
-export function ensureMinRole(
+function ensureMinRole(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   minRole: RoleGateRole,
   env: NodeJS.ProcessEnv = process.env,
@@ -423,11 +433,17 @@ type AuthorizedRouteRoleOptions =
       readSetting?: (key: string) => unknown;
     };
 
-function roleForAuthIdentity(
-  identity: Pick<AuthIdentityRow, "kind"> | null,
+/**
+ * #12087 Item 15: the single identity-kind → canonical role mapper. Both the
+ * session-route response (auth-session-routes) and server-side route-role
+ * resolution derive the caller's role from this one function, so the two cannot
+ * drift. `owner` → OWNER, `machine` → USER, anything else (or no identity) → NONE.
+ */
+export function roleForIdentityKind(
+  kind: AuthIdentityRow["kind"] | null | undefined,
 ): RoleGateRole {
-  if (identity?.kind === "owner") return "OWNER";
-  if (identity?.kind === "machine") return "USER";
+  if (kind === "owner") return "OWNER";
+  if (kind === "machine") return "USER";
   return "NONE";
 }
 
@@ -436,8 +452,7 @@ async function resolveSessionRole(
   identityId: string,
 ): Promise<RoleGateRole> {
   const identity = await store.findIdentity(identityId).catch(() => null);
-  const role = roleForAuthIdentity(identity);
-  return role === "NONE" ? "USER" : role;
+  return roleForIdentityKind(identity?.kind);
 }
 
 async function resolveAuthorizedRouteRole(

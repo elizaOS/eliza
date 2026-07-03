@@ -39,7 +39,6 @@ import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-  ensureRouteMinRole,
 } from "./auth.ts";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
@@ -797,11 +796,16 @@ async function handleCompatRouteInner(
   // runtime plugin route system (`/api/workbench/todos*`).
 
   if (url.pathname.startsWith("/api/secrets/")) {
-    if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
-    if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
+    // #12087 Item 4: each secrets handler self-gates at OWNER (ensureRouteMinRole
+    // in the handler), so the auth no longer lives only in this dispatch prefix.
+    if (
+      await handleSecretsInventoryRoute(req, res, url.pathname, method, state)
+    ) {
       return true;
     }
-    if (await handleSecretsManagerRoute(req, res, url.pathname, method)) {
+    if (
+      await handleSecretsManagerRoute(req, res, url.pathname, method, state)
+    ) {
       return true;
     }
   }

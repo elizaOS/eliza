@@ -7,6 +7,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import type { EmbedRole } from "./embed-session-token";
 
 /**
  * Shared embedded-app launch handshake — the single security seam every
@@ -60,8 +61,13 @@ export interface EmbedLaunchInput {
   discordExchange?: DiscordExchange;
 }
 
-/** Only elevated roles pass the embed gate; everything else fails closed. */
-export type EmbedRole = "OWNER" | "ADMIN";
+/**
+ * Only elevated roles pass the embed gate; everything else fails closed. #12087
+ * Item 30: re-exported from the single {@link EMBED_ELEVATED_ROLES} definition in
+ * embed-session-token.ts so the handshake result and the minted token claims
+ * share one elevated-role set.
+ */
+export type { EmbedRole };
 
 export type EmbedLaunchResult =
   | { ok: true; entityId: UUID; role: EmbedRole; adminMode: boolean }

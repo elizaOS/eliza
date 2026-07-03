@@ -17,7 +17,7 @@ import {
   _resetAuthRateLimiter,
   embedBoundaryRole,
   ensureCompatApiAuthorizedAsync,
-  resolveBoundaryRole,
+  ensureCompatSensitiveRouteAuthorized,
   resolveEmbedPrincipal,
 } from "../auth.ts";
 import {
@@ -253,12 +253,19 @@ describe("ensureCompatApiAuthorizedAsync — embed token", () => {
   });
 });
 
-describe("resolveBoundaryRole — embed is excluded from the sensitive gate", () => {
-  it("does NOT grant a boundary role to an embed token (stays NONE)", () => {
+describe("embed is excluded from the sync sensitive gate", () => {
+  it("does NOT authorize an embed token on the sync sensitive-route gate", () => {
     process.env.ELIZA_EMBED_SESSION_SECRET = SECRET;
     // Even a valid embed OWNER token must not satisfy the sync sensitive-route
-    // boundary — that gate is token-only, like it is for normal sessions.
-    const role = resolveBoundaryRole(remoteReq(bearer(validToken())));
-    expect(role).toBe("NONE");
+    // boundary — that gate only trusts same-machine OWNERs. #12087 Item 29 made
+    // the underlying resolveBoundaryRole/ensureMinRole helpers module-internal,
+    // so this now asserts through the public ensureCompatSensitiveRouteAuthorized.
+    const res = fakeRes();
+    const authorized = ensureCompatSensitiveRouteAuthorized(
+      remoteReq(bearer(validToken())),
+      res,
+    );
+    expect(authorized).toBe(false);
+    expect(res.statusCode).toBe(403);
   });
 });
