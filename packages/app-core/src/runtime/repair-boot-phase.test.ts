@@ -36,9 +36,6 @@ function makeSteps(): { steps: PostReadyBootSteps; order: string[] } {
     registerSubAgentCredentialBridgeAdapter: vi.fn(
       record("credentialBridgeAdapter", true),
     ),
-    shouldStartTelegramStandaloneBot: vi.fn(record("telegramCheck", false)),
-    ensureTelegramBotPolling: vi.fn(record("telegramPoll", Promise.resolve())),
-    stopTelegramBotPolling: vi.fn(record("telegramStop", undefined)),
     ensureTriggerEventBridge: vi.fn(record("triggerBridge", Promise.resolve())),
     ensureConnectorTargetCatalog: vi.fn(record("catalog", Promise.resolve())),
     startDeferredVoiceWarmup: vi.fn(record("voiceWarmup", undefined)),
@@ -93,27 +90,10 @@ describe("runPostReadyBootTail — phase split", () => {
       "sensitive",
       "credentialBridgeAdapter",
       "credentialBridgeWiring",
-      "telegramCheck",
-      "telegramStop",
       "triggerBridge",
       "catalog",
       "voiceWarmup",
     ]);
-  });
-
-  it("(default-unset) calls telegram polling instead of stop when standalone bot is enabled", async () => {
-    const runtime = makeFakeRuntime();
-    __setLatestBootTailRuntimeForTest(runtime);
-    const { steps, order } = makeSteps();
-    steps.shouldStartTelegramStandaloneBot = vi.fn(() => {
-      order.push("telegramCheck");
-      return true;
-    });
-
-    await runPostReadyBootTail(runtime, steps);
-
-    expect(steps.ensureTelegramBotPolling).toHaveBeenCalledOnce();
-    expect(steps.stopTelegramBotPolling).not.toHaveBeenCalled();
   });
 
   it("(deferred dispatch) the tail does not resolve until the hung app-route load settles, but the caller that voids it returns immediately", async () => {

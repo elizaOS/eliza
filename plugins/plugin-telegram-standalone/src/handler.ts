@@ -1,14 +1,17 @@
 import {
-  type AgentRuntime,
   ChannelType,
   type Content,
   createUniqueUuid,
   type HandlerCallback,
+  type IAgentRuntime,
   logger,
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 type TelegramStandaloneUser = {
   id?: number | string;
@@ -40,17 +43,6 @@ export type TelegramStandaloneContext = {
   from?: TelegramStandaloneUser;
   chat?: TelegramStandaloneChat;
   reply: (text: string) => Promise<unknown>;
-};
-
-type RuntimeMessageServiceCompat = AgentRuntime & {
-  messageService?: {
-    handleMessage: (
-      runtime: AgentRuntime,
-      message: Memory,
-      callback?: HandlerCallback,
-      options?: Record<string, unknown>,
-    ) => Promise<unknown>;
-  };
 };
 
 function parseAllowedTelegramChats(raw: unknown): Set<string> | null {
@@ -105,8 +97,8 @@ function splitTelegramText(text: string): string[] {
 }
 
 export async function handleTelegramStandaloneMessage(
-  runtime: AgentRuntime,
-  ctx: TelegramStandaloneContext,
+  runtime: IAgentRuntime,
+  ctx: TelegramStandaloneContext
 ): Promise<void> {
   try {
     const message = ctx.message;
@@ -117,58 +109,42 @@ export async function handleTelegramStandaloneMessage(
     const chatId = String(chat.id);
     const from = ctx.from ?? message.from;
     const telegramUserId = String(from?.id ?? `chat-${chatId}`);
-    const username =
-      from?.username ?? from?.first_name ?? `telegram-${telegramUserId}`;
+    const username = from?.username ?? from?.first_name ?? `telegram-${telegramUserId}`;
     const threadId =
-      message.message_thread_id !== undefined
-        ? String(message.message_thread_id)
-        : undefined;
+      message.message_thread_id !== undefined ? String(message.message_thread_id) : undefined;
     const telegramRoomId = threadId ? `${chatId}-${threadId}` : chatId;
 
     // Check allowed chats live from runtime settings first, then env.
     const allowedChats = parseAllowedTelegramChats(
-      runtime.getSetting("TELEGRAM_ALLOWED_CHATS") ??
-        process.env.TELEGRAM_ALLOWED_CHATS,
+      runtime.getSetting("TELEGRAM_ALLOWED_CHATS") ?? process.env.TELEGRAM_ALLOWED_CHATS
     );
     if (allowedChats && !allowedChats.has(chatId)) {
       return;
     }
 
     logger.info(
-      `[eliza] Telegram message from @${username}: ${text.substring(0, 80)}`,
+      `[telegram-standalone] Telegram message from @${username}: ${text.substring(0, 80)}`
     );
 
-    const runtimeWithMessages = runtime as RuntimeMessageServiceCompat;
-    if (!runtimeWithMessages.messageService?.handleMessage) {
-      logger.warn("[eliza] Telegram runtime missing messageService");
+    if (!runtime.messageService) {
+      logger.warn("[telegram-standalone] Telegram runtime missing messageService");
       return;
     }
 
-    const entityId = createUniqueUuid(
-      runtime,
-      `telegram-user:${telegramUserId}`,
-    ) as UUID;
-    const roomId = createUniqueUuid(
-      runtime,
-      `telegram-room:${telegramRoomId}`,
-    ) as UUID;
-    const worldId = createUniqueUuid(
-      runtime,
-      `telegram-world:${chatId}`,
-    ) as UUID;
+    const entityId = createUniqueUuid(runtime, `telegram-user:${telegramUserId}`) as UUID;
+    const roomId = createUniqueUuid(runtime, `telegram-room:${telegramRoomId}`) as UUID;
+    const worldId = createUniqueUuid(runtime, `telegram-world:${chatId}`) as UUID;
     const messageId = createUniqueUuid(
       runtime,
-      `telegram-message:${message.message_id ?? `${chatId}:${Date.now()}`}`,
+      `telegram-message:${message.message_id ?? `${chatId}:${Date.now()}`}`
     ) as UUID;
     const channelType = getTelegramChannelType(chat.type);
-    const createdAt =
-      typeof message.date === "number" ? message.date * 1000 : Date.now();
+    const createdAt = typeof message.date === "number" ? message.date * 1000 : Date.now();
 
     await runtime.ensureConnection({
       entityId,
       roomId,
-      roomName:
-        chat.title ?? chat.first_name ?? chat.username ?? telegramRoomId,
+      roomName: chat.title ?? chat.first_name ?? chat.username ?? telegramRoomId,
       userName: from?.username,
       name: from?.first_name ?? from?.username ?? username,
       userId: telegramUserId as UUID,
@@ -192,7 +168,7 @@ export async function handleTelegramStandaloneMessage(
           message.reply_to_message?.message_id !== undefined
             ? (createUniqueUuid(
                 runtime,
-                `telegram-message:${message.reply_to_message.message_id}`,
+                `telegram-message:${message.reply_to_message.message_id}`
               ) as UUID)
             : undefined,
       },
@@ -224,10 +200,7 @@ export async function handleTelegramStandaloneMessage(
       createdAt,
     };
 
-    const callback: HandlerCallback = async (
-      content: Content,
-      _actionName?: string,
-    ) => {
+    const callback: HandlerCallback = async (content: Content, _actionName?: string) => {
       if (!content.text) {
         return [];
       }
@@ -245,14 +218,9 @@ export async function handleTelegramStandaloneMessage(
             }
           | undefined;
         const sentMessageId =
-          sent?.message_id !== undefined
-            ? String(sent.message_id)
-            : `local-${Date.now()}-${index}`;
+          sent?.message_id !== undefined ? String(sent.message_id) : `local-${Date.now()}-${index}`;
         const responseMemory: Memory = {
-          id: createUniqueUuid(
-            runtime,
-            `telegram-message:${sentMessageId}`,
-          ) as UUID,
+          id: createUniqueUuid(runtime, `telegram-message:${sentMessageId}`) as UUID,
           entityId: runtime.agentId,
           agentId: runtime.agentId,
           roomId,
@@ -267,8 +235,7 @@ export async function handleTelegramStandaloneMessage(
             type: "message",
             source: "telegram",
             provider: "telegram",
-            timestamp:
-              typeof sent?.date === "number" ? sent.date * 1000 : Date.now(),
+            timestamp: typeof sent?.date === "number" ? sent.date * 1000 : Date.now(),
             fromBot: true,
             fromId: runtime.agentId,
             sourceId: runtime.agentId,
@@ -280,26 +247,20 @@ export async function handleTelegramStandaloneMessage(
               threadId,
             },
           },
-          createdAt:
-            typeof sent?.date === "number" ? sent.date * 1000 : Date.now(),
+          createdAt: typeof sent?.date === "number" ? sent.date * 1000 : Date.now(),
         };
         await runtime.createMemory(responseMemory, "messages");
         sentMemories.push(responseMemory);
       }
-      logger.info(`[eliza] Telegram replied to @${username}`);
+      logger.info(`[telegram-standalone] Telegram replied to @${username}`);
       return sentMemories;
     };
 
-    await runtimeWithMessages.messageService.handleMessage(
-      runtime,
-      memory,
-      callback,
-      { continueAfterActions: true },
-    );
+    await runtime.messageService.handleMessage(runtime, memory, callback, {
+      continueAfterActions: true,
+    });
   } catch (outerErr) {
-    logger.warn(`[eliza] Telegram handler error: ${formatError(outerErr)}`);
-    await ctx
-      .reply("Sorry, I encountered an error processing your message.")
-      .catch(() => {});
+    logger.warn(`[telegram-standalone] Telegram handler error: ${formatError(outerErr)}`);
+    await ctx.reply("Sorry, I encountered an error processing your message.").catch(() => {});
   }
 }

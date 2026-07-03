@@ -12,6 +12,7 @@
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
   type: "json",
 };
@@ -153,6 +154,21 @@ function birdclawRequested(config: ElizaConfig): boolean {
   const userHome = process.env.HOME?.trim();
   if (userHome && existsSync(path.join(userHome, ".birdclaw"))) return true;
   return birdclawBinaryOnPath();
+}
+
+/**
+ * The opt-in standalone Telegram polling bot (`@elizaos/plugin-telegram-standalone`)
+ * only loads when LifeOps passive connectors are explicitly disabled AND
+ * `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy — the same gate the plugin's service
+ * self-checks. In the default passive-connectors-on posture it never loads, so
+ * the passive `@elizaos/plugin-telegram` connector owns the telegram long-poll.
+ */
+function telegramStandaloneRequested(): boolean {
+  if (lifeOpsPassiveConnectorsEnabled(null, process.env)) {
+    return false;
+  }
+  const raw = process.env.ELIZA_TELEGRAM_STANDALONE_BOT?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +523,16 @@ export function collectPluginNames(
     track(
       "@elizaos/plugin-birdclaw",
       "birdclaw (auto-on when the birdclaw CLI/data root is present; gate ELIZA_BIRDCLAW)",
+    );
+  }
+  // Opt-in standalone Telegram polling bot. Loaded only when passive connectors
+  // are disabled and ELIZA_TELEGRAM_STANDALONE_BOT is set; its service owns the
+  // Telegraf long-poll lifecycle (previously inlined in the app-core boot tail).
+  if (telegramStandaloneRequested()) {
+    pluginsToLoad.add("@elizaos/plugin-telegram-standalone");
+    track(
+      "@elizaos/plugin-telegram-standalone",
+      "telegram standalone bot (gate ELIZA_TELEGRAM_STANDALONE_BOT)",
     );
   }
   // Allow list is additive — extra plugins on top of auto-detection,

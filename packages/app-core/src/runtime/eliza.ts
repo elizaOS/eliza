@@ -103,8 +103,6 @@ import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,
 } from "./startup-overlay.js";
-import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
-import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
 import { DEFAULT_TEXT_TO_SPEECH_PROVIDER } from "./tts-provider-registry.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
@@ -795,9 +793,6 @@ export interface PostReadyBootSteps {
   registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
   registerSubAgentCredentialBridge: (runtime: AgentRuntime) => Promise<void>;
   registerSubAgentCredentialBridgeAdapter: (runtime: AgentRuntime) => boolean;
-  shouldStartTelegramStandaloneBot: () => boolean;
-  ensureTelegramBotPolling: (runtime: AgentRuntime) => Promise<void>;
-  stopTelegramBotPolling: (reason: string) => void;
   ensureTriggerEventBridge: (runtime: AgentRuntime) => Promise<void>;
   ensureConnectorTargetCatalog: (runtime: AgentRuntime) => Promise<void>;
   startDeferredVoiceWarmup: (runtime: AgentRuntime) => void;
@@ -810,9 +805,6 @@ const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
   registerCoreSensitiveRequestAdapters,
   registerSubAgentCredentialBridge,
   registerSubAgentCredentialBridgeAdapter,
-  shouldStartTelegramStandaloneBot,
-  ensureTelegramBotPolling,
-  stopTelegramBotPolling,
   ensureTriggerEventBridge,
   ensureConnectorTargetCatalog,
   startDeferredVoiceWarmup,
@@ -864,12 +856,6 @@ export async function runPostReadyBootTail(
   // Wire the sub-agent credential bridge (#10317) onto parent runtimes that can
   // host coding sub-agents. No-op on child/sandboxed runtimes.
   await steps.registerSubAgentCredentialBridge(runtime);
-
-  if (steps.shouldStartTelegramStandaloneBot()) {
-    await steps.ensureTelegramBotPolling(runtime);
-  } else {
-    steps.stopTelegramBotPolling("passive-lifeops-connectors");
-  }
 
   // Subscribe the trigger event bridge to the runtime event bus so
   // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
@@ -977,65 +963,6 @@ async function ensureConnectorTargetCatalog(
         err,
       )}`,
     );
-  }
-}
-
-// Module-level Telegraf bot reference for lifecycle management across restarts.
-let _telegramBot: { stop: (reason?: string) => void } | null = null;
-
-function stopTelegramBotPolling(reason: string): void {
-  if (!_telegramBot) {
-    return;
-  }
-  try {
-    _telegramBot.stop(reason);
-  } catch {
-    /* ignore */
-  }
-  _telegramBot = null;
-}
-
-async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
-  // Stop any previous bot instance
-  if (_telegramBot) {
-    stopTelegramBotPolling("restart");
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) return;
-
-  try {
-    const { Telegraf } = await import("telegraf");
-    const apiRoot = process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
-    const bot = new Telegraf(botToken, { telegram: { apiRoot } });
-
-    bot.on("message", async (ctx) => {
-      await handleTelegramStandaloneMessage(runtime, ctx);
-    });
-
-    bot.catch((err: unknown) =>
-      logger.warn(`[eliza] Telegram bot error: ${formatError(err)}`),
-    );
-
-    // Fire-and-forget — bot.launch() only resolves on stop()
-    bot
-      .launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ["message", "message_reaction"],
-      })
-      .catch((err: unknown) =>
-        logger.warn(`[eliza] Telegram bot launch error: ${formatError(err)}`),
-      );
-
-    _telegramBot = bot;
-    // Telegram bot cleanup is handled by the central signal handler in
-    // startEliza() via _telegramBot — no separate registration needed.
-
-    await new Promise((r) => setTimeout(r, 500));
-    logger.info("[eliza] Telegram bot polling started");
-  } catch (err) {
-    logger.warn(`[eliza] Telegram bot setup failed: ${formatError(err)}`);
   }
 }
 
@@ -1698,7 +1625,6 @@ export async function startEliza(
           process.exit(1);
         }, 10_000);
         forceExitTimer.unref();
-        stopTelegramBotPolling("SIGINT");
         if (sandboxRegistry) {
           sandboxRegistry.stopHeartbeat();
           try {

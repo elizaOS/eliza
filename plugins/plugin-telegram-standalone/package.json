@@ -1,0 +1,83 @@
+{
+  "name": "@elizaos/plugin-telegram-standalone",
+  "version": "2.0.3-beta.7",
+  "description": "Opt-in standalone Telegram polling bot for Eliza (gate ELIZA_TELEGRAM_STANDALONE_BOT) — a minimal Telegraf long-poll connector that routes inbound messages through the runtime message service",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/src/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "telegram",
+    "bot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "elizaos": {
+    "plugin": {
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
+  "dependencies": {
+    "telegraf": "4.16.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.2",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "dev": "bun --hot build.ts",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write --config-path ./biome.json .",
+    "lint:check": "bunx @biomejs/biome check --config-path ./biome.json .",
+    "format": "bunx @biomejs/biome format --write --config-path ./biome.json .",
+    "format:check": "bunx @biomejs/biome format --config-path ./biome.json ."
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -332,7 +332,6 @@
         "ethers": "^6.16.0",
         "jose": "^6.2.2",
         "json5": "^2.2.3",
-        "telegraf": "^4.16.3",
         "undici": "8.5.0",
         "ws": "^8.19.0",
         "zod": "^4.4.3",
@@ -5156,6 +5155,22 @@
         "vitest": "^4.0.0",
       },
     },
+    "plugins/plugin-telegram-standalone": {
+      "name": "@elizaos/plugin-telegram-standalone",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "telegraf": "4.16.3",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.2",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-todos": {
       "name": "@elizaos/plugin-todos",
       "version": "2.0.3-beta.7",
@@ -6619,6 +6634,8 @@
     "@elizaos/plugin-tee": ["@elizaos/plugin-tee@workspace:plugins/plugin-tee"],
 
     "@elizaos/plugin-telegram": ["@elizaos/plugin-telegram@workspace:plugins/plugin-telegram"],
+
+    "@elizaos/plugin-telegram-standalone": ["@elizaos/plugin-telegram-standalone@workspace:plugins/plugin-telegram-standalone"],
 
     "@elizaos/plugin-todos": ["@elizaos/plugin-todos@workspace:plugins/plugin-todos"],
 
