@@ -34,6 +34,12 @@ import prism from "prism-media";
 import type { ICompatRuntime } from "./compat";
 import type { IDiscordService } from "./types";
 import { getMessageService, normalizeDiscordMessageText } from "./utils";
+import {
+	DiscordVoiceMeetingSession,
+	isVoiceTranscriptsSettingEnabled,
+	loadDefaultVoiceMeetingDeps,
+	type VoiceMeetingDeps,
+} from "./voice-meetings";
 
 // These values are chosen for compatibility with picovoice components
 const DECODE_FRAME_SIZE = 1024;
@@ -304,6 +310,13 @@ export class VoiceManager extends EventEmitter {
 		{ channel: BaseGuildVoiceChannel; monitor: AudioMonitor }
 	> = new Map();
 	private ready: boolean;
+	/** channelId → live voice-channel transcription session. */
+	private meetingSessions: Map<string, DiscordVoiceMeetingSession> = new Map();
+	/** channelId → per-channel transcription override (slash command). */
+	private transcriptionOverrides: Map<string, boolean> = new Map();
+	/** Injectable for tests; defaults to the real plugin-meetings wiring. */
+	meetingDepsLoader: (runtime: ICompatRuntime) => Promise<VoiceMeetingDeps> =
+		loadDefaultVoiceMeetingDeps;
 
 	/**
 	 * Constructor for initializing a new instance of the class.
@@ -396,6 +409,10 @@ export class VoiceManager extends EventEmitter {
 			this.transcriptionTimeout = null;
 		}
 
+		for (const channelId of [...this.meetingSessions.keys()]) {
+			void this.stopVoiceTranscription(channelId, "requested_stop");
+		}
+
 		for (const memberId of [...this.activeMonitors.keys()]) {
 			this.stopMonitoringMember(memberId);
 		}
@@ -459,6 +476,7 @@ export class VoiceManager extends EventEmitter {
 		// User leaving a channel where the bot is present
 		if (oldChannelId && this.connections.has(oldChannelId)) {
 			this.stopMonitoringMember(member.id);
+			this.meetingSessions.get(oldChannelId)?.participantLeft(member.id);
 		}
 
 		// User joining a channel where the bot is present
@@ -467,6 +485,11 @@ export class VoiceManager extends EventEmitter {
 				member,
 				newState.channel as BaseGuildVoiceChannel,
 			);
+			if (!member.user.bot) {
+				this.meetingSessions
+					.get(newChannelId)
+					?.participantJoined(member.id, member.displayName);
+			}
 		}
 	}
 
@@ -572,6 +595,7 @@ export class VoiceManager extends EventEmitter {
 					}
 				} else if (newState.status === VoiceConnectionStatus.Destroyed) {
 					this.connections.delete(channel.id);
+					void this.stopVoiceTranscription(channel.id, "normal_completion");
 				} else if (
 					!this.connections.has(channel.id) &&
 					(newState.status === VoiceConnectionStatus.Ready ||
@@ -602,6 +626,21 @@ export class VoiceManager extends EventEmitter {
 
 			// Store the connection
 			this.connections.set(channel.id, connection);
+
+			// Voice-channel transcription (DISCORD_VOICE_TRANSCRIPTS / /transcribe)
+			if (this.isVoiceTranscriptionEnabled(channel.id)) {
+				void this.startVoiceTranscription(channel).catch((error) => {
+					this.runtime.logger.error(
+						{
+							src: "plugin:discord:voice:meetings",
+							agentId: this.runtime.agentId,
+							channelId: channel.id,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"[DiscordVoiceMeetings] failed to start voice transcription session",
+					);
+				});
+			}
 
 			// Continue with voice state modifications
 			const me = channel.guild.members.me;
@@ -659,6 +698,8 @@ export class VoiceManager extends EventEmitter {
 					if (entityStream) {
 						entityStream.emit("speakingStopped");
 					}
+					// Speaking end = utterance boundary for the meeting pipeline.
+					this.meetingSessions.get(channel.id)?.flushSpeaker(entityId);
 				}
 			});
 		} catch (error) {
@@ -686,6 +727,96 @@ export class VoiceManager extends EventEmitter {
 		return [...new Set(this.connections.values())].find(
 			(connection) => connection.joinConfig.guildId === guildId,
 		);
+	}
+
+	/**
+	 * Whether voice-channel transcription should run for a channel: a per-join
+	 * override (set by the /transcribe slash command) wins, else the global
+	 * DISCORD_VOICE_TRANSCRIPTS setting (off by default).
+	 */
+	isVoiceTranscriptionEnabled(channelId: string): boolean {
+		const override = this.transcriptionOverrides.get(channelId);
+		if (override !== undefined) {
+			return override;
+		}
+		return isVoiceTranscriptsSettingEnabled(this.runtime);
+	}
+
+	/** Per-channel opt in/out of voice transcription (slash command surface). */
+	setVoiceTranscriptionOverride(channelId: string, enabled: boolean): void {
+		this.transcriptionOverrides.set(channelId, enabled);
+	}
+
+	getMeetingSession(channelId: string): DiscordVoiceMeetingSession | undefined {
+		return this.meetingSessions.get(channelId);
+	}
+
+	/**
+	 * Start a meeting transcription session for a voice channel the bot is
+	 * connected to. Idempotent per channel — returns the live session if one
+	 * already exists.
+	 */
+	async startVoiceTranscription(
+		channel: BaseGuildVoiceChannel,
+	): Promise<DiscordVoiceMeetingSession> {
+		const existing = this.meetingSessions.get(channel.id);
+		if (existing?.active) {
+			return existing;
+		}
+		const deps = await this.meetingDepsLoader(this.runtime);
+		const clientUserId = this.client?.user?.id;
+		const members = [...channel.members.values()]
+			.filter((member) => !member.user.bot && member.id !== clientUserId)
+			.map((member) => ({ id: member.id, displayName: member.displayName }));
+		const session = new DiscordVoiceMeetingSession({
+			runtime: this.runtime,
+			channel: {
+				channelId: channel.id,
+				channelName: channel.name,
+				guildId: channel.guild.id,
+				guildName: channel.guild.name,
+				members,
+			},
+			deps,
+		});
+		this.meetingSessions.set(channel.id, session);
+		try {
+			await session.start();
+		} catch (error) {
+			this.meetingSessions.delete(channel.id);
+			throw error;
+		}
+		return session;
+	}
+
+	/**
+	 * Finalize and remove the meeting session for a channel (no-op when none
+	 * is running). Finalization errors are logged, never thrown — this runs on
+	 * teardown paths (leave, disconnect, shutdown) that must not fail.
+	 */
+	async stopVoiceTranscription(
+		channelId: string,
+		endReason: Parameters<DiscordVoiceMeetingSession["stop"]>[0],
+	): Promise<void> {
+		const session = this.meetingSessions.get(channelId);
+		if (!session) {
+			return;
+		}
+		this.meetingSessions.delete(channelId);
+		try {
+			await session.stop(endReason);
+		} catch (error) {
+			this.runtime.logger.error(
+				{
+					src: "plugin:discord:voice:meetings",
+					agentId: this.runtime.agentId,
+					channelId,
+					sessionId: session.sessionId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"[DiscordVoiceMeetings] failed to finalize voice transcription session",
+			);
+		}
 	}
 
 	/**
@@ -745,6 +876,18 @@ export class VoiceManager extends EventEmitter {
 			// In production, you might want to implement a PCM fallback or other audio processing
 			return;
 		}
+
+		// Tee the single decoded PCM stream into the meeting transcription
+		// session (when one is live for this channel). The decoder emits s16le
+		// mono 16 kHz; the AudioMonitor (utterance→agent-reply path) attaches
+		// its own "data" listener in handleUserStream — one decode, two
+		// consumers, neither path re-decodes.
+		const memberDisplayName = member?.displayName ?? userName;
+		opusDecoder.on("data", (pcmData: Buffer) => {
+			this.meetingSessions
+				.get(channel.id)
+				?.pushPcm(entityId, pcmData, memberDisplayName, DECODE_SAMPLE_RATE);
+		});
 
 		const volumeBuffer: number[] = [];
 		const VOLUME_WINDOW_SIZE = 30;
@@ -887,6 +1030,7 @@ export class VoiceManager extends EventEmitter {
 	 * @param {BaseGuildVoiceChannel} channel - The voice channel to leave.
 	 */
 	leaveChannel(channel: BaseGuildVoiceChannel) {
+		void this.stopVoiceTranscription(channel.id, "requested_stop");
 		const connection = this.connections.get(channel.id);
 		if (connection) {
 			connection.destroy();
@@ -1610,6 +1754,10 @@ export class VoiceManager extends EventEmitter {
 		}
 
 		try {
+			const channelId = connection.joinConfig.channelId;
+			if (channelId) {
+				await this.stopVoiceTranscription(channelId, "requested_stop");
+			}
 			connection.destroy();
 			await interaction.reply("Left the voice channel.");
 		} catch (error) {

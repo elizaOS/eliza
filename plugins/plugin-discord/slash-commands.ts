@@ -12,6 +12,7 @@ import type {
 import { ApplicationCommandOptionType } from "discord.js";
 import { getPreset, listPresets } from "./actions/setup-credentials";
 import type { DiscordSlashCommand } from "./types";
+import type { VoiceManager } from "./voice";
 
 export type SlashCommandRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
@@ -506,6 +507,138 @@ const appCommand: SlashCommand = {
 	},
 };
 
+/** Resolve the dashboard Transcripts view URL when a public base is set. */
+function resolveTranscriptsViewUrl(runtime: IAgentRuntime): string | undefined {
+	const base =
+		runtime.getSetting("ELIZA_APP_URL") ||
+		runtime.getSetting("ELIZA_CLOUD_URL");
+	if (typeof base === "string" && base.trim().length > 0) {
+		return toHttpsUrl(
+			`${base.trim().replace(/\/+$/, "")}/transcripts`,
+			"discord",
+		);
+	}
+	return undefined;
+}
+
+/**
+ * `/transcribe start|stop` — live diarized meeting transcription for the
+ * voice channel the bot is currently connected to in this server. Start sets
+ * a per-channel override (so it works regardless of the global
+ * DISCORD_VOICE_TRANSCRIPTS setting) and begins a meeting session; stop
+ * finalizes the transcript record.
+ */
+const transcribeCommand: SlashCommand = {
+	name: "transcribe",
+	description:
+		"Start or stop live meeting transcription for the current voice channel",
+	options: [
+		{
+			name: "mode",
+			description: "start or stop transcription",
+			type: "string",
+			required: true,
+			choices: [
+				{ name: "start", value: "start" },
+				{ name: "stop", value: "stop" },
+			],
+		},
+	],
+	async execute(interaction, runtime) {
+		const guild = interaction.guild;
+		if (!guild || !interaction.guildId) {
+			await interaction.reply({
+				content: "This command can only be used in a server.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const service = runtime.getService("discord") as {
+			voiceManager?: VoiceManager;
+		} | null;
+		const voiceManager = service?.voiceManager;
+		if (!voiceManager) {
+			await interaction.reply({
+				content: "Voice support is not available right now.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const connection = voiceManager.getVoiceConnection(interaction.guildId);
+		const channelId = connection?.joinConfig.channelId;
+		if (!channelId) {
+			await interaction.reply({
+				content:
+					"I'm not in a voice channel in this server — invite me to one first.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const mode = interaction.options.get("mode")?.value;
+		if (mode === "start") {
+			await interaction.deferReply();
+			const channel = guild.channels.cache.get(channelId);
+			if (!channel?.isVoiceBased?.()) {
+				await interaction.editReply("Voice channel not found.");
+				return;
+			}
+			voiceManager.setVoiceTranscriptionOverride(channelId, true);
+			try {
+				const session = await voiceManager.startVoiceTranscription(channel);
+				const url = resolveTranscriptsViewUrl(runtime);
+				const where = url
+					? `[Transcripts view](${url})`
+					: "dashboard **Transcripts** view";
+				await interaction.editReply(
+					`🔴 Live transcription started for **${channel.name}** — follow it in the ${where} (transcript \`${session.transcriptId}\`).`,
+				);
+			} catch (error) {
+				voiceManager.setVoiceTranscriptionOverride(channelId, false);
+				runtime.logger.error(
+					{
+						src: "plugin:discord:voice:meetings",
+						agentId: runtime.agentId,
+						channelId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"[DiscordVoiceMeetings] /transcribe start failed",
+				);
+				await interaction.editReply("Failed to start transcription.");
+			}
+			return;
+		}
+
+		if (mode === "stop") {
+			await interaction.deferReply();
+			const session = voiceManager.getMeetingSession(channelId);
+			voiceManager.setVoiceTranscriptionOverride(channelId, false);
+			if (!session) {
+				await interaction.editReply(
+					"No live transcription is running in this channel.",
+				);
+				return;
+			}
+			await voiceManager.stopVoiceTranscription(channelId, "requested_stop");
+			const url = resolveTranscriptsViewUrl(runtime);
+			const where = url
+				? `[Transcripts view](${url})`
+				: "dashboard **Transcripts** view";
+			await interaction.editReply(
+				`⏹️ Transcription stopped — the finished transcript \`${session.transcriptId}\` is in the ${where}.`,
+			);
+			return;
+		}
+
+		await interaction.reply({
+			content: "Use `/transcribe mode:start` or `/transcribe mode:stop`.",
+			ephemeral: true,
+		});
+	},
+};
+
 function registerBuiltins(): void {
 	for (const command of [
 		helpCommand,
@@ -516,6 +649,7 @@ function registerBuiltins(): void {
 		modelCommand,
 		setupCommand,
 		appCommand,
+		transcribeCommand,
 	]) {
 		commands.set(command.name, command);
 	}

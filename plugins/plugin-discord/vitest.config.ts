@@ -25,6 +25,16 @@ export default defineConfig({
 				find: /^@elizaos\/plugin-commands\/(.+)$/,
 				replacement: path.join(repoRoot, "plugins/plugin-commands/src/$1"),
 			},
+			// Same source-resolution story for @elizaos/plugin-meetings (voice
+			// meeting transcription seams; only a dynamic import at runtime, but
+			// vite's import-analysis still needs to resolve the specifier).
+			{
+				find: /^@elizaos\/plugin-meetings$/,
+				replacement: path.join(
+					repoRoot,
+					"plugins/plugin-meetings/src/index.ts",
+				),
+			},
 		],
 	},
 	test: {
