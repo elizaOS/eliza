@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { transform } from "esbuild";
 import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -29,6 +32,27 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
     expect(isSameOriginBundleUrl("http://evil.example/x.js")).toBe(false);
     // A protocol-relative URL resolves to a different origin → rejected.
     expect(isSameOriginBundleUrl("//evil.example/x.js")).toBe(false);
+  });
+
+  it("erases the test import hook from production builds before the origin gate", async () => {
+    const source = await readFile(
+      resolve(process.cwd(), "src/components/views/DynamicViewLoader.tsx"),
+      "utf8",
+    );
+    const output = await transform(source, {
+      loader: "tsx",
+      format: "esm",
+      minify: true,
+      treeShaking: true,
+      define: {
+        "import.meta.env.DEV": "false",
+        "import.meta.env.MODE": '"production"',
+        "process.env.NODE_ENV": '"production"',
+      },
+    });
+
+    expect(output.code).not.toContain("__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__");
+    expect(output.code).toContain("isSameOriginBundleUrl");
   });
 });
 

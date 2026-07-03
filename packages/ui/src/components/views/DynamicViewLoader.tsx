@@ -525,6 +525,9 @@ async function importViewBundle(
   bundleUrl: string,
 ): Promise<Record<string, unknown>> {
   if (
+    (import.meta.env.DEV ||
+      import.meta.env.MODE === "test" ||
+      process.env.NODE_ENV === "test") &&
     typeof window !== "undefined" &&
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__
   ) {
