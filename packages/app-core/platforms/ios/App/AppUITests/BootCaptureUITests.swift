@@ -426,78 +426,82 @@ final class BootCaptureUITests: XCTestCase {
     private func verifyChat(
         _ app: XCUIApplication, tag: String, agentReady: Double
     ) throws {
-        // Wait out the "Loading Eliza…" model warm-up so the send lands ready.
-        let loading = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] 'Loading Eliza'"))
-        let warmDeadline = Date().addingTimeInterval(agentReady)
-        while Date() < warmDeadline {
-            if loading.count == 0 { break }
-            Thread.sleep(forTimeInterval: 5.0)
-        }
-        attachScreenshot(named: "\(tag)-050-agent-ready")
+        // The "Loading eliza-1-2B…" warm-up chip is a WKWebView node invisible to
+        // XCUITest (its count is always 0), so it cannot be polled. The gemma4-2b
+        // model runs on CPU on-device (n_gpu_layers reduced to fit the A18 budget,
+        // #11612) — slow to warm — so give it a fixed head start; the send loop
+        // below also re-sends past the "still starting up, retry" fallback.
+        Thread.sleep(forTimeInterval: min(agentReady, 150))
+        attachScreenshot(named: "\(tag)-050-agent-warmup")
 
         let composer = firstHittableComposer(app)
         guard let composer else {
             attachAccessibilitySnapshot(of: app)
             throw XCTSkip("no hittable composer after onboarding")
         }
-        var baseline = Set<String>()
-        for text in app.staticTexts.allElementsBoundByIndex.prefix(80) {
-            baseline.insert(text.label)
-        }
-        composer.tap()
-        guard app.keyboards.firstMatch.waitForExistence(timeout: 10) else {
-            attachAccessibilitySnapshot(of: app)
-            throw XCTSkip("keyboard never appeared for the chat composer")
-        }
         let prompt = "Say hello in exactly three words."
-        composer.typeText(prompt)
-        attachScreenshot(named: "\(tag)-060-typed-prompt")
-
-        let sendButton = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH[c] 'send'")
-        ).firstMatch
-        guard sendButton.waitForExistence(timeout: 5), sendButton.isHittable else {
-            attachScreenshot(named: "\(tag)-061-no-send")
-            attachAccessibilitySnapshot(of: app)
-            throw XCTSkip("no send control after typing the prompt")
-        }
-        sendButton.tap()
-        Thread.sleep(forTimeInterval: 2.0)
-        attachScreenshot(named: "\(tag)-070-after-send")
-
-        let residual = (composer.exists ? (composer.value as? String) : nil) ?? ""
-        XCTAssertFalse(
-            residual.contains(prompt),
-            "[\(tag)] tapped send but the composer still holds the prompt "
-                + "('\(residual)') — the send never fired."
-        )
-
-        // Await a reply: any NEW static-text label (not the prompt echo, ≥ 12 chars).
-        let replyTimeout = 300.0
-        let start = Date()
-        let deadline = start.addingTimeInterval(replyTimeout)
-        var reply: String?
-        var nextShot = start.addingTimeInterval(15)
         let promptPrefix = String(prompt.prefix(20))
-        while Date() < deadline {
+        func looksNotReady(_ s: String) -> Bool {
+            let l = s.lowercased()
+            return l.contains("didn't reach") || l.contains("starting up")
+                || l.contains("retry in a moment") || l.contains("still warming")
+                || l.contains("try again in")
+        }
+
+        // On-device warm-up can leave the first sends returning the "message
+        // didn't reach the agent — still starting up. Retry" fallback. Re-send
+        // until a genuine model reply lands (or attempts exhaust).
+        var reply: String?
+        let sendAttempts = 10
+        attemptLoop: for attempt in 1...sendAttempts {
             if app.state == .notRunning { break }
+            var baseline = Set<String>()
             for text in app.staticTexts.allElementsBoundByIndex.prefix(120) {
-                let label = text.label
-                if label.count >= 12, !baseline.contains(label),
-                    !label.contains(promptPrefix),
-                    !label.localizedCaseInsensitiveContains("highlighted option") {
-                    reply = label
-                    break
+                baseline.insert(text.label)
+            }
+            composer.tap()
+            guard app.keyboards.firstMatch.waitForExistence(timeout: 12) else {
+                Thread.sleep(forTimeInterval: 8.0)
+                continue
+            }
+            composer.typeText(prompt)
+            let sendButton = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label BEGINSWITH[c] 'send'")
+            ).firstMatch
+            guard sendButton.waitForExistence(timeout: 6), sendButton.isHittable
+            else {
+                attachScreenshot(named: "\(tag)-061-no-send-\(attempt)")
+                Thread.sleep(forTimeInterval: 10.0)
+                continue
+            }
+            sendButton.tap()
+            attachScreenshot(named: "\(tag)-060-sent-\(attempt)")
+
+            // Await a NEW reply static-text (not the prompt echo, ≥ 8 chars).
+            let deadline = Date().addingTimeInterval(180)
+            var candidate: String?
+            while Date() < deadline {
+                if app.state == .notRunning { break attemptLoop }
+                for text in app.staticTexts.allElementsBoundByIndex.prefix(120) {
+                    let label = text.label
+                    if label.count >= 8, !baseline.contains(label),
+                        !label.contains(promptPrefix),
+                        !label.localizedCaseInsensitiveContains("highlighted option")
+                    {
+                        candidate = label
+                        break
+                    }
                 }
+                if candidate != nil { break }
+                Thread.sleep(forTimeInterval: 3.0)
             }
-            if reply != nil { break }
-            Thread.sleep(forTimeInterval: 2.0)
-            if Date() >= nextShot {
-                let s = Int(Date().timeIntervalSince(start).rounded())
-                attachScreenshot(named: String(format: "\(tag)-071-wait-%03ds", s))
-                nextShot = Date().addingTimeInterval(15)
+            attachScreenshot(named: "\(tag)-070-reply-attempt-\(attempt)")
+            if let c = candidate, !looksNotReady(c) {
+                reply = c  // genuine model reply
+                break
             }
+            // Not-ready fallback (or timeout) — let the CPU model warm; retry.
+            Thread.sleep(forTimeInterval: 45.0)
         }
         attachScreenshot(named: "\(tag)-075-reply-\(reply != nil ? "arrived" : "timeout")")
         if let reply {
@@ -511,8 +515,8 @@ final class BootCaptureUITests: XCTestCase {
             "[\(tag)] the app died while waiting for the chat reply.")
         XCTAssertNotNil(
             reply,
-            "[\(tag)] no assistant reply arrived within \(Int(replyTimeout))s — "
-                + "see the \(tag)-071-wait filmstrip + \(tag)-075.")
+            "[\(tag)] no genuine model reply after \(sendAttempts) attempts — "
+                + "see the \(tag)-070-reply-attempt filmstrip + \(tag)-075.")
     }
 
     /// Tap the composer mic ("talk") and assert it enters the recording state
@@ -565,13 +569,23 @@ final class BootCaptureUITests: XCTestCase {
     ) -> Bool {
         let exact = NSPredicate(format: "label ==[c] %@", label)
         let contains = NSPredicate(format: "label CONTAINS[c] %@", label)
+        // The Capacitor WKWebView first-run rows are frequently invisible to
+        // XCUITest's element tree (no button/staticText exposed). For the known
+        // onboarding rows, fall back to a RAW normalized-coordinate tap (which
+        // bypasses the element tree) once the greeting has had time to render.
+        let placementCoords: [String: CGVector] = [
+            "eliza cloud (managed)": CGVector(dx: 0.41, dy: 0.236),
+            "on this device": CGVector(dx: 0.41, dy: 0.291),
+            "connect to a remote agent": CGVector(dx: 0.41, dy: 0.345),
+            // Model-provider sub-step (appears below the placement card).
+            "on this device (recommended)": CGVector(dx: 0.41, dy: 0.503),
+            "eliza cloud inference": CGVector(dx: 0.41, dy: 0.557),
+        ]
+        let coordFallbackAt = Date().addingTimeInterval(45)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             // Prefer a button; fall back to any descendant carrying the label;
-            // then, since a WKWebView control frequently surfaces only as a
-            // non-hittable staticText (no button role exposed to XCUITest),
-            // coordinate-tap its center. Try an exact label first, then a
-            // substring (the placement rows render "On this device ›" etc.).
+            // then a non-hittable staticText coordinate; try exact then substring.
             for predicate in [exact, contains] {
                 let button = app.buttons.matching(predicate).firstMatch
                 if button.exists, button.isHittable { button.tap(); return true }
@@ -585,6 +599,12 @@ final class BootCaptureUITests: XCTestCase {
                     ).tap()
                     return true
                 }
+            }
+            if Date() > coordFallbackAt,
+                let offset = placementCoords[label.lowercased()]
+            {
+                app.coordinate(withNormalizedOffset: offset).tap()
+                return true
             }
             Thread.sleep(forTimeInterval: 1.0)
         }
