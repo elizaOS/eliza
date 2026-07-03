@@ -1,8 +1,16 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { AgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes";
+import {
+  isPublicRuntimePluginRoute,
+  tryHandleRuntimePluginRoute,
+} from "./runtime-plugin-routes";
 
 let servers: http.Server[] = [];
 
@@ -18,6 +26,56 @@ afterEach(async () => {
     ),
   );
   servers = [];
+});
+
+function runtimeWithRoutes(routes: Route[]): AgentRuntime {
+  return { routes } as AgentRuntime;
+}
+
+describe("isPublicRuntimePluginRoute", () => {
+  it("recognizes webhook endpoints through public route declarations", () => {
+    const runtime = runtimeWithRoutes([
+      { type: "POST", path: "/api/whatsapp/webhook", public: true },
+      { type: "POST", path: "/webhooks/bluebubbles", public: true },
+    ] as Route[]);
+
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/whatsapp/webhook",
+      }),
+    ).toBe(true);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/webhooks/bluebubbles",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not exempt matching webhook paths unless the route is public", () => {
+    const runtime = runtimeWithRoutes([
+      { type: "POST", path: "/api/whatsapp/webhook" },
+      { type: "POST", path: "/webhooks/bluebubbles", public: false },
+    ] as Route[]);
+
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/whatsapp/webhook",
+      }),
+    ).toBe(false);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/webhooks/bluebubbles",
+      }),
+    ).toBe(false);
+  });
 });
 
 async function startRouteServer(runtime: AgentRuntime): Promise<string> {

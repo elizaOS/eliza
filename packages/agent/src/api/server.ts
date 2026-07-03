@@ -1937,32 +1937,6 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
-  // Webhook exemptions: handlers MUST authenticate callers (see plugin handlers).
-  // WhatsApp: X-Hub-Signature-256 HMAC (WHATSAPP_APP_SECRET).
-  // BlueBubbles: X-BlueBubbles-Webhook-Secret (BLUEBUBBLES_WEBHOOK_SECRET).
-  const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
-  let blueBubblesWebhookPath =
-    pathname === "/webhooks/bluebubbles" ? "/webhooks/bluebubbles" : null;
-  if (pathname.startsWith("/webhooks/")) {
-    const { resolveBlueBubblesWebhookPath } = await getOptionalPluginApi<{
-      resolveBlueBubblesWebhookPath: (args: unknown) => string;
-    }>("imessage");
-    blueBubblesWebhookPath =
-      typeof resolveBlueBubblesWebhookPath === "function"
-        ? resolveBlueBubblesWebhookPath({
-            runtime: state.runtime
-              ? {
-                  getService: (type: string) =>
-                    (
-                      state.runtime as { getService: (t: string) => unknown }
-                    ).getService(type),
-                }
-              : undefined,
-          })
-        : blueBubblesWebhookPath;
-  }
-  const isBlueBubblesWebhookEndpoint =
-    blueBubblesWebhookPath != null && pathname === blueBubblesWebhookPath;
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -2108,8 +2082,6 @@ async function handleRequest(
     !isAuthEndpoint &&
     !isHealthEndpoint &&
     !isCloudFirstRunStatusEndpoint &&
-    !isWhatsAppWebhookEndpoint &&
-    !isBlueBubblesWebhookEndpoint &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -3107,7 +3079,7 @@ async function handleRequest(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
 
-  // ── BlueBubbles routes (/api/bluebubbles/*, /webhooks/bluebubbles) ──
+  // ── BlueBubbles routes ──────────────────────────────────────────────────
   // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
