@@ -41,7 +41,12 @@ export interface TranscriptSegment {
   confidence?: number;
 }
 
-export type TranscriptSource = "voice-session" | "import" | "call" | "unknown";
+export type TranscriptSource =
+  | "voice-session"
+  | "import"
+  | "call"
+  | "meeting"
+  | "unknown";
 
 /** Visibility scope — mirrors the documents store's `DocumentVisibilityScope`. */
 export type TranscriptScope =

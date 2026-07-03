@@ -1,0 +1,13 @@
+@elizaos/plugin-meetings
+
+The meeting-bot platform adapters in this package (Google Meet / Microsoft
+Teams / Zoom join flows, admission handling, browser audio capture, DOM-based
+speaker attribution, and the streaming speaker-buffer confirmation strategy)
+are derived from Vexa (https://github.com/Vexa-ai/vexa), Copyright Vexa.ai
+Inc., licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0).
+
+The derived code has been substantially restructured for the elizaOS runtime:
+transcription is routed through the elizaOS model layer, storage through the
+elizaOS transcript + knowledge stores, and orchestration through the elizaOS
+service/plugin system.

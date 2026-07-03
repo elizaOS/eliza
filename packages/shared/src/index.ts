@@ -284,6 +284,7 @@ export * from "./spoken-text.js";
 export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
 export * from "./transcripts.js";
+export * from "./meetings.js";
 export * from "./type-guards.js";
 export * from "./types/index.js";
 export * from "./utils/asset-url.js";
