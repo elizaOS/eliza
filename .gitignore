@@ -704,6 +704,8 @@ dev-desktop.pid
 reports/
 !packages/cloud/api/v1/reports/
 !packages/cloud/api/v1/reports/**
+!packages/feed/apps/web/src/app/api/moderation/reports/
+!packages/feed/apps/web/src/app/api/moderation/reports/**
 docs/*
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
 !docs/tee-architecture-implementation-plan.md
