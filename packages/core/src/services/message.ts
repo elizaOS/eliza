@@ -237,6 +237,7 @@ import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
+import { runBotNoiseTriage } from "./message/bot-noise-triage";
 import {
 	findAvailableActionName,
 	findWebLookupActionName,
@@ -8862,6 +8863,46 @@ export class DefaultMessageService implements IMessageService {
 					mode: "none",
 				};
 			}
+		}
+
+		// Cheap-tier triage for unaddressed bot/webhook traffic. A relay channel
+		// flooding automated embeds otherwise burns a full composeState + Stage 1
+		// RESPONSE_HANDLER call (the most expensive model in the stack — on
+		// subscription-backed providers ~1000 IGNOREs/day drain the daily session
+		// budget and take the agent down) just to conclude IGNORE. Triage those
+		// turns on TEXT_SMALL BEFORE state composition; an IGNORE verdict ends the
+		// turn with zero large-tier calls. Addressed/human/private-channel turns
+		// never enter this gate, and any triage failure falls open to the full
+		// pipeline.
+		const botNoiseTriage = await runBotNoiseTriage({
+			runtime,
+			message,
+			explicitlyAddressesAgent,
+		});
+		if (botNoiseTriage.applied && !botNoiseTriage.respond) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					entityId: message.entityId,
+				},
+				"Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
+			);
+			await this.emitRunEnded(
+				runtime,
+				runId,
+				message,
+				startTime,
+				"bot_noise_triage",
+			);
+			return {
+				didRespond: false,
+				responseContent: null,
+				responseMessages: [],
+				state: { values: {}, data: {}, text: "" } as State,
+				mode: "none",
+			};
 		}
 
 		// Room context for shouldRespond (fetch before compose so providers see
