@@ -164,77 +164,21 @@ const optionalPluginImports = {
   workflow: () => importOptionalPlugin("@elizaos/plugin-workflow"),
 };
 
-type LocalInferenceServerApi = {
-  getLocalInferenceActiveModelId: () => string | undefined;
-  handleLocalInferenceRoutes: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ) => Promise<boolean>;
-  handleLocalInferenceTtsRoute?: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    state: { current: AgentRuntime | null },
-  ) => Promise<boolean>;
-  handleLocalInferenceAsrRoute?: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    state: { current: AgentRuntime | null },
-  ) => Promise<boolean>;
-  handleLiveDiarizationRoute?: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    state: { current: AgentRuntime | null },
-  ) => Promise<boolean>;
-};
+type LocalInferenceServerApi = LocalInferenceRouteApi & LocalInferenceVoiceRouteApi;
 
-let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
-  null;
-
-function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
-  // Import the route modules directly, NOT the package's bare entry: the mobile
-  // agent bundle stubs `@elizaos/plugin-local-inference` (the heavy Plugin entry)
-  // to a null module, so a bare import yields undefined handlers and every
-  // /api/local-inference/* route 404s on-device. The deep subpaths (the `./*`
-  // wildcard + `./routes` exports) aren't stubbed and carry the real impls on
-  // every platform.
-  localInferenceServerApiPromise ??=
-    (async (): Promise<LocalInferenceServerApi> => {
-      const [routes, ttsRoutes] = await Promise.all([
-        import(
-          /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
-        ) as Promise<
-          Pick<
-            LocalInferenceServerApi,
-            "getLocalInferenceActiveModelId" | "handleLocalInferenceRoutes"
-          >
-        >,
-        import(
-          /* @vite-ignore */ "@elizaos/plugin-local-inference/routes"
-        ) as Promise<
-          Pick<
-            LocalInferenceServerApi,
-            | "handleLocalInferenceTtsRoute"
-            | "handleLocalInferenceAsrRoute"
-            | "handleLiveDiarizationRoute"
-          >
-        >,
-      ]);
-      return {
-        getLocalInferenceActiveModelId: routes.getLocalInferenceActiveModelId,
-        handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
-        handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
-        handleLocalInferenceAsrRoute: ttsRoutes.handleLocalInferenceAsrRoute,
-        handleLiveDiarizationRoute: ttsRoutes.handleLiveDiarizationRoute,
-      };
-    })().catch((err: unknown) => {
-      // A cold-boot import failure must not poison the memoized promise: `??=`
-      // would otherwise cache the rejection and 404 EVERY /api/local-inference/*
-      // route for the lifetime of the process. Clear the memo so the next request
-      // retries once the deferred plugin closure is resolvable.
-      localInferenceServerApiPromise = null;
-      throw err;
-    });
-  return localInferenceServerApiPromise;
+/**
+ * Combine the route + voice surfaces from the single subpath-owning loader
+ * (`./local-inference-server-api.ts`). The loaders there own the stub/subpath
+ * knowledge and each clear their memo on reject, so a cold-boot import failure
+ * surfaces here and retries on the next request — the same semantics as before,
+ * without this file knowing the plugin's stub layout.
+ */
+async function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
+  const [routeApi, voiceApi] = await Promise.all([
+    loadLocalInferenceRouteApi(),
+    loadLocalInferenceVoiceRouteApi(),
+  ]);
+  return { ...routeApi, ...voiceApi };
 }
 
 async function getOptionalPluginApi<T>(
@@ -430,6 +374,12 @@ import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import { computeCanRespond } from "./health-routes.ts";
+import {
+  type LocalInferenceRouteApi,
+  type LocalInferenceVoiceRouteApi,
+  loadLocalInferenceRouteApi,
+  loadLocalInferenceVoiceRouteApi,
+} from "./local-inference-server-api.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import {
   buildPluginDiagnosticEntry,

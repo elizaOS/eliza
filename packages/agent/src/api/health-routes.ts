@@ -4,6 +4,7 @@ import { hasTextGenerationHandler } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
+import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
 
 type CloudHealthApi = {
   isCloudProvisionedContainer: () => boolean;
@@ -13,34 +14,13 @@ type CloudHealthApi = {
   ) => string | undefined;
 };
 
-type LocalInferenceHealthApi = {
-  getLocalInferenceActiveSnapshot: () => Promise<{
-    status?: string;
-    modelId?: string;
-  } | null>;
-};
-
 let cloudHealthApiPromise: Promise<CloudHealthApi> | null = null;
-let localInferenceHealthApiPromise: Promise<LocalInferenceHealthApi> | null =
-  null;
 
 function getCloudHealthApi(): Promise<CloudHealthApi> {
   cloudHealthApiPromise ??= import(
     "@elizaos/plugin-elizacloud"
   ) as Promise<CloudHealthApi>;
   return cloudHealthApiPromise;
-}
-
-function getLocalInferenceHealthApi(): Promise<LocalInferenceHealthApi> {
-  // Import the route module directly, NOT the package's bare entry. The mobile
-  // agent bundle stubs `@elizaos/plugin-local-inference` (the heavy Plugin entry)
-  // to a null module, so a bare import returns `{ getLocalInferenceActiveSnapshot:
-  // undefined }` and /api/status 500s. The deep subpath (the `./*` wildcard
-  // export) isn't stubbed and carries the real implementation on every platform.
-  localInferenceHealthApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
-  ) as Promise<LocalInferenceHealthApi>;
-  return localInferenceHealthApiPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +472,7 @@ export async function handleHealthRoutes(
     let activeLocalModel: string | undefined;
     try {
       const { getLocalInferenceActiveSnapshot } =
-        await getLocalInferenceHealthApi();
+        await loadLocalInferenceRouteApi();
       const localInferenceActive =
         typeof getLocalInferenceActiveSnapshot === "function"
           ? await getLocalInferenceActiveSnapshot().catch(() => null)

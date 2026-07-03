@@ -52,6 +52,12 @@ import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts"
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
+  type LocalInferenceChatMetadata,
+  type LocalInferenceCommandIntent,
+  type LocalInferenceRouteApi,
+  loadLocalInferenceRouteApi,
+} from "./local-inference-server-api.ts";
+import {
   executeFallbackParsedActions,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
@@ -94,34 +100,10 @@ export type { ChatImageAttachment, LogEntry };
 
 const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
 
-type LocalInferenceChatMetadata = Record<string, unknown>;
-type LocalInferenceCommandIntent =
-  | "cancel"
-  | "download"
-  | "redownload"
-  | "resume"
-  | "retry"
-  | "status"
-  | "switch_smaller"
-  | "use_cloud"
-  | "use_local";
-
-type LocalInferenceChatApi = {
-  getLocalInferenceChatStatus: (
-    intent: LocalInferenceCommandIntent,
-    error?: unknown,
-  ) => Promise<{
-    text: string;
-    localInference: LocalInferenceChatMetadata;
-  }>;
-  handleLocalInferenceChatCommand: (
-    intent: LocalInferenceCommandIntent,
-    prompt: string,
-  ) => Promise<{
-    text: string;
-    localInference: LocalInferenceChatMetadata;
-  }>;
-};
+type LocalInferenceChatApi = Pick<
+  LocalInferenceRouteApi,
+  "getLocalInferenceChatStatus" | "handleLocalInferenceChatCommand"
+>;
 
 let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
 
@@ -129,12 +111,13 @@ let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
  * Resolve the plugin-local-inference chat API used to turn a local-inference
  * failure into a user-facing status (download prompts, switch-model hints, …).
  *
- * An error-reporting path must NEVER throw. The mobile bundle can resolve the
- * dynamic `import("@elizaos/plugin-local-inference")` to a namespace whose named
- * export is `undefined` (tree-shake / circular-init artifact) — which previously
- * made the catch blocks throw `getLocalInferenceChatStatus is not a function`
- * and MASK the real error. So validate the import and fall back to a status
- * derived from the raw error, guaranteeing the actual failure surfaces.
+ * An error-reporting path must NEVER throw. On any platform the loaded module
+ * can carry an `undefined` named export (tree-shake / circular-init artifact) —
+ * which previously made the catch blocks throw
+ * `getLocalInferenceChatStatus is not a function` and MASK the real error. So
+ * validate the loaded functions and fall back to a status derived from the raw
+ * error, guaranteeing the actual failure surfaces. The always-real subpath is
+ * owned by `./local-inference-server-api.ts`.
  */
 function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
   localInferenceChatApiPromise ??=
@@ -155,9 +138,7 @@ function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
         }),
       };
       try {
-        const mod = (await import(
-          "@elizaos/plugin-local-inference"
-        )) as Partial<LocalInferenceChatApi>;
+        const mod = (await loadLocalInferenceRouteApi()) as Partial<LocalInferenceChatApi>;
         return {
           getLocalInferenceChatStatus:
             typeof mod.getLocalInferenceChatStatus === "function"
