@@ -1522,8 +1522,7 @@ export function VectorBrowserRichView({
           const isActive = selectedMemory?.id === mem.id;
           const createdLabel = formatMemoryDate(mem.createdAt);
           return (
-            <Button
-              unstyled
+            <button
               type="button"
               key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
               onClick={() => openDetail(mem)}
@@ -1555,7 +1554,7 @@ export function VectorBrowserRichView({
                   ) : null}
                 </span>
               </span>
-            </Button>
+            </button>
           );
         })
       )}
