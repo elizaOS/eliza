@@ -1,0 +1,24 @@
+{
+  "family": "benchmark",
+  "suite": "framework",
+  "item": "single-message",
+  "provider": "cli:codex",
+  "model": "gpt-5.5",
+  "status": "passed",
+  "rationale": "one real gpt-5.5-via-codex message turn completed; RESPONSE_HANDLER produced a valid reply; 1 eliza_native_v1 row captured",
+  "wireEvidence": {
+    "cliInferenceLog": "[cli-inference] enabled via ELIZA_CHAT_VIA_CLI=codex \u2014 large-tier handlers spawn the codex CLI",
+    "textPlannerLog": "[cli-inference] text-planner mode (ELIZA_PLANNER_NATIVE_TOOLS=0) \u2014 ACTION_PLANNER also served via this route",
+    "modelLatencyMs": 13945.897375,
+    "note": "latency ~13.9s = codex spawn (mock <1ms, Cerebras sub-second); CEREBRAS_API_KEY was set in-env yet the cli route won (cli-first ordering)"
+  },
+  "nativeRows": 1,
+  "trajectoryFormat": "eliza_native_v1",
+  "artifacts": {
+    "result": "result.json",
+    "trajectory": "run/trajectories/<agentId>/<trajId>.json",
+    "native": "native.jsonl",
+    "stdout": "stdout.log",
+    "stderr": "stderr.log"
+  }
+}

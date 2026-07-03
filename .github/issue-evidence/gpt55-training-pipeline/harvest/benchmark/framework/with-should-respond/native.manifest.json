@@ -1,0 +1,24 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-03T00:06:15.734Z",
+  "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/benchmark/framework/with-should-respond/run",
+  "trajectoriesDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/benchmark/framework/with-should-respond/run/trajectories",
+  "jsonlPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/benchmark/framework/with-should-respond/native.jsonl",
+  "manifestPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/benchmark/framework/with-should-respond/native.manifest.json",
+  "counts": {
+    "trajectoryFiles": 5,
+    "parsedTrajectories": 5,
+    "skippedFiles": 0,
+    "rows": 5,
+    "passedRows": 0,
+    "failedRows": 0,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 5
+  },
+  "runIds": [],
+  "scenarioIds": [],
+  "agentIds": [
+    "00000000-0000-0000-0000-000000000001"
+  ]
+}

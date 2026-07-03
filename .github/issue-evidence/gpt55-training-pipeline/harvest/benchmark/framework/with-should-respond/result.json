@@ -1,0 +1,56 @@
+{
+  "runtime": "typescript",
+  "timestamp": "2026-07-03T00:05:16.902Z",
+  "system": {
+    "os": "darwin 25.2.0",
+    "arch": "arm64",
+    "cpus": 16,
+    "memory_gb": 128,
+    "runtime_version": "Bun 1.3.14",
+    "platform": "typescript"
+  },
+  "scenarios": {
+    "with-should-respond": {
+      "iterations": 1,
+      "warmup": 0,
+      "latency": {
+        "min_ms": 58771.42725,
+        "max_ms": 58771.42725,
+        "avg_ms": 58771.42725,
+        "median_ms": 58771.42725,
+        "p95_ms": 58771.42725,
+        "p99_ms": 58771.42725,
+        "stddev_ms": 0,
+        "raw_ms": [
+          58771.42725
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 0.08507535436788291,
+        "total_messages": 5,
+        "total_time_ms": 58771.42725
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 1.4057791000010496,
+        "provider_execution_avg_ms": 0,
+        "should_respond_avg_ms": 0,
+        "model_call_avg_ms": 6950.840553277779,
+        "action_dispatch_avg_ms": 0,
+        "evaluator_avg_ms": 0,
+        "memory_create_avg_ms": 0.047416642856859426,
+        "memory_get_avg_ms": 0.21121658181793868,
+        "model_time_total_ms": 125115.12995900001,
+        "framework_time_total_ms": -66343.702709
+      },
+      "resources": {
+        "memory_rss_start_mb": 143.40625,
+        "memory_rss_peak_mb": 174,
+        "memory_rss_end_mb": 174,
+        "memory_delta_mb": 30.59375,
+        "heap_used_start_mb": 18.678853034973145,
+        "heap_used_peak_mb": 23.941750526428223,
+        "heap_used_end_mb": 23.700708389282227
+      }
+    }
+  }
+}
