@@ -41,30 +41,57 @@ type FirstPartyRegistryEntry = {
   subtype?: string;
 };
 
-function resolveDefaultTtsPluginName(): string {
-  const entries = (
+function findDefaultTtsPluginName(
+  entries: FirstPartyRegistryEntry[] | undefined = (
     firstPartyRegistry as { entries?: FirstPartyRegistryEntry[] }
-  ).entries;
+  ).entries,
+): string | null {
   const entry = entries?.find(
     (candidate) => candidate.id === "edge-tts" && candidate.subtype === "voice",
   );
-  if (!entry?.npmName) {
-    throw new Error(
-      "First-party registry entry edge-tts did not expose a voice plugin package name",
-    );
-  }
-  return entry.npmName;
+  return entry?.npmName ?? null;
 }
 
-export const DEFAULT_TEXT_TO_SPEECH_PROVIDER: TextToSpeechProviderRegistration =
-  {
-    pluginName: resolveDefaultTtsPluginName(),
+function createDefaultTextToSpeechProvider(
+  pluginName: string,
+): TextToSpeechProviderRegistration {
+  return {
+    pluginName,
     pluginConfigKey: "edge-tts",
     providerName: "edge-tts",
     priority: 0,
     wrapHandler: (handler) =>
       wrapEdgeTtsHandlerWithFirstLineCache(handler as EdgeTtsHandler),
   };
+}
+
+export function resolveDefaultTextToSpeechProvider(): TextToSpeechProviderRegistration {
+  return resolveDefaultTextToSpeechProviderFromEntries();
+}
+
+function resolveDefaultTextToSpeechProviderFromEntries(
+  entries?: FirstPartyRegistryEntry[],
+): TextToSpeechProviderRegistration {
+  const pluginName = findDefaultTtsPluginName(entries);
+  if (!pluginName) {
+    throw new Error(
+      "First-party registry entry edge-tts did not expose a voice plugin package name",
+    );
+  }
+  return createDefaultTextToSpeechProvider(pluginName);
+}
+
+export function resolveDefaultTextToSpeechPluginName(): string | null {
+  return findDefaultTtsPluginName();
+}
+
+export const DEFAULT_TEXT_TO_SPEECH_PROVIDER: TextToSpeechProviderRegistration =
+  createDefaultTextToSpeechProvider(findDefaultTtsPluginName() ?? "");
+
+export const __ttsProviderRegistryTestHooks = {
+  findDefaultTtsPluginName,
+  resolveDefaultTextToSpeechProviderFromEntries,
+};
 
 export function isTextToSpeechProviderDisabled(
   config: TextToSpeechProviderConfig,

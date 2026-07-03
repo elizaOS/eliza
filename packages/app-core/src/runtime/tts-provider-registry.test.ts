@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  __ttsProviderRegistryTestHooks,
   DEFAULT_TEXT_TO_SPEECH_PROVIDER,
   isTextToSpeechProviderDisabled,
 } from "./tts-provider-registry.js";
@@ -51,6 +52,19 @@ describe("TTS provider registry", () => {
 
     process.env.ELIZA_DISABLE_EDGE_TTS = "yes";
     expect(isTextToSpeechProviderDisabled({})).toBe(true);
+  });
+
+  it("does not throw at import-time when the default registry entry is absent", () => {
+    expect(
+      __ttsProviderRegistryTestHooks.findDefaultTtsPluginName([]),
+    ).toBeNull();
+    expect(() =>
+      __ttsProviderRegistryTestHooks.resolveDefaultTextToSpeechProviderFromEntries(
+        [],
+      ),
+    ).toThrow(
+      "First-party registry entry edge-tts did not expose a voice plugin package name",
+    );
   });
 
   it("keeps runtime glue free of the default TTS package literal", () => {

@@ -103,7 +103,9 @@ import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,
 } from "./startup-overlay.js";
-import { DEFAULT_TEXT_TO_SPEECH_PROVIDER } from "./tts-provider-registry.js";
+import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
+import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
+import { resolveDefaultTextToSpeechPluginName } from "./tts-provider-registry.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
@@ -216,12 +218,14 @@ export function collectPluginNames(
   syncBrandEnvAliases();
   const [config] = args;
   const result = upstreamCollectPluginNames(...args);
+  const defaultTtsPluginName = resolveDefaultTextToSpeechPluginName();
   if (
     result.has(AGENT_ORCHESTRATOR_PLUGIN) &&
     !isTextToSpeechEdgeTtsDisabled(config) &&
-    !result.has(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName)
+    defaultTtsPluginName &&
+    !result.has(defaultTtsPluginName)
   ) {
-    result.add(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName);
+    result.add(defaultTtsPluginName);
   }
   syncBrandEnvAliases();
   return result;

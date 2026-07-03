@@ -5,6 +5,7 @@ import { loadDefaultTextToSpeechHandler } from "./tts-default-handler.js";
 import {
   DEFAULT_TEXT_TO_SPEECH_PROVIDER,
   isTextToSpeechProviderDisabled,
+  resolveDefaultTextToSpeechProvider,
   type TextToSpeechProviderConfig,
   type TtsModelHandler,
 } from "./tts-provider-registry.js";
@@ -37,10 +38,10 @@ export async function ensureTextToSpeechHandler(
   runtime: AgentRuntime,
 ): Promise<void> {
   const config = loadElizaConfig();
-  const provider = DEFAULT_TEXT_TO_SPEECH_PROVIDER;
-  if (isTextToSpeechProviderDisabled(config, provider)) {
+  if (isTextToSpeechProviderDisabled(config, DEFAULT_TEXT_TO_SPEECH_PROVIDER)) {
     return;
   }
+  const provider = resolveDefaultTextToSpeechProvider();
 
   const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
   if (
