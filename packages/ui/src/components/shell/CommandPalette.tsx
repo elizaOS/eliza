@@ -16,7 +16,7 @@ import {
   reportShortcutFired,
   reportUserViewSwitch,
 } from "../../chat/useSlashCommandController";
-import { COMMAND_PALETTE_EVENT } from "../../events";
+import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
@@ -114,11 +114,7 @@ export function CommandPalette() {
   // desktop tab, and always dispatch so path-less views still route via the
   // consumer's `/apps/<viewId>` fallback.
   const navigateView = useCallback((viewId: string, path?: string) => {
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: { viewId, viewPath: path },
-      }),
-    );
+    dispatchNavigateViewEvent({ viewId, viewPath: path });
     reportUserViewSwitch(viewId, path);
   }, []);
 

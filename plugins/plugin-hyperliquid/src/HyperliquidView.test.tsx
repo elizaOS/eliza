@@ -10,6 +10,7 @@
 // retired HyperliquidTuiView surface. Also covers the unchanged `interact`
 // terminal capability handler the view bundle re-exports.
 
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import {
   cleanup,
   fireEvent,
@@ -288,11 +289,11 @@ describe("HyperliquidView — controls", () => {
 
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener("eliza:navigate:view", listener);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
     try {
       fireEvent.click(agent("back"));
     } finally {
-      window.removeEventListener("eliza:navigate:view", listener);
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
     }
     expect(events).toHaveLength(1);
     expect(events[0]?.detail).toMatchObject({ viewId: "home", viewPath: "/" });

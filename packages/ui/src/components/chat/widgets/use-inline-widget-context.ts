@@ -15,6 +15,7 @@
  */
 
 import { useMemo } from "react";
+import { dispatchNavigateViewEvent } from "../../../events";
 import type { FormResultValue } from "./form-request";
 import type { InlineWidgetContext } from "./inline-registry";
 
@@ -37,9 +38,7 @@ export function useInlineWidgetContext(
         const detail = payload.startsWith("/")
           ? { viewPath: payload }
           : { viewId: payload };
-        window.dispatchEvent(
-          new CustomEvent("eliza:navigate:view", { detail }),
-        );
+        dispatchNavigateViewEvent(detail);
       },
       // A followup `prompt` chip: prefill the composer draft. Outside a chat
       // provider `setChatInput` is an inert setter, so this safely no-ops.

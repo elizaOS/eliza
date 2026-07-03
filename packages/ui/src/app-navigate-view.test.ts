@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createNavigateViewEvent } from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   consumeNavigateViewPayload,
@@ -60,7 +61,7 @@ function createHandlerFixture(views: ViewRegistryEntry[] = [view()]) {
 }
 
 function navigateEvent(detail: Record<string, unknown>): CustomEvent {
-  return new CustomEvent("eliza:navigate:view", { detail });
+  return createNavigateViewEvent(detail);
 }
 
 describe("App navigate-view shell handler", () => {

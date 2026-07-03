@@ -61,7 +61,9 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
 ]);
-const REPLAYABLE_WS_EVENT_TYPES = new Set([SHELL_NAVIGATE_VIEW_WS_EVENT]);
+const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+]);
 const WS_EVENT_BACKLOG_LIMIT = 8;
 
 type StreamChatEvent = {

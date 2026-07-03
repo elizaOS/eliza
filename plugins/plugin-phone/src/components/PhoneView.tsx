@@ -11,6 +11,7 @@
  */
 
 import { Phone } from "@elizaos/capacitor-phone";
+import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
 import { Button } from "@elizaos/ui/components/ui/button";
@@ -59,11 +60,7 @@ function formatWhen(epochMs: number): string {
 /** Open the separate Contacts view via the navigation bus. */
 function openContacts(): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: { viewId: "contacts", viewPath: "/contacts" },
-    }),
-  );
+  dispatchNavigateViewEvent({ viewId: "contacts", viewPath: "/contacts" });
 }
 
 export function PhoneView() {

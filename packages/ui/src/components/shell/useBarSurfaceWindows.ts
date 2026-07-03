@@ -9,6 +9,7 @@ import {
   openDesktopLauncherWindow,
 } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { NAVIGATE_VIEW_EVENT } from "../../events";
 
 /** Detail shape used by views/launcher whose own window should open. */
 type OpenWindowFn = typeof openDesktopAppWindow;
@@ -66,7 +67,7 @@ export function useBarSurfaceWindows(options?: {
         alwaysOnTop: detail.alwaysOnTop === true,
       });
     };
-    window.addEventListener("eliza:navigate:view", onNavigate);
-    return () => window.removeEventListener("eliza:navigate:view", onNavigate);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    return () => window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   }, [isDesktop]);
 }

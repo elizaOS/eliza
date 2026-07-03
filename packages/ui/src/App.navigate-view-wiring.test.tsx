@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createNavigateViewEvent } from "@elizaos/shared/events";
 import {
   cleanup,
   fireEvent,
@@ -365,7 +366,7 @@ vi.mock("./hooks/useIsDeveloperMode", () => ({
 import { App } from "./App";
 
 function navigateView(detail: Record<string, unknown>) {
-  window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
+  window.dispatchEvent(createNavigateViewEvent(detail));
 }
 
 describe("App navigate-view event wiring", () => {

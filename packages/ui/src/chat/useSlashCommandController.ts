@@ -17,7 +17,7 @@ import {
   SETTINGS_SECTION_SUGGESTIONS,
 } from "../components/settings/settings-section-tokens";
 import { useBootConfig } from "../config/boot-config-react.hooks";
-import { COMMAND_PALETTE_EVENT } from "../events";
+import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import { useAppSelectorShallow } from "../state";
@@ -305,14 +305,10 @@ export function useSlashCommandController(
   const navigateView = React.useCallback(
     (target: { viewId?: string; viewPath?: string }) => {
       if (typeof window === "undefined") return;
-      window.dispatchEvent(
-        new CustomEvent("eliza:navigate:view", {
-          detail: {
-            viewId: target.viewId,
-            viewPath: target.viewPath,
-          },
-        }),
-      );
+      dispatchNavigateViewEvent({
+        viewId: target.viewId,
+        viewPath: target.viewPath,
+      });
       // Report this user-initiated switch to the agent (#8792) so the server's
       // current-view state stays accurate and a VIEW_SWITCHED event fires for the
       // proactive decider. `source: "user"` tells the server to record + emit

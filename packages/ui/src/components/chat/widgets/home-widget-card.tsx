@@ -15,6 +15,7 @@
 
 import { type ReactNode, useMemo } from "react";
 import { reportUserViewSwitch } from "../../../chat/useSlashCommandController";
+import { dispatchNavigateViewEvent } from "../../../events";
 import { cn } from "../../../lib/utils";
 import { useAppSelectorShallow } from "../../../state";
 import { Button } from "../../ui/button";
@@ -33,13 +34,7 @@ export function useWidgetNavigation(): {
   return useMemo(
     () => ({
       openView(path, viewId) {
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("eliza:navigate:view", {
-              detail: { viewPath: path },
-            }),
-          );
-        }
+        dispatchNavigateViewEvent({ viewPath: path });
         reportUserViewSwitch(viewId ?? path, path);
       },
       openTab(tab) {

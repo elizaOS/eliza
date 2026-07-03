@@ -7,6 +7,7 @@
 // navigation — functional parity with the legacy ModelTesterAppView surface,
 // expressed through the spatial action contract.
 
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import {
   cleanup,
   fireEvent,
@@ -158,11 +159,11 @@ describe("ModelTesterView — unified GUI/XR/TUI wrapper", () => {
 
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener("eliza:navigate:view", listener);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
     try {
       fireEvent.click(button("back"));
     } finally {
-      window.removeEventListener("eliza:navigate:view", listener);
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
     }
     expect(events).toHaveLength(1);
     expect(events[0]?.detail).toMatchObject({ viewId: "apps" });

@@ -8,6 +8,7 @@
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
+  createNavigateViewEvent,
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
@@ -459,11 +460,7 @@ export function bindReadyPhase(
     (data: Record<string, unknown>) => {
       if (typeof window === "undefined") return;
       const payload = normalizeShellNavigateViewPayload(data);
-      window.dispatchEvent(
-        new CustomEvent("eliza:navigate:view", {
-          detail: payload,
-        }),
-      );
+      window.dispatchEvent(createNavigateViewEvent(payload));
     },
   );
 

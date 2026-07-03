@@ -29,14 +29,20 @@ export {
   // App lifecycle
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
+  createNavigateViewEvent,
   // Shared dispatch helpers
   dispatchAppEmoteEvent,
   dispatchElizaCloudStatusUpdated,
+  dispatchNavigateViewEvent,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
   type ElizaCloudStatusUpdatedDetail,
   EMOTE_PICKER_EVENT,
   FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
+  type NavigateViewEvent,
+  type NavigateViewType,
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
   // Sidebar sync

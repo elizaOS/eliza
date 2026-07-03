@@ -64,6 +64,7 @@ import {
   AGENT_READY_EVENT,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
+  createNavigateViewEvent,
   dispatchAppEvent,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   SHARE_TARGET_EVENT,
@@ -1822,11 +1823,7 @@ function setHashRoute(route: string, params: URLSearchParams): void {
  * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
  */
 function dispatchDeepLinkNavigation(intent: DeepLinkNavigationIntent): void {
-  window.dispatchEvent(
-    new CustomEvent<DeepLinkNavigationIntent>("eliza:navigate:view", {
-      detail: intent,
-    }),
-  );
+  window.dispatchEvent(createNavigateViewEvent(intent));
 }
 
 async function initializeDesktopShell(): Promise<void> {

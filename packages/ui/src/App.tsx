@@ -75,8 +75,10 @@ import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
   CONNECT_EVENT,
+  dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
+  NAVIGATE_VIEW_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
@@ -1683,11 +1685,7 @@ function HomeScreenMount({
         // user-initiated tile navigation (#8792). Fire-and-forget.
         reportUserViewSwitch(target.tab);
       } else {
-        window.dispatchEvent(
-          new CustomEvent("eliza:navigate:view", {
-            detail: { viewPath: target.path },
-          }),
-        );
+        dispatchNavigateViewEvent({ viewPath: target.path });
         // The tile only carries a path; resolve the registered view id so the
         // decider keys off the same id the rest of the navigation bus uses
         // (#8792). Skip the report when no view is registered at that path.
@@ -2068,9 +2066,9 @@ export function App() {
       }
       baseHandler(event);
     };
-    window.addEventListener("eliza:navigate:view", handleNavigateView);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
     return () =>
-      window.removeEventListener("eliza:navigate:view", handleNavigateView);
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
   }, [
     setTab,
     availableViewsForDesktopTabs,

@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+import {
+  createNavigateViewEvent,
+  NAVIGATE_VIEW_EVENT,
+} from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createNavigateViewHandler,
@@ -51,7 +55,7 @@ function createHandlerFixture(views: ViewRegistryEntry[] = [view()]) {
 }
 
 function navigateEvent(detail: Record<string, unknown>): CustomEvent {
-  return new CustomEvent("eliza:navigate:view", { detail });
+  return createNavigateViewEvent(detail);
 }
 
 function recents(): string[] {
@@ -69,7 +73,7 @@ describe("createNavigateViewHandler guard + fallthrough branches", () => {
   it("ignores events that carry no detail", () => {
     const fixture = createHandlerFixture();
 
-    fixture.handler(new CustomEvent("eliza:navigate:view"));
+    fixture.handler(new CustomEvent(NAVIGATE_VIEW_EVENT));
 
     expect(fixture.setTab).not.toHaveBeenCalled();
     expect(fixture.navigatePath).not.toHaveBeenCalled();

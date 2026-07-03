@@ -24,6 +24,7 @@
 
 import { logger } from "@elizaos/logger";
 import { useCallback, useRef, useState } from "react";
+import { dispatchNavigateViewEvent } from "../../events";
 import { snapshotResourceCounters } from "../../perf/resource-counters";
 import { viewLifecycleController } from "../../state/view-lifecycle";
 import {
@@ -57,13 +58,7 @@ function DefaultViewErrorFallback({
   onRetry: () => void;
 }): React.JSX.Element {
   const goToLauncher = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("eliza:navigate:view", {
-          detail: { viewPath: "/views" },
-        }),
-      );
-    }
+    dispatchNavigateViewEvent({ viewPath: "/views" });
   }, []);
   return (
     <div

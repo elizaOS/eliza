@@ -7,6 +7,7 @@
 // ids (`back`, `select:<slot>:<phase>`, `refresh`) — functional parity with the
 // retired hand-written GUI/TUI surfaces.
 
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
   cleanup,
@@ -250,11 +251,11 @@ describe("TrajectoryLoggerView — unified GUI/XR wrapper", () => {
     render(React.createElement(TrajectoryLoggerView));
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener("eliza:navigate:view", listener);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
     try {
       fireEvent.click(buttonByAgent("back"));
     } finally {
-      window.removeEventListener("eliza:navigate:view", listener);
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
     }
     expect(events).toHaveLength(1);
     expect(events[0]?.detail).toMatchObject({ viewId: "apps" });

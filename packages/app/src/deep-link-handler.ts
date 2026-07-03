@@ -6,6 +6,7 @@
 
 import {
   CONNECT_EVENT,
+  createNavigateViewEvent,
   dispatchAppEvent,
   dispatchOpenNotificationCenter,
 } from "@elizaos/ui/events";
@@ -47,11 +48,7 @@ export interface DeepLinkHandlerContext {
 function defaultDispatchNavigationIntent(
   intent: DeepLinkNavigationIntent,
 ): void {
-  window.dispatchEvent(
-    new CustomEvent<DeepLinkNavigationIntent>("eliza:navigate:view", {
-      detail: intent,
-    }),
-  );
+  window.dispatchEvent(createNavigateViewEvent(intent));
 }
 
 /** True for an `https://<trusted-host>/<path>` universal/App link. */

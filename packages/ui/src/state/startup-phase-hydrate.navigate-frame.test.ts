@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared/events";
+import {
+  NAVIGATE_VIEW_EVENT,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+} from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
 
@@ -98,13 +101,13 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     clientMock.disconnectWs.mockClear();
     clientMock.onWsEvent.mockClear();
     navHandler = vi.fn();
-    window.addEventListener("eliza:navigate:view", navHandler);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navHandler);
     cleanup = bindReadyPhase({ current: makeDeps() });
   });
 
   function teardown() {
     cleanup();
-    window.removeEventListener("eliza:navigate:view", navHandler);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   }
 
   it("registers a shell:navigate:view handler on ready-phase start", () => {
@@ -327,6 +330,6 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
       }),
     );
     expect(navHandler).not.toHaveBeenCalled();
-    window.removeEventListener("eliza:navigate:view", navHandler);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   });
 });

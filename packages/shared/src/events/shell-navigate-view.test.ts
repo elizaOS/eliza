@@ -1,11 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
+  createNavigateViewEvent,
   createShellNavigateViewWsFrame,
+  NAVIGATE_VIEW_EVENT,
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "./index";
 
 describe("shell navigate view websocket event", () => {
+  it("exports the app navigate-view DOM event contract", () => {
+    const event = createNavigateViewEvent({
+      viewId: "wallet",
+      viewPath: "/wallet",
+      subview: "activity",
+    });
+
+    expect(NAVIGATE_VIEW_EVENT).toBe("eliza:navigate:view");
+    expect(event.type).toBe(NAVIGATE_VIEW_EVENT);
+    expect(event.detail).toEqual({
+      viewId: "wallet",
+      viewPath: "/wallet",
+      subview: "activity",
+    });
+  });
+
   it("normalizes valid navigation fields", () => {
     expect(
       normalizeShellNavigateViewPayload({

@@ -11,6 +11,7 @@
  * registry (see `register-terminal-view.tsx`).
  */
 
+import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
@@ -30,11 +31,7 @@ type Selection = { slot: Slot; phase: PhaseName } | null;
 /** Navigate back to the apps grid via the shared navigation bus. */
 function navigateToApps(): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: { viewId: "apps", viewPath: "/apps" },
-    }),
-  );
+  dispatchNavigateViewEvent({ viewId: "apps", viewPath: "/apps" });
 }
 
 export interface TrajectoryLoggerViewProps {

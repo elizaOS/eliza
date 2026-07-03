@@ -21,6 +21,7 @@
  * spatial-unsafe modules leak into the view bundle.
  */
 
+import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import {
   client,
   type PluginInfo,
@@ -201,11 +202,11 @@ function taskRow(
 
 function navigateSettings(subview: string): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: { viewId: "settings", viewPath: "/settings", subview },
-    }),
-  );
+  dispatchNavigateViewEvent({
+    viewId: "settings",
+    viewPath: "/settings",
+    subview,
+  });
 }
 
 function connectModel(): void {

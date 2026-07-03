@@ -78,6 +78,38 @@ export interface ElizaCloudStatusUpdatedDetail {
   cloudVoiceProxyAvailable: boolean;
 }
 
+// ── Navigation ──────────────────────────────────────────────────────────
+export const NAVIGATE_VIEW_EVENT = "eliza:navigate:view" as const;
+
+export type NavigateViewType = "gui" | "tui" | "xr";
+
+export interface NavigateViewDetail {
+  viewId?: string;
+  viewPath?: string | null;
+  viewLabel?: string;
+  viewType?: NavigateViewType;
+  action?: string;
+  /** Sub-section to deep-link within the target view (e.g. a Settings section id). */
+  subview?: string;
+  views?: string[];
+  layout?: string;
+  placement?: string;
+  alwaysOnTop?: boolean;
+}
+
+export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
+
+export function createNavigateViewEvent(
+  detail: NavigateViewDetail,
+): NavigateViewEvent {
+  return new CustomEvent(NAVIGATE_VIEW_EVENT, { detail });
+}
+
+export function dispatchNavigateViewEvent(detail: NavigateViewDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(createNavigateViewEvent(detail));
+}
+
 // ── Avatar / VRM ─────────────────────────────────────────────────────────
 export const VRM_TELEPORT_COMPLETE_EVENT =
   "eliza:vrm-teleport-complete" as const;
@@ -186,6 +218,7 @@ export type ElizaWindowEventName =
   | typeof FUSED_WAKE_EVENT
   | typeof APP_EMOTE_EVENT
   | typeof ELIZA_CLOUD_STATUS_UPDATED_EVENT
+  | typeof NAVIGATE_VIEW_EVENT
   | typeof VRM_TELEPORT_COMPLETE_EVENT
   | typeof FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
   | typeof SELF_STATUS_SYNC_EVENT;

@@ -16,6 +16,7 @@
  * presentational view stays modality-portable.
  */
 
+import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -228,11 +229,7 @@ export function ModelTesterView({
       return;
     }
     if (typeof window === "undefined") return;
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: { viewId: "apps", viewPath: "/apps" },
-      }),
-    );
+    dispatchNavigateViewEvent({ viewId: "apps", viewPath: "/apps" });
   }, [exitToApps]);
 
   const onAction = useCallback(

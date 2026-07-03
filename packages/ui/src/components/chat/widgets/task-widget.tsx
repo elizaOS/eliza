@@ -34,6 +34,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { CodingAgentTaskThreadDetail } from "../../../api/client-types-cloud";
+import { dispatchNavigateViewEvent } from "../../../events";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { Button } from "../../ui/button";
 import { findTaskRegions, type TaskRegion } from "../message-task-parser";
@@ -182,9 +183,7 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
   const handleOpen = useCallback(() => {
     if (typeof window === "undefined") return;
     const navDetail = { viewPath: `/orchestrator?taskId=${threadId}` };
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", { detail: navDetail }),
-    );
+    dispatchNavigateViewEvent(navDetail);
   }, [threadId]);
 
   if (removed) {
