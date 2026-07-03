@@ -32473,7 +32473,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var _ELIZA_1_VISION_TIER_ID_SET = new Set(
     ELIZA_1_VISION_TIER_IDS
   );
-  var ELIZA_1_HOSTED_MTP_TIER_IDS = [];
+  var ELIZA_1_HOSTED_MTP_TIER_IDS = [
+    "eliza-1-2b"
+  ];
   function hostedMtpDrafterAvailableForTier(id) {
     return ELIZA_1_HOSTED_MTP_TIER_IDS.some((mtpId) => mtpId === id);
   }
@@ -32691,14 +32693,21 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const runtime = {
       preferredBackend: "llama-cpp",
       optimizations: {
-        parallel: 4,
+        // Gemma-aware RAM defaults (epic #9033). Eliza-1 is Gemma-4-based and
+        // hits llama.cpp/#21690: the server KV context-checkpoint ring grows
+        // unbounded on Gemma (a handful of ~16K-prompt turns filled ~64 GB in
+        // the upstream repro). The on-device Eliza-1 runtime is single-user, so
+        // pin single-slot decode (`-np 1`) and bound the checkpoint ring to 1 —
+        // this is pure config, not a kernel change, and only touches the
+        // Gemma-4 Eliza-1 tiers built here (never other models).
+        parallel: 1,
         flashAttention: true,
         requiresKernel,
         // OpenVINO is the right backend for ASR/Whisper on Intel hosts but
         // never for autoregressive text. The text path uses optimized
         // llama.cpp kernels plus native MTP heads.
         unsupportedKernels: ["openvino"],
-        ctxCheckpoints: 4,
+        ctxCheckpoints: 1,
         ctxCheckpointInterval: 4096
       }
     };
@@ -36805,6 +36814,80 @@ Assistant:`;
   var fullBunRuntime = null;
   var IOS_LOCAL_AGENT_IPC_BASE2 = "eliza-local-agent://ipc";
   var IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE = "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
+  var IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION = 400;
+  var agentPluginForBootTrace;
+  var bootTraceDisabled = false;
+  var bootTraceConsecutiveFailures = 0;
+  var bootTraceEntryCount = 0;
+  var bootTraceLaunchedAtMs = Date.now();
+  var BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES = 3;
+  function resolveBootTraceBridge() {
+    if (agentPluginForBootTrace !== void 0) {
+      return agentPluginForBootTrace;
+    }
+    try {
+      const capacitor = Capacitor;
+      if (!isNativeIos2() || capacitor.isPluginAvailable?.("Agent") !== true) {
+        agentPluginForBootTrace = null;
+        return null;
+      }
+      agentPluginForBootTrace = registerPlugin("Agent");
+    } catch {
+      agentPluginForBootTrace = null;
+    }
+    return agentPluginForBootTrace;
+  }
+  function appendIosBootTrace(stage, detail = {}) {
+    const bridge = resolveBootTraceBridge();
+    if (!bridge || bootTraceDisabled) return;
+    if (bootTraceEntryCount >= IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION) return;
+    bootTraceEntryCount += 1;
+    let safeDetail;
+    try {
+      safeDetail = JSON.parse(
+        JSON.stringify({
+          sinceLaunchMs: Date.now() - bootTraceLaunchedAtMs,
+          ...detail
+        })
+      );
+    } catch {
+      return;
+    }
+    bridge.appendBootTrace({ stage, detail: safeDetail }).then(() => {
+      bootTraceConsecutiveFailures = 0;
+    }).catch((error51) => {
+      const message = error51 instanceof Error ? error51.message : String(error51 ?? "");
+      bootTraceConsecutiveFailures += 1;
+      if (/not implemented|is not available|method not found/i.test(message) || bootTraceConsecutiveFailures >= BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES) {
+        bootTraceDisabled = true;
+      }
+    });
+  }
+  var iosAgentBootProgress = {
+    phase: "idle",
+    startedAt: null,
+    lastHeartbeatAt: null,
+    lastError: null
+  };
+  function recordIosNativeAgentBootPhase(phase, error51) {
+    const now2 = Date.now();
+    iosAgentBootProgress = {
+      phase,
+      startedAt: phase === "starting" ? now2 : iosAgentBootProgress.startedAt ?? now2,
+      lastHeartbeatAt: now2,
+      lastError: error51 ?? (phase === "error" ? iosAgentBootProgress.lastError : null)
+    };
+    appendIosBootTrace("agent-boot-phase", {
+      phase,
+      ...error51 ? { error: error51 } : {}
+    });
+  }
+  function recordIosNativeAgentBootHeartbeat() {
+    iosAgentBootProgress = {
+      ...iosAgentBootProgress,
+      lastHeartbeatAt: Date.now()
+    };
+  }
   function isPrimedFullBunRuntime(value) {
     return !!value && typeof value === "object" && value.kind === "primed";
   }
@@ -37026,11 +37109,23 @@ Assistant:`;
       bodyEncoding: typeof record2.bodyEncoding === "string" ? record2.bodyEncoding : void 0
     };
   }
+  var tracedEngineAcquire = false;
   async function getFullBunRuntime() {
     const strict = shouldRequireFullBunRuntime();
+    const pluginAvailable = isFullBunRuntimePluginAvailable();
+    if (!tracedEngineAcquire && isNativeIos2()) {
+      tracedEngineAcquire = true;
+      appendIosBootTrace("engine-acquire", {
+        copy: "ui",
+        strict,
+        builtIn: isFullBunRuntimeBuiltIn(),
+        pluginAvailable,
+        runtimeMode: readRuntimeMode()
+      });
+    }
     if (!isNativeIos2() && !strict) return null;
     if (!strict && !isFullBunRuntimeBuiltIn()) return null;
-    if (!isFullBunRuntimePluginAvailable()) {
+    if (!pluginAvailable) {
       if (strict) {
         throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
       }
@@ -37041,11 +37136,18 @@ Assistant:`;
     }
     fullBunRuntime ??= (async () => {
       try {
-        const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
+        const runtime = await importFullBunRuntimePlugin();
         const currentStatus = await runtime.getStatus().catch(() => null);
         if (currentStatus?.ready && currentStatus.engine === "bun") {
+          recordIosNativeAgentBootPhase("ready");
+          appendIosBootTrace("engine-adopted-running", {
+            engine: currentStatus.engine
+          });
           return runtime;
         }
+        recordIosNativeAgentBootPhase("starting");
+        appendIosBootTrace("engine-start-requested", { copy: "ui" });
+        const startRequestedAt = Date.now();
         const started = await runtime.start({
           engine: "bun",
           argv: IOS_FULL_BUN_ARGV,
@@ -37060,8 +37162,15 @@ Assistant:`;
             `runtime status was ready=${String(status.ready)} engine=${status.engine ?? "unknown"}`
           );
         }
+        recordIosNativeAgentBootPhase("ready");
+        appendIosBootTrace("engine-start-ok", {
+          durationMs: Date.now() - startRequestedAt,
+          engine: status.engine
+        });
         return runtime;
       } catch (error51) {
+        const message = error51 instanceof Error ? error51.message : String(error51);
+        recordIosNativeAgentBootPhase("error", message);
         if (strict) {
           throw fullBunStartupError("startup failed", error51);
         }
@@ -37081,13 +37190,20 @@ Assistant:`;
     }
   }
   async function importFullBunRuntimePlugin() {
+    appendIosBootTrace("engine-import-start", { copy: "ui" });
     let mod = null;
     try {
       mod = await Promise.resolve().then(() => (init_src(), src_exports));
     } catch {
       mod = null;
     }
-    return mod?.ElizaBunRuntime ?? registerPlugin("ElizaBunRuntime");
+    appendIosBootTrace("engine-import-done", {
+      copy: "ui",
+      viaModule: Boolean(mod?.ElizaBunRuntime)
+    });
+    return wrapFullBunRuntime(
+      mod?.ElizaBunRuntime ?? registerPlugin("ElizaBunRuntime")
+    );
   }
   async function tryFullBunNativeRequest(options) {
     const runtime = await getFullBunRuntime();
@@ -37106,6 +37222,7 @@ Assistant:`;
     if (!result) {
       throw new Error("Full Bun iOS bridge returned an invalid HTTP response");
     }
+    recordIosNativeAgentBootHeartbeat();
     return result;
   }
   async function requestToNativeBridgeOptions(request, context) {
@@ -37144,7 +37261,16 @@ Assistant:`;
       await handleIosLocalAgentNativeRequest(options)
     );
   }
+  var tracedNativeRequests = 0;
   async function handleIosLocalAgentNativeRequest(options) {
+    if (tracedNativeRequests < 3) {
+      tracedNativeRequests += 1;
+      appendIosBootTrace("native-request", {
+        copy: "ui",
+        n: tracedNativeRequests,
+        path: options.path?.slice(0, 120) ?? null
+      });
+    }
     const path = options.path?.trim();
     if (!path || !isSafeLocalPath(path)) {
       throw new Error(
@@ -38816,8 +38942,10 @@ Assistant:`;
     ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
     ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
     ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+    ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
     ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-    ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL]
+    ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+    ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL]
   ]);
   var DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = /* @__PURE__ */ new Map([
     ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
@@ -38936,6 +39064,12 @@ Assistant:`;
       return resolveDirectCloudAuthApiBase(
         getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL
       );
+    }
+    if (typeof window !== "undefined") {
+      const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+        window.location.hostname.toLowerCase()
+      );
+      if (byHost) return byHost;
     }
     return null;
   }
@@ -40453,6 +40587,53 @@ Assistant:`;
     }
     throw new Error("Provisioning timed out after 2 minutes");
   };
+  var CLOUD_AGENT_WAKE_POLL_INTERVAL_MS = 5e3;
+  var CLOUD_AGENT_WAKE_TIMEOUT_MS = 6 * 6e4;
+  var CLOUD_AGENT_FAILED_STATUSES = /* @__PURE__ */ new Set(["error", "failed"]);
+  async function waitForCloudAgentRunning(client2, options) {
+    const { agentId, onProgress } = options;
+    const pollIntervalMs = Math.max(
+      50,
+      options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS
+    );
+    const timeoutMs = Math.max(
+      pollIntervalMs,
+      options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS
+    );
+    const startedAt2 = Date.now();
+    onProgress?.(
+      "starting",
+      "Starting your agent \u2014 a cold boot can take a few minutes..."
+    );
+    await client2.resumeCloudCompatAgent(agentId).catch(() => null);
+    let lastStatus = "unknown";
+    for (; ; ) {
+      const detail = await client2.getCloudCompatAgent(agentId).catch(() => null);
+      const agent = detail?.success ? detail.data : null;
+      if (agent) {
+        lastStatus = agent.status || "unknown";
+        if (lastStatus === "running") return agent;
+        if (CLOUD_AGENT_FAILED_STATUSES.has(lastStatus)) {
+          throw new Error(
+            agent.error_message ? `Your cloud agent failed to start: ${agent.error_message}` : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again."
+          );
+        }
+      }
+      const elapsedMs = Date.now() - startedAt2;
+      if (elapsedMs + pollIntervalMs > timeoutMs) {
+        throw new Error(
+          `Your cloud agent is still "${lastStatus}" after ${Math.round(
+            elapsedMs / 1e3
+          )}s. It may still be booting \u2014 try again in a minute.`
+        );
+      }
+      onProgress?.(
+        "starting",
+        `Starting your agent (${lastStatus}) \u2014 ${Math.round(elapsedMs / 1e3)}s elapsed...`
+      );
+      await new Promise((r2) => setTimeout(r2, pollIntervalMs));
+    }
+  }
   function pickPreferredCloudAgent(agents, preferAgentId) {
     if (!agents.length) return null;
     if (preferAgentId) {
@@ -40493,18 +40674,34 @@ Assistant:`;
       }
       const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
       if (chosen) {
-        const apiBase2 = resolveCloudAgentApiBase({
+        let agent = chosen;
+        const initialBase = resolveCloudAgentApiBase({
           bridgeUrl: chosen.bridge_url,
           webUiUrl: chosen.web_ui_url ?? chosen.webUiUrl,
           agentId: chosen.agent_id,
           cloudApiBase: resolvedCloudApiBase
         });
+        const isDedicated = !isDirectCloudSharedAgentBase(initialBase) && Boolean(chosen.web_ui_url ?? chosen.webUiUrl ?? chosen.bridge_url);
+        if (isDedicated && agent.status !== "running") {
+          agent = await waitForCloudAgentRunning(this, {
+            agentId: chosen.agent_id,
+            ...typeof options.wakePollIntervalMs === "number" ? { pollIntervalMs: options.wakePollIntervalMs } : {},
+            ...typeof options.wakeTimeoutMs === "number" ? { timeoutMs: options.wakeTimeoutMs } : {},
+            ...onProgress ? { onProgress } : {}
+          });
+        }
+        const apiBase2 = resolveCloudAgentApiBase({
+          bridgeUrl: agent.bridge_url,
+          webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
+          agentId: agent.agent_id,
+          cloudApiBase: resolvedCloudApiBase
+        });
         onProgress?.("ready", "Connected to your agent");
         return {
-          agentId: chosen.agent_id,
-          agentName: chosen.agent_name,
+          agentId: agent.agent_id,
+          agentName: agent.agent_name,
           apiBase: apiBase2,
-          bridgeUrl: chosen.bridge_url,
+          bridgeUrl: agent.bridge_url,
           created: false
         };
       }

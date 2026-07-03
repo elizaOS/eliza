@@ -251,4 +251,37 @@ describe("NeedsAttentionWidget (#9449)", () => {
     });
     expect(listPendingActionsMock).toHaveBeenCalled();
   });
+
+  it("applies the host-supplied spanClassName to its single root grid-item element (#11752)", async () => {
+    mockPending([pending({ id: "a-1", title: "Send the contract" })]);
+
+    const { container } = render(
+      <NeedsAttentionWidget
+        {...fetchProps}
+        spanClassName="col-span-2 row-span-1"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-needs-attention")).toBeTruthy();
+    });
+    const root = container.firstElementChild;
+    expect(root).not.toBeNull();
+    expect(root?.className).toContain("col-span-2");
+    expect(root?.className).toContain("row-span-1");
+    expect(
+      root?.querySelector('[data-testid="chat-widget-needs-attention"]'),
+    ).not.toBeNull();
+  });
+
+  it("falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
+    mockPending([pending({ id: "a-1", title: "Send the contract" })]);
+
+    const { container } = render(<NeedsAttentionWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-needs-attention")).toBeTruthy();
+    });
+    expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
 });
