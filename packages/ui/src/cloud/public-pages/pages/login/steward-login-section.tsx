@@ -36,6 +36,10 @@ import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import {
+  configuredStewardTenantId,
+  DEFAULT_STEWARD_TENANT_ID,
+} from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
 import { getErrorMessage } from "../../lib/error-message";
 import {
@@ -71,10 +75,7 @@ const Github = ({ className }: { className?: string }) => (
   </svg>
 );
 
-const STEWARD_TENANT_ID =
-  (typeof process !== "undefined"
-    ? process.env.NEXT_PUBLIC_STEWARD_TENANT_ID
-    : undefined) || "elizacloud";
+const STEWARD_TENANT_ID = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
 const PLAYWRIGHT_TEST_AUTH_ENABLED =
   import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   (typeof process !== "undefined" &&

@@ -22,6 +22,8 @@ compatibility_date = "2026-04-29"
 [vars]
 API_UPSTREAM = "https://api.elizacloud.ai"
 VITE_ELIZA_CLOUD_BASE = "https://www.elizacloud.ai"
+VITE_STEWARD_TENANT_ID = "elizacloud"
+NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud"
 # Per-env signal consumed by isomorphic code so the SPA can branch on
 # deployment env. Mirrors the cloud-frontend convention.
 VITE_ENVIRONMENT = "production"
@@ -33,5 +35,6 @@ VITE_ELIZA_CLOUD_BASE = "https://staging.elizacloud.ai"
 # with tenantId=elizacloud-staging and OAuth /authorize carries
 # tenant_id=elizacloud-staging (Steward resolves the OAuth tenant from the
 # query param, not the proxy X-Steward-Tenant header).
+VITE_STEWARD_TENANT_ID = "elizacloud-staging"
 NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
 VITE_ENVIRONMENT = "staging"

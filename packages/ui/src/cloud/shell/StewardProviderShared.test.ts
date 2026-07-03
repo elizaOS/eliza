@@ -48,8 +48,34 @@ describe("Steward auth endpoint resolution", () => {
     );
   });
 
+  it("routes the staging app host to the api-staging worker directly", async () => {
+    setHostname("app-staging.elizacloud.ai");
+    const { configuredSessionEndpoint, configuredRefreshEndpoint } =
+      await loadEndpoints();
+
+    expect(configuredSessionEndpoint()).toBe(
+      "https://api-staging.elizacloud.ai/api/auth/steward-session",
+    );
+    expect(configuredRefreshEndpoint()).toBe(
+      "https://api-staging.elizacloud.ai/api/auth/steward-refresh",
+    );
+  });
+
   it("routes prod to the prod api worker directly", async () => {
     setHostname("elizacloud.ai");
+    const { configuredSessionEndpoint, configuredRefreshEndpoint } =
+      await loadEndpoints();
+
+    expect(configuredSessionEndpoint()).toBe(
+      "https://api.elizacloud.ai/api/auth/steward-session",
+    );
+    expect(configuredRefreshEndpoint()).toBe(
+      "https://api.elizacloud.ai/api/auth/steward-refresh",
+    );
+  });
+
+  it("routes the prod app host to the prod api worker directly", async () => {
+    setHostname("app.elizacloud.ai");
     const { configuredSessionEndpoint, configuredRefreshEndpoint } =
       await loadEndpoints();
 
