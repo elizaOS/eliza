@@ -375,12 +375,12 @@ async function requestDesktopAgentStartForStartup(): Promise<void> {
  * the same-origin cookie path (the HttpOnly `steward-refresh-token` cookie
  * travels automatically), so we return `undefined` to let
  * {@link refreshCloudStewardSession} fall back to its same-origin default.
- * Native (`capacitor://localhost`) has no same-origin cookie, so refresh against
- * the configured Cloud API base (Bearer-refresh). Mirrors
+ * Native/Electrobun has no same-origin cookie, so refresh against the configured
+ * Cloud API base (Bearer-refresh). Mirrors
  * `resolveStewardRefreshEndpoint` in `state/useCloudState.ts`.
  */
 function resolveRestoreStewardRefreshEndpoint(): string | undefined {
-  if (!isNative) return undefined;
+  if (!isNative && !isElectrobunRuntime()) return undefined;
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() ||
     RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;

@@ -8,6 +8,7 @@ import {
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
 } from "@elizaos/shared/steward-session-client";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentReadinessProbe,
   type AuthedAgentFetch,
@@ -238,6 +239,11 @@ function shouldUseNativeCloudHttp(): boolean {
   return Capacitor.isNativePlatform();
 }
 
+function shouldUseNativeStewardRefreshHttp(endpoint: string): boolean {
+  if (!/^https?:\/\//i.test(endpoint)) return false;
+  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+}
+
 function resolveBrowserCloudApiRequestUrl(url: string): string {
   if (shouldUseNativeCloudHttp() || typeof window === "undefined") return url;
   try {
@@ -366,8 +372,33 @@ export function cloudTokenSecsRemaining(token: string): number | null {
 export async function refreshCloudStewardSession(opts?: {
   endpoint?: string;
 }): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
-  if (typeof fetch === "undefined") return null;
   const endpoint = opts?.endpoint ?? STEWARD_REFRESH_ENDPOINT;
+  if (shouldUseNativeStewardRefreshHttp(endpoint)) {
+    const token = readStoredStewardToken()?.trim();
+    if (!token) return null;
+    const response = await withDirectCloudHttpTimeout(
+      CapacitorHttp.request({
+        url: endpoint,
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      }),
+      { method: "POST", url: endpoint },
+    );
+    if (response.status < 200 || response.status >= 300) return null;
+    return parseDirectCloudJsonSafe(response.data) as {
+      token?: string;
+      expiresAt?: number;
+      expiresIn?: number;
+    } | null;
+  }
+
+  if (typeof fetch === "undefined") return null;
   const response = await fetch(endpoint, {
     method: "POST",
     credentials: "include",

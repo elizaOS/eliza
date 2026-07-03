@@ -182,12 +182,12 @@ function canPollCloudStatus(): boolean {
 /**
  * Resolve the Steward refresh endpoint for the current target. On hosted web
  * the same-origin cookie path works (the HttpOnly `steward-refresh-token`
- * cookie travels automatically). On native (`capacitor://localhost`) there is
- * no same-origin cookie, so refresh against the configured cloud API base
- * (Bearer-refresh). Returns `undefined` to use the shared default.
+ * cookie travels automatically). On native/Electrobun there is no same-origin
+ * cookie, so refresh against the configured cloud API base (Bearer-refresh).
+ * Returns `undefined` to use the shared default.
  */
 function resolveStewardRefreshEndpoint(): string | undefined {
-  if (!isCapacitorNativeRuntime()) return undefined;
+  if (!isCapacitorNativeRuntime() && !isElectrobunRuntime()) return undefined;
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
   try {
