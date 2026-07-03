@@ -982,6 +982,103 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
+  it("re-reads the store for a `stopped` when the cached snapshot pre-dates the handoff stamp (#11711 residual)", async () => {
+    // Cache-staleness race: the earlier same-session `task_complete` (the one
+    // that triggered the verify-retry) warms the enrichment cache from the
+    // store BEFORE the router stamps `handedOffToSuccessorSessionId`. So the
+    // snapshot the following `stopped` reads from the cache lacks the marker.
+    // Without a fresh re-read, the teardown-stop is mistaken for a user stop
+    // and synthesized — the exact residual left after #11720. The `stopped`
+    // must re-read the store once, see the freshly-stamped marker, and skip.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+        // Pre-stamp snapshot: NO handoff marker yet.
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // Warm the cache with the pre-stamp snapshot (mirrors the task_complete that
+    // triggered the retry populating the enrichment cache from the store).
+    acp.emit("sess-stale", "task_complete", { response: "turn done" });
+    await new Promise((r) => setTimeout(r, 0));
+    fired.mockClear();
+
+    // The router now stamps the marker on the store AFTER the cache was warmed.
+    acp.setSession({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+        handedOffToSuccessorSessionId: "sess-stale-retry-2",
+      },
+    });
+
+    // The teardown `stopped` reads the STALE cache (no marker) first, then
+    // re-reads the store and finds the stamp — so it must NOT synthesize.
+    acp.emit("sess-stale", "stopped", {});
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
+  it("a fresh-re-read miss on a `stopped` fails open and still synthesizes (#11711 residual)", async () => {
+    // Fail-open guard: if the store re-read returns no session (miss/error),
+    // `getFreshSessionMetadata` yields `{}` — an unknown session must be treated
+    // as "not superseded" so a genuine user stop is never silenced.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: makeRouterStub(true),
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // Warm the cache, then drop the session from the store so the re-read misses.
+    acp.emit("sess-openmiss", "task_complete", { response: "turn done" });
+    await new Promise((r) => setTimeout(r, 0));
+    fired.mockClear();
+    acp.setSession(undefined);
+
+    acp.emit("sess-openmiss", "stopped", {});
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      stopped: 1,
+      tasks: [{ sessionId: "sess-openmiss", status: "stopped" }],
+    });
+    await coordinator.stop();
+  });
+
   it("STILL fires swarm-complete for a custom-validator task_complete on a router-origin active session", async () => {
     // The app-verification / custom-validator result is synthesized by the
     // coordinator (dispatchCustomValidatorResult); the router never receives or
