@@ -140,7 +140,9 @@ function renderScenario(task: VerifiableTask, runtime: IAgentRuntime): string {
 }
 
 /** Boot a service the way `start()` does: construct, then `refresh()` scan. */
-async function bootServiceAt(storeRoot: string): Promise<OptimizedPromptService> {
+async function bootServiceAt(
+  storeRoot: string,
+): Promise<OptimizedPromptService> {
   const service = new OptimizedPromptService();
   service.setStoreRoot(storeRoot);
   await service.refresh();
@@ -179,7 +181,8 @@ function syntheticArtifact(task: VerifiableTask): OptimizedPromptArtifact {
 describe("optimized-prompt boot-load + production render (hermetic)", () => {
   const tempRoots: string[] = [];
   afterAll(() => {
-    for (const root of tempRoots) rmSync(root, { recursive: true, force: true });
+    for (const root of tempRoots)
+      rmSync(root, { recursive: true, force: true });
   });
 
   for (const task of VERIFIABLE_TASKS) {
