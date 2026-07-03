@@ -28,7 +28,7 @@ function makeSteps(): { steps: PostReadyBootSteps; order: string[] } {
   const steps: PostReadyBootSteps = {
     ensureTextToSpeechHandler: vi.fn(record("tts", Promise.resolve())),
     registerAppRoutePlugins: vi.fn(record("appRoutes", Promise.resolve())),
-    registerTrainingRuntimeHooks: vi.fn(record("training", Promise.resolve())),
+    registerRuntimeHooks: vi.fn(record("runtimeHooks", Promise.resolve())),
     registerCoreSensitiveRequestAdapters: vi.fn(record("sensitive", undefined)),
     registerSubAgentCredentialBridge: vi.fn(
       record("credentialBridgeWiring", Promise.resolve()),
@@ -89,7 +89,7 @@ describe("runPostReadyBootTail — phase split", () => {
     expect(order).toEqual([
       "tts",
       "appRoutes",
-      "training",
+      "runtimeHooks",
       "sensitive",
       "credentialBridgeAdapter",
       "credentialBridgeWiring",
@@ -178,7 +178,7 @@ describe("runPostReadyBootTail — phase split", () => {
     expect(steps.ensureConnectorTargetCatalog).toHaveBeenCalledOnce();
   });
 
-  it("(error isolation) a throwing pre-ready-class step (TTS / training) rejects the tail", async () => {
+  it("(error isolation) a throwing pre-ready-class step (TTS / runtime hooks) rejects the tail", async () => {
     const runtime = makeFakeRuntime();
     __setLatestBootTailRuntimeForTest(runtime);
     const { steps } = makeSteps();

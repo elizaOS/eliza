@@ -203,6 +203,18 @@ const appRoutePluginSchema = z.object({
   exportName: z.string().min(1).optional(),
 });
 
+// An app's optional runtime-hook contributor: a named export
+// `(runtime) => void | Promise<void>` the host invokes once, post-ready, to wire
+// runtime-only concerns (services, cron jobs, background bootstraps) that never
+// reach the route table. Parallel to `routePlugin` but for the generic
+// runtime-hook channel the boot tail drains — the host resolves it by data, so
+// no feature plugin is hard-wired by name. `exportName` is required: unlike a
+// route plugin (which can be the module default), a hook must name its function.
+const appRuntimeHookSchema = z.object({
+  specifier: packageRoutePluginSpecifierSchema,
+  exportName: z.string().min(1),
+});
+
 export const appLaunchSchema = z.object({
   type: z.enum(["internal-tab", "overlay", "server-launch"]),
   target: z.string().optional(),
@@ -215,6 +227,7 @@ export const appLaunchSchema = z.object({
   uiExtension: z.object({ detailPanelId: z.string() }).optional(),
   curatedSlug: z.string().optional(),
   routePlugin: appRoutePluginSchema.optional(),
+  runtimeHook: appRuntimeHookSchema.optional(),
   /**
    * If true, the app declares itself as the default landing tab.
    * Mirrors `package.json#elizaos.app.mainTab`. Consumed by

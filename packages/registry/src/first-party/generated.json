@@ -1619,6 +1619,14 @@
           "help": "Discord channel ID used during test suite to locate the test channel for sending messages, voice interactions, and other test operations.",
           "advanced": false
         },
+        "DISCORD_VOICE_TRANSCRIPTS": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Voice Transcripts",
+          "help": "Set to \"on\" to record live diarized meeting transcripts whenever the bot sits in a voice channel. Off by default; the /transcribe slash command can start/stop per channel.",
+          "advanced": false
+        },
         "DISCORD_VOICE_CHANNEL_ID": {
           "type": "string",
           "required": false,
@@ -7231,6 +7239,10 @@
         "routePlugin": {
           "specifier": "@elizaos/plugin-training/setup-routes",
           "exportName": "trainingPlugin"
+        },
+        "runtimeHook": {
+          "specifier": "@elizaos/plugin-training",
+          "exportName": "registerTrainingRuntimeHooks"
         }
       }
     },

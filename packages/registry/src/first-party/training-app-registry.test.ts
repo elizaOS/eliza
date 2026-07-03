@@ -48,6 +48,13 @@ describe("training app registry entry", () => {
           specifier: "@elizaos/plugin-training/setup-routes",
           exportName: "trainingPlugin",
         },
+        // Self-declared runtime-hook: the host drains this through the generic
+        // runtime-hook channel instead of hard-wiring the training specifier in
+        // the boot tail.
+        runtimeHook: {
+          specifier: "@elizaos/plugin-training",
+          exportName: "registerTrainingRuntimeHooks",
+        },
       },
     });
   });

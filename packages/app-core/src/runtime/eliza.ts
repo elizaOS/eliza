@@ -33,6 +33,7 @@ import {
   AutonomyService,
   ChannelType,
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+  isOptionalAppRoutePluginUnavailableError,
   isTruthyEnvValue,
   logger,
   ModelType,
@@ -400,13 +401,19 @@ function resolvePluginExport(
   throw new Error("No plugin export found");
 }
 
-async function loadAppRoutePluginFromSpecifier(
+/**
+ * Import an app module by package specifier, with a workspace-source fallback
+ * for local/source mode. Throws {@link OptionalAppRoutePluginUnavailableError}
+ * when the package is genuinely absent (an optional plugin not installed in this
+ * deployment); rethrows any real load failure (syntax error, init throw, broken
+ * transitive dependency) so it is never misreported as "not installed". Shared
+ * by the route-plugin loader and the runtime-hook loader.
+ */
+async function importAppModuleFromSpecifier(
   specifier: string,
-  exportName: string | undefined,
-): Promise<Plugin> {
-  let module: AppRoutePluginModule;
+): Promise<AppRoutePluginModule> {
   try {
-    module = (await import(
+    return (await import(
       /* webpackIgnore: true */ specifier
     )) as AppRoutePluginModule;
   } catch (err) {
@@ -416,12 +423,19 @@ async function loadAppRoutePluginFromSpecifier(
       throw new OptionalAppRoutePluginUnavailableError(specifier, err);
     }
     logger.debug(
-      `[eliza] Loading app route plugin ${specifier} from workspace source at ${sourceEntry}`,
+      `[eliza] Loading app module ${specifier} from workspace source at ${sourceEntry}`,
     );
-    module = (await import(
+    return (await import(
       pathToFileURL(sourceEntry).href
     )) as AppRoutePluginModule;
   }
+}
+
+async function loadAppRoutePluginFromSpecifier(
+  specifier: string,
+  exportName: string | undefined,
+): Promise<Plugin> {
+  const module = await importAppModuleFromSpecifier(specifier);
   return resolvePluginExport(module, exportName);
 }
 
@@ -556,12 +570,6 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
   await drainAppRoutePluginLoaders(runtime, getAppRoutePluginLoaders());
 }
 
-interface RuntimeHookModule {
-  registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
-}
-
-const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/plugin-training";
-
 /**
  * Returns true only for genuine "module is not installed" import failures.
  * Bun raises `ResolveMessage` with `code === "ERR_MODULE_NOT_FOUND"` when a
@@ -578,36 +586,94 @@ function isModuleNotFoundError(err: unknown): boolean {
   return false;
 }
 
-async function registerTrainingRuntimeHooks(
+/**
+ * A runtime-hook contributor: an app's optional post-ready wiring step. `invoke`
+ * loads the app's declared hook module and calls it with the runtime. Resolved
+ * from the registry ({@link getRuntimeHookContributors}) — no feature plugin is
+ * hard-wired by name here; the host drains whatever apps declare a `runtimeHook`.
+ */
+interface RuntimeHookContributor {
+  id: string;
+  invoke: (runtime: AgentRuntime) => Promise<void>;
+}
+
+type RuntimeHookFn = (runtime: AgentRuntime) => void | Promise<void>;
+
+/**
+ * Load an app's runtime-hook export by specifier and invoke it. Uses the shared
+ * {@link importAppModuleFromSpecifier}, so an absent optional plugin surfaces as
+ * {@link OptionalAppRoutePluginUnavailableError} (a graceful skip in the drain)
+ * while a real load failure or a missing/wrong-typed export throws.
+ */
+async function loadAndInvokeRuntimeHook(
+  specifier: string,
+  exportName: string,
   runtime: AgentRuntime,
 ): Promise<void> {
-  let hookMod: RuntimeHookModule;
-  try {
-    hookMod = (await import(
-      TRAINING_RUNTIME_HOOKS_SPECIFIER
-    )) as RuntimeHookModule;
-  } catch (err) {
-    if (isModuleNotFoundError(err)) {
-      logger.warn(
-        `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks`,
-      );
-      return;
-    }
-    // Real load failure (syntax error, broken transitive, init throw, etc.) —
-    // surface it loudly so it is not mistaken for "not installed".
-    logger.error(
-      `[eliza] @elizaos/plugin-training failed to load (not 'not installed'): ${formatErrorWithStack(err)}`,
-    );
-    throw err;
-  }
-
-  if (!hookMod.registerTrainingRuntimeHooks) {
+  const module = await importAppModuleFromSpecifier(specifier);
+  const hook = module[exportName];
+  if (typeof hook !== "function") {
     throw new Error(
-      `[eliza] ${TRAINING_RUNTIME_HOOKS_SPECIFIER} did not export registerTrainingRuntimeHooks`,
+      `[eliza] ${specifier} did not export a runtime-hook function "${exportName}"`,
     );
   }
+  await (hook as RuntimeHookFn)(runtime);
+}
 
-  await hookMod.registerTrainingRuntimeHooks(runtime);
+/**
+ * Resolve every app that declares a `runtimeHook` in the registry into a
+ * contributor. Data-driven and generic: the registry owns the package bindings
+ * (each plugin self-declares its hook in its own `registry-entry.json`), so the
+ * boot tail names no plugin.
+ */
+function getRuntimeHookContributors(): RuntimeHookContributor[] {
+  return getApps(loadRegistry()).flatMap((app) => {
+    const runtimeHook = app.launch.runtimeHook;
+    if (!runtimeHook) return [];
+    return [
+      {
+        id: app.npmName ?? app.id,
+        invoke: (runtime: AgentRuntime) =>
+          loadAndInvokeRuntimeHook(
+            runtimeHook.specifier,
+            runtimeHook.exportName,
+            runtime,
+          ),
+      },
+    ];
+  });
+}
+
+/**
+ * Drain runtime-hook contributors in order, invoking each against the runtime.
+ * An optional plugin that is not installed is skipped gracefully (debug-logged);
+ * any real failure is logged and rethrown so a broken hook is never mistaken for
+ * a benign absence. Exported for a focused unit test of the generic channel.
+ */
+export async function drainRuntimeHookContributors(
+  runtime: AgentRuntime,
+  contributors: RuntimeHookContributor[],
+): Promise<void> {
+  for (const { id, invoke } of contributors) {
+    try {
+      await invoke(runtime);
+    } catch (err) {
+      if (isOptionalAppRoutePluginUnavailableError(err)) {
+        logger.debug(
+          `[eliza] Runtime-hook contributor ${id} unavailable, skipping`,
+        );
+        continue;
+      }
+      logger.error(
+        `[eliza] Runtime-hook contributor ${id} failed: ${formatErrorWithStack(err)}`,
+      );
+      throw err;
+    }
+  }
+}
+
+async function registerRuntimeHooks(runtime: AgentRuntime): Promise<void> {
+  await drainRuntimeHookContributors(runtime, getRuntimeHookContributors());
 }
 
 // The most recent runtime handed to the post-ready boot tail. A backgrounded
@@ -725,7 +791,7 @@ async function repairRuntimeAfterBoot(
 export interface PostReadyBootSteps {
   ensureTextToSpeechHandler: (runtime: AgentRuntime) => Promise<void>;
   registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
-  registerTrainingRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
+  registerRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
   registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
   registerSubAgentCredentialBridge: (runtime: AgentRuntime) => Promise<void>;
   registerSubAgentCredentialBridgeAdapter: (runtime: AgentRuntime) => boolean;
@@ -740,7 +806,7 @@ export interface PostReadyBootSteps {
 const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
   ensureTextToSpeechHandler,
   registerAppRoutePlugins,
-  registerTrainingRuntimeHooks,
+  registerRuntimeHooks,
   registerCoreSensitiveRequestAdapters,
   registerSubAgentCredentialBridge,
   registerSubAgentCredentialBridgeAdapter,
@@ -757,9 +823,8 @@ const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
  * keeps its original error behavior verbatim — there is no wrapping try/catch:
  * registerAppRoutePlugins isolates per-loader failures internally,
  * ensureTriggerEventBridge / ensureConnectorTargetCatalog swallow into
- * logger.warn internally, and ensureTextToSpeechHandler /
- * registerTrainingRuntimeHooks throw (preserved in the default inline-await
- * dispatch above).
+ * logger.warn internally, and ensureTextToSpeechHandler / registerRuntimeHooks
+ * throw (preserved in the default inline-await dispatch above).
  *
  * `steps` defaults to the real bound functions, so production behavior is
  * unchanged; the seam exists only so the phase split is unit-testable.
@@ -785,7 +850,11 @@ export async function runPostReadyBootTail(
   // runtime only consumes app route plugin loaders.
   await steps.registerAppRoutePlugins(runtime);
 
-  await steps.registerTrainingRuntimeHooks(runtime);
+  // Drain runtime-hook contributors: apps that declare a `runtimeHook` in the
+  // registry wire runtime-only concerns (services, crons, background bootstraps)
+  // that never reach the route table. Generic + data-driven — no feature plugin
+  // is named here. An uninstalled optional plugin is skipped gracefully.
+  await steps.registerRuntimeHooks(runtime);
 
   // Register first-party sensitive-request delivery adapters with the
   // dispatch registry (no-op when the registry service isn't present).
