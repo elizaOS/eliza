@@ -1096,7 +1096,8 @@ describe("model-committed plan — promissory ack never reinterpreted as a finis
 			undefined,
 			{
 				actions: REAL_ACTIONS,
-				messageText: "can you figure out how to attach that here so i can see it",
+				messageText:
+					"can you figure out how to attach that here so i can see it",
 			},
 		);
 
