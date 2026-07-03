@@ -47,6 +47,11 @@ import {
   setFirstRunActionHandler,
 } from "./first-run-action-channel";
 import {
+  clearCloudLoginPending,
+  markCloudLoginPending,
+  readCloudLoginPending,
+} from "./first-run-cloud-resume";
+import {
   bindCloudAgent,
   type FirstRunFinishDraft,
   type FirstRunFinishOutcome,
@@ -452,6 +457,9 @@ export function useFirstRunConductor(): void {
     void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
       .then((outcome) => {
         if (outcome.kind === "done" || outcome.kind === "pick-cloud-agent") {
+          // Login resolved + provisioning is proceeding — the resume marker has
+          // served its purpose; drop it so a later relaunch doesn't re-resume.
+          clearCloudLoginPending();
           replaceTurn(
             "first-run:cloud-oauth",
             makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
@@ -479,6 +487,33 @@ export function useFirstRunConductor(): void {
       });
   }, [handleOutcome]);
 
+  // Continue an interrupted cloud/hybrid flow once the connection is present.
+  // Shared by (a) the auto-resume effect below — used when the user connects
+  // from the retry turn's OAuth block and the store later learns the connection
+  // landed — and (b) the mount-time cloud-login rehydrate, which calls this
+  // directly when the durable token already made the connection live at launch
+  // (the effect fired once before the marker was armed, so it can't self-fire).
+  const runCloudResume = React.useCallback(
+    (resume: "cloud" | "hybrid") => {
+      if (busyRef.current || provisionedRef.current) return;
+      pendingCloudResumeRef.current = null;
+      if (resume === "cloud") {
+        replaceTurn(
+          "first-run:cloud-oauth",
+          makeTurn(
+            "first-run:cloud-oauth",
+            "Connecting your Eliza Cloud account…",
+            { secretRequest: cloudOAuthSecretRequest("pending") },
+          ),
+        );
+        startCloudProvisionFlow();
+        return;
+      }
+      startProviderFinish();
+    },
+    [replaceTurn, startCloudProvisionFlow, startProviderFinish],
+  );
+
   // Auto-resume: when the user connects Eliza Cloud from the retry turn's
   // OAuth block (instead of re-picking a runtime), continue the interrupted
   // flow the moment the store learns the connection landed. A fresh pick
@@ -486,28 +521,18 @@ export function useFirstRunConductor(): void {
   React.useEffect(() => {
     if (!active || !elizaCloudConnected) return;
     const resume = pendingCloudResumeRef.current;
-    if (!resume || busyRef.current || provisionedRef.current) return;
-    pendingCloudResumeRef.current = null;
-    if (resume === "cloud") {
-      replaceTurn(
-        "first-run:cloud-oauth",
-        makeTurn(
-          "first-run:cloud-oauth",
-          "Connecting your Eliza Cloud account…",
-          { secretRequest: cloudOAuthSecretRequest("pending") },
-        ),
-      );
-      startCloudProvisionFlow();
-      return;
-    }
-    startProviderFinish();
-  }, [
-    active,
-    elizaCloudConnected,
-    replaceTurn,
-    startCloudProvisionFlow,
-    startProviderFinish,
-  ]);
+    if (!resume) return;
+    runCloudResume(resume);
+  }, [active, elizaCloudConnected, runCloudResume]);
+
+  // Read-only mirrors so the mount effect can resume immediately when the
+  // durable token already made the connection live at launch — without adding
+  // elizaCloudConnected/runCloudResume to the mount effect's deps (which would
+  // re-register the action handler and re-seed on every connection change).
+  const elizaCloudConnectedRef = React.useRef(elizaCloudConnected);
+  elizaCloudConnectedRef.current = elizaCloudConnected;
+  const runCloudResumeRef = React.useRef(runCloudResume);
+  runCloudResumeRef.current = runCloudResume;
 
   const handleFirstRunAction = React.useCallback(
     (value: string): boolean => {
@@ -526,8 +551,11 @@ export function useFirstRunConductor(): void {
       // Once provisioning succeeded only the tutorial pick is live; taps on
       // leftover runtime/provider/cloud-agent widgets must not re-provision.
       if (provisionedRef.current && group !== "tutorial") return true;
-      // A fresh pick supersedes any armed connect-and-resume continuation.
+      // A fresh pick supersedes any armed connect-and-resume continuation —
+      // including the durable cloud-resume marker (the cloud/hybrid branches
+      // below re-arm it if the new pick is a cloud one).
       pendingCloudResumeRef.current = null;
+      clearCloudLoginPending();
 
       if (group === "runtime") {
         if (id !== "cloud" && id !== "local" && id !== "remote") return true;
@@ -537,6 +565,14 @@ export function useFirstRunConductor(): void {
             runtime: "cloud",
             localInference: "cloud-inference",
           };
+          // Persist a resume marker BEFORE the (device) external-browser OAuth
+          // backgrounds/evicts the WebView, so a cold-launch on return
+          // rehydrates this cloud flow instead of restarting at the greeting.
+          markCloudLoginPending({
+            runtime: "cloud",
+            localInference: "cloud-inference",
+            agentName: draftRef.current.agentName,
+          });
           const connecting = makeTurn(
             "first-run:cloud-oauth",
             "Connecting your Eliza Cloud account…",
@@ -633,6 +669,14 @@ export function useFirstRunConductor(): void {
             ...draftRef.current,
             localInference: "cloud-inference",
           };
+          // Hybrid (local runtime + Cloud inference) also opens the external
+          // OAuth browser — persist a resume marker so a WebView eviction on
+          // return rehydrates the hybrid finish rather than restarting.
+          markCloudLoginPending({
+            runtime: "hybrid",
+            localInference: "cloud-inference",
+            agentName: draftRef.current.agentName,
+          });
         } else if (id === "other") {
           // "Other / configure in Settings" (bring your own keys): run locally
           // but wire NO provider, so the finish path's `needsProviderSetup`
@@ -717,13 +761,46 @@ export function useFirstRunConductor(): void {
     }
     resetFirstRunPersistGuard();
     setFirstRunActionHandler((value) => handleActionRef.current(value));
-    // Seed the greeting + runtime choice IMMEDIATELY on mount — never gate it
-    // on the agent-readiness probe below. `listLocalAgentBackups()` hits the
-    // local agent API, which on a fresh/booting/wedged device can hang
-    // indefinitely; coupling the greeting to it stranded the user at a locked
-    // composer ("Tap a highlighted option above to continue") with no visible
-    // choices. The backup probe is now a purely additive upgrade.
-    seedRuntimeChoice();
+    // Cloud-login resume: if the app was cold-launched mid cloud OAuth (the
+    // external browser evicted the WebView on a device), rehydrate the
+    // interrupted cloud/hybrid flow instead of restarting at the greeting.
+    // The durable steward token (persisted at login) makes elizaCloudConnected
+    // recompute true after relaunch, so the auto-resume effect above completes
+    // onboarding into chat; the re-tappable OAuth turn below is the fallback if
+    // login never finished — either way the user is never bounced back to
+    // "where should your agent run?".
+    const cloudResume = readCloudLoginPending();
+    if (cloudResume) {
+      draftRef.current = {
+        ...draftRef.current,
+        agentName: cloudResume.agentName || draftRef.current.agentName,
+        runtime: cloudResume.runtime === "cloud" ? "cloud" : "local",
+        localInference: cloudResume.localInference,
+      };
+      pendingCloudResumeRef.current = cloudResume.runtime;
+      seedTurn(
+        makeTurn(
+          "first-run:cloud-oauth",
+          "Connecting your Eliza Cloud account…",
+          { secretRequest: cloudOAuthSecretRequest("pending") },
+        ),
+      );
+      // If the durable token already made the connection live at launch, the
+      // auto-resume effect above fired once before this marker was armed, so it
+      // won't self-fire — resume now. Otherwise leave the marker armed for the
+      // effect to catch when elizaCloudConnected flips true after the poll.
+      if (elizaCloudConnectedRef.current) {
+        runCloudResumeRef.current(cloudResume.runtime);
+      }
+    } else {
+      // Seed the greeting + runtime choice IMMEDIATELY on mount — never gate it
+      // on the agent-readiness probe below. `listLocalAgentBackups()` hits the
+      // local agent API, which on a fresh/booting/wedged device can hang
+      // indefinitely; coupling the greeting to it stranded the user at a locked
+      // composer ("Tap a highlighted option above to continue") with no visible
+      // choices. The backup probe is now a purely additive upgrade.
+      seedRuntimeChoice();
+    }
     let cancelled = false;
     void client
       .listLocalAgentBackups()
@@ -735,7 +812,7 @@ export function useFirstRunConductor(): void {
       cancelled = true;
       setFirstRunActionHandler(null);
     };
-  }, [active, seedBackupRestoreChoice, seedRuntimeChoice]);
+  }, [active, seedBackupRestoreChoice, seedRuntimeChoice, seedTurn]);
 }
 
 /** Mount point — call once inside the AppContext provider tree. Renders null. */

@@ -54,10 +54,7 @@ vi.mock("./auto-download-recommended", () => ({
     mocks.autoDownloadRecommendedLocalModelInBackground,
 }));
 
-import type {
-  ConversationMessage,
-  LocalAgentBackupMetadata,
-} from "../api";
+import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { __setAppValueForTests } from "../state/app-store";
 import {
   ConversationMessagesCtx,
@@ -65,6 +62,11 @@ import {
 } from "../state/ConversationMessagesContext.hooks";
 import type { AppContextValue } from "../state/internal";
 import { tryHandleFirstRunAction } from "./first-run-action-channel";
+import {
+  clearCloudLoginPending,
+  markCloudLoginPending,
+  readCloudLoginPending,
+} from "./first-run-cloud-resume";
 import {
   type FirstRunFinishDraft,
   type FirstRunFinishPorts,
@@ -376,7 +378,9 @@ describe("useFirstRunConductor", () => {
     resolveBackups([backup]);
     await Promise.resolve();
     expect(
-      second.transcript.current.some((m) => m.id === "first-run:backup-restore"),
+      second.transcript.current.some(
+        (m) => m.id === "first-run:backup-restore",
+      ),
     ).toBe(false);
     second.unmount();
   });
@@ -465,6 +469,80 @@ describe("useFirstRunConductor", () => {
     expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
     expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
     expect(readTutorialState().active).toBe(true);
+    unmount();
+  });
+
+  it("arms a durable cloud-login resume marker synchronously when the cloud runtime is picked", async () => {
+    // The marker must be persisted at pick time — BEFORE the external browser
+    // login can background/evict the WebView — so an eviction mid-login can
+    // resume on relaunch instead of restarting at the greeting. Assert it
+    // synchronously, before the async provision completes and clears it.
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(readCloudLoginPending()).toBeNull();
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    expect(readCloudLoginPending()).toMatchObject({
+      runtime: "cloud",
+      localInference: "cloud-inference",
+    });
+    unmount();
+  });
+
+  it("resumes an interrupted cloud login on relaunch (no greeting restart) when the durable marker + connection are present", async () => {
+    // Simulate the device flow AFTER the eviction+relaunch: the resume marker
+    // was persisted before the external browser login evicted the WebView, and
+    // the durable steward token makes elizaCloudConnected recompute true at
+    // mount. The conductor must CONTINUE into chat, not re-seed the "where
+    // should your agent run?" greeting.
+    markCloudLoginPending({
+      runtime: "cloud",
+      localInference: "cloud-inference",
+      agentName: "Eliza",
+    });
+    const spies = seedAppStore(); // elizaCloudConnected: true (durable token)
+    const { transcript, turn, unmount } = renderConductor();
+
+    // It resumes straight into provisioning and completes onboarding into chat…
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    // …and NEVER bounced the user back to the runtime chooser.
+    expect(transcript.current.some((m) => m.id === "first-run:greeting")).toBe(
+      false,
+    );
+    // Completion clears the durable marker so a later launch starts clean.
+    expect(readCloudLoginPending()).toBeNull();
+
+    // "Take the tutorial" completes onboarding into chat.
+    expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    unmount();
+  });
+
+  it("clears the cloud resume marker on a fresh local runtime pick so a relaunch never resumes an abandoned cloud flow", async () => {
+    // The user had armed a cloud marker, then came back and chose local. Local
+    // is the latest intent — the stale cloud marker must be cleared.
+    markCloudLoginPending({
+      runtime: "cloud",
+      localInference: "cloud-inference",
+      agentName: "Eliza",
+    });
+    // A local marker does not resume (readCloudLoginPending rejects non-cloud),
+    // so the greeting seeds normally and we can drive a fresh local pick.
+    clearCloudLoginPending();
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    // Re-arm as if a prior cloud attempt left the marker behind.
+    markCloudLoginPending({
+      runtime: "cloud",
+      localInference: "cloud-inference",
+      agentName: "Eliza",
+    });
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    expect(readCloudLoginPending()).toBeNull();
     unmount();
   });
 
