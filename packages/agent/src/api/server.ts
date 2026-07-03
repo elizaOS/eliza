@@ -3629,6 +3629,15 @@ export async function startApiServer(opts?: {
   port?: number;
   runtime?: AgentRuntime;
   skipDeferredStartupWork?: boolean;
+  /**
+   * Skip binding a TCP listener. The HTTP `server` object, all routes, and the
+   * in-process `dispatchRoute` kernel are still fully wired up — only
+   * `server.listen(...)` is not called, so the process opens no port. Used by
+   * local-agent IPC transports (stdio bridge / Capacitor / Electrobun RPC) that
+   * reach the route kernel without an HTTP socket. Unset/false → identical to
+   * the current listening behavior.
+   */
+  skipListen?: boolean;
   /** Initial state when starting without a runtime (e.g. embedded startup flow). */
   initialAgentState?: "not_started" | "starting" | "stopped" | "error";
   /**
@@ -5446,6 +5455,95 @@ export async function startApiServer(opts?: {
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
   await assertX402RoutesValid(state.runtime);
+
+  // Shared teardown for connectors/streams/websockets that runs regardless of
+  // whether a TCP listener was bound. Kept as a closure so the skip-listen path
+  // and the listening path perform identical cleanup minus the socket close.
+  const stopServerSideResources = (): void => {
+    clearInterval(statusInterval);
+    if (state.connectorHealthMonitor) {
+      state.connectorHealthMonitor.stop();
+      state.connectorHealthMonitor = null;
+    }
+    if (detachRuntimeStreams) {
+      detachRuntimeStreams();
+      detachRuntimeStreams = null;
+    }
+    if (detachTrainingStream) {
+      detachTrainingStream();
+      detachTrainingStream = null;
+    }
+    for (const ws of wsClients) {
+      if (ws.readyState === 1 || ws.readyState === 0) {
+        if ("terminate" in ws && typeof ws.terminate === "function") {
+          ws.terminate();
+        } else {
+          ws.close();
+        }
+      }
+    }
+    wsClients.clear();
+    if (state.whatsappPairingSessions) {
+      for (const s of state.whatsappPairingSessions.values()) {
+        try {
+          s.stop();
+        } catch {
+          /* non-fatal */
+        }
+      }
+      state.whatsappPairingSessions.clear();
+    }
+    if (state.signalPairingSessions) {
+      for (const s of state.signalPairingSessions.values()) {
+        try {
+          s.stop();
+        } catch {
+          /* non-fatal */
+        }
+      }
+      state.signalPairingSessions.clear();
+    }
+    if (state.telegramAccountAuthSession) {
+      void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(() => {
+        /* non-fatal */
+      });
+      state.telegramAccountAuthSession = null;
+    }
+    wss.close();
+  };
+
+  // Local-agent IPC mode: skip binding a TCP listener entirely. Routes and the
+  // in-process dispatchRoute kernel are already wired (server built above), so
+  // an IPC transport (stdio bridge / Capacitor / Electrobun RPC) can drive them
+  // without opening a port.
+  if (opts?.skipListen) {
+    apiLap("skipListen (no TCP bind)");
+    addLog(
+      "info",
+      "API server initialized without a TCP listener (skipListen)",
+      "system",
+      ["server", "system"],
+    );
+    logger.info(
+      "[eliza-api] Started without binding a TCP listener (skipListen; local-agent IPC mode)",
+    );
+    if (!opts?.skipDeferredStartupWork) {
+      void startDeferredStartupWork();
+    }
+    return {
+      port,
+      close: () =>
+        new Promise<void>((r) => {
+          void Promise.resolve().then(() => {
+            stopServerSideResources();
+            r();
+          });
+        }),
+      updateRuntime,
+      updateStartup,
+    };
+  }
+
   return new Promise((resolve, reject) => {
     let currentPort = port;
     const strictPortBinding = strictPortBindingEnabled();
@@ -5515,60 +5613,7 @@ export async function startApiServer(opts?: {
                 server as { closeIdleConnections?: () => void }
               ).closeIdleConnections;
 
-              clearInterval(statusInterval);
-              if (state.connectorHealthMonitor) {
-                state.connectorHealthMonitor.stop();
-                state.connectorHealthMonitor = null;
-              }
-              if (detachRuntimeStreams) {
-                detachRuntimeStreams();
-                detachRuntimeStreams = null;
-              }
-              if (detachTrainingStream) {
-                detachTrainingStream();
-                detachTrainingStream = null;
-              }
-              for (const ws of wsClients) {
-                if (ws.readyState === 1 || ws.readyState === 0) {
-                  if ("terminate" in ws && typeof ws.terminate === "function") {
-                    ws.terminate();
-                  } else {
-                    ws.close();
-                  }
-                }
-              }
-              wsClients.clear();
-              // Clean up WhatsApp pairing sessions
-              if (state.whatsappPairingSessions) {
-                for (const s of state.whatsappPairingSessions.values()) {
-                  try {
-                    s.stop();
-                  } catch {
-                    /* non-fatal */
-                  }
-                }
-                state.whatsappPairingSessions.clear();
-              }
-              // Clean up Signal pairing sessions
-              if (state.signalPairingSessions) {
-                for (const s of state.signalPairingSessions.values()) {
-                  try {
-                    s.stop();
-                  } catch {
-                    /* non-fatal */
-                  }
-                }
-                state.signalPairingSessions.clear();
-              }
-              if (state.telegramAccountAuthSession) {
-                void Promise.resolve(
-                  state.telegramAccountAuthSession.stop(),
-                ).catch(() => {
-                  /* non-fatal */
-                });
-                state.telegramAccountAuthSession = null;
-              }
-              wss.close();
+              stopServerSideResources();
               const closeTimeout = setTimeout(() => r(), 5_000);
               const resolved = { done: false };
               const finalize = () => {
