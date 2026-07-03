@@ -1,0 +1,109 @@
+name: "#11632 LifeOps Live Validation Status"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_keyless_matrix:
+        description: "Run the deterministic OWNER/AGENT matrix harness"
+        type: boolean
+        default: true
+      run_live_connectors:
+        description: "Run live connector suites when credentials are configured"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    env:
+      ELIZA_SKIP_ARTIFACT_SYNC: "1"
+      ELIZA_LIVE_TEST: "1"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REDIRECT_URI: ${{ secrets.GOOGLE_REDIRECT_URI }}
+      DISCORD_API_TOKEN: ${{ secrets.DISCORD_API_TOKEN }}
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
+      SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
+      SIGNAL_ACCOUNT_NUMBER: ${{ secrets.SIGNAL_ACCOUNT_NUMBER }}
+      SIGNAL_HTTP_URL: ${{ secrets.SIGNAL_HTTP_URL }}
+      ELIZA_WHATSAPP_ACCESS_TOKEN: ${{ secrets.ELIZA_WHATSAPP_ACCESS_TOKEN }}
+      ELIZA_WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.ELIZA_WHATSAPP_PHONE_NUMBER_ID }}
+      X_API_KEY: ${{ secrets.X_API_KEY }}
+      TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+      TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+      TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
+      FITBIT_ACCESS_TOKEN: ${{ secrets.FITBIT_ACCESS_TOKEN }}
+      OURA_ACCESS_TOKEN: ${{ secrets.OURA_ACCESS_TOKEN }}
+      STRAVA_ACCESS_TOKEN: ${{ secrets.STRAVA_ACCESS_TOKEN }}
+      WITHINGS_ACCESS_TOKEN: ${{ secrets.WITHINGS_ACCESS_TOKEN }}
+      PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+      PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+      PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+      PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun run install:light
+
+      - name: Collect pre-run status
+        run: node scripts/lifeops/collect-11632-live-validation-status.mjs
+
+      - name: Run OWNER/AGENT matrix
+        if: ${{ inputs.run_keyless_matrix }}
+        env:
+          LIFEOPS_PERMISSION_MATRIX: "1"
+        run: |
+          set -o pipefail
+          mkdir -p .github/issue-evidence/8833-lifeops-live-validation/11632-status
+          bunx vitest run \
+            --config packages/test/vitest/integration.config.ts \
+            plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts \
+            2>&1 | tee .github/issue-evidence/8833-lifeops-live-validation/11632-status/owner-agent-permission-matrix.txt
+
+      - name: Run Google live connector suite
+        if: ${{ inputs.run_live_connectors }}
+        env:
+          TEST_LANE: post-merge
+        run: |
+          set -o pipefail
+          mkdir -p .github/issue-evidence/8833-lifeops-live-validation/11632-status
+          bun run --cwd plugins/plugin-google test \
+            2>&1 | tee .github/issue-evidence/8833-lifeops-live-validation/11632-status/plugin-google-live.txt
+
+      - name: Run X live connector suite
+        if: ${{ inputs.run_live_connectors }}
+        env:
+          TEST_LANE: post-merge
+        run: |
+          set -o pipefail
+          mkdir -p .github/issue-evidence/8833-lifeops-live-validation/11632-status
+          bun run --cwd plugins/plugin-x test \
+            2>&1 | tee .github/issue-evidence/8833-lifeops-live-validation/11632-status/plugin-x-live.txt
+
+      - name: Collect post-run status
+        if: always()
+        run: node scripts/lifeops/collect-11632-live-validation-status.mjs
+
+      - name: Upload status artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifeops-11632-live-validation-status
+          path: .github/issue-evidence/8833-lifeops-live-validation/11632-status/
