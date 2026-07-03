@@ -8,6 +8,7 @@ import {
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
 } from "@elizaos/shared/steward-session-client";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentReadinessProbe,
   type AuthedAgentFetch,
@@ -238,6 +239,17 @@ function shouldUseNativeCloudHttp(): boolean {
   return Capacitor.isNativePlatform();
 }
 
+/**
+ * Cookieless Steward targets. Capacitor native (`capacitor://localhost`) and
+ * Electrobun desktop both lack the same-origin `steward-refresh-token` cookie
+ * that the web refresh relies on, so their session refresh must authenticate
+ * with the stored Steward JWT as a Bearer token instead. Plain web keeps the
+ * cookie path.
+ */
+function shouldRefreshStewardWithBearer(): boolean {
+  return shouldUseNativeCloudHttp() || isElectrobunRuntime();
+}
+
 function resolveBrowserCloudApiRequestUrl(url: string): string {
   if (shouldUseNativeCloudHttp() || typeof window === "undefined") return url;
   try {
@@ -352,22 +364,63 @@ export function cloudTokenSecsRemaining(token: string): number | null {
 }
 
 /**
- * Cookie-backed Steward session refresh, mirroring cloud-frontend's
- * `AuthTokenSync` semantics. Sends an empty POST to the Steward refresh
- * endpoint with `credentials: "include"` so the HttpOnly
- * `steward-refresh-token` cookie travels automatically (web same-origin). The
- * server rotates the session and, for trusted Cloud origins / native callers,
- * returns the short-lived access token so the SPA can refresh its localStorage
- * Bearer mirror. Returns the fresh token when one was issued, else `null`.
+ * Steward session refresh. Rotates the short-lived Steward access token ahead of
+ * its JWT `exp` and returns the fresh token (persisted by the caller), else
+ * `null`.
  *
- * On native the same endpoint is reached via the configured cloud API base
- * (Bearer-refresh); the caller passes the absolute endpoint via `endpoint`.
+ * Web (same-origin) uses the cookie path: an empty POST with
+ * `credentials: "include"` carries the HttpOnly `steward-refresh-token` cookie
+ * automatically, and the server returns the rotated access token for trusted
+ * origins so the SPA can refresh its localStorage mirror.
+ *
+ * Native (Capacitor) and desktop (Electrobun) have no same-origin cookie, so a
+ * cookie-only POST can never rotate the session — the JWT would silently die at
+ * expiry. Those targets authenticate the rotation with the stored Steward JWT
+ * via `Authorization: Bearer <token>` instead: Capacitor over the native HTTP
+ * bridge (a cross-origin browser fetch from `capacitor://localhost` to the cloud
+ * API is not reachable), Electrobun over standard fetch. The caller passes the
+ * absolute cloud endpoint via `endpoint`.
  */
 export async function refreshCloudStewardSession(opts?: {
   endpoint?: string;
 }): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
   if (typeof fetch === "undefined") return null;
   const endpoint = opts?.endpoint ?? STEWARD_REFRESH_ENDPOINT;
+
+  if (shouldRefreshStewardWithBearer()) {
+    const token = readStoredStewardToken()?.trim();
+    if (!token) return null;
+    const headers = {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+    if (shouldUseNativeCloudHttp()) {
+      const res = await CapacitorHttp.request({
+        url: endpoint,
+        method: "POST",
+        headers,
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      });
+      if (res.status < 200 || res.status >= 300) return null;
+      return (
+        (parseDirectCloudJsonSafe(res.data) as {
+          token?: string;
+          expiresAt?: number;
+          expiresIn?: number;
+        } | null) ?? null
+      );
+    }
+    const response = await fetch(endpoint, { method: "POST", headers });
+    if (!response.ok) return null;
+    return (await response.json().catch(() => null)) as {
+      token?: string;
+      expiresAt?: number;
+      expiresIn?: number;
+    } | null;
+  }
+
   const response = await fetch(endpoint, {
     method: "POST",
     credentials: "include",

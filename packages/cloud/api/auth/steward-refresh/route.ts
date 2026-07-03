@@ -19,6 +19,15 @@
  *
  * Origin/Referer CSRF check mirrors `/api/auth/steward-session`.
  *
+ * Native (Capacitor) and desktop (Electrobun) callers have no same-origin
+ * `steward-refresh-token` cookie, so they authenticate the rotation with their
+ * stored Steward token in an `Authorization: Bearer` header instead. That path
+ * forwards the Bearer token to Steward `/auth/refresh` exactly as the cookie
+ * value is forwarded, and always returns the rotated access token (native has no
+ * readable cookie to hydrate from). Bearer auth is not carried by ambient
+ * browser cookies, so it is CSRF-safe by construction; the origin CSRF check
+ * guards the cookie path only.
+ *
  * This route is the only way to refresh once the localStorage copy of the
  * refresh token is removed. Old browser tabs that still POST a refreshToken
  * to `/api/auth/steward-session` continue to work during the rollout window.
@@ -119,6 +128,22 @@ function shouldReturnClientToken(
   // CSRF check already accepts, otherwise valid HttpOnly-cookie sessions can
   // bounce back to /login on previews/custom same-origin hosts.
   return isPermittedOrigin(origin, host, isProduction);
+}
+
+/**
+ * Extract a Steward token from an `Authorization: Bearer <token>` header, or
+ * `null` when the header is absent/malformed. Native (Capacitor) and desktop
+ * (Electrobun) callers have no same-origin `steward-refresh-token` cookie, so
+ * they present their stored Steward token here to authenticate the rotation.
+ */
+function readBearerRefreshToken(c: {
+  req: { header: (name: string) => string | undefined };
+}): string | null {
+  const header = c.req.header("authorization");
+  if (!header) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  const token = match?.[1]?.trim();
+  return token && token.length > 0 ? token : null;
 }
 
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
@@ -260,16 +285,31 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   const isProduction = c.env.NODE_ENV === "production";
-  const originCheck = checkOrigin(c, isProduction);
-  if (!originCheck.ok) {
-    logRefresh("forbidden-origin");
-    logger.warn("[steward-refresh] rejected cross-origin POST", {
-      detail: originCheck.reason,
-    });
-    return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
+
+  // Native (Capacitor) / desktop (Electrobun) callers present the stored Steward
+  // token in `Authorization: Bearer` because they have no same-origin
+  // `steward-refresh-token` cookie. Bearer auth is not carried by ambient
+  // browser cookies, so — unlike a cookie — it cannot be forged by a cross-origin
+  // page; it is CSRF-safe by construction, and the token is validated
+  // equivalently to the cookie value (both are forwarded to Steward
+  // `/auth/refresh`, which rejects any invalid/expired/revoked token). The
+  // cross-origin CSRF allowlist is therefore the COOKIE path's guard only and is
+  // deliberately skipped for the Bearer path; it is never weakened for browsers.
+  const bearerToken = readBearerRefreshToken(c);
+
+  if (!bearerToken) {
+    const originCheck = checkOrigin(c, isProduction);
+    if (!originCheck.ok) {
+      logRefresh("forbidden-origin");
+      logger.warn("[steward-refresh] rejected cross-origin POST", {
+        detail: originCheck.reason,
+      });
+      return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
+    }
   }
 
-  const refreshToken = getCookie(c, STEWARD_REFRESH_TOKEN_COOKIE);
+  const refreshToken =
+    bearerToken ?? getCookie(c, STEWARD_REFRESH_TOKEN_COOKIE);
   if (!refreshToken) {
     logRefresh("missing-refresh-cookie");
     return c.json(errorBody("Refresh token required", "missing_token"), 401);
@@ -318,15 +358,19 @@ app.post("/", async (c) => {
 
   if (refresh.kind === "error") {
     logRefresh(`upstream-${refresh.status}`);
-    // Steward returns 401 when the refresh token itself is invalid/revoked —
-    // the browser's HttpOnly cookie is stale, so clear it so the next page
-    // load goes straight to a login surface.
+    // Steward returns 401 when the refresh token itself is invalid/revoked. On
+    // the cookie path the browser's HttpOnly cookie is stale, so clear it so the
+    // next page load goes straight to a login surface. The Bearer path has no
+    // server-managed cookie to clear — native holds the token in localStorage and
+    // drops it itself when refresh returns null.
     if (refresh.status === 401) {
-      const domain = cookieDomainForHost(c.req.header("host"));
-      const opts = domain ? { path: "/", domain } : { path: "/" };
-      deleteCookie(c, STEWARD_TOKEN_COOKIE, opts);
-      deleteCookie(c, STEWARD_REFRESH_TOKEN_COOKIE, opts);
-      deleteCookie(c, STEWARD_AUTHED_COOKIE, opts);
+      if (!bearerToken) {
+        const domain = cookieDomainForHost(c.req.header("host"));
+        const opts = domain ? { path: "/", domain } : { path: "/" };
+        deleteCookie(c, STEWARD_TOKEN_COOKIE, opts);
+        deleteCookie(c, STEWARD_REFRESH_TOKEN_COOKIE, opts);
+        deleteCookie(c, STEWARD_AUTHED_COOKIE, opts);
+      }
       return c.json(errorBody("Refresh token rejected", "invalid_token"), 401);
     }
     return c.json(
@@ -383,7 +427,12 @@ app.post("/", async (c) => {
     ok: true,
     expiresAt: refresh.data.expiresAt,
     expiresIn: refresh.data.expiresIn,
-    ...(shouldReturnClientToken(c, isProduction) ? { token } : {}),
+    // Bearer (native/desktop) callers cannot read the HttpOnly cookie, so they
+    // always need the rotated JWT returned; the cookie path returns it only to
+    // trusted first-party origins (unchanged).
+    ...(bearerToken || shouldReturnClientToken(c, isProduction)
+      ? { token }
+      : {}),
   });
 });
 
