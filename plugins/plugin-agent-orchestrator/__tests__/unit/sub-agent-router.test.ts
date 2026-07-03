@@ -995,6 +995,40 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("::1");
     });
 
+    it("registers in-flight terminal handling at emit that settles only after the handoff stamp (#11720 residual)", async () => {
+      // The autonomous teardown `stopped` follows a task_complete within
+      // milliseconds, while the router is still probing the claimed URLs and
+      // spawning the verify-retry successor. The settlement handle must exist
+      // IMMEDIATELY (registered synchronously at emit) and must not resolve
+      // until handleEvent finished — i.e. until `handedOffToSuccessorSessionId`
+      // has been written to the store — so swarm-synthesis can hold its
+      // `stopped` decision on it and then observe the stamp.
+      session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
+      acp = makeAcpService(session);
+      const { runtime, spawnSession } = makeRuntime({ acp: acp.service });
+      const router = await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — the app is live at ${DEAD_URL}`,
+      });
+      // Synchronously after emit (no ticks): the in-flight handling is
+      // already observable — the teardown `stopped` can never miss it.
+      const settled = router.terminalHandlingSettled(SESSION_ID);
+      // The stamp cannot exist yet: the probe + successor spawn are async.
+      expect(session.metadata?.handedOffToSuccessorSessionId).toBeUndefined();
+
+      await settled;
+
+      // Settlement implies the whole handoff decision completed: successor
+      // spawned and the old session stamped.
+      expect(spawnSession).toHaveBeenCalledTimes(1);
+      expect(session.metadata?.handedOffToSuccessorSessionId).toBe(
+        "retry-session-id",
+      );
+      // Fully settled and self-pruned: a later call resolves immediately.
+      await router.terminalHandlingSettled(SESSION_ID);
+    });
+
     it("suppresses later original-session errors after handing off to a verification retry", async () => {
       session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
       acp = makeAcpService(session);

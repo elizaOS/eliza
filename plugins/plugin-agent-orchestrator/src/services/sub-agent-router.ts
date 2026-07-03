@@ -61,6 +61,16 @@ const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // the successor's sessionId (for traceability); presence is what matters. Kept
 // as a matching local literal in swarm-coordinator-service.ts (no cross-import).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+// The events whose router handling can DECIDE a handoff — verify-retry
+// (task_complete with dead URLs), state-lost respawn, and account failover
+// (error) — and stamp HANDED_OFF_SUCCESSOR_META_KEY on the outgoing session.
+// Their in-flight handling is tracked per session (see trackTerminalHandling)
+// so swarm-synthesis can hold a teardown `stopped` decision until the stamp
+// is either written or ruled out (#11720 residual).
+const HANDOFF_DECIDING_EVENTS: ReadonlySet<string> = new Set([
+  "task_complete",
+  "error",
+]);
 // Metadata marker the router stamps on a successor session (verify-retry,
 // state-lost respawn, account failover) when it re-points the forwarded
 // `roomId` away from the origin session's raw value. Presence tells downstream
@@ -481,6 +491,9 @@ export class SubAgentRouter extends Service {
   private readonly parentAgentBuffers = new Map<string, string>();
   private readonly parentAgentDispatchCounts = new Map<string, number>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
+  // In-flight handling of handoff-deciding events (task_complete / error),
+  // registered SYNCHRONOUSLY at emit time. See trackTerminalHandling.
+  private readonly terminalHandlingBySession = new Map<string, Promise<void>>();
   // The two runaway-loop backstops (per-session round-trip cap + per-lineage
   // state_lost respawn cap) and the cross-session completion-dedupe compare-
   // and-set are consolidated into one pure, fuzz-tested reducer. Every counter
@@ -661,13 +674,14 @@ export class SubAgentRouter extends Service {
       if (acp && typeof acp.onSessionEvent === "function") {
         this.acp = acp;
         this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
-          this.handleEvent(sid, event, data).catch((err) => {
+          const handled = this.handleEvent(sid, event, data).catch((err) => {
             this.log("error", "router event failed", {
               sessionId: sid,
               event,
               error: err instanceof Error ? err.message : String(err),
             });
           });
+          this.trackTerminalHandling(sid, event, handled);
         });
       }
     }
@@ -695,6 +709,46 @@ export class SubAgentRouter extends Service {
     );
   }
 
+  /**
+   * Track the router's in-flight handling of a handoff-deciding event
+   * (task_complete / error) per session — SYNCHRONOUSLY at emit time, before
+   * the handler's first await. The autonomous prompt-driven teardown emits
+   * `stopped` within milliseconds of `task_complete`, while `handleEvent` is
+   * still verifying claimed URLs and spawning the verify-retry successor; the
+   * `handedOffToSuccessorSessionId` stamp only lands seconds later (#11720
+   * residual). Registering the settlement here lets swarm-synthesis hold its
+   * `stopped` decision until the handoff decision — and its stamp — is
+   * complete, instead of re-reading a store that cannot contain the marker
+   * yet. Entries self-prune on settlement, so the map is bounded by in-flight
+   * sessions; `handled` never rejects (the subscriber attaches a catch).
+   */
+  private trackTerminalHandling(
+    sessionId: string,
+    event: SessionEventName,
+    handled: Promise<void>,
+  ): void {
+    if (!HANDOFF_DECIDING_EVENTS.has(event)) return;
+    const prior = this.terminalHandlingBySession.get(sessionId);
+    const next = prior ? prior.then(() => handled) : handled;
+    this.terminalHandlingBySession.set(sessionId, next);
+    void next.finally(() => {
+      if (this.terminalHandlingBySession.get(sessionId) === next) {
+        this.terminalHandlingBySession.delete(sessionId);
+      }
+    });
+  }
+
+  /**
+   * Settlement of the router's in-flight handoff-deciding event handling for
+   * a session; resolves immediately when none is in flight (a genuine user
+   * stop never waits). Consulted — duck-typed, bounded, fail-open — by
+   * SwarmCoordinatorService before it decides whether a `stopped` is a
+   * handoff teardown or a real user-facing terminal. Never rejects.
+   */
+  terminalHandlingSettled(sessionId: string): Promise<void> {
+    return this.terminalHandlingBySession.get(sessionId) ?? Promise.resolve();
+  }
+
   async stop(): Promise<void> {
     this.stopped = true;
     if (this.bindRetryTimer) {
@@ -709,6 +763,7 @@ export class SubAgentRouter extends Service {
     this.parentAgentBuffers.clear();
     this.parentAgentDispatchCounts.clear();
     this.verifyRetryHandedOffSessions.clear();
+    this.terminalHandlingBySession.clear();
     this.loopState = createRouterLoopState({
       roundTripCap: this.loopState.roundTripCap,
       stateLostRespawnCap: this.loopState.stateLostRespawnCap,

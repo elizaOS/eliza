@@ -164,6 +164,14 @@ const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
 
 const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
 
+// Upper bound on how long a `stopped` decision waits for the router's
+// in-flight same-session terminal handling (task_complete / error) to settle
+// before failing open and synthesizing (#11720 residual). Sized for the
+// verify-retry worst case — sequential 4s URL probes plus the successor
+// subprocess spawn — with slack. A genuine user stop has no in-flight
+// handling, so it never waits at all.
+export const STOPPED_ROUTER_HANDLING_WAIT_MS = 60_000;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -873,14 +881,25 @@ export class SwarmCoordinatorService extends Service {
     if (readString(meta, HANDED_OFF_SUCCESSOR_META_KEY)) {
       return;
     }
-    if (
-      event === "stopped" &&
-      readString(
-        await this.getFreshSessionMetadata(sessionId),
-        HANDED_OFF_SUCCESSOR_META_KEY,
-      )
-    ) {
-      return;
+    if (event === "stopped") {
+      // #11720 residual: the autonomous prompt-driven teardown emits `stopped`
+      // within milliseconds of `task_complete`, while the router is STILL
+      // deciding that completion — URL-verification probes and the successor
+      // spawn take seconds — so at this point NO store read, however fresh,
+      // can observe a handoff stamp that has not been written yet. Hold the
+      // decision until the router's in-flight same-session terminal handling
+      // settles (bounded, fail-open), THEN do the #11711 fresh re-read. A
+      // genuine user stop has no in-flight terminal handling, so it never
+      // waits and still synthesizes immediately (the #11689 invariant).
+      await this.waitForRouterTerminalHandling(sessionId);
+      if (
+        readString(
+          await this.getFreshSessionMetadata(sessionId),
+          HANDED_OFF_SUCCESSOR_META_KEY,
+        )
+      ) {
+        return;
+      }
     }
 
     // Ownership rule (issue elizaOS/eliza#11634): the sub-agent-router owns the
@@ -1113,6 +1132,43 @@ export class SwarmCoordinatorService extends Service {
       // fall through to empty — fail open (treat unknown as not-superseded)
     }
     return {};
+  }
+
+  /**
+   * Wait — bounded, fail-open — for the router's in-flight handling of this
+   * session's handoff-deciding terminal events (task_complete / error) to
+   * settle before the `stopped` decision reads the store (#11720 residual).
+   * The router registers that handling synchronously at emit time, so the
+   * teardown `stopped` that follows within milliseconds always observes it;
+   * the handoff stamp it may write (seconds later, after URL probes + the
+   * successor spawn) is then visible to {@link getFreshSessionMetadata}.
+   *
+   * Duck-typed like {@link isRouterActive} to avoid a value-import back-edge
+   * to the router module. Degrades safely: a router without the accessor, an
+   * errored settle, or a wait past {@link STOPPED_ROUTER_HANDLING_WAIT_MS}
+   * falls back to the previous behavior (possible duplicate post) — never to
+   * a silenced genuine stop.
+   */
+  private async waitForRouterTerminalHandling(
+    sessionId: string,
+  ): Promise<void> {
+    const router = this.runtime.getService(SUB_AGENT_ROUTER_SERVICE_TYPE) as {
+      terminalHandlingSettled?: (sessionId: string) => Promise<void>;
+    } | null;
+    if (typeof router?.terminalHandlingSettled !== "function") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        router.terminalHandlingSettled(sessionId),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, STOPPED_ROUTER_HANDLING_WAIT_MS);
+        }),
+      ]);
+    } catch {
+      // fail-open — an errored settle must not silence a genuine stop
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async getEnrichmentMetadata(

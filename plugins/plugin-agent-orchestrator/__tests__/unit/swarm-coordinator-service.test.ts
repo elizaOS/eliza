@@ -19,6 +19,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../src/services/acp-service.ts";
 import {
+  STOPPED_ROUTER_HANDLING_WAIT_MS,
   SWARM_COORDINATOR_SERVICE_TYPE,
   SwarmCoordinatorService,
   type SwarmEvent,
@@ -1076,6 +1077,128 @@ describe("SwarmCoordinatorService", () => {
       stopped: 1,
       tasks: [{ sessionId: "sess-openmiss", status: "stopped" }],
     });
+    await coordinator.stop();
+  });
+
+  it("holds a `stopped` decision until the router's in-flight terminal handling settles (#11720 residual)", async () => {
+    // LIVE ordering — the one the #11721 test does NOT encode: the autonomous
+    // prompt-driven teardown emits `stopped` within milliseconds of
+    // `task_complete`, while the router is still probing the claimed URLs and
+    // spawning the verify-retry successor. The handoff stamp is written
+    // SECONDS later, so at `stopped`-time NO store read (however fresh) can
+    // observe it. The decision must wait for the router's same-session
+    // terminal handling to settle, THEN re-read, see the late stamp, and skip.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+        // NO handoff marker — the router has not decided yet.
+      },
+    });
+    let settleRouter!: () => void;
+    const inFlight = new Promise<void>((resolve) => {
+      settleRouter = resolve;
+    });
+    const router = {
+      isActive: vi.fn(() => true),
+      terminalHandlingSettled: vi.fn((sessionId: string) =>
+        sessionId === "sess-live-race" ? inFlight : Promise.resolve(),
+      ),
+    };
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: router,
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    // The task_complete that triggers the verify-retry: warms the enrichment
+    // cache with the pre-stamp snapshot; router-owned, so synthesis skips it.
+    acp.emit("sess-live-race", "task_complete", {
+      response: "done — live at https://dead.example/app/",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    fired.mockClear();
+
+    // The teardown `stopped` lands while the router is STILL deciding — the
+    // stamp does not exist anywhere yet.
+    acp.emit("sess-live-race", "stopped", {});
+    await new Promise((r) => setTimeout(r, 0));
+    // Decision must be held pending the router settle — not synthesized from
+    // the (necessarily) marker-less store.
+    expect(fired).not.toHaveBeenCalled();
+    expect(router.terminalHandlingSettled).toHaveBeenCalledWith(
+      "sess-live-race",
+    );
+
+    // The router finishes: spawns the successor, stamps the marker, settles.
+    acp.setSession({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+        handedOffToSuccessorSessionId: "sess-live-race-r2",
+      },
+    });
+    settleRouter();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The held decision re-read the store, saw the stamp, and skipped.
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
+  it("fails open when the router's terminal handling exceeds the wait bound — the stop still synthesizes", async () => {
+    // A wedged router handler (hung probe, stuck spawn) must not silence a
+    // stop forever: past STOPPED_ROUTER_HANDLING_WAIT_MS the decision proceeds
+    // with whatever the store holds (previous behavior: possible duplicate
+    // post, never a swallowed terminal).
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const router = {
+      isActive: vi.fn(() => true),
+      terminalHandlingSettled: vi.fn(() => new Promise<void>(() => {})),
+    };
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: router,
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    vi.useFakeTimers();
+    try {
+      acp.emit("sess-wedged", "stopped", {});
+      await vi.advanceTimersByTimeAsync(STOPPED_ROUTER_HANDLING_WAIT_MS + 1);
+
+      expect(fired).toHaveBeenCalledTimes(1);
+      expect(fired.mock.calls[0][0]).toMatchObject({
+        total: 1,
+        stopped: 1,
+        tasks: [{ sessionId: "sess-wedged", status: "stopped" }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
     await coordinator.stop();
   });
 
