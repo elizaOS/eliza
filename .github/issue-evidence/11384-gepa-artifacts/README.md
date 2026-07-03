@@ -17,25 +17,32 @@ State of the other 4 capabilities (prior legs, evidence under
 
 ## Live run — this directory
 
-Host: subscription-only (no ANTHROPIC/OPENAI/CEREBRAS API key in env);
-model lane: `TRAIN_MODEL_PROVIDER=cli` → plugin-cli-inference `ClaudeCli`
-(`claude --print`, model `claude-haiku-4-5-20251001`, CLI reads its own
-`~/.claude/.credentials.json`; #10757). Budget per task: generations=2,
-population=4 (same bound as the prior gemma legs). Scorer: judge-rubric
-(`createLifeOpsJudgeCompare`) — fraction of per-example rubric items passed,
-strict parse, retry-once-then-throw.
+Model lane: `TRAIN_MODEL_PROVIDER=cerebras` against the repo live recipe
+(`OPENAI_BASE_URL=https://api.cerebras.ai/v1`, `CEREBRAS_MODEL=gpt-oss-120b`)
+via `cerebras-eval-model`. Scorer: judge-rubric (`createLifeOpsJudgeCompare`) —
+fraction of per-example rubric items passed, strict parse,
+retry-once-then-throw, no silent defaults.
 
 Exact command per task:
 
 ```bash
-TRAIN_MODEL_PROVIDER=cli EVAL_MODEL_PROVIDER=cli \
+TRAIN_MODEL_PROVIDER=cerebras OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
+  CEREBRAS_MODEL=gpt-oss-120b \
   bun plugins/plugin-training/scripts/lifeops-gepa-seed.ts \
-  --task <task> --apply --state-dir <state-dir>
+  --task <task> --generations 1 --population 2
 ```
 
 ### Results
 
-<!-- RESULTS -->
+- `morning_brief` (fresh live Cerebras run, `run-morning_brief.log`): the
+  judge-rubric scorer graded the baseline prose prompt at **0.806** — a real,
+  non-zero gradient. This is the whole point of the judge lane: the deterministic
+  field-match scorer returned ~0 on these prose completions, so GEPA had nothing
+  to climb. With one generation / population 2 the optimizer tied
+  (0.806 → 0.806, delta 0.000) and the promotion gate refused (as designed —
+  no regression, no unearned promotion).
+- `reminder_dispatch` (`run-reminder_dispatch.log`): earlier live cli-lane run —
+  ties at 1.000, gate refuses (as designed).
 
 ### Files
 
@@ -50,4 +57,3 @@ TRAIN_MODEL_PROVIDER=cli EVAL_MODEL_PROVIDER=cli \
   real before/after render of each task's PRODUCTION prompt builder
   (`buildReminderDispatchPrompt`, `buildNarrativePrompt`,
   `buildScreenTimeRecapRules`).
-- `runner-progress.txt` — wall-clock task start/exit ledger.
