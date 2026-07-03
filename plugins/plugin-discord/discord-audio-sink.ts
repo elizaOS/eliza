@@ -45,6 +45,10 @@ export class DiscordVoiceTargetAudioSink extends DiscordAudioSinkBase {
 		if (this.destroyed) {
 			return;
 		}
+		await this.stopTarget(lane);
+	}
+
+	private async stopTarget(lane?: DiscordAudioLane): Promise<void> {
 		try {
 			await this.target.stop(lane);
 		} catch (error) {
@@ -67,7 +71,7 @@ export class DiscordVoiceTargetAudioSink extends DiscordAudioSinkBase {
 			return;
 		}
 		this.destroyed = true;
-		void this.stop();
+		void this.stopTarget();
 		this.emit("statusChange", "disconnected");
 		this.removeAllListeners();
 	}
