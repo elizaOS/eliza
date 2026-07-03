@@ -12,8 +12,13 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { MEETING_PLATFORM_LABELS } from "@elizaos/shared";
-import { MeetingJoinError, type MeetingService } from "../service.js";
-import { optionString, resolveMeetingUrl } from "./shared.js";
+import { MeetingJoinError } from "../service.js";
+import {
+  optionString,
+  reply,
+  requireMeetingService,
+  resolveMeetingUrl,
+} from "./shared.js";
 
 async function handler(
   runtime: IAgentRuntime,
@@ -24,18 +29,19 @@ async function handler(
 ): Promise<ActionResult> {
   const parsed = resolveMeetingUrl(message, options);
   if (!parsed) {
-    const out =
-      "I need a meeting link to join — paste a Google Meet, Microsoft Teams, or Zoom URL.";
-    await callback?.({ text: out });
-    return { success: false, text: out };
+    return reply(
+      callback,
+      false,
+      "I need a meeting link to join — paste a Google Meet, Microsoft Teams, or Zoom URL.",
+    );
   }
-  const service = runtime.getService<MeetingService>("meetings");
-  if (!service) {
-    const out =
-      "The meetings service isn't running, so I can't join calls right now.";
-    await callback?.({ text: out });
-    return { success: false, text: out };
-  }
+  const svc = await requireMeetingService(
+    runtime,
+    callback,
+    "The meetings service isn't running, so I can't join calls right now.",
+  );
+  if ("bail" in svc) return svc.bail;
+  const service = svc.service;
   try {
     const session = await service.requestJoin({
       platform: parsed.platform,
@@ -43,13 +49,12 @@ async function handler(
       botName: optionString(options, "botName") ?? undefined,
       language: optionString(options, "language") ?? undefined,
     });
-    const out = `Joining the ${MEETING_PLATFORM_LABELS[session.platform]} meeting ${session.nativeMeetingId} as "${session.botName}". I'll transcribe it live — watch it land in the Transcripts view (transcript ${session.transcriptId}).`;
-    await callback?.({ text: out });
-    return {
-      success: true,
-      text: out,
-      data: { sessionId: session.id, transcriptId: session.transcriptId },
-    };
+    return reply(
+      callback,
+      true,
+      `Joining the ${MEETING_PLATFORM_LABELS[session.platform]} meeting ${session.nativeMeetingId} as "${session.botName}". I'll transcribe it live — watch it land in the Transcripts view (transcript ${session.transcriptId}).`,
+      { sessionId: session.id, transcriptId: session.transcriptId },
+    );
   } catch (err) {
     const out =
       err instanceof MeetingJoinError
@@ -59,8 +64,7 @@ async function handler(
       { error: err instanceof Error ? err.message : String(err) },
       "[MeetingService] JOIN_MEETING failed",
     );
-    await callback?.({ text: out });
-    return { success: false, text: out };
+    return reply(callback, false, out);
   }
 }
 

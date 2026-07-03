@@ -12,34 +12,19 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS, type MeetingSession } from "@elizaos/shared";
+import { MEETING_PLATFORM_LABELS } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import type { MeetingService } from "../service.js";
 import { readTranscriptRow } from "../transcripts/meeting-transcript-writer.js";
-import { messageText, optionString, resolveMeetingUrl } from "./shared.js";
+import {
+  messageText,
+  reply,
+  requireMeetingService,
+  resolveTargetSession,
+} from "./shared.js";
 
 /** Cap the inline reply; the full record lives in the Transcripts view. */
 const MAX_REPLY_CHARS = 4_000;
-
-function pickTarget(
-  sessions: MeetingSession[],
-  message: Memory,
-  options: unknown,
-): MeetingSession | null {
-  const sessionId = optionString(options, "sessionId");
-  if (sessionId) return sessions.find((s) => s.id === sessionId) ?? null;
-  const parsed = resolveMeetingUrl(message, options);
-  if (parsed) {
-    return (
-      sessions.find(
-        (s) =>
-          s.platform === parsed.platform &&
-          s.nativeMeetingId === parsed.nativeMeetingId,
-      ) ?? null
-    );
-  }
-  return sessions[0] ?? null;
-}
 
 async function handler(
   runtime: IAgentRuntime,
@@ -48,43 +33,53 @@ async function handler(
   options?: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const service = runtime.getService<MeetingService>("meetings");
-  if (!service) {
-    const out = "The meetings service isn't running.";
-    await callback?.({ text: out });
-    return { success: false, text: out };
-  }
-  const target = pickTarget(service.listSessions(), message, options);
-  if (!target?.transcriptId) {
-    const out = "I haven't attended a meeting with a transcript yet.";
-    await callback?.({ text: out });
-    return { success: false, text: out };
+  const svc = await requireMeetingService(
+    runtime,
+    callback,
+    "The meetings service isn't running.",
+  );
+  if ("bail" in svc) return svc.bail;
+  const target = resolveTargetSession(
+    svc.service.listSessions(),
+    message,
+    options,
+    "most-recent",
+  );
+  if (!target || target === "ambiguous" || !target.transcriptId) {
+    return reply(
+      callback,
+      false,
+      "I haven't attended a meeting with a transcript yet.",
+    );
   }
   const row = await runtime.getMemoryById(target.transcriptId as UUID);
   const transcript = row ? readTranscriptRow(row) : null;
   if (!transcript) {
-    const out = `The transcript record for that meeting (${target.transcriptId}) is missing.`;
-    await callback?.({ text: out });
-    return { success: false, text: out };
+    return reply(
+      callback,
+      false,
+      `The transcript record for that meeting (${target.transcriptId}) is missing.`,
+    );
   }
   const text = transcriptPlainText(transcript.segments);
   const label = `${MEETING_PLATFORM_LABELS[target.platform]} ${target.nativeMeetingId}`;
   if (!text) {
-    const out = `No speech has been transcribed in the ${label} meeting yet (status: ${transcript.status}).`;
-    await callback?.({ text: out });
-    return { success: false, text: out };
+    return reply(
+      callback,
+      false,
+      `No speech has been transcribed in the ${label} meeting yet (status: ${transcript.status}).`,
+    );
   }
   const clipped =
     text.length > MAX_REPLY_CHARS
       ? `${text.slice(0, MAX_REPLY_CHARS)}\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`
       : text;
-  const out = `Transcript of the ${label} meeting (${transcript.status}):\n\n${clipped}`;
-  await callback?.({ text: out });
-  return {
-    success: true,
-    text: out,
-    data: { sessionId: target.id, transcriptId: transcript.id },
-  };
+  return reply(
+    callback,
+    true,
+    `Transcript of the ${label} meeting (${transcript.status}):\n\n${clipped}`,
+    { sessionId: target.id, transcriptId: transcript.id },
+  );
 }
 
 export const getMeetingTranscriptAction: Action = {

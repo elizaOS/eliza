@@ -12,30 +12,14 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS, type MeetingSession } from "@elizaos/shared";
+import { MEETING_PLATFORM_LABELS } from "@elizaos/shared";
 import type { MeetingService } from "../service.js";
-import { messageText, optionString, resolveMeetingUrl } from "./shared.js";
-
-function pickTarget(
-  active: MeetingSession[],
-  message: Memory,
-  options: unknown,
-): MeetingSession | "ambiguous" | null {
-  const sessionId = optionString(options, "sessionId");
-  if (sessionId) return active.find((s) => s.id === sessionId) ?? null;
-  const parsed = resolveMeetingUrl(message, options);
-  if (parsed) {
-    return (
-      active.find(
-        (s) =>
-          s.platform === parsed.platform &&
-          s.nativeMeetingId === parsed.nativeMeetingId,
-      ) ?? null
-    );
-  }
-  if (active.length === 1) return active[0];
-  return active.length === 0 ? null : "ambiguous";
-}
+import {
+  messageText,
+  reply,
+  requireMeetingService,
+  resolveTargetSession,
+} from "./shared.js";
 
 async function handler(
   runtime: IAgentRuntime,
@@ -44,35 +28,43 @@ async function handler(
   options?: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const service = runtime.getService<MeetingService>("meetings");
-  if (!service) {
-    const out = "The meetings service isn't running.";
-    await callback?.({ text: out });
-    return { success: false, text: out };
-  }
-  const active = service.listSessions({ active: true });
-  const target = pickTarget(active, message, options);
+  const svc = await requireMeetingService(
+    runtime,
+    callback,
+    "The meetings service isn't running.",
+  );
+  if ("bail" in svc) return svc.bail;
+  const active = svc.service.listSessions({ active: true });
+  const target = resolveTargetSession(
+    active,
+    message,
+    options,
+    "single-or-ambiguous",
+  );
   if (target === null) {
-    const out = "I'm not in that meeting right now — nothing to leave.";
-    await callback?.({ text: out });
-    return { success: false, text: out };
+    return reply(
+      callback,
+      false,
+      "I'm not in that meeting right now — nothing to leave.",
+    );
   }
   if (target === "ambiguous") {
     const list = active
       .map((s) => `${MEETING_PLATFORM_LABELS[s.platform]} ${s.nativeMeetingId}`)
       .join(", ");
-    const out = `I'm in ${active.length} meetings (${list}) — which one should I leave?`;
-    await callback?.({ text: out });
-    return { success: false, text: out };
+    return reply(
+      callback,
+      false,
+      `I'm in ${active.length} meetings (${list}) — which one should I leave?`,
+    );
   }
-  service.stopSession(target.id as UUID);
-  const out = `Leaving the ${MEETING_PLATFORM_LABELS[target.platform]} meeting ${target.nativeMeetingId}. The transcript is saved in the Transcripts view.`;
-  await callback?.({ text: out });
-  return {
-    success: true,
-    text: out,
-    data: { sessionId: target.id, transcriptId: target.transcriptId },
-  };
+  svc.service.stopSession(target.id as UUID);
+  return reply(
+    callback,
+    true,
+    `Leaving the ${MEETING_PLATFORM_LABELS[target.platform]} meeting ${target.nativeMeetingId}. The transcript is saved in the Transcripts view.`,
+    { sessionId: target.id, transcriptId: target.transcriptId },
+  );
 }
 
 export const leaveMeetingAction: Action = {
