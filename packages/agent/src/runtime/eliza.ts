@@ -122,7 +122,6 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
-import type { Vault } from "@elizaos/vault";
 import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
