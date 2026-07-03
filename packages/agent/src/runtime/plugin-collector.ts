@@ -49,19 +49,6 @@ const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
   "@elizaos/plugin-coding-tools",
 ]);
 
-function isOptionalProviderPackageAvailable(pluginName: string): boolean {
-  if (pluginName !== "@elizaos/plugin-vercel-ai-gateway") return true;
-  return (
-    existsSync(path.join(process.cwd(), "plugins/plugin-vercel-ai-gateway")) ||
-    existsSync(
-      path.join(
-        process.cwd(),
-        "node_modules/@elizaos/plugin-vercel-ai-gateway",
-      ),
-    )
-  );
-}
-
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
  * Eliza loads it via STATIC_ELIZA_PLUGINS["agent-orchestrator"].
@@ -599,10 +586,7 @@ export function collectPluginNames(
         continue;
       }
     }
-    if (
-      process.env[envKey]?.trim() &&
-      isOptionalProviderPackageAvailable(pluginName)
-    ) {
+    if (process.env[envKey]?.trim()) {
       pluginsToLoad.add(pluginName);
       track(pluginName, `env: ${envKey}`);
     }
