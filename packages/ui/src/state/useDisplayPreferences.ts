@@ -13,12 +13,14 @@ import {
   type BackgroundHistoryState,
 } from "./background-history";
 import {
+  applyUiAccent,
   applyUiTheme,
   getSystemTheme,
   loadBackgroundConfig,
   loadBackgroundHistory,
   loadBackgroundRedo,
   loadHomeTimeWidgetHidden,
+  loadUiAccentId,
   loadUiThemeMode,
   normalizeBackgroundConfig,
   normalizeUiThemeMode,
@@ -27,10 +29,17 @@ import {
   saveBackgroundHistory,
   saveBackgroundRedo,
   saveHomeTimeWidgetHidden,
+  saveUiAccentId,
   saveUiTheme,
   saveUiThemeMode,
 } from "./persistence";
-import type { BackgroundConfig, UiTheme, UiThemeMode } from "./ui-preferences";
+import {
+  type BackgroundConfig,
+  normalizeAccentId,
+  resolveAccentColor,
+  type UiTheme,
+  type UiThemeMode,
+} from "./ui-preferences";
 
 export function useDisplayPreferences() {
   const [uiThemeMode, setUiThemeModeState] =
@@ -56,6 +65,11 @@ export function useDisplayPreferences() {
   // Appearance settings, persisted across reload.
   const [homeTimeWidgetHidden, setHomeTimeWidgetHiddenState] =
     useState<boolean>(loadHomeTimeWidgetHidden);
+  // User-chosen accent color (preset id). `default` keeps the brand accent.
+  // Applied live to the `--accent` family and persisted across sessions, so
+  // the first-run onboarding accent step and Appearance settings share one
+  // mechanism (#onboarding-accent).
+  const [uiAccentId, setUiAccentIdState] = useState<string>(loadUiAccentId);
   const backgroundConfigRef = useRef(backgroundConfig);
   backgroundConfigRef.current = backgroundConfig;
   const backgroundHistoryRef = useRef(backgroundHistory);
@@ -78,6 +92,10 @@ export function useDisplayPreferences() {
 
   const setHomeTimeWidgetHidden = useCallback((hidden: boolean) => {
     setHomeTimeWidgetHiddenState(hidden);
+  }, []);
+
+  const setUiAccent = useCallback((id: string) => {
+    setUiAccentIdState(normalizeAccentId(id));
   }, []);
 
   // A snapshot of the live {config, history, redo} for the pure reducer — refs
@@ -154,6 +172,13 @@ export function useDisplayPreferences() {
     saveHomeTimeWidgetHidden(homeTimeWidgetHidden);
   }, [homeTimeWidgetHidden]);
 
+  // Persist + apply the accent live. Runs on mount so a persisted accent is
+  // restored on every load, and on every change so a pick applies immediately.
+  useEffect(() => {
+    saveUiAccentId(uiAccentId);
+    applyUiAccent(resolveAccentColor(uiAccentId));
+  }, [uiAccentId]);
+
   return {
     state: {
       uiTheme,
@@ -162,6 +187,7 @@ export function useDisplayPreferences() {
       canUndoBackground: backgroundHistory.length > 0,
       canRedoBackground: backgroundRedo.length > 0,
       homeTimeWidgetHidden,
+      uiAccentId,
     },
     setUiTheme,
     setUiThemeMode,
@@ -169,5 +195,6 @@ export function useDisplayPreferences() {
     undoBackgroundConfig,
     redoBackgroundConfig,
     setHomeTimeWidgetHidden,
+    setUiAccent,
   };
 }

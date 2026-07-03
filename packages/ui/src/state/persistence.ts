@@ -25,8 +25,10 @@ import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import type { SetupStep } from "./types";
 import {
   type BackgroundConfig,
+  DEFAULT_ACCENT_ID,
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_CONFIG,
+  normalizeAccentId,
   type UiShellMode,
   type UiTheme,
   type UiThemeMode,
@@ -363,6 +365,96 @@ export function applyUiTheme(theme: UiTheme): void {
       }
     }
   }
+}
+
+/* ── Accent color persistence ─────────────────────────────────────────── */
+
+const UI_ACCENT_STORAGE_KEY = "eliza:ui-accent";
+
+/** Load the persisted accent preset id. Defaults to the brand accent. */
+export function loadUiAccentId(): string {
+  return tryLocalStorage(
+    () => normalizeAccentId(localStorage.getItem(UI_ACCENT_STORAGE_KEY)),
+    DEFAULT_ACCENT_ID,
+  );
+}
+
+/** Persist the chosen accent preset id (normalized). */
+export function saveUiAccentId(id: string): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(UI_ACCENT_STORAGE_KEY, normalizeAccentId(id));
+  }, undefined);
+}
+
+// The `--accent` family a user accent choice overrides. Applied as inline
+// styles on <html> so they win over base.css and any host brand theme; the
+// `default` accent clears them, restoring the brand accent.
+const ACCENT_OVERRIDE_VARS = [
+  "--accent",
+  "--accent-rgb",
+  "--accent-hover",
+  "--accent-muted",
+  "--accent-subtle",
+  "--ring",
+  "--border-hover",
+  "--primary",
+] as const;
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const int = Number.parseInt(m[1], 16);
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+}
+
+function mixChannel(channel: number, target: number, amount: number): number {
+  return Math.round(channel + (target - channel) * amount);
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * Apply a user-chosen accent color to the document root by overriding the
+ * `--accent` family inline (so it wins over base.css / any host brand theme).
+ * `null` (the `default` preset) clears the overrides, restoring the brand
+ * accent. `--accent-foreground` is intentionally left untouched — every preset
+ * is dark enough for the existing near-white foreground.
+ */
+export function applyUiAccent(color: string | null): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!root?.style) return;
+  const rgb = color == null ? null : hexToRgb(color);
+  if (color == null || rgb == null) {
+    for (const cssVar of ACCENT_OVERRIDE_VARS)
+      root.style.removeProperty(cssVar);
+    return;
+  }
+  const [r, g, b] = rgb;
+  root.style.setProperty("--accent", color);
+  root.style.setProperty("--accent-rgb", `${r}, ${g}, ${b}`);
+  root.style.setProperty(
+    "--accent-hover",
+    rgbToHex(
+      mixChannel(r, 255, 0.12),
+      mixChannel(g, 255, 0.12),
+      mixChannel(b, 255, 0.12),
+    ),
+  );
+  root.style.setProperty(
+    "--accent-muted",
+    rgbToHex(
+      mixChannel(r, 0, 0.18),
+      mixChannel(g, 0, 0.18),
+      mixChannel(b, 0, 0.18),
+    ),
+  );
+  root.style.setProperty("--accent-subtle", `rgba(${r}, ${g}, ${b}, 0.14)`);
+  root.style.setProperty("--ring", color);
+  root.style.setProperty("--border-hover", color);
+  root.style.setProperty("--primary", color);
 }
 
 const UI_LANGUAGE_STORAGE_KEY = "eliza:ui-language";

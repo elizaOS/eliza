@@ -154,6 +154,7 @@ function AppProviderInner({
       canUndoBackground,
       canRedoBackground,
       homeTimeWidgetHidden,
+      uiAccentId,
     },
     setUiTheme,
     setUiThemeMode,
@@ -161,6 +162,7 @@ function AppProviderInner({
     undoBackgroundConfig,
     redoBackgroundConfig,
     setHomeTimeWidgetHidden,
+    setUiAccent,
   } = displayPrefs;
 
   // Apply the host app's brand theme (set via BrandingConfig.theme).
@@ -1973,6 +1975,7 @@ function AppProviderInner({
       canUndoBackground,
       canRedoBackground,
       homeTimeWidgetHidden,
+      uiAccentId,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2260,6 +2263,7 @@ function AppProviderInner({
       undoBackgroundConfig,
       redoBackgroundConfig,
       setHomeTimeWidgetHidden,
+      setUiAccent,
       handleStart,
       handleStop,
 
@@ -2389,6 +2393,7 @@ function AppProviderInner({
       canUndoBackground,
       canRedoBackground,
       homeTimeWidgetHidden,
+      uiAccentId,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2683,6 +2688,7 @@ function AppProviderInner({
       undoBackgroundConfig,
       redoBackgroundConfig,
       setHomeTimeWidgetHidden,
+      setUiAccent,
       handleStart,
       handleStop,
       handleRestart,

@@ -2,8 +2,8 @@ import type { LucideIcon } from "lucide-react";
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
-import { useAppSelector, useContentPack } from "../../state";
-import type { UiThemeMode } from "../../state/ui-preferences";
+import { ACCENT_PRESETS, useAppSelector, useContentPack } from "../../state";
+import type { AccentPreset, UiThemeMode } from "../../state/ui-preferences";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { Switch } from "../ui/switch";
 import { AdvancedToggle } from "./AdvancedToggle";
@@ -102,11 +102,55 @@ function ThemeTileButton({
   );
 }
 
+function AccentTileButton({
+  preset,
+  isActive,
+  onSelect,
+}: {
+  preset: AccentPreset;
+  isActive: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `appearance-accent-${preset.id}`,
+    role: "tab",
+    label: preset.label,
+    group: "appearance-accent",
+    status: isActive ? "active" : "inactive",
+    onActivate: onSelect,
+  });
+  // The `default` preset carries no color (brand accent) — render the live
+  // `--accent` token so its swatch tracks the brand accent.
+  const swatchColor = preset.color ?? "var(--accent)";
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onSelect}
+      aria-current={isActive ? "true" : undefined}
+      className={selectableTileClass(isActive)}
+      {...agentProps}
+    >
+      <span
+        aria-hidden
+        className="h-5 w-5 rounded-full border border-border/40"
+        style={{ backgroundColor: swatchColor }}
+      />
+      <span className="text-xs font-medium text-txt">{preset.label}</span>
+      {isActive ? (
+        <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
+      ) : null}
+    </button>
+  );
+}
+
 export function AppearanceSettingsSection() {
   const setUiLanguage = useAppSelector((s) => s.setUiLanguage);
   const uiLanguage = useAppSelector((s) => s.uiLanguage);
   const uiThemeMode = useAppSelector((s) => s.uiThemeMode);
   const setUiThemeMode = useAppSelector((s) => s.setUiThemeMode);
+  const uiAccentId = useAppSelector((s) => s.uiAccentId);
+  const setUiAccent = useAppSelector((s) => s.setUiAccent);
   const homeTimeWidgetHidden = useAppSelector((s) => s.homeTimeWidgetHidden);
   const setHomeTimeWidgetHidden = useAppSelector(
     (s) => s.setHomeTimeWidgetHidden,
@@ -132,6 +176,22 @@ export function AppearanceSettingsSection() {
               icon={option.icon}
               isActive={uiThemeMode === option.mode}
               onSelect={() => setUiThemeMode(option.mode)}
+            />
+          ))}
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup
+        bare
+        title={t("settings.accent", { defaultValue: "Accent color" })}
+      >
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {ACCENT_PRESETS.map((preset) => (
+            <AccentTileButton
+              key={preset.id}
+              preset={preset}
+              isActive={uiAccentId === preset.id}
+              onSelect={() => setUiAccent(preset.id)}
             />
           ))}
         </div>

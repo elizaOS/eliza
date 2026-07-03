@@ -38,7 +38,7 @@ import { client } from "../api";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { startTutorial } from "../components/pages/tutorial/tutorial-controller";
 import { getBootConfig } from "../config/boot-config";
-import { useAppSelectorShallow } from "../state";
+import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import { preOpenWindow } from "../utils";
 import { normalizeFirstRunName } from "./first-run";
@@ -139,6 +139,20 @@ const TUTORIAL_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
+// The "make it yours" accent step. Reuses the shared ACCENT_PRESETS (the same
+// list Appearance settings renders) so onboarding + Settings drive one
+// persisted preference. In-chat CHOICE options render as text buttons, so each
+// carries an emoji swatch to hint its color. Non-blocking: it's seeded next to
+// the tutorial CHOICE, so a user who ignores it just taps the tutorial option;
+// the `default` swatch keeps the brand accent.
+const ACCENT_CHOICE = [
+  "[CHOICE:first-run id=accent]",
+  ...ACCENT_PRESETS.map(
+    (p) => `${FIRST_RUN_ACTION_PREFIX}accent:${p.id}=${p.swatch} ${p.label}`,
+  ),
+  "[/CHOICE]",
+].join("\n");
+
 function cloudOAuthSecretRequest(
   status: ConversationSecretRequest["status"],
 ): ConversationSecretRequest {
@@ -225,6 +239,7 @@ export function useFirstRunConductor(): void {
     showActionBanner,
     setTab,
     setState,
+    setUiAccent,
     uiLanguage,
   } = useAppSelectorShallow((s) => ({
     firstRunComplete: s.firstRunComplete,
@@ -235,6 +250,7 @@ export function useFirstRunConductor(): void {
     showActionBanner: s.showActionBanner,
     setTab: s.setTab,
     setState: s.setState,
+    setUiAccent: s.setUiAccent,
     uiLanguage: s.uiLanguage,
   }));
   const { setConversationMessages } = useConversationMessages();
@@ -304,6 +320,15 @@ export function useFirstRunConductor(): void {
 
   const seedTutorial = React.useCallback(() => {
     provisionedRef.current = true;
+    // "Make it yours" — the accent step is seeded alongside the tutorial prompt
+    // so it never blocks finishing: a user who ignores it just taps a tutorial
+    // option below. Picking a swatch applies + persists the accent live.
+    seedTurn(
+      makeTurn(
+        "first-run:appearance",
+        `First, make it yours — pick an accent color (or keep the default and continue below).\n\n${ACCENT_CHOICE}`,
+      ),
+    );
     seedTurn(
       makeTurn(
         "first-run:tutorial",
@@ -510,9 +535,16 @@ export function useFirstRunConductor(): void {
       // finish call is still in flight — consume those as no-ops instead of
       // starting a concurrent flow.
       if (busyRef.current) return true;
-      // Once provisioning succeeded only the tutorial pick is live; taps on
-      // leftover runtime/provider/cloud-agent widgets must not re-provision.
-      if (provisionedRef.current && group !== "tutorial") return true;
+      // Once provisioning succeeded only the wrap-up picks (accent + tutorial)
+      // are live; taps on leftover runtime/provider/cloud-agent widgets must not
+      // re-provision.
+      if (
+        provisionedRef.current &&
+        group !== "tutorial" &&
+        group !== "accent"
+      ) {
+        return true;
+      }
       // A fresh pick supersedes any armed connect-and-resume continuation.
       pendingCloudResumeRef.current = null;
 
@@ -666,6 +698,15 @@ export function useFirstRunConductor(): void {
         return true;
       }
 
+      if (group === "accent") {
+        // "Make it yours": apply + persist the chosen accent live. Non-blocking
+        // — the tutorial CHOICE seeded alongside still finishes onboarding, so
+        // this never gates completion. Garbage ids are consumed as no-ops.
+        if (!ACCENT_PRESETS.some((p) => p.id === id)) return true;
+        setUiAccent(id);
+        return true;
+      }
+
       if (group === "tutorial") {
         if (id !== "start" && id !== "skip") return true;
         if (completedRef.current) return true;
@@ -691,6 +732,7 @@ export function useFirstRunConductor(): void {
       seedError,
       startCloudProvisionFlow,
       startProviderFinish,
+      setUiAccent,
     ],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);
