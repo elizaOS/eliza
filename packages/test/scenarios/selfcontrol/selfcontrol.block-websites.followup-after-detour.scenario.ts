@@ -1,4 +1,16 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { callPayloadBlob } from "../_helpers/effect-assertions.ts";
+
+function expectFollowupBlockRecoveredSites(
+  ctx: ScenarioContext,
+): string | undefined {
+  const blob = callPayloadBlob(ctx, "WEBSITE_BLOCK");
+  if (!/x\.com/.test(blob) || !/instagram\.com/.test(blob)) {
+    return `Expected the follow-up block to recover x.com and instagram.com from recent conversation. Payload: ${blob.slice(0, 600)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -62,9 +74,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "WEBSITE_BLOCK",
-      minCount: 1,
+      type: "custom",
+      name: "followup-block-recovers-sites-after-detour",
+      predicate: expectFollowupBlockRecoveredSites,
     },
   ],
   cleanup: [

@@ -1,4 +1,5 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectCalendarResultData } from "../_helpers/calendar-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -38,9 +39,12 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "CALENDAR",
-      minCount: 1,
+      type: "custom",
+      name: "calendar-feed-finds-hour-seeded-event",
+      predicate: expectCalendarResultData({
+        description: "calendar feed result includes the seeded Alex sync",
+        includesAll: ["events", "sync with alex", "alex@example.com"],
+      }),
     },
   ],
 });

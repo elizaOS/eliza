@@ -1,4 +1,5 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectCalendarResultData } from "../_helpers/calendar-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -36,9 +37,14 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "CALENDAR",
-      minCount: 1,
+      type: "custom",
+      name: "calendar-create-prep-buffer-result",
+      predicate: expectCalendarResultData({
+        description:
+          "calendar create result includes meeting plus computed prep buffer",
+        includesAll: ["create_event", "alex", "meeting"],
+        includesAny: ["2:45", "14:45", "prep", "15"],
+      }),
     },
   ],
 });

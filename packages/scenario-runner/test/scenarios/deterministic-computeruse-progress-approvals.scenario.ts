@@ -153,6 +153,31 @@ function expectApprovalResolved(
   return undefined;
 }
 
+function expectApprovalFlow(ctx: ScenarioContext): string | undefined {
+  const calls = ctx.actionsCalled.filter(
+    (candidate) => candidate.actionName === "COMPUTER_USE",
+  );
+  if (calls.length !== 2) {
+    return `expected two COMPUTER_USE calls, saw ${calls.length}`;
+  }
+  const blob = JSON.stringify(
+    calls.map((action) => ({
+      success: action.result?.success,
+      text: action.result?.text,
+      data: action.result?.data,
+    })),
+  );
+  for (const expected of [
+    "Scenario click completed after approval relay.",
+    `Computer-use approval ${approvalId} approved.`,
+  ]) {
+    if (!blob.includes(expected)) {
+      return `expected approval flow to include ${JSON.stringify(expected)}, saw ${blob}`;
+    }
+  }
+  return undefined;
+}
+
 export default scenario({
   id: "deterministic-computeruse-progress-approvals",
   lane: "pr-deterministic",
@@ -188,10 +213,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "COMPUTER_USE",
-      status: "success",
-      minCount: 2,
+      type: "custom",
+      name: "computeruse-approval-flow-results",
+      predicate: expectApprovalFlow,
     },
   ],
 });

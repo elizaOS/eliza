@@ -106,6 +106,31 @@ function expectSuccess(message: string) {
   };
 }
 
+function expectParityResults(ctx: ScenarioContext): string | undefined {
+  const blob = JSON.stringify(
+    ctx.actionsCalled.map((action) => ({
+      actionName: action.actionName,
+      success: action.result?.success,
+      text: action.result?.text,
+      data: action.result?.data,
+    })),
+  );
+  for (const expected of [
+    "Set value at the target.",
+    "Terminated 4321.",
+    '"killed":true',
+    "Window size: 1216x808.",
+    '"width":1216',
+    "Window position: (256, 102).",
+    '"x":256',
+  ]) {
+    if (!blob.includes(expected)) {
+      return `expected computer-use parity result to include ${JSON.stringify(expected)}, saw ${blob}`;
+    }
+  }
+  return undefined;
+}
+
 export default scenario({
   id: "deterministic-computeruse-parity-verbs",
   lane: "pr-deterministic",
@@ -158,16 +183,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "COMPUTER_USE",
-      status: "success",
-      minCount: 2,
-    },
-    {
-      type: "actionCalled",
-      actionName: "WINDOW",
-      status: "success",
-      minCount: 2,
+      type: "custom",
+      name: "computeruse-parity-result-shapes",
+      predicate: expectParityResults,
     },
   ],
 });

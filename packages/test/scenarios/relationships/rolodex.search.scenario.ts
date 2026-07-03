@@ -3,7 +3,32 @@
  * ask the agent to find everyone from Acme. Expected action: SEARCH_CONTACTS.
  */
 
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  callPayloadBlob,
+  describeCalls,
+  successfulCalls,
+} from "../_helpers/effect-assertions.ts";
+
+function expectAcmeSearchResult(ctx: ScenarioContext): string | undefined {
+  if (successfulCalls(ctx, "SEARCH_CONTACTS").length === 0) {
+    return `expected successful SEARCH_CONTACTS call; calls: ${describeCalls(ctx)}`;
+  }
+  const blob = callPayloadBlob(ctx, "SEARCH_CONTACTS");
+  if (!/acme/.test(blob)) {
+    return `expected SEARCH_CONTACTS payload/result to include Acme, saw ${blob.slice(0, 600)}`;
+  }
+
+  const reply = ctx.turns?.at(-1)?.responseText ?? "";
+  if (!/alice/i.test(reply) || !/bob/i.test(reply)) {
+    return `expected reply to list seeded Acme contacts Alice and Bob, saw ${JSON.stringify(reply)}`;
+  }
+  if (/carol/i.test(reply)) {
+    return `expected non-Acme contact Carol to be excluded, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -61,9 +86,9 @@ export default scenario({
 
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "SEARCH_CONTACTS",
-      minCount: 1,
+      type: "custom",
+      name: "rolodex-search-returns-acme-contacts",
+      predicate: expectAcmeSearchResult,
     },
   ],
 });

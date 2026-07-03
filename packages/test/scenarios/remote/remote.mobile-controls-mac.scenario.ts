@@ -1,4 +1,29 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { successfulActionData } from "../_helpers/effect-assertions.ts";
+
+function expectRemoteSessionConnectionInfo(
+  ctx: ScenarioContext,
+): string | undefined {
+  const data = successfulActionData(ctx, "REMOTE_DESKTOP") as {
+    session?: {
+      status?: string;
+      accessUrl?: string | null;
+      accessCode?: string | null;
+    };
+  } | null;
+  if (!data) {
+    return "expected successful REMOTE_DESKTOP result data";
+  }
+  const session = data.session;
+  if (session?.status !== "active") {
+    return `expected active remote desktop session, saw ${JSON.stringify(session ?? null)}`;
+  }
+  if (!session.accessUrl && !session.accessCode) {
+    return `expected session accessUrl or accessCode, saw ${JSON.stringify(session)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -40,10 +65,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "REMOTE_DESKTOP",
-      status: "success",
-      minCount: 1,
+      type: "custom",
+      name: "mobile-control-starts-remote-session",
+      predicate: expectRemoteSessionConnectionInfo,
     },
   ],
 });

@@ -1,4 +1,22 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "../_helpers/effect-assertions.ts";
+
+function expectNoBlockAfterDecline(ctx: ScenarioContext): string | undefined {
+  const forbidden = expectNoActionCalled(ctx, ["WEBSITE_BLOCK"]);
+  if (forbidden) return forbidden;
+
+  const reply = ctx.turns?.find(
+    (turn) => turn.name === "decline-block",
+  )?.responseText;
+  if (!reply) {
+    return "expected decline-block response";
+  }
+  if (!/(ok|sure|understood|won't|no problem)/i.test(reply)) {
+    return `expected acknowledgement that no block was applied, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -46,9 +64,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "REPLY",
-      minCount: 1,
+      type: "custom",
+      name: "declined-selfcontrol-block-has-no-side-effect",
+      predicate: expectNoBlockAfterDecline,
     },
   ],
 });

@@ -1,4 +1,26 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "../_helpers/effect-assertions.ts";
+
+function expectManualGoogleLoginGuidance(
+  ctx: ScenarioContext,
+): string | undefined {
+  const forbidden = expectNoActionCalled(ctx, [
+    "REMOTE_DESKTOP",
+    "BROWSER",
+    "COMPUTER_USE",
+  ]);
+  if (forbidden) return forbidden;
+
+  const reply = ctx.turns?.at(-1)?.responseText ?? "";
+  if (
+    !/google/i.test(reply) ||
+    !/(sign in|login|accounts\.google\.com)/i.test(reply)
+  ) {
+    return `expected manual Google sign-in guidance, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -36,9 +58,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "REPLY",
-      minCount: 1,
+      type: "custom",
+      name: "google-sso-guidance-without-remote-side-effects",
+      predicate: expectManualGoogleLoginGuidance,
     },
   ],
 });

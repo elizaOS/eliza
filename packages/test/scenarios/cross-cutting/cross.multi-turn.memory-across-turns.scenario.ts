@@ -9,7 +9,24 @@
  * token that appears in no user turn; a planted decoy color must not leak.
  */
 
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+
+function expectSpanishFavoriteRecall(ctx: ScenarioContext): string | undefined {
+  const reply = ctx.turns?.find(
+    (turn) => turn.name === "recall-fact",
+  )?.responseText;
+  if (!reply) {
+    return "expected recall-fact turn response";
+  }
+  if (!/azul/i.test(reply)) {
+    return `expected recalled favorite color in Spanish (azul), saw ${JSON.stringify(reply)}`;
+  }
+  if (/naranja/i.test(reply)) {
+    return `expected least-favorite decoy not to leak, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -59,9 +76,9 @@ export default scenario({
 
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "REPLY",
-      minCount: 2,
+      type: "custom",
+      name: "multi-turn-favorite-color-recalled-in-spanish",
+      predicate: expectSpanishFavoriteRecall,
     },
   ],
 });

@@ -1,0 +1,196 @@
+{
+  "id": "deterministic-computeruse-progress-approvals",
+  "title": "Computer-use approval relay buttons",
+  "domain": "computeruse",
+  "tags": [
+    "pr",
+    "deterministic",
+    "zero-cost",
+    "computeruse",
+    "approvals"
+  ],
+  "status": "passed",
+  "durationMs": 78,
+  "turns": [
+    {
+      "name": "COMPUTER_USE emits approval buttons",
+      "kind": "action",
+      "text": "Click with approval relay",
+      "responseText": "Computer-use approval requested for `computer_use_click`.\n[CHOICE:computeruse-approval id=approval_123_abc]\ncua:approval_123_abc:approve=Approve\ncua:approval_123_abc:deny=Deny\n[/CHOICE]Scenario click completed after approval relay.",
+      "actionsCalled": [
+        {
+          "actionName": "COMPUTER_USE",
+          "parameters": {
+            "parameters": {
+              "action": "click"
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "source": "computeruse",
+              "computerUseAction": "click",
+              "result": {
+                "success": true,
+                "message": "Scenario click completed after approval relay."
+              },
+              "suppressActionResultClipboard": true
+            },
+            "text": "Scenario click completed after approval relay.",
+            "raw": {
+              "success": true,
+              "text": "Scenario click completed after approval relay.",
+              "data": {
+                "source": "computeruse",
+                "computerUseAction": "click",
+                "result": {
+                  "success": true,
+                  "message": "Scenario click completed after approval relay."
+                },
+                "suppressActionResultClipboard": true
+              }
+            }
+          }
+        }
+      ],
+      "durationMs": 2,
+      "failedAssertions": []
+    },
+    {
+      "name": "COMPUTER_USE resolves approve callback",
+      "kind": "action",
+      "text": "cua:approval_123_abc:approve",
+      "responseText": "Computer-use approval approval_123_abc approved.",
+      "actionsCalled": [
+        {
+          "actionName": "COMPUTER_USE",
+          "parameters": {},
+          "result": {
+            "success": true,
+            "data": {
+              "source": "computeruse",
+              "computerUseAction": "COMPUTER_USE",
+              "approval": {
+                "id": "approval_123_abc",
+                "command": "computer_use_click",
+                "approved": true,
+                "cancelled": false,
+                "mode": "approve_all",
+                "requestedAt": "2026-06-22T14:00:00.000Z",
+                "resolvedAt": "2026-06-22T14:00:01.000Z",
+                "reason": "Resolved from chat button (approve)"
+              }
+            },
+            "text": "Computer-use approval approval_123_abc approved.",
+            "raw": {
+              "success": true,
+              "text": "Computer-use approval approval_123_abc approved.",
+              "data": {
+                "source": "computeruse",
+                "computerUseAction": "COMPUTER_USE",
+                "approval": {
+                  "id": "approval_123_abc",
+                  "command": "computer_use_click",
+                  "approved": true,
+                  "cancelled": false,
+                  "mode": "approve_all",
+                  "requestedAt": "2026-06-22T14:00:00.000Z",
+                  "resolvedAt": "2026-06-22T14:00:01.000Z",
+                  "reason": "Resolved from chat button (approve)"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "durationMs": 1,
+      "failedAssertions": []
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "computeruse-approval-flow-results",
+      "type": "custom",
+      "status": "passed",
+      "detail": "predicate returned undefined"
+    }
+  ],
+  "actionsCalled": [
+    {
+      "actionName": "COMPUTER_USE",
+      "parameters": {
+        "parameters": {
+          "action": "click"
+        }
+      },
+      "result": {
+        "success": true,
+        "data": {
+          "source": "computeruse",
+          "computerUseAction": "click",
+          "result": {
+            "success": true,
+            "message": "Scenario click completed after approval relay."
+          },
+          "suppressActionResultClipboard": true
+        },
+        "text": "Scenario click completed after approval relay.",
+        "raw": {
+          "success": true,
+          "text": "Scenario click completed after approval relay.",
+          "data": {
+            "source": "computeruse",
+            "computerUseAction": "click",
+            "result": {
+              "success": true,
+              "message": "Scenario click completed after approval relay."
+            },
+            "suppressActionResultClipboard": true
+          }
+        }
+      }
+    },
+    {
+      "actionName": "COMPUTER_USE",
+      "parameters": {},
+      "result": {
+        "success": true,
+        "data": {
+          "source": "computeruse",
+          "computerUseAction": "COMPUTER_USE",
+          "approval": {
+            "id": "approval_123_abc",
+            "command": "computer_use_click",
+            "approved": true,
+            "cancelled": false,
+            "mode": "approve_all",
+            "requestedAt": "2026-06-22T14:00:00.000Z",
+            "resolvedAt": "2026-06-22T14:00:01.000Z",
+            "reason": "Resolved from chat button (approve)"
+          }
+        },
+        "text": "Computer-use approval approval_123_abc approved.",
+        "raw": {
+          "success": true,
+          "text": "Computer-use approval approval_123_abc approved.",
+          "data": {
+            "source": "computeruse",
+            "computerUseAction": "COMPUTER_USE",
+            "approval": {
+              "id": "approval_123_abc",
+              "command": "computer_use_click",
+              "approved": true,
+              "cancelled": false,
+              "mode": "approve_all",
+              "requestedAt": "2026-06-22T14:00:00.000Z",
+              "resolvedAt": "2026-06-22T14:00:01.000Z",
+              "reason": "Resolved from chat button (approve)"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "failedAssertions": [],
+  "providerName": "deterministic-llm-proxy"
+}

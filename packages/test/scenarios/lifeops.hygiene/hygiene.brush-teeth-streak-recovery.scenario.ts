@@ -57,6 +57,39 @@ async function seedSecondMissedBrushOccurrence(
   return undefined;
 }
 
+function expectBrushRecoveryCheckin(ctx: ScenarioContext): string | undefined {
+  const action = ctx.actionsCalled.find(
+    (entry) => entry.actionName === "CHECKIN",
+  );
+  const data =
+    action?.result?.data && typeof action.result.data === "object"
+      ? (action.result.data as {
+          habitSummaries?: Array<{
+            title?: string;
+            missedOccurrenceStreak?: number;
+          }>;
+        })
+      : null;
+  if (!data) {
+    return "expected CHECKIN to return structured hygiene habit data";
+  }
+  const brush = data.habitSummaries?.find((habit) =>
+    /brush/i.test(habit.title ?? ""),
+  );
+  if (!brush) {
+    return `expected Brush teeth in habitSummaries, saw ${JSON.stringify(data.habitSummaries ?? null)}`;
+  }
+  if ((brush.missedOccurrenceStreak ?? 0) < 1) {
+    return `expected missed brush streak in structured data, saw ${JSON.stringify(brush)}`;
+  }
+
+  const reply = ctx.turns?.at(-1)?.responseText ?? "";
+  if (!/(brush|teeth)/i.test(reply)) {
+    return `expected brushing recovery in reply, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
+
 export default scenario({
   lane: "live-only",
   id: "hygiene.brush-teeth-streak-recovery",
@@ -101,9 +134,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "CHECKIN",
-      minCount: 1,
+      type: "custom",
+      name: "brush-recovery-checkin-data",
+      predicate: expectBrushRecoveryCheckin,
     },
     judgeRubric({
       name: "brush-streak-recovery-warm-tone",

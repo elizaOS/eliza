@@ -1,4 +1,19 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "../_helpers/effect-assertions.ts";
+
+function expectClarificationBeforeBlock(
+  ctx: ScenarioContext,
+): string | undefined {
+  const forbidden = expectNoActionCalled(ctx, ["WEBSITE_BLOCK"]);
+  if (forbidden) return forbidden;
+
+  const reply = ctx.turns?.at(-1)?.responseText ?? "";
+  if (!/(which|what|how long|confirm|\?)/i.test(reply)) {
+    return `expected clarification before enforcing a loose block request, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -33,9 +48,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "REPLY",
-      minCount: 1,
+      type: "custom",
+      name: "loose-selfcontrol-request-asks-before-blocking",
+      predicate: expectClarificationBeforeBlock,
     },
   ],
 });

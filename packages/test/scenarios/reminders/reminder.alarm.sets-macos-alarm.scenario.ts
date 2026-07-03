@@ -1,4 +1,5 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectCalendarResultData } from "../_helpers/calendar-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -39,10 +40,14 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "CALENDAR",
-      status: "success",
-      minCount: 1,
+      type: "custom",
+      name: "macos-alarm-created-calendar-event",
+      predicate: expectCalendarResultData({
+        description:
+          "Mac alarm request creates a concrete owner calendar event",
+        includesAll: ["confirmed"],
+        includesAny: ["alarm", "standup", "9:00", "09:00"],
+      }),
     },
   ],
 });

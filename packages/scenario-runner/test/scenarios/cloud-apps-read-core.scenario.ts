@@ -1,4 +1,39 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+
+function expectCloudAppsListResult(ctx: ScenarioContext): string | undefined {
+  const call = ctx.actionsCalled.find(
+    (action) =>
+      action.actionName === "LIST_CLOUD_APPS" &&
+      action.result?.success === true,
+  );
+  const data =
+    call?.result?.data && typeof call.result.data === "object"
+      ? (call.result.data as Record<string, unknown>)
+      : null;
+  if (!data) {
+    return `expected successful LIST_CLOUD_APPS result data; calls: ${
+      ctx.actionsCalled
+        .map(
+          (action) =>
+            `${action.actionName}(success=${String(action.result?.success)})`,
+        )
+        .join(", ") || "(no actions called)"
+    }`;
+  }
+  if (typeof data.count !== "number") {
+    return `expected LIST_CLOUD_APPS result.data.count, saw ${JSON.stringify(data)}`;
+  }
+  if (!Array.isArray(data.apps)) {
+    return `expected LIST_CLOUD_APPS result.data.apps array, saw ${JSON.stringify(data)}`;
+  }
+
+  const reply = ctx.turns?.at(-1)?.responseText ?? "";
+  if (!/(app|cloud)/i.test(reply)) {
+    return `expected cloud apps inventory reply, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
 
 /**
  * Live trajectory for the Eliza Cloud Apps read-core (#10218).
@@ -34,10 +69,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      name: "LIST_CLOUD_APPS routed and executed",
-      actionName: "LIST_CLOUD_APPS",
-      minCount: 1,
+      type: "custom",
+      name: "LIST_CLOUD_APPS returned inventory data",
+      predicate: expectCloudAppsListResult,
     },
   ],
 });

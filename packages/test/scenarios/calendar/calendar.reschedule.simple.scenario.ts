@@ -1,4 +1,5 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectCalendarResultData } from "../_helpers/calendar-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -38,9 +39,13 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "CALENDAR",
-      minCount: 1,
+      type: "custom",
+      name: "calendar-reschedule-updates-seeded-event",
+      predicate: expectCalendarResultData({
+        description: "calendar update result moves the Alex sync to 4pm",
+        includesAll: ["sync with alex"],
+        includesAny: ["update_event", "updated", "16:00", "4:00", "4pm"],
+      }),
     },
   ],
 });

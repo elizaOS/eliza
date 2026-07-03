@@ -1,4 +1,26 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  callPayloadBlob,
+  describeCalls,
+  successfulCalls,
+} from "../_helpers/effect-assertions.ts";
+
+function expectRelationshipGoalPayload(
+  ctx: ScenarioContext,
+): string | undefined {
+  if (successfulCalls(ctx, "RELATIONSHIP").length === 0) {
+    return `expected successful RELATIONSHIP call; calls: ${describeCalls(ctx)}`;
+  }
+  const blob = callPayloadBlob(ctx, "RELATIONSHIP");
+  if (!/alice/.test(blob)) {
+    return `expected RELATIONSHIP payload to reference Alice, saw ${blob.slice(0, 600)}`;
+  }
+  if (!/(quarterly|stay in touch)/.test(blob)) {
+    return `expected RELATIONSHIP payload to carry the quarterly stay-in-touch note, saw ${blob.slice(0, 600)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -43,9 +65,9 @@ export default scenario({
 
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "RELATIONSHIP",
-      minCount: 1,
+      type: "custom",
+      name: "relationship-goal-carries-contact-and-note",
+      predicate: expectRelationshipGoalPayload,
     },
   ],
 });

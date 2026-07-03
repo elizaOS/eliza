@@ -1,4 +1,17 @@
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { callPayloadBlob } from "../_helpers/effect-assertions.ts";
+
+function expectConfirmedXBlock(ctx: ScenarioContext): string | undefined {
+  const blob = callPayloadBlob(ctx, "WEBSITE_BLOCK");
+  if (!/x(?:\.com)?/.test(blob)) {
+    return `expected confirmed block payload to reference X, saw ${blob.slice(0, 600)}`;
+  }
+  if (!/(hour|60|3600)/.test(blob)) {
+    return `expected confirmed block payload to carry one-hour duration, saw ${blob.slice(0, 600)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -41,9 +54,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "WEBSITE_BLOCK",
-      minCount: 1,
+      type: "custom",
+      name: "confirmed-x-block-carries-duration",
+      predicate: expectConfirmedXBlock,
     },
   ],
   cleanup: [

@@ -1,0 +1,115 @@
+{
+  "runId": "c5edf5de-23bb-4c75-9ef2-cef395592f6d",
+  "startedAtIso": "2026-07-03T01:15:42.010Z",
+  "completedAtIso": "2026-07-03T01:15:50.875Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "deterministic-gitpathology-actions",
+      "title": "Deterministic gitpathology GIT_PATHOLOGY action",
+      "domain": "scenario-runner",
+      "tags": [
+        "pr",
+        "deterministic",
+        "zero-cost",
+        "gitpathology"
+      ],
+      "status": "passed",
+      "durationMs": 1247,
+      "turns": [
+        {
+          "name": "list cached pathology reports",
+          "kind": "message",
+          "text": "Run the git pathology list action for cached reports",
+          "responseText": "No cached pathology reports",
+          "actionsCalled": [
+            {
+              "actionName": "GIT_PATHOLOGY",
+              "parameters": {
+                "parameters": {
+                  "action": "list"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "reports": []
+                },
+                "text": "No cached pathology reports for this repo yet.",
+                "raw": {
+                  "success": true,
+                  "text": "No cached pathology reports for this repo yet.",
+                  "data": {
+                    "reports": []
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 1133,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "gitpathology-list-empty-cache-result",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "GIT_PATHOLOGY",
+          "parameters": {
+            "parameters": {
+              "action": "list"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "reports": []
+            },
+            "text": "No cached pathology reports for this repo yet.",
+            "raw": {
+              "success": true,
+              "text": "No cached pathology reports for this repo yet.",
+              "data": {
+                "reports": []
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs",
+    "matrixJson": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs/matrix.json",
+    "viewerIndex": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs/viewer/index.html",
+    "viewerData": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs/viewer/data.js"
+  }
+}

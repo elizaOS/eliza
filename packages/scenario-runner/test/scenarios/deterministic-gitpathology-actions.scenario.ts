@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type {
   CapturedAction,
+  ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -156,6 +157,35 @@ function expectListTurn(execution: ScenarioTurnExecution): string | undefined {
   );
 }
 
+function expectListScenario(ctx: ScenarioContext): string | undefined {
+  const action = ctx.actionsCalled.find(
+    (candidate) => candidate.actionName === "GIT_PATHOLOGY",
+  );
+  if (!action) {
+    return `expected GIT_PATHOLOGY action, saw ${ctx.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
+  }
+  return (
+    expectActionOptions(action, listParameters) ??
+    expectSuccess(action) ??
+    (() => {
+      const data = action.result?.data;
+      if (!isRecord(data)) {
+        return `expected ActionResult.data object, saw ${stableStringify(data)}`;
+      }
+      if (!Array.isArray(data.reports)) {
+        return `expected data.reports array, saw ${stableStringify(data.reports)}`;
+      }
+      if (data.reports.length !== 0) {
+        return `expected empty reports for fresh cache, saw ${data.reports.length}`;
+      }
+      return action.result?.text ===
+        "No cached pathology reports for this repo yet."
+        ? undefined
+        : `expected GIT_PATHOLOGY result.text to report empty cache, saw ${stableStringify(action.result?.text)}`;
+    })()
+  );
+}
+
 export default scenario({
   id: "deterministic-gitpathology-actions",
   lane: "pr-deterministic",
@@ -227,10 +257,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "GIT_PATHOLOGY",
-      status: "success",
-      minCount: 1,
+      type: "custom",
+      name: "gitpathology-list-empty-cache-result",
+      predicate: expectListScenario,
     },
   ],
 });

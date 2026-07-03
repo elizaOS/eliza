@@ -1,0 +1,448 @@
+{
+  "runId": "29392477-7ee9-48ef-b2da-0ee1da4766ff",
+  "startedAtIso": "2026-07-03T01:17:19.224Z",
+  "completedAtIso": "2026-07-03T01:17:27.144Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "deterministic-computeruse-parity-verbs",
+      "title": "Computer-use parity verbs (set_value / kill_app / window getters)",
+      "domain": "computeruse",
+      "tags": [
+        "pr",
+        "deterministic",
+        "zero-cost",
+        "computeruse",
+        "parity"
+      ],
+      "status": "passed",
+      "durationMs": 84,
+      "turns": [
+        {
+          "name": "COMPUTER_USE set_value writes a field value",
+          "kind": "action",
+          "text": "Set the value of the field",
+          "responseText": "Set value at the target.",
+          "actionsCalled": [
+            {
+              "actionName": "COMPUTER_USE",
+              "parameters": {
+                "parameters": {
+                  "action": "set_value",
+                  "coordinate": [
+                    120,
+                    240
+                  ],
+                  "text": "hi"
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "source": "computeruse",
+                  "computerUseAction": "set_value",
+                  "result": {
+                    "success": true,
+                    "message": "Set value at the target."
+                  },
+                  "suppressActionResultClipboard": true
+                },
+                "text": "Set value at the target.",
+                "raw": {
+                  "success": true,
+                  "text": "Set value at the target.",
+                  "data": {
+                    "source": "computeruse",
+                    "computerUseAction": "set_value",
+                    "result": {
+                      "success": true,
+                      "message": "Set value at the target."
+                    },
+                    "suppressActionResultClipboard": true
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 4,
+          "failedAssertions": []
+        },
+        {
+          "name": "COMPUTER_USE kill_app terminates a process",
+          "kind": "action",
+          "text": "Kill process 4321",
+          "responseText": "Terminated 4321.",
+          "actionsCalled": [
+            {
+              "actionName": "COMPUTER_USE",
+              "parameters": {
+                "parameters": {
+                  "action": "kill_app",
+                  "target": "4321"
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "source": "computeruse",
+                  "computerUseAction": "kill_app",
+                  "result": {
+                    "success": true,
+                    "message": "Terminated 4321.",
+                    "data": {
+                      "target": "4321",
+                      "pid": 4321,
+                      "killed": true
+                    }
+                  },
+                  "suppressActionResultClipboard": true
+                },
+                "text": "Terminated 4321.",
+                "raw": {
+                  "success": true,
+                  "text": "Terminated 4321.",
+                  "data": {
+                    "source": "computeruse",
+                    "computerUseAction": "kill_app",
+                    "result": {
+                      "success": true,
+                      "message": "Terminated 4321.",
+                      "data": {
+                        "target": "4321",
+                        "pid": 4321,
+                        "killed": true
+                      }
+                    },
+                    "suppressActionResultClipboard": true
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 1,
+          "failedAssertions": []
+        },
+        {
+          "name": "WINDOW get_window_size returns bounds",
+          "kind": "action",
+          "text": "What is the window size?",
+          "responseText": "Window size: 1216x808.",
+          "actionsCalled": [
+            {
+              "actionName": "WINDOW",
+              "parameters": {
+                "parameters": {
+                  "action": "get_window_size"
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "source": "computeruse",
+                  "computerUseAction": "get_window_size",
+                  "result": {
+                    "success": true,
+                    "message": "Window size: 1216x808.",
+                    "bounds": {
+                      "x": 256,
+                      "y": 102,
+                      "width": 1216,
+                      "height": 808
+                    }
+                  },
+                  "suppressActionResultClipboard": true
+                },
+                "text": "Window size: 1216x808.",
+                "raw": {
+                  "success": true,
+                  "text": "Window size: 1216x808.",
+                  "data": {
+                    "source": "computeruse",
+                    "computerUseAction": "get_window_size",
+                    "result": {
+                      "success": true,
+                      "message": "Window size: 1216x808.",
+                      "bounds": {
+                        "x": 256,
+                        "y": 102,
+                        "width": 1216,
+                        "height": 808
+                      }
+                    },
+                    "suppressActionResultClipboard": true
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 0,
+          "failedAssertions": []
+        },
+        {
+          "name": "WINDOW get_window_position returns coordinates",
+          "kind": "action",
+          "text": "Where is the window?",
+          "responseText": "Window position: (256, 102).",
+          "actionsCalled": [
+            {
+              "actionName": "WINDOW",
+              "parameters": {
+                "parameters": {
+                  "action": "get_window_position"
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "source": "computeruse",
+                  "computerUseAction": "get_window_position",
+                  "result": {
+                    "success": true,
+                    "message": "Window position: (256, 102).",
+                    "bounds": {
+                      "x": 256,
+                      "y": 102,
+                      "width": 1216,
+                      "height": 808
+                    }
+                  },
+                  "suppressActionResultClipboard": true
+                },
+                "text": "Window position: (256, 102).",
+                "raw": {
+                  "success": true,
+                  "text": "Window position: (256, 102).",
+                  "data": {
+                    "source": "computeruse",
+                    "computerUseAction": "get_window_position",
+                    "result": {
+                      "success": true,
+                      "message": "Window position: (256, 102).",
+                      "bounds": {
+                        "x": 256,
+                        "y": 102,
+                        "width": 1216,
+                        "height": 808
+                      }
+                    },
+                    "suppressActionResultClipboard": true
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 0,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "computeruse-parity-result-shapes",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "COMPUTER_USE",
+          "parameters": {
+            "parameters": {
+              "action": "set_value",
+              "coordinate": [
+                120,
+                240
+              ],
+              "text": "hi"
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "source": "computeruse",
+              "computerUseAction": "set_value",
+              "result": {
+                "success": true,
+                "message": "Set value at the target."
+              },
+              "suppressActionResultClipboard": true
+            },
+            "text": "Set value at the target.",
+            "raw": {
+              "success": true,
+              "text": "Set value at the target.",
+              "data": {
+                "source": "computeruse",
+                "computerUseAction": "set_value",
+                "result": {
+                  "success": true,
+                  "message": "Set value at the target."
+                },
+                "suppressActionResultClipboard": true
+              }
+            }
+          }
+        },
+        {
+          "actionName": "COMPUTER_USE",
+          "parameters": {
+            "parameters": {
+              "action": "kill_app",
+              "target": "4321"
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "source": "computeruse",
+              "computerUseAction": "kill_app",
+              "result": {
+                "success": true,
+                "message": "Terminated 4321.",
+                "data": {
+                  "target": "4321",
+                  "pid": 4321,
+                  "killed": true
+                }
+              },
+              "suppressActionResultClipboard": true
+            },
+            "text": "Terminated 4321.",
+            "raw": {
+              "success": true,
+              "text": "Terminated 4321.",
+              "data": {
+                "source": "computeruse",
+                "computerUseAction": "kill_app",
+                "result": {
+                  "success": true,
+                  "message": "Terminated 4321.",
+                  "data": {
+                    "target": "4321",
+                    "pid": 4321,
+                    "killed": true
+                  }
+                },
+                "suppressActionResultClipboard": true
+              }
+            }
+          }
+        },
+        {
+          "actionName": "WINDOW",
+          "parameters": {
+            "parameters": {
+              "action": "get_window_size"
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "source": "computeruse",
+              "computerUseAction": "get_window_size",
+              "result": {
+                "success": true,
+                "message": "Window size: 1216x808.",
+                "bounds": {
+                  "x": 256,
+                  "y": 102,
+                  "width": 1216,
+                  "height": 808
+                }
+              },
+              "suppressActionResultClipboard": true
+            },
+            "text": "Window size: 1216x808.",
+            "raw": {
+              "success": true,
+              "text": "Window size: 1216x808.",
+              "data": {
+                "source": "computeruse",
+                "computerUseAction": "get_window_size",
+                "result": {
+                  "success": true,
+                  "message": "Window size: 1216x808.",
+                  "bounds": {
+                    "x": 256,
+                    "y": 102,
+                    "width": 1216,
+                    "height": 808
+                  }
+                },
+                "suppressActionResultClipboard": true
+              }
+            }
+          }
+        },
+        {
+          "actionName": "WINDOW",
+          "parameters": {
+            "parameters": {
+              "action": "get_window_position"
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "source": "computeruse",
+              "computerUseAction": "get_window_position",
+              "result": {
+                "success": true,
+                "message": "Window position: (256, 102).",
+                "bounds": {
+                  "x": 256,
+                  "y": 102,
+                  "width": 1216,
+                  "height": 808
+                }
+              },
+              "suppressActionResultClipboard": true
+            },
+            "text": "Window position: (256, 102).",
+            "raw": {
+              "success": true,
+              "text": "Window position: (256, 102).",
+              "data": {
+                "source": "computeruse",
+                "computerUseAction": "get_window_position",
+                "result": {
+                  "success": true,
+                  "message": "Window position: (256, 102).",
+                  "bounds": {
+                    "x": 256,
+                    "y": 102,
+                    "width": 1216,
+                    "height": 808
+                  }
+                },
+                "suppressActionResultClipboard": true
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs-deterministic-computeruse-parity-verbs",
+    "matrixJson": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs-deterministic-computeruse-parity-verbs/matrix.json",
+    "viewerIndex": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs-deterministic-computeruse-parity-verbs/viewer/index.html",
+    "viewerData": "/home/shaw/eliza-worktrees/11381-actioncalled-paydown-2/.github/issue-evidence/11381-actioncalled-paydown-2/deterministic-runs-deterministic-computeruse-parity-verbs/viewer/data.js"
+  }
+}

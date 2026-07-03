@@ -1,4 +1,5 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectCalendarPayload } from "../_helpers/calendar-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -46,9 +47,14 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "CALENDAR",
-      minCount: 1,
+      type: "custom",
+      name: "calendar-reschedule-surfaces-conflict",
+      predicate: expectCalendarPayload({
+        description:
+          "calendar reschedule payload surfaces the seeded design-review conflict",
+        includesAll: ["sync with alex"],
+        includesAny: ["design review", "conflict", "overlap", "already"],
+      }),
     },
   ],
 });

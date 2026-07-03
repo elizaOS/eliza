@@ -1,5 +1,8 @@
 import type { Action, AgentRuntime } from "@elizaos/core";
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import type {
+  ScenarioContext,
+  ScenarioTurnExecution,
+} from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { browserPlugin } from "../../../../plugins/plugin-browser/src/plugin.ts";
 import {
@@ -208,6 +211,38 @@ function assertSuccessfulAction(
   return undefined;
 }
 
+function assertProgressActions(ctx: ScenarioContext): string | undefined {
+  const actionBlob = JSON.stringify(
+    ctx.actionsCalled.map((action) => ({
+      actionName: action.actionName,
+      success: action.result?.success,
+      text: action.result?.text,
+      data: action.result?.data,
+    })),
+  );
+  const turnBlob = JSON.stringify(
+    (ctx.turns ?? []).map((turn) => ({
+      name: turn.name,
+      responseText: turn.responseText,
+    })),
+  );
+  for (const expected of ["BROWSER", "COMPUTER_USE_AGENT", "COMPUTER_USE"]) {
+    if (!actionBlob.includes(expected)) {
+      return `expected progress action trace to include ${JSON.stringify(expected)}, saw ${actionBlob}`;
+    }
+  }
+  for (const expected of [
+    "Step 1: screenshot",
+    "Step 1: finish",
+    "Scenario desktop click completed.",
+  ]) {
+    if (!turnBlob.includes(expected)) {
+      return `expected progress turn trace to include ${JSON.stringify(expected)}, saw ${turnBlob}`;
+    }
+  }
+  return undefined;
+}
+
 async function seedScenario(ctx: {
   runtime?: unknown;
 }): Promise<string | undefined> {
@@ -334,22 +369,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "BROWSER",
-      status: "success",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "COMPUTER_USE_AGENT",
-      status: "success",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "COMPUTER_USE",
-      status: "success",
-      minCount: 1,
+      type: "custom",
+      name: "browser-computeruse-progress-results",
+      predicate: assertProgressActions,
     },
   ],
 });

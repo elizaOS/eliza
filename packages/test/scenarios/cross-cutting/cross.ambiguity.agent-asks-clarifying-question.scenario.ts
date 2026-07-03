@@ -4,7 +4,26 @@
  * before sending anything. MESSAGE firing is a hard failure.
  */
 
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "../_helpers/effect-assertions.ts";
+
+function expectClarificationWithoutMessage(
+  ctx: ScenarioContext,
+): string | undefined {
+  const forbidden = expectNoActionCalled(ctx, ["MESSAGE"]);
+  if (forbidden) return forbidden;
+
+  const reply = ctx.turns?.at(-1)?.responseText ?? "";
+  if (
+    !/(which|clarif|specif|who.*mean|more than one|multiple|full name|last name|\?)/i.test(
+      reply,
+    )
+  ) {
+    return `expected clarifying reply for ambiguous John, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
 
 export default scenario({
   lane: "live-only",
@@ -72,9 +91,9 @@ export default scenario({
 
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "REPLY",
-      minCount: 1,
+      type: "custom",
+      name: "ambiguous-contact-clarified-without-message",
+      predicate: expectClarificationWithoutMessage,
     },
   ],
 });
