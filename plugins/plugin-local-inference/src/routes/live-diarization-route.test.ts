@@ -14,7 +14,10 @@
  * which exercises the same AudioFrameConsumer with real models.
  */
 
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type http from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildLiveDiarizationConsumerDeps } from "../services/voice/live-diarization-session.js";
@@ -512,6 +515,63 @@ describe("handleLiveDiarizationRoute", () => {
 				runtimeState(),
 			);
 			expect(res.statusCode).toBe(401);
+		});
+
+		it("mirrors a real capture to $ELIZA_STATE_DIR for bridge-free retrieval (#11373)", async () => {
+			// The on-device iOS harness cannot land its result via the WebView
+			// Capacitor Filesystem sink; the agent instead writes the near/far PCM
+			// straight to the state dir where host tooling pulls it.
+			const stateDir = mkdtempSync(path.join(tmpdir(), "aec-state-"));
+			const prev = process.env.ELIZA_STATE_DIR;
+			process.env.ELIZA_STATE_DIR = stateDir;
+			const evidencePath = path.join(stateDir, "eliza-aec-capture.json");
+			try {
+				const state = runtimeState();
+				const arm = new FakeRes();
+				await handleLiveDiarizationRoute(
+					makeReq({
+						method: "POST",
+						url: "/api/voice/aec-capture",
+						body: { arm: true, maxSeconds: 5 },
+					}),
+					arm as unknown as http.ServerResponse,
+					state,
+				);
+				expect(arm.statusCode).toBe(200);
+
+				// Ingest a few frames while armed so the capture holds real samples
+				// (the pure-TS AEC seam runs even without the fused diarizer).
+				const frames = new FakeRes();
+				await handleLiveDiarizationRoute(
+					makeReq({
+						method: "POST",
+						url: "/api/voice/audio-frames",
+						body: { frames: [silentFrame(0), silentFrame(1)] },
+					}),
+					frames as unknown as http.ServerResponse,
+					state,
+				);
+				expect(frames.statusCode).toBe(200);
+
+				// A GET with no samples must NOT write; here samples exist, so it does.
+				expect(existsSync(evidencePath)).toBe(false);
+				const get = new FakeRes();
+				await handleLiveDiarizationRoute(
+					makeReq({ method: "GET", url: "/api/voice/aec-capture" }),
+					get as unknown as http.ServerResponse,
+					state,
+				);
+				expect(get.statusCode).toBe(200);
+				expect(existsSync(evidencePath)).toBe(true);
+				const mirrored = JSON.parse(readFileSync(evidencePath, "utf8"));
+				expect(mirrored.capture.sampleCount).toBeGreaterThan(0);
+				expect(typeof mirrored.capture.nearPcm16).toBe("string");
+				expect(typeof mirrored.writtenAt).toBe("string");
+			} finally {
+				if (prev === undefined) delete process.env.ELIZA_STATE_DIR;
+				else process.env.ELIZA_STATE_DIR = prev;
+				rmSync(stateDir, { recursive: true, force: true });
+			}
 		});
 	});
 });

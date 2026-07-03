@@ -34,7 +34,9 @@
  * the on-device agent surface.
  */
 
+import { writeFileSync } from "node:fs";
 import type http from "node:http";
+import path from "node:path";
 import type {
 	AudioFrameEvent,
 	EchoReferenceProvider,
@@ -52,6 +54,33 @@ import {
 } from "./compat-helpers.js";
 
 let session: LiveDiarizationSession | null = null;
+
+/**
+ * Best-effort mirror of the agent-side AEC evidence (near/far PCM + live
+ * counters) to `$ELIZA_STATE_DIR/eliza-aec-capture.json` (#11373). This is the
+ * bridge-free retrieval path for on-device runs where the WebView's Capacitor
+ * Filesystem sink cannot land the harness result — the bun agent owns the
+ * capture, so it writes it straight to disk where host tooling pulls it. Inert
+ * with no state dir set (dev/desktop) and never throws.
+ */
+async function persistAecEvidence(
+	capture: { sampleCount?: number } | null | undefined,
+	status: unknown,
+): Promise<void> {
+	const stateDir = process.env.ELIZA_STATE_DIR?.trim();
+	// Only mirror a capture that actually holds samples — an incidental GET with
+	// nothing captured must not clobber a real prior capture or write noise.
+	if (!stateDir || !capture || (capture.sampleCount ?? 0) <= 0) return;
+	try {
+		writeFileSync(
+			path.join(stateDir, "eliza-aec-capture.json"),
+			JSON.stringify({ capture, status, writtenAt: new Date().toISOString() }),
+		);
+	} catch {
+		// Retrieval mirror is best-effort; the HTTP response already carries the
+		// capture for callers that can read it.
+	}
+}
 
 type RuntimeEchoReferenceSource = RuntimeEventSink & {
 	/**
@@ -201,7 +230,15 @@ export async function handleLiveDiarizationRoute(
 			sendJsonError(res, 503, "Runtime not ready");
 			return true;
 		}
-		sendJson(res, 200, { ok: true, capture: current.aecCaptureSnapshot() });
+		const capture = current.aecCaptureSnapshot();
+		// Persist the snapshot to the agent state dir via Node fs (#11373). On
+		// physical iOS the WebView's Capacitor Filesystem sink is the harness's
+		// only off-device channel and it is unreliable for multi-MB payloads;
+		// the bun agent can write the near/far PCM + counters straight to
+		// $ELIZA_STATE_DIR, which host tooling pulls with
+		// `devicectl device copy from` — the robust, bridge-free retrieval path.
+		await persistAecEvidence(capture, await current.status());
+		sendJson(res, 200, { ok: true, capture });
 		return true;
 	}
 
