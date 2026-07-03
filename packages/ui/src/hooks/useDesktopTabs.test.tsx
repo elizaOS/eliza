@@ -140,6 +140,7 @@ describe("useDesktopTabs", () => {
         label: "Remote Ledger",
         path: "/apps/remote-ledger",
         pinned: true,
+        pinnedAt: expect.any(Number),
       },
     ]);
 
@@ -152,6 +153,7 @@ describe("useDesktopTabs", () => {
         label: "Remote Ledger",
         path: "/apps/remote-ledger",
         pinned: true,
+        pinnedAt: expect.any(Number),
       },
     ]);
   });
@@ -187,6 +189,91 @@ describe("useDesktopTabs", () => {
         (t: { viewId: string }) => t.viewId,
       ),
     ).toEqual(["c", "d", "e", "f"]);
+  });
+
+  it("evicts by PIN age, not open order, when pin order differs from open order", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    // Open five tabs unpinned (open order a..e), then pin them in REVERSE
+    // order: e, d, c, b — the dock is now full and "e" holds the oldest pin.
+    act(() => {
+      for (const id of ["a", "b", "c", "d", "e"]) {
+        result.current.openTab(view(id));
+      }
+    });
+    act(() => {
+      for (const id of ["e", "d", "c", "b"]) {
+        result.current.pinTab(id);
+      }
+    });
+    expect(
+      result.current.tabs.filter((t) => t.pinned).map((t) => t.viewId),
+    ).toEqual(["b", "c", "d", "e"]);
+
+    // Pinning "a" overflows the dock. The OLDEST pin ("e") must pop off —
+    // the old array-order walk instead unpinned "b", the tab the user had
+    // pinned most recently before "a".
+    act(() => {
+      result.current.pinTab("a");
+    });
+
+    const pinned = result.current.tabs
+      .filter((t) => t.pinned)
+      .map((t) => t.viewId);
+    expect(pinned).toHaveLength(LAUNCHER_DOCK_LIMIT);
+    expect(pinned).toEqual(["a", "b", "c", "d"]);
+    // "e" stays open — it just leaves the dock.
+    expect(result.current.tabs.map((t) => t.viewId)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
+  });
+
+  it("evicts by pin age through openTab({ pinned: true }) as well", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    act(() => {
+      for (const id of ["a", "b", "c", "d", "e"]) {
+        result.current.openTab(view(id));
+      }
+      for (const id of ["e", "d", "c", "b"]) {
+        result.current.pinTab(id);
+      }
+    });
+
+    // Re-opening "a" with pinned:true is the same overflow: oldest pin "e" pops.
+    act(() => {
+      result.current.openTab(view("a"), { pinned: true });
+    });
+
+    expect(
+      result.current.tabs.filter((t) => t.pinned).map((t) => t.viewId),
+    ).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("re-opening an already-pinned tab preserves its original pin age", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    act(() => {
+      for (const id of ["a", "b", "c", "d"]) {
+        result.current.openTab(view(id), { pinned: true });
+      }
+    });
+    // Re-open "a" (oldest pin). Its pin age must NOT refresh…
+    act(() => {
+      result.current.openTab(view("a"), { pinned: true });
+    });
+    // …so pinning a fifth tab still evicts "a", not "b".
+    act(() => {
+      result.current.openTab(view("e"), { pinned: true });
+    });
+
+    expect(
+      result.current.tabs.filter((t) => t.pinned).map((t) => t.viewId),
+    ).toEqual(["b", "c", "d", "e"]);
   });
 
   it("caps pinned tabs when promoting an open tab via pinTab", () => {
