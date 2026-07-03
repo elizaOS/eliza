@@ -339,7 +339,7 @@ function createConnectorAccountHarness(options: {
   body?: Record<string, unknown>;
   storage?: TestStorage;
   adapter?: unknown;
-  authorize?: ConnectorAccountRouteContext["authorize"];
+  authorize?: ConnectorAccountRouteContext["authorize"] | null;
 }) {
   const captured: Captured = { status: 200, body: null };
   const storage = options.storage ?? new InMemoryConnectorAccountStorage();
@@ -377,7 +377,10 @@ function createConnectorAccountHarness(options: {
       captured.status = status;
       captured.body = { error: message };
     },
-    authorize: options.authorize,
+    authorize:
+      options.authorize === null
+        ? undefined
+        : (options.authorize ?? vi.fn(async () => true)),
   };
   return { ctx, captured, runtime, storage };
 }
@@ -456,6 +459,29 @@ describe("connector account routes", () => {
         method: "GET",
       }),
     );
+    expect(captured.status).toBe(403);
+    expect(captured.body).toEqual({ error: "Forbidden" });
+  });
+
+  it("defaults to forbidden for non-public connector account routes without an authorizer", async () => {
+    const { ctx, captured, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/slack/accounts",
+      authorize: null,
+    });
+    await storage.upsertAccount({
+      id: "acct_1",
+      provider: "slack",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
     expect(captured.status).toBe(403);
     expect(captured.body).toEqual({ error: "Forbidden" });
   });

@@ -710,6 +710,7 @@ function googleConnectorAccountRouteHandler(): LegacyRouteHandler {
       json,
       error,
       readJsonBody: httpReadJsonBody,
+      authorize: async () => true,
     });
     if (!handled) {
       error(httpRes, "Connector account route not found", 404);

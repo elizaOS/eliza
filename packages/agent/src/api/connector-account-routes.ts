@@ -657,7 +657,11 @@ export async function handleConnectorAccountRoutes(
     error(res, "Invalid connector provider", 400);
     return true;
   }
-  if (!isUnauthenticatedOAuthCallback(parsedPath, method) && ctx.authorize) {
+  if (!isUnauthenticatedOAuthCallback(parsedPath, method)) {
+    if (!ctx.authorize) {
+      error(res, "Forbidden", 403);
+      return true;
+    }
     const allowed = await ctx.authorize(
       authorizationRequestForPath(parsedPath, method, pathname),
     );
