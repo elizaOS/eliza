@@ -21,6 +21,9 @@ mock.module("@elizaos/cloud-sdk", () => ({
 const { parseWithdrawAmount, withdrawAppEarningsAction } = await import(
   "../src/actions/withdraw-app-earnings.ts"
 );
+const { CONFIRM_TTL_MS, persistCloudAppConfirmation } = await import(
+  "../src/safety.ts"
+);
 
 const APP = makeApp({
   id: "id-acme",
@@ -163,6 +166,35 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     const cta = (result?.data as { cta: ConnectorCta }).cta;
     expect(JSON.stringify(cta)).not.toContain(API_KEY);
     expect(cb.calls.at(-1)?.text).not.toContain(API_KEY);
+  });
+
+  it("refuses a STALE (expired) confirm instead of moving money — TTL parity with buy-domain/book-influencer", async () => {
+    const withdrawals = trackWithdrawals();
+    const runtime = keyedRuntime();
+    // A pending already older than the confirm TTL: a bare "yes" must NOT fire a
+    // money-out withdrawal on a stale confirmation.
+    await persistCloudAppConfirmation(runtime, {
+      roomId: String(runtime.agentId),
+      action: "WITHDRAW_APP_EARNINGS",
+      appId: APP.id,
+      appName: APP.name,
+      amount: 100,
+      intentCreatedAt: new Date(
+        Date.now() - CONFIRM_TTL_MS - 1000,
+      ).toISOString(),
+    });
+    const result = await withdrawAppEarningsAction.handler(
+      runtime,
+      makeMessage("confirmo"),
+      undefined,
+      { confirm: true },
+      captureCallback().fn,
+    );
+    expect(withdrawals.calls).toHaveLength(0);
+    expect(result?.success).toBe(false);
+    expect((result?.data as { reason?: string }).reason).toBe(
+      "confirmation_expired",
+    );
   });
 
   it("honors the first-turn amount and ignores follow-up amount prose", async () => {
