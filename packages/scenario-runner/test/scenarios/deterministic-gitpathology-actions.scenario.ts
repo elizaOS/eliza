@@ -256,6 +256,15 @@ export default scenario({
     },
   ],
   finalChecks: [
+    // Structural marker: deterministic-action-coverage.test.ts reads
+    // `actionName` fields off loaded finalChecks to prove GIT_PATHOLOGY is
+    // still scenario-covered. The custom predicate below is the real gate.
+    {
+      type: "actionCalled",
+      actionName: "GIT_PATHOLOGY",
+      status: "success",
+      minCount: 1,
+    },
     {
       type: "custom",
       name: "gitpathology-list-empty-cache-result",
