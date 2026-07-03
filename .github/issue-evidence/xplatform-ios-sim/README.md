@@ -16,3 +16,7 @@ A *completed generated reply on the simulator* was **not** captured this session
 
 ## Frames
 `sim-live-00..08-*.png` — fixed-build install → launch → active load (no crash). `ios-sim-*` / `ios-sim3-*` — prior-build empty-thread symptom (the bf16 root cause), STT, and vision UI drives.
+
+## Correction (metal3.1 hypothesis DISPROVEN)
+
+Rebuilt the sim slice at `ios-metal2.4` (#11826) and re-tested: the model-load **still wedges identically** (100 % CPU, flat ~2.4 GB RSS, never completes). So the wedge is **not** the metal3.1 metallib. The *old pre-#11612 build loaded fine on the sim* (`ios-sim-06`), so the regression is in the fresh #11612-fixed build's model-load path — most likely the **GPU-OOM memory-admission probe** (`os_proc_available_memory` / the CPU-only mmap layer-count probe) behaving pathologically under the simulator. Not yet root-caused; a captured sim *reply* remains blocked on this. `#11826` (per-slice MSL) is retained as a defensible hardening (metal3.1 on the simulator is still questionable) but is **not** the wedge fix. Real inference remains proven on Mac (fused lib) + device (bf16 loads).
