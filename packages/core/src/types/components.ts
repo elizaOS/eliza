@@ -621,6 +621,15 @@ export interface Provider {
 	cacheScope?: CacheScope;
 
 	/**
+	 * Whether plugin registration should install this provider into the runtime.
+	 *
+	 * Defaults to true. Set to false for plugin-owned providers that are
+	 * available for direct composition or alternative host wiring, but should
+	 * not be part of the default provider surface every time the plugin loads.
+	 */
+	registerByDefault?: boolean;
+
+	/**
 	 * When true, this provider is always composed into the Stage-1 response
 	 * state regardless of the turn's selected contexts (like the built-in
 	 * FACTS / CURRENT_TIME signals). Lets a plugin opt a dynamic provider into

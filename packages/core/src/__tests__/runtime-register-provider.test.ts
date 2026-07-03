@@ -38,4 +38,44 @@ describe("AgentRuntime.registerProvider deduplication", () => {
 		expect(runtime.providers.some((p) => p.name === "ALPHA")).toBe(true);
 		expect(runtime.providers.some((p) => p.name === "BETA")).toBe(true);
 	});
+
+	it("skips plugin providers that opt out of default registration", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-default-registration-test" } as Character,
+		});
+
+		await runtime.registerPlugin({
+			name: "provider-default-registration-plugin",
+			description: "Provider registration behavior test",
+			providers: [
+				makeProvider("DEFAULT_PROVIDER", "default"),
+				{
+					...makeProvider("EXPLICIT_PROVIDER", "explicit"),
+					registerByDefault: false,
+				},
+			],
+		});
+
+		expect(runtime.providers.some((p) => p.name === "DEFAULT_PROVIDER")).toBe(
+			true,
+		);
+		expect(runtime.providers.some((p) => p.name === "EXPLICIT_PROVIDER")).toBe(
+			false,
+		);
+	});
+
+	it("allows direct registration of providers that opt out of plugin defaults", () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-direct-registration-test" } as Character,
+		});
+
+		runtime.registerProvider({
+			...makeProvider("DIRECT_EXPLICIT_PROVIDER", "explicit"),
+			registerByDefault: false,
+		});
+
+		expect(
+			runtime.providers.some((p) => p.name === "DIRECT_EXPLICIT_PROVIDER"),
+		).toBe(true);
+	});
 });

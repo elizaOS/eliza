@@ -4348,42 +4348,6 @@ export async function startEliza(
     }
   }
 
-  // ── Strip upstream skill providers ──────────────────────────────────────
-  // The upstream @elizaos/plugin-agent-skills registers providers that dump
-  // ALL loaded skills into every prompt (~2000-4000 tokens).  Eliza replaces
-  // them with a BM25-lite dynamic provider (see providers/skill-provider.ts)
-  // that injects only the most relevant skills per turn.
-  //
-  // We keep:
-  //   - agent_skills_overview  (lightweight stats, ~50 tokens)
-  //   - all actions (USE_SKILL, SEARCH_SKILLS, INSTALL_SKILL, …)
-  //   - the AGENT_SKILLS_SERVICE itself
-  {
-    const UPSTREAM_SKILL_PROVIDERS_TO_STRIP = new Set([
-      "agent_skills",
-      "agent_skill_instructions",
-      "agent_skills_catalog",
-    ]);
-    for (const plugin of pluginsForRuntime) {
-      if (
-        plugin.name === "@elizaos/plugin-agent-skills" &&
-        Array.isArray(plugin.providers)
-      ) {
-        const before = plugin.providers.length;
-        plugin.providers = plugin.providers.filter(
-          (p: { name?: string }) =>
-            !UPSTREAM_SKILL_PROVIDERS_TO_STRIP.has(p.name ?? ""),
-        );
-        const removed = before - plugin.providers.length;
-        if (removed > 0) {
-          logger.info(
-            `[eliza] Stripped ${removed} upstream skill provider(s) — using dynamic BM25-lite provider instead`,
-          );
-        }
-      }
-    }
-  }
-
   // Deduplicate actions across all plugins to avoid "Action already registered"
   // warnings from elizaOS core. basic-capabilities is registered first by the
   // runtime, so include it in deduplication so its actions take precedence.
@@ -5194,30 +5158,6 @@ export async function startEliza(
             `[eliza] Boosted deferred plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
           );
           break;
-        }
-      }
-    }
-
-    for (const plugin of deferredPluginsForRuntime) {
-      if (
-        plugin.name === "@elizaos/plugin-agent-skills" &&
-        Array.isArray(plugin.providers)
-      ) {
-        const UPSTREAM_SKILL_PROVIDERS_TO_STRIP = new Set([
-          "agent_skills",
-          "agent_skill_instructions",
-          "agent_skills_catalog",
-        ]);
-        const before = plugin.providers.length;
-        plugin.providers = plugin.providers.filter(
-          (p: { name?: string }) =>
-            !UPSTREAM_SKILL_PROVIDERS_TO_STRIP.has(p.name ?? ""),
-        );
-        const removed = before - plugin.providers.length;
-        if (removed > 0) {
-          logger.info(
-            `[eliza] Stripped ${removed} deferred upstream skill provider(s) — using dynamic BM25-lite provider instead`,
-          );
         }
       }
     }

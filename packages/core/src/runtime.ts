@@ -1939,6 +1939,18 @@ export class AgentRuntime implements IAgentRuntime {
 				this.providers.map((provider) => provider.name),
 			);
 			for (const provider of pluginToRegister.providers) {
+				if (provider.registerByDefault === false) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							provider: provider.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping plugin provider with registerByDefault=false",
+					);
+					continue;
+				}
 				if (existingProviderNames.has(provider.name)) {
 					this.logger.debug(
 						{

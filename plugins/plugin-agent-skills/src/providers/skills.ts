@@ -42,6 +42,7 @@ export const skillsSummaryProvider: Provider = {
 	contextGate: { anyOf: ["agent_internal", "settings"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	registerByDefault: false,
 
 	dynamic: true,
 	get: async (
@@ -133,6 +134,7 @@ export const skillInstructionsProvider: Provider = {
 	description: "High-res instructions from the most relevant skill",
 	descriptionCompressed: "high-re instruction most relevant skill",
 	position: 5,
+	registerByDefault: false,
 
 	dynamic: true,
 	contexts: ["agent_internal", "settings"],
@@ -230,6 +232,7 @@ export const catalogAwarenessProvider: Provider = {
 	description: "Awareness of skills available on the registry",
 	descriptionCompressed: "Available skills on registry.",
 	position: 10,
+	registerByDefault: false,
 	dynamic: true,
 	contexts: ["agent_internal", "settings"],
 	contextGate: { anyOf: ["agent_internal", "settings"] },
