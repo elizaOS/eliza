@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, sql, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql, sum } from "drizzle-orm";
+import { VIDEO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/video/types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
   hydrateJsonField,
@@ -332,6 +333,26 @@ export class GenerationsRepository {
       offset: options?.offset,
     });
     return rows.map(toGenerationSummary);
+  }
+
+  /**
+   * Lists video generations still awaiting upstream settlement (#11862):
+   * rows the generate-video route persisted after a poll timeout, carrying a
+   * live credit hold that the reconcile sweep settles or refunds. Oldest
+   * first so long-pending holds are resolved before fresh ones.
+   */
+  async listPendingVideoSettlements(limit = 50): Promise<Generation[]> {
+    const boundedLimit = Math.min(Math.max(limit, 1), 200);
+    const rows = await dbRead.query.generations.findMany({
+      where: and(
+        eq(generations.type, "video"),
+        eq(generations.status, "pending"),
+        sql`${generations.metadata}->>'settlement_marker' = ${VIDEO_PENDING_SETTLEMENT_MARKER}`,
+      ),
+      orderBy: asc(generations.created_at),
+      limit: boundedLimit,
+    });
+    return await Promise.all(rows.map(hydrateGeneration));
   }
 
   /**

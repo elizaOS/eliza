@@ -10,7 +10,14 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getVideoProvider } from "@/lib/providers/video/registry";
+import {
+  collectVideoProviderApiKeys,
+  getVideoProvider,
+} from "@/lib/providers/video/registry";
+import {
+  VIDEO_PENDING_SETTLEMENT_MARKER,
+  VideoGenerationPendingError,
+} from "@/lib/providers/video/types";
 import {
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions,
@@ -45,8 +52,17 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
-function envString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
+/** Everything the catch needs to persist a pending settlement (#11862). */
+interface PendingSettlementContext {
+  organizationId: string;
+  userId: string;
+  model: string;
+  prompt: string;
+  provider: string;
+  billingSource: string;
+  totalCost: number;
+  durationSeconds: number;
+  parameters: Record<string, unknown>;
 }
 
 app.post("/", async (c) => {
@@ -56,6 +72,7 @@ app.post("/", async (c) => {
   // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
   // the already-correct charge, giving a free video. Mirrors generate-image.
   let chargeSettled = false;
+  let pendingContext: PendingSettlementContext | null = null;
 
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -74,10 +91,7 @@ app.post("/", async (c) => {
     }
 
     const provider = getVideoProvider(definition.billingSource);
-    const apiKeys = {
-      FAL_KEY: envString(c.env.FAL_KEY),
-      FAL_API_KEY: envString(c.env.FAL_API_KEY),
-    };
+    const apiKeys = collectVideoProviderApiKeys(c.env);
     if (provider.isConfigured && !provider.isConfigured(apiKeys)) {
       const providerName =
         definition.provider === "fal" ? "Fal" : definition.provider;
@@ -143,6 +157,24 @@ app.post("/", async (c) => {
       }
       throw error;
     }
+
+    pendingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      model: request.model,
+      prompt: request.prompt,
+      provider: definition.provider,
+      billingSource: definition.billingSource,
+      totalCost: cost.totalCost,
+      durationSeconds,
+      parameters: {
+        referenceUrl: request.referenceUrl,
+        durationSeconds,
+        resolution: request.resolution,
+        audio: request.audio,
+        voiceControl: request.voiceControl,
+      },
+    };
 
     const generated = await provider.generate({
       ...request,
@@ -214,6 +246,76 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
+    // Poll timeout with the upstream job still live (#11862): the render may
+    // still complete and bill the platform, so the hold must NOT be refunded.
+    // Persist the job for the reconcile sweep, which verifies the upstream
+    // terminal state — charging on late success, refunding once on failure.
+    if (
+      error instanceof VideoGenerationPendingError &&
+      reservation?.reservationTransactionId &&
+      !chargeSettled &&
+      pendingContext
+    ) {
+      try {
+        const generation = await generationsService.create({
+          organization_id: pendingContext.organizationId,
+          user_id: pendingContext.userId,
+          type: "video",
+          model: pendingContext.model,
+          provider: pendingContext.provider,
+          prompt: pendingContext.prompt,
+          status: "pending",
+          parameters: pendingContext.parameters,
+          metadata: {
+            settlement_marker: VIDEO_PENDING_SETTLEMENT_MARKER,
+            reservation_transaction_id: reservation.reservationTransactionId,
+            reserved_amount: reservation.reservedAmount,
+            billed_cost: pendingContext.totalCost,
+            billing_source: pendingContext.billingSource,
+          },
+          dimensions: { duration: pendingContext.durationSeconds },
+          cost: String(pendingContext.totalCost),
+          credits: String(pendingContext.totalCost),
+          job_id: error.requestId,
+        });
+        logger.warn(
+          "[GenerateVideo] Upstream job still pending after poll window — holding credits for reconcile",
+          {
+            generationId: generation.id,
+            requestId: error.requestId,
+            organizationId: pendingContext.organizationId,
+            billedCost: pendingContext.totalCost,
+          },
+        );
+        return c.json(
+          {
+            success: false,
+            status: "pending",
+            id: generation.id,
+            requestId: error.requestId,
+            error:
+              "Video generation is still running upstream. Credits stay reserved and settle automatically: charged if the video completes, refunded if it fails.",
+          },
+          202,
+        );
+      } catch (persistError) {
+        // Do NOT fall through to the refund: the upstream job may still bill
+        // us. The unsettled hold is picked up by the stranded-reservation
+        // sweep, which settles it at the estimated cost (platform-safe).
+        logger.error(
+          "[GenerateVideo] Failed to persist pending settlement — leaving hold for the reservation sweep",
+          {
+            requestId: error.requestId,
+            reservationTransactionId: reservation.reservationTransactionId,
+            error:
+              persistError instanceof Error
+                ? persistError.message
+                : String(persistError),
+          },
+        );
+        return failureResponse(c, error);
+      }
+    }
     if (reservation && !chargeSettled) {
       await reservation.reconcile(0).catch((reconcileError) => {
         logger.error("[GenerateVideo] Failed to refund reservation", {

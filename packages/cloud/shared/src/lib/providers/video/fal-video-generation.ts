@@ -1,10 +1,13 @@
-import { createFalClient } from "@fal-ai/client";
+import { ApiError, createFalClient } from "@fal-ai/client";
 import { getAiProviderConfigurationError } from "../language-model";
-import type {
-  GeneratedVideo,
-  GeneratedVideoObject,
-  VideoGenerationRequest,
-  VideoProvider,
+import {
+  type GeneratedVideo,
+  type GeneratedVideoObject,
+  VideoGenerationPendingError,
+  type VideoGenerationRequest,
+  type VideoJobStatus,
+  type VideoJobStatusRequest,
+  type VideoProvider,
 } from "./types";
 
 function falKey(apiKeys: Record<string, string | undefined>): string | null {
@@ -62,19 +65,28 @@ export function normalizeFalVideoResult(result: unknown, requestId?: string): Ge
     throw new Error("fal.ai returned an invalid video response");
   }
 
+  // @fal-ai/client v1 wraps model output as Result<T> = { data, requestId };
+  // raw queue payloads carry the fields at the top level. Accept both.
+  const envelopeRequestId = stringValue(result.requestId) ?? stringValue(result.request_id);
+  const payload = isRecord(result.data) ? result.data : result;
+
   const video =
-    normalizeVideoObject(result.video) ??
-    (Array.isArray(result.videos) ? normalizeVideoObject(result.videos[0]) : null);
+    normalizeVideoObject(payload.video) ??
+    (Array.isArray(payload.videos) ? normalizeVideoObject(payload.videos[0]) : null);
   if (!video?.url) {
     throw new Error("fal.ai returned no video URL");
   }
 
   return {
-    requestId: stringValue(result.requestId) ?? stringValue(result.request_id) ?? requestId,
+    requestId:
+      stringValue(payload.requestId) ??
+      stringValue(payload.request_id) ??
+      envelopeRequestId ??
+      requestId,
     video,
-    seed: numberValue(result.seed),
-    timings: recordNumberMap(result.timings) ?? null,
-    hasNsfwConcepts: booleanArrayValue(result.has_nsfw_concepts),
+    seed: numberValue(payload.seed),
+    timings: recordNumberMap(payload.timings) ?? null,
+    hasNsfwConcepts: booleanArrayValue(payload.has_nsfw_concepts),
   };
 }
 
@@ -100,24 +112,103 @@ export function buildFalVideoInput(request: VideoGenerationRequest): Record<stri
   return input;
 }
 
-export async function generateFalVideo(request: VideoGenerationRequest): Promise<GeneratedVideo> {
-  const key = falKey(request.apiKeys);
+function falClient(apiKeys: Record<string, string | undefined>) {
+  const key = falKey(apiKeys);
   if (!key) {
     throw new Error(getAiProviderConfigurationError());
   }
-
-  let requestId: string | undefined;
-  const fal = createFalClient({
+  return createFalClient({
     credentials: key,
     suppressLocalCredentialsWarning: true,
   });
-  const result = await fal.subscribe(request.model, {
-    input: buildFalVideoInput(request),
-    onEnqueue: (id) => {
-      requestId = id;
-    },
-  });
-  return normalizeFalVideoResult(result, requestId);
+}
+
+/**
+ * Verifies the upstream state of an enqueued fal.ai request. Only reports
+ * `failed` on a definitive provider verdict (unknown request id, or a
+ * completed job whose result endpoint rejects the render); transport errors
+ * propagate so callers keep the credit hold instead of refunding blind.
+ */
+export async function getFalVideoJobStatus(req: VideoJobStatusRequest): Promise<VideoJobStatus> {
+  const fal = falClient(req.apiKeys);
+
+  let status: Awaited<ReturnType<typeof fal.queue.status>>;
+  try {
+    status = await fal.queue.status(req.model, { requestId: req.requestId });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return {
+        state: "failed",
+        error: `fal.ai does not know request ${req.requestId}`,
+      };
+    }
+    throw error;
+  }
+
+  if (status.status !== "COMPLETED") {
+    return { state: "pending" };
+  }
+
+  let result: unknown;
+  try {
+    result = await fal.queue.result(req.model, { requestId: req.requestId });
+  } catch (error) {
+    // A COMPLETED job whose result endpoint answers with a definitive client
+    // error is a terminally failed render (fal serves render errors through
+    // the result endpoint). Anything else is a transport fault — propagate.
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+      return { state: "failed", error: error.message };
+    }
+    throw error;
+  }
+  return { state: "succeeded", result: normalizeFalVideoResult(result, req.requestId) };
+}
+
+export async function generateFalVideo(request: VideoGenerationRequest): Promise<GeneratedVideo> {
+  const fal = falClient(request.apiKeys);
+
+  let requestId: string | undefined;
+  try {
+    const result = await fal.subscribe(request.model, {
+      input: buildFalVideoInput(request),
+      onEnqueue: (id) => {
+        requestId = id;
+      },
+    });
+    return normalizeFalVideoResult(result, requestId);
+  } catch (error) {
+    if (!requestId) {
+      throw error;
+    }
+    // The job is already enqueued upstream; a poll/transport failure here does
+    // NOT mean the render died — fal may still complete it and bill the
+    // platform. Verify the terminal state before letting the route refund the
+    // credit hold (#11862).
+    let probe: VideoJobStatus;
+    try {
+      probe = await getFalVideoJobStatus({
+        model: request.model,
+        requestId,
+        apiKeys: request.apiKeys,
+      });
+    } catch {
+      throw new VideoGenerationPendingError(
+        requestId,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    if (probe.state === "succeeded") {
+      return probe.result;
+    }
+    if (probe.state === "failed") {
+      // Verified terminal failure — refunding is safe.
+      throw error;
+    }
+    throw new VideoGenerationPendingError(
+      requestId,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 export const falVideoProvider: VideoProvider = {
@@ -126,6 +217,7 @@ export const falVideoProvider: VideoProvider = {
     return Boolean(falKey(apiKeys));
   },
   generate: generateFalVideo,
+  getJobStatus: getFalVideoJobStatus,
   async healthCheck() {
     return true;
   },
