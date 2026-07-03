@@ -75,4 +75,8 @@ describe("isPublicPath — out-of-band token pages", () => {
       isPublicPath("/api/v1/advertising/campaigns/campaign-1/report/share"),
     ).toBe(false);
   });
+
+  test("eliza-app gateway demo route stays behind auth", () => {
+    expect(isPublicPath("/api/eliza-app/gateway/test-agent-001")).toBe(false);
+  });
 });

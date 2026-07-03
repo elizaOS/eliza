@@ -9,6 +9,8 @@
 
 import { Hono } from "hono";
 
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const agentMemories = new Map<
@@ -19,6 +21,12 @@ const agentMemories = new Map<
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
+  try {
+    await requireUserOrApiKeyWithOrg(c);
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+
   try {
     const agentId = c.req.param("agentId") ?? "";
     const body = (await c.req.json()) as { message?: string };

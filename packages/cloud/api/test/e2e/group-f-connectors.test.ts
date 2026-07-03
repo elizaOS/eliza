@@ -22,7 +22,7 @@
  * Auth notes (from auth.ts publicPathPrefixes):
  *   - /api/eliza-app/webhook/* — public (no global auth gate)
  *   - /api/eliza-app/user/*   — public (handler does its own session check)
- *   - /api/eliza-app/gateway/* — public
+ *   - /api/eliza-app/gateway/* — auth-gated (handler validates API key/session)
  *   - /api/eliza/* — public
  *   - /api/webhooks/* — public
  *   - /api/eliza-app/connections requires an eliza-app session token
@@ -215,44 +215,23 @@ describeE2E("POST /api/eliza-app/connections/:platform/initiate", () => {
 // ---------------------------------------------------------------------------
 
 describeE2E("POST /api/eliza-app/gateway/:agentId", () => {
-  // Public path — no auth gate.
-
-  test("missing message body → 400", async () => {
+  test("no Authorization header → 401", async () => {
     const res = await api.post("/api/eliza-app/gateway/test-agent-001", {});
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { success?: boolean; error?: string };
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { success?: boolean; code?: string };
     expect(body.success).toBe(false);
-    expect(body.error).toMatch(/empty message/i);
+    expect(body.code).toBe("authentication_required");
   });
 
-  test("valid message → 200 with reply", async () => {
-    const res = await api.post("/api/eliza-app/gateway/test-agent-001", {
-      message: "hello",
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      success?: boolean;
-      reply?: string;
-      historyLength?: number;
-    };
-    expect(body.success).toBe(true);
-    expect(typeof body.reply).toBe("string");
-    expect(body.reply?.length).toBeGreaterThan(0);
-    expect(typeof body.historyLength).toBe("number");
-  });
-
-  test("non-JSON body → 400 or 500", async () => {
-    const res = await fetch(
-      `${getBaseUrl()}/api/eliza-app/gateway/test-agent-001`,
+  test("invalid eliza API-key bearer → 401 before the canned reply handler", async () => {
+    const res = await api.post(
+      "/api/eliza-app/gateway/test-agent-001",
+      { message: "hello" },
       {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "not-json{{",
+        headers: { Authorization: "Bearer eliza_not_a_real_key" },
       },
     );
-    // The handler parses the body itself; malformed JSON surfaces as its own
-    // 500 envelope (not a middleware 400).
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(401);
   });
 });
 
