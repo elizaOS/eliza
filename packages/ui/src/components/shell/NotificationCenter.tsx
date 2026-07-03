@@ -15,6 +15,7 @@ import {
   OPEN_NOTIFICATION_CENTER_EVENT,
 } from "../../events";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { REVEAL_SOFT_MAX } from "./use-notification-pull";
 import {
   Z_NOTIFICATION_BACKDROP,
   Z_NOTIFICATION_OVERLAY,
@@ -55,11 +56,50 @@ const GLASS_SURFACE =
   "border border-border-strong bg-card";
 
 /**
- * Finger travel (px) that maps to a fully-revealed sheet during a pull. The
- * open threshold (~60px) lands the reveal a little under half, so a committed
- * pull then eases the rest of the way open.
+ * Finger travel (px) that maps to a fully-revealed sheet during a pull. Locked
+ * to the gesture hook's soft cap ({@link REVEAL_SOFT_MAX}) so the finger CARRIES
+ * the whole sheet 1:1: at the soft cap the sheet is fully revealed, and any
+ * further pull rubber-bands (the hook damps travel past the cap). A mismatch is
+ * what made the old pull feel laggy — the sheet trailed the finger because the
+ * cap (96) revealed only ~74% of a 130px sheet.
  */
-const SHEET_REVEAL_DISTANCE = 130;
+const SHEET_REVEAL_DISTANCE = REVEAL_SOFT_MAX;
+
+/**
+ * Overshoot past the fully-open sheet (px) at the rubber-band ceiling. The hook
+ * damps finger travel above the soft cap to a small extra distance; we translate
+ * that into a tiny downward give (never a second full reveal) so a hard over-pull
+ * feels elastic instead of dead-stopped.
+ */
+const SHEET_OVERSHOOT_MAX = 12;
+
+/**
+ * Query for the OS "reduce motion" setting. When set, the sheet/panel skip the
+ * spring settle + descent and appear/disappear instantly (no transition), the
+ * accessibility contract the rest of the shell already honors
+ * ({@link ../../hooks/useHorizontalPager}).
+ */
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+/**
+ * The resting pull-hint's breathe: a slow, low-amplitude opacity + vertical
+ * bob so the grabber pill catches the eye once as "pullable", then settles into
+ * quiet ambient motion. GPU-only (opacity + transform), and it self-disables
+ * under prefers-reduced-motion (the JS path also gates it out entirely) so the
+ * looping-animation motion rule is satisfied belt-and-suspenders.
+ */
+const PULL_HINT_CSS = `
+@keyframes eliza-notif-hint-breathe {
+  0%, 100% { opacity: 0.55; transform: translateY(0); }
+  50% { opacity: 0.9; transform: translateY(1px); }
+}
+.eliza-notif-hint-breathe {
+  animation: eliza-notif-hint-breathe 3.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eliza-notif-hint-breathe { animation: none; opacity: 0.7; }
+}
+`;
 
 const CATEGORY_LABEL: Record<NotificationCategory, string> = {
   reminder: "Reminders",
@@ -339,6 +379,10 @@ export function NotificationCenter({
   // the overlay is open re-picks the appropriate treatment.
   const isDesktopSurface = useMediaQuery(DESKTOP_PANEL_QUERY);
   const isShortLandscape = useMediaQuery(SHORT_LANDSCAPE_QUERY);
+  // Honor the OS reduce-motion setting: the sheet/panel appear instantly (no
+  // spring, no descent) instead of animating. Reactive so a live OS toggle takes
+  // effect without a remount.
+  const reduceMotion = useMediaQuery(REDUCED_MOTION_QUERY);
 
   // `variant="auto"` lets a controlled caller (e.g. HomeScreen's notification
   // pull-down) render the surface-appropriate shell without owning the media
@@ -372,12 +416,29 @@ export function NotificationCenter({
   const dragProgress = dragging
     ? Math.min(1, Math.max(0, dragPx / SHEET_REVEAL_DISTANCE))
     : 0;
+  // Rubber-band give past a fully-revealed sheet: the hook damps finger travel
+  // above the soft cap, so anything beyond SHEET_REVEAL_DISTANCE maps to a small
+  // elastic downward nudge (capped) rather than more reveal. Only meaningful
+  // while dragging; 0 once settled.
+  const dragOvershootPx =
+    dragging && dragPx > SHEET_REVEAL_DISTANCE
+      ? Math.min(SHEET_OVERSHOOT_MAX, dragPx - SHEET_REVEAL_DISTANCE)
+      : 0;
   const settledTarget = exiting ? 0 : open ? 1 : 0;
   const revealProgress = dragging ? dragProgress : entered ? settledTarget : 0;
-  // Instant while the finger drives it; eased on settle / retract / enter.
-  const revealTransition = dragging
-    ? "none"
-    : "clip-path 320ms cubic-bezier(0.22,1,0.36,1), opacity 260ms ease-out, transform 320ms cubic-bezier(0.22,1,0.36,1)";
+  // Motion contract:
+  //   • dragging → no transition (the finger IS the animation, tracks 1:1);
+  //   • reduce-motion → no transition (instant appear/disappear);
+  //   • settle/retract/enter → a SPRING: a snappy overshoot-and-settle on the
+  //     transform (the tactile "catch" as the sheet finishes opening or springs
+  //     back closed) while clip/opacity ride a clean ease so the reveal edge and
+  //     fade don't wobble. This is what makes a committed pull feel like it
+  //     "lands" instead of gliding to a stop.
+  const SPRING = "cubic-bezier(0.34, 1.32, 0.5, 1)";
+  const revealTransition =
+    dragging || reduceMotion
+      ? "none"
+      : `clip-path 300ms cubic-bezier(0.22,1,0.36,1), opacity 240ms ease-out, transform 360ms ${SPRING}`;
 
   // Categories actually present in the inbox, in a stable display order. Drives
   // the filter chips — empty/single-category inboxes get no filter clutter.
@@ -572,7 +633,39 @@ export function NotificationCenter({
   // panel on mouse-driven wide surfaces, the full-width pull-down sheet on
   // touch/narrow ones. It stays mounted through its exit animation.
   if (headless) {
-    if (!shellMounted) return null;
+    // At rest (sheet fully closed) the headless owner still renders a quiet
+    // affordance so the pull is DISCOVERABLE: a subtle grabber pill peeking at
+    // the top-center edge that says "there's something to pull here", the same
+    // signal an iOS notch/handle gives. It only shows on the touch/narrow
+    // surface (the pull-down sheet's home) — the desktop panel is reached by the
+    // bell/tray, not a pull, so a handle there would be noise. It is purely
+    // decorative (aria-hidden, no pointer events): the invisible pull-zone button
+    // in HomeScreen owns the tap + gesture; this only advertises them. It fades
+    // + lifts away the instant a pull starts so it never fights the live sheet.
+    if (!shellMounted) {
+      // Desktop is reached by the bell/tray, not a pull — a handle there is
+      // noise. Touch/narrow surfaces get the resting hint.
+      if (isDesktopSurface) return null;
+      return overlayPortal(
+        <div
+          aria-hidden
+          data-testid="notification-pull-hint"
+          className="pointer-events-none fixed inset-x-0 top-0 z-[1] flex justify-center pt-[calc(var(--safe-area-top,0px)+0.375rem)]"
+        >
+          {/* Solid token pill — no blur, no shadow. It gently breathes so the
+              eye catches it once as "pullable", then rests; under reduce-motion
+              it holds a plain static pill (the CSS + the JS flag both drop the
+              animation) so the affordance stays without the motion. */}
+          <span
+            className={cn(
+              "h-1 w-8 rounded-full bg-muted-strong/70",
+              !reduceMotion && "eliza-notif-hint-breathe",
+            )}
+          />
+          <style>{PULL_HINT_CSS}</style>
+        </div>,
+      );
+    }
     return (
       <NotificationCenter
         variant="auto"
@@ -768,7 +861,12 @@ export function NotificationCenter({
             // lead as it descends; fade + a small settle ride along.
             clipPath: `inset(0px 0px ${(1 - revealProgress) * 100}% 0px)`,
             opacity: Math.min(1, revealProgress * 2),
-            transform: `translateY(${(revealProgress - 1) * 10}px)`,
+            // Descent + rubber-band: a small lift-in as it settles (skipped under
+            // reduce-motion) plus the elastic over-pull give at the fully-open
+            // ceiling, so a hard pull past the bottom feels stretchy, not walled.
+            transform: reduceMotion
+              ? "none"
+              : `translateY(${(revealProgress - 1) * 10 + dragOvershootPx}px)`,
             transition: revealTransition,
             pointerEvents: open ? "auto" : "none",
           }}
@@ -833,9 +931,12 @@ export function NotificationCenter({
           onKeyDown={onDialogKeyDown}
           style={{
             zIndex: Z_NOTIFICATION_OVERLAY,
-            // No drag on desktop — just a quick fade + small drop on open/close.
+            // No drag on desktop — just a quick fade + small spring-drop on
+            // open/close (instant under reduce-motion).
             opacity: revealProgress,
-            transform: `translateY(${(revealProgress - 1) * 8}px)`,
+            transform: reduceMotion
+              ? "none"
+              : `translateY(${(revealProgress - 1) * 8}px)`,
             transition: revealTransition,
           }}
           className={cn(

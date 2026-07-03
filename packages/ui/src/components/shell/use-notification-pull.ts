@@ -29,15 +29,22 @@ import * as React from "react";
  */
 
 /** Vertical travel (px) after which a downward-at-top drag becomes a pull. */
-const ENGAGE_SLOP = 8;
+const ENGAGE_SLOP = 6;
 /** Raw downward travel (px) that commits the pull to opening on release. */
-const DEFAULT_DISTANCE_THRESHOLD = 60;
+const DEFAULT_DISTANCE_THRESHOLD = 72;
 /** Raw downward speed (px/ms) that commits the pull as a flick. */
-const DEFAULT_VELOCITY_THRESHOLD = 0.5;
-/** Travel (px) the reveal tracks 1:1 before rubber-banding. */
-const REVEAL_SOFT_MAX = 96;
-/** Resistance applied to travel past {@link REVEAL_SOFT_MAX}. */
-const REVEAL_OVERSHOOT_RESISTANCE = 0.35;
+const DEFAULT_VELOCITY_THRESHOLD = 0.45;
+/**
+ * Travel (px) the reveal tracks 1:1 before rubber-banding. This is the point at
+ * which the sheet is fully revealed — the panel maps the SAME distance to a full
+ * sheet (SHEET_REVEAL_DISTANCE), so the finger catches and carries the whole
+ * sheet 1:1, then any further pull rubber-bands with resistance. Keep the two in
+ * sync: a mismatch makes the sheet lag behind (cap too high) or snap open before
+ * the finger arrives (cap too low).
+ */
+export const REVEAL_SOFT_MAX = 132;
+/** Resistance applied to travel past {@link REVEAL_SOFT_MAX} (rubber-band). */
+const REVEAL_OVERSHOOT_RESISTANCE = 0.28;
 
 /**
  * Map raw finger travel to the reveal offset: 1:1 up to a soft cap, then a
