@@ -1,6 +1,7 @@
 import { loadElizaConfig } from "@elizaos/agent";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
+import { loadDefaultTextToSpeechHandler } from "./tts-default-handler.js";
 import {
   DEFAULT_TEXT_TO_SPEECH_PROVIDER,
   isTextToSpeechProviderDisabled,
@@ -55,7 +56,7 @@ export async function ensureTextToSpeechHandler(
   }
 
   try {
-    const handler = await provider.loadHandler();
+    const handler = await loadDefaultTextToSpeechHandler();
 
     // Wrap the TTS handler with the first-sentence LRU cache so short
     // opener phrases like "Got it." / "Sure!" reuse synthesised bytes across

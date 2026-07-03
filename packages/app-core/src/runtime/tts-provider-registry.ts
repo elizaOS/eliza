@@ -1,6 +1,5 @@
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import firstPartyRegistry from "@elizaos/registry/first-party/generated.json" with {
   type: "json",
 };
@@ -20,32 +19,27 @@ export type TtsModelHandler = (
   input: unknown,
 ) => Promise<unknown>;
 
+/**
+ * Metadata-only description of a TTS provider. The concrete handler is NOT
+ * referenced here — voice plugins self-register their `TEXT_TO_SPEECH` handler
+ * on the runtime at plugin load (via their `models` map / `registerModel`), and
+ * the fallback loader for the default provider lives in `tts-default-handler.ts`
+ * behind a bundler-resolvable literal import. This entry carries no importable
+ * module path, so it stays browser-safe and bundler-analyzable.
+ */
 export interface TextToSpeechProviderRegistration {
   pluginName: string;
   pluginConfigKey: string;
   providerName: string;
   priority: number;
-  loadHandler: () => Promise<TtsModelHandler>;
   wrapHandler?: (handler: TtsModelHandler) => Promise<TtsModelHandler | null>;
 }
-
-type TtsPluginModule = {
-  default?: { models?: Record<string, TtsModelHandler> };
-  edgeTTSPlugin?: { models?: Record<string, TtsModelHandler> };
-};
 
 type FirstPartyRegistryEntry = {
   id?: string;
   npmName?: string;
   subtype?: string;
 };
-
-function readHandler(
-  plugin: TtsPluginModule["default"],
-): TtsModelHandler | undefined {
-  const handler = plugin?.models?.[ModelType.TEXT_TO_SPEECH];
-  return typeof handler === "function" ? handler : undefined;
-}
 
 function resolveDefaultTtsPluginName(): string {
   const entries = (
@@ -68,16 +62,6 @@ export const DEFAULT_TEXT_TO_SPEECH_PROVIDER: TextToSpeechProviderRegistration =
     pluginConfigKey: "edge-tts",
     providerName: "edge-tts",
     priority: 0,
-    async loadHandler(): Promise<TtsModelHandler> {
-      const nodeModule = (await import(this.pluginName)) as TtsPluginModule;
-      const handler = readHandler(nodeModule.default);
-      if (!handler) {
-        throw new Error(
-          `${DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName} did not expose a TEXT_TO_SPEECH handler`,
-        );
-      }
-      return handler;
-    },
     wrapHandler: (handler) =>
       wrapEdgeTtsHandlerWithFirstLineCache(handler as EdgeTtsHandler),
   };
