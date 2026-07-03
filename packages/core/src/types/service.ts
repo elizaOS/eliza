@@ -40,6 +40,7 @@ export interface ServiceTypeRegistry {
 	OPTIMIZED_PROMPT: "optimized_prompt";
 	CHANNEL_TOPICS: "channel_topics";
 	COMMANDS: "commands";
+	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge";
 	UNKNOWN: "unknown";
 }
 
@@ -136,6 +137,7 @@ export const ServiceType = {
 	OPTIMIZED_PROMPT: "optimized_prompt",
 	CHANNEL_TOPICS: "channel_topics",
 	COMMANDS: "commands",
+	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge",
 	UNKNOWN: "unknown",
 } as const;
 

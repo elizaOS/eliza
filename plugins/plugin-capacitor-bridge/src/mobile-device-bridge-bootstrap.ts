@@ -37,6 +37,8 @@ import {
 	inferenceRamClassFromEnv,
 	type LocalInferencePriority,
 	logger,
+	MobileDeviceBridgeService,
+	type MobileDeviceBridgeStatus,
 	ModelType,
 	resolveBackgroundInferenceBudget,
 	resolveStateDir,
@@ -334,19 +336,7 @@ interface BundledModelManifest {
 	models?: BundledModelManifestEntry[];
 }
 
-export interface MobileDeviceBridgeStatus {
-	enabled: boolean;
-	connected: boolean;
-	devices: Array<{
-		deviceId: string;
-		capabilities: DeviceCapabilities;
-		loadedPath: string | null;
-		connectedSince: string;
-	}>;
-	primaryDeviceId: string | null;
-	pendingRequests: number;
-	modelPath: string | null;
-}
+export type { MobileDeviceBridgeStatus };
 
 class MobileDeviceBridge {
 	private wss: WssInstance | null = null;
@@ -1889,6 +1879,41 @@ export async function loadMobileDeviceBridgeModel(
 
 export async function unloadMobileDeviceBridgeModel(): Promise<void> {
 	await mobileDeviceBridge.unloadModel();
+}
+
+/**
+ * Runtime service wrapper over the module-level {@link mobileDeviceBridge}
+ * singleton. Registering this via a plugin `services` array lets consumers
+ * resolve the bridge with
+ * `runtime.getService(ServiceType.MOBILE_DEVICE_BRIDGE)` instead of reaching a
+ * global `Symbol.for` slot or dynamically importing this module by name.
+ */
+export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeService {
+	capabilityDescription =
+		"Relays on-device GPU inference to a paired mobile device over the device bridge.";
+
+	static async start(
+		runtime: IAgentRuntime,
+	): Promise<CapacitorMobileDeviceBridgeService> {
+		return new CapacitorMobileDeviceBridgeService(runtime);
+	}
+
+	getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
+		return mobileDeviceBridge.status();
+	}
+
+	async loadMobileDeviceBridgeModel(
+		modelPath: string,
+		modelId?: string,
+	): Promise<void> {
+		await loadMobileDeviceBridgeModel(modelPath, modelId);
+	}
+
+	async unloadMobileDeviceBridgeModel(): Promise<void> {
+		await unloadMobileDeviceBridgeModel();
+	}
+
+	async stop(): Promise<void> {}
 }
 
 export async function attachMobileDeviceBridgeToServer(

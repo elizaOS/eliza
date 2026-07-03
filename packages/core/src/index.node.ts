@@ -156,6 +156,7 @@ export * from "./markdown";
 export * from "./media";
 export * from "./memory";
 export * from "./messaging/interactions";
+export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";

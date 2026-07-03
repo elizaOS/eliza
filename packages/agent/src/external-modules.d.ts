@@ -1,30 +1,12 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-capacitor-bridge" {
   import type { Server } from "node:http";
-  import type { AgentRuntime } from "@elizaos/core";
+  import type {
+    AgentRuntime,
+    MobileDeviceBridgeStatus,
+  } from "@elizaos/core";
 
-  export interface MobileDeviceBridgeStatus {
-    enabled: boolean;
-    connected: boolean;
-    devices: Array<{
-      deviceId: string;
-      capabilities: {
-        platform: "ios" | "android" | "web";
-        deviceModel: string;
-        totalRamGb: number;
-        cpuCores: number;
-        gpu: {
-          backend: "metal" | "vulkan" | "gpu-delegate";
-          available: boolean;
-        } | null;
-      };
-      loadedPath: string | null;
-      connectedSince: string;
-    }>;
-    primaryDeviceId: string | null;
-    pendingRequests: number;
-    modelPath: string | null;
-  }
+  export type { MobileDeviceBridgeStatus };
 
   export const mobileDeviceBridge: unknown;
   export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus;
