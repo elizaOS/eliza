@@ -108,6 +108,24 @@ describe("handleIosLocalAgentRequest", () => {
     });
   });
 
+  it("serves POST /api/first-run so local onboarding finish does not 404-loop", async () => {
+    // Regression: the kernel implemented GET /api/first-run/status but not
+    // POST /api/first-run, so finishLocal's submitFirstRun hit the catch-all
+    // 404 ("Not found"), which the conductor turned into a re-offer of the
+    // runtime chooser (the on-device "local path → not found → pick again"
+    // loop). It must accept + ack the finish payload.
+    await expect(getJson("/api/first-run/status")).resolves.toMatchObject({
+      complete: true,
+    });
+    const res = await post("/api/first-run", {
+      runtime: "local",
+      localInference: "all-local",
+      agentName: "Eliza",
+    });
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+  });
+
   it("reports paired Cloud state and forwards chat through the Cloud bridge", async () => {
     const localStorage = stubLocalStorage();
     localStorage.setItem(

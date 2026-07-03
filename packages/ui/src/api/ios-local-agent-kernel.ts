@@ -3001,6 +3001,19 @@ export async function handleIosLocalAgentRequest(
     });
   }
 
+  // First-run finish persist. The on-device JSContext kernel completes
+  // onboarding client-side (the conductor clears local first-run state and flips
+  // firstRunComplete), and `/api/first-run/status` already reports complete —
+  // but `submitFirstRun` POSTs the finish payload here. Without this route the
+  // POST fell through to the catch-all 404 ("Not found"), which the local finish
+  // rethrew and the conductor turned into a re-offer of the runtime chooser
+  // (the "not found → pick again" loop). Accept + ack; there is no server-side
+  // profile store on the local kernel, so this is a no-op success that matches
+  // the full-Bun bundle's behavior.
+  if (method === "POST" && pathname === "/api/first-run") {
+    return json({ ok: true });
+  }
+
   if (method === "GET" && pathname === "/api/config") {
     return json(localConfig());
   }
