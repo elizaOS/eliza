@@ -21,6 +21,7 @@ import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import {
 	getNativeRuntimeFeaturePlugin,
 	type NativeRuntimeFeature,
@@ -2359,6 +2360,15 @@ export class AgentRuntime implements IAgentRuntime {
 			this.registerPlugin(basicCapabilitiesPlugin),
 		);
 
+		// Always-on core message-path security defenses. Registered through the
+		// plugin lifecycle (GHSA-gh63-5vpj-39qp incoming-message hardening + #9949
+		// injection-risk stamping) so their pipeline hooks appear in plugin
+		// bookkeeping and dispose with the runtime, rather than a lazy dynamic
+		// import buried in initialize.
+		pluginRegistrationPromises.push(
+			this.registerPlugin(createCoreSecurityHooksPlugin()),
+		);
+
 		for (const feature of Object.keys(
 			nativeRuntimeFeatureDefaults,
 		) as NativeRuntimeFeature[]) {
@@ -2432,19 +2442,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Initialize message service
 		this.messageService = new DefaultMessageService();
-
-		const { registerCoreIncomingMessageSecurityHook } = await import(
-			"./security/incoming-message-security.js"
-		);
-		registerCoreIncomingMessageSecurityHook(this);
-
-		// #9949: stamp deterministic injection RiskFactors during the
-		// parallel-with-should-respond phase so the role-keyed verify gate in the
-		// message service can escalate borderline USER/GUEST messages.
-		const { registerCoreShouldRespondRiskHook } = await import(
-			"./features/trust/should-respond-risk-gate.js"
-		);
-		registerCoreShouldRespondRiskHook(this);
 
 		// Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
 		const skipMigrations = options?.skipMigrations ?? false;
