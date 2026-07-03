@@ -56,6 +56,48 @@ The frozen contract is defined in `src/lifeops/scheduled-task/types.ts`
 (the runner imports `ScheduledTask` from there). `src/lifeops/wave1-types.ts`
 is a slightly diverged copy consumed only by the `first-run` module.
 
+### No-reply semantics
+
+Completion timeouts are structural scheduler behavior, not prompt text. For
+scheduled items that wait on a user reply, personal-assistant resolves a
+persisted no-reply contract from `metadata.noReplyPolicy` plus
+`metadata.noReplyState` and applies it in the single scheduler timeout pass:
+
+```ts
+metadata: {
+  noReplyPolicy?: {
+    maxRetries: number;
+    retryCadenceMinutes: number[];
+    terminalStatus: "skipped" | "expired" | "failed";
+    terminalReason: string;
+    sensitive: boolean;
+    allowCrossChannel: boolean;
+    allowNonOwnerNotification: boolean;
+  };
+  noReplyState?: {
+    retryCount: number;
+    lastTimedOutAt?: string;
+    nextRetryAt?: string;
+    terminalReason?: string;
+    terminalOutcome?: "skipped" | "expired" | "failed" | "denied";
+  };
+}
+```
+
+Defaults are deliberately conservative:
+
+- reminders retry once after 60 minutes, then `skipped`;
+- check-ins retry once after 24 hours, then `expired`;
+- non-sensitive approvals retry after 30 minutes and 2 hours, then `expired`;
+- sensitive approvals retry once after 30 minutes, then expire with
+  `terminalOutcome: "denied"`;
+- cross-channel escalation and non-owner notification default to `false`.
+
+No no-reply path may auto-execute a sensitive output. Silence on money, data,
+or external-send approvals fails closed. No-reply expiry is not a user skip, so
+approval expiry does not fire `pipeline.onSkip`; authored skip pipelines remain
+reserved for explicit skip transitions.
+
 ## Runtime layout
 
 ```
