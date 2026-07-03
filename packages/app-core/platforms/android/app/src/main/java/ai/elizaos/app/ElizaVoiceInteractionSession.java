@@ -32,14 +32,6 @@ public class ElizaVoiceInteractionSession extends VoiceInteractionSession {
     static final String ASSISTANT_SESSION_DEEP_LINK =
             "elizaos://voice?source=android-assistant-session&action=voice&voice=1";
 
-    /**
-     * How long the native voice bar stays on screen before we hand off to the
-     * app. Long enough to read as a real, native assistant surface (D8); short
-     * enough that the app is up almost immediately.
-     */
-    private static final long HANDOFF_DELAY_MS = 320L;
-
-    private View contentRoot;
     private boolean handedOff = false;
 
     public ElizaVoiceInteractionSession(Context context) {
@@ -49,11 +41,10 @@ public class ElizaVoiceInteractionSession extends VoiceInteractionSession {
     @Override
     public View onCreateContentView() {
         LayoutInflater inflater = LayoutInflater.from(getContext());
-        contentRoot = inflater.inflate(R.layout.eliza_voice_interaction_bar, null);
+        View contentRoot = inflater.inflate(R.layout.eliza_voice_interaction_bar, null);
         View bar = contentRoot.findViewById(R.id.eliza_voice_bar_root);
         if (bar != null) {
-            // Tapping the bar hands off immediately (in addition to the
-            // auto-handoff below), matching the ChatGPT/Claude affordance.
+            // The bar is also tappable, matching the ChatGPT/Claude affordance.
             bar.setOnClickListener(v -> handOffToApp());
         }
         return contentRoot;
@@ -63,11 +54,11 @@ public class ElizaVoiceInteractionSession extends VoiceInteractionSession {
     public void onShow(Bundle args, int showFlags) {
         super.onShow(args, showFlags);
         Log.i(TAG, "[ElizaVoiceInteractionSession] Assistant session shown (flags=" + showFlags + ")");
-        if (contentRoot != null) {
-            contentRoot.postDelayed(this::handOffToApp, HANDOFF_DELAY_MS);
-        } else {
-            handOffToApp();
-        }
+        // The native voice bar (onCreateContentView) renders as the session
+        // window comes up; hand off to the app from onShow itself so the hand-
+        // off never depends on a view-attached timer that a torn-down session
+        // window would drop. The assistant context (BAL-allowed) is live here.
+        handOffToApp();
     }
 
     private void handOffToApp() {

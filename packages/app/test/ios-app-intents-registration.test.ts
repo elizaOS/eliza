@@ -211,9 +211,7 @@ describe("native assistant entry contracts", () => {
     expect(androidManifest).toContain(
       "android.service.voice.VoiceInteractionService",
     );
-    expect(androidManifest).toContain(
-      "@xml/eliza_voice_interaction_service",
-    );
+    expect(androidManifest).toContain("@xml/eliza_voice_interaction_service");
     expect(androidManifest).toContain("android.speech.RecognitionService");
 
     // The ACTION_ASSIST fallback activity must coexist with the VIS route.
