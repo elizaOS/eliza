@@ -4,6 +4,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import android.app.ForegroundServiceStartNotAllowedException;
+import android.os.Build;
+
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.junit.Test;
@@ -109,5 +112,28 @@ public class ElizaAgentWatchdogPolicyInstrumentedTest {
         assertFalse(fatal.allowed);
         assertEquals(5, fatal.nextRestartAttempts);
         assertEquals(0L, fatal.delayMs);
+    }
+
+    @Test
+    public void foregroundStartDenialMatchesOnlyTheAndroid12Denial() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // The real framework exception (API 31+): the exact throwable
+            // Service.startForeground() raises on a denied background start.
+            assertTrue(ElizaAgentWatchdogPolicy.isForegroundStartDenial(
+                new ForegroundServiceStartNotAllowedException("denied")
+            ));
+        }
+
+        // Plain IllegalStateException (the pre-31 startForeground failure
+        // shape, and any unrelated state bug) must NOT be swallowed.
+        assertFalse(ElizaAgentWatchdogPolicy.isForegroundStartDenial(
+            new IllegalStateException(
+                "Service.startForeground() not allowed due to mAllowStartForeground false"
+            )
+        ));
+        assertFalse(ElizaAgentWatchdogPolicy.isForegroundStartDenial(
+            new RuntimeException("unrelated")
+        ));
+        assertFalse(ElizaAgentWatchdogPolicy.isForegroundStartDenial(null));
     }
 }

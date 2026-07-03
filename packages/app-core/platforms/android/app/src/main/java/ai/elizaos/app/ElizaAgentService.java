@@ -174,6 +174,7 @@ public class ElizaAgentService extends Service {
     private volatile ElizaBionicInferenceServer bionicInferenceServer;
     private Thread startWorker;
     private volatile boolean shuttingDown;
+    private volatile boolean foregroundStartDenied;
     private volatile boolean detachedAgentMode;
     private volatile long detachedLaunchStartedAtMs;
     private int restartAttempts;
@@ -615,14 +616,34 @@ public class ElizaAgentService extends Service {
 
         Notification notification = buildNotification("Eliza agent", "Starting…");
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            );
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (IllegalStateException error) {
+            if (!ElizaAgentWatchdogPolicy.isForegroundStartDenial(error)) {
+                throw error;
+            }
+            // Android 12+ denied the FGS start: AMS restarted the sticky
+            // service with no foreground activity (the post-LMK-kill path in
+            // #11506). Crashing here loops: AMS restarts the sticky service
+            // and the denial repeats. Stop cleanly instead; the next real
+            // (foreground) launch restarts the service, and a surviving
+            // detached agent process is left untouched for it to adopt.
+            Map<String, String> details = new LinkedHashMap<>();
+            details.put("exception", error.getClass().getName());
+            appendDiagnosticEvent("fgs-start-denied", details);
+            Log.w(TAG, "startForeground() denied (background sticky restart); "
+                + "stopping service cleanly instead of crash-looping.", error);
+            foregroundStartDenied = true;
+            shuttingDown = true;
+            stopSelf();
         }
     }
 
@@ -634,6 +655,13 @@ public class ElizaAgentService extends Service {
         details.put("flags", String.valueOf(flags));
         details.put("startId", String.valueOf(startId));
         appendDiagnosticEvent("service-onStartCommand", details);
+        if (foregroundStartDenied) {
+            // onCreate could not enter the foreground (background sticky
+            // restart on Android 12+) and already called stopSelf(); refuse
+            // the pending start so AMS does not re-deliver it.
+            appendDiagnosticEvent("service-start-refused-fgs-denied", details);
+            return START_NOT_STICKY;
+        }
         if (ACTION_STOP.equals(action)) {
             shuttingDown = true;
             appendDiagnosticEvent("service-stop-intent", details);

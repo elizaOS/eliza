@@ -87,4 +87,18 @@ final class ElizaAgentWatchdogPolicy {
         long delayMs = 1000L * (1L << restartAttempts);
         return new RestartDecision(true, restartAttempts + 1, delayMs);
     }
+
+    /**
+     * True when {@code error} is Android 12+'s
+     * {@code android.app.ForegroundServiceStartNotAllowedException}: the OS
+     * restarted the sticky service with no foreground activity (e.g. after an
+     * LMK kill) and then denied {@code startForeground()}. Matched by class
+     * name so this policy class stays framework-free and the check is safe on
+     * minSdk 26 runtimes where the class does not exist.
+     */
+    static boolean isForegroundStartDenial(Throwable error) {
+        return error != null
+            && "android.app.ForegroundServiceStartNotAllowedException"
+                .equals(error.getClass().getName());
+    }
 }
