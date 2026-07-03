@@ -1,0 +1,12 @@
+
+--- chunk @125ms ---
+data: {"id":"chatcmpl-8d1089f2-e2ed-4cca-bed8-5cc1b381de84","object":"chat.completion.chunk","created":1783082889,"model":"eliza","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+
+--- chunk @58176ms ---
+data: {"id":"chatcmpl-8d1089f2-e2ed-4cca-bed8-5cc1b381de84","object":"chat.completion.chunk","created":1783082889,"model":"eliza","choices":[{"index":0,"delta":{"content":"The capital of Japan is Tokyo."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-8d1089f2-e2ed-4cca-bed8-5cc1b381de84","object":"chat.completion.chunk","created":1783082889,"model":"eliza","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

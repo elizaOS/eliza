@@ -48,12 +48,33 @@ until ≥3 stable runs on a quiet, cool device land. Full method + gaps:
 | ios-phone      | eliza-1-2b     | single-turn     | —                   | —             | —    | —               | —                 | —             | —      |
 | ios-phone      | eliza-1-2b     | sustained-chat  | —                   | —             | —    | —               | —                 | —             | —      |
 | android-phone  | eliza-1-2b     | single-turn     | 4.8 warm / 3.1 cold | not isolated  | —    | 2600 MB PSS     | 2500 MB PSS       | —             | #11352 |
-| android-phone  | eliza-1-2b     | sustained-chat  | 4.8 warm            | not isolated  | —    | 2600 MB PSS     | 2500 MB PSS       | —             | #11352 |
+| android-phone  | eliza-1-2b     | sustained-chat  | 4.8 warm ¹          | ~5.1 marginal ² | p50 54.3 s / p90 57.7 s ³ | 2600 MB PSS | 2500 MB PSS | — ⁴ | #11352, #11734 |
+| android-phone  | eliza-1-4b     | single-turn     | — (killed mid-load) | —             | —    | 3507 MB PSS / GL 3220 MB at kill | n/a | — | #11734 |
 
 Pixel 6a / eliza-1-2b Q4 (1.2 GB GGUF), bionic Vulkan host. Memory dominated by
 resident weights (GL mtrack ~2.25 GB constant); per-turn delta only ~100 MB PSS
-/ ~70 MB RSS. llama-bench on the same libs: pp32 2.60 t/s, tg32 6.85 t/s. TTFT,
-prefill, battery, and thermal remain uncaptured (see the evidence README).
+/ ~70 MB RSS. llama-bench on the same libs: pp32 2.60 t/s, tg32 6.85 t/s.
+
+#11734 adb-measurable rows (Pixel 6a, 2026-07-03 — method + raw data in
+`.github/issue-evidence/11734-pixel6a-adb-rows/`):
+
+1. The "4.8 warm" decode figure is a **combined window rate** (256-token decode
+   + full prompt prefill over the whole native window); the isolated effective
+   decode is ≤ 7.9 t/s (fit intercept; llama-bench tg128 6.78 t/s).
+2. Prefill is **batch-quantized** (`ELIZA_LLM_N_BATCH=128`): flat ≤127 prompt
+   tokens, ~23 s per extra 128-token batch; 5.1 t/s is the marginal fit over
+   92→219 tokens (r² 0.78). llama-bench: pp128 3.88 / pp512 8.86 t/s.
+3. TTFT == full-turn latency on this build (the fast path emits the reply as a
+   single SSE chunk). n=12 identical-length turns; 3/12 were transparent
+   post-release reloads (57.3–58.8 s) — included in the distribution.
+4. Battery stays power-meter-gated, but the #11734 thermal log bounds it:
+   level fell 76%→70% over ~70 min of sustained inference *while USB-powered*.
+   Thermal: Status 0 for the whole 91-min session; peak skin 42.9 °C,
+   TPU 68 °C — the OS throttling ladder never engaged.
+5. eliza-1-4b (2.95 GB Q4_K_M): **lowmemorykiller kills the foreground app
+   during model load** (`ApplicationExitInfo reason=3 LOW_MEMORY`, RSS 3.4 GB)
+   ~24 s after boot — the tier's `minRamGb: 6` floor is real on this 5.59 GB
+   device. No throughput numbers exist because no turn ever completed.
 
 ## Notes / known gaps
 

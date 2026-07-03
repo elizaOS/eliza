@@ -1,0 +1,76 @@
+{
+ "v3Ladder": [
+  {
+   "start": "06:43:09",
+   "done": "06:45:16",
+   "promptChars": 294,
+   "produced": 256,
+   "tokS": 4.73,
+   "workS": 54.12
+  },
+  {
+   "start": "06:45:52",
+   "done": "06:47:58",
+   "promptChars": 384,
+   "produced": 256,
+   "tokS": 4.76,
+   "workS": 53.78
+  },
+  {
+   "start": "06:51:27",
+   "done": "06:53:33",
+   "promptChars": 471,
+   "produced": 256,
+   "tokS": 4.85,
+   "workS": 52.78
+  },
+  {
+   "start": "06:54:09",
+   "done": "06:56:27",
+   "promptChars": 561,
+   "produced": 256,
+   "tokS": 3.94,
+   "workS": 64.97
+  },
+  {
+   "start": "06:57:02",
+   "done": "06:59:15",
+   "promptChars": 648,
+   "produced": 256,
+   "tokS": 4.29,
+   "workS": 59.67
+  },
+  {
+   "start": "06:59:51",
+   "done": "07:02:05",
+   "promptChars": 743,
+   "produced": 256,
+   "tokS": 4.2,
+   "workS": 60.95
+  },
+  {
+   "start": "07:02:43",
+   "done": "07:05:08",
+   "promptChars": 834,
+   "produced": 256,
+   "tokS": 3.33,
+   "workS": 76.88
+  },
+  {
+   "start": "07:05:46",
+   "done": "07:08:14",
+   "promptChars": 919,
+   "produced": 256,
+   "tokS": 3.32,
+   "workS": 77.11
+  }
+ ],
+ "leg1aWarmAnchorS": 54.065,
+ "fit": {
+  "interceptS": 32.37,
+  "slopeSPerTok": 0.19447,
+  "r2": 0.7749,
+  "marginalPrefillTokS": 5.14,
+  "effectiveDecodeTokSUpperBound": 7.91
+ }
+}
