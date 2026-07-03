@@ -434,6 +434,33 @@ export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;
 
 export type AdminRole = "super_admin" | "moderator" | "viewer";
+
+/**
+ * Canonical rank for the admin tiers (#12087 Item 21). One source of truth for
+ * ordering `AdminRole`, so callers stop re-deriving `role === "super_admin"`
+ * checks and header-validation predicates by hand.
+ */
+export const ADMIN_ROLE_RANK: Record<AdminRole, number> = {
+  viewer: 0,
+  moderator: 1,
+  super_admin: 2,
+};
+
+/** Type guard: `value` is a recognized {@link AdminRole}. */
+export function isAdminRole(value: unknown): value is AdminRole {
+  return (
+    value === "super_admin" || value === "moderator" || value === "viewer"
+  );
+}
+
+/**
+ * Rank of `role` on {@link ADMIN_ROLE_RANK}. Unknown/`null` roles fall to `-1`
+ * (below every real tier) so rank comparisons fail closed.
+ */
+export function adminRoleRank(role: AdminRole | null | undefined): number {
+  return role && isAdminRole(role) ? ADMIN_ROLE_RANK[role] : -1;
+}
+
 export type AdminModerationStatusValue = "clean" | "warned" | "spammer" | "scammer" | "banned";
 export type AdminModerationAction = "refused" | "warned" | "flagged_for_ban" | "banned";
 

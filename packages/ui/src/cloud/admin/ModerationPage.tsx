@@ -20,6 +20,7 @@ import type {
   AdminRole,
   AdminUserDto,
 } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import { isAdminRole } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   Badge,
   Button,
@@ -75,10 +76,6 @@ import { useAdminGate } from "./data/use-admin-gate";
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
   return error instanceof Error ? error.message : fallback;
-}
-
-function isAdminRole(value: string): value is AdminRole {
-  return value === "super_admin" || value === "moderator" || value === "viewer";
 }
 
 export default function ModerationPage(): React.JSX.Element {

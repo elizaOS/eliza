@@ -17,6 +17,7 @@ import type {
   AdminModerationStatusResponse,
   AdminRole,
 } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import { isAdminRole } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api-client";
 import { useSessionAuth } from "../../lib/use-session-auth";
@@ -29,9 +30,7 @@ export function isAdminDevBypass(): boolean {
 }
 
 function adminRoleFromHeader(value: string | null): AdminRole | null {
-  return value === "super_admin" || value === "moderator" || value === "viewer"
-    ? value
-    : null;
+  return isAdminRole(value) ? value : null;
 }
 
 interface AdminAuthGate {
