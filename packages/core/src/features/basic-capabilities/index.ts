@@ -19,6 +19,11 @@ import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
 } from "../../prompts.ts";
+import {
+	getConfiguredOwnerEntityIds,
+	type RolesWorldMetadata,
+	recordOwnerGrant,
+} from "../../roles.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
 import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
@@ -38,7 +43,6 @@ import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
-import type { Role } from "../../types/environment.ts";
 import { EventType } from "../../types/events.ts";
 import type {
 	ActionEventPayload,
@@ -88,8 +92,6 @@ import {
 } from "../autonomy/providers.ts";
 import { autonomyRoutes } from "../autonomy/routes.ts";
 import { AutonomyService } from "../autonomy/service.ts";
-
-const ROLE_OWNER: Role = "OWNER";
 
 // Re-export action and provider modules
 export * from "./actions/index.ts";
@@ -774,6 +776,22 @@ const postGeneratedHandler = async (
 	}
 };
 
+type BasicCapabilitiesWorldMetadata = RolesWorldMetadata & {
+	settings: Record<string, never>;
+};
+
+function createDmWorldMetadata(
+	runtime: IAgentRuntime,
+	entityId: UUID,
+): BasicCapabilitiesWorldMetadata {
+	const metadata: BasicCapabilitiesWorldMetadata = { settings: {} };
+	if (getConfiguredOwnerEntityIds(runtime).includes(entityId)) {
+		metadata.ownership = { ownerId: entityId };
+		recordOwnerGrant(metadata, entityId);
+	}
+	return metadata;
+}
+
 /**
  * Syncs a single user into an entity
  */
@@ -814,15 +832,7 @@ const syncSingleUser = async (
 
 	const worldMetadata =
 		type === ChannelType.DM
-			? {
-					ownership: {
-						ownerId: entityId,
-					},
-					roles: {
-						[entityId]: ROLE_OWNER,
-					},
-					settings: {}, // Initialize empty settings for setup
-				}
+			? createDmWorldMetadata(runtime, entityId)
 			: undefined;
 
 	runtime.logger.info(
