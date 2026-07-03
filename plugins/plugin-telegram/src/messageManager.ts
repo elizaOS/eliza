@@ -1044,9 +1044,12 @@ export class MessageManager {
               ...sendOptions,
               parse_mode: "MarkdownV2",
             }),
-          // Fallback: Telegram rejected the MarkdownV2 — send the raw text so the
-          // user gets the content unformatted rather than nothing.
-          () => ctx.telegram.sendMessage(chatId, chunk, sendOptions),
+          // Fallback: Telegram rejected the MarkdownV2 entities. Send the
+          // ORIGINAL chunk (chunks[i]), not the MarkdownV2-escaped `chunk` —
+          // otherwise the user sees literal backslash escapes ("Sure\!"). Mirror
+          // the editMessage fallback, which sends cleanText(text).
+          () =>
+            ctx.telegram.sendMessage(chatId, cleanText(chunks[i]), sendOptions),
         )) as Message.TextMessage;
 
         sentMessages.push(sentMessage);

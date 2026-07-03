@@ -529,6 +529,44 @@ describe("MessageManager send resilience (sendWithRetry)", () => {
     expect(fallbackCall).toBeDefined();
   });
 
+  it("the plain-text fallback sends UNescaped text, not the MarkdownV2 backslash-escaped chunk", async () => {
+    const sendMessage = vi.fn(
+      async (
+        chatId: number | string,
+        text: string,
+        opts?: { parse_mode?: string },
+      ) => {
+        if (opts?.parse_mode === "MarkdownV2") {
+          throw {
+            response: {
+              error_code: 400,
+              description: "Bad Request: can't parse entities",
+            },
+          };
+        }
+        return {
+          message_id: 1,
+          date: 1,
+          text,
+          chat: { id: chatId, type: "private" },
+        };
+      },
+    );
+    const { manager, ctx } = managerWith(sendMessage);
+    // MarkdownV2 escapes `!`, `-`, `.` → "Sure\! Step 1 \- done\." on the
+    // primary send. The fallback must degrade to the clean original, not that.
+    await manager.sendMessageInChunks(ctx, { text: "Sure! Step 1 - done." });
+    const fallbackCall = sendMessage.mock.calls.find(
+      (call) =>
+        (call[2] as { parse_mode?: string } | undefined)?.parse_mode ===
+        undefined,
+    );
+    expect(fallbackCall).toBeDefined();
+    const fallbackText = fallbackCall?.[1] as string;
+    expect(fallbackText).not.toContain("\\");
+    expect(fallbackText).toContain("Sure! Step 1 - done.");
+  });
+
   it("does not retry a 403 (blocked) and propagates the error", async () => {
     const sendMessage = vi.fn(async () => {
       throw {
