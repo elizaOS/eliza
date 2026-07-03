@@ -13,10 +13,12 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 
 const approveAccount = mock();
 const rejectAccount = mock();
+const setAccountSpendCap = mock();
 mock.module("@/lib/services/advertising", () => ({
   advertisingService: {
     approveAccount,
     rejectAccount,
+    setAccountSpendCap,
   },
 }));
 
@@ -32,10 +34,22 @@ beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
   approveAccount.mockReset();
   rejectAccount.mockReset();
+  setAccountSpendCap.mockReset();
 
   requireAdmin.mockResolvedValue({ userId: "admin-1", role: "admin" });
+  requireUserOrApiKeyWithOrg.mockResolvedValue({
+    id: "user-1",
+    organization_id: "org-1",
+    role: "admin",
+  });
   approveAccount.mockResolvedValue({ id: ACCOUNT_ID, status: "active" });
   rejectAccount.mockResolvedValue({ id: ACCOUNT_ID, status: "suspended" });
+  setAccountSpendCap.mockResolvedValue({
+    id: ACCOUNT_ID,
+    status: "active",
+    spend_cap_credits: "250.00",
+    updated_at: new Date("2026-07-03T00:00:00.000Z"),
+  });
 });
 
 describe("advertising account admin routes", () => {
@@ -95,5 +109,59 @@ describe("advertising account admin routes", () => {
 
     expect(response.status).toBe(403);
     expect(rejectAccount).not.toHaveBeenCalled();
+  });
+
+  test("owner or org admin can update an account spend cap", async () => {
+    const response = await app.request(
+      `/api/v1/advertising/accounts/${ACCOUNT_ID}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ spendCapCredits: 250 }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      id: ACCOUNT_ID,
+      status: "active",
+      spendCapCredits: "250.00",
+      updatedAt: "2026-07-03T00:00:00.000Z",
+    });
+    expect(setAccountSpendCap).toHaveBeenCalledWith(ACCOUNT_ID, "org-1", 250);
+  });
+
+  test("member cannot update account spend caps", async () => {
+    requireUserOrApiKeyWithOrg.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+      role: "member",
+    });
+
+    const response = await app.request(
+      `/api/v1/advertising/accounts/${ACCOUNT_ID}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ spendCapCredits: 250 }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(setAccountSpendCap).not.toHaveBeenCalled();
+  });
+
+  test("empty cap patch is rejected instead of clearing the cap implicitly", async () => {
+    const response = await app.request(
+      `/api/v1/advertising/accounts/${ACCOUNT_ID}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({}),
+        headers: { "content-type": "application/json" },
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(setAccountSpendCap).not.toHaveBeenCalled();
   });
 });

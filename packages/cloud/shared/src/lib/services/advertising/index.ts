@@ -176,6 +176,50 @@ class AdvertisingService {
     }
   }
 
+  private normalizeSpendCapCredits(value: number | null | undefined): string | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (!Number.isFinite(value) || value <= 0) {
+      throw ValidationError("Spend cap must be a positive credit amount");
+    }
+    return value.toFixed(2);
+  }
+
+  private async assertAccountSpendCapAllowsAllocation(input: {
+    account: AdAccount;
+    newCampaignCredits: number;
+    excludeCampaignId?: string;
+  }): Promise<void> {
+    if (!input.account.spend_cap_credits) return;
+    const existingAllocated = await adCampaignsRepository.sumCreditsAllocatedByAdAccount(
+      input.account.id,
+      { excludeCampaignId: input.excludeCampaignId },
+    );
+    const cap = Number(input.account.spend_cap_credits);
+    if (existingAllocated + input.newCampaignCredits > cap + 1e-9) {
+      throw ValidationError(
+        `Ad account spend cap would be exceeded: ${(
+          existingAllocated + input.newCampaignCredits
+        ).toFixed(2)} credits requested against ${cap.toFixed(2)} cap`,
+      );
+    }
+  }
+
+  private assertCampaignSpendCapAllowsAllocation(input: {
+    spendCapCredits: string | null | undefined;
+    newCampaignCredits: number;
+  }): void {
+    if (!input.spendCapCredits) return;
+    const cap = Number(input.spendCapCredits);
+    if (input.newCampaignCredits > cap + 1e-9) {
+      throw ValidationError(
+        `Campaign spend cap would be exceeded: ${input.newCampaignCredits.toFixed(
+          2,
+        )} credits requested against ${cap.toFixed(2)} cap`,
+      );
+    }
+  }
+
   private toDbTargeting(targeting: CampaignTargeting = {}) {
     return {
       locations: targeting.locations,
@@ -697,6 +741,41 @@ class AdvertisingService {
     return updated;
   }
 
+  async setAccountSpendCap(
+    accountId: string,
+    organizationId: string,
+    spendCapCredits: number | null,
+  ): Promise<AdAccount> {
+    const account = await adAccountsRepository.findById(accountId);
+    if (!account || account.organization_id !== organizationId) {
+      throw new Error("Ad account not found");
+    }
+    const normalized = this.normalizeSpendCapCredits(spendCapCredits);
+    if (normalized) {
+      const allocated = await adCampaignsRepository.sumCreditsAllocatedByAdAccount(accountId);
+      const cap = Number(normalized);
+      if (allocated > cap + 1e-9) {
+        throw ValidationError(
+          `Ad account already has ${allocated.toFixed(
+            2,
+          )} allocated credits, which exceeds the requested ${cap.toFixed(2)} cap`,
+        );
+      }
+    }
+    const updated = await adAccountsRepository.update(accountId, {
+      spend_cap_credits: normalized,
+    });
+    if (!updated) {
+      throw new Error("Ad account not found");
+    }
+    logger.info("[Advertising] Ad account spend cap updated", {
+      accountId,
+      organizationId,
+      spendCapCredits: normalized,
+    });
+    return updated;
+  }
+
   async disconnectAccount(accountId: string, organizationId: string): Promise<void> {
     const account = await adAccountsRepository.findById(accountId);
 
@@ -944,6 +1023,16 @@ class AdvertisingService {
       audienceSegmentId: undefined,
       dayparting,
     };
+    const budgetCredits = calculateSpendCredits(account.platform, input.budgetAmount);
+    const campaignSpendCap = this.normalizeSpendCapCredits(input.spendCapCredits);
+    this.assertCampaignSpendCapAllowsAllocation({
+      spendCapCredits: campaignSpendCap,
+      newCampaignCredits: budgetCredits,
+    });
+    await this.assertAccountSpendCapAllowsAllocation({
+      account,
+      newCampaignCredits: budgetCredits,
+    });
 
     await contentSafetyService.assertSafeForPublicUse({
       surface: "advertising_campaign",
@@ -964,9 +1053,6 @@ class AdvertisingService {
     if (!deduction.success) {
       throw new Error("Insufficient credits to create campaign");
     }
-
-    // Allocate budget credits
-    const budgetCredits = calculateSpendCredits(account.platform, input.budgetAmount);
 
     const budgetDeduction = await creditsService.deductCredits({
       organizationId: input.organizationId,
@@ -1043,6 +1129,7 @@ class AdvertisingService {
         budget_amount: String(input.budgetAmount),
         budget_currency: input.budgetCurrency || "USD",
         credits_allocated: String(budgetCredits),
+        spend_cap_credits: campaignSpendCap,
         start_date: input.startDate,
         end_date: input.endDate,
         targeting: targeting ? this.toDbTargeting(targeting) : {},
@@ -1135,12 +1222,22 @@ class AdvertisingService {
     if (!campaign || campaign.organization_id !== organizationId) {
       throw new Error("Campaign not found");
     }
+    const requestedCampaignSpendCap =
+      input.spendCapCredits === undefined
+        ? campaign.spend_cap_credits
+        : this.normalizeSpendCapCredits(input.spendCapCredits);
+    if (input.spendCapCredits !== undefined) {
+      this.assertCampaignSpendCapAllowsAllocation({
+        spendCapCredits: requestedCampaignSpendCap,
+        newCampaignCredits: Number(campaign.credits_allocated),
+      });
+    }
 
     if (!campaign.external_campaign_id) {
       // Only the locally-stored dayparting schedule can change before the
       // campaign is synced. Reject mixed payloads instead of silently applying
       // the schedule and dropping the rest.
-      if (input.dayparting === undefined) {
+      if (input.dayparting === undefined && input.spendCapCredits === undefined) {
         throw new Error("Campaign not synced with platform");
       }
       if (
@@ -1148,10 +1245,11 @@ class AdvertisingService {
         input.budgetAmount !== undefined ||
         input.startDate !== undefined ||
         input.endDate !== undefined ||
-        input.targeting !== undefined
+        input.targeting !== undefined ||
+        input.audienceSegmentId !== undefined
       ) {
         throw new Error(
-          "Campaign not synced with platform; only dayparting can be updated before sync",
+          "Campaign not synced with platform; only dayparting and spend caps can be updated before sync",
         );
       }
     }
@@ -1172,7 +1270,11 @@ class AdvertisingService {
       if (input.dayparting === null) {
         delete metadata.dayparting;
       }
-      const updated = await adCampaignsRepository.update(campaignId, { metadata });
+      const updated = await adCampaignsRepository.update(campaignId, {
+        metadata,
+        spend_cap_credits:
+          input.spendCapCredits === undefined ? undefined : requestedCampaignSpendCap,
+      });
       if (!updated) {
         throw new Error("Campaign not found");
       }
@@ -1214,6 +1316,15 @@ class AdvertisingService {
     let budgetCreditDelta = 0;
     if (input.budgetAmount !== undefined) {
       newCreditsAllocated = calculateSpendCredits(account.platform, input.budgetAmount);
+      this.assertCampaignSpendCapAllowsAllocation({
+        spendCapCredits: requestedCampaignSpendCap,
+        newCampaignCredits: newCreditsAllocated,
+      });
+      await this.assertAccountSpendCapAllowsAllocation({
+        account,
+        newCampaignCredits: newCreditsAllocated,
+        excludeCampaignId: campaignId,
+      });
       budgetCreditDelta = newCreditsAllocated - parseFloat(campaign.credits_allocated);
       if (budgetCreditDelta > 0) {
         const debit = await creditsService.deductCredits({
@@ -1252,6 +1363,8 @@ class AdvertisingService {
     const updateData = {
       name: input.name,
       budget_amount: input.budgetAmount ? String(input.budgetAmount) : undefined,
+      spend_cap_credits:
+        input.spendCapCredits === undefined ? undefined : requestedCampaignSpendCap,
       ...(newCreditsAllocated !== undefined
         ? { credits_allocated: String(newCreditsAllocated) }
         : {}),

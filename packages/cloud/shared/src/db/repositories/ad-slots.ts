@@ -205,6 +205,19 @@ export class AdSlotsRepository {
                 sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`,
                 sql`${price}`,
               ),
+              sql`(${adCampaigns.spend_cap_credits} is null or ${adCampaigns.credits_spent} + ${price}::numeric <= ${adCampaigns.spend_cap_credits})`,
+              sql`exists (
+                select 1 from ${adAccounts} cap_account
+                where cap_account.id = ${adCampaigns.ad_account_id}
+                  and (
+                    cap_account.spend_cap_credits is null
+                    or (
+                      select coalesce(sum(account_campaigns.credits_spent), 0)
+                      from ${adCampaigns} account_campaigns
+                      where account_campaigns.ad_account_id = cap_account.id
+                    ) + ${price}::numeric <= cap_account.spend_cap_credits
+                  )
+              )`,
             ),
           )
           .returning({ id: adCampaigns.id });

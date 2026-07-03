@@ -116,6 +116,7 @@ export interface CreateCampaignInput {
   budgetType: BudgetType;
   budgetAmount: number;
   budgetCurrency?: string;
+  spendCapCredits?: number | null;
   bidStrategy?: CampaignBidStrategy;
   optimizationGoal?: CampaignOptimizationGoal;
   startDate?: Date;
@@ -129,6 +130,7 @@ export interface CreateCampaignInput {
 export interface UpdateCampaignInput {
   name?: string;
   budgetAmount?: number;
+  spendCapCredits?: number | null;
   bidStrategy?: CampaignBidStrategy;
   optimizationGoal?: CampaignOptimizationGoal;
   startDate?: Date;

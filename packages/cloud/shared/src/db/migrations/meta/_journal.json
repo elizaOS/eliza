@@ -1170,6 +1170,13 @@
       "when": 1781396460000,
       "tag": "0168_ad_accounts_pending_default",
       "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1781482800000,
+      "tag": "0170_ad_spend_caps",
+      "breakpoints": true
     }
   ]
 }

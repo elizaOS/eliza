@@ -1,5 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { secrets } from "./secrets";
 import { users } from "./users";
@@ -51,6 +51,8 @@ export const adAccounts = pgTable(
     token_expires_at: timestamp("token_expires_at"),
 
     status: text("status").$type<AdAccountStatus>().notNull().default("pending"),
+
+    spend_cap_credits: numeric("spend_cap_credits", { precision: 12, scale: 2 }),
 
     // Platform-specific metadata
     metadata: jsonb("metadata")

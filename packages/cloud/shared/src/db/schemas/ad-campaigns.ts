@@ -91,6 +91,7 @@ export const adCampaigns = pgTable(
       .notNull()
       .default("0.00"),
     credits_spent: numeric("credits_spent", { precision: 12, scale: 2 }).notNull().default("0.00"),
+    spend_cap_credits: numeric("spend_cap_credits", { precision: 12, scale: 2 }),
 
     // Schedule
     start_date: timestamp("start_date"),
