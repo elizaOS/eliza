@@ -16,8 +16,7 @@ vi.mock("@elizaos/core", () => ({
       ? (raw as Record<string, unknown>)
       : null;
   },
-  runWithTrajectoryContext: async (_context: unknown, fn: () => unknown) =>
-    fn(),
+  runWithTrajectoryPurpose: async (_purpose: string, fn: () => unknown) => fn(),
 }));
 
 import {

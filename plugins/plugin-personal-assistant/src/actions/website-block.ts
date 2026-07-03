@@ -10,7 +10,7 @@ import {
   parseJsonModelRecord,
   requireConfirmation,
   resolveActionArgs,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
   type SubactionsMap,
 } from "@elizaos/core";
 import {
@@ -400,7 +400,8 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-website-block-planner",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-website-block-planner",
       () =>
         args.runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,
@@ -464,7 +465,8 @@ async function recoverWebsiteContextWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-website-block-recovery",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-website-block-recovery",
       () =>
         args.runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,

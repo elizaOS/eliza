@@ -4,7 +4,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type {
   InboundMessage,
@@ -77,8 +77,8 @@ async function classifyBatch(
 
   let rawResponse = "";
   try {
-    const result = await runWithTrajectoryPurpose("inbox_triage",
-      () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    const result = await runWithTrajectoryPurpose("inbox_triage", () =>
+      runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     rawResponse = typeof result === "string" ? result : "";
   } catch (error) {

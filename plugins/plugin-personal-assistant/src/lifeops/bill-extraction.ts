@@ -16,7 +16,7 @@ import {
   logger,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { wrapUntrustedEmailContent } from "@elizaos/shared";
 import type { EmailLikeMessage } from "./email-classifier.js";
@@ -424,7 +424,8 @@ export async function extractBill(
   if (typeof runtime.useModel === "function") {
     try {
       const modelKey = resolveModelType(modelSetting);
-      const raw = await runWithTrajectoryPurpose("lifeops-bill-extraction",
+      const raw = await runWithTrajectoryPurpose(
+        "lifeops-bill-extraction",
         () =>
           runtime.useModel(ModelType[modelKey], {
             prompt: buildLlmPrompt(message),

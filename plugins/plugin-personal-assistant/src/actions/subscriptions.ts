@@ -10,7 +10,7 @@ import {
   parseJsonModelRecord,
   recentConversationTexts,
   requireConfirmation,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { PLAYBOOK_UNSUPPORTED_FLOW_ERROR } from "@elizaos/plugin-finances/subscriptions-playbooks";
 import type { LifeOpsSubscriptionExecutor } from "@elizaos/plugin-finances/subscriptions-types";
@@ -167,11 +167,10 @@ async function resolveSubscriptionsPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-subscriptions",
-      () =>
-        args.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        }),
+    const result = await runWithTrajectoryPurpose("lifeops-subscriptions", () =>
+      args.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt,
+      }),
     );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);

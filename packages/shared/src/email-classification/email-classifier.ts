@@ -17,7 +17,7 @@ import {
   logger,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { wrapUntrustedEmailContent } from "./wrap-untrusted-email-content.js";
 
@@ -411,12 +411,10 @@ export async function classifyEmail(
 
   try {
     const modelKey = resolveModelType(modelSetting);
-    const raw = await runWithTrajectoryContext(
-      { purpose: "lifeops-email-classifier" },
-      () =>
-        runtime.useModel(ModelType[modelKey], {
-          prompt: buildLlmPrompt(message),
-        }),
+    const raw = await runWithTrajectoryPurpose("lifeops-email-classifier", () =>
+      runtime.useModel(ModelType[modelKey], {
+        prompt: buildLlmPrompt(message),
+      }),
     );
     const classification = parseLlmClassification(raw) ??
       ruleResult ?? {

@@ -12,7 +12,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
   ServiceType,
 } from "@elizaos/core";
 import {
@@ -1182,7 +1182,8 @@ export class RemindersDomain {
       `text: ${formatReminderPromptValue(input.text)}`,
     ].join("\n");
     try {
-      const response = await runWithTrajectoryPurpose("lifeops-reminders-classify-reply",
+      const response = await runWithTrajectoryPurpose(
+        "lifeops-reminders-classify-reply",
         () =>
           this.ctx.runtime.useModel(ModelType.TEXT_SMALL, {
             prompt,
@@ -1400,11 +1401,10 @@ export class RemindersDomain {
     });
 
     try {
-      const response = await runWithTrajectoryPurpose("reminder_dispatch",
-        () =>
-          this.ctx.runtime.useModel(ModelType.TEXT_SMALL, {
-            prompt,
-          }),
+      const response = await runWithTrajectoryPurpose("reminder_dispatch", () =>
+        this.ctx.runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        }),
       );
       const text =
         typeof response === "string"
@@ -1464,7 +1464,8 @@ export class RemindersDomain {
     ].join("\n");
 
     try {
-      const response = await runWithTrajectoryPurpose("lifeops-reminders-workflow-body",
+      const response = await runWithTrajectoryPurpose(
+        "lifeops-reminders-workflow-body",
         () =>
           this.ctx.runtime.useModel(ModelType.TEXT_SMALL, {
             prompt,

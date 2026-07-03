@@ -3,7 +3,7 @@ import {
   logger,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
@@ -78,7 +78,8 @@ export async function reflectOnSendConfirmation(
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-inbox-reflect-autoreply",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-inbox-reflect-autoreply",
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const raw = typeof result === "string" ? result : "";
@@ -161,7 +162,8 @@ export async function reflectOnAutoReply(
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-inbox-reflect-send",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-inbox-reflect-send",
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const raw = typeof result === "string" ? result : "";

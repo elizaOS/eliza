@@ -7,7 +7,7 @@
  * retain full control of their schema, validators, and prompts.
  */
 
-import { runWithTrajectoryContext } from "../trajectory-context";
+import { runWithTrajectoryPurpose } from "../trajectory-context";
 import type { IAgentRuntime } from "../types";
 import { ModelType } from "../types";
 
@@ -76,8 +76,8 @@ export async function runExtractorPipeline<TParsed>(
 	}
 
 	try {
-		const firstResult = await runWithTrajectoryContext(
-			{ purpose: "lifeops-extractor-first-pass" },
+		const firstResult = await runWithTrajectoryPurpose(
+			"lifeops-extractor-first-pass",
 			() => runtime.useModel(modelType, { prompt }),
 		);
 		const firstRaw = asString(firstResult);
@@ -90,8 +90,8 @@ export async function runExtractorPipeline<TParsed>(
 			return { parsed: null, raw: firstRaw, repaired: false };
 		}
 
-		const repairResult = await runWithTrajectoryContext(
-			{ purpose: "lifeops-extractor-repair-pass" },
+		const repairResult = await runWithTrajectoryPurpose(
+			"lifeops-extractor-repair-pass",
 			() =>
 				runtime.useModel(modelType, {
 					prompt: buildRepairPrompt(firstRaw),

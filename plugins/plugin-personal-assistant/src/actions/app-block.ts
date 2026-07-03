@@ -10,7 +10,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   resolveActionArgs,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
   type SubactionsMap,
 } from "@elizaos/core";
 import {
@@ -220,7 +220,8 @@ async function resolveAppBlockPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-app-block-planner",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-app-block-planner",
       () =>
         args.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,

@@ -3,7 +3,7 @@ import {
   logger,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type {
   LifeOpsGoalDefinition,
@@ -233,8 +233,8 @@ export async function evaluateGoalProgressWithLlm(args: {
   }
   const prompt = buildSemanticEvaluationPrompt(args);
   try {
-    const raw = await runWithTrajectoryContext(
-      { purpose: "lifeops-goal-evaluator-first-pass" },
+    const raw = await runWithTrajectoryPurpose(
+      "lifeops-goal-evaluator-first-pass",
       () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
     );
     const parsed = parseSemanticEvaluationOutput(
@@ -246,8 +246,8 @@ export async function evaluateGoalProgressWithLlm(args: {
     if (evaluation) {
       return evaluation;
     }
-    const repairedRaw = await runWithTrajectoryContext(
-      { purpose: "lifeops-goal-evaluator-repair-pass" },
+    const repairedRaw = await runWithTrajectoryPurpose(
+      "lifeops-goal-evaluator-repair-pass",
       () =>
         args.runtime.useModel(ModelType.TEXT_LARGE, {
           prompt: buildSemanticRepairPrompt({

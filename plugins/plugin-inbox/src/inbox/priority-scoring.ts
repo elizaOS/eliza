@@ -19,7 +19,7 @@ import {
   logger,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
 
@@ -338,8 +338,8 @@ async function scoreBatch(
       ? { prompt, model: opts.model.trim() }
       : { prompt }
   ) as { prompt: string };
-  const raw = await runWithTrajectoryPurpose("lifeops-priority-scoring",
-    () => runtime.useModel(ModelType.TEXT_SMALL, params),
+  const raw = await runWithTrajectoryPurpose("lifeops-priority-scoring", () =>
+    runtime.useModel(ModelType.TEXT_SMALL, params),
   );
   const text = typeof raw === "string" ? raw : "";
   return parseScores(text, batch.length);

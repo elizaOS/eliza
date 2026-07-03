@@ -23,7 +23,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 
 const ACTION_NAME = "PRIORITIZE";
@@ -695,8 +695,8 @@ export const prioritizeAction: Action & {
 
     let raw: unknown;
     try {
-      raw = await runWithTrajectoryPurpose("lifeops-prioritize",
-        () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+      raw = await runWithTrajectoryPurpose("lifeops-prioritize", () =>
+        runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

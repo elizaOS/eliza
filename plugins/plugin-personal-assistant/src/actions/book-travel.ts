@@ -10,7 +10,7 @@ import {
   recentConversationTexts as collectRecentConversationTexts,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import {
   PaymentRequiredError,
@@ -262,8 +262,8 @@ async function extractBookTravelPlanWithLlm(args: {
 
   let parsed: Record<string, unknown> | null = null;
   try {
-    const raw = await runWithTrajectoryPurpose("lifeops-book-travel",
-      () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    const raw = await runWithTrajectoryPurpose("lifeops-book-travel", () =>
+      args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const rawText = typeof raw === "string" ? raw : "";
     parsed = parseJsonModelRecord<Record<string, unknown>>(rawText);

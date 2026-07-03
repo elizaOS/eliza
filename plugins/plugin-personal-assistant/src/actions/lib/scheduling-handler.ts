@@ -32,7 +32,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
@@ -905,11 +905,10 @@ async function resolveSchedulingPlanWithLlm(args: {
   });
 
   try {
-    const result = await runWithTrajectoryPurpose("schedule_plan",
-      () =>
-        args.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        }),
+    const result = await runWithTrajectoryPurpose("schedule_plan", () =>
+      args.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt,
+      }),
     );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);

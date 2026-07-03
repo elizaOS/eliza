@@ -525,6 +525,41 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       ).toHaveLength(1);
     });
 
+    it("serves a classification-filtered read from the persisted queue without fetching or classifying", async () => {
+      const gmailFetcher = vi.fn(async () => [
+        makeItem({
+          platform: "gmail",
+          id: "gmail-should-not-fetch",
+          snippet: "must never reach the classifier",
+          receivedAt: "2026-05-11T10:00:00.000Z",
+        }),
+      ]);
+      setInboxFetchers({ gmail: gmailFetcher });
+
+      const { runtime, calls } = makeDbRuntime(() => [
+        makeTriageRow({ id: "entry-urgent-1", classification: "urgent" }),
+      ]);
+      const useModel = vi.fn();
+      (runtime as { useModel?: unknown }).useModel = useModel;
+
+      const result = await callInbox(
+        runtime,
+        makeMessage("show my urgent inbox items"),
+        {
+          subaction: "triage",
+          platforms: ["gmail"],
+          classification: "urgent",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({ subaction: "triage", classified: 0 });
+      expect(gmailFetcher).not.toHaveBeenCalled();
+      expect(useModel).not.toHaveBeenCalled();
+      const select = calls[0]?.sql ?? "";
+      expect(select).toContain("classification = ");
+    });
+
     it("surfaces a classifier failure as an action failure instead of silently degrading", async () => {
       setInboxFetchers({
         gmail: async () => [

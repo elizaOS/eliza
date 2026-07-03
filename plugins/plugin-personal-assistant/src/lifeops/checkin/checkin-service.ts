@@ -1,6 +1,6 @@
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
 import {
   type GetLifeOpsCalendarFeedRequest,
   type GetLifeOpsGmailTriageRequest,
@@ -1388,7 +1388,8 @@ export class CheckinService {
     }
     const prompt = buildCheckinSummaryPrompt(report);
     try {
-      const response = await runWithTrajectoryPurpose("lifeops-checkin-summary",
+      const response = await runWithTrajectoryPurpose(
+        "lifeops-checkin-summary",
         () =>
           this.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,

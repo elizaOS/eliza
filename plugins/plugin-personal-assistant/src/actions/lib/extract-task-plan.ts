@@ -17,7 +17,7 @@ import {
   parseJsonModelRecord,
   recentConversationTexts,
   runExtractorPipeline,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import {
   LIFEOPS_REMINDER_INTENSITIES,
@@ -577,7 +577,8 @@ export async function extractUnlockModeWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-extract-task-plan-unlock",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-extract-task-plan-unlock",
       () =>
         args.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,

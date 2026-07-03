@@ -12,7 +12,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   recentConversationTexts,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import type {
@@ -487,7 +487,8 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-deferred-draft",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-deferred-draft",
       () =>
         args.runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,

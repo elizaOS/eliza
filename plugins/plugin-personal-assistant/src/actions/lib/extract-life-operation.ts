@@ -3,7 +3,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   runExtractorPipeline,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { resolveContextWindow } from "../../lifeops/defaults.js";
@@ -294,7 +294,8 @@ async function recoverCoreLifeOperationWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await runWithTrajectoryPurpose("lifeops-extract-life-operation",
+    const result = await runWithTrajectoryPurpose(
+      "lifeops-extract-life-operation",
       () =>
         args.runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,

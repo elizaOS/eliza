@@ -636,37 +636,42 @@ export async function executeInboxQueueOperation(args: {
         typeof args.params.limit === "number" && args.params.limit > 0
           ? Math.floor(args.params.limit)
           : 50;
-      // 1. Pull fresh cross-channel messages through the same fan-out `list`
-      //    uses, then classify only the ones without a persisted entry yet.
-      //    `InboxService.triage` runs the LLM triage classifier
-      //    (`classifyMessages`, model calls tagged `purpose: "inbox_triage"`)
-      //    and persists one triage entry per new message.
-      const since =
-        typeof args.params.since === "string" &&
-        args.params.since.trim().length > 0
-          ? args.params.since.trim()
-          : undefined;
-      const { merged } = await fetchInboxItems({
-        runtime: args.runtime,
-        platforms: resolvePlatforms(args.params.platforms),
-        ...(since ? { since } : {}),
-        limit,
-      });
-      const alreadyTriaged = await repo.getBySourceMessageIds(
-        merged.map((item) => item.id),
-      );
-      const freshMessages = merged
-        .filter((item) => !alreadyTriaged.has(item.id))
-        .map((item) => toInboundMessage(item));
+      const classification = parseClassification(args.params.classification);
       let classifiedCount = 0;
-      if (freshMessages.length > 0) {
-        const service = new InboxService(args.runtime);
-        const { triaged } = await service.triage(freshMessages);
-        classifiedCount = triaged.length;
+      // A `classification` filter is a read of the already-persisted queue
+      // ("show my urgent items") — serve the filtered rows without the
+      // cross-channel fetch + LLM classification pass.
+      if (!classification) {
+        // 1. Pull fresh cross-channel messages through the same fan-out
+        //    `list` uses, then classify only the ones without a persisted
+        //    entry yet. `InboxService.triage` runs the LLM triage classifier
+        //    (`classifyMessages`, model calls tagged `purpose:
+        //    "inbox_triage"`) and persists one triage entry per new message.
+        const since =
+          typeof args.params.since === "string" &&
+          args.params.since.trim().length > 0
+            ? args.params.since.trim()
+            : undefined;
+        const { merged } = await fetchInboxItems({
+          runtime: args.runtime,
+          platforms: resolvePlatforms(args.params.platforms),
+          ...(since ? { since } : {}),
+          limit,
+        });
+        const alreadyTriaged = await repo.getBySourceMessageIds(
+          merged.map((item) => item.id),
+        );
+        const freshMessages = merged
+          .filter((item) => !alreadyTriaged.has(item.id))
+          .map((item) => toInboundMessage(item));
+        if (freshMessages.length > 0) {
+          const service = new InboxService(args.runtime);
+          const { triaged } = await service.triage(freshMessages);
+          classifiedCount = triaged.length;
+        }
       }
       // 2. Return the pending queue, which now includes the rows the
       //    classifier just persisted.
-      const classification = parseClassification(args.params.classification);
       const entries = classification
         ? await repo.getByClassification(classification, {
             limit,

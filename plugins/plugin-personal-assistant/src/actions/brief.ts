@@ -29,7 +29,7 @@ import {
   logger,
   ModelType,
   resolveOptimizedPromptForRuntime,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
@@ -545,9 +545,8 @@ async function composeNarrative(args: {
   // which all fall back to a safe default rather than propagating the error.
   let raw: unknown;
   try {
-    raw = await runWithTrajectoryContext(
-      { purpose: args.optimizationTask },
-      () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+    raw = await runWithTrajectoryPurpose(args.optimizationTask, () =>
+      args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
     );
   } catch (error) {
     logger.warn(

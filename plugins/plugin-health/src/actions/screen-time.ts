@@ -10,7 +10,7 @@ import type {
 } from "@elizaos/core";
 import {
   resolveOptimizedPromptForRuntime,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type {
   LifeOpsScreenTimeDaily,
@@ -522,19 +522,17 @@ export function createScreenTimeActionRunner(
     >(
       payload: RespondPayload<T>,
     ): Promise<ActionResult> => {
-      const text = await runWithTrajectoryContext(
-        { purpose: "screentime_recap" },
-        () =>
-          adapters.renderReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: payload.scenario,
-            fallback: payload.fallback,
-            context: payload.context,
-            additionalRules: buildScreenTimeRecapRules(runtime),
-          }),
+      const text = await runWithTrajectoryPurpose("screentime_recap", () =>
+        adapters.renderReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: payload.scenario,
+          fallback: payload.fallback,
+          context: payload.context,
+          additionalRules: buildScreenTimeRecapRules(runtime),
+        }),
       );
       await callback?.({ text, source: "action", action: ACTION_NAME });
       return {

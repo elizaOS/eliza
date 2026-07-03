@@ -83,7 +83,7 @@ import {
   logger,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type {
   ApprovalAction,
@@ -541,8 +541,8 @@ export async function planJob(
   const prompt = buildPrompt(jobContext);
   let result: unknown;
   try {
-    result = await runWithTrajectoryPurpose("lifeops-background-planner",
-      () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    result = await runWithTrajectoryPurpose("lifeops-background-planner", () =>
+      runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
   } catch (error) {
     throw new BackgroundPlannerError(

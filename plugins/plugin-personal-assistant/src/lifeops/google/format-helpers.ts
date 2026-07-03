@@ -3,7 +3,7 @@ import {
   assertActiveTrajectoryForLlmCall,
   ModelType,
   parseJsonModelRecord,
-  runWithTrajectoryContext,
+  runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
@@ -104,8 +104,8 @@ export async function runLifeOpsTextModel(
   });
 
   try {
-    const result = await runWithTrajectoryContext(
-      { purpose: args.purpose ?? `lifeops-${args.actionType}` },
+    const result = await runWithTrajectoryPurpose(
+      args.purpose ?? `lifeops-${args.actionType}`,
       () =>
         args.runtime.useModel(modelType, {
           prompt: args.prompt,

@@ -21,7 +21,7 @@
 // can't import its runtime helpers from here. We type-shape the parts we
 // touch and provide a local fallback for cluster memory lookup.
 import type { IAgentRuntime, Memory, Room, Service, UUID } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
 
 type RelationshipsPersonSummary = {
   groupId: UUID;
@@ -859,7 +859,8 @@ async function embedQuery(
   runtime: IAgentRuntime,
   text: string,
 ): Promise<number[] | null> {
-  const result = await runWithTrajectoryPurpose("lifeops-cross-channel-search-embedding",
+  const result = await runWithTrajectoryPurpose(
+    "lifeops-cross-channel-search-embedding",
     () => runtime.useModel(ModelType.TEXT_EMBEDDING, { text }),
   );
   if (Array.isArray(result)) {
