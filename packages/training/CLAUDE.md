@@ -14,8 +14,10 @@ applies to everything under `packages/training/`.
 - **TESTING HARNESS:** Nebius (OpenAI-compatible inference endpoint
   used for rollouts during RL — `NEBIUS_BASE_URL`, `NEBIUS_API_KEY`).
 - **Continuous RL data:** on-disk JSONL exports under
-  `${ELIZA_STATE_DIR:-~/.eliza/state}/trajectories/`, written by the
-  eliza native trajectory recorder. No database dependency.
+  `${ELIZA_STATE_DIR}/trajectories/`, written by the eliza native trajectory
+  recorder. The state dir resolves (see `packages/core/src/utils/state-dir.ts`)
+  as `ELIZA_STATE_DIR` → `$XDG_STATE_HOME/eliza` → `~/.local/state/eliza` — NOT
+  `~/.eliza/state`. No database dependency.
 
 Do not edit configs to point at non-Gemma base names or OpenAI judges —
 the lock above is the product contract.
