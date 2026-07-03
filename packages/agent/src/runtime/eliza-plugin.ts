@@ -168,8 +168,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
         // Commands are contributed through the runtime service registered by
         // the commands plugin — no import edge into it, and the service
         // appends without resetting commands other plugins registered.
-        const commands =
-          runtime.getService<CommandRegistryService>("commands");
+        const commands = runtime.getService<CommandRegistryService>("commands");
         if (!commands) return false;
 
         let registered = 0;

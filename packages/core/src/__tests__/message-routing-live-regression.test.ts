@@ -527,7 +527,12 @@ describe("live routing regressions", () => {
 		const leanChatActions: Array<Pick<Action, "name" | "similes" | "tags">> = [
 			{
 				name: "TERMINAL_SHELL",
-				similes: ["RUN_IN_TERMINAL", "EXECUTE_COMMAND", "TERMINAL", "RUN_SHELL"],
+				similes: [
+					"RUN_IN_TERMINAL",
+					"EXECUTE_COMMAND",
+					"TERMINAL",
+					"RUN_SHELL",
+				],
 			},
 			{ name: "REPLY", similes: ["RESPOND"] },
 		];

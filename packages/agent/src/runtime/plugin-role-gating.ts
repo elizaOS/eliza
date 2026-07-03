@@ -228,13 +228,59 @@ function gateProvider(provider: Provider, tier: RoleGateTier): void {
 }
 
 /**
- * Apply role gating to all registered plugins. Call after runtime.initialize().
+ * Hard-withhold a provider's output. Used as the fail-closed fallback when a
+ * sensitive provider cannot be gated normally: rather than leaving its original
+ * `get` exposed (fail-open), replace it with one that returns no content for
+ * every caller so owner/admin-tier context can never leak.
+ */
+function withholdProvider(provider: Provider): void {
+  const redact = async (): Promise<ProviderResult> => ({ text: "" });
+  try {
+    provider.get = redact;
+  } catch {
+    // `get` may be a read-only data property; force-replace it when the
+    // property is configurable so withholding still wins over exposure.
+    Object.defineProperty(provider, "get", {
+      value: redact,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+  }
+  // Mark as gated at the strictest tier so a subsequent pass treats it as done.
+  try {
+    (provider as { __roleGate?: RoleGateTier }).__roleGate = "owner";
+  } catch {
+    // Best-effort marker only; the withholding above already applied.
+  }
+}
+
+function withholdSensitiveProviders(plugin: Plugin): number {
+  let withheld = 0;
+  for (const provider of plugin.providers ?? []) {
+    const providerName = (provider as { name?: string }).name ?? "";
+    if (!PROVIDER_ROLE_OVERRIDES[providerName]) continue;
+    withholdProvider(provider);
+    withheld++;
+  }
+  return withheld;
+}
+
+/**
+ * Apply role gating to the given plugins. Safe to call repeatedly and per
+ * plugin: `gateProvider` is idempotent (already-gated providers are skipped),
+ * so this doubles as the register-time chokepoint hook.
  *
  * Providers in PROVIDER_ROLE_OVERRIDES get gated. Actions are intentionally
  * not wrapped here; use action.roleGate.
+ *
+ * Fail-closed: if wrapping a sensitive provider throws, its content is withheld
+ * entirely and the failure is logged at ERROR — redaction is never silently
+ * disabled.
  */
 export function applyPluginRoleGating(plugins: Plugin[]): void {
-  let totalProviders = 0;
+  let gatedProviders = 0;
+  let withheldProviders = 0;
 
   for (const plugin of plugins) {
     // Gate providers
@@ -242,17 +288,77 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
       for (const provider of plugin.providers) {
         const providerName = (provider as { name?: string }).name ?? "";
         const providerTier = PROVIDER_ROLE_OVERRIDES[providerName];
-        if (providerTier) {
+        if (!providerTier) continue;
+        try {
           gateProvider(provider, providerTier);
-          totalProviders++;
+          gatedProviders++;
+        } catch (err) {
+          // Fail closed: a sensitive provider we could not wrap must not be
+          // exposed. Withhold its content and report loudly — never silently
+          // leave redaction disabled.
+          withholdProvider(provider);
+          withheldProviders++;
+          logger.error(
+            `[role-gating] Failed to gate sensitive provider "${providerName}" (tier=${providerTier}); withholding its content to fail closed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
         }
       }
     }
   }
 
-  if (totalProviders > 0) {
-    logger.info(`[role-gating] Total: ${totalProviders} provider(s) gated`);
+  if (gatedProviders > 0) {
+    logger.info(`[role-gating] Total: ${gatedProviders} provider(s) gated`);
   }
+  if (withheldProviders > 0) {
+    logger.error(
+      `[role-gating] ${withheldProviders} sensitive provider(s) withheld after a gating failure (fail-closed)`,
+    );
+  }
+}
+
+type ProviderRoleGatingRuntime = Pick<IAgentRuntime, "registerPlugin"> & {
+  __elizaProviderRoleGatingInstalled?: boolean;
+};
+
+/**
+ * Install the durable provider-gating chokepoint on runtime.registerPlugin so
+ * boot-time plugins and post-boot hot-installs are gated identically.
+ */
+export function installProviderRoleGatingChokepoint(
+  runtime: ProviderRoleGatingRuntime,
+): void {
+  if (runtime.__elizaProviderRoleGatingInstalled) return;
+
+  const originalRegisterPlugin = runtime.registerPlugin.bind(runtime);
+  runtime.registerPlugin = async (plugin: Plugin): Promise<void> => {
+    try {
+      applyPluginRoleGating([plugin]);
+    } catch (err) {
+      let withheld = 0;
+      try {
+        withheld = withholdSensitiveProviders(plugin);
+      } catch (withholdErr) {
+        logger.error(
+          `[role-gating] Provider role-gating failed for plugin "${plugin?.name}" and sensitive provider withholding also failed; blocking registration to fail closed: ${
+            withholdErr instanceof Error
+              ? withholdErr.message
+              : String(withholdErr)
+          }`,
+        );
+        throw err;
+      }
+      logger.error(
+        `[role-gating] Provider role-gating failed for plugin "${plugin?.name}"; withheld ${withheld} sensitive provider(s) to fail closed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    return originalRegisterPlugin(plugin);
+  };
+
+  runtime.__elizaProviderRoleGatingInstalled = true;
 }
 
 /** Exported for testing. */

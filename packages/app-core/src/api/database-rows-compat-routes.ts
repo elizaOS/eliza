@@ -66,6 +66,9 @@ export async function handleDatabaseRowsCompatRoute(
   }
 
   const ensureOwner = deps.ensureOwner ?? ensureRouteMinRole;
+  // Raw table reads expose arbitrary tables (secrets, sessions, identities),
+  // so this must require OWNER - matching the sibling `/api/secrets/*` routes -
+  // rather than accepting any active session.
   if (!(await ensureOwner(req, res, state, "OWNER"))) {
     return true;
   }

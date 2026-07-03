@@ -7,10 +7,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // getLastFailedPluginDetails() accessor from @elizaos/agent — not by re-reading
 // a private globalThis symbol. Mock the accessor to prove the wiring
 // (Refs #12091 items 30/31).
+type FailedPluginDetail = { name: string; error: string };
+
 const { getLastFailedPluginDetails } = vi.hoisted(() => ({
-  getLastFailedPluginDetails: vi.fn<[], { name: string; error: string }[]>(
-    () => [],
-  ),
+  getLastFailedPluginDetails: vi.fn<() => FailedPluginDetail[]>(() => []),
 }));
 
 vi.mock("@elizaos/agent", () => ({

@@ -1,4 +1,4 @@
-import type { TargetEnumerationContext, TargetSource } from "@elizaos/core";
+import type { TargetSource } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   createElizaConnectorTargetCatalog,
@@ -68,7 +68,9 @@ describe("createElizaConnectorTargetCatalog", () => {
   });
 
   it("forwards groupId + getConfig + fetch/clock seams into enumerate", async () => {
-    const enumerate = vi.fn(async () => DISCORD_GROUPS);
+    const enumerate = vi.fn<TargetSource["enumerate"]>(
+      async () => DISCORD_GROUPS,
+    );
     const getConfig = () => ({ connectors: { discord: { token: "tok" } } });
     const fetchImpl = (async () => new Response()) as unknown as typeof fetch;
     const now = () => 123;
@@ -83,7 +85,8 @@ describe("createElizaConnectorTargetCatalog", () => {
     });
     await catalog.listGroups({ platform: "discord", groupId: "g1" });
 
-    const ctx = enumerate.mock.calls[0]?.[0] as TargetEnumerationContext;
+    const ctx = enumerate.mock.calls.at(0)?.[0];
+    if (!ctx) throw new Error("expected enumerate to receive a context");
     expect(ctx.groupId).toBe("g1");
     expect(ctx.getConfig).toBe(getConfig);
     expect(ctx.fetchImpl).toBe(fetchImpl);

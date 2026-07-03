@@ -510,7 +510,17 @@ function actionResultToStreamingResult(
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
 
-function getGateFailure(
+/**
+ * The single authoritative access gate for running an action's handler.
+ * Enforces (in order): the private-action turn gate, ACTION_ROLE_POLICY, the
+ * action's contextGate, and the action's roleGate. Returns a human-readable
+ * reason string when the action must be blocked, or `undefined` when allowed.
+ *
+ * Exported so alternate execution entry points (e.g. the pre-LLM shortcut gate
+ * in services/message.ts) enforce the exact same policy instead of duplicating
+ * it — callers MUST supply already-resolved `ctx.userRoles`.
+ */
+export function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {

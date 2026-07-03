@@ -19,6 +19,11 @@ import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
 } from "../../prompts.ts";
+import {
+	getConfiguredOwnerEntityIds,
+	type RolesWorldMetadata,
+	recordOwnerGrant,
+} from "../../roles.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
 import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
@@ -39,7 +44,6 @@ import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
 import { TargetSourceRegistryService } from "../../target-sources/registry.ts";
-import type { Role } from "../../types/environment.ts";
 import { EventType } from "../../types/events.ts";
 import type {
 	ActionEventPayload,
@@ -69,7 +73,11 @@ import type {
 import { MemoryType } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
-import { ChannelType, ContentType } from "../../types/primitives.ts";
+import {
+	ChannelType,
+	ContentType,
+	type JsonValue,
+} from "../../types/primitives.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -89,8 +97,6 @@ import {
 } from "../autonomy/providers.ts";
 import { autonomyRoutes } from "../autonomy/routes.ts";
 import { AutonomyService } from "../autonomy/service.ts";
-
-const ROLE_OWNER: Role = "OWNER";
 
 // Re-export action and provider modules
 export * from "./actions/index.ts";
@@ -813,18 +819,24 @@ const syncSingleUser = async (
 	const roomId = createUniqueUuid(runtime, channelId);
 	const worldId = createUniqueUuid(runtime, messageServerId);
 
-	const worldMetadata =
-		type === ChannelType.DM
-			? {
-					ownership: {
-						ownerId: entityId,
-					},
-					roles: {
-						[entityId]: ROLE_OWNER,
-					},
-					settings: {}, // Initialize empty settings for setup
-				}
-			: undefined;
+	// DM worlds get an empty settings bucket for setup. Ownership is NOT granted
+	// to whoever happens to be DMing the agent: hardcoding
+	// `ownership.ownerId = entityId` + `roles[entityId] = OWNER` here promoted
+	// EVERY DM sender to OWNER (clearing every `minRole: OWNER` gate, including
+	// SECRETS) whenever no canonical owner was configured — the default. Owner
+	// resolution belongs to roles.ts. Only record an OWNER grant when this sender
+	// is a CONFIGURED owner (ELIZA_ADMIN_ENTITY_ID / owner contacts), via the
+	// sanctioned `recordOwnerGrant` API (explicit + auditable, #9948); otherwise
+	// leave the world ownerless so the sender resolves to a non-OWNER role.
+	let worldMetadata: Record<string, JsonValue> | undefined;
+	if (type === ChannelType.DM) {
+		const dmMetadata: Record<string, JsonValue> = { settings: {} };
+		if (getConfiguredOwnerEntityIds(runtime).includes(entityId)) {
+			dmMetadata.ownership = { ownerId: entityId };
+			recordOwnerGrant(dmMetadata as unknown as RolesWorldMetadata, entityId);
+		}
+		worldMetadata = dmMetadata;
+	}
 
 	runtime.logger.info(
 		{

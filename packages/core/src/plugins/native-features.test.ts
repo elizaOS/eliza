@@ -13,9 +13,9 @@ import {
 // self-consistent (which is what makes the generic loop pick the features up),
 // and that the two folded-in features default OFF (flag is an explicit override).
 describe("native runtime feature registry (#12092 item 32)", () => {
-	const features = Object.keys(
-		nativeRuntimeFeatureDefaults,
-	) as Array<keyof typeof nativeRuntimeFeatureDefaults>;
+	const features = Object.keys(nativeRuntimeFeatureDefaults) as Array<
+		keyof typeof nativeRuntimeFeatureDefaults
+	>;
 
 	it("includes advancedPlanning and advancedMemory, defaulting OFF", () => {
 		expect(nativeRuntimeFeatureDefaults.advancedPlanning).toBe(false);

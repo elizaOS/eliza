@@ -455,33 +455,29 @@ async function resolveAuthorizedRouteRole(
 
   if (isTrustedLocalRequest(req)) return { ok: true, role: "OWNER" };
 
-  const db = options.state?.current?.adapter?.db;
-  const store = options.store
-    ? options.store
-    : db
-      ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
-      : null;
-  if (!db) {
+  const state = "state" in options ? options.state : undefined;
+  const db = state?.current?.adapter?.db;
+  const store =
+    "store" in options && options.store
+      ? options.store
+      : db
+        ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
+        : null;
+
+  if (!store) {
     const expectedToken = getCompatApiToken();
-    if (!store && !expectedToken) {
+    if (!expectedToken) {
       recordFailedAuth(ip);
       return { ok: false, status: 401, reason: "Unauthorized" };
     }
 
     const providedToken = getProvidedApiToken(req);
-    if (
-      !store &&
-      expectedToken &&
-      providedToken &&
-      tokenMatches(expectedToken, providedToken)
-    ) {
+    if (providedToken && tokenMatches(expectedToken, providedToken)) {
       return { ok: true, role: "OWNER" };
     }
 
-    if (!store) {
-      recordFailedAuth(ip);
-      return { ok: false, status: 401, reason: "Unauthorized" };
-    }
+    recordFailedAuth(ip);
+    return { ok: false, status: 401, reason: "Unauthorized" };
   }
 
   const method = (req.method ?? "GET").toUpperCase();
@@ -539,8 +535,8 @@ async function resolveAuthorizedRouteRole(
       resolveEmbedPrincipal(
         req,
         options.now,
-        "state" in options
-          ? (key) => readEmbedSessionSecretSetting(options.state.current, key)
+        state
+          ? (key) => readEmbedSessionSecretSetting(state.current, key)
           : options.readSetting,
       ),
     );

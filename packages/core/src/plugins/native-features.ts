@@ -10,6 +10,8 @@ import { advancedContactsProvider } from "../features/advanced-capabilities/prov
 import { factsProvider } from "../features/advanced-capabilities/providers/facts";
 import { followUpsProvider } from "../features/advanced-capabilities/providers/followUps";
 import { relationshipsProvider } from "../features/advanced-capabilities/providers/relationships";
+import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
+import { createAdvancedPlanningPlugin } from "../features/advanced-planning/index";
 import {
 	__setDocumentUrlFetchImplForTests,
 	DocumentService,
@@ -20,8 +22,6 @@ import {
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "../features/documents/index";
-import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
-import { createAdvancedPlanningPlugin } from "../features/advanced-planning/index";
 import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
 import { RelationshipsService } from "../services/relationships";

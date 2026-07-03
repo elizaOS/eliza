@@ -36,7 +36,8 @@ describe("TTS provider registry", () => {
     // handler comes from the loaded plugin's runtime registration; the default
     // fallback loader lives in tts-default-handler.ts.
     expect(
-      (DEFAULT_TEXT_TO_SPEECH_PROVIDER as { loadHandler?: unknown }).loadHandler,
+      (DEFAULT_TEXT_TO_SPEECH_PROVIDER as { loadHandler?: unknown })
+        .loadHandler,
     ).toBeUndefined();
     expect(typeof DEFAULT_TEXT_TO_SPEECH_PROVIDER.wrapHandler).toBe("function");
   });

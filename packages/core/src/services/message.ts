@@ -75,6 +75,7 @@ import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
+	getGateFailure,
 } from "../runtime/execute-planned-tool-call";
 import {
 	type FactsAndRelationshipsRunResult,
@@ -5649,6 +5650,35 @@ export async function runShortcutGate(args: {
 
 	const action = args.runtime.actions.find((a) => a.name === target.name);
 	if (!action) return null;
+
+	// #8791/#12088: enforce the SAME access gate the planned-tool-call path
+	// applies (getGateFailure) BEFORE validating or running the target action.
+	// The shortcut path previously reached action.handler based only on the
+	// shortcut's own requiresAuth/requiresElevated flags, so a USER could hit an
+	// OWNER-gated action (e.g. SECRETS) via a shortcut lacking requiresElevated.
+	// The action's own contexts are treated as active — mirroring
+	// executeV5PlannedToolCall — so enforcement reduces to the declared
+	// role/context gates with identical strength to the planner path.
+	const gateFailure = getGateFailure(action, {
+		message: args.message,
+		state: args.state,
+		activeContexts: mergeAgentContexts(undefined, action.contexts),
+		userRoles: [args.senderRole],
+		previousResults: [],
+	});
+	if (gateFailure) {
+		args.runtime.logger?.debug?.(
+			{
+				src: "shortcut-gate",
+				shortcut: match.shortcut.id,
+				action: action.name,
+				senderRole: args.senderRole,
+				gateFailure,
+			},
+			"shortcut target blocked by action gate; falling through to pipeline",
+		);
+		return null;
+	}
 
 	let valid = false;
 	try {

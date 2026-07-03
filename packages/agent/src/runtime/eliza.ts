@@ -245,6 +245,10 @@ import {
   PGLITE_ERROR_CODES,
 } from "./pglite-error-compat.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
+import {
+  applyPluginRoleGating,
+  installProviderRoleGatingChokepoint,
+} from "./plugin-role-gating.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
@@ -2859,6 +2863,7 @@ interface RuntimeWithMethodBindings extends AgentRuntime {
   __elizaMethodBindingsInstalled?: boolean;
   __elizaComponentWriteDiagnosticsInstalled?: boolean;
   __elizaEntityWriteDiagnosticsInstalled?: boolean;
+  __elizaProviderRoleGatingInstalled?: boolean;
   __elizaEntityCreateMutex?: Promise<void>;
 }
 
@@ -3239,6 +3244,18 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
 
     runtimeWithBindings.__elizaEntityWriteDiagnosticsInstalled = true;
   }
+
+  // Provider role-gating chokepoint. EVERY plugin registration flows through
+  // runtime.registerPlugin — boot constructor plugins (core calls
+  // this.registerPlugin for each during initialize()), the deferred core-plugin
+  // waves, and post-boot hot-installs via the runtime API
+  // (packages/agent/src/api/plugin-runtime-apply.ts). Gating previously ran only
+  // as a one-shot boot pass, so hot-installed wallet/secrets plugins escaped
+  // redaction and leaked owner/admin-tier context to any sender. Wrapping
+  // registerPlugin gates sensitive providers at registration time, identically
+  // on every path, on both the boot and hot-reload runtimes. Installed here
+  // (before runtime.initialize()) so constructor plugins pass through it too.
+  installProviderRoleGatingChokepoint(runtimeWithBindings);
 
   runtimeWithBindings.__elizaMethodBindingsInstalled = true;
 }
@@ -4824,11 +4841,16 @@ export async function startEliza(
 
   const applyPluginRoleGatingIfAvailable = async (): Promise<void> => {
     try {
-      const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
+      // Belt-and-suspenders full-graph sweep. The durable enforcement point is
+      // the registerPlugin wrapper in installRuntimeMethodBindings, which gates
+      // each plugin at registration time; this re-gates the whole graph and is
+      // idempotent (already-gated providers are skipped). applyPluginRoleGating
+      // is fail-closed per provider.
       applyPluginRoleGating(runtime.plugins ?? []);
     } catch (err) {
-      logger.debug(
-        `[eliza] Plugin provider role gating skipped: ${formatError(err)}`,
+      // Never silently disable redaction — report loudly at ERROR.
+      logger.error(
+        `[eliza] Plugin provider role gating sweep failed: ${formatError(err)}`,
       );
     }
   };
@@ -5775,13 +5797,15 @@ export async function startEliza(
           );
 
           try {
-            const { applyPluginRoleGating } = await import(
-              "./plugin-role-gating.ts"
-            );
+            // Belt-and-suspenders full-graph sweep; the registerPlugin wrapper
+            // (installed on newRuntime via installRuntimeMethodBindings above)
+            // is the durable enforcement point and already gated each plugin at
+            // registration time. This re-gate is idempotent.
             applyPluginRoleGating(newRuntime.plugins ?? []);
           } catch (err) {
-            logger.debug(
-              `[eliza] Hot-reload plugin provider role gating skipped: ${formatError(err)}`,
+            // Never silently disable redaction — report loudly at ERROR.
+            logger.error(
+              `[eliza] Hot-reload plugin provider role gating sweep failed: ${formatError(err)}`,
             );
           }
 

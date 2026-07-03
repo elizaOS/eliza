@@ -31,9 +31,7 @@ function readTextToSpeechHandler(
 }
 
 export async function loadDefaultTextToSpeechHandler(): Promise<TtsModelHandler> {
-  const mod = (await import(
-    "@elizaos/plugin-edge-tts"
-  )) as EdgeTtsPluginModule;
+  const mod = (await import("@elizaos/plugin-edge-tts")) as EdgeTtsPluginModule;
   const handler = readTextToSpeechHandler(mod);
   if (!handler) {
     throw new Error(

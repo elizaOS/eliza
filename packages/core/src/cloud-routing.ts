@@ -9,7 +9,7 @@ export type {
 export {
 	cloudServiceApisBaseUrl,
 	isCloudConnected,
-	resolveCloudRoute,
 	type RuntimeSettings as CloudRuntimeSettings,
+	resolveCloudRoute,
 	toRuntimeSettings,
 } from "@elizaos/cloud-routing";

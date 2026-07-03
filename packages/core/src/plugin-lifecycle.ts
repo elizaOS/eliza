@@ -1,5 +1,4 @@
 import { roleRank } from "./runtime/context-gates";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
 import type { RegisteredEvaluator } from "./types/evaluator";
 import type {
@@ -284,19 +283,22 @@ function applyEffectiveActionContexts(
 	};
 }
 
-const DEFAULT_CONTEXT_ROLE_BY_ID = new Map(
-	DEFAULT_CONTEXT_DEFINITIONS.map((definition) => [
-		String(definition.id),
-		definition.roleGate?.minRole,
-	]),
-);
-
+/**
+ * Derive an action's effective role gate from the role gates declared by the
+ * contexts it is tagged with. Resolution goes through the PER-RUNTIME context
+ * registry (`runtime.contexts`) so contexts registered at runtime by plugins
+ * via `runtime.contexts.register(...)` participate — not just the first-party
+ * defaults. (Previously this read a module-level snapshot of the default
+ * contexts, so a plugin-registered context declaring `minRole: OWNER` was
+ * invisible and the gate silently collapsed to USER — a permission bypass.)
+ */
 function roleGateForActionContexts(
+	runtime: IAgentRuntime,
 	contexts: readonly AgentContext[] | undefined,
 ): RoleGate {
 	let minRole: RoleGateRole = "USER";
 	for (const context of contexts ?? []) {
-		const contextRole = DEFAULT_CONTEXT_ROLE_BY_ID.get(String(context));
+		const contextRole = runtime.contexts.get(context)?.roleGate?.minRole;
 		if (contextRole && roleRank(contextRole) > roleRank(minRole)) {
 			minRole = contextRole;
 		}
@@ -305,16 +307,22 @@ function roleGateForActionContexts(
 }
 
 function applyEffectiveActionAccess(
+	runtime: IAgentRuntime,
 	action: RuntimeAction,
 	pluginContexts: Plugin["contexts"] | undefined,
 ): RuntimeAction {
 	const withContexts = applyEffectiveActionContexts(action, pluginContexts);
 	const roleGate =
-		withContexts.roleGate ?? roleGateForActionContexts(withContexts.contexts);
+		withContexts.roleGate ??
+		roleGateForActionContexts(runtime, withContexts.contexts);
 	const subActions = withContexts.subActions?.map((subAction) =>
 		typeof subAction === "string"
 			? subAction
-			: applyEffectiveActionAccess(subAction as RuntimeAction, undefined),
+			: applyEffectiveActionAccess(
+					runtime,
+					subAction as RuntimeAction,
+					undefined,
+				),
 	);
 
 	if (withContexts === action) {
@@ -771,7 +779,11 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const capture = pluginRegistrationContext.getStore();
 		const actionsBefore = runtimeWithLifecycle.actions.length;
 		originalRegisterAction(
-			applyEffectiveActionAccess(action, capture?.ownership.plugin.contexts),
+			applyEffectiveActionAccess(
+				runtimeWithLifecycle,
+				action,
+				capture?.ownership.plugin.contexts,
+			),
 		);
 		if (!capture || runtimeWithLifecycle.actions.length <= actionsBefore)
 			return;
