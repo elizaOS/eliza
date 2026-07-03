@@ -347,6 +347,26 @@ export default defineConfig({
           "index.ts",
         ),
       },
+      {
+        find: /^@elizaos\/plugin-calendar\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-calendar",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-calendar$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-calendar",
+          "src",
+          "index.ts",
+        ),
+      },
       // Lifeops decomposition: plugin-inbox / plugin-blocker are carved deps that
       // are NOT in build:core, so their unbuilt dist can't satisfy the subpath +
       // barrel imports plugin-personal-assistant pulls from them (vitest has no
