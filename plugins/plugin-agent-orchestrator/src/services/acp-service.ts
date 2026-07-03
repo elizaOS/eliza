@@ -979,6 +979,7 @@ export class AcpService extends Service {
         session.acpxSessionId ?? session.agentSessionId ?? session.id,
       );
       await this.store.updateStatus(sessionId, "cancelled");
+      void this.revokeModelLease(sessionId, "cancelSession:native");
       return;
     }
     const active = this.activeProcesses.get(sessionId);
@@ -999,6 +1000,7 @@ export class AcpService extends Service {
       });
     }
     await this.store.updateStatus(sessionId, "cancelled");
+    void this.revokeModelLease(sessionId, "cancelSession");
   }
 
   async closeSession(sessionId: string): Promise<void> {
@@ -1565,8 +1567,10 @@ export class AcpService extends Service {
       };
       if (stopped) {
         await this.store.updateStatus(session.id, "stopped");
+        void this.revokeModelLease(session.id, "native_prompt:stopped");
       } else if (cancelled) {
         await this.store.updateStatus(session.id, "cancelled");
+        void this.revokeModelLease(session.id, "native_prompt:cancelled");
       } else if (finalStopReason === "error" && !finalText?.trim()) {
         // Mirror the handleAcpEvent guard: a stopReason-error session that still
         // captured a real deliverable is relayed as a completion, so don't mark
@@ -1577,6 +1581,7 @@ export class AcpService extends Service {
           "errored",
           "ACP prompt ended with stopReason error",
         );
+        void this.revokeModelLease(session.id, "native_prompt:error");
       } else {
         await this.store.update(session.id, {
           status: "ready",
@@ -1588,6 +1593,7 @@ export class AcpService extends Service {
       const message = errorMessage(err);
       if (this.nativeStoppingSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "stopped");
+        void this.revokeModelLease(session.id, "native_prompt:stopped");
         return {
           sessionId: session.id,
           response: finalText,
@@ -1600,6 +1606,7 @@ export class AcpService extends Service {
       }
       if (this.nativeCancelledPromptSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "cancelled");
+        void this.revokeModelLease(session.id, "native_prompt:cancelled");
         return {
           sessionId: session.id,
           response: finalText,

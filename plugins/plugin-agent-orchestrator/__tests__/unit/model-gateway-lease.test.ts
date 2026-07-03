@@ -378,6 +378,60 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     await service.stop();
   });
 
+  it("cancelSession (real native cancel path) revokes the lease and kills model access", async () => {
+    enableGateway();
+    const gateway = new FakeGateway();
+    configureModelGatewayLease({ broker: gateway.broker() });
+    const { service, sessionId, env } = await spawnWith();
+    const token = env.OPENAI_API_KEY ?? "";
+    expect(gateway.callModel(token)).toBe(200);
+
+    await service.cancelSession(sessionId);
+    await settle();
+
+    expect(gateway.revoked).toEqual(["lease-1"]);
+    expect(gateway.callModel(token)).toBe(401);
+    await service.stop();
+  });
+
+  it("native prompt cancellation revokes the lease even without a session event", async () => {
+    enableGateway();
+    const gateway = new FakeGateway();
+    configureModelGatewayLease({ broker: gateway.broker() });
+    const { service, sessionId, env } = await spawnWith();
+    const token = env.OPENAI_API_KEY ?? "";
+    firstNativeClient().prompt.mockResolvedValueOnce({
+      stopReason: "cancelled",
+    });
+    expect(gateway.callModel(token)).toBe(200);
+
+    const result = await service.sendToSession(sessionId, "cancel me");
+    await settle();
+
+    expect(result.stopReason).toBe("cancelled");
+    expect(gateway.revoked).toEqual(["lease-1"]);
+    expect(gateway.callModel(token)).toBe(401);
+    await service.stop();
+  });
+
+  it("native prompt error with no output revokes the lease even without a session event", async () => {
+    enableGateway();
+    const gateway = new FakeGateway();
+    configureModelGatewayLease({ broker: gateway.broker() });
+    const { service, sessionId, env } = await spawnWith();
+    const token = env.OPENAI_API_KEY ?? "";
+    firstNativeClient().prompt.mockResolvedValueOnce({ stopReason: "error" });
+    expect(gateway.callModel(token)).toBe(200);
+
+    const result = await service.sendToSession(sessionId, "fail");
+    await settle();
+
+    expect(result.stopReason).toBe("error");
+    expect(gateway.revoked).toEqual(["lease-1"]);
+    expect(gateway.callModel(token)).toBe(401);
+    await service.stop();
+  });
+
   it("service.stop() revokes leases still live at teardown", async () => {
     enableGateway();
     const gateway = new FakeGateway();
