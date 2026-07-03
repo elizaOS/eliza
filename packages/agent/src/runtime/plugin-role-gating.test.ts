@@ -129,6 +129,55 @@ describe("applyPluginRoleGating", () => {
   });
 });
 
+describe("declared provider roleGate is enforced (#12087 Item 14)", () => {
+  beforeEach(() => {
+    rolesMock.checkSenderRole.mockReset();
+  });
+
+  function gatedProvider(name: string, minRole: string): Provider {
+    return {
+      name,
+      roleGate: { minRole },
+      get: vi.fn(async () => ({ text: `${name}: visible` })),
+    } as unknown as Provider;
+  }
+
+  async function textFor(
+    minRole: string,
+    callerRole: string,
+  ): Promise<string | undefined> {
+    rolesMock.checkSenderRole.mockResolvedValue({
+      role: callerRole,
+      isOwner: callerRole === "OWNER",
+      isAdmin: callerRole === "OWNER" || callerRole === "ADMIN",
+    });
+    // A name NOT in PROVIDER_ROLE_OVERRIDES — gating must come from the
+    // provider's own declared roleGate, not the override map.
+    const gated = gatedProvider("NOT_IN_OVERRIDES_PROVIDER", minRole);
+    applyPluginRoleGating([pluginWithProviders([gated])]);
+    const result = await gated.get?.(
+      runtime,
+      message({ fromId: "discord-user-1" }),
+      {} as State,
+    );
+    return result?.text;
+  }
+
+  it("redacts an ADMIN-declared provider for USER, passes for ADMIN", async () => {
+    expect(await textFor("ADMIN", "USER")).toBe("");
+    expect(await textFor("ADMIN", "ADMIN")).toBe(
+      "NOT_IN_OVERRIDES_PROVIDER: visible",
+    );
+  });
+
+  it("passes a USER-declared provider for USER, redacts for GUEST", async () => {
+    expect(await textFor("USER", "USER")).toBe(
+      "NOT_IN_OVERRIDES_PROVIDER: visible",
+    );
+    expect(await textFor("USER", "GUEST")).toBe("");
+  });
+});
+
 describe("override tiers map onto canonical role ranks", () => {
   it("normalizes each lowercase tier to a canonical role rank", () => {
     expect(roleRank(TIER_TO_CANONICAL_ROLE.user)).toBe(roleRank("USER"));

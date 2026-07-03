@@ -10,7 +10,6 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
-import { hasAdminAccess } from "../security/access.ts";
 
 const MAX_CONTACTS = 10;
 
@@ -52,17 +51,15 @@ export const rolodexProvider: Provider = {
   contextGate: { anyOf: ["contacts", "memory"] },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // #12087 Item 14: was USER but the body enforced ADMIN (hasAdminAccess).
+  // Declared roleGate is now enforced by applyPluginRoleGating.
+  roleGate: { minRole: "ADMIN" },
 
   async get(
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasAdminAccess(runtime, _message))) {
-      return { text: "", values: {}, data: {} };
-    }
-
     try {
       const graphService = runtime.getService<
         Service & RelationshipsGraphService

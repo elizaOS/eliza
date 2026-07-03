@@ -111,9 +111,14 @@ export function filterByContextGate<T extends ContextGateCandidate>(
 	userRoles?: readonly RoleGateRole[],
 ): T[] {
 	return items.filter((item) => {
-		const gate: ContextGate | undefined = item.contextGate ?? {
-			contexts: item.contexts,
-			roleGate: item.roleGate,
+		// #12087 Item 14: an explicit contextGate must NOT shadow the item's
+		// top-level roleGate. A contextGate adds context requirements; it does not
+		// waive the declared role requirement. Fall back to item.roleGate whenever the
+		// contextGate does not specify its own.
+		const explicit = item.contextGate;
+		const gate: ContextGate = {
+			contexts: explicit?.contexts ?? item.contexts,
+			roleGate: explicit?.roleGate ?? item.roleGate,
 		};
 		return satisfiesContextGate(activeContexts, gate, userRoles);
 	});

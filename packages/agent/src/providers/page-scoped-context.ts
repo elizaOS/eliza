@@ -19,7 +19,6 @@ import {
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.ts";
 import type { ConversationScope } from "../api/server-types.ts";
-import { hasOwnerAccess } from "../security/access.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
@@ -603,14 +602,12 @@ export const pageScopedContextProvider: Provider = {
   },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // #12087 Item 14: was USER but the body enforced OWNER (hasOwnerAccess).
+  // Declared roleGate is now enforced by applyPluginRoleGating.
+  roleGate: { minRole: "OWNER" },
 
   async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {
     try {
-      if (!(await hasOwnerAccess(runtime, message))) {
-        return EMPTY_RESULT;
-      }
-
       const room = await runtime.getRoom(message.roomId);
       const metadata = extractConversationMetadataFromRoom(room);
       const scope = metadata?.scope as ConversationScope | undefined;
