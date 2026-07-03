@@ -5,14 +5,12 @@ export interface TypingIndicatorProps {
   agentAvatarSrc?: string | null;
   agentName: string;
   className?: string;
-  dotClassName?: string;
   variant?: ChatVariant;
 }
 
 export function TypingIndicator({
   agentName,
   className,
-  dotClassName,
   variant = "default",
 }: TypingIndicatorProps) {
   if (variant === "game-modal") {
@@ -25,10 +23,7 @@ export function TypingIndicator({
           {[0, 150, 300].map((delay) => (
             <span
               key={delay}
-              className={
-                dotClassName ??
-                "h-1.5 w-1.5 rounded-full bg-[color:color-mix(in_srgb,var(--muted)_82%,transparent)] animate-bounce"
-              }
+              className="h-1.5 w-1.5 rounded-full bg-[color:color-mix(in_srgb,var(--muted)_82%,transparent)] animate-bounce"
               style={{ animationDelay: `${delay}ms` }}
             />
           ))}
@@ -46,10 +41,7 @@ export function TypingIndicator({
         {[0, 200, 400].map((delay) => (
           <span
             key={delay}
-            className={
-              dotClassName ??
-              "h-2 w-2 rounded-full bg-muted-strong animate-[typing-bounce_1.2s_ease-in-out_infinite]"
-            }
+            className="h-2 w-2 rounded-full bg-muted-strong animate-[typing-bounce_1.2s_ease-in-out_infinite]"
             style={{ animationDelay: `${delay}ms` }}
           />
         ))}

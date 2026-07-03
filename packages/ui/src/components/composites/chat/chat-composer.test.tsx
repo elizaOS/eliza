@@ -39,7 +39,6 @@ function renderInlineComposer(
     onToggleAgentVoice: vi.fn(),
     placeholder: "Message",
     t: (key) => key,
-    textareaAriaLabel: "Message",
     textareaRef: createRef<HTMLTextAreaElement>(),
     variant: "default",
     voice,

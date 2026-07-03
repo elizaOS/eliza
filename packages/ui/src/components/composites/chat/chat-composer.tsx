@@ -124,7 +124,6 @@ export interface ChatComposerProps {
   onToggleAgentVoice: () => void;
   showAgentVoiceToggle?: boolean;
   t: (key: string, options?: Record<string, unknown>) => string;
-  textareaAriaLabel?: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   variant: ChatVariant;
   voice: ChatComposerVoiceState;
@@ -157,7 +156,6 @@ export function ChatComposer({
   onToggleAgentVoice,
   hideAttachButton = false,
   placeholder,
-  textareaAriaLabel,
 }: ChatComposerProps) {
   const [isInlineMultiline, setIsInlineMultiline] = useState(false);
   const [inlineMeasureVersion, setInlineMeasureVersion] = useState(0);
@@ -387,7 +385,6 @@ export function ChatComposer({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           data-testid="chat-composer-textarea"
-          aria-label={textareaAriaLabel}
           variant={null}
           density={null}
           className={inlineTextareaClass}
@@ -624,7 +621,6 @@ export function ChatComposer({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           data-testid="chat-composer-textarea"
-          aria-label={textareaAriaLabel}
           variant={isInline ? null : undefined}
           density={isInline ? null : undefined}
           className={

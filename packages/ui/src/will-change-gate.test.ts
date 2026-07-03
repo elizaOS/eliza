@@ -14,8 +14,6 @@ const ALLOWED = new Set<string>([
   // The sidebar slide/scale animation (transform+opacity+filter, per frame).
   "components/composites/sidebar/sidebar-body.tsx",
   "components/composites/sidebar/sidebar-root.tsx",
-  // The single memoized chat message bubble's enter animation.
-  "cloud-ui/components/ai-elements/memoized-chat-message.tsx",
 ]);
 
 const SRC_ROOT = import.meta.dirname;

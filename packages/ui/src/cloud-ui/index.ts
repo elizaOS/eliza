@@ -5,17 +5,6 @@ export {
   TabsTrigger,
 } from "../components/ui/tabs";
 export * from "../hooks/useRenderGuard";
-export type {
-  ElizaAvatarProps,
-  MemoizedChatMessageMessage,
-  MemoizedChatMessageProps,
-} from "./components/ai-elements";
-export {
-  ElizaAvatar,
-  MemoizedChatMessage,
-  useReasoningTypewriter,
-  useTypewriterText,
-} from "./components/ai-elements";
 export {
   type AnalyticsExportFormat,
   type AnalyticsExportType,

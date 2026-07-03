@@ -10,7 +10,6 @@ const meta = {
     agentAvatarSrc: { control: "text" },
     variant: { control: "select", options: ["default", "game-modal"] },
     className: { control: "text" },
-    dotClassName: { control: "text" },
   },
   args: {
     agentName: "Eliza",
@@ -40,13 +39,5 @@ export const WithAvatar: Story = {
   args: {
     agentName: "Eliza",
     agentAvatarSrc: "https://placehold.co/40x40/png?text=E",
-  },
-};
-
-export const CustomDots: Story = {
-  args: {
-    agentName: "Eliza",
-    dotClassName:
-      "h-2 w-2 rounded-full bg-accent animate-[typing-bounce_1.2s_ease-in-out_infinite]",
   },
 };

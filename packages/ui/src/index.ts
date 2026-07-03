@@ -61,15 +61,6 @@ export * from "./chat/index";
 // App-hosted Eliza Cloud surfaces (API client, query client, steward-session
 // glue, cloud-route registry). Namespaced to avoid colliding with the many
 // generic names (`api`, `ApiError`, `queryClient`, …) in the root barrel.
-export {
-  ElizaAvatar,
-  type ElizaAvatarProps,
-  MemoizedChatMessage,
-  type MemoizedChatMessageMessage,
-  type MemoizedChatMessageProps,
-  useReasoningTypewriter,
-  useTypewriterText,
-} from "./cloud-ui/components/ai-elements";
 export { AuthorizeContent } from "./cloud-ui/components/auth/authorize-content";
 export * from "./cloud-ui/components/auth/authorize-return";
 export type { ConnectionCardProps } from "./cloud-ui/components/connection-card";

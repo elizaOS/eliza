@@ -38,7 +38,6 @@ export * from "../../components/ui/textarea";
 export * from "../../components/ui/toggle";
 export * from "../../components/ui/tooltip";
 export * from "../lib/utils";
-export * from "./ai-elements";
 export * from "./analytics";
 export { ApiKeyEmptyState } from "./api-key-empty-state";
 export * from "./brand";
