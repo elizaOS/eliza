@@ -5,6 +5,7 @@ import type {
 } from "../../../services/local-inference/types";
 import {
   assert,
+  WithAuthenticatedSession,
   waitForTestId,
 } from "../../../storybook/home-widget-decorator";
 import { MockAppProvider } from "../../../storybook/mock-providers";
@@ -108,9 +109,13 @@ function withHub(snapshot: ModelHubSnapshot): Decorator {
     }, 4_000);
     return (
       <MockAppProvider value={{ plugins: [], conversations: [] }}>
-        <div className="w-[360px] rounded-2xl bg-accent/20 p-3">
-          <Story />
-        </div>
+        {/* The hub fetch gates on `useIsAuthenticated()` (#11084); seed the
+            authenticated session or the widget stays dormant and self-hides. */}
+        <WithAuthenticatedSession>
+          <div className="w-[360px] rounded-2xl bg-accent/20 p-3">
+            <Story />
+          </div>
+        </WithAuthenticatedSession>
       </MockAppProvider>
     );
   };

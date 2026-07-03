@@ -133,6 +133,24 @@ export function useIsAuthenticated(): boolean {
   return state.phase === "authenticated";
 }
 
+/**
+ * Test/story seam for the #11084 auth gate: publish a synthetic status into the
+ * shared snapshot (and to subscribers) so `useIsAuthenticated`-gated loaders
+ * run without a live `/api/auth/me` probe. Harness-only — the jsdom story
+ * smoke + browser story gate have no auth backend, so without this the
+ * snapshot stays `loading` forever and every gated widget self-hides (the
+ * home-screen e2e solves the same gap by aliasing this module to
+ * `home-screen-fixture.auth-stub.ts`). Returns a restore that re-publishes
+ * the previous snapshot. Never call from product code.
+ */
+export function __setAuthStatusForTests(state: AuthStatusState): () => void {
+  const previous = authStatusSnapshot;
+  publishAuthStatus(state);
+  return () => {
+    publishAuthStatus(previous);
+  };
+}
+
 export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   state: AuthStatusState;
   refetch: () => void;

@@ -1,12 +1,51 @@
 import type { Decorator } from "@storybook/react";
 import { useEffect, useRef, useState } from "react";
 import {
+  __setAuthStatusForTests,
+  type AuthStatusState,
+} from "../hooks/useAuthStatus";
+import {
   HOME_WIDGET_MOCK_PLUGINS,
   installHomeWidgetFetchMock,
   seedHomeWidgetAppStore,
   seedHomeWidgetNotifications,
 } from "../widgets/__fixtures__/home-widget-mock-data";
 import { MockAppProvider } from "./mock-providers";
+
+/**
+ * Authenticated local session for stories. Since #11084 (#11107/#11122) every
+ * home/sidebar widget poller gates on `useIsAuthenticated()` before fetching;
+ * stories have no auth backend, so without seeding this the shared snapshot
+ * stays `loading` forever and every gated widget renders null (the play
+ * functions then poll to the test timeout). Mirrors the home-screen e2e's
+ * `home-screen-fixture.auth-stub.ts`.
+ */
+const STORY_AUTHENTICATED_SESSION: AuthStatusState = {
+  phase: "authenticated",
+  identity: { id: "story-owner", displayName: "Story Owner", kind: "owner" },
+  session: { id: "story-session", kind: "local", expiresAt: null },
+  access: { mode: "local", passwordConfigured: false, ownerConfigured: true },
+};
+
+/**
+ * Publish the authenticated session BEFORE `children` render (a `useState`
+ * initializer runs synchronously ahead of the child tree) and restore the
+ * previous snapshot on unmount — so gated widget loaders run during the story
+ * and later tests in the same jsdom module see the untouched snapshot.
+ */
+export function WithAuthenticatedSession({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const restoreAuth = useRef<(() => void) | null>(null);
+  useState(() => {
+    restoreAuth.current = __setAuthStatusForTests(STORY_AUTHENTICATED_SESSION);
+    return null;
+  });
+  useEffect(() => () => restoreAuth.current?.(), []);
+  return <>{children}</>;
+}
 
 /**
  * Seed the home-widget data BEFORE the widget subtree renders, so each widget's
@@ -39,11 +78,13 @@ export const withSeededHomeWidget: Decorator = (Story) => (
   <MockAppProvider
     value={{ plugins: HOME_WIDGET_MOCK_PLUGINS, conversations: [] }}
   >
-    <SeededHomeWidgetData>
-      <div className="w-[360px] bg-accent/20 p-3">
-        <Story />
-      </div>
-    </SeededHomeWidgetData>
+    <WithAuthenticatedSession>
+      <SeededHomeWidgetData>
+        <div className="w-[360px] bg-accent/20 p-3">
+          <Story />
+        </div>
+      </SeededHomeWidgetData>
+    </WithAuthenticatedSession>
   </MockAppProvider>
 );
 
