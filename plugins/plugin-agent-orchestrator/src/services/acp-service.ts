@@ -25,6 +25,10 @@ import {
 } from "./coding-account-selection.js";
 import { readConfigMcpServers } from "./config-env.js";
 import {
+  applyCredentialProxyEnv,
+  resolveOrchestratorCredentialProxyConfig,
+} from "./credential-proxy-env.js";
+import {
   applyModelGatewayEnv,
   MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
   resolveModelGatewayConfig,
@@ -2432,6 +2436,24 @@ export class AcpService extends Service {
         agentType,
         sessionId: childSessionId,
         excludedProviderKeys: [...MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS],
+      });
+    }
+    // Credential-proxy mode (#11536 E3) — the NON-MODEL sibling of the gateway
+    // block above. Independent env keys (VCS PATs + GIT_CONFIG_*), so it never
+    // collides with the E2 model-key rewrite. Deletes every raw PAT from the
+    // child env and points git at the broker's credential helper; in strict
+    // mode a raw PAT present here throws and refuses the spawn (fail-closed).
+    const credentialProxy = resolveOrchestratorCredentialProxyConfig();
+    if (credentialProxy) {
+      applyCredentialProxyEnv(env, credentialProxy, process.execPath, {
+        strictScanEnv: process.env,
+      });
+      this.log("info", "credential-proxy mode engaged for sub-agent env", {
+        proxyUrl: credentialProxy.url,
+        strict: credentialProxy.strict,
+        gitHosts: credentialProxy.routes.map((r) => r.host),
+        agentType,
+        sessionId: childSessionId,
       });
     }
     return env;
