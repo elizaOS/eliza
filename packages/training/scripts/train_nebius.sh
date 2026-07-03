@@ -471,11 +471,16 @@ EOF
 
 fetch() {
   local target; target="$(ssh_target)"
-  echo "[train_nebius][fetch] pulling checkpoints + benchmarks + reports"
-  mkdir -p "$ROOT/checkpoints/$RUN_NAME" "$ROOT/benchmarks/$RUN_NAME" "$ROOT/reports"
+  echo "[train_nebius][fetch] pulling checkpoints + benchmarks + reports + run log"
+  mkdir -p "$ROOT/checkpoints/$RUN_NAME" "$ROOT/benchmarks/$RUN_NAME" "$ROOT/reports" "$ROOT/reports/logs"
   rsync -avhz "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
   rsync -avhz "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
   rsync -avhz "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
+  # Always pull the remote run log — it holds the finetune traceback, which is
+  # the only way to diagnose an early failure once the box is torn down (the
+  # poll loop only surfaces grep'd tails). Without this a failed run is a
+  # black box.
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/run_${RUN_NAME}.log" "$ROOT/reports/logs/run_${RUN_NAME}.log" || true
 }
 
 # --- MTP drafter distillation (REMOVED) -------------------------------
