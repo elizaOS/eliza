@@ -146,6 +146,13 @@ declare module "telegram/sessions" {
 }
 declare module "@elizaos/plugin-elizacloud" {
   import type { IAgentRuntime, Service } from "@elizaos/core";
+  import type {
+    AgentCloudBillingRouteHandler,
+    AgentCloudCompatRouteHandler,
+    AgentCloudRelayRouteHandler,
+    AgentCloudRouteHandler,
+    AgentCloudStatusRouteHandler,
+  } from "./api/cloud-route-contracts.ts";
 
   export interface CloudConfigLike {
     apiKey?: string | null;
@@ -170,12 +177,6 @@ declare module "@elizaos/plugin-elizacloud" {
   }
 
   export class NullCloudSetupObserver implements CloudSetupObserver {
-    [key: string]: unknown;
-  }
-
-  export interface CloudRouteState {
-    config?: unknown;
-    runtime?: unknown;
     [key: string]: unknown;
   }
 
@@ -254,11 +255,11 @@ declare module "@elizaos/plugin-elizacloud" {
     ...args: unknown[]
   ): Promise<CloudSetupResult | null>;
 
-  export function handleCloudBillingRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudCompatRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudRelayRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudStatusRoutes(...args: unknown[]): Promise<boolean>;
+  export const handleCloudBillingRoute: AgentCloudBillingRouteHandler;
+  export const handleCloudCompatRoute: AgentCloudCompatRouteHandler;
+  export const handleCloudRelayRoute: AgentCloudRelayRouteHandler;
+  export const handleCloudRoute: AgentCloudRouteHandler;
+  export const handleCloudStatusRoutes: AgentCloudStatusRouteHandler;
   export function handleCloudTtsPreviewRoute(
     ...args: unknown[]
   ): Promise<boolean>;

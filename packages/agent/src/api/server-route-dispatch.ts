@@ -8,6 +8,12 @@ import { handleInboxRoute } from "./inbox-routes.ts";
 import { handleNotificationRoute } from "./notification-routes.ts";
 import { handlePushTokenRoute } from "./push-token-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
+import type {
+  AgentCloudBillingRouteHandler,
+  AgentCloudCompatRouteHandler,
+  AgentCloudRelayRouteHandler,
+  AgentCloudRouteHandler,
+} from "./cloud-route-contracts.ts";
 import type { ServerState } from "./server-types.ts";
 
 // Lazy memoized loaders — previously these were module-scope `await import`,
@@ -18,10 +24,10 @@ type ComputeUsePluginModule = {
   handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
 };
 type CloudPluginRoutesModule = {
-  handleCloudBillingRoute: (...args: unknown[]) => Promise<boolean>;
-  handleCloudCompatRoute: (...args: unknown[]) => Promise<boolean>;
-  handleCloudRelayRoute: (...args: unknown[]) => Promise<boolean>;
-  handleCloudRoute: (...args: unknown[]) => Promise<boolean>;
+  handleCloudBillingRoute: AgentCloudBillingRouteHandler;
+  handleCloudCompatRoute: AgentCloudCompatRouteHandler;
+  handleCloudRelayRoute: AgentCloudRelayRouteHandler;
+  handleCloudRoute: AgentCloudRouteHandler;
 };
 
 let computeUsePromise: Promise<ComputeUsePluginModule> | null = null;
@@ -64,15 +70,6 @@ interface CloudAndCoreRouteContext extends DispatchRouteContext {
   restartRuntime: (reason: string) => Promise<boolean>;
   saveConfig: (config: ServerState["config"]) => void;
   isAuthorizedRequest: (req: http.IncomingMessage) => boolean;
-}
-
-interface CloudRouteState {
-  config: ServerState["config"];
-  cloudManager: ServerState["cloudManager"];
-  runtime: ServerState["runtime"];
-  saveConfig: (config: ServerState["config"]) => void;
-  createTelemetrySpan: typeof createIntegrationTelemetrySpan;
-  restartRuntime: (reason: string) => Promise<boolean>;
 }
 
 export async function handleInboxAndCloudRelayRouteGroup({
@@ -215,7 +212,7 @@ export async function handleCloudAndCoreRouteGroup({
   );
   if (compatHandled) return true;
 
-  const cloudState: CloudRouteState = {
+  const cloudState = {
     config: state.config,
     cloudManager: state.cloudManager,
     runtime: state.runtime,
@@ -223,13 +220,7 @@ export async function handleCloudAndCoreRouteGroup({
     createTelemetrySpan: createIntegrationTelemetrySpan,
     restartRuntime,
   };
-  return cloudRoutes.handleCloudRoute(
-    req,
-    res,
-    pathname,
-    method,
-    cloudState as never,
-  );
+  return cloudRoutes.handleCloudRoute(req, res, pathname, method, cloudState);
 }
 
 export async function handleSandboxRouteGroup({
