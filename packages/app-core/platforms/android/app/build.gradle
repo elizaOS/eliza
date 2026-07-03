@@ -1,6 +1,12 @@
 apply plugin: 'com.android.application'
 
-def elizaRepoRootForVoiceBuild = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
+// Single repo-root resolution shared by the elizavoice header gate and the
+// CMake include-dir argument. patchAndroidGradle() in run-mobile-build.mjs
+// rewrites the elizaRepoRoot definition below to the absolute checkout root
+// for white-label builds (ELIZA_ANDROID_USE_APP_DIR=1), where the android
+// project lives outside the eliza tree and the relative walk overshoots.
+// Keep the variable name and single definition, or that pin silently misses.
+def elizaRepoRoot = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
 
 def resolveElizaVoiceArm64SourceDir = {
     def fromProp = project.findProperty("eliza.mtp.android.libdir")
@@ -65,7 +71,6 @@ android {
         // CMake. arm64-v8a only in Phase 3a (other ABIs build a no-op stub).
         externalNativeBuild {
             cmake {
-                def elizaRepoRoot = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
                 arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include').absolutePath}"
             }
         }
@@ -78,7 +83,7 @@ android {
     // decide from -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR (or the
     // state-dir default), then the externalNativeBuild tasks depend on
     // copyForkLlamaLib below so CMake sees the staged .so before linking.
-    def elizavoiceHeader = new File(elizaRepoRootForVoiceBuild, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h')
+    def elizavoiceHeader = new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h')
     def elizavoicePrebuilt = resolveElizaVoiceProbePrebuilt()
     def elizavoicePrebuiltText = elizavoicePrebuilt.exists()
         ? new String(elizavoicePrebuilt.readBytes(), "ISO-8859-1")

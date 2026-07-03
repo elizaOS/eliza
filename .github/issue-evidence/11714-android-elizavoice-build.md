@@ -196,3 +196,32 @@ The configured projectDirectory '/home/shaw/milady/plugins/plugin-native-mlkit-t
 - Backend logs: N/A - build-system change only.
 - Domain artifacts: Gradle output above proves the source-lib probe and
   fail-loud header guard.
+
+## Review follow-up: white-label repo-root pin
+
+`patchAndroidGradle()` in `packages/app-core/scripts/run-mobile-build.mjs`
+rewrites the first `def elizaRepoRoot = ...` line to the absolute checkout root
+for white-label builds (`ELIZA_ANDROID_USE_APP_DIR=1`), because the relative
+`../../../..` walk overshoots when the android project lives outside the eliza
+tree. The original PR head introduced a second variable
+(`elizaRepoRootForVoiceBuild`) for the header gate that the pin regex did not
+match, so a white-label build with a resolvable fused source lib would have
+hard-failed the new header check with a misleading "run git submodule update"
+message even with the submodule checked out.
+
+Fixed by hoisting a single `def elizaRepoRoot` shared by the CMake include-dir
+argument and the header gate; the existing non-global regex now pins both
+consumers. Simulated the mjs replace against the updated template: the pin
+lands on the hoisted definition and zero relative-walk definitions remain.
+
+Re-validated all four lanes after the change (this reviewer's M4 Max,
+`packages/app-core/platforms/android`, Gradle 9.5.0, dry-run):
+
+- `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 ./gradlew :app:tasks --dry-run` →
+  `[elizavoice-jni] skipped for cloud/smoke build`, BUILD SUCCESSFUL.
+- Synthetic 3-token source lib via `ELIZA_MTP_ANDROID_LIBDIR` + header present →
+  `:app:externalNativeBuildDebug --dry-run` shows `:app:copyForkLlamaLib` before
+  `configureCMakeDebug[arm64-v8a]` / `buildCMakeDebug[arm64-v8a]`, BUILD SUCCESSFUL.
+- Same source lib + header missing → configuration fails loudly naming the
+  configured source lib, BUILD FAILED (expected).
+- No source configured, empty jniLibs → graceful warn skip, BUILD SUCCESSFUL.
