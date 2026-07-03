@@ -135,6 +135,7 @@ import { renderBootFailure } from "./boot-failure";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
+import { decideChatOverlayToggle } from "./desktop-hotkey";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
@@ -1857,7 +1858,19 @@ async function initializeDesktopShell(): Promise<void> {
     });
   }
 
+  // Toggle semantics (#12184): a focused + visible overlay is dismissed
+  // (focus returns to the previously active app via the macOS orderOut path);
+  // otherwise summon + focus it. Blur does NOT hide the pill — it is a resting
+  // surface (unlike the tray popover).
   const summonChatOverlay = async (): Promise<void> => {
+    const [{ focused }, { visible }] = await Promise.all([
+      Desktop.isWindowFocused(),
+      Desktop.isWindowVisible(),
+    ]);
+    if (decideChatOverlayToggle({ focused, visible }) === "hide") {
+      await Desktop.hideWindow();
+      return;
+    }
     await Desktop.showWindow();
     await Desktop.focusWindow();
   };

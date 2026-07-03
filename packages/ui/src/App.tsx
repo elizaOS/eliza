@@ -32,6 +32,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
@@ -445,6 +446,26 @@ function ChatOverlayShell() {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
+  const controller = useShellControllerContext();
+  const overlayOpen = controller?.isOpen ?? false;
+  // Escape collapses the overlay first — while it is open, AssistantOverlay's
+  // own Escape handler closes it. Once already collapsed, Escape hides the
+  // desktop window entirely (#12184) so the pill dismisses to the background
+  // like a summoned panel. Desktop-only (web has no window to hide).
+  useEffect(() => {
+    if (typeof document === "undefined" || !isElectrobunRuntime()) {
+      return undefined;
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || overlayOpen) return;
+      void invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopHideWindow",
+        ipcChannel: "desktop:hideWindow",
+      });
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [overlayOpen]);
   return (
     <div
       data-testid="chat-overlay-shell"
