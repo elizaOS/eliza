@@ -13,7 +13,8 @@
  * - Integration with runtime event system
  */
 
-import type { EventPayload, EventType } from "../types/events";
+import type { EventPayload } from "../types/events";
+import { EventType } from "../types/events";
 import type {
 	HookEligibilityResult,
 	HookFrontmatter,
@@ -163,10 +164,7 @@ export class HookService extends Service implements IHookService {
 	 */
 	private setupEventInterceptors(): void {
 		// Get all HOOK_* event types
-		const hookEventTypes = Object.values(
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			require("../types/events").EventType,
-		).filter(
+		const hookEventTypes = Object.values(EventType).filter(
 			(e) => typeof e === "string" && e.startsWith("HOOK_"),
 		) as EventType[];
 
